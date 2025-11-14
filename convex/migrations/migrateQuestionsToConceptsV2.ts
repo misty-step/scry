@@ -228,10 +228,7 @@ export const sampleConcepts = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 10;
 
-    const concepts = await ctx.db
-      .query('concepts')
-      .order('desc')
-      .take(limit);
+    const concepts = await ctx.db.query('concepts').order('desc').take(limit);
 
     // Fetch phrasings for each concept
     const samplesWithPhrasings = await Promise.all(
