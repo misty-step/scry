@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Brain, X } from 'lucide-react';
-
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { safeStorage } from '@/lib/storage';
@@ -20,9 +19,7 @@ export function LearningModeExplainer() {
   return (
     <Alert className="mb-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-700">
       <Brain className="h-4 w-4 text-blue-700 dark:text-blue-400" />
-      <AlertTitle className="text-blue-900 dark:text-blue-100">
-        Learning Mode Active
-      </AlertTitle>
+      <AlertTitle className="text-blue-900 dark:text-blue-100">Learning Mode Active</AlertTitle>
       <AlertDescription className="text-blue-800 dark:text-blue-200">
         New concept! You&apos;ll see this a few times today with short intervals to encode it into
         long-term memory. This is normal spaced repetition practice.
