@@ -558,11 +558,26 @@ function cosineSimilarity(a: number[], b: number[]): number {
 **Problem**: Clusters of 2-5 questions need a unified concept title + description. Can't just use first question's text—need to synthesize the underlying concept.
 
 **Fix**:
-- [ ] Create function: `synthesizeConceptFromQuestions(questions: Question[]): { title: string, description: string }`
-- [ ] Use OpenAI GPT-4 to analyze question cluster and extract common concept
-- [ ] Prompt engineering: "Given these related questions, identify the single underlying concept being tested. Return a concise title (max 120 chars) and description (max 300 chars)."
-- [ ] Fallback: If cluster has 1 question, use question text as title, explanation as description
-- [ ] Validation: Ensure title is atomic (no "and", "vs", sequential patterns)
+- [x] Create function: `synthesizeConceptFromQuestions(questions: Question[]): { title: string, description: string }`
+- [x] Use OpenAI GPT-5 to analyze question cluster and extract common concept
+- [x] Prompt engineering: "Given these related questions, identify the single underlying concept being tested. Return a concise title (max 120 chars) and description (max 300 chars)."
+- [x] Fallback: If cluster has 1 question, use question text as title, explanation as description
+- [x] Validation: Ensure title is atomic (no "and", "vs", sequential patterns)
+
+```
+Work Log:
+- Implemented synthesizeConcept.ts (74 LOC after simplification)
+- Applied code-simplicity-reviewer feedback:
+  * Reduced from 196 LOC → 74 LOC (62% reduction)
+  * Consolidated 3 truncation implementations into 1 helper function
+  * Inlined validation functions (removed 35 LOC of boilerplate)
+  * Inlined prompt template for visibility at call site
+  * Removed unnecessary defensive checks (rely on OpenAI SDK errors)
+- Uses OpenAI GPT-5-mini with structured JSON output
+- Singleton clusters use question text directly (no AI call)
+- Multi-question clusters synthesize via AI with atomicity constraints in prompt
+- Simple truncation: 120 chars for title, 300 chars for description
+```
 
 **Success criteria**: Function accepts question cluster, returns semantic concept that encompasses all questions. Tested on sample clusters from dev data.
 
@@ -598,7 +613,7 @@ Return a JSON object with:
 The title must be atomic (no "and", "vs", or sequential terms). Focus on the fundamental knowledge being tested.`;
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: 'gpt-5',
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
