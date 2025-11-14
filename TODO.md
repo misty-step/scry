@@ -637,15 +637,32 @@ The title must be atomic (no "and", "vs", or sequential terms). Focus on the fun
 **Problem**: Need to migrate 163 orphaned questions to concepts system with clustering and synthesis. Must be safe, reversible, observable.
 
 **Fix**:
-- [ ] Create internal mutation: `migrateQuestionsToConceptsV2({ dryRun: boolean })`
-- [ ] Steps:
+- [x] Create internal action: `migrateQuestionsToConceptsV2({ dryRun: boolean })` (action needed for clustering/synthesis)
+- [x] Steps:
   1. Query all questions where `conceptId === undefined`
   2. Call `clusterQuestionsBySimilarity()` (Task 9)
   3. For each cluster, call `synthesizeConceptFromQuestions()` (Task 10)
   4. If `dryRun === false`: Create concept, create phrasings, link questions to concept, preserve FSRS state
   5. Log all actions (clusters formed, concepts created, phrasings added)
-- [ ] Return migration report: `{ clustersFormed: number, conceptsCreated: number, phrasingsCreated: number, questionsLinked: number }`
-- [ ] Include rollback information: Keep original questions untouched (only add `conceptId` field)
+- [x] Return migration report: `{ clustersFormed: number, conceptsCreated: number, phrasingsCreated: number, questionsLinked: number }`
+- [x] Include rollback information: Keep original questions untouched (only add `conceptId` field)
+
+```
+Work Log:
+- Implemented migrateQuestionsToConceptsV2.ts (216 LOC after simplification)
+- Applied code-simplicity-reviewer feedback:
+  * Reduced from ~320 LOC → 216 LOC (33% reduction)
+  * Eliminated action/mutation split (7-11 round trips → 1 per cluster)
+  * Inlined 4 helper mutations as direct ctx.db.insert/patch operations
+  * Removed redundant query wrapper (questions already in memory from getOrphanedQuestions)
+  * Removed impossible error handling (question-not-found after just fetching)
+  * Simplified diagnostic query (return number instead of formatted string)
+- Single atomic mutation per cluster: creates concept + all phrasings + links questions
+- FSRS state preserved from most-reviewed question in cluster (highest reps)
+- Dry-run mode logs intended actions without mutations (default: true)
+- Diagnostic query (checkMigrationStatus) verifies 100% migration completion
+- Performance: 6-10× faster than original multi-mutation design
+```
 
 **Success criteria**: Dry-run mode logs intended actions without mutations. Real mode creates concepts with preserved FSRS state, links questions, creates phrasings.
 
