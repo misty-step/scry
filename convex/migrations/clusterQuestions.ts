@@ -58,7 +58,7 @@ export async function clusterQuestionsBySimilarity(
   }
 
   // Agglomerative clustering (track indices only)
-  let clusters: number[][] = questions.map((_, i) => [i]);
+  const clusters: number[][] = questions.map((_, i) => [i]);
 
   while (clusters.length > 1) {
     // Find most similar pair of clusters
@@ -133,11 +133,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
  * @param matrix - Pre-computed similarity matrix
  * @returns Average pairwise similarity
  */
-function averageSimilarity(
-  indicesA: number[],
-  indicesB: number[],
-  matrix: number[][]
-): number {
+function averageSimilarity(indicesA: number[], indicesB: number[], matrix: number[][]): number {
   let sum = 0;
   let count = 0;
 
