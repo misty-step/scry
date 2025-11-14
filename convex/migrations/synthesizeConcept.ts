@@ -36,12 +36,17 @@ export async function synthesizeConceptFromQuestions(
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   const questionsText = questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini',
-    messages: [
-      {
-        role: 'user',
-        content: `Analyze these related questions and identify the SINGLE underlying concept being tested:
+  let attempt = 0;
+  const maxAttempts = 3;
+
+  while (attempt < maxAttempts) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5-mini',
+        messages: [
+          {
+            role: 'user',
+            content: `Analyze these related questions and identify the SINGLE underlying concept being tested:
 
 ${questionsText}
 
@@ -52,17 +57,36 @@ Requirements:
 Return JSON: {"title": "...", "description": "..."}
 
 Example: ["What is X?", "When was X created?"] → {"title": "X", "description": "..."}`,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    max_completion_tokens: 500,
-  });
+          },
+        ],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 500,
+      });
 
-  const { title, description } = JSON.parse(response.choices[0].message.content);
-  return {
-    title: truncate(title.trim(), 120),
-    description: truncate(description.trim(), 300),
-  };
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error('OpenAI returned no content');
+      }
+
+      const { title, description } = JSON.parse(content);
+      return {
+        title: truncate(title.trim(), 120),
+        description: truncate(description.trim(), 300),
+      };
+    } catch (error) {
+      attempt++;
+      if (attempt >= maxAttempts) {
+        console.error(`Failed after ${maxAttempts} attempts:`, error);
+        throw error;
+      }
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = Math.pow(2, attempt - 1) * 1000;
+      console.warn(`Synthesis attempt ${attempt} failed, retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw new Error('Unreachable: retry logic failed');
 }
 
 /**

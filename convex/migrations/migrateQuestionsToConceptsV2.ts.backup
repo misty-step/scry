@@ -235,7 +235,9 @@ export const sampleConcepts = query({
       concepts.map(async (concept) => {
         const phrasings = await ctx.db
           .query('phrasings')
-          .withIndex('by_concept', (q) => q.eq('conceptId', concept._id))
+          .withIndex('by_user_concept', (q) =>
+            q.eq('userId', concept.userId).eq('conceptId', concept._id)
+          )
           .collect();
 
         return {
