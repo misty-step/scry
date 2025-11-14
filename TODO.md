@@ -800,21 +800,39 @@ export const checkMigrationStatus = query({
 
 ### Task 12: Validate Migration on Dev Data
 
-**Manual testing steps** (not code tasks):
+**Code components completed** ✅:
+- [x] Created `scripts/run-migration.sh` - Safe migration runner with dry-run enforcement
+- [x] Created `scripts/validate-migration-output.sh` - Validation helper script
+- [x] Added `sampleConcepts` diagnostic query to migration file
+- [x] Created `docs/migration-validation-guide.md` - Comprehensive validation guide
+
+```
+Work Log:
+- Implemented run-migration.sh with environment validation and 3-step safety:
+  1. Auto dry-run (no mutations)
+  2. Manual confirmation prompt
+  3. Actual migration + diagnostic verification
+- Script handles both dev and production targets with deploy key validation
+- Added sampleConcepts query (45 LOC) for detailed concept inspection
+- Comprehensive guide covers 7 validation steps with troubleshooting
+- Build status: ✅ All checks passing (lint + build successful)
+```
+
+**Manual testing steps** (to be performed by user):
 
 - [ ] Copy production database to dev environment (Convex dashboard → Export/Import)
-- [ ] Run `migrateQuestionsToConceptsV2({ dryRun: true })` and review logs
-- [ ] Verify cluster quality: Are related questions grouped correctly? Singletons appropriate?
-- [ ] Run `migrateQuestionsToConceptsV2({ dryRun: false })` on dev data
-- [ ] Query `checkMigrationStatus` to verify 100% migration
-- [ ] Manually review 10-20 sample concepts:
-  - Concept titles make sense?
-  - Phrasings are actually related?
-  - FSRS state preserved correctly?
-- [ ] Test review flow: Can user review migrated concepts? Interactions recorded correctly?
-- [ ] Document any clustering failures or edge cases for manual cleanup
+- [ ] Run `./scripts/run-migration.sh migrateQuestionsToConceptsV2 dev`
+- [ ] Review dry-run output: cluster quality, concept titles, similarity scores
+- [ ] Confirm actual migration when prompted by script
+- [ ] Verify 100% completion via automatic diagnostic query
+- [ ] Run `npx convex run migrations:sampleConcepts --args '{"limit":10}'`
+- [ ] Manually review sample concepts (titles, phrasings, FSRS state)
+- [ ] Test review flow in dev: /review page, answer questions, check interactions
+- [ ] Document any clustering failures or edge cases
 
 **Success criteria**: Migration runs without errors, concept quality is acceptable, review flow works with migrated data.
+
+**Reference**: See `docs/migration-validation-guide.md` for detailed step-by-step instructions.
 
 ---
 

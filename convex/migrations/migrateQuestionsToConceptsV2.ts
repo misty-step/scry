@@ -214,3 +214,50 @@ export const checkMigrationStatus = query({
     };
   },
 });
+
+/**
+ * Diagnostic query: Sample created concepts for manual review
+ *
+ * Returns sample of concepts with their phrasings for quality validation.
+ * Use after migration to spot-check clustering and synthesis quality.
+ */
+export const sampleConcepts = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 10;
+
+    const concepts = await ctx.db
+      .query('concepts')
+      .order('desc')
+      .take(limit);
+
+    // Fetch phrasings for each concept
+    const samplesWithPhrasings = await Promise.all(
+      concepts.map(async (concept) => {
+        const phrasings = await ctx.db
+          .query('phrasings')
+          .withIndex('by_concept', (q) => q.eq('conceptId', concept._id))
+          .collect();
+
+        return {
+          conceptId: concept._id,
+          title: concept.title,
+          description: concept.description,
+          phrasingCount: concept.phrasingCount,
+          fsrsState: concept.fsrs.state,
+          fsrsReps: concept.fsrs.reps,
+          phrasings: phrasings.map((p) => ({
+            phrasingId: p._id,
+            question: p.question,
+            attemptCount: p.attemptCount,
+            correctCount: p.correctCount,
+          })),
+        };
+      })
+    );
+
+    return samplesWithPhrasings;
+  },
+});
