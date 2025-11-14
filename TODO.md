@@ -392,11 +392,23 @@ export function QuestionHistory({ interactions }) {
 **Problem**: First time a user sees learning mode, they don't understand why they're seeing the same concept multiple times in quick succession.
 
 **Fix**:
-- [ ] Create new component: `<LearningModeExplainer />` (dismissible alert/card)
-- [ ] Show ONCE per user: use localStorage key `'hasSeenLearningModeExplainer'`
-- [ ] Display when: `concept.fsrs.state === 'learning'` AND `concept.fsrs.reps === 0` (first learning review)
-- [ ] Content: "New concept! You'll see this a few times today with short intervals to encode it into long-term memory. This is normal spaced repetition practice."
-- [ ] Include "Got it, don't show again" button
+- [x] Create new component: `<LearningModeExplainer />` (dismissible alert/card)
+- [x] Show ONCE per user: use localStorage key `'hasSeenLearningModeExplainer'`
+- [x] Display when: `concept.fsrs.state === 'learning'` AND `concept.fsrs.reps === 0` (first learning review)
+- [x] Content: "New concept! You'll see this a few times today with short intervals to encode it into long-term memory. This is normal spaced repetition practice."
+- [x] Include "Got it, don't show again" button
+
+```
+Work Log:
+- Created learning-mode-explainer.tsx component (41 lines)
+- Integrated into review-flow.tsx with conditional rendering
+- Applied simplicity review feedback:
+  * Removed useEffect in favor of lazy useState initializer
+  * Inlined dismiss handler (removed separate function)
+  * Reduced complexity by 21% (11 LOC)
+- SSR-safe: uses lazy initializer with typeof window check
+- Dark mode support: proper contrast for light/dark themes
+```
 
 **Success criteria**: First-time users understand learning mode behavior, not surprised by immediate re-reviews.
 

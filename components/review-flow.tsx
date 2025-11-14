@@ -10,6 +10,7 @@ import { QuestionHistory } from '@/components/question-history';
 import { ReviewQuestionDisplay } from '@/components/review-question-display';
 import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
+import { LearningModeExplainer } from '@/components/review/learning-mode-explainer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
@@ -287,6 +288,11 @@ export function ReviewFlow() {
                 <Brain className="h-3 w-3 mr-1" />
                 Learning Mode • Step {(conceptFsrs.reps ?? 0) + 1} of 4
               </Badge>
+            )}
+
+            {/* First-Time Learning Mode Explainer */}
+            {conceptFsrs?.state === 'learning' && conceptFsrs.reps === 0 && (
+              <LearningModeExplainer />
             )}
 
             {conceptTitle && (
