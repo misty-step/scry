@@ -6,6 +6,13 @@ import { getSecretDiagnostics } from './envDiagnostics';
 
 type SecretDiagnostics = ReturnType<typeof getSecretDiagnostics>;
 
+type MinimalLogger = {
+  info?: (context: Record<string, unknown>, message?: string) => void;
+  error?: (context: Record<string, unknown>, message?: string) => void;
+};
+
+type ProviderLogger = Pick<Logger, 'info' | 'error'> | MinimalLogger;
+
 export interface ProviderClient {
   model?: LanguageModel;
   openaiClient?: OpenAI;
@@ -14,7 +21,7 @@ export interface ProviderClient {
 }
 
 export interface InitializeProviderOptions {
-  logger?: Logger;
+  logger?: ProviderLogger;
   logContext?: Record<string, unknown>;
   deployment?: string;
 }
@@ -114,23 +121,19 @@ function buildLogFields(
 }
 
 function logInfo(
-  logger: Logger | undefined,
+  logger: ProviderLogger | undefined,
   context: Record<string, unknown>,
   message: string
 ): void {
-  if (logger) {
-    logger.info(context, message);
-  }
+  logger?.info?.(context, message);
 }
 
 function logError(
-  logger: Logger | undefined,
+  logger: ProviderLogger | undefined,
   context: Record<string, unknown>,
   message: string
 ): void {
-  if (logger) {
-    logger.error(context, message);
-  }
+  logger?.error?.(context, message);
 }
 
 function normalizeProvider(provider: string): 'google' | 'openai' | null {
