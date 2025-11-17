@@ -7,6 +7,173 @@
 ---
 
 ## Now (Sprint-Ready, <2 weeks)
+### [TESTING][P1] Add Test Coverage for Embedding Helpers
+
+**Files**:
+- `convex/lib/embeddingHelpers.ts` (217 lines, 0% test coverage)
+- New: `convex/lib/embeddingHelpers.test.ts` (to be created)
+
+**Perspectives**: code-quality-standards, testing-philosophy
+
+**Problem**: Core embedding helper module has zero test coverage
+- Security validation (userId mismatch) not verified
+- Edge cases (invalid dimensions, idempotency) not covered
+- Timestamp preservation logic not tested
+- Upsert/delete operations not validated
+
+**Impact**:
+- No confidence in security checks during refactoring
+- Risk of regression when modifying helper functions
+- **Blocks production deployment confidence** (Phase 1 migration)
+
+**Test Spec** (Vitest):
+```typescript
+// convex/lib/embeddingHelpers.test.ts
+describe('upsertEmbeddingForQuestion', () => {
+  it('creates new embedding when none exists');
+  it('updates existing embedding (atomic delete-then-insert)');
+  it('throws error on userId mismatch (security)');
+  it('throws error on invalid dimensions (!= 768)');
+  it('preserves embeddingGeneratedAt when provided');
+  it('uses Date.now() when embeddingGeneratedAt omitted');
+  it('prevents race condition duplicates (concurrent upserts)');
+});
+
+describe('deleteEmbeddingForQuestion', () => {
+  it('deletes existing embedding');
+  it('returns false when already deleted (idempotent)');
+  it('throws error on userId mismatch (security)');
+});
+
+describe('getEmbeddingsForUser', () => {
+  it('fetches all embeddings for user');
+  it('returns empty array when none exist');
+});
+
+describe('countEmbeddingsForUser', () => {
+  it('counts embeddings for user');
+  it('returns 0 when none exist');
+});
+```
+
+**Estimate**: 4h
+**Priority**: P1 (unblocks production confidence)
+**Dependencies**: Phase 1 embeddings migration complete (PR #60)
+
+---
+
+### [DOCUMENTATION][P0] Add JSDoc Coverage for Public APIs
+
+**Source**: CodeRabbit PR #60 review feedback
+
+**Problem**: 0% docstring coverage (threshold: 80%)
+- No API documentation for public mutations/queries
+- Bulk operations lack side effect documentation
+- No examples in code comments
+- Difficult for new developers to understand API contracts
+
+**Scope** (High-impact files first):
+1. `convex/questionsBulk.ts` - Document side effects (userStats, analytics), atomicity, error behavior
+2. `convex/lib/embeddingHelpers.ts` - Document security validation, race condition prevention, timestamp handling
+3. `convex/questionsLibrary.ts` - Document pagination, filtering, search behavior
+4. `convex/spacedRepetition.ts` - Document FSRS calculations, due date logic, scheduling parameters
+5. `convex/generationJobs.ts` - Document job lifecycle, cleanup policies, concurrent limits
+
+**Template**:
+```typescript
+/**
+ * Brief description of what the function does
+ *
+ * Detailed explanation of behavior, side effects, atomicity guarantees.
+ *
+ * Side Effects:
+ * - List database writes (userStats updates, analytics tracking, etc.)
+ * - List external API calls if any
+ *
+ * Atomicity: All-or-nothing / Partial failures allowed / etc.
+ *
+ * @param paramName - Description of parameter
+ * @returns Description of return value
+ * @throws {Error} "Error message format" - When this error occurs
+ *
+ * @example
+ * // Example usage with expected outcome
+ * await functionName({ param: value });
+ * // Returns: { result: data }
+ */
+```
+
+**Acceptance Criteria**:
+- All exported mutations/queries have JSDoc comments
+- Side effects documented clearly
+- Example usage provided
+- Error conditions documented
+- Atomicity guarantees explained
+- Docstring coverage >80% (measured by CodeRabbit)
+
+**Effort**: 6 hours (5 files × 1.2h average)
+**Priority**: P0 - Required for code review standards, onboarding
+**Dependencies**: None
+
+---
+
+### [ARCHITECTURE][CRITICAL] Extract AI Provider Initialization
+
+**Files**:
+- `convex/aiGeneration.ts:87-191` (105 lines of provider setup)
+- `convex/lab.ts:79-177` (98 lines of **identical** provider setup)
+
+**Perspectives**: complexity-archaeologist, architecture-guardian (cross-validated by 2 agents)
+
+**Problem**: 203 lines of duplicated provider initialization code
+- Same environment variable reading (`AI_PROVIDER`, `AI_MODEL`, etc.)
+- Same `getSecretDiagnostics` calls
+- Same OpenAI vs Google conditional logic
+- Same error handling
+- Bug fixes require 2 updates (already happened: see git history)
+
+**Impact**:
+- Maintenance burden (duplicate bug fixes)
+- Inconsistent behavior risk (one file updated, other forgotten)
+- **Blocks adding Anthropic provider** (would create 3x duplication)
+
+**Fix**:
+```typescript
+// NEW: convex/lib/aiProviders.ts
+export interface ProviderClient {
+  model?: LanguageModel;
+  openaiClient?: OpenAI;
+  provider: 'google' | 'openai';
+  diagnostics: SecretDiagnostics;
+}
+
+export async function initializeProvider(
+  provider: string,
+  modelName: string
+): Promise<ProviderClient> {
+  // Centralized initialization logic (100 lines once vs 200+ duplicated)
+  // Environment validation
+  // Client creation (Google vs OpenAI)
+  // Error handling
+  return { model, openaiClient, provider, diagnostics };
+}
+
+// USAGE in aiGeneration.ts and lab.ts (3 lines each vs 100 lines each):
+const { model, openaiClient, provider } = await initializeProvider(
+  process.env.AI_PROVIDER || 'openai',
+  process.env.AI_MODEL || 'gpt-5-mini'
+);
+```
+
+**Acceptance Criteria**:
+- Both aiGeneration.ts and lab.ts use shared module
+- -200 lines of code duplication eliminated
+- Tests prove identical behavior between files
+- Adding Anthropic provider requires changes in 1 location only
+
+**Effort**: 3 hours | **Priority**: P0 - Blocks provider expansion, accumulating technical debt
+
+---
 
 ### [PERFORMANCE][HIGH] Fix Library Table Selection O(N×M)
 
@@ -232,6 +399,147 @@ export const bulkDelete = mutation({
 **Effort**: 1 hour (5 functions × 12 min) | **Priority**: HIGH
 
 **Impact**: Self-documenting API, prevents misuse, faster onboarding
+
+---
+
+## Follow-Up from PR #58 Code Review
+
+### [TEST][LOW] Provider Name Edge Cases
+
+**Source**: CodeRabbitAI review of PR #58
+**File**: `convex/lib/aiProviders.test.ts`
+
+**Problem**: Test coverage missing for provider name normalization edge cases:
+- Empty string provider (should default to OpenAI or reject?)
+- Case-insensitive normalization (`GOOGLE` → `google`)
+- Null/undefined handling
+
+**Current Coverage**:
+- ✅ Happy paths (Google, OpenAI with valid keys)
+- ✅ Missing API keys
+- ✅ Unsupported provider rejection (`anthropic`)
+- ❌ Edge cases listed above
+
+**Fix**:
+```typescript
+it('defaults to OpenAI when provider is empty string', () => {
+  process.env.OPENAI_API_KEY = 'key';
+  const result = initializeProvider('', 'gpt-5-mini', {});
+  expect(result.provider).toBe('openai');
+});
+
+it('normalizes provider names case-insensitively', () => {
+  process.env.GOOGLE_AI_API_KEY = 'key';
+  const result = initializeProvider('GOOGLE', 'gemini-pro', {});
+  expect(result.provider).toBe('google');
+});
+```
+
+**Effort**: 30 minutes (2 test cases) | **Priority**: LOW
+
+**Rationale for Deferral**: PR scope is refactoring duplication, not expanding test coverage. Edge cases are rare in production (env vars set by deployment system).
+
+**Impact**: Stronger contract validation, catches config errors earlier
+
+---
+
+### [DOCS][LOW] Improve ProviderClient Documentation Clarity
+
+**Source**: CodeRabbitAI review of PR #58
+**File**: `CLAUDE.md:278-282`
+
+**Problem**: Interface documentation shows all fields as optional (`model?`, `openaiClient?`) without explicitly stating that exactly ONE is present based on `provider` field. Discriminated union nature is implicit rather than explicit.
+
+**Current Documentation**:
+```typescript
+interface ProviderClient {
+  provider: 'google' | 'openai';
+  model?: LanguageModel;           // Present for Google (Vercel AI SDK models)
+  openaiClient?: OpenAI;           // Present for OpenAI Responses API usage
+  diagnostics: SecretDiagnostics;
+}
+```
+
+**Enhanced Documentation**:
+```typescript
+// Discriminated union: provider field determines which client is present:
+// - provider: 'google' → model is defined, openaiClient is undefined
+// - provider: 'openai' → openaiClient is defined, model is undefined
+
+interface ProviderClient {
+  provider: 'google' | 'openai';
+  model?: LanguageModel;           // Present only when provider === 'google'
+  openaiClient?: OpenAI;           // Present only when provider === 'openai'
+  diagnostics: SecretDiagnostics;
+}
+```
+
+**Effort**: 10 minutes (add 4-line comment) | **Priority**: LOW
+
+**Rationale for Deferral**: Non-blocking, type system enforces correctness. Documentation is already clear enough for current team.
+
+**Impact**: Clearer for future developers, reduces confusion about when `model` vs `openaiClient` is set
+
+---
+
+### [BUILD][BLOCKED] Classify Retry-Eligible Errors in vercel-build.sh
+
+**Source**: CodeRabbitAI review of PR #58
+**File**: `scripts/vercel-build.sh:94`
+
+**Problem**: Current retry logic retries ALL exit code 1 failures, including non-transient errors like:
+- Invalid `CONVEX_DEPLOY_KEY` (authentication failure → shouldn't retry)
+- TypeScript syntax errors in Convex functions (compilation failure → shouldn't retry)
+- Bad configuration (400 errors → shouldn't retry)
+
+Ideally should only retry transient errors (500, 503, timeouts).
+
+**Blocker**: Convex CLI doesn't provide granular exit codes. All failures exit with code 1.
+
+**Potential Solution**:
+```bash
+is_transient_error() {
+  local exitCode=$1
+  # Parse stderr for error patterns
+  if grep -q "503 Service Unavailable\|500 Internal Server Error\|timeout" "$error_log"; then
+    return 0  # Retry
+  fi
+  return 1  # Don't retry
+}
+```
+
+**Effort**: 2 hours (research Convex CLI error output patterns, test edge cases) | **Priority**: MEDIUM
+
+**Rationale for Deferral**:
+- Current behavior is acceptable (3 attempts with ~7s total delay)
+- Documentation correctly explains limitation (`docs/operations/deployment-resilience.md`)
+- Upstream feature request to Convex would be cleaner solution
+
+**Impact**: Avoid wasting retry attempts on permanent failures, faster failure feedback
+
+**Dependencies**: Requires Convex CLI to either:
+1. Provide granular exit codes (feature request)
+2. Standardize error message patterns (document current behavior)
+
+---
+
+### [DOCS][LOW] Move/Archive CI Investigation Document
+
+**Source**: CodeRabbitAI review of PR #58
+**File**: `docs/operations/ci-investigation-pr58.md`
+
+**Problem**: In-progress investigation report (status: "REQUIRES MANUAL DASHBOARD ACCESS") mixed with operational documentation. Creates confusion about document status and purpose.
+
+**Options**:
+1. **Archive as postmortem**: `docs/postmortems/pr58-ci-investigation.md` with resolution section (if issue resolved)
+2. **Move to investigations**: `docs/investigations/ongoing/pr58-ci-failures.md` (if issue persists)
+3. **Remove entirely**: Keep only `deployment-resilience.md` which captures lessons learned (if no longer relevant)
+
+**Effort**: 15 minutes (move file, update references) | **Priority**: LOW
+
+**Rationale for Deferral**: Non-blocking, doesn't affect functionality. Document provides valuable debugging context even in current location.
+
+**Impact**: Clearer documentation organization, separates operational docs from investigations
 
 ---
 

@@ -63,10 +63,10 @@ export default defineSchema({
     // Archive and generation tracking
     archivedAt: v.optional(v.number()), // For pausing questions without deleting
     generationJobId: v.optional(v.id('generationJobs')), // Link to source generation job
-    // Concepts & Phrasings migration (Phase 1: Add optional field)
-    // Will be backfilled via migration, then enforced in Phase 3
-    conceptId: v.optional(v.id('concepts')), // Link to parent concept (added in v2.3.0)
-    // Vector embeddings for semantic search
+    // Concepts & Phrasings migration (Phase 1: optional link, enforced after backfill)
+    conceptId: v.optional(v.id('concepts')),
+    // DEPRECATED: embeddings now live in questionEmbeddings table (Phase 1 migration)
+    // Keep fields temporarily for compatibility; write via embeddingHelpers only
     embedding: v.optional(v.array(v.float64())), // 768-dimensional vector from text-embedding-004
     embeddingGeneratedAt: v.optional(v.number()), // Timestamp when embedding was generated
   })
@@ -78,7 +78,8 @@ export default defineSchema({
     // Enables DB-level filtering for active/archived/deleted views at scale (10k+ cards)
     .index('by_user_active', ['userId', 'deletedAt', 'archivedAt', 'generatedAt'])
     .index('by_user_state', ['userId', 'state', 'deletedAt', 'archivedAt'])
-    // Vector index for semantic search
+    // DEPRECATED: Vector index moved to questionEmbeddings table
+    // This index will be removed in Phase 3 after migration completes
     .vectorIndex('by_embedding', {
       vectorField: 'embedding',
       dimensions: 768, // Google text-embedding-004
@@ -125,6 +126,26 @@ export default defineSchema({
     .index('by_user_concept', ['userId', 'conceptId', 'attemptedAt'])
     .index('by_user_phrasing', ['userId', 'phrasingId', 'attemptedAt'])
     .index('by_concept', ['conceptId', 'attemptedAt']),
+
+  // Vector embeddings for semantic search (separated from questions for bandwidth optimization)
+  // Stores 768-dimensional embeddings from Google text-embedding-004
+  // Each embedding is ~6.1 KB - keeping separate prevents fetching on non-search queries
+  questionEmbeddings: defineTable({
+    questionId: v.id('questions'), // Foreign key to questions table
+    userId: v.id('users'), // DUPLICATE from questions - immutable, security-critical
+    embedding: v.array(v.float64()), // 768-dimensional vector (6.1 KB)
+    embeddingGeneratedAt: v.number(), // Timestamp when embedding was generated
+  })
+    .index('by_question', ['questionId'])
+    .index('by_user', ['userId'])
+    // Vector index for semantic search
+    // filterFields: userId only (post-filter deletedAt/archivedAt like current implementation)
+    // Convex limitation: vector search doesn't support AND conditions for complex filters
+    .vectorIndex('by_embedding', {
+      vectorField: 'embedding',
+      dimensions: 768, // Google text-embedding-004
+      filterFields: ['userId'], // Only userId - post-filter view state in memory
+    }),
 
   /**
    * @deprecated This table is deprecated and should not be used.
