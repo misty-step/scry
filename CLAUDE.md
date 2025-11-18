@@ -416,13 +416,22 @@ npx convex env list --prod | grep AI_PROVIDER
 ## Modular Convex Architecture
 
 **Backend modules:**
-- `questionsCrud.ts` - CRUD ops (create, update, soft delete, restore)
-- `questionsBulk.ts` - Atomic bulk ops (archive, delete, restore, permanent delete)
+- `concepts.ts` - Concept-based review system (replaces spacedRepetition.ts)
+- `phrasings.ts` - Multiple question variations per concept
+- `questionsCrud.ts` - **DEPRECATED** CRUD ops (use concepts instead)
+- `questionsBulk.ts` - **DEPRECATED** Bulk ops (use concepts instead)
 - `questionsInteractions.ts` - Answer recording + auto FSRS scheduling
 - `questionsLibrary.ts` - Browse/filter/stats queries
-- `spacedRepetition.ts` - Review queue (Pure FSRS, no modifications)
+- `spacedRepetition.ts` - **DEPRECATED** Review queue (use concepts.getDue instead)
 - `generationJobs.ts` + `aiGeneration.ts` - Background AI generation
 - `lib/validation.ts` - Shared atomic validation helpers
+
+**⚠️ Questions Table Deprecated (v2.4.0)**:
+- The `questions` table has been migrated to `concepts` and `phrasings` tables
+- Legacy mutations/queries (`spacedRepetition.scheduleReview`, `spacedRepetition.getNextReview`) emit console warnings
+- Read-only for 30-day safety period (until 2025-12-17)
+- **Do not insert new questions** - use `concepts` and `phrasings` tables instead
+- Will be dropped in v3.0.0
 
 **Validation pattern:** All bulk ops use `validateBulkOwnership()` to prevent partial failures
 

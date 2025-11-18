@@ -187,6 +187,11 @@ export const scheduleReview = mutation({
     sessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    console.warn(
+      '[DEPRECATED] spacedRepetition.scheduleReview is deprecated. ' +
+        'Use concepts.recordInteraction instead. This mutation will be removed in v3.0.0.'
+    );
+
     const user = await requireUserFromClerk(ctx);
     const userId = user._id;
 
@@ -275,6 +280,11 @@ export const getNextReview = query({
   },
 
   handler: async (ctx, _args) => {
+    console.warn(
+      '[DEPRECATED] spacedRepetition.getNextReview is deprecated. ' +
+        'Use concepts.getDue instead. This query will be removed in v3.0.0.'
+    );
+
     const user = await requireUserFromClerk(ctx);
     const userId = user._id;
     const now = new Date();

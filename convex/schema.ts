@@ -29,10 +29,20 @@ export default defineSchema({
     lastCalculated: v.number(), // Timestamp of last stats update
   }).index('by_user', ['userId']),
 
-  // Note: 'difficulty' field removed in v2.0 (2025-01)
-  // - Never used by FSRS algorithm (uses fsrsDifficulty parameter instead)
-  // - Removed to simplify schema and avoid confusion with FSRS difficulty
-  // - Existing records migrated via migrations.ts:removeDifficultyFromQuestions
+  /**
+   * @deprecated MIGRATED TO CONCEPTS/PHRASINGS SYSTEM (v2.4.0)
+   *
+   * This table is deprecated and read-only. All questions have been migrated
+   * to the concepts/phrasings system. Do not insert new questions here.
+   *
+   * Kept for 30-day safety period (until 2025-12-17), then will be dropped.
+   * Use `concepts` and `phrasings` tables for all new functionality.
+   *
+   * Historical note: 'difficulty' field removed in v2.0 (2025-01)
+   * - Never used by FSRS algorithm (uses fsrsDifficulty parameter instead)
+   * - Removed to simplify schema and avoid confusion with FSRS difficulty
+   * - Existing records migrated via migrations.ts:removeDifficultyFromQuestions
+   */
   questions: defineTable({
     userId: v.id('users'),
     question: v.string(),
