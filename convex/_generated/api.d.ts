@@ -44,6 +44,7 @@ import type * as lib_responsesApi from "../lib/responsesApi.js";
 import type * as lib_userStatsHelpers from "../lib/userStatsHelpers.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as migrations_clusterQuestions from "../migrations/clusterQuestions.js";
+import type * as migrations_clusterQuestionsV3 from "../migrations/clusterQuestionsV3.js";
 import type * as migrations_synthesizeConcept from "../migrations/synthesizeConcept.js";
 import type * as migrations from "../migrations.js";
 import type * as phrasings from "../phrasings.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "lib/userStatsHelpers": typeof lib_userStatsHelpers;
   "lib/validation": typeof lib_validation;
   "migrations/clusterQuestions": typeof migrations_clusterQuestions;
+  "migrations/clusterQuestionsV3": typeof migrations_clusterQuestionsV3;
   "migrations/synthesizeConcept": typeof migrations_synthesizeConcept;
   migrations: typeof migrations;
   phrasings: typeof phrasings;

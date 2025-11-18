@@ -287,9 +287,10 @@ interface ProviderClient {
 ### OpenAI Reasoning Models
 
 **What are reasoning models?**
-- GPT-5, GPT-5-mini, GPT-5-nano perform internal chain-of-thought before responding
+- GPT-5.1, GPT-5, GPT-5-mini, GPT-5-nano perform internal chain-of-thought before responding
 - Invisible "reasoning tokens" billed as output tokens (~30-50% of total)
 - Superior quality for structured output, format adherence, context injection
+- GPT-5.1 is the highest quality model with best reasoning capabilities
 
 **Reasoning Parameters:**
 ```typescript
