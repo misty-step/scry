@@ -72,7 +72,7 @@ echo ""
 echo "Step 1: Running dry-run (no mutations)..."
 echo ""
 
-npx convex run "migrations:$MIGRATION_NAME" --args '{"dryRun":true}'
+npx convex run "migrations:$MIGRATION_NAME" '{"dryRun":true}'
 
 if [ $? -ne 0 ]; then
   echo ""
@@ -98,7 +98,7 @@ echo ""
 echo "Step 3: Running actual migration..."
 echo ""
 
-npx convex run "migrations:$MIGRATION_NAME" --args '{"dryRun":false}'
+npx convex run "migrations:$MIGRATION_NAME" '{"dryRun":false}'
 
 if [ $? -ne 0 ]; then
   echo ""

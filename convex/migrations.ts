@@ -1897,21 +1897,31 @@ export const migrateQuestionsToConceptsV2 = internalAction({
       }
 
       // Create concept + phrasings + links (single mutation, all DB ops)
-      await ctx.runMutation(internal.migrations.createConceptFromCluster, {
-        questions: cluster.questions,
-        title: conceptData.title,
-        description: conceptData.description,
-      });
+      try {
+        await ctx.runMutation(internal.migrations.createConceptFromCluster, {
+          questions: cluster.questions,
+          title: conceptData.title,
+          description: conceptData.description,
+        });
 
-      stats.conceptsCreated++;
-      stats.phrasingsCreated += cluster.questions.length;
-      stats.questionsLinked += cluster.questions.length;
+        stats.conceptsCreated++;
+        stats.phrasingsCreated += cluster.questions.length;
+        stats.questionsLinked += cluster.questions.length;
 
-      console.warn(
-        `[Migration V2] ${i + 1}/${clusters.length}: ` +
-          `Created concept "${conceptData.title}" ` +
-          `with ${cluster.questions.length} phrasing(s)`
-      );
+        console.warn(
+          `[Migration V2] ${i + 1}/${clusters.length}: ` +
+            `Created concept "${conceptData.title}" ` +
+            `with ${cluster.questions.length} phrasing(s)`
+        );
+      } catch (error) {
+        console.error(`[Migration V2] FAILED on cluster ${i + 1}: ${error}`);
+        console.error(`[Migration V2] Cluster data:`, {
+          title: conceptData.title,
+          questionCount: cluster.questions.length,
+          firstQuestionId: cluster.questions[0]?._id,
+        });
+        throw error;
+      }
     }
 
     console.warn('[Migration V2] Complete:', stats);
