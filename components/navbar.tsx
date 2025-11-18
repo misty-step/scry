@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton, useUser } from '@clerk/nextjs';
-import { Inbox, Library, ListChecks, Plus, Shapes } from 'lucide-react';
+import { Inbox, Library, ListChecks, Plus } from 'lucide-react';
 import { GenerationModal } from '@/components/generation-modal';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -61,26 +61,14 @@ export function Navbar() {
                 <Link
                   href="/library"
                   className={`relative size-9 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${
-                    pathname === '/library'
+                    pathname === '/library' || pathname?.startsWith('/concepts')
                       ? 'bg-accent text-foreground'
                       : 'bg-accent/50 text-muted-foreground hover:bg-accent/70 hover:text-foreground'
                   }`}
-                  aria-label="Question Library"
-                  title="Question Library"
+                  aria-label="Library"
+                  title="Library"
                 >
                   <Library className="h-4 w-4" />
-                </Link>
-                <Link
-                  href="/concepts"
-                  className={`relative size-9 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${
-                    pathname?.startsWith('/concepts')
-                      ? 'bg-accent text-foreground'
-                      : 'bg-accent/50 text-muted-foreground hover:bg-accent/70 hover:text-foreground'
-                  }`}
-                  aria-label="Concepts Library"
-                  title="Concepts Library"
-                >
-                  <Shapes className="h-4 w-4" />
                 </Link>
                 <Link
                   href="/tasks"

@@ -41,8 +41,8 @@ export function ConceptDetail({
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ArrowLeft className="h-4 w-4" aria-hidden />
-        <Link href="/concepts" className="hover:underline">
-          Back to concepts
+        <Link href="/library" className="hover:underline">
+          Back to Library
         </Link>
       </div>
 
@@ -103,7 +103,7 @@ export function ConceptDetail({
             </p>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/concepts">View all concepts</Link>
+            <Link href="/library">View all concepts</Link>
           </Button>
         </div>
         <PhrasingList

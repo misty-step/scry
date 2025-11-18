@@ -199,6 +199,24 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // Configure redirects for legacy routes
+  async redirects() {
+    return [
+      // Redirect old /concepts route to /library (concepts are now shown at /library)
+      {
+        source: "/concepts",
+        destination: "/library",
+        permanent: true,
+      },
+      // Redirect old /questions route to /library
+      {
+        source: "/questions",
+        destination: "/library",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(
