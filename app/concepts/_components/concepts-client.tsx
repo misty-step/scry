@@ -5,6 +5,7 @@ import { useUser } from '@clerk/nextjs';
 import { Loader2 } from 'lucide-react';
 import { ConceptsEmptyState } from '@/components/concepts/concepts-empty-state';
 import { ConceptsTable } from '@/components/concepts/concepts-table';
+import { ViewSelector } from '@/components/concepts/view-selector';
 import { PageContainer } from '@/components/page-container';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useConceptsQuery, type ConceptsSort, type ConceptsView } from '@/hooks/use-concepts-query';
 
 const VIEW_TABS: { value: ConceptsView; label: string }[] = [
@@ -111,71 +111,66 @@ export function ConceptsClient() {
       </div>
 
       <Card className="p-4 space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <Tabs
-            value={view}
-            onValueChange={(value) => {
-              setView(value as ConceptsView);
-              setCursor(null);
-              setCursorStack([]);
-            }}
-            className="w-full md:w-auto"
-          >
-            <TabsList className="grid grid-cols-2 sm:inline-flex">
-              {VIEW_TABS.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} className="px-3 py-1.5">
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+        {/* View selector: scroll pills on mobile, tabs on desktop */}
+        <ViewSelector
+          value={view}
+          onValueChange={(value) => {
+            setView(value as ConceptsView);
+            setCursor(null);
+            setCursorStack([]);
+          }}
+          options={VIEW_TABS}
+        />
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="concept-search" className="text-xs text-muted-foreground">
-                Search concepts
-              </Label>
-              <Input
-                id="concept-search"
-                placeholder="Search by title"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="w-full md:w-64"
-              />
+        {/* Controls: stacked on mobile, row on desktop */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          {/* Search - full width on mobile */}
+          <div className="flex flex-col gap-1 md:w-64">
+            <Label htmlFor="concept-search" className="text-xs text-muted-foreground">
+              Search concepts
+            </Label>
+            <Input
+              id="concept-search"
+              placeholder="Search by title"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </div>
+
+          {/* Sort and page size */}
+          <div className="flex items-end gap-3">
+            {/* Sort - always visible */}
+            <div className="flex flex-col gap-1 flex-1 md:flex-none">
+              <Label className="text-xs text-muted-foreground">Sort</Label>
+              <Select value={sort} onValueChange={(value) => setSort(value as ConceptsSort)}>
+                <SelectTrigger className="w-full md:w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nextReview">Next review</SelectItem>
+                  <SelectItem value="recent">Recently created</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Sort</Label>
-                <Select value={sort} onValueChange={(value) => setSort(value as ConceptsSort)}>
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nextReview">Next review</SelectItem>
-                    <SelectItem value="recent">Recently created</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Page size</Label>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(value) => setPageSize(Number(value))}
-                >
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[10, 25, 50, 75, 100].map((size) => (
-                      <SelectItem key={size} value={String(size)}>
-                        {size} / page
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Page size - hidden on mobile (non-essential control) */}
+            <div className="hidden md:flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Page size</Label>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => setPageSize(Number(value))}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 25, 50, 75, 100].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size} / page
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
