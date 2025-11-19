@@ -20,6 +20,7 @@ import {
 import { clusterQuestionsBySimilarity } from './migrations/clusterQuestions';
 import { analyzeSimilarityDistribution, clusterQuestionsV3 } from './migrations/clusterQuestionsV3';
 import { synthesizeConceptFromQuestions } from './migrations/synthesizeConcept';
+import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 
 /**
  * Default batch size for quiz results migration
@@ -2006,6 +2007,65 @@ export const createConceptFromCluster = internalMutation({
       // Link question to concept
       await ctx.db.patch(question._id, { conceptId });
     }
+  },
+});
+
+/**
+ * Backfill thinScore and conflictScore for all concepts.
+ *
+ * Iterates through all concepts and updates their thinScore based on phrasingCount.
+ * conflictScore is left as undefined unless we want to do expensive checks,
+ * but for now we focus on fixing the 'thin' view.
+ */
+export const backfillConceptScores = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 100;
+    
+    const { page, continueCursor, isDone } = await ctx.db
+      .query('concepts')
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
+    let updatedCount = 0;
+
+    for (const concept of page) {
+      let thinScore: number | undefined = undefined;
+      
+      // Calculate thinScore
+      if (concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+        const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, concept.phrasingCount);
+        thinScore = delta > 0 ? delta : undefined;
+      }
+
+      // Only update if changed
+      if (concept.thinScore !== thinScore) {
+        await ctx.db.patch(concept._id, { 
+          thinScore,
+          // We don't touch conflictScore here as it requires expensive checks
+        });
+        updatedCount++;
+      }
+    }
+
+    console.log(`Backfilled scores for ${page.length} concepts. Updated: ${updatedCount}`);
+
+    if (!isDone) {
+      // Recursively call for next batch (via scheduler to avoid timeout)
+      await ctx.scheduler.runAfter(0, internal.migrations.backfillConceptScores, {
+        batchSize,
+        cursor: continueCursor,
+      });
+    }
+
+    return {
+      processed: page.length,
+      updated: updatedCount,
+      isDone,
+      continueCursor,
+    };
   },
 });
 
