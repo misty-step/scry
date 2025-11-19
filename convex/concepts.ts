@@ -522,40 +522,12 @@ export const listForLibrary = query({
           .order('desc');
       } else {
         // Sort by Next Review (Default)
-        // Optimization: For 'due' view, we can use the index range directly
-        if (view === 'due') {
-          baseQuery = ctx.db
-            .query('concepts')
-            .withIndex('by_user_next_review', (q) =>
-              q
-                .eq('userId', user._id)
-                .eq('deletedAt', undefined)
-                .eq('archivedAt', undefined)
-                .lte('fsrs.nextReview', now)
-            );
-        } else {
-          baseQuery = ctx.db
-            .query('concepts')
-            .withIndex('by_user_next_review', (q) =>
-              q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
-            );
-        }
-      }
-
-      // Apply filters for specific views
-      // 'due' view (if sort=recent, we couldn't use index range)
-      if (view === 'due' && sort === 'recent') {
-        baseQuery = baseQuery.filter((q) => q.lte(q.field('fsrs.nextReview'), now));
-      }
-
-      // 'thin' view: concepts with few phrasings (thinScore > 0)
-      if (view === 'thin') {
-        baseQuery = baseQuery.filter((q) => q.gt(q.field('thinScore'), 0));
-      }
-
-      // 'conflict' view: concepts with conflicts (conflictScore > 0)
-      if (view === 'conflict') {
-        baseQuery = baseQuery.filter((q) => q.gt(q.field('conflictScore'), 0));
+        // Use by_user_next_review: userId, deletedAt, archivedAt, fsrs.nextReview
+        baseQuery = ctx.db
+          .query('concepts')
+          .withIndex('by_user_next_review', (q) =>
+            q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
+          );
       }
     }
 
@@ -566,8 +538,8 @@ export const listForLibrary = query({
       numItems: pageSize,
     });
 
-    // No post-filtering needed, avoiding empty page issues
-    const concepts = page.page;
+    // No post-filtering needed for deleted/archived, but still needed for 'due', 'thin', 'conflict'
+    const concepts = page.page.filter((concept) => matchesConceptView(concept, now, view));
 
     return {
       concepts,
