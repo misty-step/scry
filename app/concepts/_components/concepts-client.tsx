@@ -26,6 +26,8 @@ const VIEW_TABS: { value: ConceptsView; label: string }[] = [
   { value: 'due', label: 'Due' },
   { value: 'thin', label: 'Thin' },
   { value: 'conflict', label: 'Conflict' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'deleted', label: 'Trash' },
 ];
 
 export function ConceptsClient() {

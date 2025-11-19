@@ -19,7 +19,7 @@ import type { ActionCtx } from '../_generated/server';
 // Phase 1: Low threshold - trust the LLM for precision
 // Embeddings find candidates, LLM identifies actual concepts
 // Bitter lesson: let AI do the cognitive work
-const CANDIDATE_THRESHOLD = 0.50;
+const CANDIDATE_THRESHOLD = 0.5;
 
 // No batch size limit - send full candidate groups to LLM for maximum context quality
 // GPT-5.1 can handle 200+ questions in context
@@ -52,10 +52,7 @@ export async function clusterQuestionsV3(
   console.warn(`[V3] Starting two-phase clustering for ${questions.length} questions`);
 
   // Phase 1: Generate embeddings and find candidate groups
-  const { candidateGroups, similarityDistribution } = await prefilterByEmbedding(
-    ctx,
-    questions
-  );
+  const { candidateGroups, similarityDistribution } = await prefilterByEmbedding(ctx, questions);
 
   console.warn(`[V3] Phase 1 complete: ${candidateGroups.length} candidate groups`);
   console.warn(
@@ -197,9 +194,10 @@ async function prefilterByEmbedding(
     clusters.splice(bestJ, 1);
   }
 
-  const similarityDistribution = Object.entries(distributionBuckets).map(
-    ([range, count]) => ({ range, count })
-  );
+  const similarityDistribution = Object.entries(distributionBuckets).map(([range, count]) => ({
+    range,
+    count,
+  }));
 
   return {
     candidateGroups: clusters.map((indices) => indices.map((i) => questions[i])),
@@ -248,9 +246,7 @@ async function refineWithLLM(questions: Doc<'questions'>[]): Promise<ConceptClus
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-  const questionsText = questions
-    .map((q, i) => `${i + 1}. ${q.question}`)
-    .join('\n');
+  const questionsText = questions.map((q, i) => `${i + 1}. ${q.question}`).join('\n');
 
   const prompt = `<task>
 Classify which questions test the EXACT SAME underlying fact. Your goal is to identify true paraphrases - questions where knowing the answer to one means you definitely know the answer to the other.
@@ -354,7 +350,10 @@ Rules:
       for (let i = 1; i <= questions.length; i++) {
         if (!assigned.has(i)) {
           console.warn(`[V3] LLM missed question ${i}, adding as singleton`);
-          llmClusters.push({ concept: truncateForConcept(questions[i - 1].question), questions: [i] });
+          llmClusters.push({
+            concept: truncateForConcept(questions[i - 1].question),
+            questions: [i],
+          });
         }
       }
 
@@ -431,11 +430,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 /**
  * Average similarity between all pairs in two clusters (average linkage)
  */
-function averageSimilarity(
-  indicesA: number[],
-  indicesB: number[],
-  matrix: number[][]
-): number {
+function averageSimilarity(indicesA: number[], indicesB: number[], matrix: number[][]): number {
   let sum = 0;
   let count = 0;
   for (const i of indicesA) {

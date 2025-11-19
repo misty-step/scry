@@ -336,10 +336,13 @@ export default defineSchema({
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()), // Soft delete support
+    archivedAt: v.optional(v.number()), // Archive support
     generationJobId: v.optional(v.id('generationJobs')),
   })
     .index('by_user', ['userId', 'createdAt'])
-    .index('by_user_next_review', ['userId', 'fsrs.nextReview'])
+    .index('by_user_next_review', ['userId', 'deletedAt', 'archivedAt', 'fsrs.nextReview'])
+    .index('by_user_active', ['userId', 'deletedAt', 'archivedAt', 'createdAt'])
     .vectorIndex('by_embedding', {
       vectorField: 'embedding',
       dimensions: 768,

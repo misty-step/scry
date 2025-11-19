@@ -18,10 +18,7 @@ import {
   logConceptEvent,
 } from './lib/logger';
 import { clusterQuestionsBySimilarity } from './migrations/clusterQuestions';
-import {
-  analyzeSimilarityDistribution,
-  clusterQuestionsV3,
-} from './migrations/clusterQuestionsV3';
+import { analyzeSimilarityDistribution, clusterQuestionsV3 } from './migrations/clusterQuestionsV3';
 import { synthesizeConceptFromQuestions } from './migrations/synthesizeConcept';
 
 /**
@@ -2304,16 +2301,24 @@ export const sampleConcepts = query({
  */
 export const analyzeMigrationState = internalAction({
   args: {},
-  handler: async (ctx): Promise<{
+  handler: async (
+    ctx
+  ): Promise<{
     questions: { total: number; orphaned: number; linked: number };
-    concepts: { total: number; avgPhrasingsPerConcept: number; phrasingDistribution: Record<string, number> };
+    concepts: {
+      total: number;
+      avgPhrasingsPerConcept: number;
+      phrasingDistribution: Record<string, number>;
+    };
     similarity: Awaited<ReturnType<typeof analyzeSimilarityDistribution>> | null;
   }> => {
     console.warn('[Diagnostic] Analyzing migration state...');
 
     // Get current counts
-    const allQuestions = await ctx.runQuery(internal.migrations.getOrphanedQuestions) as Doc<'questions'>[];
-    const allQuestionsTotal = await ctx.runQuery(internal.migrations.checkMigrationStatus) as {
+    const allQuestions = (await ctx.runQuery(
+      internal.migrations.getOrphanedQuestions
+    )) as Doc<'questions'>[];
+    const allQuestionsTotal = (await ctx.runQuery(internal.migrations.checkMigrationStatus)) as {
       totalQuestions: number;
       orphaned: number;
       linked: number;
@@ -2325,23 +2330,25 @@ export const analyzeMigrationState = internalAction({
     console.warn(`[Diagnostic] Linked to concepts: ${allQuestionsTotal.linked}`);
 
     // Get concept statistics
-    const concepts = await ctx.runQuery(internal.migrations.getConceptStats) as {
+    const concepts = (await ctx.runQuery(internal.migrations.getConceptStats)) as {
       total: number;
       avgPhrasingsPerConcept: number;
       phrasingDistribution: Record<string, number>;
     };
 
     console.warn(`[Diagnostic] Total concepts: ${concepts.total}`);
-    console.warn(`[Diagnostic] Avg phrasings/concept: ${concepts.avgPhrasingsPerConcept.toFixed(2)}`);
+    console.warn(
+      `[Diagnostic] Avg phrasings/concept: ${concepts.avgPhrasingsPerConcept.toFixed(2)}`
+    );
     console.warn(
       `[Diagnostic] Phrasing distribution: ${JSON.stringify(concepts.phrasingDistribution)}`
     );
 
     // Analyze similarity distribution for ALL questions (not just orphaned)
     // This shows what V3 could potentially achieve
-    const allQuestionsForAnalysis = await ctx.runQuery(
+    const allQuestionsForAnalysis = (await ctx.runQuery(
       internal.migrations.getAllQuestionsForSimilarityAnalysis
-    ) as Doc<'questions'>[];
+    )) as Doc<'questions'>[];
 
     if (allQuestionsForAnalysis.length > 0) {
       console.warn(
@@ -2506,7 +2513,9 @@ export const migrateQuestionsToConceptsV3 = internalAction({
     const dryRun = args.dryRun ?? true;
     const maxQuestions = args.maxQuestions;
 
-    console.warn(`[Migration V3] Starting with dryRun=${dryRun}, maxQuestions=${maxQuestions ?? 'all'}`);
+    console.warn(
+      `[Migration V3] Starting with dryRun=${dryRun}, maxQuestions=${maxQuestions ?? 'all'}`
+    );
     console.warn(`[Migration V3] Deployment: ${process.env.CONVEX_CLOUD_URL || 'local'}`);
 
     // 1. Find orphaned questions (no conceptId)
@@ -2516,7 +2525,9 @@ export const migrateQuestionsToConceptsV3 = internalAction({
 
     // Limit to maxQuestions if specified
     if (maxQuestions && orphanedQuestions.length > maxQuestions) {
-      console.warn(`[Migration V3] Limiting to first ${maxQuestions} questions (${orphanedQuestions.length - maxQuestions} remaining)`);
+      console.warn(
+        `[Migration V3] Limiting to first ${maxQuestions} questions (${orphanedQuestions.length - maxQuestions} remaining)`
+      );
       orphanedQuestions = orphanedQuestions.slice(0, maxQuestions);
     }
 
@@ -2606,8 +2617,7 @@ export const createConceptFromClusterV3 = internalMutation({
     );
 
     // Generate description from first question's explanation
-    const description =
-      args.questions[0].explanation || `Concept: ${args.conceptName}`;
+    const description = args.questions[0].explanation || `Concept: ${args.conceptName}`;
 
     // Create concept
     const conceptId = await ctx.db.insert('concepts', {

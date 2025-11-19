@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowUpRight, Clock3 } from 'lucide-react';
+import { ConceptActions } from '@/components/concepts/concept-actions';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -33,7 +34,8 @@ export function ConceptsTable({ concepts, serverTime }: ConceptsTableProps) {
             <TableHead className="w-[20%]">Next review</TableHead>
             <TableHead className="w-[15%] text-center">Phrasings</TableHead>
             <TableHead className="w-[15%] text-center">Signals</TableHead>
-            <TableHead className="w-[15%] text-right pr-6">Status</TableHead>
+            <TableHead className="w-[10%] text-right">Status</TableHead>
+            <TableHead className="w-[5%]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -114,6 +116,9 @@ export function ConceptsTable({ concepts, serverTime }: ConceptsTableProps) {
                   ) : (
                     <span className="text-xs text-muted-foreground">Auto-generated</span>
                   )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <ConceptActions concept={concept} />
                 </TableCell>
               </TableRow>
             );

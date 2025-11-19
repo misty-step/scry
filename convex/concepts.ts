@@ -13,7 +13,7 @@ import {
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
 import { buildInteractionContext } from './lib/interactionContext';
-import { updateStatsCounters } from './lib/userStatsHelpers';
+import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
 
 type ConceptDoc = Doc<'concepts'>;
 type PhrasingDoc = Doc<'phrasings'>;
@@ -34,7 +34,7 @@ const DEFAULT_LIBRARY_PAGE_SIZE = 25;
 const MAX_LIBRARY_PAGE_SIZE = 100;
 const MIN_LIBRARY_PAGE_SIZE = 10;
 
-type ConceptLibraryView = 'all' | 'due' | 'thin' | 'conflict';
+type ConceptLibraryView = 'all' | 'due' | 'thin' | 'conflict' | 'archived' | 'deleted';
 type ConceptLibrarySort = 'recent' | 'nextReview';
 
 export const createMany = internalMutation({
@@ -119,7 +119,13 @@ export const getDue = query({
 
     const dueConcepts = await ctx.db
       .query('concepts')
-      .withIndex('by_user_next_review', (q) => q.eq('userId', userId).lte('fsrs.nextReview', nowMs))
+      .withIndex('by_user_next_review', (q) =>
+        q
+          .eq('userId', userId)
+          .eq('deletedAt', undefined)
+          .eq('archivedAt', undefined)
+          .lte('fsrs.nextReview', nowMs)
+      )
       .take(MAX_CONCEPT_CANDIDATES);
 
     let candidates = dueConcepts;
@@ -127,7 +133,9 @@ export const getDue = query({
     if (candidates.length === 0) {
       const newConcepts = await ctx.db
         .query('concepts')
-        .withIndex('by_user_next_review', (q) => q.eq('userId', userId))
+        .withIndex('by_user_next_review', (q) =>
+          q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
+        )
         .filter((q) => q.eq(q.field('fsrs.state'), 'new'))
         .take(MAX_CONCEPT_CANDIDATES);
 
@@ -195,7 +203,13 @@ export const getConceptsDueCount = query({
     // Count due concepts with phrasings (DB-level filtering)
     const dueConcepts = await ctx.db
       .query('concepts')
-      .withIndex('by_user_next_review', (q) => q.eq('userId', userId).lte('fsrs.nextReview', nowMs))
+      .withIndex('by_user_next_review', (q) =>
+        q
+          .eq('userId', userId)
+          .eq('deletedAt', undefined)
+          .eq('archivedAt', undefined)
+          .lte('fsrs.nextReview', nowMs)
+      )
       .filter((q) => q.gt(q.field('phrasingCount'), 0))
       .take(1000); // Safety limit for large collections
 
@@ -417,7 +431,14 @@ export const listForLibrary = query({
     cursor: v.optional(v.string()),
     pageSize: v.optional(v.number()),
     view: v.optional(
-      v.union(v.literal('all'), v.literal('due'), v.literal('thin'), v.literal('conflict'))
+      v.union(
+        v.literal('all'),
+        v.literal('due'),
+        v.literal('thin'),
+        v.literal('conflict'),
+        v.literal('archived'),
+        v.literal('deleted')
+      )
     ),
     search: v.optional(v.string()),
     sort: v.optional(v.union(v.literal('recent'), v.literal('nextReview'))),
@@ -431,14 +452,30 @@ export const listForLibrary = query({
     const searchTerm = args.search?.trim() ?? '';
     const cursor = args.cursor ?? null;
 
+    // Mode 1: Search (unchanged)
     if (searchTerm.length >= 2) {
       let searchQuery = ctx.db
         .query('concepts')
         .withSearchIndex('search_concepts', (q) => q.search('title', searchTerm));
 
-      searchQuery = searchQuery.filter((q) => q.eq(q.field('userId'), user._id));
+      // Filter by user AND active status
+      // Note: Search doesn't support compound filters well, so we must post-filter
+      // This is acceptable for search results which are usually small in number
+      searchQuery = searchQuery.filter((q) =>
+        q.and(
+          q.eq(q.field('userId'), user._id),
+          view === 'deleted'
+            ? q.neq(q.field('deletedAt'), undefined)
+            : q.eq(q.field('deletedAt'), undefined),
+          view === 'archived'
+            ? q.neq(q.field('archivedAt'), undefined)
+            : q.eq(q.field('archivedAt'), undefined)
+        )
+      );
 
       const searchResults = await searchQuery.take(Math.min(pageSize, 50));
+
+      // Apply remaining view filters (thin, conflict, due) in memory
       const filteredResults = searchResults.filter((concept) =>
         matchesConceptView(concept, now, view)
       );
@@ -452,84 +489,97 @@ export const listForLibrary = query({
       };
     }
 
-    const baseQuery =
-      sort === 'recent'
-        ? ctx.db
-            .query('concepts')
-            .withIndex('by_user', (q) => q.eq('userId', user._id))
-            .order('desc')
-        : ctx.db
-            .query('concepts')
-            .withIndex('by_user_next_review', (q) => q.eq('userId', user._id));
+    // Mode 2: Optimized Views (with efficient filtering)
+    let baseQuery;
 
-    const concepts = await collectConceptPage({
-      baseQuery,
-      targetSize: pageSize,
+    // Case A: Trash View
+    if (view === 'deleted') {
+      baseQuery = ctx.db
+        .query('concepts')
+        .withIndex('by_user_active', (q) => q.eq('userId', user._id).gt('deletedAt', 0));
+    }
+    // Case B: Archive View
+    else if (view === 'archived') {
+      baseQuery = ctx.db
+        .query('concepts')
+        .withIndex('by_user_active', (q) =>
+          q.eq('userId', user._id).eq('deletedAt', undefined).gt('archivedAt', 0)
+        );
+    }
+    // Case C: Active Views (All, Due, Thin, Conflict)
+    else {
+      // Standard Active View: deletedAt=undefined, archivedAt=undefined
+
+      if (sort === 'recent') {
+        // Sort by Created At
+        // Use by_user_active: userId, deletedAt=undefined, archivedAt=undefined
+        // This index ends with createdAt, so it naturally sorts by creation time
+        baseQuery = ctx.db
+          .query('concepts')
+          .withIndex('by_user_active', (q) =>
+            q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
+          )
+          .order('desc');
+      } else {
+        // Sort by Next Review (Default)
+        // Optimization: For 'due' view, we can use the index range directly
+        if (view === 'due') {
+          baseQuery = ctx.db
+            .query('concepts')
+            .withIndex('by_user_next_review', (q) =>
+              q
+                .eq('userId', user._id)
+                .eq('deletedAt', undefined)
+                .eq('archivedAt', undefined)
+                .lte('fsrs.nextReview', now)
+            );
+        } else {
+          baseQuery = ctx.db
+            .query('concepts')
+            .withIndex('by_user_next_review', (q) =>
+              q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
+            );
+        }
+      }
+
+      // Apply filters for specific views
+      // 'due' view (if sort=recent, we couldn't use index range)
+      if (view === 'due' && sort === 'recent') {
+        baseQuery = baseQuery.filter((q) => q.lte(q.field('fsrs.nextReview'), now));
+      }
+
+      // 'thin' view: concepts with few phrasings (thinScore > 0)
+      if (view === 'thin') {
+        baseQuery = baseQuery.filter((q) => q.gt(q.field('thinScore'), 0));
+      }
+
+      // 'conflict' view: concepts with conflicts (conflictScore > 0)
+      if (view === 'conflict') {
+        baseQuery = baseQuery.filter((q) => q.gt(q.field('conflictScore'), 0));
+      }
+    }
+
+    // Execute Pagination
+    // Convex's paginate() efficiently handles filters by scanning until numItems is reached
+    const page = await baseQuery.paginate({
       cursor,
-      view,
-      now,
+      numItems: pageSize,
     });
 
+    // No post-filtering needed, avoiding empty page issues
+    const concepts = page.page;
+
     return {
-      concepts: concepts.items,
-      continueCursor: concepts.continueCursor,
-      isDone: concepts.isDone,
+      concepts,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
       serverTime: now,
       mode: 'standard' as const,
     };
   },
 });
 
-async function collectConceptPage({
-  baseQuery,
-  cursor,
-  targetSize,
-  view,
-  now,
-}: {
-  // Convex query builder for concepts (with chosen index/sort)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  baseQuery: any;
-  cursor: string | null;
-  targetSize: number;
-  view: ConceptLibraryView;
-  now: number;
-}) {
-  const items: ConceptDoc[] = [];
-  let nextCursor: string | null = cursor;
-  let isDone = false;
-  let safetyCounter = 0;
-
-  while (items.length < targetSize && !isDone) {
-    safetyCounter += 1;
-    if (safetyCounter > 10) {
-      break;
-    }
-
-    const page = await baseQuery.paginate({
-      cursor: nextCursor,
-      numItems: targetSize,
-    });
-
-    const filtered = page.page.filter((concept: ConceptDoc) =>
-      matchesConceptView(concept, now, view)
-    );
-    items.push(...filtered);
-
-    isDone = page.isDone;
-    nextCursor = page.isDone ? null : (page.continueCursor ?? null);
-
-    if (!nextCursor) {
-      isDone = true;
-    }
-  }
-
-  return {
-    items: items.slice(0, targetSize),
-    continueCursor: nextCursor,
-    isDone,
-  };
-}
+// Removed collectConceptPage helper function entirely to prevent future misuse
 
 function clampPageSize(pageSize?: number | null) {
   if (!pageSize) {
@@ -539,6 +589,24 @@ function clampPageSize(pageSize?: number | null) {
 }
 
 function matchesConceptView(concept: ConceptDoc, now: number, view: ConceptLibraryView) {
+  if (view === 'deleted') {
+    return !!concept.deletedAt;
+  }
+
+  // For all other views, exclude deleted items
+  if (concept.deletedAt) {
+    return false;
+  }
+
+  if (view === 'archived') {
+    return !!concept.archivedAt;
+  }
+
+  // For standard views (all, due, thin, conflict), exclude archived items
+  if (concept.archivedAt) {
+    return false;
+  }
+
   if (view === 'all') {
     return true;
   }
@@ -763,3 +831,174 @@ async function findActiveGenerationJob(
 
   return null;
 }
+
+/**
+ * Archive a concept and all its phrasings.
+ * Removes it from review queues and stats.
+ */
+export const archiveConcept = mutation({
+  args: {
+    conceptId: v.id('concepts'),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+
+    if (concept.archivedAt) {
+      return;
+    }
+
+    const now = Date.now();
+
+    // Archive concept
+    await ctx.db.patch(concept._id, {
+      archivedAt: now,
+      updatedAt: now,
+    });
+
+    // Cascade to phrasings
+    const phrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.eq(q.field('archivedAt'), undefined))
+      .collect();
+
+    for (const phrasing of phrasings) {
+      await ctx.db.patch(phrasing._id, {
+        archivedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // Update stats: treat as removal
+    // We calculate delta as transition from CurrentState -> undefined
+    const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
+    await updateStatsCounters(ctx, user._id, {
+      totalCards: -1,
+      ...(deltas ?? {}),
+    });
+  },
+});
+
+/**
+ * Unarchive a concept and its phrasings.
+ * Returns it to active review.
+ */
+export const unarchiveConcept = mutation({
+  args: { conceptId: v.id('concepts') },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+    if (!concept.archivedAt) return;
+
+    const now = Date.now();
+    await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
+
+    // Cascade unarchive phrasings
+    const phrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.neq(q.field('archivedAt'), undefined))
+      .collect();
+
+    for (const phrasing of phrasings) {
+      await ctx.db.patch(phrasing._id, { archivedAt: undefined, updatedAt: now });
+    }
+
+    // Update stats: treat as creation/restoration
+    // We calculate delta as transition from undefined -> CurrentState (or 'new' if undefined)
+    const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
+    await updateStatsCounters(ctx, user._id, {
+      totalCards: 1,
+      ...(deltas ?? {}),
+    });
+  },
+});
+
+/**
+ * Soft delete a concept and all its phrasings.
+ */
+export const softDeleteConcept = mutation({
+  args: {
+    conceptId: v.id('concepts'),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+
+    if (concept.deletedAt) {
+      return;
+    }
+
+    const now = Date.now();
+
+    await ctx.db.patch(concept._id, {
+      deletedAt: now,
+      updatedAt: now,
+    });
+
+    const phrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.eq(q.field('deletedAt'), undefined))
+      .collect();
+
+    for (const phrasing of phrasings) {
+      await ctx.db.patch(phrasing._id, {
+        deletedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    // Update stats: treat as removal
+    const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
+    await updateStatsCounters(ctx, user._id, {
+      totalCards: -1,
+      ...(deltas ?? {}),
+    });
+  },
+});
+
+/**
+ * Restore a soft-deleted concept and its phrasings.
+ */
+export const restoreConcept = mutation({
+  args: { conceptId: v.id('concepts') },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+    if (!concept.deletedAt) return;
+
+    const now = Date.now();
+    await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
+
+    const phrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.neq(q.field('deletedAt'), undefined))
+      .collect();
+
+    for (const phrasing of phrasings) {
+      await ctx.db.patch(phrasing._id, { deletedAt: undefined, updatedAt: now });
+    }
+
+    // Update stats: treat as restoration
+    const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
+    await updateStatsCounters(ctx, user._id, {
+      totalCards: 1,
+      ...(deltas ?? {}),
+    });
+  },
+});
