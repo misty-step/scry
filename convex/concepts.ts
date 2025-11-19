@@ -690,12 +690,29 @@ export const archivePhrasing = mutation({
       updatedAt: now,
     });
 
-    const newCount = Math.max(0, concept.phrasingCount - 1);
+    // Fetch remaining active phrasings to recalculate scores
+    const remainingPhrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.eq(q.field('archivedAt'), undefined))
+      .collect();
+
+    const newCount = remainingPhrasings.length;
     const thinScore = computeThinScoreFromCount(newCount);
+
+    // Recalculate conflictScore from remaining phrasings
+    let conflictScore: number | undefined = undefined;
+    if (newCount > 1) {
+      const questions = remainingPhrasings.map((p) => p.question.trim().toLowerCase());
+      const uniqueQuestions = new Set(questions);
+      const conflictCount = questions.length - uniqueQuestions.size;
+      conflictScore = conflictCount > 0 ? conflictCount : undefined;
+    }
 
     const conceptPatch: Partial<ConceptDoc> = {
       phrasingCount: newCount,
       thinScore,
+      conflictScore,
       updatedAt: now,
     };
 

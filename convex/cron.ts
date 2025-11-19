@@ -36,6 +36,18 @@ crons.daily(
   internal.userStats.reconcileUserStats
 );
 
+// Schedule concept scores reconciliation to run daily at 3:20 AM UTC
+// Detects and auto-corrects drift in thinScore/conflictScore
+// Samples 100 random concepts, recalculates from actual phrasings
+crons.daily(
+  'reconcileConceptScores',
+  {
+    hourUTC: 3,
+    minuteUTC: 20, // 5 minutes after userStats reconciliation
+  },
+  internal.migrations.reconcileConceptScores
+);
+
 // Schedule embedding sync to run daily at 3:30 AM UTC
 // Backfills embeddings for questions that don't have them
 // Processes up to 100 questions/day in batches of 10

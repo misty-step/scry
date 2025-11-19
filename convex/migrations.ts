@@ -10,6 +10,7 @@ import {
   query,
 } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
+import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { upsertEmbeddingForQuestion } from './lib/embeddingHelpers';
 import {
   createConceptsLogger,
@@ -20,7 +21,6 @@ import {
 import { clusterQuestionsBySimilarity } from './migrations/clusterQuestions';
 import { analyzeSimilarityDistribution, clusterQuestionsV3 } from './migrations/clusterQuestionsV3';
 import { synthesizeConceptFromQuestions } from './migrations/synthesizeConcept';
-import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 
 /**
  * Default batch size for quiz results migration
@@ -2024,7 +2024,7 @@ export const backfillConceptScores = internalMutation({
   },
   handler: async (ctx, args) => {
     const batchSize = args.batchSize ?? 100;
-    
+
     const { page, continueCursor, isDone } = await ctx.db
       .query('concepts')
       .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
@@ -2033,7 +2033,7 @@ export const backfillConceptScores = internalMutation({
 
     for (const concept of page) {
       let thinScore: number | undefined = undefined;
-      
+
       // Calculate thinScore
       if (concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
         const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, concept.phrasingCount);
@@ -2042,7 +2042,7 @@ export const backfillConceptScores = internalMutation({
 
       // Only update if changed
       if (concept.thinScore !== thinScore) {
-        await ctx.db.patch(concept._id, { 
+        await ctx.db.patch(concept._id, {
           thinScore,
           // We don't touch conflictScore here as it requires expensive checks
         });
@@ -2050,6 +2050,7 @@ export const backfillConceptScores = internalMutation({
       }
     }
 
+    // eslint-disable-next-line no-console
     console.log(`Backfilled scores for ${page.length} concepts. Updated: ${updatedCount}`);
 
     if (!isDone) {
@@ -2679,6 +2680,19 @@ export const createConceptFromClusterV3 = internalMutation({
     // Generate description from first question's explanation
     const description = args.questions[0].explanation || `Concept: ${args.conceptName}`;
 
+    const phrasingCount = args.questions.length;
+    let thinScore: number | undefined;
+    if (phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+      const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, phrasingCount);
+      thinScore = delta > 0 ? delta : undefined;
+    }
+    // Simple conflict score check for initial migration (duplicate check)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const questions = args.questions.map((q: any) => q.question.trim().toLowerCase());
+    const uniqueQuestions = new Set(questions);
+    const conflictCount = questions.length - uniqueQuestions.size;
+    const conflictScore = conflictCount > 0 ? conflictCount : undefined;
+
     // Create concept
     const conceptId = await ctx.db.insert('concepts', {
       userId: mostReviewedQuestion.userId,
@@ -2696,7 +2710,9 @@ export const createConceptFromClusterV3 = internalMutation({
         lapses: mostReviewedQuestion.lapses,
         state: mostReviewedQuestion.state ?? 'new',
       },
-      phrasingCount: args.questions.length,
+      phrasingCount,
+      thinScore,
+      conflictScore,
       embedding: mostReviewedQuestion.embedding,
       embeddingGeneratedAt: mostReviewedQuestion.embeddingGeneratedAt,
       createdAt: Date.now(),
@@ -2723,5 +2739,259 @@ export const createConceptFromClusterV3 = internalMutation({
       // Link question to concept
       await ctx.db.patch(question._id, { conceptId });
     }
+  },
+});
+
+/**
+ * Comprehensive backfill of thinScore AND conflictScore for all concepts.
+ *
+ * Unlike `backfillConceptScores` which only computes thinScore,
+ * this migration fetches actual phrasings to calculate accurate conflict scores.
+ *
+ * Use dry-run mode first to preview changes.
+ */
+export const backfillConceptScoresFull = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 50; // Smaller batch due to phrasing fetches
+    const dryRun = args.dryRun ?? false;
+
+    const { page, continueCursor, isDone } = await ctx.db
+      .query('concepts')
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    for (const concept of page) {
+      // Fetch all active phrasings for this concept
+      const phrasings = await ctx.db
+        .query('phrasings')
+        .withIndex('by_user_concept', (q) =>
+          q.eq('userId', concept.userId).eq('conceptId', concept._id)
+        )
+        .filter((q) => q.eq(q.field('archivedAt'), undefined))
+        .collect();
+
+      const phrasingCount = phrasings.length;
+
+      // Calculate thinScore
+      let thinScore: number | undefined = undefined;
+      if (phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+        const delta = TARGET_PHRASINGS_PER_CONCEPT - phrasingCount;
+        thinScore = delta > 0 ? delta : undefined;
+      }
+
+      // Calculate conflictScore from actual question text
+      let conflictScore: number | undefined = undefined;
+      if (phrasingCount > 1) {
+        const questions = phrasings.map((p) => p.question.trim().toLowerCase());
+        const uniqueQuestions = new Set(questions);
+        const conflictCount = questions.length - uniqueQuestions.size;
+        conflictScore = conflictCount > 0 ? conflictCount : undefined;
+      }
+
+      // Check if update needed
+      const needsUpdate =
+        concept.thinScore !== thinScore ||
+        concept.conflictScore !== conflictScore ||
+        concept.phrasingCount !== phrasingCount;
+
+      if (needsUpdate) {
+        if (!dryRun) {
+          await ctx.db.patch(concept._id, {
+            thinScore,
+            conflictScore,
+            phrasingCount, // Also fix phrasingCount if it drifted
+          });
+        }
+        updatedCount++;
+      } else {
+        skippedCount++;
+      }
+    }
+
+    const mode = dryRun ? '[DRY RUN] ' : '';
+    // eslint-disable-next-line no-console
+    console.log(
+      `${mode}Processed ${page.length} concepts. Updated: ${updatedCount}, Skipped: ${skippedCount}`
+    );
+
+    if (!isDone && !dryRun) {
+      // Continue with next batch
+      await ctx.scheduler.runAfter(0, internal.migrations.backfillConceptScoresFull, {
+        batchSize,
+        cursor: continueCursor,
+        dryRun,
+      });
+    }
+
+    return {
+      processed: page.length,
+      updated: updatedCount,
+      skipped: skippedCount,
+      isDone,
+      continueCursor,
+      dryRun,
+    };
+  },
+});
+
+/**
+ * Diagnostic: Check concept scores health
+ *
+ * Returns counts of concepts with missing or incorrect scores.
+ * Use to verify migration completion and detect drift.
+ */
+export const backfillConceptScoresFullDiagnostic = query({
+  args: {},
+  handler: async (ctx) => {
+    const concepts = await ctx.db.query('concepts').collect();
+
+    let missingThinScore = 0;
+    let missingConflictCheck = 0;
+    let potentiallyStale = 0;
+
+    for (const concept of concepts) {
+      // Check for concepts that should have thinScore but don't
+      if (concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT && concept.thinScore === undefined) {
+        missingThinScore++;
+      }
+
+      // Check for concepts with multiple phrasings that were never checked for conflicts
+      // (conflictScore undefined could be correct if no conflicts, but we flag for review)
+      if (concept.phrasingCount > 1 && concept.conflictScore === undefined) {
+        missingConflictCheck++;
+      }
+
+      // Check for stale phrasingCount (would need phrasing query to verify)
+      // This is a heuristic - if thinScore doesn't match phrasingCount formula
+      const expectedThin =
+        concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT
+          ? TARGET_PHRASINGS_PER_CONCEPT - concept.phrasingCount
+          : undefined;
+      if (concept.thinScore !== expectedThin) {
+        potentiallyStale++;
+      }
+    }
+
+    return {
+      totalConcepts: concepts.length,
+      missingThinScore,
+      missingConflictCheck,
+      potentiallyStale,
+      healthy: concepts.length - missingThinScore - potentiallyStale,
+      needsMigration: missingThinScore > 0 || potentiallyStale > 0,
+    };
+  },
+});
+
+/**
+ * Reconcile concept scores - self-healing job
+ *
+ * Samples N concepts and recalculates their scores from actual phrasing data.
+ * Auto-corrects any drift. Run daily via cron.
+ */
+export const reconcileConceptScores = internalMutation({
+  args: {
+    sampleSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const sampleSize = args.sampleSize ?? 100;
+
+    // Get random sample of concepts by fetching more and taking random subset
+    const allConcepts = await ctx.db.query('concepts').collect();
+    const shuffled = allConcepts.sort(() => Math.random() - 0.5);
+    const sample = shuffled.slice(0, sampleSize);
+
+    let corrected = 0;
+    const corrections: Array<{
+      conceptId: string;
+      field: string;
+      old: number | undefined;
+      new: number | undefined;
+    }> = [];
+
+    for (const concept of sample) {
+      // Fetch actual phrasings
+      const phrasings = await ctx.db
+        .query('phrasings')
+        .withIndex('by_user_concept', (q) =>
+          q.eq('userId', concept.userId).eq('conceptId', concept._id)
+        )
+        .filter((q) => q.eq(q.field('archivedAt'), undefined))
+        .collect();
+
+      const actualCount = phrasings.length;
+
+      // Calculate expected scores
+      const expectedThin =
+        actualCount < TARGET_PHRASINGS_PER_CONCEPT
+          ? TARGET_PHRASINGS_PER_CONCEPT - actualCount
+          : undefined;
+
+      let expectedConflict: number | undefined = undefined;
+      if (actualCount > 1) {
+        const questions = phrasings.map((p) => p.question.trim().toLowerCase());
+        const uniqueQuestions = new Set(questions);
+        const conflictCount = questions.length - uniqueQuestions.size;
+        expectedConflict = conflictCount > 0 ? conflictCount : undefined;
+      }
+
+      // Check for drift
+      const updates: Partial<Doc<'concepts'>> = {};
+
+      if (concept.phrasingCount !== actualCount) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'phrasingCount',
+          old: concept.phrasingCount,
+          new: actualCount,
+        });
+        updates.phrasingCount = actualCount;
+      }
+
+      if (concept.thinScore !== expectedThin) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'thinScore',
+          old: concept.thinScore,
+          new: expectedThin,
+        });
+        updates.thinScore = expectedThin;
+      }
+
+      if (concept.conflictScore !== expectedConflict) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'conflictScore',
+          old: concept.conflictScore,
+          new: expectedConflict,
+        });
+        updates.conflictScore = expectedConflict;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(concept._id, updates);
+        corrected++;
+      }
+    }
+
+    if (corrected > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[reconcileConceptScores] Corrected ${corrected}/${sampleSize} concepts`);
+      // eslint-disable-next-line no-console
+      console.log('Corrections:', JSON.stringify(corrections.slice(0, 10))); // Log first 10
+    }
+
+    return {
+      sampled: sample.length,
+      corrected,
+      corrections: corrections.slice(0, 20), // Return first 20 for inspection
+    };
   },
 });
