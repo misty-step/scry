@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Doc, Id } from '@/convex/_generated/dataModel';
 import { formatDueTime, formatShortRelativeTime } from '@/lib/utils/date-format';
 import { ActiveEmptyState, ArchivedEmptyState, TrashEmptyState } from './library-empty-states';
@@ -189,9 +189,8 @@ export function LibraryCards({
                 {/* Metadata row: Twitter-style with separator and hover states */}
                 <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/40 pt-2.5 mt-1">
                   {/* Type */}
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                         <div className="group flex items-center gap-1 cursor-pointer">
                           <ListChecks className="h-3.5 w-3.5 transition-colors group-hover:text-blue-500" />
                           <span className="transition-colors group-hover:text-blue-500">
@@ -203,15 +202,12 @@ export function LibraryCards({
                         <p>
                           {question.type === 'multiple-choice' ? 'Multiple Choice' : 'True/False'}
                         </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
+                                          </TooltipContent>
+                                        </Tooltip>
                   {/* Due Status */}
                   {currentTab === 'active' ? (
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                           <div className="group flex items-center gap-1 cursor-pointer">
                             <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
                             <span className="transition-colors group-hover:text-amber-500">
@@ -225,13 +221,10 @@ export function LibraryCards({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Next review time</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                                            </TooltipContent>
+                                          </Tooltip>                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                           <div className="group flex items-center gap-1 cursor-pointer">
                             <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
                             <span className="transition-colors group-hover:text-amber-500">
@@ -251,16 +244,13 @@ export function LibraryCards({
                                 ? 'Deleted'
                                 : 'Created'}
                           </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
+                                            </TooltipContent>
+                                          </Tooltip>                  )}
 
                   {/* Performance */}
                   {currentTab === 'active' ? (
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                           <div className="group flex items-center gap-1 cursor-pointer">
                             <Target className="h-3.5 w-3.5 transition-colors group-hover:text-purple-500" />
                             <span className="transition-colors group-hover:text-purple-500">
@@ -272,10 +262,8 @@ export function LibraryCards({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>Correct / Total attempts</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
+                                            </TooltipContent>
+                                          </Tooltip>                  ) : (
                     <div className="group flex items-center gap-1 cursor-pointer opacity-40">
                       <Target className="h-3.5 w-3.5 transition-colors group-hover:text-purple-500 group-hover:opacity-100" />
                       <span className="transition-colors group-hover:text-purple-500 group-hover:opacity-100">

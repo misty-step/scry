@@ -9,6 +9,7 @@ import { DeploymentVersionGuard } from '@/components/deployment-version-guard';
 import { Footer } from '@/components/footer';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { CurrentQuestionProvider } from '@/contexts/current-question-context';
 import { ConfirmationProvider } from '@/hooks/use-confirmation';
 import { validateEnv } from '@/lib/env';
@@ -49,25 +50,27 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ConfirmationProvider>
-            <ClerkConvexProvider>
-              <ConvexErrorBoundary>
-                <DeploymentVersionGuard>
-                  <CurrentQuestionProvider>
-                    <div className={getLayoutClassName()}>
-                      <ConditionalNavbar />
-                      {needsNavbarSpacer() && <div className="h-16" />}
-                      <main>{children}</main>
-                      <Footer />
-                    </div>
-                    <Toaster />
-                    <AnalyticsWrapper />
-                    <SpeedInsights />
-                  </CurrentQuestionProvider>
-                </DeploymentVersionGuard>
-              </ConvexErrorBoundary>
-            </ClerkConvexProvider>
-          </ConfirmationProvider>
+          <TooltipProvider delayDuration={300}>
+            <ConfirmationProvider>
+              <ClerkConvexProvider>
+                <ConvexErrorBoundary>
+                  <DeploymentVersionGuard>
+                    <CurrentQuestionProvider>
+                      <div className={getLayoutClassName()}>
+                        <ConditionalNavbar />
+                        {needsNavbarSpacer() && <div className="h-16" />}
+                        <main>{children}</main>
+                        <Footer />
+                      </div>
+                      <Toaster />
+                      <AnalyticsWrapper />
+                      <SpeedInsights />
+                    </CurrentQuestionProvider>
+                  </DeploymentVersionGuard>
+                </ConvexErrorBoundary>
+              </ClerkConvexProvider>
+            </ConfirmationProvider>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

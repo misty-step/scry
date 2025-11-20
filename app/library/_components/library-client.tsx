@@ -10,7 +10,6 @@ import { PageContainer } from '@/components/page-container';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
 import { useConfirmation } from '@/hooks/use-confirmation';
@@ -301,7 +300,7 @@ export function LibraryClient() {
   });
 
   return (
-    <TooltipProvider>
+    <>
       <PageContainer className="py-8">
         <h1 className="text-3xl font-bold mb-6">Question Library</h1>
 
@@ -446,6 +445,6 @@ export function LibraryClient() {
           </TabsContent>
         </Tabs>
       </PageContainer>
-    </TooltipProvider>
+    </>
   );
 }

@@ -116,7 +116,7 @@ export function ConceptsClient() {
   });
 
   const isLoading = isSignedIn && conceptsData === undefined;
-  const concepts = conceptsData?.concepts ?? [];
+  const concepts = useMemo(() => conceptsData?.concepts ?? [], [conceptsData]);
   const continueCursor =
     debouncedSearch || !conceptsData ? null : (conceptsData.continueCursor ?? null);
   const isDone = debouncedSearch ? true : (conceptsData?.isDone ?? true);
