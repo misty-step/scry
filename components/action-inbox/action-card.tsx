@@ -152,8 +152,8 @@ function ConceptSummary({
           </Badge>
         ) : null}
         {snapshot.conflictScore ? (
-          <Badge variant="secondary" className="bg-red-500/10 text-red-900">
-            Conflict
+          <Badge variant="secondary" className="bg-rose-500/10 text-rose-900">
+            Tension
           </Badge>
         ) : null}
       </div>

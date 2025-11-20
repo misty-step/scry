@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import type { ConceptBulkAction } from '../types/concepts';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
@@ -34,7 +35,7 @@ const DEFAULT_LIBRARY_PAGE_SIZE = 25;
 const MAX_LIBRARY_PAGE_SIZE = 100;
 const MIN_LIBRARY_PAGE_SIZE = 10;
 
-type ConceptLibraryView = 'all' | 'due' | 'thin' | 'conflict' | 'archived' | 'deleted';
+type ConceptLibraryView = 'all' | 'due' | 'thin' | 'tension' | 'archived' | 'deleted';
 type ConceptLibrarySort = 'recent' | 'nextReview';
 
 export const createMany = internalMutation({
@@ -435,7 +436,7 @@ export const listForLibrary = query({
         v.literal('all'),
         v.literal('due'),
         v.literal('thin'),
-        v.literal('conflict'),
+        v.literal('tension'),
         v.literal('archived'),
         v.literal('deleted')
       )
@@ -475,7 +476,7 @@ export const listForLibrary = query({
 
       const searchResults = await searchQuery.take(Math.min(pageSize, 50));
 
-      // Apply remaining view filters (thin, conflict, due) in memory
+      // Apply remaining view filters (thin, tension, due) in memory
       const filteredResults = searchResults.filter((concept) =>
         matchesConceptView(concept, now, view)
       );
@@ -506,7 +507,7 @@ export const listForLibrary = query({
           q.eq('userId', user._id).eq('deletedAt', undefined).gt('archivedAt', 0)
         );
     }
-    // Case C: Active Views (All, Due, Thin, Conflict)
+    // Case C: Active Views (All, Due, Thin, Tension)
     else {
       // Standard Active View: deletedAt=undefined, archivedAt=undefined
 
@@ -538,7 +539,7 @@ export const listForLibrary = query({
       numItems: pageSize,
     });
 
-    // No post-filtering needed for deleted/archived, but still needed for 'due', 'thin', 'conflict'
+    // No post-filtering needed for deleted/archived, but still needed for 'due', 'thin', 'tension'
     const concepts = page.page.filter((concept) => matchesConceptView(concept, now, view));
 
     return {
@@ -574,7 +575,7 @@ function matchesConceptView(concept: ConceptDoc, now: number, view: ConceptLibra
     return !!concept.archivedAt;
   }
 
-  // For standard views (all, due, thin, conflict), exclude archived items
+  // For standard views (all, due, thin, tension), exclude archived items
   if (concept.archivedAt) {
     return false;
   }
@@ -585,7 +586,7 @@ function matchesConceptView(concept: ConceptDoc, now: number, view: ConceptLibra
 
   const isDue = concept.fsrs.nextReview <= now;
   const isThin = (concept.thinScore ?? 0) > 0;
-  const isConflict = (concept.conflictScore ?? 0) > 0;
+  const hasTension = (concept.conflictScore ?? 0) > 0;
 
   if (view === 'due') {
     return isDue;
@@ -593,8 +594,8 @@ function matchesConceptView(concept: ConceptDoc, now: number, view: ConceptLibra
   if (view === 'thin') {
     return isThin;
   }
-  if (view === 'conflict') {
-    return isConflict;
+  if (view === 'tension') {
+    return hasTension;
   }
   return true;
 }
@@ -835,40 +836,7 @@ export const archiveConcept = mutation({
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');
     }
-
-    if (concept.archivedAt) {
-      return;
-    }
-
-    const now = Date.now();
-
-    // Archive concept
-    await ctx.db.patch(concept._id, {
-      archivedAt: now,
-      updatedAt: now,
-    });
-
-    // Cascade to phrasings
-    const phrasings = await ctx.db
-      .query('phrasings')
-      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
-      .filter((q) => q.eq(q.field('archivedAt'), undefined))
-      .collect();
-
-    for (const phrasing of phrasings) {
-      await ctx.db.patch(phrasing._id, {
-        archivedAt: now,
-        updatedAt: now,
-      });
-    }
-
-    // Update stats: treat as removal
-    // We calculate delta as transition from CurrentState -> undefined
-    const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
-    await updateStatsCounters(ctx, user._id, {
-      totalCards: -1,
-      ...(deltas ?? {}),
-    });
+    await archiveConceptDoc(ctx, user._id, concept);
   },
 });
 
@@ -884,29 +852,7 @@ export const unarchiveConcept = mutation({
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');
     }
-    if (!concept.archivedAt) return;
-
-    const now = Date.now();
-    await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
-
-    // Cascade unarchive phrasings
-    const phrasings = await ctx.db
-      .query('phrasings')
-      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
-      .filter((q) => q.neq(q.field('archivedAt'), undefined))
-      .collect();
-
-    for (const phrasing of phrasings) {
-      await ctx.db.patch(phrasing._id, { archivedAt: undefined, updatedAt: now });
-    }
-
-    // Update stats: treat as creation/restoration
-    // We calculate delta as transition from undefined -> CurrentState (or 'new' if undefined)
-    const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
-    await updateStatsCounters(ctx, user._id, {
-      totalCards: 1,
-      ...(deltas ?? {}),
-    });
+    await unarchiveConceptDoc(ctx, user._id, concept);
   },
 });
 
@@ -923,37 +869,7 @@ export const softDeleteConcept = mutation({
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');
     }
-
-    if (concept.deletedAt) {
-      return;
-    }
-
-    const now = Date.now();
-
-    await ctx.db.patch(concept._id, {
-      deletedAt: now,
-      updatedAt: now,
-    });
-
-    const phrasings = await ctx.db
-      .query('phrasings')
-      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
-      .filter((q) => q.eq(q.field('deletedAt'), undefined))
-      .collect();
-
-    for (const phrasing of phrasings) {
-      await ctx.db.patch(phrasing._id, {
-        deletedAt: now,
-        updatedAt: now,
-      });
-    }
-
-    // Update stats: treat as removal
-    const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
-    await updateStatsCounters(ctx, user._id, {
-      totalCards: -1,
-      ...(deltas ?? {}),
-    });
+    await softDeleteConceptDoc(ctx, user._id, concept);
   },
 });
 
@@ -968,26 +884,189 @@ export const restoreConcept = mutation({
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');
     }
-    if (!concept.deletedAt) return;
-
-    const now = Date.now();
-    await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
-
-    const phrasings = await ctx.db
-      .query('phrasings')
-      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
-      .filter((q) => q.neq(q.field('deletedAt'), undefined))
-      .collect();
-
-    for (const phrasing of phrasings) {
-      await ctx.db.patch(phrasing._id, { deletedAt: undefined, updatedAt: now });
-    }
-
-    // Update stats: treat as restoration
-    const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
-    await updateStatsCounters(ctx, user._id, {
-      totalCards: 1,
-      ...(deltas ?? {}),
-    });
+    await restoreConceptDoc(ctx, user._id, concept);
   },
 });
+
+export const runBulkAction = mutation({
+  args: {
+    conceptIds: v.array(v.id('concepts')),
+    action: v.union(
+      v.literal('archive'),
+      v.literal('unarchive'),
+      v.literal('delete'),
+      v.literal('restore')
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const userId = user._id;
+
+    if (args.conceptIds.length === 0) {
+      return { processed: 0, skipped: 0 };
+    }
+
+    const uniqueIds = new Set<Id<'concepts'>>(args.conceptIds);
+    let processed = 0;
+    let skipped = 0;
+
+    for (const conceptId of uniqueIds) {
+      const concept = await ctx.db.get(conceptId);
+      if (!concept || concept.userId !== userId) {
+        skipped++;
+        continue;
+      }
+
+      const applied = await applyConceptBulkAction(ctx, userId, concept, args.action);
+      if (applied) {
+        processed++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return { processed, skipped };
+  },
+});
+
+async function applyConceptBulkAction(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  concept: ConceptDoc,
+  action: ConceptBulkAction
+) {
+  switch (action) {
+    case 'archive':
+      return archiveConceptDoc(ctx, userId, concept);
+    case 'unarchive':
+      return unarchiveConceptDoc(ctx, userId, concept);
+    case 'delete':
+      return softDeleteConceptDoc(ctx, userId, concept);
+    case 'restore':
+      return restoreConceptDoc(ctx, userId, concept);
+    default:
+      return false;
+  }
+}
+
+async function archiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept: ConceptDoc) {
+  if (concept.archivedAt) {
+    return false;
+  }
+
+  const now = Date.now();
+
+  await ctx.db.patch(concept._id, {
+    archivedAt: now,
+    updatedAt: now,
+  });
+
+  const phrasings = await ctx.db
+    .query('phrasings')
+    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
+    .filter((q) => q.eq(q.field('archivedAt'), undefined))
+    .collect();
+
+  for (const phrasing of phrasings) {
+    await ctx.db.patch(phrasing._id, {
+      archivedAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
+  await updateStatsCounters(ctx, userId, {
+    totalCards: -1,
+    ...(deltas ?? {}),
+  });
+
+  return true;
+}
+
+async function unarchiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept: ConceptDoc) {
+  if (!concept.archivedAt) {
+    return false;
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
+
+  const phrasings = await ctx.db
+    .query('phrasings')
+    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
+    .filter((q) => q.neq(q.field('archivedAt'), undefined))
+    .collect();
+
+  for (const phrasing of phrasings) {
+    await ctx.db.patch(phrasing._id, { archivedAt: undefined, updatedAt: now });
+  }
+
+  const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
+  await updateStatsCounters(ctx, userId, {
+    totalCards: 1,
+    ...(deltas ?? {}),
+  });
+
+  return true;
+}
+
+async function softDeleteConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept: ConceptDoc) {
+  if (concept.deletedAt) {
+    return false;
+  }
+
+  const now = Date.now();
+
+  await ctx.db.patch(concept._id, {
+    deletedAt: now,
+    updatedAt: now,
+  });
+
+  const phrasings = await ctx.db
+    .query('phrasings')
+    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
+    .filter((q) => q.eq(q.field('deletedAt'), undefined))
+    .collect();
+
+  for (const phrasing of phrasings) {
+    await ctx.db.patch(phrasing._id, {
+      deletedAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
+  await updateStatsCounters(ctx, userId, {
+    totalCards: -1,
+    ...(deltas ?? {}),
+  });
+
+  return true;
+}
+
+async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept: ConceptDoc) {
+  if (!concept.deletedAt) {
+    return false;
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
+
+  const phrasings = await ctx.db
+    .query('phrasings')
+    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
+    .filter((q) => q.neq(q.field('deletedAt'), undefined))
+    .collect();
+
+  for (const phrasing of phrasings) {
+    await ctx.db.patch(phrasing._id, { deletedAt: undefined, updatedAt: now });
+  }
+
+  const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
+  await updateStatsCounters(ctx, userId, {
+    totalCards: 1,
+    ...(deltas ?? {}),
+  });
+
+  return true;
+}

@@ -30,7 +30,16 @@ function createConcept(overrides: Partial<Doc<'concepts'>> = {}): Doc<'concepts'
 describe('ConceptsTable', () => {
   it('renders concept title and description', () => {
     const concept = createConcept();
-    render(<ConceptsTable concepts={[concept]} serverTime={Date.now()} />);
+    render(
+      <ConceptsTable
+        concepts={[concept]}
+        serverTime={Date.now()}
+        view="all"
+        selectedIds={{}}
+        onToggleConcept={() => {}}
+        onTogglePage={() => {}}
+      />
+    );
 
     expect(screen.getByText('Sample Concept')).toBeInTheDocument();
     expect(screen.getByText('Explains something important')).toBeInTheDocument();
@@ -45,20 +54,38 @@ describe('ConceptsTable', () => {
       },
     });
 
-    render(<ConceptsTable concepts={[concept]} serverTime={Date.now()} />);
+    render(
+      <ConceptsTable
+        concepts={[concept]}
+        serverTime={Date.now()}
+        view="all"
+        selectedIds={{}}
+        onToggleConcept={() => {}}
+        onTogglePage={() => {}}
+      />
+    );
 
     expect(screen.getByText('Due now')).toBeInTheDocument();
   });
 
-  it('displays thin and conflict badges when signals present', () => {
+  it('displays thin and tension badges when signals present', () => {
     const concept = createConcept({
       thinScore: 1,
       conflictScore: 2,
     });
 
-    render(<ConceptsTable concepts={[concept]} serverTime={Date.now()} />);
+    render(
+      <ConceptsTable
+        concepts={[concept]}
+        serverTime={Date.now()}
+        view="all"
+        selectedIds={{}}
+        onToggleConcept={() => {}}
+        onTogglePage={() => {}}
+      />
+    );
 
-    expect(screen.getByText('Thin')).toBeInTheDocument();
-    expect(screen.getByText('Conflict')).toBeInTheDocument();
+    expect(screen.getByText('Thin (1)')).toBeInTheDocument();
+    expect(screen.getByText('Tension')).toBeInTheDocument();
   });
 });

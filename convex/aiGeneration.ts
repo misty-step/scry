@@ -74,8 +74,6 @@ const phrasingBatchSchema = z.object({
 type GeneratedPhrasing = z.infer<typeof generatedPhrasingSchema>;
 
 const MAX_CONCEPTS = 6;
-const MIN_DESCRIPTION_LENGTH = 40;
-const MAX_DESCRIPTION_LENGTH = 800;
 type GenerationErrorCode = 'SCHEMA_VALIDATION' | 'RATE_LIMIT' | 'API_KEY' | 'NETWORK' | 'UNKNOWN';
 
 class GenerationPipelineError extends Error {
@@ -88,41 +86,50 @@ class GenerationPipelineError extends Error {
   }
 }
 
-/**
- * Normalize and filter concept ideas to enforce atomicity heuristics.
- * Exported for unit tests.
- */
+export type ConceptPreparationStats = {
+  totalIdeas: number;
+  accepted: number;
+  skippedEmptyTitle: number;
+  skippedEmptyDescription: number;
+  skippedDuplicate: number;
+  fallbackUsed: boolean;
+};
+
 export function prepareConceptIdeas(
-  ideas: ConceptIdea[]
-): Array<{ title: string; description: string }> {
+  ideas: ConceptIdea[],
+  fallbackPrompt?: string
+): {
+  concepts: Array<{ title: string; description: string }>;
+  stats: ConceptPreparationStats;
+} {
   const normalizedConcepts: Array<{ title: string; description: string }> = [];
   const seenTitles = new Set<string>();
+  const stats: ConceptPreparationStats = {
+    totalIdeas: ideas.length,
+    accepted: 0,
+    skippedEmptyTitle: 0,
+    skippedEmptyDescription: 0,
+    skippedDuplicate: 0,
+    fallbackUsed: false,
+  };
 
   for (const idea of ideas) {
-    const title = idea.title.trim();
-    const description = idea.description.trim();
+    const title = idea.title?.trim() ?? '';
+    const description = idea.description?.trim() ?? '';
 
-    if (!title || !description) {
+    if (!title) {
+      stats.skippedEmptyTitle += 1;
       continue;
     }
 
-    if (title.length < 5 || title.length > 120) {
-      continue;
-    }
-
-    if (
-      description.length < MIN_DESCRIPTION_LENGTH ||
-      description.length > MAX_DESCRIPTION_LENGTH
-    ) {
+    if (!description) {
+      stats.skippedEmptyDescription += 1;
       continue;
     }
 
     const titleKey = title.toLowerCase();
     if (seenTitles.has(titleKey)) {
-      continue;
-    }
-
-    if (!isAtomicConcept(title, description)) {
+      stats.skippedDuplicate += 1;
       continue;
     }
 
@@ -134,33 +141,26 @@ export function prepareConceptIdeas(
     }
   }
 
-  return normalizedConcepts;
-}
+  if (normalizedConcepts.length === 0 && ideas.length > 0) {
+    const fallbackIdea = ideas[0];
+    const fallbackTitle = fallbackIdea.title?.trim() || fallbackPrompt?.trim() || 'Learner Concept';
+    const fallbackDescription =
+      fallbackIdea.description?.trim() ||
+      fallbackIdea.whyItMatters?.trim() ||
+      (fallbackPrompt
+        ? `Deepening understanding of "${fallbackPrompt}".`
+        : 'User-specified topic.');
 
-function isAtomicConcept(title: string, description: string): boolean {
-  const lowerTitle = title.toLowerCase();
-  const lowerDescription = description.toLowerCase();
-
-  const conjunctionCount =
-    (lowerTitle.match(/ and /g)?.length ?? 0) + (lowerDescription.match(/ and /g)?.length ?? 0);
-  if (conjunctionCount > 3) {
-    return false;
+    normalizedConcepts.push({
+      title: fallbackTitle,
+      description: fallbackDescription,
+    });
+    stats.fallbackUsed = true;
   }
 
-  if (lowerDescription.includes(' vs ')) {
-    return false;
-  }
+  stats.accepted = normalizedConcepts.length;
 
-  if ((lowerDescription.match(/first|second|third|step\s+\d|1\)/g)?.length ?? 0) >= 2) {
-    return false;
-  }
-
-  const topicDescriptions = (lowerDescription.match(/,/g)?.length ?? 0) > 6;
-  if (topicDescriptions) {
-    return false;
-  }
-
-  return true;
+  return { concepts: normalizedConcepts, stats };
 }
 
 type PreparedPhrasing = {
@@ -437,7 +437,8 @@ export const processJob = internalAction({
 
       const { object } = finalResponse;
       const totalSuggestions = object.concepts.length;
-      const preparedConcepts = prepareConceptIdeas(object.concepts);
+      const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
+      const preparedConcepts = preparedConceptsResult.concepts;
 
       if (preparedConcepts.length === 0) {
         throw new GenerationPipelineError(
@@ -453,6 +454,7 @@ export const processJob = internalAction({
           totalSuggestions,
           acceptedConcepts: preparedConcepts.length,
           userId: job.userId,
+          filterStats: preparedConceptsResult.stats,
         },
         'Concept synthesis validation complete'
       );
@@ -642,9 +644,11 @@ export const generatePhrasingsForConcept = internalAction({
         );
 
         if (job.pendingConceptIds?.includes(args.conceptId)) {
-          await ctx.runMutation(internal.generationJobs.setPendingConcepts, {
+          await ctx.runMutation(internal.generationJobs.advancePendingConcept, {
             jobId: job._id,
-            pendingConceptIds: job.pendingConceptIds.filter((id) => id !== args.conceptId),
+            conceptId: args.conceptId,
+            questionsGeneratedDelta: 0,
+            questionsSavedDelta: 0,
           });
         }
         return;
@@ -830,23 +834,14 @@ export const generatePhrasingsForConcept = internalAction({
         conflictScore: conflictScoreValue,
       });
 
-      const updatedGenerated = (job.questionsGenerated ?? 0) + normalizedPhrasings.length;
-      const updatedSaved = (job.questionsSaved ?? 0) + insertedIds.length;
-      const remainingConceptIds = job.pendingConceptIds.filter((id) => id !== args.conceptId);
-
-      await ctx.runMutation(internal.generationJobs.setPendingConcepts, {
+      const progress = await ctx.runMutation(internal.generationJobs.advancePendingConcept, {
         jobId: job._id,
-        pendingConceptIds: remainingConceptIds,
+        conceptId: args.conceptId,
+        questionsGeneratedDelta: normalizedPhrasings.length,
+        questionsSavedDelta: insertedIds.length,
       });
 
-      await ctx.runMutation(internal.generationJobs.updateProgress, {
-        jobId: job._id,
-        phase: remainingConceptIds.length === 0 ? 'finalizing' : 'phrasing_generation',
-        questionsGenerated: updatedGenerated,
-        questionsSaved: updatedSaved,
-      });
-
-      if (remainingConceptIds.length === 0) {
+      if (progress.pendingCount === 0) {
         const durationMs = Date.now() - (job.startedAt ?? job.createdAt);
         await ctx.runMutation(internal.generationJobs.completeJob, {
           jobId: job._id,
@@ -860,7 +855,7 @@ export const generatePhrasingsForConcept = internalAction({
           jobId: job._id,
           userId: String(job.userId),
           provider,
-          questionCount: updatedSaved,
+          questionCount: progress.questionsSaved,
           durationMs,
         });
       }
@@ -870,7 +865,7 @@ export const generatePhrasingsForConcept = internalAction({
         event: 'completed',
         userId: job.userId,
         phrasingsCreated: insertedIds.length,
-        remainingConcepts: remainingConceptIds.length,
+        remainingConcepts: progress.pendingCount,
       });
     } catch (error) {
       const err = error as Error;

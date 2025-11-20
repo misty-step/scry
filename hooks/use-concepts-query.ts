@@ -4,7 +4,7 @@ import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
 
-export type ConceptsView = 'all' | 'due' | 'thin' | 'conflict' | 'archived' | 'deleted';
+export type ConceptsView = 'all' | 'due' | 'thin' | 'tension' | 'archived' | 'deleted';
 export type ConceptsSort = 'recent' | 'nextReview';
 
 export interface ConceptLibraryResponse {

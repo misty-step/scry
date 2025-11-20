@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { useMutation } from 'convex/react';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { BulkActionBar } from '@/components/concepts/bulk-action-bar';
 import { ConceptsEmptyState } from '@/components/concepts/concepts-empty-state';
 import { ConceptsTable } from '@/components/concepts/concepts-table';
 import { ViewSelector } from '@/components/concepts/view-selector';
@@ -19,16 +22,53 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { api } from '@/convex/_generated/api';
+import type { Doc, Id } from '@/convex/_generated/dataModel';
 import { useConceptsQuery, type ConceptsSort, type ConceptsView } from '@/hooks/use-concepts-query';
+import type { ConceptBulkAction } from '@/types/concepts';
 
 const VIEW_TABS: { value: ConceptsView; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'due', label: 'Due' },
   { value: 'thin', label: 'Thin' },
-  { value: 'conflict', label: 'Conflict' },
+  { value: 'tension', label: 'Tension' },
   { value: 'archived', label: 'Archived' },
   { value: 'deleted', label: 'Trash' },
 ];
+
+const VIEW_DESCRIPTIONS: Record<ConceptsView, { title: string; body: string }> = {
+  all: {
+    title: 'Showing all active concepts.',
+    body: 'Search or sort to focus on specific material.',
+  },
+  due: {
+    title: 'Concepts ready for review.',
+    body: 'Clearing these keeps FSRS intervals honest.',
+  },
+  thin: {
+    title: 'Thin concepts need more phrasing coverage.',
+    body: 'Generate variants to stabilize recall depth.',
+  },
+  tension: {
+    title: 'Tension indicates conflicting or overlapping phrasings.',
+    body: 'Resolve duplicates or split overloaded ideas.',
+  },
+  archived: {
+    title: 'Archived concepts are paused.',
+    body: 'They stay out of review until you restore them.',
+  },
+  deleted: {
+    title: 'Trash holds concepts before permanent removal.',
+    body: 'Restore anything you still need.',
+  },
+};
+
+const BULK_ACTION_SUCCESS: Record<ConceptBulkAction, string> = {
+  archive: 'archived',
+  unarchive: 'unarchived',
+  delete: 'moved to trash',
+  restore: 'restored',
+};
 
 export function ConceptsClient() {
   const { isSignedIn } = useUser();
@@ -39,6 +79,11 @@ export function ConceptsClient() {
   const [pageSize, setPageSize] = useState(25);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Record<string, true>>({});
+  const [pendingGenerationIds, setPendingGenerationIds] = useState<Record<string, true>>({});
+  const [pendingBulkAction, setPendingBulkAction] = useState<ConceptBulkAction | null>(null);
+  const runBulkAction = useMutation(api.concepts.runBulkAction);
+  const requestMorePhrasings = useMutation(api.concepts.requestPhrasingGeneration);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
@@ -49,6 +94,10 @@ export function ConceptsClient() {
     setCursor(null);
     setCursorStack([]);
   }, [view, sort, pageSize]);
+
+  useEffect(() => {
+    setSelectedIds({});
+  }, [view, sort, pageSize, debouncedSearch]);
 
   useEffect(() => {
     if (debouncedSearch) {
@@ -76,6 +125,148 @@ export function ConceptsClient() {
   const hasResults = concepts.length > 0;
 
   const paginationDisabled = !!debouncedSearch;
+
+  const selectedConceptIds = useMemo(
+    () => Object.keys(selectedIds) as Id<'concepts'>[],
+    [selectedIds]
+  );
+  const selectedCount = selectedConceptIds.length;
+  const availableBulkActions = useMemo<ConceptBulkAction[]>(() => {
+    if (view === 'archived') {
+      return ['unarchive', 'delete'];
+    }
+    if (view === 'deleted') {
+      return ['restore'];
+    }
+    return ['archive', 'delete'];
+  }, [view]);
+
+  const handleToggleConcept = (conceptId: Id<'concepts'>) => {
+    setSelectedIds((prev) => {
+      const next = { ...prev };
+      if (next[conceptId]) {
+        delete next[conceptId];
+      } else {
+        next[conceptId] = true;
+      }
+      return next;
+    });
+  };
+
+  const handleTogglePageSelection = (conceptIds: Id<'concepts'>[], shouldSelect: boolean) => {
+    if (conceptIds.length === 0) {
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      if (shouldSelect) {
+        for (const id of conceptIds) {
+          if (!next[id]) {
+            next[id] = true;
+            changed = true;
+          }
+        }
+      } else {
+        for (const id of conceptIds) {
+          if (next[id]) {
+            delete next[id];
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds({});
+
+  const handleGenerateThin = async (conceptId: Id<'concepts'>) => {
+    if (view === 'archived' || view === 'deleted') {
+      return;
+    }
+    if (pendingGenerationIds[conceptId]) {
+      return;
+    }
+    setPendingGenerationIds((prev) => ({ ...prev, [conceptId]: true }));
+    try {
+      await requestMorePhrasings({ conceptId });
+      toast.success('Generation job started');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate new phrasings';
+      toast.error(message);
+    } finally {
+      setPendingGenerationIds((prev) => {
+        const next = { ...prev };
+        delete next[conceptId];
+        return next;
+      });
+    }
+  };
+
+  const viewDescription = VIEW_DESCRIPTIONS[view];
+
+  const handleBulkAction = async (action: ConceptBulkAction) => {
+    if (selectedCount === 0) {
+      return;
+    }
+    try {
+      setPendingBulkAction(action);
+      const result = await runBulkAction({
+        action,
+        conceptIds: selectedConceptIds,
+      });
+      const processed = result?.processed ?? 0;
+      const skipped = result?.skipped ?? 0;
+
+      if (processed > 0) {
+        const verb = BULK_ACTION_SUCCESS[action];
+        const noun = processed === 1 ? 'concept' : 'concepts';
+        toast.success(`${processed} ${noun} ${verb}`);
+      } else {
+        toast.info('No concepts were updated');
+      }
+
+      if (skipped > 0) {
+        toast.warning(`${skipped} already in that state`);
+      }
+
+      setSelectedIds({});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to run bulk action';
+      toast.error(message);
+    } finally {
+      setPendingBulkAction(null);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (Object.keys(prev).length === 0) {
+        return prev;
+      }
+
+      if (concepts.length === 0) {
+        return {};
+      }
+
+      const allowed = new Set(concepts.map((concept: Doc<'concepts'>) => concept._id));
+      let changed = false;
+      const next: Record<string, true> = {};
+
+      for (const id of Object.keys(prev)) {
+        if (allowed.has(id as Id<'concepts'>)) {
+          next[id] = true;
+        } else {
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [concepts]);
 
   const searchLabel = useMemo(() => {
     if (!debouncedSearch) return null;
@@ -105,8 +296,8 @@ export function ConceptsClient() {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Concepts Library</h1>
         <p className="text-sm text-muted-foreground">
-          Concept-first view of your knowledge. Track due status, thin spots, and conflict signals
-          at a glance.
+          Concept-first view of your knowledge. Track due status, thin spots, and tension signals at
+          a glance.
         </p>
       </div>
 
@@ -182,6 +373,13 @@ export function ConceptsClient() {
         )}
       </Card>
 
+      {viewDescription ? (
+        <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+          <p className="font-semibold text-foreground">{viewDescription.title}</p>
+          <p className="text-muted-foreground">{viewDescription.body}</p>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -190,7 +388,16 @@ export function ConceptsClient() {
           </div>
         </div>
       ) : hasResults ? (
-        <ConceptsTable concepts={concepts} serverTime={serverTime} />
+        <ConceptsTable
+          concepts={concepts}
+          serverTime={serverTime}
+          view={view}
+          selectedIds={selectedIds}
+          onToggleConcept={handleToggleConcept}
+          onTogglePage={handleTogglePageSelection}
+          onGenerateThin={handleGenerateThin}
+          pendingGenerationIds={pendingGenerationIds}
+        />
       ) : (
         <ConceptsEmptyState view={view} searchTerm={debouncedSearch} />
       )}
@@ -222,6 +429,13 @@ export function ConceptsClient() {
           </Button>
         </div>
       </div>
+      <BulkActionBar
+        selectedCount={selectedCount}
+        actions={availableBulkActions}
+        pendingAction={pendingBulkAction}
+        onAction={handleBulkAction}
+        onClearSelection={clearSelection}
+      />
     </PageContainer>
   );
 }

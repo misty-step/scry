@@ -134,3 +134,9 @@ export interface ReclusterJobDoc {
   completedAt?: number;
   stats?: unknown; // Job statistics (concepts processed, proposals created, etc.)
 }
+
+// ============================================================================
+// Library/Bulk Action Types
+// ============================================================================
+
+export type ConceptBulkAction = 'archive' | 'unarchive' | 'delete' | 'restore';

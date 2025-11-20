@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowLeft, BookOpenCheck, Clock3 } from 'lucide-react';
@@ -20,6 +21,7 @@ interface ConceptDetailProps {
   isSettingCanonical: boolean;
   isArchiving: boolean;
   isRequestingGeneration: boolean;
+  showLibraryLink?: boolean;
 }
 
 export function ConceptDetail({
@@ -32,6 +34,7 @@ export function ConceptDetail({
   isSettingCanonical,
   isArchiving,
   isRequestingGeneration,
+  showLibraryLink = true,
 }: ConceptDetailProps) {
   const nextReviewLabel = concept.fsrs.nextReview
     ? formatDistanceToNow(concept.fsrs.nextReview, { addSuffix: true })
@@ -39,12 +42,14 @@ export function ConceptDetail({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-        <Link href="/library" className="hover:underline">
-          Back to Library
-        </Link>
-      </div>
+      {showLibraryLink ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          <Link href="/library" className="hover:underline">
+            Back to Library
+          </Link>
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -83,8 +88,8 @@ export function ConceptDetail({
               <div className="flex flex-wrap items-center gap-2">
                 {concept.thinScore ? <Badge variant="secondary">Thin</Badge> : null}
                 {concept.conflictScore ? (
-                  <Badge variant="secondary" className="bg-red-500/10 text-red-900">
-                    Conflict
+                  <Badge variant="secondary" className="bg-rose-500/10 text-rose-900">
+                    Tension
                   </Badge>
                 ) : null}
                 {!concept.thinScore && !concept.conflictScore ? 'Healthy' : null}
@@ -120,15 +125,7 @@ export function ConceptDetail({
   );
 }
 
-function Stat({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
+function Stat({ label, value, icon }: { label: string; value: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border p-3">
       {icon ? (
@@ -138,7 +135,7 @@ function Stat({
       ) : null}
       <div className="space-y-1">
         <p className="text-xs uppercase text-muted-foreground">{label}</p>
-        <p className="text-sm font-medium">{value}</p>
+        <div className="text-sm font-medium">{value}</div>
       </div>
     </div>
   );

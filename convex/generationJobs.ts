@@ -235,15 +235,40 @@ export const setConceptWork = internalMutation({
   },
 });
 
-export const setPendingConcepts = internalMutation({
+export const advancePendingConcept = internalMutation({
   args: {
     jobId: v.id('generationJobs'),
-    pendingConceptIds: v.array(v.id('concepts')),
+    conceptId: v.id('concepts'),
+    questionsGeneratedDelta: v.number(),
+    questionsSavedDelta: v.number(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.jobId, {
-      pendingConceptIds: args.pendingConceptIds,
-    });
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      return { pendingCount: 0, questionsGenerated: 0, questionsSaved: 0 };
+    }
+
+    const pendingConceptIds = job.pendingConceptIds ?? [];
+    const nextPending = pendingConceptIds.filter((id) => id !== args.conceptId);
+
+    const questionsGenerated = (job.questionsGenerated ?? 0) + args.questionsGeneratedDelta;
+    const questionsSaved = (job.questionsSaved ?? 0) + args.questionsSavedDelta;
+
+    const updates: Record<string, unknown> = {
+      pendingConceptIds: nextPending,
+      questionsGenerated,
+      questionsSaved,
+    };
+
+    if (nextPending.length === 0) {
+      updates.phase = 'finalizing';
+    } else {
+      updates.phase = 'phrasing_generation';
+    }
+
+    await ctx.db.patch(args.jobId, updates);
+
+    return { pendingCount: nextPending.length, questionsGenerated, questionsSaved };
   },
 });
 

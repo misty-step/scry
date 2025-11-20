@@ -427,7 +427,7 @@ describe('Concept Logging', () => {
 
 describe('Stage A Concept Preparation', () => {
   it('removes duplicate titles case-insensitively', () => {
-    const ideas = prepareConceptIdeas([
+    const result = prepareConceptIdeas([
       {
         title: 'Eucharistic Theology Foundations',
         description: 'Analyzes transubstantiation and the sacramental presence of Christ.',
@@ -445,29 +445,10 @@ describe('Stage A Concept Preparation', () => {
       },
     ]);
 
-    expect(ideas).toHaveLength(2);
-    expect(ideas.map((c) => c.title)).toContain('Eucharistic Theology Foundations');
-    expect(ideas.map((c) => c.title)).toContain('Guardian Angels in Daily Life');
-  });
-
-  it('filters multi-topic concepts that bundle comparisons', () => {
-    const ideas = prepareConceptIdeas([
-      {
-        title: 'Grace and Free Will Debate',
-        description:
-          'Contrast Augustine vs Pelagius, outline both views, contrast them, and explain how the Council of Orange mediates between them.',
-        whyItMatters: 'Fundamental theological controversy in Church history.',
-      },
-      {
-        title: "Pascal's Wager Motivation",
-        description:
-          "Explain the intuition behind Pascal's Wager and why it influenced apologetics.",
-        whyItMatters: 'Key apologetic argument for faith.',
-      },
-    ]);
-
-    expect(ideas).toHaveLength(1);
-    expect(ideas[0].title).toBe("Pascal's Wager Motivation");
+    expect(result.concepts).toHaveLength(2);
+    expect(result.concepts.map((c) => c.title)).toContain('Eucharistic Theology Foundations');
+    expect(result.concepts.map((c) => c.title)).toContain('Guardian Angels in Daily Life');
+    expect(result.stats.skippedDuplicate).toBe(1);
   });
 
   it('caps the number of accepted concepts', () => {
@@ -477,65 +458,53 @@ describe('Stage A Concept Preparation', () => {
       whyItMatters: `Important for understanding topic ${index}.`,
     }));
 
-    const ideas = prepareConceptIdeas(bulkIdeas);
-    expect(ideas.length).toBeLessThanOrEqual(6);
+    const result = prepareConceptIdeas(bulkIdeas);
+    expect(result.concepts.length).toBeLessThanOrEqual(6);
+    expect(result.stats.accepted).toBeLessThanOrEqual(6);
   });
 
-  it('filters concepts with descriptions that are too short', () => {
-    const ideas = prepareConceptIdeas([
+  it('skips empty titles or descriptions but still returns fallback concept', () => {
+    const result = prepareConceptIdeas(
+      [
+        {
+          title: '',
+          description: 'Has description but missing title',
+          whyItMatters: 'Invalid',
+        },
+        {
+          title: 'No Body',
+          description: '',
+          whyItMatters: 'Invalid',
+        },
+      ],
+      'fallback topic'
+    );
+
+    expect(result.concepts).toHaveLength(1);
+    expect(result.concepts[0].title).toContain('fallback');
+    expect(result.stats.skippedEmptyTitle).toBe(1);
+    expect(result.stats.skippedEmptyDescription).toBe(1);
+    expect(result.stats.fallbackUsed).toBe(true);
+  });
+
+  it('prefers first viable suggestion before fallback', () => {
+    const result = prepareConceptIdeas([
       {
-        title: 'Insufficient Detail Concept',
-        description: 'Barely says anything at all.',
-        whyItMatters: 'Should be filtered out.',
+        title: 'Valid Concept',
+        description: 'Short but acceptable description.',
+        whyItMatters: 'Important detail.',
       },
       {
-        title: 'Rich Eucharistic Symbolism',
-        description:
-          'Explains how each eucharistic symbol reinforces Christological teaching and why the faithful revisit them weekly.',
-        whyItMatters: 'Essential for liturgical understanding.',
+        title: 'valid concept',
+        description: 'Duplicate case should be skipped.',
+        whyItMatters: 'Duplicate for testing.',
       },
     ]);
 
-    expect(ideas).toHaveLength(1);
-    expect(ideas[0].title).toBe('Rich Eucharistic Symbolism');
-  });
-
-  it('rejects conjunction-heavy proposals that bundle multiple ideas', () => {
-    const ideas = prepareConceptIdeas([
-      {
-        title: 'Grace, Merit, and Cooperation',
-        description:
-          'Define sanctifying grace and habitual grace and actual grace and then connect each to merit and synergy.',
-        whyItMatters: 'Foundational for understanding salvation theology.',
-      },
-      {
-        title: 'Single Doctrine Focus',
-        description:
-          'Describes how Augustine frames grace as both gift and ongoing invitation, highlighting a single retrievable unit.',
-        whyItMatters: 'Core Augustinian teaching on grace.',
-      },
-    ]);
-
-    expect(ideas).toHaveLength(1);
-    expect(ideas[0].title).toBe('Single Doctrine Focus');
-  });
-
-  it('returns empty array when every proposed concept violates heuristics', () => {
-    const ideas = prepareConceptIdeas([
-      {
-        title: 'Short One',
-        description: 'Tiny.',
-        whyItMatters: 'Too short.',
-      },
-      {
-        title: 'Comparison Bundle',
-        description:
-          'Contrast Peter vs Paul vs Barnabas across missionary journeys and doctrinal disputes and liturgical leadership.',
-        whyItMatters: 'Understanding apostolic leadership.',
-      },
-    ]);
-
-    expect(ideas).toEqual([]);
+    expect(result.concepts).toHaveLength(1);
+    expect(result.concepts[0].title).toBe('Valid Concept');
+    expect(result.stats.skippedDuplicate).toBe(1);
+    expect(result.stats.fallbackUsed).toBe(false);
   });
 });
 
