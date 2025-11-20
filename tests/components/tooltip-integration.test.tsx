@@ -1,7 +1,6 @@
 import { render } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { describe, expect, it } from 'vitest';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Test ensuring Tooltip crashes without Provider (validating our need for the fix)
 // and works with Provider (validating our layout fix pattern)
@@ -29,7 +28,7 @@ describe('Tooltip Integration', () => {
         <TooltipComponent />
       </TooltipProvider>
     );
-    
+
     expect(getByText('Hover me')).toBeInTheDocument();
   });
 });

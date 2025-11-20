@@ -191,79 +191,82 @@ export function LibraryCards({
                   {/* Type */}
                   <Tooltip>
                     <TooltipTrigger asChild>
+                      <div className="group flex items-center gap-1 cursor-pointer">
+                        <ListChecks className="h-3.5 w-3.5 transition-colors group-hover:text-blue-500" />
+                        <span className="transition-colors group-hover:text-blue-500">
+                          {question.type === 'multiple-choice' ? 'MC' : 'T/F'}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {question.type === 'multiple-choice' ? 'Multiple Choice' : 'True/False'}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  {/* Due Status */}
+                  {currentTab === 'active' ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                         <div className="group flex items-center gap-1 cursor-pointer">
-                          <ListChecks className="h-3.5 w-3.5 transition-colors group-hover:text-blue-500" />
-                          <span className="transition-colors group-hover:text-blue-500">
-                            {question.type === 'multiple-choice' ? 'MC' : 'T/F'}
+                          <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
+                          <span className="transition-colors group-hover:text-amber-500">
+                            {isDue
+                              ? 'Due now'
+                              : question.nextReview
+                                ? formatDueTime(question.nextReview)
+                                : 'Not scheduled'}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Next review time</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="group flex items-center gap-1 cursor-pointer">
+                          <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
+                          <span className="transition-colors group-hover:text-amber-500">
+                            {currentTab === 'archived' && question.archivedAt
+                              ? formatShortRelativeTime(question.archivedAt)
+                              : currentTab === 'trash' && question.deletedAt
+                                ? formatShortRelativeTime(question.deletedAt)
+                                : formatShortRelativeTime(question.generatedAt)}
                           </span>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
-                          {question.type === 'multiple-choice' ? 'Multiple Choice' : 'True/False'}
+                          {currentTab === 'archived'
+                            ? 'Archived'
+                            : currentTab === 'trash'
+                              ? 'Deleted'
+                              : 'Created'}
                         </p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                  {/* Due Status */}
-                  {currentTab === 'active' ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                          <div className="group flex items-center gap-1 cursor-pointer">
-                            <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
-                            <span className="transition-colors group-hover:text-amber-500">
-                              {isDue
-                                ? 'Due now'
-                                : question.nextReview
-                                  ? formatDueTime(question.nextReview)
-                                  : 'Not scheduled'}
-                            </span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Next review time</p>
-                                            </TooltipContent>
-                                          </Tooltip>                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                          <div className="group flex items-center gap-1 cursor-pointer">
-                            <Clock className="h-3.5 w-3.5 transition-colors group-hover:text-amber-500" />
-                            <span className="transition-colors group-hover:text-amber-500">
-                              {currentTab === 'archived' && question.archivedAt
-                                ? formatShortRelativeTime(question.archivedAt)
-                                : currentTab === 'trash' && question.deletedAt
-                                  ? formatShortRelativeTime(question.deletedAt)
-                                  : formatShortRelativeTime(question.generatedAt)}
-                            </span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>
-                            {currentTab === 'archived'
-                              ? 'Archived'
-                              : currentTab === 'trash'
-                                ? 'Deleted'
-                                : 'Created'}
-                          </p>
-                                            </TooltipContent>
-                                          </Tooltip>                  )}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
 
                   {/* Performance */}
                   {currentTab === 'active' ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                          <div className="group flex items-center gap-1 cursor-pointer">
-                            <Target className="h-3.5 w-3.5 transition-colors group-hover:text-purple-500" />
-                            <span className="transition-colors group-hover:text-purple-500">
-                              {question.attemptCount === 0
-                                ? '-'
-                                : `${Math.round(((question.successRate || 0) * question.attemptCount) / 100)}/${question.attemptCount}`}
-                            </span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Correct / Total attempts</p>
-                                            </TooltipContent>
-                                          </Tooltip>                  ) : (
+                        <div className="group flex items-center gap-1 cursor-pointer">
+                          <Target className="h-3.5 w-3.5 transition-colors group-hover:text-purple-500" />
+                          <span className="transition-colors group-hover:text-purple-500">
+                            {question.attemptCount === 0
+                              ? '-'
+                              : `${Math.round(((question.successRate || 0) * question.attemptCount) / 100)}/${question.attemptCount}`}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Correct / Total attempts</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
                     <div className="group flex items-center gap-1 cursor-pointer opacity-40">
                       <Target className="h-3.5 w-3.5 transition-colors group-hover:text-purple-500 group-hover:opacity-100" />
                       <span className="transition-colors group-hover:text-purple-500 group-hover:opacity-100">
