@@ -1,5 +1,19 @@
-import { randomUUID } from 'crypto';
 import pino from 'pino';
+
+// Utility to generate UUID that works in both Node.js and browser
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    // Browser or Node.js with Web Crypto API
+    return crypto.randomUUID();
+  }
+  // Legacy fallback - should never execute in modern Next.js (Node 16+/modern browsers)
+  // Uses Math.random() which is not cryptographically secure; correlation ID collisions are more likely
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 // Define application-specific log contexts
 export type LogContext =
@@ -12,7 +26,8 @@ export type LogContext =
   | 'user'
   | 'security'
   | 'performance'
-  | 'system';
+  | 'system'
+  | 'concepts';
 
 // Enhanced log levels for application-specific events
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
@@ -154,7 +169,7 @@ export function createRequestLogger(
   },
   additionalMetadata: Partial<LogMetadata> = {}
 ) {
-  const requestId = randomUUID();
+  const requestId = generateUUID();
   const metadata: LogMetadata = {
     requestId,
     method: req?.method,
@@ -183,6 +198,9 @@ export const userLogger = createContextLogger('user');
 export const securityLogger = createContextLogger('security');
 export const performanceLogger = createContextLogger('performance');
 export const systemLogger = createContextLogger('system');
+export const conceptsLogger = createContextLogger('concepts', {
+  domains: ['ai', 'database'],
+});
 
 // Utility functions for common logging patterns
 export const loggers = {

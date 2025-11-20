@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from 'convex/react';
-import { ArrowRight, Calendar, Clock, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { ArrowRight, Brain, Calendar, Clock, Info, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EditQuestionModal } from '@/components/edit-question-modal';
 import { PageContainer } from '@/components/page-container';
 import { QuestionHistory } from '@/components/question-history';
 import { ReviewQuestionDisplay } from '@/components/review-question-display';
+import { LearningModeExplainer } from '@/components/review/learning-mode-explainer';
 import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
@@ -28,7 +31,21 @@ import { useReviewFlow } from '@/hooks/use-review-flow';
  */
 export function ReviewFlow() {
   // Get review state and handlers from custom hook
-  const { phase, question, questionId, interactions, isTransitioning, handlers } = useReviewFlow();
+  const {
+    phase,
+    question,
+    conceptTitle,
+    conceptId,
+    phrasingId,
+    phrasingIndex,
+    totalPhrasings,
+    legacyQuestionId,
+    selectionReason,
+    interactions,
+    isTransitioning,
+    conceptFsrs,
+    handlers,
+  } = useReviewFlow();
 
   // Use context for current question
   const { setCurrentQuestion } = useCurrentQuestion();
@@ -51,15 +68,32 @@ export function ReviewFlow() {
   const { trackAnswer } = useQuizInteractions();
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const selectionReasonDescriptions: Record<string, string> = {
+    canonical: 'Your preferred phrasing',
+    'least-seen': 'Least practiced',
+    random: 'Random rotation',
+    none: 'Default selection',
+  };
+  const hasPhrasingPosition =
+    typeof phrasingIndex === 'number' &&
+    typeof totalPhrasings === 'number' &&
+    phrasingIndex > 0 &&
+    totalPhrasings > 0;
+  const phrasingPositionLabel = hasPhrasingPosition
+    ? `Phrasing ${phrasingIndex} of ${totalPhrasings}`
+    : null;
+  const selectionReasonLabel = selectionReason
+    ? (selectionReasonDescriptions[selectionReason] ?? 'Active phrasing')
+    : null;
 
   // Query for current due count - reactive via Convex WebSockets
-  const dueCountData = useQuery(api.spacedRepetition.getDueCount);
+  const dueCountData = useQuery(api.concepts.getConceptsDueCount);
 
   // Cache the last known due count to prevent flicker during refetch
-  const [cachedDueCount, setCachedDueCount] = useState(0);
+  const [cachedData, setCachedData] = useState({ conceptsDue: 0, orphanedQuestions: 0 });
   useEffect(() => {
     if (dueCountData !== undefined) {
-      setCachedDueCount(dueCountData.totalReviewable);
+      setCachedData(dueCountData);
     }
   }, [dueCountData]);
 
@@ -70,22 +104,21 @@ export function ReviewFlow() {
 
   // Update context when current question changes
   useEffect(() => {
-    if (question && questionId) {
-      // Convert SimpleQuestion to a partial Doc<"questions"> format
+    if (question && legacyQuestionId) {
       setCurrentQuestion({
         ...question,
-        _id: questionId,
+        _id: legacyQuestionId,
         type: question.type || 'multiple-choice',
       } as Doc<'questions'>);
     } else {
       setCurrentQuestion(undefined);
     }
-  }, [question, questionId, setCurrentQuestion]);
+  }, [question, legacyQuestionId, setCurrentQuestion]);
 
   // Reset state when question changes OR when transition completes
-  // This handles both normal question changes AND FSRS immediate re-review (same questionId)
+  // This handles both normal question changes AND FSRS immediate re-review (same phrasing)
   useEffect(() => {
-    if (questionId && !isTransitioning) {
+    if (phrasingId && !isTransitioning) {
       setSelectedAnswer('');
       setFeedbackState({
         showFeedback: false,
@@ -93,7 +126,7 @@ export function ReviewFlow() {
       });
       setQuestionStartTime(Date.now());
     }
-  }, [questionId, isTransitioning]);
+  }, [phrasingId, isTransitioning]);
 
   const handleAnswerSelect = useCallback(
     (answer: string) => {
@@ -104,14 +137,15 @@ export function ReviewFlow() {
   );
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedAnswer || !question || !questionId) return;
+    if (!selectedAnswer || !question || !conceptId || !phrasingId) return;
 
     const isCorrect = selectedAnswer === question.correctAnswer;
 
     // Track interaction with FSRS scheduling (before showing feedback)
     const timeSpent = Date.now() - questionStartTime;
     const reviewInfo = await trackAnswer(
-      questionId,
+      conceptId,
+      phrasingId,
       selectedAnswer,
       isCorrect,
       timeSpent,
@@ -128,7 +162,7 @@ export function ReviewFlow() {
           }
         : null,
     });
-  }, [selectedAnswer, question, questionId, questionStartTime, trackAnswer, sessionId]);
+  }, [selectedAnswer, question, conceptId, phrasingId, questionStartTime, trackAnswer, sessionId]);
 
   const handleNext = useCallback(() => {
     // Tell the review flow we're done with this question
@@ -139,13 +173,13 @@ export function ReviewFlow() {
 
   // Edit handler
   const handleEdit = useCallback(() => {
-    if (!question || !questionId) return;
+    if (!question || !legacyQuestionId) return;
     setEditModalOpen(true);
-  }, [question, questionId]);
+  }, [question, legacyQuestionId]);
 
   // Delete handler with confirmation
   const handleDelete = useCallback(async () => {
-    if (!question || !questionId) return;
+    if (!question || !legacyQuestionId) return;
 
     const confirmed = await confirm({
       title: 'Delete this question?',
@@ -157,14 +191,14 @@ export function ReviewFlow() {
     });
 
     if (confirmed) {
-      const result = await optimisticDelete({ questionId });
+      const result = await optimisticDelete({ questionId: legacyQuestionId });
       if (result.success) {
         // Toast already shown by optimisticDelete hook
         // Move to next question after delete
         handlers.onReviewComplete();
       }
     }
-  }, [question, questionId, optimisticDelete, handlers, confirm]);
+  }, [question, legacyQuestionId, optimisticDelete, handlers, confirm]);
 
   // Handle save from edit modal - now supports all fields
   const handleSaveEdit = useCallback(
@@ -174,11 +208,11 @@ export function ReviewFlow() {
       correctAnswer: string;
       explanation: string;
     }) => {
-      if (!questionId) return;
+      if (!legacyQuestionId) return;
 
       // Pass all fields including options and correctAnswer
       const result = await optimisticEdit({
-        questionId,
+        questionId: legacyQuestionId,
         question: updates.question,
         explanation: updates.explanation,
         options: updates.options,
@@ -190,10 +224,12 @@ export function ReviewFlow() {
         toast.success('Question updated');
       }
     },
-    [questionId, optimisticEdit]
+    [legacyQuestionId, optimisticEdit]
   );
 
   // Wire up keyboard shortcuts
+  const canModifyLegacyQuestion = Boolean(legacyQuestionId);
+
   useReviewShortcuts({
     onSelectAnswer: !feedbackState.showFeedback
       ? (index: number) => {
@@ -204,8 +240,8 @@ export function ReviewFlow() {
       : undefined,
     onSubmit: !feedbackState.showFeedback && selectedAnswer ? handleSubmit : undefined,
     onNext: feedbackState.showFeedback && !isTransitioning ? handleNext : undefined,
-    onEdit: handleEdit,
-    onDelete: handleDelete,
+    onEdit: canModifyLegacyQuestion ? handleEdit : undefined,
+    onDelete: canModifyLegacyQuestion ? handleDelete : undefined,
     showingFeedback: feedbackState.showFeedback,
     canSubmit: !!selectedAnswer,
   });
@@ -228,10 +264,55 @@ export function ReviewFlow() {
             <div className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border/50 shadow-sm">
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium tabular-nums">
-                <span className="text-foreground">{cachedDueCount}</span>
-                <span className="text-muted-foreground ml-1">cards due</span>
+                <span className="text-foreground">{cachedData.conceptsDue}</span>
+                <span className="text-muted-foreground ml-1">concepts due</span>
+                {cachedData.orphanedQuestions > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 ml-1 inline text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Plus {cachedData.orphanedQuestions} orphaned questions (need migration)
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </span>
             </div>
+
+            {/* FSRS State Badge - Learning Mode Indicator */}
+            {conceptFsrs?.state === 'learning' && (
+              <Badge
+                variant="outline"
+                className="border-blue-500 text-blue-700 bg-blue-50 dark:border-blue-400 dark:text-blue-300 dark:bg-blue-950"
+              >
+                <Brain className="h-3 w-3 mr-1" />
+                Learning Mode • Step {(conceptFsrs.reps ?? 0) + 1} of 4
+              </Badge>
+            )}
+
+            {/* First-Time Learning Mode Explainer */}
+            {conceptFsrs?.state === 'learning' && conceptFsrs.reps === 0 && (
+              <LearningModeExplainer />
+            )}
+
+            {/* Concept Title - HIDDEN during question phase to prevent spoilers (Rule #8: Contextual Standalone) */}
+            {feedbackState.showFeedback && conceptTitle && (
+              <div className="space-y-1 animate-fadeIn">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <span>Concept</span>
+                </div>
+                <h1 className="text-2xl font-semibold text-foreground break-words">
+                  {conceptTitle}
+                </h1>
+                {(phrasingPositionLabel || selectionReasonLabel) && (
+                  <p className="text-sm text-muted-foreground">
+                    {phrasingPositionLabel}
+                    {phrasingPositionLabel && selectionReasonLabel && ' • '}
+                    {selectionReasonLabel}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Use memoized component for question display with error boundary */}
             <ReviewErrorBoundary
@@ -245,7 +326,7 @@ export function ReviewFlow() {
             >
               <ReviewQuestionDisplay
                 question={question}
-                questionId={questionId}
+                questionId={phrasingId ?? undefined}
                 selectedAnswer={selectedAnswer}
                 showFeedback={feedbackState.showFeedback}
                 onAnswerSelect={handleAnswerSelect}
@@ -254,28 +335,32 @@ export function ReviewFlow() {
 
             {/* Action buttons - positioned above feedback for layout stability */}
             <div className="flex items-center justify-between mt-6 mb-4">
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleEdit}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Edit question (E)"
-                >
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDelete}
-                  className="text-muted-foreground hover:text-error"
-                  title="Delete question (D)"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
-              </div>
+              {canModifyLegacyQuestion ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleEdit}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Edit question (E)"
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDelete}
+                    className="text-muted-foreground hover:text-error"
+                    title="Delete question (D)"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
+              ) : (
+                <div />
+              )}
 
               {!feedbackState.showFeedback ? (
                 <Button onClick={handleSubmit} disabled={!selectedAnswer} size="lg">
@@ -352,13 +437,13 @@ export function ReviewFlow() {
           </article>
 
           {/* Edit Question Modal */}
-          {question && questionId && (
+          {question && legacyQuestionId && (
             <EditQuestionModal
               open={editModalOpen}
               onOpenChange={setEditModalOpen}
               question={
                 {
-                  _id: questionId,
+                  _id: legacyQuestionId,
                   _creationTime: Date.now(),
                   userId: '' as Doc<'questions'>['userId'], // Type assertion for missing field
                   question: question.question,

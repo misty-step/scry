@@ -20,6 +20,25 @@ import { validateBulkOwnership } from './lib/validation';
  *
  * Sets archivedAt timestamp to postpone questions without deleting them.
  * Archived questions are hidden from active review but preserved for later.
+ * Does not affect FSRS scheduling or user statistics.
+ *
+ * Side Effects:
+ * - Updates archivedAt and updatedAt fields for each question
+ * - Tracks analytics event ('Question Archived')
+ *
+ * Atomicity: All-or-nothing via validateBulkOwnership
+ * - If any question not found → Error, zero archives
+ * - If any question unauthorized → Error, zero archives
+ *
+ * @param questionIds - Array of question IDs to archive
+ * @returns Object with count of archived questions
+ * @throws {Error} "Question not found: {id}" if question doesn't exist
+ * @throws {Error} "Unauthorized access: {id}" if user doesn't own question
+ *
+ * @example
+ * // Archive 3 questions atomically
+ * await archiveQuestions({ questionIds: [id1, id2, id3] });
+ * // Returns: { archived: 3 }
  */
 export const archiveQuestions = mutation({
   args: {

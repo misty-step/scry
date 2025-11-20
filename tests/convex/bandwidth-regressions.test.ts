@@ -110,6 +110,9 @@ function createExprBuilder<T extends Record<string, unknown>>() {
   const predicates: Array<(doc: T) => boolean> = [];
 
   const builder = {
+    field(fieldName: keyof T | string) {
+      return fieldName;
+    },
     eq(field: keyof T | string, value: unknown) {
       predicates.push((doc) => doc[field as keyof T] === value);
       return builder;

@@ -1,9 +1,26 @@
 import { v } from 'convex/values';
+import { internal } from './_generated/api';
+import type { Doc } from './_generated/dataModel';
 import { Id } from './_generated/dataModel';
-import { internalMutation, mutation, MutationCtx, query } from './_generated/server';
+import {
+  internalAction,
+  internalMutation,
+  mutation,
+  MutationCtx,
+  query,
+} from './_generated/server';
 import { requireUserFromClerk } from './clerk';
+import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { upsertEmbeddingForQuestion } from './lib/embeddingHelpers';
-import { createLogger } from './lib/logger';
+import {
+  createConceptsLogger,
+  createLogger,
+  generateCorrelationId,
+  logConceptEvent,
+} from './lib/logger';
+import { clusterQuestionsBySimilarity } from './migrations/clusterQuestions';
+import { analyzeSimilarityDistribution, clusterQuestionsV3 } from './migrations/clusterQuestionsV3';
+import { synthesizeConceptFromQuestions } from './migrations/synthesizeConcept';
 
 /**
  * Default batch size for quiz results migration
@@ -888,7 +905,9 @@ export const backfillUserCreatedAt = internalMutation({
         }
 
         migrationLogger.info('Processing user batch', {
-          event: dryRun ? 'migration.user-created-at.dry-run.batch' : 'migration.user-created-at.batch',
+          event: dryRun
+            ? 'migration.user-created-at.dry-run.batch'
+            : 'migration.user-created-at.batch',
           batchSize: users.length,
         });
 
@@ -1459,6 +1478,622 @@ type EmbeddingsMigrationStats = {
 };
 
 /**
+ * Statistics for concepts seeding migration
+ */
+type ConceptsSeedingStats = {
+  totalQuestions: number;
+  conceptsCreated: number;
+  phrasingsCreated: number;
+  questionsLinked: number;
+  alreadyLinked: number;
+  errors: number;
+};
+
+/**
+ * Default batch size for concepts seeding migration
+ * Process 500 questions at a time (each creates 1 concept + 1 phrasing)
+ */
+const DEFAULT_CONCEPTS_SEEDING_BATCH_SIZE = 500;
+
+/**
+ * Diagnostic query to check concepts seeding migration status
+ *
+ * Returns counts of:
+ * - Total questions in database
+ * - Questions already linked to concepts
+ * - Questions needing migration (no conceptId)
+ */
+export const checkConceptsSeedingStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const correlationId = generateCorrelationId('migration-status');
+    const migrationLogger = createConceptsLogger({
+      module: 'migrations',
+      function: 'checkConceptsSeedingStatus',
+      correlationId,
+    });
+
+    logConceptEvent(migrationLogger, 'info', 'Concepts migration status check started', {
+      phase: 'migration',
+      event: 'start',
+      correlationId,
+    });
+
+    // Count all questions
+    const allQuestions = await ctx.db.query('questions').collect();
+    const totalQuestions = allQuestions.length;
+
+    // Count questions with conceptId (using runtime property check)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const questionsWithConceptId = allQuestions.filter((q) => 'conceptId' in (q as any));
+    const linked = questionsWithConceptId.length;
+
+    // Count concepts and phrasings
+    const concepts = await ctx.db.query('concepts').collect();
+    const phrasings = await ctx.db.query('phrasings').collect();
+
+    const needsMigration = totalQuestions - linked;
+
+    const result = {
+      totalQuestions,
+      linked,
+      needsMigration,
+      conceptsExist: concepts.length,
+      phrasingsExist: phrasings.length,
+      complete: needsMigration === 0,
+      // Sanity checks
+      countsMatch: concepts.length === phrasings.length && phrasings.length === linked,
+    };
+
+    logConceptEvent(migrationLogger, 'info', 'Concepts migration status computed', {
+      phase: 'migration',
+      event: 'completed',
+      correlationId,
+      totalQuestions,
+      linked,
+      needsMigration,
+      complete: result.complete,
+    });
+
+    return result;
+  },
+});
+
+/**
+ * Seed v0 concepts + phrasings from legacy questions
+ *
+ * Migration strategy:
+ * 1. For each question without conceptId:
+ *    - Create 1 concept with FSRS state copied from question
+ *    - Create 1 phrasing with question content
+ *    - Backfill question.conceptId to link them
+ *
+ * This creates a 1:1:1 mapping (question → concept → phrasing) as the foundation
+ * for future reclustering that will merge duplicate concepts.
+ *
+ * Idempotent: Skips questions that already have conceptId
+ * Batched: Processes questions in chunks to avoid memory issues
+ * Rerunnable: Safe to run multiple times (won't create duplicates)
+ *
+ * Usage:
+ * ```typescript
+ * // Dry run first to see what would be done
+ * await convex.mutation(api.migrations.seedConceptsFromQuestions, { dryRun: true });
+ *
+ * // Production run
+ * await convex.mutation(api.migrations.seedConceptsFromQuestions, {});
+ * ```
+ */
+export const seedConceptsFromQuestions = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<MigrationResult<ConceptsSeedingStats>> => {
+    const batchSize = args.batchSize || DEFAULT_CONCEPTS_SEEDING_BATCH_SIZE;
+    const dryRun = args.dryRun || false;
+    const correlationId = generateCorrelationId('migration-seed-concepts');
+
+    const migrationLogger = createConceptsLogger({
+      module: 'migrations',
+      function: 'seedConceptsFromQuestions',
+      correlationId,
+    });
+
+    const stats: ConceptsSeedingStats = {
+      totalQuestions: 0,
+      conceptsCreated: 0,
+      phrasingsCreated: 0,
+      questionsLinked: 0,
+      alreadyLinked: 0,
+      errors: 0,
+    };
+
+    const failures: Array<{ recordId: string; error: string }> = [];
+
+    try {
+      logConceptEvent(migrationLogger, 'info', 'Concepts seeding migration started', {
+        phase: 'migration',
+        event: 'start',
+        correlationId,
+        batchSize,
+        dryRun,
+      });
+
+      // Process all questions using cursor-based pagination
+      let paginationResult = await ctx.db.query('questions').paginate({
+        numItems: batchSize,
+        cursor: null,
+      });
+
+      // Process first batch
+      await processBatch(paginationResult.page);
+
+      // Continue processing remaining batches
+      while (!paginationResult.isDone) {
+        paginationResult = await ctx.db.query('questions').paginate({
+          numItems: batchSize,
+          cursor: paginationResult.continueCursor,
+        });
+
+        await processBatch(paginationResult.page);
+      }
+
+      // Helper function to process a batch of questions
+      async function processBatch(questions: typeof paginationResult.page) {
+        for (const question of questions) {
+          stats.totalQuestions++;
+
+          try {
+            // Check if question already has conceptId (runtime property check)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const questionData = question as any;
+
+            if ('conceptId' in questionData && questionData.conceptId) {
+              stats.alreadyLinked++;
+              continue;
+            }
+
+            if (!dryRun) {
+              // Extract FSRS state from question (initialize if not present)
+              const now = Date.now();
+              const fsrsState = {
+                stability: question.stability || 0,
+                difficulty: question.fsrsDifficulty || 5,
+                lastReview: question.lastReview,
+                nextReview: question.nextReview || now,
+                elapsedDays: question.elapsedDays,
+                retrievability: undefined, // Not stored in legacy questions
+                scheduledDays: question.scheduledDays,
+                reps: question.reps,
+                lapses: question.lapses,
+                state: question.state,
+              };
+
+              // Create concept with question text as title
+              const conceptId = await ctx.db.insert('concepts', {
+                userId: question.userId,
+                title: question.question.substring(0, 200), // Truncate long questions for title
+                description: question.explanation,
+                fsrs: fsrsState,
+                phrasingCount: 1, // Will have exactly 1 phrasing
+                embedding: question.embedding,
+                embeddingGeneratedAt: question.embeddingGeneratedAt,
+                createdAt: question.generatedAt || now,
+              });
+
+              stats.conceptsCreated++;
+
+              // Create phrasing with full question content
+              await ctx.db.insert('phrasings', {
+                userId: question.userId,
+                conceptId: conceptId,
+                question: question.question,
+                explanation: question.explanation,
+                type: question.type,
+                options: question.options,
+                correctAnswer: question.correctAnswer,
+                attemptCount: question.attemptCount,
+                correctCount: question.correctCount,
+                lastAttemptedAt: question.lastAttemptedAt,
+                createdAt: question.generatedAt || now,
+                embedding: question.embedding,
+                embeddingGeneratedAt: question.embeddingGeneratedAt,
+              });
+
+              stats.phrasingsCreated++;
+
+              // Backfill question.conceptId
+              await ctx.db.patch(question._id, {
+                conceptId: conceptId,
+              });
+
+              stats.questionsLinked++;
+            } else {
+              // Dry run: just count what would be created
+              stats.conceptsCreated++;
+              stats.phrasingsCreated++;
+              stats.questionsLinked++;
+            }
+
+            // Log progress every 100 records
+            if (stats.questionsLinked % PROGRESS_LOG_INTERVAL === 0) {
+              migrationLogger.info(
+                `Migration progress: ${stats.questionsLinked} questions migrated`,
+                {
+                  event: 'migration.concepts-seeding.progress',
+                  correlationId,
+                  questionsLinked: stats.questionsLinked,
+                }
+              );
+            }
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            failures.push({
+              recordId: question._id,
+              error: error.message,
+            });
+            stats.errors++;
+          }
+        }
+
+        // Log batch completion
+        migrationLogger.info('Batch completed', {
+          event: dryRun
+            ? 'migration.concepts-seeding.batch.dry-run'
+            : 'migration.concepts-seeding.batch',
+          batchSize: questions.length,
+          totalQuestions: stats.totalQuestions,
+          conceptsCreated: stats.conceptsCreated,
+          phrasingsCreated: stats.phrasingsCreated,
+          questionsLinked: stats.questionsLinked,
+          alreadyLinked: stats.alreadyLinked,
+          correlationId,
+        });
+      }
+
+      logConceptEvent(migrationLogger, 'info', 'Concepts seeding migration completed', {
+        phase: 'migration',
+        event: 'completed',
+        correlationId,
+        dryRun,
+        stats,
+        failures: failures.length,
+      });
+
+      // Determine migration status
+      const status =
+        failures.length === 0
+          ? ('completed' as const)
+          : failures.length === stats.totalQuestions
+            ? ('failed' as const)
+            : ('partial' as const);
+
+      return {
+        status,
+        dryRun,
+        stats,
+        failures: failures.length > 0 ? failures : undefined,
+        message: dryRun
+          ? `Dry run: Would create ${stats.conceptsCreated} concepts + ${stats.phrasingsCreated} phrasings, link ${stats.questionsLinked} questions (${stats.alreadyLinked} already linked)`
+          : status === 'completed'
+            ? `Successfully created ${stats.conceptsCreated} concepts + ${stats.phrasingsCreated} phrasings, linked ${stats.questionsLinked} questions`
+            : status === 'partial'
+              ? `Partially completed: ${stats.questionsLinked} succeeded, ${stats.errors} failed`
+              : `Migration failed: All ${stats.errors} attempts failed`,
+      };
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+
+      logConceptEvent(migrationLogger, 'error', 'Concepts seeding migration failed', {
+        phase: 'migration',
+        event: 'failed',
+        correlationId,
+        errorMessage: error.message,
+        stats,
+        failureCount: failures.length,
+      });
+
+      return {
+        status: 'failed' as const,
+        dryRun,
+        stats,
+        failures: [
+          {
+            recordId: 'N/A',
+            error: error.message,
+          },
+        ],
+        message: `Migration failed: ${error.message}`,
+      };
+    }
+  },
+});
+
+/**
+ * ============================================================================
+ * MIGRATION V2: Questions → Concepts/Phrasings
+ * ============================================================================
+ *
+ * One-time migration to transform orphaned questions into the concepts/phrasings system.
+ * Uses semantic clustering to group related questions, synthesizes unified concept titles,
+ * and preserves all FSRS state and interaction history.
+ *
+ * SAFETY: Supports dry-run mode for validation before actual migration.
+ * ATOMICITY: Questions remain untouched (only conceptId field added).
+ * ROLLBACK: Can delete concepts/phrasings and clear conceptId fields if needed.
+ */
+
+/**
+ * Migrate orphaned questions to concepts/phrasings system
+ *
+ * Process:
+ * 1. Query all questions without conceptId (orphaned questions)
+ * 2. Cluster questions by semantic similarity (0.85 threshold)
+ * 3. Synthesize concept title/description for each cluster via GPT-5-mini
+ * 4. Create concepts + phrasings, link questions to concepts
+ * 5. Preserve all FSRS state from most-reviewed question in cluster
+ *
+ * @param dryRun - If true, logs intended actions without mutations (default: true)
+ * @returns Migration statistics
+ */
+export const migrateQuestionsToConceptsV2 = internalAction({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+
+    console.warn(`[Migration V2] Starting with dryRun=${dryRun}`);
+    console.warn(`[Migration V2] Deployment: ${process.env.CONVEX_CLOUD_URL || 'local'}`);
+
+    // 1. Find orphaned questions (no conceptId)
+    const orphanedQuestions = await ctx.runQuery(internal.migrations.getOrphanedQuestions);
+
+    console.warn(`[Migration V2] Found ${orphanedQuestions.length} orphaned questions`);
+
+    if (orphanedQuestions.length === 0) {
+      console.warn('[Migration V2] No orphaned questions. Migration complete.');
+      return {
+        clustersFormed: 0,
+        conceptsCreated: 0,
+        phrasingsCreated: 0,
+        questionsLinked: 0,
+      };
+    }
+
+    // 2. Cluster by semantic similarity
+    console.warn('[Migration V2] Clustering questions by similarity...');
+    const clusters = await clusterQuestionsBySimilarity(ctx, orphanedQuestions);
+
+    console.warn(`[Migration V2] Formed ${clusters.length} clusters`);
+    console.warn(
+      `[Migration V2] Cluster sizes: ${clusters
+        .map((c) => c.questions.length)
+        .sort((a, b) => b - a)
+        .slice(0, 10)
+        .join(', ')}${clusters.length > 10 ? '...' : ''}`
+    );
+
+    const stats = {
+      clustersFormed: clusters.length,
+      conceptsCreated: 0,
+      phrasingsCreated: 0,
+      questionsLinked: 0,
+    };
+
+    // 3. Process each cluster
+    for (let i = 0; i < clusters.length; i++) {
+      const cluster = clusters[i];
+
+      // Synthesize concept title/description
+      const conceptData = await synthesizeConceptFromQuestions(ctx, cluster.questions);
+
+      if (dryRun) {
+        console.warn(
+          `[DRY RUN] Cluster ${i + 1}/${clusters.length}: ` +
+            `Would create concept "${conceptData.title}" ` +
+            `with ${cluster.questions.length} phrasing(s) ` +
+            `(avg similarity: ${cluster.avgSimilarity.toFixed(2)})`
+        );
+        continue;
+      }
+
+      // Create concept + phrasings + links (single mutation, all DB ops)
+      try {
+        await ctx.runMutation(internal.migrations.createConceptFromCluster, {
+          questions: cluster.questions,
+          title: conceptData.title,
+          description: conceptData.description,
+        });
+
+        stats.conceptsCreated++;
+        stats.phrasingsCreated += cluster.questions.length;
+        stats.questionsLinked += cluster.questions.length;
+
+        console.warn(
+          `[Migration V2] ${i + 1}/${clusters.length}: ` +
+            `Created concept "${conceptData.title}" ` +
+            `with ${cluster.questions.length} phrasing(s)`
+        );
+      } catch (error) {
+        console.error(`[Migration V2] FAILED on cluster ${i + 1}: ${error}`);
+        console.error(`[Migration V2] Cluster data:`, {
+          title: conceptData.title,
+          questionCount: cluster.questions.length,
+          firstQuestionId: cluster.questions[0]?._id,
+        });
+        throw error;
+      }
+    }
+
+    console.warn('[Migration V2] Complete:', stats);
+    return stats;
+  },
+});
+
+/**
+ * Helper query: Get all orphaned questions (no conceptId)
+ */
+export const getOrphanedQuestions = query({
+  args: {},
+  handler: async (ctx) => {
+    const allQuestions = await ctx.db.query('questions').collect();
+    return allQuestions.filter((q) => q.conceptId === undefined);
+  },
+});
+
+/**
+ * Helper mutation: Create concept and phrasings from cluster
+ *
+ * Single atomic mutation that creates concept, all phrasings, and links questions.
+ * Uses FSRS state from most-reviewed question in cluster.
+ */
+export const createConceptFromCluster = internalMutation({
+  args: {
+    questions: v.array(v.any()), // Doc<'questions'>[] passed from action
+    title: v.string(),
+    description: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find most-reviewed question (highest reps) for FSRS state
+    const mostReviewedQuestion = args.questions.reduce(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (best: any, curr: any) => ((curr.reps ?? 0) > (best.reps ?? 0) ? curr : best),
+      args.questions[0]
+    );
+
+    // Create concept
+    const conceptId = await ctx.db.insert('concepts', {
+      userId: mostReviewedQuestion.userId,
+      title: args.title,
+      description: args.description,
+      fsrs: {
+        stability: mostReviewedQuestion.stability ?? 1,
+        difficulty: mostReviewedQuestion.fsrsDifficulty ?? 5,
+        lastReview: mostReviewedQuestion.lastReview,
+        nextReview: mostReviewedQuestion.nextReview ?? Date.now(),
+        elapsedDays: mostReviewedQuestion.elapsedDays,
+        retrievability: mostReviewedQuestion.retrievability,
+        scheduledDays: mostReviewedQuestion.scheduledDays,
+        reps: mostReviewedQuestion.reps,
+        lapses: mostReviewedQuestion.lapses,
+        state: mostReviewedQuestion.state ?? 'new',
+      },
+      phrasingCount: args.questions.length,
+      embedding: mostReviewedQuestion.embedding,
+      embeddingGeneratedAt: mostReviewedQuestion.embeddingGeneratedAt,
+      createdAt: Date.now(),
+    });
+
+    // Create phrasings and link questions
+    for (const question of args.questions) {
+      await ctx.db.insert('phrasings', {
+        userId: question.userId,
+        conceptId,
+        question: question.question,
+        explanation: question.explanation,
+        type: question.type,
+        options: question.options,
+        correctAnswer: question.correctAnswer,
+        attemptCount: question.attemptCount,
+        correctCount: question.correctCount,
+        lastAttemptedAt: question.lastAttemptedAt,
+        createdAt: question.generatedAt ?? Date.now(),
+        embedding: question.embedding,
+        embeddingGeneratedAt: question.embeddingGeneratedAt,
+      });
+
+      // Link question to concept
+      await ctx.db.patch(question._id, { conceptId });
+    }
+  },
+});
+
+/**
+ * Backfill thinScore and conflictScore for all concepts.
+ *
+ * Iterates through all concepts and updates their thinScore based on phrasingCount.
+ * conflictScore is left as undefined unless we want to do expensive checks,
+ * but for now we focus on fixing the 'thin' view.
+ */
+export const backfillConceptScores = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 100;
+
+    const { page, continueCursor, isDone } = await ctx.db
+      .query('concepts')
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
+    let updatedCount = 0;
+
+    for (const concept of page) {
+      let thinScore: number | undefined = undefined;
+
+      // Calculate thinScore
+      if (concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+        const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, concept.phrasingCount);
+        thinScore = delta > 0 ? delta : undefined;
+      }
+
+      // Only update if changed
+      if (concept.thinScore !== thinScore) {
+        await ctx.db.patch(concept._id, {
+          thinScore,
+          // We don't touch conflictScore here as it requires expensive checks
+        });
+        updatedCount++;
+      }
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(`Backfilled scores for ${page.length} concepts. Updated: ${updatedCount}`);
+
+    if (!isDone) {
+      // Recursively call for next batch (via scheduler to avoid timeout)
+      await ctx.scheduler.runAfter(0, internal.migrations.backfillConceptScores, {
+        batchSize,
+        cursor: continueCursor,
+      });
+    }
+
+    return {
+      processed: page.length,
+      updated: updatedCount,
+      isDone,
+      continueCursor,
+    };
+  },
+});
+
+/**
+ * Diagnostic query: Check migration status
+ *
+ * Returns count of total questions, orphaned questions, and linked questions.
+ * Use to verify migration completion (orphaned should be 0 when complete).
+ */
+export const checkMigrationStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const totalQuestions = await ctx.db.query('questions').collect();
+    const orphaned = totalQuestions.filter((q) => !q.conceptId);
+    const linked = totalQuestions.filter((q) => q.conceptId);
+
+    return {
+      totalQuestions: totalQuestions.length,
+      orphaned: orphaned.length,
+      linked: linked.length,
+      percentMigrated:
+        totalQuestions.length > 0 ? (linked.length / totalQuestions.length) * 100 : 0,
+    };
+  },
+});
+
+/**
  * Migration: Move embeddings from questions table to questionEmbeddings table
  *
  * **Phase 1 of 3-phase migration pattern:**
@@ -1650,7 +2285,6 @@ export const migrateEmbeddingsToSeparateTableDiagnostic = query({
     const allQuestions = await ctx.db.query('questions').take(SAMPLE_LIMIT);
 
     // Runtime property check (not TypeScript type erasure)
-
     const questionsWithEmbeddings = allQuestions.filter(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (q) => 'embedding' in (q as any) && (q as any).embedding !== undefined
@@ -1661,9 +2295,7 @@ export const migrateEmbeddingsToSeparateTableDiagnostic = query({
     const embeddingQuestionIds = new Set(embeddingsInNewTable.map((e) => e.questionId));
 
     // Count questions with embeddings but NOT in new table
-    const needsMigration = questionsWithEmbeddings.filter(
-      (q) => !embeddingQuestionIds.has(q._id) // O(1) lookup instead of O(n)!
-    );
+    const needsMigration = questionsWithEmbeddings.filter((q) => !embeddingQuestionIds.has(q._id));
 
     return {
       questionsWithEmbeddings: questionsWithEmbeddings.length,
@@ -1671,6 +2303,695 @@ export const migrateEmbeddingsToSeparateTableDiagnostic = query({
       remaining: needsMigration.length,
       complete: needsMigration.length === 0,
       isApproximate: allQuestions.length === SAMPLE_LIMIT,
+    };
+  },
+});
+
+/**
+ * Diagnostic query: Sample created concepts for manual review
+ *
+ * Returns sample of concepts with their phrasings for quality validation.
+ * Use after migration to spot-check clustering and synthesis quality.
+ */
+export const sampleConcepts = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 10;
+
+    const concepts = await ctx.db.query('concepts').order('desc').take(limit);
+
+    const samplesWithPhrasings = await Promise.all(
+      concepts.map(async (concept) => {
+        const phrasings = await ctx.db
+          .query('phrasings')
+          .withIndex('by_user_concept', (q) =>
+            q.eq('userId', concept.userId).eq('conceptId', concept._id)
+          )
+          .collect();
+
+        return {
+          conceptId: concept._id,
+          title: concept.title,
+          description: concept.description,
+          phrasingCount: concept.phrasingCount,
+          fsrsState: concept.fsrs.state,
+          fsrsReps: concept.fsrs.reps,
+          phrasings: phrasings.map((p) => ({
+            phrasingId: p._id,
+            question: p.question,
+            attemptCount: p.attemptCount,
+            correctCount: p.correctCount,
+          })),
+        };
+      })
+    );
+
+    return samplesWithPhrasings;
+  },
+});
+
+/**
+ * Diagnostic: Analyze current migration state and similarity distribution
+ *
+ * Run this before V3 migration to understand:
+ * - Current migration status (V1 vs V2)
+ * - Pairwise similarity distribution
+ * - How many pairs are in the "missed" range (0.65-0.85)
+ */
+export const analyzeMigrationState = internalAction({
+  args: {},
+  handler: async (
+    ctx
+  ): Promise<{
+    questions: { total: number; orphaned: number; linked: number };
+    concepts: {
+      total: number;
+      avgPhrasingsPerConcept: number;
+      phrasingDistribution: Record<string, number>;
+    };
+    similarity: Awaited<ReturnType<typeof analyzeSimilarityDistribution>> | null;
+  }> => {
+    console.warn('[Diagnostic] Analyzing migration state...');
+
+    // Get current counts
+    const allQuestions = (await ctx.runQuery(
+      internal.migrations.getOrphanedQuestions
+    )) as Doc<'questions'>[];
+    const allQuestionsTotal = (await ctx.runQuery(internal.migrations.checkMigrationStatus)) as {
+      totalQuestions: number;
+      orphaned: number;
+      linked: number;
+      percentMigrated: number;
+    };
+
+    console.warn(`[Diagnostic] Total questions: ${allQuestionsTotal.totalQuestions}`);
+    console.warn(`[Diagnostic] Orphaned (no concept): ${allQuestions.length}`);
+    console.warn(`[Diagnostic] Linked to concepts: ${allQuestionsTotal.linked}`);
+
+    // Get concept statistics
+    const concepts = (await ctx.runQuery(internal.migrations.getConceptStats)) as {
+      total: number;
+      avgPhrasingsPerConcept: number;
+      phrasingDistribution: Record<string, number>;
+    };
+
+    console.warn(`[Diagnostic] Total concepts: ${concepts.total}`);
+    console.warn(
+      `[Diagnostic] Avg phrasings/concept: ${concepts.avgPhrasingsPerConcept.toFixed(2)}`
+    );
+    console.warn(
+      `[Diagnostic] Phrasing distribution: ${JSON.stringify(concepts.phrasingDistribution)}`
+    );
+
+    // Analyze similarity distribution for ALL questions (not just orphaned)
+    // This shows what V3 could potentially achieve
+    const allQuestionsForAnalysis = (await ctx.runQuery(
+      internal.migrations.getAllQuestionsForSimilarityAnalysis
+    )) as Doc<'questions'>[];
+
+    if (allQuestionsForAnalysis.length > 0) {
+      console.warn(
+        `[Diagnostic] Analyzing similarity distribution for ${allQuestionsForAnalysis.length} total questions...`
+      );
+      const analysis = await analyzeSimilarityDistribution(ctx, allQuestionsForAnalysis);
+
+      console.warn('[Diagnostic] Similarity distribution:');
+      for (const bucket of analysis.distribution) {
+        console.warn(`  ${bucket.range}: ${bucket.count} pairs (${bucket.percentage})`);
+      }
+
+      console.warn('[Diagnostic] Summary:');
+      console.warn(`  Total pairs: ${analysis.summary.totalPairs}`);
+      console.warn(`  Pairs >= 0.85 (current V2 threshold): ${analysis.summary.pairsAbove85}`);
+      console.warn(`  Pairs >= 0.75: ${analysis.summary.pairsAbove75}`);
+      console.warn(`  Pairs >= 0.65 (V3 threshold): ${analysis.summary.pairsAbove65}`);
+      console.warn(
+        `  Missed by V2 (0.65-0.85): ${analysis.summary.pairsAbove65 - analysis.summary.pairsAbove85}`
+      );
+
+      return {
+        questions: {
+          total: allQuestionsTotal.totalQuestions,
+          orphaned: allQuestions.length,
+          linked: allQuestionsTotal.linked,
+        },
+        concepts: concepts,
+        similarity: analysis,
+      };
+    }
+
+    return {
+      questions: {
+        total: allQuestionsTotal.totalQuestions,
+        orphaned: allQuestions.length,
+        linked: allQuestionsTotal.linked,
+      },
+      concepts: concepts,
+      similarity: null,
+    };
+  },
+});
+
+/**
+ * Helper query: Get concept statistics
+ */
+export const getConceptStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const concepts = await ctx.db.query('concepts').collect();
+
+    if (concepts.length === 0) {
+      return {
+        total: 0,
+        avgPhrasingsPerConcept: 0,
+        phrasingDistribution: {},
+      };
+    }
+
+    const totalPhrasings = concepts.reduce((sum, c) => sum + c.phrasingCount, 0);
+    const distribution: Record<string, number> = {
+      '1': 0,
+      '2': 0,
+      '3-5': 0,
+      '6-10': 0,
+      '10+': 0,
+    };
+
+    for (const concept of concepts) {
+      const count = concept.phrasingCount;
+      if (count === 1) distribution['1']++;
+      else if (count === 2) distribution['2']++;
+      else if (count <= 5) distribution['3-5']++;
+      else if (count <= 10) distribution['6-10']++;
+      else distribution['10+']++;
+    }
+
+    return {
+      total: concepts.length,
+      avgPhrasingsPerConcept: totalPhrasings / concepts.length,
+      phrasingDistribution: distribution,
+    };
+  },
+});
+
+/**
+ * Helper query: Get all questions for similarity analysis
+ */
+export const getAllQuestionsForSimilarityAnalysis = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query('questions').collect();
+  },
+});
+
+/**
+ * Reset concepts migration (DEV ONLY)
+ *
+ * Clears all concepts and phrasings, unlinks all questions.
+ * Use before re-running V3 migration for testing.
+ *
+ * WARNING: Destructive operation - only use in development!
+ */
+export const resetConceptsMigration = internalMutation({
+  args: {
+    confirm: v.literal('I_UNDERSTAND_THIS_DELETES_ALL_CONCEPTS'),
+  },
+  handler: async (ctx) => {
+    console.warn('[Reset] Starting concepts reset...');
+
+    // Delete all phrasings
+    const phrasings = await ctx.db.query('phrasings').collect();
+    for (const phrasing of phrasings) {
+      await ctx.db.delete(phrasing._id);
+    }
+    console.warn(`[Reset] Deleted ${phrasings.length} phrasings`);
+
+    // Delete all concepts
+    const concepts = await ctx.db.query('concepts').collect();
+    for (const concept of concepts) {
+      await ctx.db.delete(concept._id);
+    }
+    console.warn(`[Reset] Deleted ${concepts.length} concepts`);
+
+    // Unlink all questions
+    const questions = await ctx.db.query('questions').collect();
+    let unlinked = 0;
+    for (const question of questions) {
+      if (question.conceptId) {
+        await ctx.db.patch(question._id, { conceptId: undefined });
+        unlinked++;
+      }
+    }
+    console.warn(`[Reset] Unlinked ${unlinked} questions`);
+
+    return {
+      phrasingsDeleted: phrasings.length,
+      conceptsDeleted: concepts.length,
+      questionsUnlinked: unlinked,
+    };
+  },
+});
+
+/**
+ * Migration V3: Two-phase clustering with LLM refinement
+ *
+ * Improvements over V2:
+ * 1. Lower threshold (0.65) for candidate finding
+ * 2. Single linkage (merge if ANY pair matches) vs average
+ * 3. LLM refines candidate groups into actual concepts
+ * 4. Better handles "different phrasing, same concept" cases
+ *
+ * @param dryRun - If true, logs intended actions without mutations (default: true)
+ */
+export const migrateQuestionsToConceptsV3 = internalAction({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    maxQuestions: v.optional(v.number()), // Limit questions per pass to avoid timeout
+  },
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const maxQuestions = args.maxQuestions;
+
+    console.warn(
+      `[Migration V3] Starting with dryRun=${dryRun}, maxQuestions=${maxQuestions ?? 'all'}`
+    );
+    console.warn(`[Migration V3] Deployment: ${process.env.CONVEX_CLOUD_URL || 'local'}`);
+
+    // 1. Find orphaned questions (no conceptId)
+    let orphanedQuestions = await ctx.runQuery(internal.migrations.getOrphanedQuestions);
+
+    console.warn(`[Migration V3] Found ${orphanedQuestions.length} total orphaned questions`);
+
+    // Limit to maxQuestions if specified
+    if (maxQuestions && orphanedQuestions.length > maxQuestions) {
+      console.warn(
+        `[Migration V3] Limiting to first ${maxQuestions} questions (${orphanedQuestions.length - maxQuestions} remaining)`
+      );
+      orphanedQuestions = orphanedQuestions.slice(0, maxQuestions);
+    }
+
+    if (orphanedQuestions.length === 0) {
+      console.warn('[Migration V3] No orphaned questions. Migration complete.');
+      return {
+        clustersFormed: 0,
+        conceptsCreated: 0,
+        phrasingsCreated: 0,
+        questionsLinked: 0,
+        stats: null,
+      };
+    }
+
+    // 2. Two-phase clustering
+    const { clusters, stats } = await clusterQuestionsV3(ctx, orphanedQuestions);
+
+    console.warn(`[Migration V3] Clustering complete: ${clusters.length} concepts identified`);
+    console.warn(`[Migration V3] Stats:`, stats);
+
+    const migrationStats = {
+      clustersFormed: stats.candidateGroups,
+      conceptsCreated: 0,
+      phrasingsCreated: 0,
+      questionsLinked: 0,
+    };
+
+    // 3. Process each cluster
+    for (let i = 0; i < clusters.length; i++) {
+      const cluster = clusters[i];
+
+      if (dryRun) {
+        console.warn(
+          `[DRY RUN] Cluster ${i + 1}/${clusters.length}: ` +
+            `Would create concept "${cluster.conceptName}" ` +
+            `with ${cluster.questions.length} phrasing(s)`
+        );
+        continue;
+      }
+
+      // Create concept + phrasings + links
+      try {
+        await ctx.runMutation(internal.migrations.createConceptFromClusterV3, {
+          questions: cluster.questions,
+          conceptName: cluster.conceptName,
+        });
+
+        migrationStats.conceptsCreated++;
+        migrationStats.phrasingsCreated += cluster.questions.length;
+        migrationStats.questionsLinked += cluster.questions.length;
+
+        console.warn(
+          `[Migration V3] ${i + 1}/${clusters.length}: ` +
+            `Created concept "${cluster.conceptName}" ` +
+            `with ${cluster.questions.length} phrasing(s)`
+        );
+      } catch (error) {
+        console.error(`[Migration V3] FAILED on cluster ${i + 1}: ${error}`);
+        throw error;
+      }
+    }
+
+    console.warn('[Migration V3] Complete:', migrationStats);
+    return {
+      ...migrationStats,
+      stats,
+    };
+  },
+});
+
+/**
+ * Helper mutation: Create concept from V3 cluster
+ *
+ * Similar to createConceptFromCluster but uses LLM-generated concept name.
+ */
+export const createConceptFromClusterV3 = internalMutation({
+  args: {
+    questions: v.array(v.any()),
+    conceptName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find most-reviewed question for FSRS state
+    const mostReviewedQuestion = args.questions.reduce(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (best: any, curr: any) => ((curr.reps ?? 0) > (best.reps ?? 0) ? curr : best),
+      args.questions[0]
+    );
+
+    // Generate description from first question's explanation
+    const description = args.questions[0].explanation || `Concept: ${args.conceptName}`;
+
+    const phrasingCount = args.questions.length;
+    let thinScore: number | undefined;
+    if (phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+      const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, phrasingCount);
+      thinScore = delta > 0 ? delta : undefined;
+    }
+    // Simple conflict score check for initial migration (duplicate check)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const questions = args.questions.map((q: any) => q.question.trim().toLowerCase());
+    const uniqueQuestions = new Set(questions);
+    const conflictCount = questions.length - uniqueQuestions.size;
+    const conflictScore = conflictCount > 0 ? conflictCount : undefined;
+
+    // Create concept
+    const conceptId = await ctx.db.insert('concepts', {
+      userId: mostReviewedQuestion.userId,
+      title: args.conceptName,
+      description: description.substring(0, 300),
+      fsrs: {
+        stability: mostReviewedQuestion.stability ?? 1,
+        difficulty: mostReviewedQuestion.fsrsDifficulty ?? 5,
+        lastReview: mostReviewedQuestion.lastReview,
+        nextReview: mostReviewedQuestion.nextReview ?? Date.now(),
+        elapsedDays: mostReviewedQuestion.elapsedDays,
+        retrievability: mostReviewedQuestion.retrievability,
+        scheduledDays: mostReviewedQuestion.scheduledDays,
+        reps: mostReviewedQuestion.reps,
+        lapses: mostReviewedQuestion.lapses,
+        state: mostReviewedQuestion.state ?? 'new',
+      },
+      phrasingCount,
+      thinScore,
+      conflictScore,
+      embedding: mostReviewedQuestion.embedding,
+      embeddingGeneratedAt: mostReviewedQuestion.embeddingGeneratedAt,
+      createdAt: Date.now(),
+    });
+
+    // Create phrasings and link questions
+    for (const question of args.questions) {
+      await ctx.db.insert('phrasings', {
+        userId: question.userId,
+        conceptId,
+        question: question.question,
+        explanation: question.explanation,
+        type: question.type,
+        options: question.options,
+        correctAnswer: question.correctAnswer,
+        attemptCount: question.attemptCount,
+        correctCount: question.correctCount,
+        lastAttemptedAt: question.lastAttemptedAt,
+        createdAt: question.generatedAt ?? Date.now(),
+        embedding: question.embedding,
+        embeddingGeneratedAt: question.embeddingGeneratedAt,
+      });
+
+      // Link question to concept
+      await ctx.db.patch(question._id, { conceptId });
+    }
+  },
+});
+
+/**
+ * Comprehensive backfill of thinScore AND conflictScore for all concepts.
+ *
+ * Unlike `backfillConceptScores` which only computes thinScore,
+ * this migration fetches actual phrasings to calculate accurate conflict scores.
+ *
+ * Use dry-run mode first to preview changes.
+ */
+export const backfillConceptScoresFull = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 50; // Smaller batch due to phrasing fetches
+    const dryRun = args.dryRun ?? false;
+
+    const { page, continueCursor, isDone } = await ctx.db
+      .query('concepts')
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize });
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    for (const concept of page) {
+      // Fetch all active phrasings for this concept
+      const phrasings = await ctx.db
+        .query('phrasings')
+        .withIndex('by_user_concept', (q) =>
+          q.eq('userId', concept.userId).eq('conceptId', concept._id)
+        )
+        .filter((q) => q.eq(q.field('archivedAt'), undefined))
+        .collect();
+
+      const phrasingCount = phrasings.length;
+
+      // Calculate thinScore
+      let thinScore: number | undefined = undefined;
+      if (phrasingCount < TARGET_PHRASINGS_PER_CONCEPT) {
+        const delta = TARGET_PHRASINGS_PER_CONCEPT - phrasingCount;
+        thinScore = delta > 0 ? delta : undefined;
+      }
+
+      // Calculate conflictScore from actual question text
+      let conflictScore: number | undefined = undefined;
+      if (phrasingCount > 1) {
+        const questions = phrasings.map((p) => p.question.trim().toLowerCase());
+        const uniqueQuestions = new Set(questions);
+        const conflictCount = questions.length - uniqueQuestions.size;
+        conflictScore = conflictCount > 0 ? conflictCount : undefined;
+      }
+
+      // Check if update needed
+      const needsUpdate =
+        concept.thinScore !== thinScore ||
+        concept.conflictScore !== conflictScore ||
+        concept.phrasingCount !== phrasingCount;
+
+      if (needsUpdate) {
+        if (!dryRun) {
+          await ctx.db.patch(concept._id, {
+            thinScore,
+            conflictScore,
+            phrasingCount, // Also fix phrasingCount if it drifted
+          });
+        }
+        updatedCount++;
+      } else {
+        skippedCount++;
+      }
+    }
+
+    const mode = dryRun ? '[DRY RUN] ' : '';
+    // eslint-disable-next-line no-console
+    console.log(
+      `${mode}Processed ${page.length} concepts. Updated: ${updatedCount}, Skipped: ${skippedCount}`
+    );
+
+    if (!isDone && !dryRun) {
+      // Continue with next batch
+      await ctx.scheduler.runAfter(0, internal.migrations.backfillConceptScoresFull, {
+        batchSize,
+        cursor: continueCursor,
+        dryRun,
+      });
+    }
+
+    return {
+      processed: page.length,
+      updated: updatedCount,
+      skipped: skippedCount,
+      isDone,
+      continueCursor,
+      dryRun,
+    };
+  },
+});
+
+/**
+ * Diagnostic: Check concept scores health
+ *
+ * Returns counts of concepts with missing or incorrect scores.
+ * Use to verify migration completion and detect drift.
+ */
+export const backfillConceptScoresFullDiagnostic = query({
+  args: {},
+  handler: async (ctx) => {
+    const concepts = await ctx.db.query('concepts').collect();
+
+    let missingThinScore = 0;
+    let missingConflictCheck = 0;
+    let potentiallyStale = 0;
+
+    for (const concept of concepts) {
+      // Check for concepts that should have thinScore but don't
+      if (concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT && concept.thinScore === undefined) {
+        missingThinScore++;
+      }
+
+      // Check for concepts with multiple phrasings that were never checked for conflicts
+      // (conflictScore undefined could be correct if no conflicts, but we flag for review)
+      if (concept.phrasingCount > 1 && concept.conflictScore === undefined) {
+        missingConflictCheck++;
+      }
+
+      // Check for stale phrasingCount (would need phrasing query to verify)
+      // This is a heuristic - if thinScore doesn't match phrasingCount formula
+      const expectedThin =
+        concept.phrasingCount < TARGET_PHRASINGS_PER_CONCEPT
+          ? TARGET_PHRASINGS_PER_CONCEPT - concept.phrasingCount
+          : undefined;
+      if (concept.thinScore !== expectedThin) {
+        potentiallyStale++;
+      }
+    }
+
+    return {
+      totalConcepts: concepts.length,
+      missingThinScore,
+      missingConflictCheck,
+      potentiallyStale,
+      healthy: concepts.length - missingThinScore - potentiallyStale,
+      needsMigration: missingThinScore > 0 || potentiallyStale > 0,
+    };
+  },
+});
+
+/**
+ * Reconcile concept scores - self-healing job
+ *
+ * Samples N concepts and recalculates their scores from actual phrasing data.
+ * Auto-corrects any drift. Run daily via cron.
+ */
+export const reconcileConceptScores = internalMutation({
+  args: {
+    sampleSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const sampleSize = args.sampleSize ?? 100;
+
+    // Get random sample of concepts by fetching more and taking random subset
+    const allConcepts = await ctx.db.query('concepts').collect();
+    const shuffled = allConcepts.sort(() => Math.random() - 0.5);
+    const sample = shuffled.slice(0, sampleSize);
+
+    let corrected = 0;
+    const corrections: Array<{
+      conceptId: string;
+      field: string;
+      old: number | undefined;
+      new: number | undefined;
+    }> = [];
+
+    for (const concept of sample) {
+      // Fetch actual phrasings
+      const phrasings = await ctx.db
+        .query('phrasings')
+        .withIndex('by_user_concept', (q) =>
+          q.eq('userId', concept.userId).eq('conceptId', concept._id)
+        )
+        .filter((q) => q.eq(q.field('archivedAt'), undefined))
+        .collect();
+
+      const actualCount = phrasings.length;
+
+      // Calculate expected scores
+      const expectedThin =
+        actualCount < TARGET_PHRASINGS_PER_CONCEPT
+          ? TARGET_PHRASINGS_PER_CONCEPT - actualCount
+          : undefined;
+
+      let expectedConflict: number | undefined = undefined;
+      if (actualCount > 1) {
+        const questions = phrasings.map((p) => p.question.trim().toLowerCase());
+        const uniqueQuestions = new Set(questions);
+        const conflictCount = questions.length - uniqueQuestions.size;
+        expectedConflict = conflictCount > 0 ? conflictCount : undefined;
+      }
+
+      // Check for drift
+      const updates: Partial<Doc<'concepts'>> = {};
+
+      if (concept.phrasingCount !== actualCount) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'phrasingCount',
+          old: concept.phrasingCount,
+          new: actualCount,
+        });
+        updates.phrasingCount = actualCount;
+      }
+
+      if (concept.thinScore !== expectedThin) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'thinScore',
+          old: concept.thinScore,
+          new: expectedThin,
+        });
+        updates.thinScore = expectedThin;
+      }
+
+      if (concept.conflictScore !== expectedConflict) {
+        corrections.push({
+          conceptId: concept._id,
+          field: 'conflictScore',
+          old: concept.conflictScore,
+          new: expectedConflict,
+        });
+        updates.conflictScore = expectedConflict;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(concept._id, updates);
+        corrected++;
+      }
+    }
+
+    if (corrected > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[reconcileConceptScores] Corrected ${corrected}/${sampleSize} concepts`);
+      // eslint-disable-next-line no-console
+      console.log('Corrections:', JSON.stringify(corrections.slice(0, 10))); // Log first 10
+    }
+
+    return {
+      sampled: sample.length,
+      corrected,
+      corrections: corrections.slice(0, 20), // Return first 20 for inspection
     };
   },
 });

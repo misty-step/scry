@@ -679,6 +679,16 @@
     min-height: 100vh;
     min-height: 100dvh; /* Dynamic viewport height for mobile */
   }
+
+  /* Hide scrollbar while maintaining scroll functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
 }
 
 /* Print styles for documentation */

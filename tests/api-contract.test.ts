@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-
 import { api } from '@/convex/_generated/api';
 
 /**
@@ -75,10 +74,12 @@ describe('API Contract: Question Generation', () => {
 });
 
 describe('API Contract: Spaced Repetition', () => {
-  it('spaced repetition mutations and queries exist', () => {
-    // Review scheduling
-    expect(api.spacedRepetition.getNextReview).toBeDefined();
+  it('spaced repetition queries exist', () => {
+    // Stats queries (still active)
     expect(api.spacedRepetition.getDueCount).toBeDefined();
-    expect(api.spacedRepetition.scheduleReview).toBeDefined();
+    expect(api.spacedRepetition.getUserCardStats).toBeDefined();
+
+    // NOTE: scheduleReview and getNextReview removed in v2.4.0
+    // Use concepts.recordInteraction and concepts.getDue instead
   });
 });

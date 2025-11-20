@@ -13,7 +13,6 @@ import { generateObject } from 'ai';
 import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
-
 import { action } from './_generated/server';
 import { initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { generateObjectWithResponsesApi } from './lib/responsesApi';
@@ -124,10 +123,6 @@ export const executeConfig = action({
       );
 
       // Initialize provider based on config
-      let model: ProviderClient['model'];
-      let openaiClient: ProviderClient['openaiClient'];
-      let provider: ProviderClient['provider'] = 'openai';
-
       const providerClient = await initializeProvider(args.provider, args.model, {
         logger,
         logContext: {
@@ -137,9 +132,9 @@ export const executeConfig = action({
         deployment: process.env.CONVEX_CLOUD_URL ?? 'unknown',
       });
 
-      provider = providerClient.provider;
-      model = providerClient.model;
-      openaiClient = providerClient.openaiClient;
+      const provider: ProviderClient['provider'] = providerClient.provider;
+      const model: ProviderClient['model'] = providerClient.model;
+      const openaiClient: ProviderClient['openaiClient'] = providerClient.openaiClient;
 
       // Execute N-phase chain
       const context: Record<string, string> = {

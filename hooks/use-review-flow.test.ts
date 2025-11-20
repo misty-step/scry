@@ -19,20 +19,26 @@ describe('reviewReducer', () => {
           updatedAt: Date.now(),
           userId: 'user123',
         },
-        questionId: 'q1' as Id<'questions'>,
         interactions: [
           {
             _id: 'i1' as Id<'interactions'>,
             _creationTime: Date.now(),
-            questionId: 'q1' as Id<'questions'>,
             userAnswer: 'Snake',
             isCorrect: false,
             attemptedAt: Date.now(),
             userId: 'user123' as Id<'users'>,
           },
         ],
+        conceptId: 'concept1' as Id<'concepts'>,
+        conceptTitle: 'Concept 1',
+        phrasingId: 'phrasing1' as Id<'phrasings'>,
+        phrasingIndex: 1,
+        totalPhrasings: 4,
+        legacyQuestionId: 'q1' as Id<'questions'>,
+        selectionReason: 'canonical',
         lockId: 'lock123',
         isTransitioning: false,
+        conceptFsrs: null,
       };
 
       // Act: Dispatch REVIEW_COMPLETE action
@@ -41,7 +47,6 @@ describe('reviewReducer', () => {
       // Assert: Verify optimistic UI state - stays in reviewing but releases lock and marks transitioning
       expect(newState.phase).toBe('reviewing');
       expect(newState.question).toBe(initialState.question); // Question retained for optimistic UI
-      expect(newState.questionId).toBe(initialState.questionId); // Question ID retained
       expect(newState.interactions).toBe(initialState.interactions); // Interactions retained
       expect(newState.lockId).toBeNull(); // Lock released to allow new question
       expect(newState.isTransitioning).toBe(true); // Marked as transitioning
@@ -52,10 +57,17 @@ describe('reviewReducer', () => {
       const initialState = {
         phase: 'reviewing' as const,
         question: null,
-        questionId: null,
         interactions: [],
+        conceptId: null,
+        conceptTitle: null,
+        phrasingId: null,
+        phrasingIndex: null,
+        totalPhrasings: null,
+        legacyQuestionId: null,
+        selectionReason: null,
         lockId: 'lock456',
         isTransitioning: false,
+        conceptFsrs: null,
       };
 
       // Act: Dispatch REVIEW_COMPLETE action
@@ -74,10 +86,17 @@ describe('reviewReducer', () => {
       const stateInLoading = {
         phase: 'loading' as const,
         question: null,
-        questionId: null,
         interactions: [],
+        conceptId: null,
+        conceptTitle: null,
+        phrasingId: null,
+        phrasingIndex: null,
+        totalPhrasings: null,
+        legacyQuestionId: null,
+        selectionReason: null,
         lockId: null,
         isTransitioning: false,
+        conceptFsrs: null,
       };
 
       // The reducer should accept QUESTION_RECEIVED
@@ -95,9 +114,15 @@ describe('reviewReducer', () => {
             updatedAt: Date.now(),
             userId: 'user123',
           },
-          questionId: 'q2' as Id<'questions'>,
           interactions: [],
+          conceptId: 'concept2' as Id<'concepts'>,
+          conceptTitle: 'Concept 2',
+          phrasingId: 'phrasing2' as Id<'phrasings'>,
+          phrasingStats: { index: 1, total: 2 },
+          legacyQuestionId: 'q2' as Id<'questions'>,
+          selectionReason: 'least-seen',
           lockId: 'newLock',
+          conceptFsrs: { state: 'new' as const, reps: 0 },
         },
       };
 
@@ -106,7 +131,6 @@ describe('reviewReducer', () => {
       // Should successfully transition to reviewing with new question
       expect(newState.phase).toBe('reviewing');
       expect(newState.question).toBeDefined();
-      expect(newState.questionId).toBe('q2' as Id<'questions'>);
       expect(newState.isTransitioning).toBe(false); // New question clears transitioning state
     });
   });
@@ -127,24 +151,38 @@ describe('reviewReducer', () => {
 
     const mockPayload = {
       question: mockQuestion,
-      questionId: 'q1' as Id<'questions'>,
       interactions: [],
+      conceptId: 'concept1' as Id<'concepts'>,
+      conceptTitle: 'Concept 1',
+      phrasingId: 'phrasing1' as Id<'phrasings'>,
+      phrasingStats: { index: 2, total: 4 },
+      legacyQuestionId: 'q1' as Id<'questions'>,
+      selectionReason: 'least-seen',
       lockId: 'lock123',
+      conceptFsrs: { state: 'new' as const, reps: 0 },
     };
 
     const reviewingState = {
       phase: 'reviewing' as const,
       question: mockQuestion,
-      questionId: 'q1' as Id<'questions'>,
       interactions: [],
+      conceptId: 'concept1' as Id<'concepts'>,
+      conceptTitle: 'Concept 1',
+      phrasingId: 'phrasing1' as Id<'phrasings'>,
+      phrasingIndex: 2,
+      totalPhrasings: 4,
+      legacyQuestionId: 'q1' as Id<'questions'>,
+      selectionReason: 'least-seen',
       lockId: 'lock123',
       isTransitioning: false,
+      conceptFsrs: null,
     };
 
     it('should set isTransitioning when REVIEW_COMPLETE dispatched', () => {
       const state = {
         ...reviewingState,
         isTransitioning: false,
+        conceptFsrs: null,
       };
       const newState = reviewReducer(state, { type: 'REVIEW_COMPLETE' });
 
@@ -157,6 +195,7 @@ describe('reviewReducer', () => {
       const state = {
         ...reviewingState,
         isTransitioning: true,
+        conceptFsrs: null,
       };
       const newState = reviewReducer(state, {
         type: 'QUESTION_RECEIVED',
@@ -171,6 +210,7 @@ describe('reviewReducer', () => {
       const state = {
         ...reviewingState,
         isTransitioning: true,
+        conceptFsrs: null,
       };
       const newState = reviewReducer(state, { type: 'LOAD_START' });
 
@@ -182,6 +222,7 @@ describe('reviewReducer', () => {
       const state = {
         ...reviewingState,
         isTransitioning: true,
+        conceptFsrs: null,
       };
       const newState = reviewReducer(state, { type: 'LOAD_EMPTY' });
 
@@ -200,9 +241,15 @@ describe('reviewReducer', () => {
 
       const sameQuestionPayload = {
         question: mockQuestion,
-        questionId: 'q1' as Id<'questions'>, // Same ID
         interactions: [],
+        conceptId: 'concept1' as Id<'concepts'>,
+        conceptTitle: 'Concept 1',
+        phrasingId: 'phrasing1' as Id<'phrasings'>,
+        phrasingStats: { index: 1, total: 2 },
+        legacyQuestionId: 'q1' as Id<'questions'>,
+        selectionReason: 'random',
         lockId: 'q1-1234567890', // New lock generated
+        conceptFsrs: { state: 'new' as const, reps: 0 },
       };
 
       const newState = reviewReducer(initialState, {

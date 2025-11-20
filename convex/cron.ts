@@ -1,5 +1,4 @@
 import { cronJobs } from 'convex/server';
-
 import { internal } from './_generated/api';
 
 const crons = cronJobs();
@@ -37,6 +36,18 @@ crons.daily(
   internal.userStats.reconcileUserStats
 );
 
+// Schedule concept scores reconciliation to run daily at 3:20 AM UTC
+// Detects and auto-corrects drift in thinScore/conflictScore
+// Samples 100 random concepts, recalculates from actual phrasings
+crons.daily(
+  'reconcileConceptScores',
+  {
+    hourUTC: 3,
+    minuteUTC: 20, // 5 minutes after userStats reconciliation
+  },
+  internal.migrations.reconcileConceptScores
+);
+
 // Schedule embedding sync to run daily at 3:30 AM UTC
 // Backfills embeddings for questions that don't have them
 // Processes up to 100 questions/day in batches of 10
@@ -47,6 +58,17 @@ crons.daily(
     minuteUTC: 30, // 30 minutes after job cleanup, 15 minutes after stats reconciliation
   },
   internal.embeddings.syncMissingEmbeddings
+);
+
+// Schedule IQC candidate scan to run daily at 4:00 AM UTC
+// Finds near-duplicate concepts and enqueues MERGE action cards
+crons.daily(
+  'scanForIqcCandidates',
+  {
+    hourUTC: 4,
+    minuteUTC: 0,
+  },
+  internal.iqc.scanAndPropose
 );
 
 export default crons;
