@@ -6,7 +6,8 @@ const generateUUID = (): string => {
     // Browser or Node.js with Web Crypto API
     return crypto.randomUUID();
   }
-  // Fallback for older environments (shouldn't happen in modern Next.js)
+  // Legacy fallback - should never execute in modern Next.js (Node 16+/modern browsers)
+  // Uses Math.random() which is not cryptographically secure; correlation ID collisions are more likely
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;

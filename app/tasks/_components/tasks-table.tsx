@@ -213,12 +213,14 @@ function TaskRow({ job }: { job: GenerationJob }) {
                 })()}
 
               {/* Cancelled details */}
-              {isCancelledJob(job) && job.questionIds.length > 0 && (
+              {isCancelledJob(job) && savedCount > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-1">Partial Results:</p>
                   <p className="text-sm text-muted-foreground">
-                    Saved {job.questionIds.length} partial question
-                    {job.questionIds.length !== 1 ? 's' : ''}
+                    Saved {savedCount} partial{' '}
+                    {job.questionIds.length > 0
+                      ? `question${savedCount !== 1 ? 's' : ''}`
+                      : `concept${savedCount !== 1 ? 's' : ''}`}
                   </p>
                 </div>
               )}

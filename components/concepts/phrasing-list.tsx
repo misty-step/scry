@@ -63,7 +63,12 @@ export function PhrasingList({
                   </span>
                   {phrasing.lastAttemptedAt ? (
                     <span>
-                      Last reviewed: {new Date(phrasing.lastAttemptedAt).toLocaleDateString()}
+                      Last reviewed:{' '}
+                      {new Date(phrasing.lastAttemptedAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
                     </span>
                   ) : null}
                 </div>

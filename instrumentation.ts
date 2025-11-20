@@ -29,7 +29,11 @@ export function captureConceptsTelemetryFailure(
   const normalizedError =
     error instanceof Error
       ? error
-      : new Error(typeof error === 'string' ? error : 'Concept pipeline failure');
+      : new Error(
+          typeof error === 'string'
+            ? error
+            : `Concept pipeline failure: ${JSON.stringify(error)}`
+        );
 
   const event = metadata.event || 'concepts.failure';
   const logPayload = {

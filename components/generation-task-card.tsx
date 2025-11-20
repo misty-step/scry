@@ -202,10 +202,12 @@ export function GenerationTaskCard({ job }: GenerationTaskCardProps) {
             );
           })()}
 
-        {isCancelledJob(job) && job.questionIds.length > 0 && (
+        {isCancelledJob(job) && savedCount > 0 && (
           <div className="text-xs text-muted-foreground pl-6">
-            Saved {job.questionIds.length} partial question
-            {job.questionIds.length !== 1 ? 's' : ''}
+            Saved {savedCount} partial{' '}
+            {job.questionIds.length > 0
+              ? `question${savedCount !== 1 ? 's' : ''}`
+              : `concept${savedCount !== 1 ? 's' : ''}`}
           </div>
         )}
       </div>

@@ -62,7 +62,7 @@ const candidates = dueConcepts.length > 0 ? dueConcepts : newConcepts;
 - [x] Deploy schema change via `npx convex dev` (local) or `npx convex deploy` (production)
 - [x] Verify index created: Check Convex dashboard → Data → interactions → Indexes tab
 
-```
+```text
 Work Log:
 - Deployed schema to production (uncommon-axolotl-639)
 - Confirmed index added: interactions.by_user_phrasing ["userId","phrasingId","attemptedAt","_creationTime"]
@@ -101,7 +101,7 @@ interactions: defineTable({
 - [x] Update query parameters to filter by `phrasingSelection.phrasing._id` instead of `concept._id`
 - [x] Verify interactions returned are specific to the current phrasing
 
-```
+```text
 Work Log:
 - Updated convex/concepts.ts:146-152 to use by_user_phrasing index
 - Changed filter from conceptId to phrasingId (phrasingSelection.phrasing._id)
@@ -151,7 +151,7 @@ const interactions = await ctx.db
 - [x] Update `review-flow.tsx` line 75 to call new query instead of `api.spacedRepetition.getDueCount`
 - [x] Update badge UI to show: "X concepts due" (accurate) with tooltip: "Plus Y orphaned questions (need migration)"
 
-```
+```text
 Work Log:
 - Added getConceptsDueCount query to convex/concepts.ts (lines 181-211)
 - Used DB-level filtering (.filter on phrasingCount > 0) instead of .collect()
@@ -240,7 +240,7 @@ const dueCountData = useQuery(api.concepts.getConceptsDueCount);
 - [x] Use distinct color (blue) to differentiate from error states
 - [x] Position above concept title for visibility
 
-```
+```text
 Work Log:
 - Modified useReviewFlow hook to pass conceptFsrs state through
 - Added conceptFsrs to ReviewModeState interface with state and reps
@@ -398,7 +398,7 @@ export function QuestionHistory({ interactions }) {
 - [x] Content: "New concept! You'll see this a few times today with short intervals to encode it into long-term memory. This is normal spaced repetition practice."
 - [x] Include "Got it, don't show again" button
 
-```
+```text
 Work Log:
 - Created learning-mode-explainer.tsx component (41 lines)
 - Integrated into review-flow.tsx with conditional rendering
@@ -481,7 +481,7 @@ export function LearningModeExplainer() {
 - [x] Return clusters: `Array<{ questions: Question[], avgSimilarity: number }>`
 - [x] Include singleton detection: questions with no close matches become 1-phrasing concepts
 
-```
+```text
 Work Log:
 - Implemented agglomerative clustering algorithm (152 LOC)
 - Applied simplicity review feedback:
@@ -564,7 +564,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 - [x] Fallback: If cluster has 1 question, use question text as title, explanation as description
 - [x] Validation: Ensure title is atomic (no "and", "vs", sequential patterns)
 
-```
+```text
 Work Log:
 - Implemented synthesizeConcept.ts (74 LOC after simplification)
 - Applied code-simplicity-reviewer feedback:
@@ -647,7 +647,7 @@ The title must be atomic (no "and", "vs", or sequential terms). Focus on the fun
 - [x] Return migration report: `{ clustersFormed: number, conceptsCreated: number, phrasingsCreated: number, questionsLinked: number }`
 - [x] Include rollback information: Keep original questions untouched (only add `conceptId` field)
 
-```
+```text
 Work Log:
 - Implemented migrateQuestionsToConceptsV2.ts (216 LOC after simplification)
 - Applied code-simplicity-reviewer feedback:
@@ -806,7 +806,7 @@ export const checkMigrationStatus = query({
 - [x] Added `sampleConcepts` diagnostic query to migration file
 - [x] Created `docs/migration-validation-guide.md` - Comprehensive validation guide
 
-```
+```text
 Work Log:
 - Implemented run-migration.sh with environment validation and 3-step safety:
   1. Auto dry-run (no mutations)
@@ -874,7 +874,7 @@ Work Log:
 - [x] Update documentation: README or CLAUDE.md note about deprecated system
 - [x] Leave table functional (read-only) for 30-day safety period
 
-```
+```text
 Work Log:
 - Added JSDoc @deprecated comment to questions table in convex/schema.ts
 - Added console.warn deprecation to scheduleReview and getNextReview handlers
@@ -932,7 +932,7 @@ export const scheduleReview = mutation({
 - [x] Run TypeScript checks to catch any missed references
 - [x] Update tests if any tests reference deleted functions
 
-```
+```text
 Work Log:
 - Searched codebase: No frontend usages found (already migrated to concepts)
 - Deleted scheduleReview and getNextReview from spacedRepetition.ts
@@ -968,7 +968,7 @@ rg "spacedRepetition\.(getNextReview|scheduleReview)" --type typescript
 - [x] Update breadcrumbs and page titles throughout
 - [x] Redirect old `/concepts` route to `/library` (Next.js redirect in config)
 
-```
+```text
 Work Log:
 - Updated /library/page.tsx to render ConceptsClient instead of LibraryClient
 - Removed duplicate "Concepts Library" nav link, kept single "Library" link
