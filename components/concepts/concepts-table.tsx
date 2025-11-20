@@ -126,7 +126,10 @@ export function ConceptsTable({
                         aria-label={`View concept: ${concept.title}`}
                       >
                         {concept.title}
-                        <ArrowUpRight className="h-3 w-3 text-muted-foreground opacity-0 transition group-hover:opacity-100" aria-hidden="true" />
+                        <ArrowUpRight
+                          className="h-3 w-3 text-muted-foreground opacity-0 transition group-hover:opacity-100"
+                          aria-hidden="true"
+                        />
                       </Link>
                       {concept.fsrs.state && !isPassiveView ? (
                         <Badge variant="outline" className="text-xs capitalize">

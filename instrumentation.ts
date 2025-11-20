@@ -30,9 +30,7 @@ export function captureConceptsTelemetryFailure(
     error instanceof Error
       ? error
       : new Error(
-          typeof error === 'string'
-            ? error
-            : `Concept pipeline failure: ${JSON.stringify(error)}`
+          typeof error === 'string' ? error : `Concept pipeline failure: ${JSON.stringify(error)}`
         );
 
   const event = metadata.event || 'concepts.failure';
