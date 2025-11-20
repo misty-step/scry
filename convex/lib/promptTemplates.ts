@@ -192,7 +192,7 @@ Return JSON with the following structure:
 - **Atomicity**: Each concept must focus on ONE retrievable idea (no multi-topic bundles, no 'A vs B' pairings).
 - **Specificity**: Avoid vague titles ("Overview", "Basics of X"). Be specific.
 - **Standalone**: Descriptions must include enough context for a future quiz item to be generated solely from this description.
-- **Framing**: Prefer action-oriented framing ("How sacramental grace operates in Confirmation") over topic labels.
+- **Framing**: Use descriptive titles that identify the topic (e.g. "NATO Code for Z", "Sacramental Grace in Confirmation") without revealing the core fact if it's a simple recall item.
 - **Format**: Never output markdown. Only valid JSON matching the schema.
 
 # Learner Input
@@ -222,7 +222,7 @@ Generate ${params.targetCount} quiz-ready phrasings that test this concept.
 
 # Requirements
 - Alternate between multiple-choice and true/false when reasonable.
-- Every phrasing must be standalone: include the concept title or necessary context in the question text.
+- Every phrasing must be standalone: include necessary context (e.g., "In the NATO alphabet...") to make the question clear without external information. WARNING: Do NOT simply paste the Concept Title if it contains the answer. The question must test the user's knowledge, not their ability to read the title.
 - For multiple-choice questions, provide 3-4 plausible options and a single correct answer.
 - For true/false questions, provide exactly two options: "True" and "False" (or equivalent) and indicate the correct one.
 - Explanations must justify WHY the answer is correct and why the distractors are wrong.
