@@ -451,7 +451,7 @@ describe('Stage A Concept Preparation', () => {
     expect(result.stats.skippedDuplicate).toBe(1);
   });
 
-  it('caps the number of accepted concepts', () => {
+  it('accepts all valid concepts without artificial caps', () => {
     const bulkIdeas = Array.from({ length: 10 }).map((_, index) => ({
       title: `Concept ${index + 1}`,
       description: `Detailed standalone explanation number ${index + 1} covering a single learning objective about topic ${index}.`,
@@ -459,8 +459,9 @@ describe('Stage A Concept Preparation', () => {
     }));
 
     const result = prepareConceptIdeas(bulkIdeas);
-    expect(result.concepts.length).toBeLessThanOrEqual(6);
-    expect(result.stats.accepted).toBeLessThanOrEqual(6);
+    // No artificial cap - all valid concepts should be accepted
+    expect(result.concepts.length).toBe(10);
+    expect(result.stats.accepted).toBe(10);
   });
 
   it('skips empty titles or descriptions but still returns fallback concept', () => {

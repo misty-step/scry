@@ -295,8 +295,9 @@ export function ReviewFlow() {
               <LearningModeExplainer />
             )}
 
-            {conceptTitle && (
-              <div className="space-y-1">
+            {/* Concept Title - HIDDEN during question phase to prevent spoilers (Rule #8: Contextual Standalone) */}
+            {feedbackState.showFeedback && conceptTitle && (
+              <div className="space-y-1 animate-fadeIn">
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                   <span>Concept</span>
                 </div>

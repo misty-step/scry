@@ -54,7 +54,7 @@ const conceptIdeaSchema = z.object({
 });
 
 const conceptIdeasSchema = z.object({
-  concepts: z.array(conceptIdeaSchema).min(1).max(8),
+  concepts: z.array(conceptIdeaSchema).min(1),
 });
 
 type ConceptIdea = z.infer<typeof conceptIdeaSchema>;
@@ -68,12 +68,11 @@ const generatedPhrasingSchema = z.object({
 });
 
 const phrasingBatchSchema = z.object({
-  phrasings: z.array(generatedPhrasingSchema).min(1).max(8),
+  phrasings: z.array(generatedPhrasingSchema).min(1),
 });
 
 type GeneratedPhrasing = z.infer<typeof generatedPhrasingSchema>;
 
-const MAX_CONCEPTS = 6;
 type GenerationErrorCode = 'SCHEMA_VALIDATION' | 'RATE_LIMIT' | 'API_KEY' | 'NETWORK' | 'UNKNOWN';
 
 class GenerationPipelineError extends Error {
@@ -135,10 +134,6 @@ export function prepareConceptIdeas(
 
     seenTitles.add(titleKey);
     normalizedConcepts.push({ title, description });
-
-    if (normalizedConcepts.length >= MAX_CONCEPTS) {
-      break;
-    }
   }
 
   if (normalizedConcepts.length === 0 && ideas.length > 0) {
@@ -302,7 +297,7 @@ export const processJob = internalAction({
     // Initialize AI provider from environment configuration
     // Defaults to OpenAI for production, but can be overridden via env vars
     const requestedProvider = process.env.AI_PROVIDER || 'openai';
-    const modelName = process.env.AI_MODEL || 'gpt-5-mini';
+    const modelName = process.env.AI_MODEL || 'gpt-5.1';
     const reasoningEffort = process.env.AI_REASONING_EFFORT || 'high';
     const verbosity = process.env.AI_VERBOSITY || 'medium';
 
@@ -591,7 +586,7 @@ export const generatePhrasingsForConcept = internalAction({
   handler: async (ctx, args) => {
     const startTime = Date.now();
     const requestedProvider = process.env.AI_PROVIDER || 'openai';
-    const modelName = process.env.AI_MODEL || 'gpt-5-mini';
+    const modelName = process.env.AI_MODEL || 'gpt-5.1';
     const reasoningEffort = process.env.AI_REASONING_EFFORT || 'high';
     const verbosity = process.env.AI_VERBOSITY || 'medium';
     const stageBCorrelationId = generateCorrelationId('stage-b');

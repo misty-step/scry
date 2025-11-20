@@ -171,7 +171,7 @@ ${userInput}`;
  */
 export function buildConceptSynthesisPrompt(userInput: string): string {
   return `# Task
-Analyze the learner's request and propose 3-6 atomic learning concepts that can be quizzed independently.
+Analyze the learner's request and propose a comprehensive set of atomic learning concepts that can be quizzed independently.
 
 # Output Format
 Return JSON with the following structure:
@@ -186,12 +186,14 @@ Return JSON with the following structure:
 }
 
 # Guidelines
-- Each concept must focus on ONE retrievable idea (no multi-topic bundles, no 'A vs B' pairings).
-- Break complex subjects into the smallest useful atoms.
-- Avoid vague titles ("Overview", "Basics of X"). Be specific.
-- Descriptions must be standalone and include enough context for a future quiz item.
-- Prefer action-oriented framing ("How sacramental grace operates in Confirmation") over topic labels.
-- Never output markdown. Only valid JSON matching the schema.
+- **Quantity Strategy**:
+  - If the input is a **Finite Set** (e.g., "NATO Phonetic Alphabet", "The 12 Apostles", "Planets"), generate a concept for **EVERY** item in the set. Do not skip any.
+  - If the input is a **Broad Topic** (e.g., "Introduction to Calculus", "History of Rome"), break it down into its essential component concepts. Do not artificially limit the number of concepts; provide as many as are necessary to cover the core ideas thoroughly.
+- **Atomicity**: Each concept must focus on ONE retrievable idea (no multi-topic bundles, no 'A vs B' pairings).
+- **Specificity**: Avoid vague titles ("Overview", "Basics of X"). Be specific.
+- **Standalone**: Descriptions must include enough context for a future quiz item to be generated solely from this description.
+- **Framing**: Prefer action-oriented framing ("How sacramental grace operates in Confirmation") over topic labels.
+- **Format**: Never output markdown. Only valid JSON matching the schema.
 
 # Learner Input
 ${userInput}`;

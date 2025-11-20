@@ -19,6 +19,8 @@ import type * as concepts from "../concepts.js";
 import type * as cron from "../cron.js";
 import type * as deployments from "../deployments.js";
 import type * as embeddings from "../embeddings.js";
+import type * as evals_cases from "../evals/cases.js";
+import type * as evals_runner from "../evals/runner.js";
 import type * as fsrs_conceptScheduler from "../fsrs/conceptScheduler.js";
 import type * as fsrs_engine from "../fsrs/engine.js";
 import type * as fsrs_selectionPolicy from "../fsrs/selectionPolicy.js";
@@ -76,6 +78,8 @@ declare const fullApi: ApiFromModules<{
   cron: typeof cron;
   deployments: typeof deployments;
   embeddings: typeof embeddings;
+  "evals/cases": typeof evals_cases;
+  "evals/runner": typeof evals_runner;
   "fsrs/conceptScheduler": typeof fsrs_conceptScheduler;
   "fsrs/engine": typeof fsrs_engine;
   "fsrs/selectionPolicy": typeof fsrs_selectionPolicy;
