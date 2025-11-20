@@ -1,7 +1,7 @@
 # BACKLOG
 
-**Last Groomed**: 2025-11-20  
-**Analysis Method**: 8-perspective audit (TODO.md/DESIGN.md/PR feedback files not present)  
+**Last Groomed**: 2025-11-20
+**Analysis Method**: 8-perspective audit (TODO.md/DESIGN.md/PR feedback files not present)
 **Overall Assessment**: Two fail-open auth paths + no revenue. Legacy schema + library perf are primary drag; otherwise arch remains solid.
 
 ---
@@ -49,12 +49,6 @@
 - Problem: 0% test coverage on payment/subscription logic → no regression detection for money code; monetization foundation (BACKLOG item) ships without tests.
 - Acceptance: Tests for subscription validation, upgrade flow, free tier enforcement; auth cookie handling tested; critical paths >80% coverage; CI enforces thresholds.
 - Effort: 1.5d | Principles: test critical paths, money code gets tests.
-
-### [MAINT][MEDIUM] Remove Husky hook system
-- Perspectives: complexity-archaeologist, maintainability-maven
-- Problem: Both `.husky/_/` and `.lefthook.yml` installed → hooks may run twice or conflict; `core.hookspath .husky/_` overrides Lefthook.
-- Acceptance: `.husky/` deleted; `git config --unset core.hookspath`; `package.json` scripts cleaned; hooks verified single execution; doc migration guide.
-- Effort: 0.25d | Principles: one way to do it, remove shallow duplicates.
 
 ---
 

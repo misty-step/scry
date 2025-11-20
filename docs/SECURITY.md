@@ -46,11 +46,11 @@ GOOGLE_AI_API_KEY="AIzaSyC_RealKeyExample_NEVER_COMMIT_THIS"  # Full real key (D
 ## Secret Scanning
 
 ### Pre-commit Hooks
-The repository uses `gitleaks` to scan for secrets before commits:
+Secrets scan now runs through Lefthook pre-commit (`.lefthook.yml` → `gitleaks`):
 
 ```bash
 # Configuration: .gitleaks.toml
-# Hook: .husky/pre-commit
+# Runner: pnpm lefthook run pre-commit
 ```
 
 **If gitleaks blocks your commit:**
@@ -108,6 +108,12 @@ If a secret is accidentally committed and pushed:
 - Use `git diff --cached` to review staged changes before committing
 - Keep `.gitleaks.toml` configuration strict
 - Regular security audits of documentation
+
+### Hooks Migration (Husky → Lefthook)
+- Remove legacy path: `git config --unset core.hookspath`
+- Delete stale hooks: `rm -rf .husky`
+- Reinstall Lefthook into `.git/hooks`: `pnpm lefthook install --force`
+- Verify once: `git config --get core.hookspath` prints nothing; `.git/hooks/pre-commit` contains Lefthook shim
 
 ## Deployment Security
 
