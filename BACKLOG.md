@@ -95,24 +95,6 @@
 **Acceptance**: 10+ common errors mapped; unit tests for translation; rollout to frontend mutation calls
 **Effort**: 2h | **Value**: Users understand errors and how to fix them
 
-### [INFRA][HIGH] Install Lefthook Binary Globally
-**File**: Local environment setup
-**Perspectives**: architecture-guardian (developer experience)
-**Problem**: Lefthook hooks installed but binary not in PATH → falls back to slower pnpm wrapper → pre-commit hooks take 3-5x longer
-**Impact**: Pre-commit hooks run via pnpm fallback (slower), developer experience degraded
-**Fix**: `brew install lefthook && lefthook install`
-**Acceptance**: `which lefthook` returns path; pre-commit runs <3s (vs current ~5-10s with pnpm fallback)
-**Effort**: 5m | **Value**: 3-5x faster git hooks, better developer experience
-
-### [CONFIG][HIGH] Fix Changeset Base Branch Configuration
-**File**: .changeset/config.json:8
-**Perspectives**: maintainability-maven (release automation)
-**Problem**: Config has `"baseBranch": "main"` but actual main branch is `master` → changesets may not detect changes correctly
-**Impact**: Version detection may fail, changelog generation broken
-**Fix**: Edit `.changeset/config.json` line 8: `"baseBranch": "master"`
-**Acceptance**: `pnpm changeset` detects changes correctly; changelog generation works
-**Effort**: 2m | **Value**: Reliable release automation
-
 ### [TEST][HIGH] Increase Convex Backend Test Coverage
 **Files**: convex/**/*.ts (124 source files, 23 test files = 18.5% test ratio)
 **Perspectives**: maintainability-maven, security-sentinel
@@ -121,25 +103,6 @@
 **Fix**: Add tests for high-risk convex modules (aiGeneration, generationJobs, questionsInteractions, migrations helpers)
 **Acceptance**: Convex coverage from 13% → 30%; critical mutation pairs tested; CI enforces minimum thresholds
 **Effort**: 2d | **Value**: Regression protection for backend logic, catch bugs before production
-
-### [CI][MEDIUM] Parallelize CI Jobs for Faster Feedback
-**File**: .github/workflows/ci.yml:48-51
-**Perspectives**: architecture-guardian (CI efficiency)
-**Problem**: Test job waits for quality job → sequential execution adds ~40s per CI run → ~10 hours/year wasted
-**Impact**: Slower feedback loop, unnecessary wait time
-**Fix**: Remove `needs: quality` from test job; add separate build job; all run in parallel
-```yaml
-jobs:
-  quality:    # ... existing lint/typecheck ...
-  test:
-    needs: [] # Remove dependency - run in parallel
-  build:      # NEW: Catch build errors in CI
-    runs-on: ubuntu-latest
-    steps:
-      - run: pnpm build
-```
-**Acceptance**: CI completes in ~3min (vs current ~3:40min); all jobs run in parallel; build errors caught before Vercel
-**Effort**: 15m | **Value**: Saves ~40s per CI run, ~10 hours/year at 1000 pushes
 
 ### [TEST][MEDIUM] Add Coverage Thresholds for Critical Modules
 **File**: vitest.config.ts:30-36
