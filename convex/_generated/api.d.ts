@@ -8,11 +8,6 @@
  * @module
  */
 
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import type * as aiGeneration from "../aiGeneration.js";
 import type * as clerk from "../clerk.js";
 import type * as concepts from "../concepts.js";
@@ -21,10 +16,10 @@ import type * as deployments from "../deployments.js";
 import type * as embeddings from "../embeddings.js";
 import type * as evals_cases from "../evals/cases.js";
 import type * as evals_runner from "../evals/runner.js";
+import type * as fsrs from "../fsrs.js";
 import type * as fsrs_conceptScheduler from "../fsrs/conceptScheduler.js";
 import type * as fsrs_engine from "../fsrs/engine.js";
 import type * as fsrs_selectionPolicy from "../fsrs/selectionPolicy.js";
-import type * as fsrs from "../fsrs.js";
 import type * as generationJobs from "../generationJobs.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
@@ -45,10 +40,10 @@ import type * as lib_promptTemplates from "../lib/promptTemplates.js";
 import type * as lib_responsesApi from "../lib/responsesApi.js";
 import type * as lib_userStatsHelpers from "../lib/userStatsHelpers.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as migrations from "../migrations.js";
 import type * as migrations_clusterQuestions from "../migrations/clusterQuestions.js";
 import type * as migrations_clusterQuestionsV3 from "../migrations/clusterQuestionsV3.js";
 import type * as migrations_synthesizeConcept from "../migrations/synthesizeConcept.js";
-import type * as migrations from "../migrations.js";
 import type * as phrasings from "../phrasings.js";
 import type * as questionsBulk from "../questionsBulk.js";
 import type * as questionsCrud from "../questionsCrud.js";
@@ -63,14 +58,12 @@ import type * as system from "../system.js";
 import type * as types from "../types.js";
 import type * as userStats from "../userStats.js";
 
-/**
- * A utility for referencing Convex functions in your app's API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
- * ```
- */
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+
 declare const fullApi: ApiFromModules<{
   aiGeneration: typeof aiGeneration;
   clerk: typeof clerk;
@@ -80,10 +73,10 @@ declare const fullApi: ApiFromModules<{
   embeddings: typeof embeddings;
   "evals/cases": typeof evals_cases;
   "evals/runner": typeof evals_runner;
+  fsrs: typeof fsrs;
   "fsrs/conceptScheduler": typeof fsrs_conceptScheduler;
   "fsrs/engine": typeof fsrs_engine;
   "fsrs/selectionPolicy": typeof fsrs_selectionPolicy;
-  fsrs: typeof fsrs;
   generationJobs: typeof generationJobs;
   health: typeof health;
   http: typeof http;
@@ -104,10 +97,10 @@ declare const fullApi: ApiFromModules<{
   "lib/responsesApi": typeof lib_responsesApi;
   "lib/userStatsHelpers": typeof lib_userStatsHelpers;
   "lib/validation": typeof lib_validation;
+  migrations: typeof migrations;
   "migrations/clusterQuestions": typeof migrations_clusterQuestions;
   "migrations/clusterQuestionsV3": typeof migrations_clusterQuestionsV3;
   "migrations/synthesizeConcept": typeof migrations_synthesizeConcept;
-  migrations: typeof migrations;
   phrasings: typeof phrasings;
   questionsBulk: typeof questionsBulk;
   questionsCrud: typeof questionsCrud;
@@ -122,11 +115,31 @@ declare const fullApi: ApiFromModules<{
   types: typeof types;
   userStats: typeof userStats;
 }>;
+
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
 export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
 >;
+
+export declare const components: {};

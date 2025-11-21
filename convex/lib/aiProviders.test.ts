@@ -9,8 +9,12 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: vi.fn(),
 }));
 
+// Vitest 4 requires proper class syntax for constructor mocking
 vi.mock('openai', () => ({
-  default: vi.fn(),
+  default: vi.fn(function (this: any, opts: any) {
+    this.opts = opts;
+    this.responses = {};
+  }),
 }));
 
 const mockCreateGoogleGenerativeAI = vi.mocked(createGoogleGenerativeAI);
