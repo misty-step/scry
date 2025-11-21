@@ -6,6 +6,8 @@ Use this checklist before deploying observability changes or any major feature t
 
 ## Pre-Deployment: Environment Configuration
 
+**Observability Scope**: Sentry tracks Next.js frontend and API route errors only. Convex backend errors are logged to Convex dashboard (not forwarded to Sentry due to V8 isolate runtime constraints).
+
 ### Sentry Setup via Vercel Integration (⭐ RECOMMENDED)
 
 **Step 1: Install Vercel Integration**

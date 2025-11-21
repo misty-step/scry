@@ -22,6 +22,24 @@ Operational guide for monitoring Scry's error tracking and analytics in producti
 
 ---
 
+## Observability Boundaries
+
+**What Sentry Tracks:**
+- Next.js frontend errors (unhandled exceptions, React errors)
+- API route errors (`/app/api/*`)
+- Build-time errors (via source maps)
+- Performance traces (configurable sample rate)
+- Session replays (error-triggered only by default)
+
+**What Convex Dashboard Tracks:**
+- Convex backend function errors (mutations, queries, actions)
+- Function execution logs with structured context
+- Performance metrics (execution time, database operations)
+
+**Rationale:** Convex functions run in V8 isolates without Node.js APIs. Sentry's Next.js SDK requires Node.js built-ins, making it incompatible with Convex runtime. Backend errors remain in Convex dashboard for troubleshooting.
+
+---
+
 ## Daily Monitoring Routine
 
 ### Morning Check (5 minutes)

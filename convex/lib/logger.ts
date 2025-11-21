@@ -5,8 +5,6 @@
  * this provides a simple structured logging utility that works within Convex's runtime.
  */
 
-import * as Sentry from '@sentry/nextjs';
-
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
@@ -164,56 +162,4 @@ export function logConceptEvent(
 export function generateCorrelationId(prefix = 'concepts'): string {
   const randomSegment = Math.random().toString(36).slice(2, 8);
   return `${prefix}-${Date.now().toString(36)}-${randomSegment}`;
-}
-
-/**
- * Forward error to Sentry with context while preserving existing logging
- *
- * @param structuredLogger - Logger instance to use for structured logging
- * @param message - Contextual message describing what failed (e.g., "Failed to generate concept")
- * @param error - Error instance to forward
- * @param context - Additional context to attach as tags/extra data
- *
- * Usage:
- * ```typescript
- * try {
- *   await riskyOperation();
- * } catch (error) {
- *   errorWithSentry(logger, 'Failed to generate concept', error, {
- *     event: 'concepts.stage_a.generation_failed',
- *     correlationId: 'xyz-123',
- *     conceptIds: ['id1', 'id2']
- *   });
- * }
- * ```
- *
- * Side effects:
- * - Logs error via existing logger (always)
- * - Captures exception in Sentry when SENTRY_DSN configured (conditional)
- * - Attaches context as tags (runtime=convex) and extra metadata
- * - Returns void (fire-and-forget)
- */
-export function errorWithSentry(
-  structuredLogger: ConceptsLogger | ReturnType<typeof createLogger> | typeof logger,
-  message: string,
-  error?: Error | unknown,
-  context?: LogContext
-): void {
-  // Always log via existing logger
-  structuredLogger.error(message, error, context);
-
-  // Forward to Sentry if DSN configured
-  if (!process.env.SENTRY_DSN) return;
-
-  Sentry.captureException(error, {
-    tags: {
-      runtime: 'convex',
-      event: context?.event,
-      context: context?.context,
-    },
-    extra: {
-      ...context,
-      deployment: context?.deployment || DEFAULT_DEPLOYMENT,
-    },
-  });
 }
