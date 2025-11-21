@@ -11,6 +11,16 @@ vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
 }));
 
+// Helper to create mock logger with all required methods
+function createMockLogger() {
+  return {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+}
+
 describe('errorWithSentry', () => {
   const originalEnv = process.env;
 
@@ -28,9 +38,7 @@ describe('errorWithSentry', () => {
   it('logs error via existing logger when SENTRY_DSN not set', () => {
     // Arrange
     delete process.env.SENTRY_DSN;
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('Test error');
     const context: LogContext = {
       event: 'test.event',
@@ -48,9 +56,7 @@ describe('errorWithSentry', () => {
   it('forwards error to Sentry when SENTRY_DSN is set', () => {
     // Arrange
     process.env.SENTRY_DSN = 'https://test@sentry.io/123';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('Sentry error');
     const context: LogContext = {
       event: 'concepts.stage_a.failed',
@@ -80,9 +86,7 @@ describe('errorWithSentry', () => {
   it('includes deployment in extra data', () => {
     // Arrange
     process.env.SENTRY_DSN = 'https://test@sentry.io/123';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('Deploy error');
     const context: LogContext = {
       event: 'deploy.failed',
@@ -106,9 +110,7 @@ describe('errorWithSentry', () => {
   it('handles non-Error objects', () => {
     // Arrange
     process.env.SENTRY_DSN = 'https://test@sentry.io/123';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const nonError = { message: 'Not an error' };
     const context: LogContext = {
       event: 'non-error.event',
@@ -176,9 +178,7 @@ describe('errorWithSentry', () => {
   it('captures exception exactly once per call', () => {
     // Arrange
     process.env.SENTRY_DSN = 'https://test@sentry.io/123';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('Single capture');
 
     // Act
@@ -191,9 +191,7 @@ describe('errorWithSentry', () => {
   it('does not capture when DSN is empty string', () => {
     // Arrange
     process.env.SENTRY_DSN = '';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('No capture');
 
     // Act
@@ -207,9 +205,7 @@ describe('errorWithSentry', () => {
   it('includes all context metadata as extra data', () => {
     // Arrange
     process.env.SENTRY_DSN = 'https://test@sentry.io/123';
-    const mockLogger = {
-      error: vi.fn(),
-    };
+    const mockLogger = createMockLogger();
     const testError = new Error('Metadata test');
     const richContext: LogContext = {
       event: 'rich.event',
