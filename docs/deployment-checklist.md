@@ -45,6 +45,25 @@ npx convex env list --prod | grep SENTRY  # Verify
 
 - [ ] `SENTRY_DSN` set in Convex production backend
 
+### GitHub Actions Secrets (for Release Workflow)
+
+**Navigate to:** GitHub Repository → Settings → Secrets and variables → Actions
+
+**Required Secrets for Sentry Release Tracking:**
+- [ ] `SENTRY_AUTH_TOKEN` set (from Sentry → Settings → Auth Tokens)
+  - [ ] Token has `project:releases` scope
+  - [ ] Token has `org:read` scope
+  - [ ] Token has `project:write` scope
+
+**Expected Values (informational - auto-set in workflow env):**
+- `SENTRY_ORG`: `misty-step` (Sentry organization slug)
+- `SENTRY_PROJECT`: `scry` (Sentry project slug)
+- `RELEASE`: `${{ github.sha }}` (Git commit SHA, matches Vercel build)
+
+**Failure Mode:** If `SENTRY_AUTH_TOKEN` missing, release workflow step will fail fast with auth error. Deployment continues but Sentry release won't be created (source maps upload in Next.js build still works via Vercel integration).
+
+**Release Name Alignment:** GitHub Actions uses `github.sha` as release name. Vercel builds use `VERCEL_GIT_COMMIT_SHA` which equals `github.sha` for GitHub-triggered deployments. Both upload source maps to same Sentry release.
+
 ### Sample Rate Configuration (Optional)
 
 If you want non-default sample rates, add to Vercel env vars:
