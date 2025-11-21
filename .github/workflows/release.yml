@@ -53,19 +53,16 @@ jobs:
           SENTRY_PROJECT: scry
           RELEASE: ${{ github.sha }}
         run: |
-          # Install sentry-cli if not available
-          if ! command -v sentry-cli &> /dev/null; then
-            npm install -g @sentry/cli
-          fi
+          set -e  # Fail fast on any error
 
           # Create release
-          sentry-cli releases new "$RELEASE"
+          npx @sentry/cli@latest releases new "$RELEASE"
 
           # Associate commits with release
-          sentry-cli releases set-commits "$RELEASE" --auto
+          npx @sentry/cli@latest releases set-commits "$RELEASE" --auto
 
           # Finalize release
-          sentry-cli releases finalize "$RELEASE"
+          npx @sentry/cli@latest releases finalize "$RELEASE"
 
           # Create deployment for production environment
-          sentry-cli releases deploys "$RELEASE" new -e production
+          npx @sentry/cli@latest releases deploys "$RELEASE" new -e production

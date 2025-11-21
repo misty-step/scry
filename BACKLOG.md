@@ -163,6 +163,24 @@ coverage: {
 
 ## Next (<6 weeks)
 
+### [INFRA][LOW] Extract Sentry Org/Project to GitHub Actions Variables
+**File**: .github/workflows/release.yml:52-53
+**Perspectives**: maintainability-maven
+**Problem**: `SENTRY_ORG` and `SENTRY_PROJECT` are hardcoded in workflow
+**Impact**: Low - values rarely change, but hardcoding reduces portability across forks/environments
+**Fix**: Extract to repository variables or add inline comment explaining intentional hardcoding
+**Acceptance**: Either (a) values moved to GitHub Actions variables, or (b) comment added explaining stability
+**Effort**: 15m | **Impact**: Maintainability improvement for multi-tenant/fork scenarios
+
+### [INFRA][LOW] Verify Sentry Source Map Alignment in Production
+**File**: .github/workflows/release.yml + Next.js build
+**Perspectives**: user-experience-advocate (debugging UX)
+**Problem**: GitHub Actions uses `github.sha` for release name, Vercel uses `VERCEL_GIT_COMMIT_SHA`
+**Current state**: Documented alignment (deployment-checklist.md:65-67) states they match for GitHub-triggered deployments
+**Validation needed**: Verify in production that source maps uploaded by both paths reference same release ID
+**Acceptance**: Test error in production → verify Sentry shows unminified stack trace with correct file/line; document findings
+**Effort**: 30m | **Impact**: Debugging UX confidence, validates observability stack integration
+
 ### [ARCH][HIGH] Split migrations.ts God Object (2,997 lines)
 **File**: convex/migrations.ts:1-2997
 **Perspectives**: complexity-archaeologist, architecture-guardian, maintainability-maven
