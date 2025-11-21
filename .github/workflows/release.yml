@@ -44,3 +44,28 @@ jobs:
         if: steps.changesets.outputs.pullRequestNumber != ''
         run: |
           echo "📦 Version Packages PR: #${{ steps.changesets.outputs.pullRequestNumber }}"
+
+      - name: Create Sentry Release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: misty-step
+          SENTRY_PROJECT: scry
+          RELEASE: ${{ github.sha }}
+        run: |
+          # Install sentry-cli if not available
+          if ! command -v sentry-cli &> /dev/null; then
+            npm install -g @sentry/cli
+          fi
+
+          # Create release
+          sentry-cli releases new "$RELEASE"
+
+          # Associate commits with release
+          sentry-cli releases set-commits "$RELEASE" --auto
+
+          # Finalize release
+          sentry-cli releases finalize "$RELEASE"
+
+          # Create deployment for production environment
+          sentry-cli releases deploys "$RELEASE" new -e production
