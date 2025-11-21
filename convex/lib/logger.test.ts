@@ -2,9 +2,9 @@
  * Tests for Convex logger with Sentry integration
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { errorWithSentry, logger, createLogger, type LogContext } from './logger';
 import * as Sentry from '@sentry/nextjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLogger, errorWithSentry, logger, type LogContext } from './logger';
 
 // Mock Sentry module
 vi.mock('@sentry/nextjs', () => ({
@@ -135,9 +135,7 @@ describe('errorWithSentry', () => {
     errorWithSentry(logger, 'Test operation failed', testError, context);
 
     // Assert
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Test operation failed')
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Test operation failed'));
     expect(Sentry.captureException).toHaveBeenCalled();
 
     // Cleanup
