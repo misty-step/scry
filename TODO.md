@@ -51,7 +51,7 @@
   Estimate: 55m  
   ```
 
-- [ ] T3: Cover aiGeneration prep + error classification logic  
+- [x] T3: Cover aiGeneration prep + error classification logic  
   ```
   Files: tests/convex/aiGeneration.prep.test.ts (new), convex/aiGeneration.ts (optional test-only export block)  
   Goal: Exercise prepareConceptIdeas, prepareGeneratedPhrasings, calculateConflictScore, classifyError branches incl. fallback, duplicates, option limits, correct answer mismatch.  
