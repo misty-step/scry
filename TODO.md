@@ -67,7 +67,7 @@
   Depends: T2 (fixtures for stats if used)  
   ```
 
-- [ ] T4: Cover generationJobs state machine & limits  
+- [x] T4: Cover generationJobs state machine & limits  
   ```
   Files: tests/convex/generationJobs.logic.test.ts (new), convex/generationJobs.ts (optional `__test` export for defaults/constants)  
   Goal: Validate prompt length bounds, concurrent job cap, rate limit, cancel states, updateProgress/advancePendingConcept transitions, complete/fail durations.  

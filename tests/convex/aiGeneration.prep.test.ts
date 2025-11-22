@@ -19,17 +19,18 @@ describe('prepareConceptIdeas', () => {
 
     const result = prepareConceptIdeas(input);
     expect(result.concepts).toEqual([{ title: 'ATP', description: 'Energy currency' }]);
-    expect(result.stats).toMatchObject<ConceptPreparationStats>({
+    expect(result.stats).toMatchObject({
       totalIdeas: 4,
       skippedEmptyTitle: 1,
       skippedEmptyDescription: 1,
       skippedDuplicate: 1,
       accepted: 1,
-    });
+      fallbackUsed: false,
+    } satisfies ConceptPreparationStats);
   });
 
   it('uses fallback prompt when all concepts filtered', () => {
-    const input = [{ title: '   ', description: '' }];
+    const input = [{ title: '   ', description: '', whyItMatters: '' }];
     const result = prepareConceptIdeas(input, 'Photosynthesis');
 
     expect(result.concepts).toEqual([
