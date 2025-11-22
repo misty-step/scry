@@ -28,11 +28,15 @@ export default defineConfig({
       //
       // NOTE: Adjusted down from 18.4% to 18.2% after removing flaky shuffle test.
       // Thresholds should only increase as coverage improves.
+      // Per-path thresholds for critical areas; keep globals as floor.
       thresholds: {
         lines: 18.2, // Current: 18.22%, Target: 60%
         functions: 18.2, // Current: 18.22%, Target: 60%
         branches: 15.9, // Current: ~16%, Target: 55%
         statements: 18.2, // Current: 18.22%, Target: 60%
+        'convex/**/*.ts': { lines: 30, functions: 30 },
+        'lib/payment/**/*.ts': { lines: 80, functions: 80 },
+        'lib/auth/**/*.ts': { lines: 80, functions: 80 },
       },
       include: ['lib/**', 'convex/**', 'hooks/**'],
       exclude: [
