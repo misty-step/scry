@@ -115,7 +115,7 @@
   Depends: T2  
   ```
 
-- [ ] T7: Sentry/logger/test setup hardening  
+- [x] T7: Sentry/logger/test setup hardening  
   ```
   Files: vitest.setup.ts, instrumentation.ts (if guard needed), tests/helpers/loggerStub.ts (reuse)  
   Goal: Ensure tests don’t emit Sentry/network; provide noop/mock for captureException/trackEvent and console suppression toggle.  
