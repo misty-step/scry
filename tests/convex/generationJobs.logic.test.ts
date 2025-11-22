@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
+import { requireUserFromClerk } from '@/convex/clerk';
 import {
   advancePendingConcept,
   cancelJob,
@@ -9,11 +11,9 @@ import {
   setConceptWork,
   updateProgress,
 } from '@/convex/generationJobs';
-import { JOB_CONFIG } from '@/lib/constants/jobs';
-import type { Id } from '@/convex/_generated/dataModel';
-import { createMockDb, makeGenerationJob } from '@/tests/helpers';
-import { requireUserFromClerk } from '@/convex/clerk';
 import { enforceRateLimit } from '@/convex/rateLimit';
+import { JOB_CONFIG } from '@/lib/constants/jobs';
+import { createMockDb, makeGenerationJob } from '@/tests/helpers';
 
 vi.mock('@/convex/clerk', () => ({
   requireUserFromClerk: vi.fn(),
@@ -49,24 +49,34 @@ describe('generationJobs mutations', () => {
     it('rejects prompts outside length bounds', async () => {
       await expect(
         (createJob as any)._handler(ctx, { prompt: 'short', ipAddress: undefined })
-      ).rejects.toThrow(`Prompt too short. Minimum ${JOB_CONFIG.MIN_PROMPT_LENGTH} characters required.`);
+      ).rejects.toThrow(
+        `Prompt too short. Minimum ${JOB_CONFIG.MIN_PROMPT_LENGTH} characters required.`
+      );
 
       const longPrompt = 'x'.repeat(JOB_CONFIG.MAX_PROMPT_LENGTH + 1);
       await expect(
         (createJob as any)._handler(ctx, { prompt: longPrompt, ipAddress: undefined })
-      ).rejects.toThrow(`Prompt too long. Maximum ${JOB_CONFIG.MAX_PROMPT_LENGTH} characters allowed.`);
+      ).rejects.toThrow(
+        `Prompt too long. Maximum ${JOB_CONFIG.MAX_PROMPT_LENGTH} characters allowed.`
+      );
     });
 
     it('enforces concurrent processing limit', async () => {
       db.query.mockReturnValue({
         withIndex: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        collect: vi.fn().mockResolvedValue(new Array(JOB_CONFIG.MAX_CONCURRENT_PER_USER).fill({ status: 'processing' })),
+        collect: vi
+          .fn()
+          .mockResolvedValue(
+            new Array(JOB_CONFIG.MAX_CONCURRENT_PER_USER).fill({ status: 'processing' })
+          ),
       });
 
       await expect(
         (createJob as any)._handler(ctx, { prompt: 'valid prompt text', ipAddress: undefined })
-      ).rejects.toThrow(`Too many concurrent jobs. Maximum ${JOB_CONFIG.MAX_CONCURRENT_PER_USER} jobs allowed.`);
+      ).rejects.toThrow(
+        `Too many concurrent jobs. Maximum ${JOB_CONFIG.MAX_CONCURRENT_PER_USER} jobs allowed.`
+      );
     });
 
     it('creates job, applies rate limit, and schedules processing', async () => {
@@ -77,9 +87,17 @@ describe('generationJobs mutations', () => {
       });
       db.insert.mockResolvedValue('job_123');
 
-      const result = await (createJob as any)._handler(ctx, { prompt: 'valid prompt text', ipAddress: '127.0.0.1' });
+      const result = await (createJob as any)._handler(ctx, {
+        prompt: 'valid prompt text',
+        ipAddress: '127.0.0.1',
+      });
 
-      expect(mockedEnforceRateLimit).toHaveBeenCalledWith(ctx, '127.0.0.1', 'questionGeneration', false);
+      expect(mockedEnforceRateLimit).toHaveBeenCalledWith(
+        ctx,
+        '127.0.0.1',
+        'questionGeneration',
+        false
+      );
       expect(db.insert).toHaveBeenCalledWith(
         'generationJobs',
         expect.objectContaining({
@@ -98,7 +116,9 @@ describe('generationJobs mutations', () => {
   describe('cancelJob', () => {
     it('throws when user does not own job', async () => {
       db.get.mockResolvedValue({ userId: 'other_user', status: 'pending' });
-      await expect((cancelJob as any)._handler(ctx, { jobId: 'job_1' })).rejects.toThrow('Job not found or access denied');
+      await expect((cancelJob as any)._handler(ctx, { jobId: 'job_1' })).rejects.toThrow(
+        'Job not found or access denied'
+      );
     });
 
     it('cancels pending job', async () => {
@@ -106,7 +126,10 @@ describe('generationJobs mutations', () => {
       db.patch.mockResolvedValue(undefined);
       const res = await (cancelJob as any)._handler(ctx, { jobId: 'job_1' });
       expect(res).toEqual({ success: true });
-      expect(db.patch).toHaveBeenCalledWith('job_1', expect.objectContaining({ status: 'cancelled' }));
+      expect(db.patch).toHaveBeenCalledWith(
+        'job_1',
+        expect.objectContaining({ status: 'cancelled' })
+      );
     });
   });
 
@@ -114,10 +137,19 @@ describe('generationJobs mutations', () => {
     it('sets startedAt and status when transitioning from pending', async () => {
       db.get.mockResolvedValue(makeGenerationJob({ status: 'pending' }));
       db.patch.mockResolvedValue(undefined);
-      await (updateProgress as any)._handler(ctx, { jobId: 'job_1', phase: 'generating', questionsGenerated: 2 });
+      await (updateProgress as any)._handler(ctx, {
+        jobId: 'job_1',
+        phase: 'generating',
+        questionsGenerated: 2,
+      });
       expect(db.patch).toHaveBeenCalledWith(
         'job_1',
-        expect.objectContaining({ status: 'processing', startedAt: expect.any(Number), phase: 'generating', questionsGenerated: 2 })
+        expect.objectContaining({
+          status: 'processing',
+          startedAt: expect.any(Number),
+          phase: 'generating',
+          questionsGenerated: 2,
+        })
       );
     });
   });
@@ -149,7 +181,12 @@ describe('generationJobs mutations', () => {
       expect(result).toEqual({ pendingCount: 0, questionsGenerated: 3, questionsSaved: 2 });
       expect(db.patch).toHaveBeenCalledWith(
         'job_1',
-        expect.objectContaining({ pendingConceptIds: [], phase: 'finalizing', questionsGenerated: 3, questionsSaved: 2 })
+        expect.objectContaining({
+          pendingConceptIds: [],
+          phase: 'finalizing',
+          questionsGenerated: 3,
+          questionsSaved: 2,
+        })
       );
     });
   });

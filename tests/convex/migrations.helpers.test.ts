@@ -85,8 +85,19 @@ describe('migrations helpers', () => {
   describe('removeTopicFromQuestions', () => {
     it('removes topic field via replace and reports counts', async () => {
       const questions = [
-        { _id: makeId('questions', 1), topic: 'bio', _creationTime: 1, question: 'Q1', userId: makeId('users', 1) },
-        { _id: makeId('questions', 2), question: 'Q2', userId: makeId('users', 1), _creationTime: 2 },
+        {
+          _id: makeId('questions', 1),
+          topic: 'bio',
+          _creationTime: 1,
+          question: 'Q1',
+          userId: makeId('users', 1),
+        },
+        {
+          _id: makeId('questions', 2),
+          question: 'Q2',
+          userId: makeId('users', 1),
+          _creationTime: 2,
+        },
       ];
       const paginate = makePaginate(questions);
       const db = createMockDb({

@@ -95,33 +95,6 @@
 **Acceptance**: 10+ common errors mapped; unit tests for translation; rollout to frontend mutation calls
 **Effort**: 2h | **Value**: Users understand errors and how to fix them
 
-### [TEST][HIGH] Increase Convex Backend Test Coverage
-**Files**: convex/**/*.ts (124 source files, 23 test files = 18.5% test ratio)
-**Perspectives**: maintainability-maven, security-sentinel
-**Problem**: Convex backend at 13.16% coverage (vs 24.36% overall) → critical backend logic untested
-**Impact**: Backend mutations, FSRS calculations, data integrity logic have no regression protection
-**Fix**: Add tests for high-risk convex modules (aiGeneration, generationJobs, questionsInteractions, migrations helpers)
-**Acceptance**: Convex coverage from 13% → 30%; critical mutation pairs tested; CI enforces minimum thresholds
-**Effort**: 2d | **Value**: Regression protection for backend logic, catch bugs before production
-
-### [TEST][MEDIUM] Add Coverage Thresholds for Critical Modules
-**File**: vitest.config.ts:30-36
-**Perspectives**: maintainability-maven (quality gates)
-**Problem**: Single global threshold (18.2%) → critical paths (payment, auth) can drop to 0% without failing CI
-**Impact**: No protection for money code or security-critical modules
-**Fix**: Add per-module coverage thresholds in vitest.config.ts
-```typescript
-coverage: {
-  thresholds: {
-    'convex/**/*.ts': { lines: 30, functions: 30 },
-    'lib/payment/**/*.ts': { lines: 80, functions: 80 },
-    'lib/auth/**/*.ts': { lines: 80, functions: 80 },
-  }
-}
-```
-**Acceptance**: Critical modules have enforced minimums; CI fails if thresholds drop; non-critical code flexible
-**Effort**: 20m | **Value**: Ratcheted protection for critical paths
-
 ---
 
 ## Next (<6 weeks)
