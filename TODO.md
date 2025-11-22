@@ -99,7 +99,7 @@
   Depends: T2  
   ```
 
-- [ ] T6: Cover migration helpers (difficulty/topic/backfill)  
+- [x] T6: Cover migration helpers (difficulty/topic/backfill)  
   ```
   Files: tests/convex/migrations.helpers.test.ts (new), convex/migrations.ts (export test hooks if needed)  
   Goal: Validate dry-run vs real paths, pagination continuation, already-migrated skips, failure aggregation, missing session context path for backfillInteractionSessionId.  
