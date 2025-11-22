@@ -130,7 +130,7 @@
   Depends: T2 (logger stub)  
   ```
 
-- [ ] T8: Update docs with coverage expectations  
+- [x] T8: Update docs with coverage expectations  
   ```
   Files: docs/guides/testing-convex.md (or new), BACKLOG.md (if doc missing)  
   Goal: Document new thresholds, how to run Convex unit suites, and no-network rule.  
