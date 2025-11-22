@@ -9,9 +9,8 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: vi.fn(),
 }));
 
-vi.mock('openai', () => ({
-  default: vi.fn(),
-}));
+// Vitest 4 requires proper class syntax for constructor mocking
+vi.mock('openai', { spy: true });
 
 const mockCreateGoogleGenerativeAI = vi.mocked(createGoogleGenerativeAI);
 const mockOpenAIConstructor = vi.mocked(OpenAI);
@@ -66,7 +65,9 @@ describe('initializeProvider', () => {
   it('initializes OpenAI provider and returns client with diagnostics', async () => {
     process.env.OPENAI_API_KEY = 'openai-key';
     const mockOpenAIClient = { responses: {} } as any;
-    mockOpenAIConstructor.mockReturnValue(mockOpenAIClient);
+    mockOpenAIConstructor.mockImplementation(function (this: any) {
+      return mockOpenAIClient;
+    });
     const logger = createLogger();
 
     const result = await initializeProvider('openai', 'gpt-5-mini', {

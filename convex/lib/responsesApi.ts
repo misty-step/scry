@@ -17,7 +17,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-export interface ResponsesApiOptions<T extends z.ZodSchema> {
+export interface ResponsesApiOptions<T extends z.ZodType<any, any, any>> {
   client: OpenAI;
   model: string;
   input: string;
@@ -53,7 +53,7 @@ export interface ResponsesApiResult<T> {
  * @throws {Error} If no message output or parsing fails
  * @throws {z.ZodError} If schema validation fails
  */
-export async function generateObjectWithResponsesApi<T extends z.ZodSchema>(
+export async function generateObjectWithResponsesApi<T extends z.ZodType<any, any, any>>(
   options: ResponsesApiOptions<T>
 ): Promise<ResponsesApiResult<z.infer<T>>> {
   const {
@@ -75,7 +75,7 @@ export async function generateObjectWithResponsesApi<T extends z.ZodSchema>(
         type: 'json_schema',
         name: schemaName,
         strict: true,
-        schema: zodToJsonSchema(schema) as Record<string, unknown>,
+        schema: zodToJsonSchema(schema as any) as Record<string, unknown>,
       },
       ...(verbosity && { verbosity }),
     },

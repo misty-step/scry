@@ -62,13 +62,10 @@ export default defineConfig({
     testTimeout: 10000,
     hookTimeout: 10000,
 
-    // Enable parallel test execution
+    // Enable parallel test execution with Vitest 4 configuration
     pool: 'threads',
-    poolOptions: {
-      threads: {
-        singleThread: false,
-      },
-    },
+    // Note: In Vitest 4, poolOptions.threads.singleThread is replaced with maxWorkers
+    // Leaving maxWorkers unset enables parallel execution (default behavior)
 
     // Show test timing to identify slow tests
     reporters: ['verbose'],

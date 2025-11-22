@@ -1,16 +1,11 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import coreWebVitals from 'eslint-config-next/core-web-vitals';
+import typescript from 'eslint-config-next/typescript';
+import prettier from 'eslint-config-prettier';
 
 const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript', 'prettier'),
+  ...coreWebVitals,
+  ...typescript,
+  prettier,
   {
     ignores: [
       'lib/generated/**/*',
@@ -36,6 +31,12 @@ const eslintConfig = [
           destructuredArrayIgnorePattern: '^_',
         },
       ],
+      // TODO: Address React 19 & Next.js 16 stricter rules in separate PR
+      // These are pre-existing patterns that need refactoring
+      'react-hooks/set-state-in-effect': 'warn', // Downgrade from error to warning
+      'react-hooks/purity': 'warn', // Downgrade from error to warning
+      'react-hooks/refs': 'warn', // Accessing refs during render - needs refactor
+      'react-hooks/preserve-manual-memoization': 'warn', // React Compiler memoization
     },
   },
   {
@@ -66,6 +67,13 @@ const eslintConfig = [
     files: ['scripts/**/*', '*.config.*', '*.setup.*'],
     rules: {
       'no-console': 'off', // Scripts can use console.log for output
+    },
+  },
+  {
+    // Override for Convex files requiring Zod 4 compatibility
+    files: ['convex/lib/responsesApi.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off', // Zod 4 type compatibility requires any
     },
   },
 ];
