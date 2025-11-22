@@ -83,7 +83,7 @@
   Depends: T2  
   ```
 
-- [ ] T5: Cover questionsInteractions mutation behavior  
+- [x] T5: Cover questionsInteractions mutation behavior  
   ```
   Files: tests/convex/questionsInteractions.record.test.ts (new), convex/questionsInteractions.ts (add `__test` export if needed)  
   Goal: Ensure ownership check, FSRS init vs repeat paths, session context composition, stats patch, nextReview/scheduledDays propagation.  
