@@ -447,7 +447,10 @@ export const processJob = internalAction({
       const totalSuggestions = object.concepts.length;
       const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
       // Soft limit: Take top N concepts to prevent system overload while preventing validation crashes
-      const preparedConcepts = preparedConceptsResult.concepts.slice(0, MAX_CONCEPTS_PER_GENERATION);
+      const preparedConcepts = preparedConceptsResult.concepts.slice(
+        0,
+        MAX_CONCEPTS_PER_GENERATION
+      );
 
       if (preparedConcepts.length === 0) {
         throw new GenerationPipelineError(
