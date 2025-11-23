@@ -3,5 +3,6 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "strict": false
-  }
+  },
+  "exclude": ["../tests/**", "../**/*.test.ts", "../**/*.test.tsx", "../node_modules"]
 }
