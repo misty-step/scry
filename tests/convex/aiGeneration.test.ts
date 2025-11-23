@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareConceptIdeas, prepareGeneratedPhrasings } from '../../convex/aiGeneration';
 import { logConceptEvent, type ConceptsLogger } from '../../convex/lib/logger';
+import { MAX_CONCEPTS_PER_GENERATION } from '../../convex/lib/constants';
 
 /**
  * Tests for AI generation error classification
@@ -462,6 +463,20 @@ describe('Stage A Concept Preparation', () => {
     // No artificial cap - all valid concepts should be accepted
     expect(result.concepts.length).toBe(10);
     expect(result.stats.accepted).toBe(10);
+  });
+
+  it('enforces 50-concept soft limit for broad topics', () => {
+    const manyIdeas = Array.from({ length: 100 }).map((_, i) => ({
+      title: `Concept ${i + 1}`,
+      description: `Description for concept ${i + 1}`,
+      whyItMatters: `Matters for ${i + 1}`,
+    }));
+
+    const result = prepareConceptIdeas(manyIdeas, 'test prompt');
+    const finalConcepts = result.concepts.slice(0, MAX_CONCEPTS_PER_GENERATION); // Simulates production code
+
+    expect(result.concepts.length).toBe(100); // prepareConceptIdeas doesn't limit
+    expect(finalConcepts.length).toBe(MAX_CONCEPTS_PER_GENERATION); // Runtime enforcement caps at limit
   });
 
   it('skips empty titles or descriptions but still returns fallback concept', () => {

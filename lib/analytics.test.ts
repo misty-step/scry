@@ -131,6 +131,7 @@ describe('analytics wrapper', () => {
       );
     } finally {
       globalThis.window = originalWindow;
+      vi.unstubAllEnvs();
     }
   });
 

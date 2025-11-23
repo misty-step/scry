@@ -20,6 +20,7 @@ import { internalAction } from './_generated/server';
 import { initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
+import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
 import {
   createConceptsLogger,
   generateCorrelationId,
@@ -445,8 +446,8 @@ export const processJob = internalAction({
 
       const totalSuggestions = object.concepts.length;
       const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
-      // Soft limit: Take top 50 concepts to prevent system overload while preventing validation crashes
-      const preparedConcepts = preparedConceptsResult.concepts.slice(0, 50);
+      // Soft limit: Take top N concepts to prevent system overload while preventing validation crashes
+      const preparedConcepts = preparedConceptsResult.concepts.slice(0, MAX_CONCEPTS_PER_GENERATION);
 
       if (preparedConcepts.length === 0) {
         throw new GenerationPipelineError(

@@ -17,6 +17,8 @@
  * - Trust over prescription
  */
 
+import { MAX_CONCEPTS_PER_GENERATION } from './constants';
+
 /**
  * Learning Science Prompt - Single Phase
  *
@@ -188,7 +190,7 @@ Return JSON with the following structure:
 # Guidelines
 - **Quantity Strategy**:
   - If the input is a **Finite Set** (e.g., "NATO Phonetic Alphabet", "The 12 Apostles", "Planets"), generate a concept for **EVERY** item in the set. Do not skip any.
-  - If the input is a **Broad Topic** (e.g., "Introduction to Calculus", "History of Rome"), break it down into its essential component concepts. Prioritize the most fundamental 50 concepts. Do not attempt to cover every minor detail if it exceeds this soft limit.
+  - If the input is a **Broad Topic** (e.g., "Introduction to Calculus", "History of Rome"), break it down into its essential component concepts. Prioritize the most fundamental ${MAX_CONCEPTS_PER_GENERATION} concepts. Do not attempt to cover every minor detail if it exceeds this soft limit.
 - **Atomicity**: Each concept must focus on ONE retrievable idea (no multi-topic bundles, no 'A vs B' pairings).
 - **Specificity**: Avoid vague titles ("Overview", "Basics of X"). Be specific.
 - **Standalone**: Descriptions must include enough context for a future quiz item to be generated solely from this description.
