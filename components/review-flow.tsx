@@ -295,25 +295,6 @@ export function ReviewFlow() {
               <LearningModeExplainer />
             )}
 
-            {/* Concept Title - HIDDEN during question phase to prevent spoilers (Rule #8: Contextual Standalone) */}
-            {feedbackState.showFeedback && conceptTitle && (
-              <div className="space-y-1 animate-fadeIn">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                  <span>Concept</span>
-                </div>
-                <h1 className="text-2xl font-semibold text-foreground break-words">
-                  {conceptTitle}
-                </h1>
-                {(phrasingPositionLabel || selectionReasonLabel) && (
-                  <p className="text-sm text-muted-foreground">
-                    {phrasingPositionLabel}
-                    {phrasingPositionLabel && selectionReasonLabel && ' • '}
-                    {selectionReasonLabel}
-                  </p>
-                )}
-              </div>
-            )}
-
             {/* Use memoized component for question display with error boundary */}
             <ReviewErrorBoundary
               fallbackMessage="Unable to display this question. Try refreshing or moving to the next question."
@@ -390,10 +371,30 @@ export function ReviewFlow() {
 
             {/* Feedback section */}
             {feedbackState.showFeedback &&
-              (question.explanation ||
+              (conceptTitle ||
+                question.explanation ||
                 interactions.length > 0 ||
                 feedbackState.nextReviewInfo?.nextReview) && (
                 <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-fadeIn">
+                  {/* Concept Title */}
+                  {conceptTitle && (
+                    <div className="space-y-1 border-b border-border/30 pb-3">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                        <span>Concept</span>
+                      </div>
+                      <h3 className="text-xl font-semibold text-foreground break-words">
+                        {conceptTitle}
+                      </h3>
+                      {(phrasingPositionLabel || selectionReasonLabel) && (
+                        <p className="text-sm text-muted-foreground">
+                          {phrasingPositionLabel}
+                          {phrasingPositionLabel && selectionReasonLabel && ' • '}
+                          {selectionReasonLabel}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Explanation */}
                   {question.explanation && (
                     <p className="text-sm text-foreground/90">{question.explanation}</p>

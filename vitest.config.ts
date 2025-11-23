@@ -18,7 +18,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'json-summary', 'html', 'lcov'], // Add lcov for Codecov
 
       // Coverage thresholds
-      // CURRENT STATE: 18.22% (as of 2025-11-04 post-flaky-test-removal)
+      // CURRENT STATE: 18.22% global (as of 2025-11-04 post-flaky-test-removal)
       // TARGET: 60%+ (Google research: 60% acceptable, 75% commendable)
       //
       // Improvement plan tracked in BACKLOG.md "Test Coverage Improvement Initiative":
@@ -27,12 +27,17 @@ export default defineConfig({
       // - Phase 3 (Q3 2025): 45% → 60% (test error paths + edge cases)
       //
       // NOTE: Adjusted down from 18.4% to 18.2% after removing flaky shuffle test.
+      // NOTE: Adjusted convex thresholds to 20% after removing 3 flaky analytics tests (2025-11-23).
       // Thresholds should only increase as coverage improves.
+      // Per-path thresholds for critical areas; keep globals as floor.
       thresholds: {
         lines: 18.2, // Current: 18.22%, Target: 60%
         functions: 18.2, // Current: 18.22%, Target: 60%
         branches: 15.9, // Current: ~16%, Target: 55%
         statements: 18.2, // Current: 18.22%, Target: 60%
+        'convex/**/*.ts': { lines: 20, functions: 20 }, // Current: ~22% lines, ~20% functions. Target: 30%
+        'lib/payment/**/*.ts': { lines: 80, functions: 80 },
+        'lib/auth/**/*.ts': { lines: 80, functions: 80 },
       },
       include: ['lib/**', 'convex/**', 'hooks/**'],
       exclude: [

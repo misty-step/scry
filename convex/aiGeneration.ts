@@ -274,6 +274,12 @@ function classifyError(error: Error): { code: GenerationErrorCode; retryable: bo
   return { code: 'UNKNOWN', retryable: false };
 }
 
+// Test-only exports to keep helpers accessible without widening public API
+export const __test = {
+  classifyError,
+  calculateConflictScore,
+};
+
 /**
  * Process a generation job
  *

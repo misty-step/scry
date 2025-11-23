@@ -95,32 +95,38 @@
 **Acceptance**: 10+ common errors mapped; unit tests for translation; rollout to frontend mutation calls
 **Effort**: 2h | **Value**: Users understand errors and how to fix them
 
-### [TEST][HIGH] Increase Convex Backend Test Coverage
-**Files**: convex/**/*.ts (124 source files, 23 test files = 18.5% test ratio)
-**Perspectives**: maintainability-maven, security-sentinel
-**Problem**: Convex backend at 13.16% coverage (vs 24.36% overall) → critical backend logic untested
-**Impact**: Backend mutations, FSRS calculations, data integrity logic have no regression protection
-**Fix**: Add tests for high-risk convex modules (aiGeneration, generationJobs, questionsInteractions, migrations helpers)
-**Acceptance**: Convex coverage from 13% → 30%; critical mutation pairs tested; CI enforces minimum thresholds
-**Effort**: 2d | **Value**: Regression protection for backend logic, catch bugs before production
+### [TEST][MEDIUM] Fix Analytics Module Caching for Testability
+**File**: lib/analytics.ts
+**Perspectives**: maintainability-maven
+**Problem**: Module-level `serverTrackPromise` caching prevents proper test isolation; 3 tests removed due to flakiness (passed in isolation, failed in suite)
+**Impact**: Lost coverage for analytics enable/disable paths, Sentry integration, user context clearing
+**Fix**: Refactor to eliminate module-level state or add factory pattern for testable initialization
+**Acceptance**: Restore 3 removed tests (see lib/analytics.test.ts:21-29 comment); all tests pass in suite and isolation; no vi.resetModules() required
+**Effort**: 4-6h | **Value**: Full analytics code path coverage without flakiness
 
-### [TEST][MEDIUM] Add Coverage Thresholds for Critical Modules
-**File**: vitest.config.ts:30-36
-**Perspectives**: maintainability-maven (quality gates)
-**Problem**: Single global threshold (18.2%) → critical paths (payment, auth) can drop to 0% without failing CI
-**Impact**: No protection for money code or security-critical modules
-**Fix**: Add per-module coverage thresholds in vitest.config.ts
-```typescript
-coverage: {
-  thresholds: {
-    'convex/**/*.ts': { lines: 30, functions: 30 },
-    'lib/payment/**/*.ts': { lines: 80, functions: 80 },
-    'lib/auth/**/*.ts': { lines: 80, functions: 80 },
-  }
-}
-```
-**Acceptance**: Critical modules have enforced minimums; CI fails if thresholds drop; non-critical code flexible
-**Effort**: 20m | **Value**: Ratcheted protection for critical paths
+### [TEST][LOW] Extract __test Exports to Public Helpers
+**Files**: tests/helpers/loggerStub.ts, tests/helpers/convexFixtures.ts
+**Perspectives**: maintainability-maven
+**Problem**: Test helpers expose `__test` namespace for internal utilities (makePaginate, makeId) - awkward convention
+**Fix**: Either (a) extract to dedicated test utility module or (b) make part of public API if generally useful
+**Acceptance**: No `__test` exports; utilities available via clearer import path; tests updated
+**Effort**: 1h | **Value**: Cleaner test helper API
+
+### [TEST][LOW] Add Edge Case Coverage to Convex Tests
+**Files**: tests/convex/questionsInteractions.record.test.ts, generationJobs.logic.test.ts
+**Perspectives**: maintainability-maven
+**Problem**: Missing edge cases: null userAnswer, negative timeSpent, maxInt scheduledDays, concurrent job race conditions
+**Fix**: Add test cases for boundary conditions and error paths
+**Acceptance**: 4+ edge case tests added; coverage increases 3-5% on affected modules
+**Effort**: 3-4h | **Value**: Increased confidence in error handling
+
+### [TEST][LOW] Relax Migration Replace Assertions
+**File**: tests/convex/migrations.helpers.test.ts:116-119
+**Perspectives**: maintainability-maven
+**Problem**: `db.replace` test assertion expects exact object match - brittle if migration adds fields
+**Fix**: Use `expect.objectContaining()` instead of exact match
+**Acceptance**: Migration tests resilient to non-breaking field additions
+**Effort**: 15m | **Value**: Reduced test maintenance burden
 
 ---
 
