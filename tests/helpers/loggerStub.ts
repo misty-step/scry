@@ -14,16 +14,25 @@ export type LogCall = {
 export function createLoggerStub() {
   const calls: LogCall[] = [];
 
-  const record = (level: LogLevel) =>
-    vi.fn((message: unknown, context?: unknown) => {
+  const recordLog = (level: Exclude<LogLevel, 'error'>) =>
+    vi.fn((message: string, context?: unknown) => {
       calls.push({ level, message, context });
     });
 
+  const recordError = () =>
+    vi.fn((message: string, error?: Error | unknown, context?: unknown) => {
+      calls.push({
+        level: 'error',
+        message,
+        context: context ? { ...context, error } : { error },
+      });
+    });
+
   const logger = {
-    debug: record('debug'),
-    info: record('info'),
-    warn: record('warn'),
-    error: record('error'),
+    debug: recordLog('debug'),
+    info: recordLog('info'),
+    warn: recordLog('warn'),
+    error: recordError(),
     /**
      * Returns all recorded calls, optionally filtered by level.
      */

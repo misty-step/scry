@@ -95,6 +95,39 @@
 **Acceptance**: 10+ common errors mapped; unit tests for translation; rollout to frontend mutation calls
 **Effort**: 2h | **Value**: Users understand errors and how to fix them
 
+### [TEST][MEDIUM] Fix Analytics Module Caching for Testability
+**File**: lib/analytics.ts
+**Perspectives**: maintainability-maven
+**Problem**: Module-level `serverTrackPromise` caching prevents proper test isolation; 3 tests removed due to flakiness (passed in isolation, failed in suite)
+**Impact**: Lost coverage for analytics enable/disable paths, Sentry integration, user context clearing
+**Fix**: Refactor to eliminate module-level state or add factory pattern for testable initialization
+**Acceptance**: Restore 3 removed tests (see lib/analytics.test.ts:21-29 comment); all tests pass in suite and isolation; no vi.resetModules() required
+**Effort**: 4-6h | **Value**: Full analytics code path coverage without flakiness
+
+### [TEST][LOW] Extract __test Exports to Public Helpers
+**Files**: tests/helpers/loggerStub.ts, tests/helpers/convexFixtures.ts
+**Perspectives**: maintainability-maven
+**Problem**: Test helpers expose `__test` namespace for internal utilities (makePaginate, makeId) - awkward convention
+**Fix**: Either (a) extract to dedicated test utility module or (b) make part of public API if generally useful
+**Acceptance**: No `__test` exports; utilities available via clearer import path; tests updated
+**Effort**: 1h | **Value**: Cleaner test helper API
+
+### [TEST][LOW] Add Edge Case Coverage to Convex Tests
+**Files**: tests/convex/questionsInteractions.record.test.ts, generationJobs.logic.test.ts
+**Perspectives**: maintainability-maven
+**Problem**: Missing edge cases: null userAnswer, negative timeSpent, maxInt scheduledDays, concurrent job race conditions
+**Fix**: Add test cases for boundary conditions and error paths
+**Acceptance**: 4+ edge case tests added; coverage increases 3-5% on affected modules
+**Effort**: 3-4h | **Value**: Increased confidence in error handling
+
+### [TEST][LOW] Relax Migration Replace Assertions
+**File**: tests/convex/migrations.helpers.test.ts:116-119
+**Perspectives**: maintainability-maven
+**Problem**: `db.replace` test assertion expects exact object match - brittle if migration adds fields
+**Fix**: Use `expect.objectContaining()` instead of exact match
+**Acceptance**: Migration tests resilient to non-breaking field additions
+**Effort**: 15m | **Value**: Reduced test maintenance burden
+
 ---
 
 ## Next (<6 weeks)

@@ -3,6 +3,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 import { requireUserFromClerk } from '@/convex/clerk';
 import { recordInteraction } from '@/convex/questionsInteractions';
 import { getScheduler } from '@/convex/scheduling';
+import { createMockCtx, createMockDb } from '@/tests/helpers';
 
 vi.mock('@/convex/clerk', () => ({
   requireUserFromClerk: vi.fn(),
@@ -26,9 +27,10 @@ describe('recordInteraction mutation', () => {
   });
 
   it('rejects when question not owned by user', async () => {
-    const ctx = createMockCtx({
+    const mockDb = createMockDb({
       get: vi.fn().mockResolvedValue({ _id: 'q1', userId: 'other_user' }),
     });
+    const ctx = createMockCtx({ db: mockDb });
 
     await expect(
       (recordInteraction as any)._handler(ctx, {
@@ -50,7 +52,7 @@ describe('recordInteraction mutation', () => {
     };
     mockedGetScheduler.mockReturnValue(scheduler as any);
 
-    const ctx = createMockCtx({
+    const mockDb = createMockDb({
       get: vi.fn().mockResolvedValue({
         _id: 'q1',
         userId: 'user_1',
@@ -60,6 +62,7 @@ describe('recordInteraction mutation', () => {
       insert: insertSpy,
       patch: patchSpy,
     });
+    const ctx = createMockCtx({ db: mockDb });
 
     await (recordInteraction as any)._handler(ctx, {
       questionId: 'q1',
@@ -115,7 +118,7 @@ describe('recordInteraction mutation', () => {
     };
     mockedGetScheduler.mockReturnValue(scheduler as any);
 
-    const ctx = createMockCtx({
+    const mockDb = createMockDb({
       get: vi.fn().mockResolvedValue({
         _id: 'q1',
         userId: 'user_1',
@@ -126,6 +129,7 @@ describe('recordInteraction mutation', () => {
       insert: insertSpy,
       patch: patchSpy,
     });
+    const ctx = createMockCtx({ db: mockDb });
 
     await (recordInteraction as any)._handler(ctx, {
       questionId: 'q1',
@@ -153,23 +157,4 @@ describe('recordInteraction mutation', () => {
   });
 });
 
-function createMockCtx(overrides: {
-  get?: ReturnType<typeof vi.fn>;
-  insert?: ReturnType<typeof vi.fn>;
-  patch?: ReturnType<typeof vi.fn>;
-}) {
-  return {
-    db: {
-      get:
-        overrides.get ??
-        vi.fn().mockResolvedValue({
-          _id: 'q1',
-          userId: 'user_1',
-          attemptCount: 0,
-          correctCount: 0,
-        }),
-      insert: overrides.insert ?? vi.fn(),
-      patch: overrides.patch ?? vi.fn(),
-    },
-  };
-}
+// Using shared createMockCtx from tests/helpers
