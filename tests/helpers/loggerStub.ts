@@ -24,7 +24,7 @@ export function createLoggerStub() {
       calls.push({
         level: 'error',
         message,
-        context: context ? { ...context, error } : { error },
+        context: context ? { ...(context as Record<string, unknown>), error } : { error },
       });
     });
 
