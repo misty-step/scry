@@ -48,7 +48,7 @@ describe('generationJobs mutations', () => {
   describe('createJob', () => {
     it('rejects prompts outside length bounds', async () => {
       await expect(
-        (createJob as any)._handler(ctx, { prompt: 'short', ipAddress: undefined })
+        (createJob as any)._handler(ctx, { prompt: 'ab', ipAddress: undefined })
       ).rejects.toThrow(
         `Prompt too short. Minimum ${JOB_CONFIG.MIN_PROMPT_LENGTH} characters required.`
       );

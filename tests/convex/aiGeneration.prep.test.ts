@@ -96,12 +96,19 @@ describe('prepareGeneratedPhrasings', () => {
   it('respects targetCount and skips existing questions', () => {
     const generated = Array.from({ length: 5 }, (_, i) => ({
       ...base,
-      question: `Question ${i}`,
+      question: `Test question number ${i}`,
     }));
 
-    const result = prepareGeneratedPhrasings(generated as any, ['question 0', 'question 1'], 2);
+    const result = prepareGeneratedPhrasings(
+      generated as any,
+      ['test question number 0', 'test question number 1'],
+      2
+    );
     expect(result).toHaveLength(2);
-    expect(result.map((p) => p.question)).toEqual(['Question 2', 'Question 3']);
+    expect(result.map((p) => p.question)).toEqual([
+      'Test question number 2',
+      'Test question number 3',
+    ]);
   });
 });
 

@@ -116,7 +116,6 @@ describe('migrations helpers', () => {
       expect(db.replace).toHaveBeenCalledWith(questions[0]._id, {
         question: 'Q1',
         userId: questions[0].userId,
-        _creationTime: questions[0]._creationTime,
       });
     });
   });
