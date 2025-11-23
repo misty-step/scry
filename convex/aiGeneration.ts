@@ -431,9 +431,22 @@ export const processJob = internalAction({
       }
 
       const { object } = finalResponse;
+
+      // Diagnostic logging for production debugging
+      logger.info(
+        {
+          ...stageAMetadata,
+          conceptCount: object.concepts.length,
+          responseSize: JSON.stringify(object).length,
+          rawResponseSnippet: JSON.stringify(object).slice(0, 1000),
+        },
+        'Raw AI response received'
+      );
+
       const totalSuggestions = object.concepts.length;
       const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
-      const preparedConcepts = preparedConceptsResult.concepts;
+      // Soft limit: Take top 50 concepts to prevent system overload while preventing validation crashes
+      const preparedConcepts = preparedConceptsResult.concepts.slice(0, 50);
 
       if (preparedConcepts.length === 0) {
         throw new GenerationPipelineError(

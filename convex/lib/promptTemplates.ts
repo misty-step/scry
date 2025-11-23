@@ -188,7 +188,7 @@ Return JSON with the following structure:
 # Guidelines
 - **Quantity Strategy**:
   - If the input is a **Finite Set** (e.g., "NATO Phonetic Alphabet", "The 12 Apostles", "Planets"), generate a concept for **EVERY** item in the set. Do not skip any.
-  - If the input is a **Broad Topic** (e.g., "Introduction to Calculus", "History of Rome"), break it down into its essential component concepts. Do not artificially limit the number of concepts; provide as many as are necessary to cover the core ideas thoroughly.
+  - If the input is a **Broad Topic** (e.g., "Introduction to Calculus", "History of Rome"), break it down into its essential component concepts. Prioritize the most fundamental 50 concepts. Do not attempt to cover every minor detail if it exceeds this soft limit.
 - **Atomicity**: Each concept must focus on ONE retrievable idea (no multi-topic bundles, no 'A vs B' pairings).
 - **Specificity**: Avoid vague titles ("Overview", "Basics of X"). Be specific.
 - **Standalone**: Descriptions must include enough context for a future quiz item to be generated solely from this description.

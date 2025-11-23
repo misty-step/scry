@@ -78,7 +78,7 @@ describe('analytics wrapper', () => {
   it('allows enabling analytics explicitly in development', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     vi.stubEnv('VERCEL_ENV', 'development');
-    process.env.NEXT_PUBLIC_ENABLE_ANALYTICS = 'true';
+    vi.stubEnv('NEXT_PUBLIC_ENABLE_ANALYTICS', 'true');
 
     vi.resetModules();
     const { trackEvent } = await import('./analytics');
