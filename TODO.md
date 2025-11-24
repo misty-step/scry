@@ -1,7 +1,7 @@
 # TODO
 
 - [x] Add Convex regression tests for `convex/concepts.ts`, `questionsCrud.ts`, `questionsBulk.ts`, and `embeddings.ts` (cover create/update/delete branches, pagination, empty inputs, embedding failure paths) using existing helpers in `tests/helpers`; success criteria: `pnpm test:coverage` reports `convex/**/*` lines/functions ≥25% with no new flakes.
-- [ ] Add hook tests for `hooks/use-review-flow.ts`, `use-keyboard-shortcuts.ts`, `use-button-press.ts`, and `use-confirmation.tsx` capturing debounce, cancel, and error branches with happy-dom; success criteria: global coverage rises to ≥27% lines/statements without exceeding 6s per file.
+- [x] Add hook tests for `hooks/use-review-flow.ts`, `use-keyboard-shortcuts.ts`, `use-button-press.ts`, and `use-confirmation.tsx` capturing debounce, cancel, and error branches with happy-dom; success criteria: global coverage rises to ≥27% lines/statements without exceeding 6s per file.
 - [ ] Ratchet Vitest thresholds in `vitest.config.ts` to lines/statements 27%, functions 26%, branches 22%, and `convex/**/*` 25%; align comments to new floor/target numbers; success criteria: suite passes locally and fails when coverage regresses below these floors.
 - [ ] Create `.codecov.yml` with project status floors matching Vitest (lines/statements 27%, functions 26%, branches 22%) and patch status at 80% (tolerate 1% delta); success criteria: Codecov status fails PRs below floors and PR comment shows project + patch summaries only.
 - [ ] Update `.github/workflows/ci.yml` test job: timeout ≥8m, keep `pnpm test:ci`, set Codecov step `fail_ci_if_error: true`; success criteria: CI fails if coverage upload or status fails, job completes under new timeout on current suite.

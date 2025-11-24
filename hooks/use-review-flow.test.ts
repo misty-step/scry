@@ -1,6 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
+import { useDataHash } from '@/hooks/use-data-hash';
+import { useSimplePoll } from '@/hooks/use-simple-poll';
+import { LOADING_TIMEOUT_MS } from '@/lib/constants/timing';
 import type { Id } from '../convex/_generated/dataModel';
-import { reviewReducer } from './use-review-flow';
+import { reviewReducer, useReviewFlow } from './use-review-flow';
+
+vi.mock('@/hooks/use-simple-poll', () => ({
+  useSimplePoll: vi.fn(),
+}));
+
+vi.mock('@/hooks/use-data-hash', () => ({
+  useDataHash: vi.fn(),
+}));
+
+vi.mock('@/hooks/use-track-event', () => ({
+  useTrackEvent: vi.fn(() => vi.fn()),
+}));
 
 describe('reviewReducer', () => {
   describe('REVIEW_COMPLETE action', () => {
@@ -80,6 +97,33 @@ describe('reviewReducer', () => {
     });
   });
 
+  describe('useReviewFlow hook', () => {
+    const mockedUseSimplePoll = vi.mocked(useSimplePoll as unknown as Mock);
+    const mockedUseDataHash = vi.mocked(useDataHash as unknown as Mock);
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockedUseSimplePoll.mockReturnValue({ data: undefined });
+      mockedUseDataHash.mockReturnValue({ hasChanged: true });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.clearAllMocks();
+    });
+
+    it('transitions to error when loading exceeds timeout', () => {
+      const { result } = renderHook(() => useReviewFlow());
+
+      expect(result.current.phase).toBe('loading');
+
+      act(() => {
+        vi.advanceTimersByTime(LOADING_TIMEOUT_MS + 10);
+      });
+
+      expect(result.current.phase).toBe('error');
+    });
+  });
   describe('Data processing after REVIEW_COMPLETE', () => {
     it('should process data updates when receiving new question', () => {
       // This test verifies that the reducer accepts QUESTION_RECEIVED
