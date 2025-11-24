@@ -37,7 +37,8 @@
     "size": "size-limit",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "analyze": "ANALYZE=true next build"
+    "analyze": "ANALYZE=true next build",
+    "test:e2e:smoke": "playwright test --grep @smoke --project=chromium"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.40",

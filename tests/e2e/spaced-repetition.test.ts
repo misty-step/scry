@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.describe('Spaced Repetition Flow', () => {
   // CRITICAL: Quiz generation flow - core user journey
-  test('should validate quiz creation flow elements', async ({ page }) => {
+  test('should validate quiz creation flow elements @smoke', async ({ page }) => {
     await page.goto('/');
 
     // Open the generation modal
@@ -36,7 +36,7 @@ test.describe('Spaced Repetition Flow', () => {
   });
 
   // CRITICAL: Spaced repetition review page - core user journey
-  test('should validate review page structure', async ({ page }) => {
+  test('should validate review page structure @smoke', async ({ page }) => {
     await page.goto('/');
 
     // Should redirect to sign in if not authenticated
