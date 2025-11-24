@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@ai-sdk/google':
-        specifier: ^2.0.40
-        version: 2.0.40(zod@4.1.12)
+        specifier: ^2.0.42
+        version: 2.0.42(zod@4.1.13)
       '@ai-sdk/openai':
         specifier: ^2.0.71
-        version: 2.0.71(zod@4.1.12)
+        version: 2.0.71(zod@4.1.13)
       '@clerk/clerk-react':
         specifier: ^5.56.2
         version: 5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -31,7 +31,7 @@ importers:
         version: 5.2.2(react-hook-form@7.66.1(react@19.2.0))
       '@openrouter/ai-sdk-provider':
         specifier: ^1.2.5
-        version: 1.2.5(ai@5.0.98(zod@4.1.12))(zod@4.1.12)
+        version: 1.2.5(ai@5.0.101(zod@4.1.13))(zod@4.1.13)
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@19.2.3(@types/react@19.2.6))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -87,8 +87,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(next@16.0.3(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(@playwright/test@1.56.1)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
       ai:
-        specifier: ^5.0.98
-        version: 5.0.98(zod@4.1.12)
+        specifier: ^5.0.101
+        version: 5.0.101(zod@4.1.13)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -100,7 +100,7 @@ importers:
         version: 1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
       convex-helpers:
         specifier: ^0.1.105
-        version: 0.1.105(@standard-schema/spec@1.0.0)(convex@1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0))(react@19.2.0)(typescript@5.9.3)(zod@4.1.12)
+        version: 0.1.105(@standard-schema/spec@1.0.0)(convex@1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0))(react@19.2.0)(typescript@5.9.3)(zod@4.1.13)
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
@@ -115,7 +115,7 @@ importers:
         version: 0.4.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       openai:
         specifier: ^6.9.1
-        version: 6.9.1(ws@8.18.3)(zod@4.1.12)
+        version: 6.9.1(ws@8.18.3)(zod@4.1.13)
       pino:
         specifier: ^10.1.0
         version: 10.1.0
@@ -150,11 +150,11 @@ importers:
         specifier: ^8.18.3
         version: 8.18.3
       zod:
-        specifier: ^4.1.12
-        version: 4.1.12
+        specifier: ^4.1.13
+        version: 4.1.13
       zod-to-json-schema:
         specifier: ^3.25.0
-        version: 3.25.0(zod@4.1.12)
+        version: 3.25.0(zod@4.1.13)
     devDependencies:
       '@changesets/cli':
         specifier: ^2.29.7
@@ -264,14 +264,14 @@ packages:
   '@adobe/css-tools@4.4.4':
     resolution: {integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg==}
 
-  '@ai-sdk/gateway@2.0.13':
-    resolution: {integrity: sha512-q8M+7+VEKp91I295cjNDgQ4LyGImKj5cDLVARDay7nBTXGjIRZOlthYE7K6Rbz2yHKFyTmKH7MMkYavAM7L/UQ==}
+  '@ai-sdk/gateway@2.0.15':
+    resolution: {integrity: sha512-i1YVKzC1dg9LGvt+GthhD7NlRhz9J4+ZRj3KELU14IZ/MHPsOBiFeEoCCIDLR+3tqT8/+5nIsK3eZ7DFRfMfdw==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@2.0.40':
-    resolution: {integrity: sha512-E7MTVE6vhWXQJzXQDvojwA9t5xlhWpxttCH3R/kUyiE6y0tT8Ay2dmZLO+bLpFBQ5qrvBMrjKWpDVQMoo6TJZg==}
+  '@ai-sdk/google@2.0.42':
+    resolution: {integrity: sha512-Jdn+3TZm4iIt62CUjjUoIOshqFIXyzNmUDfkSVV4FcjlSo5+AuhzI1KC7QiNHlqPNejzR6NLIqGJx96VAES34g==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -3134,8 +3134,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  ai@5.0.98:
-    resolution: {integrity: sha512-RpMnwnml68Swblobvk6IdF7HLZrog72Ve6H5J3aN+A/JPg4y5CjCXeQyK1N4wJStyuTa6AoKYfJR5F4e/aVpHQ==}
+  ai@5.0.101:
+    resolution: {integrity: sha512-/P4fgs2PGYTBaZi192YkPikOudsl9vccA65F7J7LvoNTOoP5kh1yAsJPsKAy6FXU32bAngai7ft1UDyC3u7z5g==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -5978,38 +5978,38 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.1.12:
-    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+  zod@4.1.13:
+    resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
 
 snapshots:
 
   '@adobe/css-tools@4.4.4': {}
 
-  '@ai-sdk/gateway@2.0.13(zod@4.1.12)':
+  '@ai-sdk/gateway@2.0.15(zod@4.1.13)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.12)
+      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.13)
       '@vercel/oidc': 3.0.5
-      zod: 4.1.12
+      zod: 4.1.13
 
-  '@ai-sdk/google@2.0.40(zod@4.1.12)':
+  '@ai-sdk/google@2.0.42(zod@4.1.13)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.12)
-      zod: 4.1.12
+      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.13)
+      zod: 4.1.13
 
-  '@ai-sdk/openai@2.0.71(zod@4.1.12)':
+  '@ai-sdk/openai@2.0.71(zod@4.1.13)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.12)
-      zod: 4.1.12
+      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.13)
+      zod: 4.1.13
 
-  '@ai-sdk/provider-utils@3.0.17(zod@4.1.12)':
+  '@ai-sdk/provider-utils@3.0.17(zod@4.1.13)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
       '@standard-schema/spec': 1.0.0
       eventsource-parser: 3.0.6
-      zod: 4.1.12
+      zod: 4.1.13
 
   '@ai-sdk/provider@2.0.0':
     dependencies:
@@ -7235,15 +7235,15 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
-  '@openrouter/ai-sdk-provider@1.2.5(ai@5.0.98(zod@4.1.12))(zod@4.1.12)':
+  '@openrouter/ai-sdk-provider@1.2.5(ai@5.0.101(zod@4.1.13))(zod@4.1.13)':
     dependencies:
       '@openrouter/sdk': 0.1.25
-      ai: 5.0.98(zod@4.1.12)
-      zod: 4.1.12
+      ai: 5.0.101(zod@4.1.13)
+      zod: 4.1.13
 
   '@openrouter/sdk@0.1.25':
     dependencies:
-      zod: 4.1.12
+      zod: 4.1.13
 
   '@opentelemetry/api-logs@0.204.0':
     dependencies:
@@ -9240,13 +9240,13 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@5.0.98(zod@4.1.12):
+  ai@5.0.101(zod@4.1.13):
     dependencies:
-      '@ai-sdk/gateway': 2.0.13(zod@4.1.12)
+      '@ai-sdk/gateway': 2.0.15(zod@4.1.13)
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.12)
+      '@ai-sdk/provider-utils': 3.0.17(zod@4.1.13)
       '@opentelemetry/api': 1.9.0
-      zod: 4.1.12
+      zod: 4.1.13
 
   ajv-formats@2.1.1(ajv@8.17.1):
     optionalDependencies:
@@ -9599,14 +9599,14 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex-helpers@0.1.105(@standard-schema/spec@1.0.0)(convex@1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0))(react@19.2.0)(typescript@5.9.3)(zod@4.1.12):
+  convex-helpers@0.1.105(@standard-schema/spec@1.0.0)(convex@1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0))(react@19.2.0)(typescript@5.9.3)(zod@4.1.13):
     dependencies:
       convex: 1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
     optionalDependencies:
       '@standard-schema/spec': 1.0.0
       react: 19.2.0
       typescript: 5.9.3
-      zod: 4.1.12
+      zod: 4.1.13
 
   convex@1.29.3(@clerk/clerk-react@5.56.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0):
     dependencies:
@@ -10058,8 +10058,8 @@ snapshots:
       '@babel/parser': 7.28.5
       eslint: 9.39.1(jiti@2.6.1)
       hermes-parser: 0.25.1
-      zod: 4.1.12
-      zod-validation-error: 4.0.2(zod@4.1.12)
+      zod: 4.1.13
+      zod-validation-error: 4.0.2(zod@4.1.13)
     transitivePeerDependencies:
       - supports-color
 
@@ -11109,10 +11109,10 @@ snapshots:
     dependencies:
       mimic-function: 5.0.1
 
-  openai@6.9.1(ws@8.18.3)(zod@4.1.12):
+  openai@6.9.1(ws@8.18.3)(zod@4.1.13):
     optionalDependencies:
       ws: 8.18.3
-      zod: 4.1.12
+      zod: 4.1.13
 
   opener@1.5.2: {}
 
@@ -12397,14 +12397,14 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-to-json-schema@3.25.0(zod@4.1.12):
+  zod-to-json-schema@3.25.0(zod@4.1.13):
     dependencies:
-      zod: 4.1.12
+      zod: 4.1.13
 
-  zod-validation-error@4.0.2(zod@4.1.12):
+  zod-validation-error@4.0.2(zod@4.1.13):
     dependencies:
-      zod: 4.1.12
+      zod: 4.1.13
 
   zod@3.25.76: {}
 
-  zod@4.1.12: {}
+  zod@4.1.13: {}
