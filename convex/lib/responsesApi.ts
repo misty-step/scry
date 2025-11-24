@@ -67,6 +67,7 @@ export async function generateObjectWithResponsesApi<T extends z.ZodType<any, an
   } = options;
 
   // Use OpenAI's helper to generate a strict-mode compatible schema
+  // Guard early so schema/prompt drift fails fast in dev/test
   const responseFormat = zodResponseFormat(schema, schemaName);
 
   // Call Responses API with structured output format

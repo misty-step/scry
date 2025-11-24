@@ -300,6 +300,15 @@ export default defineSchema({
     userId: v.id('users'),
     title: v.string(), // Concise, user-facing concept name
     description: v.optional(v.string()), // Optional detailed explanation
+    contentType: v.optional(
+      v.union(
+        v.literal('verbatim'),
+        v.literal('enumerable'),
+        v.literal('conceptual'),
+        v.literal('mixed')
+      )
+    ), // Learning content classification for generation/routing
+    originIntent: v.optional(v.string()), // Serialized intent object that produced this concept
 
     // FSRS state (single source of truth for scheduling)
     fsrs: v.object({
