@@ -1,0 +1,58 @@
+name: Nightly E2E + Coverage
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Daily at 06:00 UTC
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.19.0'
+  PNPM_VERSION: '10.12.1'
+
+jobs:
+  nightly-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Run unit/integration tests with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-nightly
+          path: coverage/**
+          retention-days: 7
+
+      - name: Run full Playwright suite
+        env:
+          PLAYWRIGHT_BASE_URL: https://scry.vercel.app
+        run: pnpm exec playwright test --reporter=html
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-nightly
+          path: |
+            playwright-report/**
+            test-results/**
+          retention-days: 7
