@@ -20,6 +20,7 @@ import { internalAction } from './_generated/server';
 import { initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
+import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
 import {
   createConceptsLogger,
   generateCorrelationId,
@@ -437,9 +438,25 @@ export const processJob = internalAction({
       }
 
       const { object } = finalResponse;
+
+      // Diagnostic logging for production debugging
+      logger.info(
+        {
+          ...stageAMetadata,
+          conceptCount: object.concepts.length,
+          responseSize: JSON.stringify(object).length,
+          rawResponseSnippet: JSON.stringify(object).slice(0, 1000),
+        },
+        'Raw AI response received'
+      );
+
       const totalSuggestions = object.concepts.length;
       const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
-      const preparedConcepts = preparedConceptsResult.concepts;
+      // Soft limit: Take top N concepts to prevent system overload while preventing validation crashes
+      const preparedConcepts = preparedConceptsResult.concepts.slice(
+        0,
+        MAX_CONCEPTS_PER_GENERATION
+      );
 
       if (preparedConcepts.length === 0) {
         throw new GenerationPipelineError(

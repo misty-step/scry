@@ -14,8 +14,8 @@
  */
 
 import OpenAI from 'openai';
+import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 
 export interface ResponsesApiOptions<T extends z.ZodType<any, any, any>> {
   client: OpenAI;
@@ -66,6 +66,9 @@ export async function generateObjectWithResponsesApi<T extends z.ZodType<any, an
     reasoningEffort,
   } = options;
 
+  // Use OpenAI's helper to generate a strict-mode compatible schema
+  const responseFormat = zodResponseFormat(schema, schemaName);
+
   // Call Responses API with structured output format
   const response = await client.responses.create({
     model,
@@ -75,7 +78,7 @@ export async function generateObjectWithResponsesApi<T extends z.ZodType<any, an
         type: 'json_schema',
         name: schemaName,
         strict: true,
-        schema: zodToJsonSchema(schema as any) as Record<string, unknown>,
+        schema: responseFormat.json_schema.schema!,
       },
       ...(verbosity && { verbosity }),
     },
