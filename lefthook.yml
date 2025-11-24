@@ -23,7 +23,12 @@ pre-push:
       run: pnpm exec tsc --noEmit
       fail_text: "TypeScript compilation failed. Cannot push with type errors."
 
-    # Run tests to ensure nothing is broken
-    test:
-      run: pnpm test
-      fail_text: "Tests failed. Fix failing tests before pushing."
+    # Fast unit regression check on changed files (no coverage)
+    test-unit-changed:
+      run: pnpm test -- --run --changed
+      fail_text: "Unit tests (changed files) failed. Fix before pushing."
+
+    # Targeted coverage gate for core domains (convex + hooks)
+    test-coverage-core:
+      run: pnpm test:coverage -- --run tests/convex/**/*.test.ts --run hooks/**/*.test.ts
+      fail_text: "Coverage gate failed (convex/hooks)."
