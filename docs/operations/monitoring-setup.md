@@ -109,6 +109,15 @@ Our application automatically logs errors through:
 - **Expected Status**: 200
 - **Timeout**: 15 seconds
 
+## UptimeRobot (Free)
+- **Type**: HTTPS
+- **URL**: `https://<your-domain>/api/health`
+- **Method**: GET (HEAD also works)
+- **Interval**: 5 minutes (free plan cap)
+- **Keyword** (optional): `status":"healthy"`
+- **Timeout**: 10 seconds
+- **Alert**: hook up main on-call channel/email
+
 ### Health Check Endpoints
 
 #### `/api/health` (Public)

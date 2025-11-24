@@ -1,40 +1,30 @@
 import { NextResponse } from 'next/server';
-
+import { createHealthSnapshot, HEALTH_RESPONSE_HEADERS } from '@/lib/health';
 import { createContextLogger } from '@/lib/logger';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const healthLogger = createContextLogger('system');
 
 export async function GET() {
   try {
-    // Basic health check - no authentication required
-    const healthStatus = {
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: {
-        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
-      },
-      environment: process.env.NODE_ENV || 'unknown',
-      version: process.env.npm_package_version || '0.1.0',
-    };
+    const healthStatus = createHealthSnapshot();
 
     healthLogger.debug(
       {
         event: 'health_check',
-        status: 'success',
+        status: 'healthy',
         uptime: healthStatus.uptime,
         memory: healthStatus.memory,
       },
-      'Health check completed successfully'
+      'Health check completed'
     );
 
     return NextResponse.json(healthStatus, {
       status: 200,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Content-Type': 'application/json',
-      },
+      headers: { ...HEALTH_RESPONSE_HEADERS },
     });
   } catch (error) {
     healthLogger.error(
@@ -54,11 +44,31 @@ export async function GET() {
       },
       {
         status: 503,
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Content-Type': 'application/json',
-        },
+        headers: { ...HEALTH_RESPONSE_HEADERS },
       }
     );
+  }
+}
+
+export async function HEAD() {
+  try {
+    const snapshot = createHealthSnapshot();
+
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        ...HEALTH_RESPONSE_HEADERS,
+        'X-Health-Status': snapshot.status,
+        'X-Health-Timestamp': snapshot.timestamp,
+      },
+    });
+  } catch {
+    return new NextResponse(null, {
+      status: 503,
+      headers: {
+        ...HEALTH_RESPONSE_HEADERS,
+        'X-Health-Status': 'unhealthy',
+      },
+    });
   }
 }
