@@ -7,7 +7,13 @@ import {
 } from '@/convex/aiGeneration';
 
 describe('prepareConceptIdeas', () => {
-  const baseIdea = { title: 'ATP', description: 'Energy currency', whyItMatters: 'Life' };
+  const baseIdea = {
+    title: 'ATP',
+    description: 'Energy currency',
+    whyItMatters: 'Life',
+    contentType: 'conceptual' as const,
+    originIntent: 'test input',
+  };
 
   it('filters empty titles/descriptions and removes duplicates (case-insensitive)', () => {
     const input = [
@@ -18,7 +24,14 @@ describe('prepareConceptIdeas', () => {
     ];
 
     const result = prepareConceptIdeas(input);
-    expect(result.concepts).toEqual([{ title: 'ATP', description: 'Energy currency' }]);
+    expect(result.concepts).toEqual([
+      {
+        title: 'ATP',
+        description: 'Energy currency',
+        contentType: 'conceptual',
+        originIntent: undefined,
+      },
+    ]);
     expect(result.stats).toMatchObject({
       totalIdeas: 4,
       skippedEmptyTitle: 1,
@@ -30,13 +43,23 @@ describe('prepareConceptIdeas', () => {
   });
 
   it('uses fallback prompt when all concepts filtered', () => {
-    const input = [{ title: '   ', description: '', whyItMatters: '' }];
-    const result = prepareConceptIdeas(input, 'Photosynthesis');
+    const input = [
+      {
+        title: '   ',
+        description: '',
+        whyItMatters: '',
+        contentType: 'conceptual' as const,
+        originIntent: 'test',
+      },
+    ];
+    const result = prepareConceptIdeas(input, undefined, undefined, 'Photosynthesis');
 
     expect(result.concepts).toEqual([
       {
         title: 'Photosynthesis',
         description: 'Deepening understanding of "Photosynthesis".',
+        contentType: 'conceptual',
+        originIntent: '',
       },
     ]);
     expect(result.stats.fallbackUsed).toBe(true);

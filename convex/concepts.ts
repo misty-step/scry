@@ -46,6 +46,15 @@ export const createMany = internalMutation({
       v.object({
         title: v.string(),
         description: v.optional(v.string()),
+        contentType: v.optional(
+          v.union(
+            v.literal('verbatim'),
+            v.literal('enumerable'),
+            v.literal('conceptual'),
+            v.literal('mixed')
+          )
+        ),
+        originIntent: v.optional(v.string()),
       })
     ),
   },
@@ -88,6 +97,8 @@ export const createMany = internalMutation({
         userId: args.userId,
         title,
         description,
+        contentType: concept.contentType,
+        originIntent: concept.originIntent,
         fsrs,
         phrasingCount: 0,
         conflictScore: undefined,

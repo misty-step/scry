@@ -1,24 +1,11 @@
 import { generateObject } from 'ai';
-import { z } from 'zod';
 import { action } from '../_generated/server';
 import { prepareConceptIdeas } from '../aiGeneration';
 import { initializeProvider } from '../lib/aiProviders';
+import { conceptIdeasSchema } from '../lib/generationContracts';
 import { buildConceptSynthesisPrompt } from '../lib/promptTemplates';
 import { generateObjectWithResponsesApi } from '../lib/responsesApi';
 import { EVAL_CASES } from './cases';
-
-// Re-using the schema from aiGeneration.ts
-// We need to define it here or export it from aiGeneration.ts
-// For now, I will redefine it to avoid circular dependency issues if aiGeneration imports heavily
-const conceptIdeaSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-  whyItMatters: z.string(),
-});
-
-const conceptIdeasSchema = z.object({
-  concepts: z.array(conceptIdeaSchema).min(1),
-});
 
 export const run = action({
   args: {},
@@ -72,7 +59,12 @@ export const run = action({
           throw new Error('Provider not initialized correctly');
         }
 
-        const prepared = prepareConceptIdeas(object.concepts, testCase.prompt);
+        const prepared = prepareConceptIdeas(
+          object.concepts,
+          undefined,
+          undefined,
+          testCase.prompt
+        );
         const duration = Date.now() - startTime;
         const passed = prepared.concepts.length >= testCase.expectedMin;
 

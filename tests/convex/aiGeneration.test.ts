@@ -433,16 +433,22 @@ describe('Stage A Concept Preparation', () => {
         title: 'Eucharistic Theology Foundations',
         description: 'Analyzes transubstantiation and the sacramental presence of Christ.',
         whyItMatters: 'Central to Catholic worship understanding.',
+        contentType: 'conceptual' as const,
+        originIntent: 'test input',
       },
       {
         title: 'eucharistic theology foundations',
         description: 'Duplicate entry that should be removed.',
         whyItMatters: 'Duplicate for testing.',
+        contentType: 'conceptual' as const,
+        originIntent: 'test input',
       },
       {
         title: 'Guardian Angels in Daily Life',
         description: 'Explores theological sources describing how guardian angels guide believers.',
         whyItMatters: 'Relevant to daily spiritual practice.',
+        contentType: 'conceptual' as const,
+        originIntent: 'test input',
       },
     ]);
 
@@ -457,6 +463,8 @@ describe('Stage A Concept Preparation', () => {
       title: `Concept ${index + 1}`,
       description: `Detailed standalone explanation number ${index + 1} covering a single learning objective about topic ${index}.`,
       whyItMatters: `Important for understanding topic ${index}.`,
+      contentType: 'conceptual' as const,
+      originIntent: 'test input',
     }));
 
     const result = prepareConceptIdeas(bulkIdeas);
@@ -470,9 +478,11 @@ describe('Stage A Concept Preparation', () => {
       title: `Concept ${i + 1}`,
       description: `Description for concept ${i + 1}`,
       whyItMatters: `Matters for ${i + 1}`,
+      contentType: 'conceptual' as const,
+      originIntent: 'test input',
     }));
 
-    const result = prepareConceptIdeas(manyIdeas, 'test prompt');
+    const result = prepareConceptIdeas(manyIdeas, undefined, undefined, 'test prompt');
     const finalConcepts = result.concepts.slice(0, MAX_CONCEPTS_PER_GENERATION); // Simulates production code
 
     expect(result.concepts.length).toBe(100); // prepareConceptIdeas doesn't limit
@@ -486,13 +496,19 @@ describe('Stage A Concept Preparation', () => {
           title: '',
           description: 'Has description but missing title',
           whyItMatters: 'Invalid',
+          contentType: 'conceptual' as const,
+          originIntent: 'test input',
         },
         {
           title: 'No Body',
           description: '',
           whyItMatters: 'Invalid',
+          contentType: 'conceptual' as const,
+          originIntent: 'test input',
         },
       ],
+      undefined,
+      undefined,
       'fallback topic'
     );
 
@@ -509,11 +525,15 @@ describe('Stage A Concept Preparation', () => {
         title: 'Valid Concept',
         description: 'Short but acceptable description.',
         whyItMatters: 'Important detail.',
+        contentType: 'conceptual' as const,
+        originIntent: 'test input',
       },
       {
         title: 'valid concept',
         description: 'Duplicate case should be skipped.',
         whyItMatters: 'Duplicate for testing.',
+        contentType: 'conceptual' as const,
+        originIntent: 'test input',
       },
     ]);
 

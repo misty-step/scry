@@ -166,6 +166,14 @@ convex/migrations/
 **Acceptance**: Next 3 migrations use new pattern; existing migrations optionally extracted; migrations/ documented in CLAUDE.md
 **Effort**: 2h initial setup + 8h extraction (optional) | **Impact**: Prevents unlimited growth, clearer git history
 
+### [ARCH][MEDIUM] Model Concept Prerequisite Graph
+**File**: New (concept relationships)
+**Perspectives**: architecture-guardian, product-visionary
+**Problem**: Scheduling/visualization lacks prerequisites; cannot surface learning order or dependency-aware spacing.
+**Fix**: Add concept→concept relationship table (type, direction), UI to display graph, scheduler hook to respect prereqs.
+**Acceptance**: Relationships persisted; optional visual map; scheduling can prefer prerequisites before dependents.
+**Effort**: 3-4d | **Impact**: Better sequencing, clearer study plans
+
 ### [ARCH][HIGH] Split concepts.ts God Object (1,072 lines)
 **File**: convex/concepts.ts:1-1072
 **Perspectives**: complexity-archaeologist, architecture-guardian, performance-pathfinder

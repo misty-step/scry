@@ -13,7 +13,6 @@
 
 import { generateObject } from 'ai';
 import { v } from 'convex/values';
-import { z } from 'zod';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
@@ -22,12 +21,24 @@ import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
 import {
+  conceptIdeasSchema,
+  intentSchema,
+  phrasingBatchSchema,
+  type ConceptIdea,
+  type ContentType,
+  type GeneratedPhrasing,
+} from './lib/generationContracts';
+import {
   createConceptsLogger,
   generateCorrelationId,
   logConceptEvent,
   type LogContext,
 } from './lib/logger';
-import { buildConceptSynthesisPrompt, buildPhrasingGenerationPrompt } from './lib/promptTemplates';
+import {
+  buildConceptSynthesisPrompt,
+  buildIntentExtractionPrompt,
+  buildPhrasingGenerationPrompt,
+} from './lib/promptTemplates';
 import { generateObjectWithResponsesApi } from './lib/responsesApi';
 
 // Logger for this module
@@ -46,33 +57,6 @@ const logger = {
     conceptsLogger.error(message, context);
   },
 };
-
-// Zod schema for concept synthesis (Stage A)
-const conceptIdeaSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-  whyItMatters: z.string(),
-});
-
-const conceptIdeasSchema = z.object({
-  concepts: z.array(conceptIdeaSchema).min(1),
-});
-
-type ConceptIdea = z.infer<typeof conceptIdeaSchema>;
-
-const generatedPhrasingSchema = z.object({
-  question: z.string(),
-  explanation: z.string(),
-  type: z.enum(['multiple-choice', 'true-false']),
-  options: z.array(z.string()).min(2).max(4),
-  correctAnswer: z.string(),
-});
-
-const phrasingBatchSchema = z.object({
-  phrasings: z.array(generatedPhrasingSchema).min(1),
-});
-
-type GeneratedPhrasing = z.infer<typeof generatedPhrasingSchema>;
 
 type GenerationErrorCode = 'SCHEMA_VALIDATION' | 'RATE_LIMIT' | 'API_KEY' | 'NETWORK' | 'UNKNOWN';
 
@@ -97,12 +81,24 @@ export type ConceptPreparationStats = {
 
 export function prepareConceptIdeas(
   ideas: ConceptIdea[],
+  originIntent?: string,
+  defaultContentType?: ContentType,
   fallbackPrompt?: string
 ): {
-  concepts: Array<{ title: string; description: string }>;
+  concepts: Array<{
+    title: string;
+    description: string;
+    contentType?: ContentType;
+    originIntent?: string;
+  }>;
   stats: ConceptPreparationStats;
 } {
-  const normalizedConcepts: Array<{ title: string; description: string }> = [];
+  const normalizedConcepts: Array<{
+    title: string;
+    description: string;
+    contentType?: ContentType;
+    originIntent?: string;
+  }> = [];
   const seenTitles = new Set<string>();
   const stats: ConceptPreparationStats = {
     totalIdeas: ideas.length,
@@ -134,7 +130,12 @@ export function prepareConceptIdeas(
     }
 
     seenTitles.add(titleKey);
-    normalizedConcepts.push({ title, description });
+    normalizedConcepts.push({
+      title,
+      description,
+      contentType: idea.contentType ?? defaultContentType,
+      originIntent,
+    });
   }
 
   if (normalizedConcepts.length === 0 && ideas.length > 0) {
@@ -150,6 +151,8 @@ export function prepareConceptIdeas(
     normalizedConcepts.push({
       title: fallbackTitle,
       description: fallbackDescription,
+      contentType: defaultContentType ?? 'conceptual',
+      originIntent: originIntent ?? '',
     });
     stats.fallbackUsed = true;
   }
@@ -393,6 +396,42 @@ export const processJob = internalAction({
         'Job details fetched'
       );
 
+      // Step 1: Intent extraction (clarify goal and content type)
+      const intentPrompt = buildIntentExtractionPrompt(job.prompt);
+
+      let intentResponse;
+      if (provider === 'openai' && openaiClient) {
+        intentResponse = await generateObjectWithResponsesApi({
+          client: openaiClient,
+          model: modelName,
+          input: intentPrompt,
+          schema: intentSchema,
+          schemaName: 'intent',
+          verbosity: verbosity as 'low' | 'medium' | 'high',
+          reasoningEffort: reasoningEffort as 'minimal' | 'low' | 'medium' | 'high',
+        });
+      } else if (provider === 'google' && model) {
+        intentResponse = await generateObject({
+          model,
+          schema: intentSchema,
+          prompt: intentPrompt,
+        });
+      } else {
+        throw new Error('Provider not initialized correctly');
+      }
+
+      const intentObject = intentResponse.object;
+      const intentJson = JSON.stringify(intentObject);
+      const defaultContentType = intentObject.content_type as ContentType;
+
+      logger.info(
+        {
+          ...stageAMetadata,
+          intentPreview: intentJson.slice(0, 300),
+        },
+        'Intent extraction complete'
+      );
+
       logConceptEvent(conceptsLogger, 'info', 'Stage A concept synthesis started', {
         ...stageAMetadata,
         event: 'start',
@@ -414,7 +453,7 @@ export const processJob = internalAction({
         phase: 'concept_synthesis',
       });
 
-      const conceptPrompt = buildConceptSynthesisPrompt(job.prompt);
+      const conceptPrompt = buildConceptSynthesisPrompt(intentJson);
 
       let finalResponse;
       if (provider === 'openai' && openaiClient) {
@@ -451,7 +490,12 @@ export const processJob = internalAction({
       );
 
       const totalSuggestions = object.concepts.length;
-      const preparedConceptsResult = prepareConceptIdeas(object.concepts, job.prompt);
+      const preparedConceptsResult = prepareConceptIdeas(
+        object.concepts,
+        intentJson,
+        defaultContentType,
+        job.prompt
+      );
       // Soft limit: Take top N concepts to prevent system overload while preventing validation crashes
       const preparedConcepts = preparedConceptsResult.concepts.slice(
         0,
@@ -740,6 +784,8 @@ export const generatePhrasingsForConcept = internalAction({
       const prompt = buildPhrasingGenerationPrompt({
         conceptTitle: concept.title,
         conceptDescription: concept.description ?? '',
+        contentType: concept.contentType as ContentType | undefined,
+        originIntent: concept.originIntent,
         targetCount: TARGET_PHRASINGS_PER_CONCEPT,
         existingQuestions,
       });
