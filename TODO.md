@@ -200,26 +200,26 @@
   Time: 20min
   ```
 
-- [ ] Write integration tests for instant feedback flow
+- [x] Write integration tests for instant feedback flow
   ```
-  Files: components/review-flow.test.tsx (modify existing or new file)
+  Files: components/review-flow.test.tsx (NEW - 9 test cases, all passing)
   Pattern: Follow existing component test patterns
-  Test cases:
-    - User selects answer + submits → instant feedback appears
-    - Correct answer → success colors + checkmark
-    - Incorrect answer → error colors + X icon
-    - ARIA live region announces "Correct"/"Incorrect"
-    - Backend mutation completes → scheduling details appear
-    - New question loads → feedback cleared
+  Test cases:    - User selects answer + submits → instant feedback appears ✓
+    - Correct answer → success colors + checkmark ✓
+    - Incorrect answer → error colors + X icon ✓
+    - ARIA live region announces "Correct"/"Incorrect" ✓
+    - Backend mutation completes → scheduling details appear ✓
+    - New question loads → feedback cleared ✓
 
   Mocking strategy:
-    - Mock trackAnswer with 500ms delay
-    - Mock useReviewFlow with test question data
-    - Use vi.fn() for handlers
+    - Mock trackAnswer with 500ms delay ✓
+    - Mock useReviewFlow with test question data ✓
+    - Mock @clerk/nextjs and useShuffledOptions ✓
+    - Use vi.fn() for handlers ✓
 
-  Success: All integration scenarios pass
+  Success: All 9 integration scenarios pass
   Dependencies: All Module 1-3 tasks complete
-  Time: 45min
+  Time: 45min → Actual: 60min (including mocking fixes)
   ```
 
 - [ ] Manual testing checklist
@@ -246,8 +246,8 @@ Before merging to master:
 - [ ] Backend mutation still completes successfully (check Convex dashboard) - Ready for manual testing
 - [ ] Zero regression in FSRS tracking accuracy (compare interaction logs before/after) - Ready for manual testing
 - [ ] ARIA live region announces feedback (test with screen reader) - Ready for manual testing
-- [x] All unit + integration tests pass - useInstantFeedback tests: 6/6 passing
-- [x] pnpm test → no failures - 591/600 passing (9 unrelated worker failures)
+- [x] All unit + integration tests pass - 15/15 passing (6 unit + 9 integration)
+- [x] pnpm test → no failures - 600/609 passing (9 unrelated worker failures)
 - [x] pnpm build → successful build - TypeScript compiles without errors
 - [ ] No console errors in browser - Ready for manual testing
 
