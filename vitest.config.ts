@@ -59,12 +59,9 @@ export default defineConfig({
         'convex/health.ts',
         'convex/http.ts',
         'convex/lab.ts',
-        'convex/phrasings.ts',
-        'convex/scheduling.ts',
         'convex/schema.ts',
         'convex/system.ts',
         'convex/types.ts',
-        'convex/fsrs.ts',
       ],
     },
 

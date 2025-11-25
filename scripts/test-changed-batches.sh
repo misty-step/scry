@@ -54,7 +54,7 @@ run_batch() {
   count=0
 }
 
-for file in $changed_tests; do
+while IFS= read -r file; do
   if [[ -f "$file" ]]; then
     # Skip Playwright e2e specs (handled by dedicated runner)
     if [[ "$file" == tests/e2e/* ]]; then
@@ -66,7 +66,7 @@ for file in $changed_tests; do
       run_batch
     fi
   fi
-done
+done <<< "$changed_tests"
 
 # Run any remaining files
 run_batch
