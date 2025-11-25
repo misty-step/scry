@@ -1,0 +1,39 @@
+coverage:
+  precision: 2
+  round: down
+  range: "0..100"
+  status:
+    project:
+      default:
+        target: 27
+        threshold: 0
+        type: lines
+        informational: false
+      functions:
+        target: 26
+        threshold: 0
+        type: functions
+        informational: false
+      branches:
+        target: 22
+        threshold: 0
+        type: branches
+        informational: false
+    patch:
+      default:
+        target: 80
+        threshold: 1
+        type: lines
+        informational: false
+
+comment:
+  layout: "reach, diff, files"
+  behavior: default
+  require_changes: true
+  hide_project_coverage: false
+  show_critical_paths: true
+
+ignore:
+  - "node_modules"
+  - "dist"
+  - ".next"

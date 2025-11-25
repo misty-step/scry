@@ -1,9 +1,9 @@
 # Convex Testing & Coverage Expectations
 
 ## Coverage guardrails
-- Global floor: lines/functions/statements 18.2%, branches 15.9% (unchanged).
+- Global floor: lines/statements 27%, functions 26%, branches 22% (Vitest + Codecov).
 - Critical paths (Vitest `thresholds`):
-  - `convex/**/*.ts`: ≥30% lines & functions.
+  - `convex/**/*.ts`: ≥25% lines & functions (ratchets upward only).
   - `lib/payment/**/*.ts`: ≥80% lines & functions.
   - `lib/auth/**/*.ts`: ≥80% lines & functions.
 - Aim to raise Convex coverage toward 60% overall; never lower thresholds.

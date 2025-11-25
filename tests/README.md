@@ -21,30 +21,26 @@ The authentication tests cover the complete email-based authentication flow:
 
 ### Prerequisites
 
-Install Playwright browsers:
+Install Playwright browsers (Chromium + Mobile Chrome only):
 ```bash
-pnpm test:install
+pnpm exec playwright install --with-deps chromium
 ```
 
 ### Test Commands
 
 ```bash
-# Run all tests
-pnpm test
+# Run all E2E tests (full)
+pnpm test:e2e:full
 
-# Run tests with visible browser (headed mode)
-pnpm test:headed
+# Run smoke subset (tagged @smoke)
+pnpm test:e2e:smoke
 
-# Run tests in debug mode
-pnpm test:debug
+# Headed / debug
+pnpm exec playwright test --headed
+pnpm exec playwright test --debug
 
-# Run tests with interactive UI
-pnpm test:ui
-
-# Run tests for specific browser
-pnpm test --project=chromium
-pnpm test --project=firefox
-pnpm test --project=webkit
+# HTML report viewer
+pnpm exec playwright show-report
 ```
 
 ### Test Reports
@@ -58,19 +54,22 @@ pnpm exec playwright show-report
 
 Tests are configured via `playwright.config.ts` with:
 
-- **Multi-browser support**: Chromium, Firefox, WebKit, Mobile Chrome, Mobile Safari
-- **Base URL**: https://scry.vercel.app (production)
+- **Browsers**: Chromium (Desktop) and Mobile Chrome only (Firefox/WebKit removed for speed)
+- **Base URL**: <https://scry.vercel.app> on CI; <http://localhost:3000> locally when `pnpm dev` running
 - **Timeouts**: 10s actions, 30s navigation, 60s global
-- **Retries**: 2 retries on CI, 0 locally
-- **Artifacts**: Screenshots and videos on failure, traces on retry
+- **Retries**: 0 (fix flake instead of retry)
+- **Artifacts**: Screenshots/videos on failure, traces on first retry hook (smoke uses same defaults)
 
 ## Test Structure
 
-```
+```text
 tests/
 ├── e2e/
-│   └── auth.test.ts        # Authentication flow tests
-└── README.md              # This documentation
+│   ├── spaced-repetition.test.ts   # Full regression flow
+│   ├── spaced-repetition.local.test.ts
+│   ├── library-search-race-condition.test.ts
+│   └── review-next-button-fix.test.ts
+└── README.md                       # This documentation
 ```
 
 ## Writing New Tests
@@ -89,10 +88,9 @@ When adding new E2E tests:
 
 Tests are designed to run in CI/CD pipelines:
 
-- Tests run against production URL by default
-- Configured for parallel execution in CI
-- Retries enabled for flaky test resilience
-- HTML reports generated for debugging
+- Smoke (`test:e2e:smoke`) runs on preview deploy workflow against Vercel preview URL.
+- Full (`test:e2e:full`) runs nightly against production and on demand via workflow dispatch.
+- HTML reports are uploaded as artifacts; failures include screenshots/videos.
 
 ## Debugging Tests
 

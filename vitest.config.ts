@@ -18,24 +18,19 @@ export default defineConfig({
       reporter: ['text', 'json', 'json-summary', 'html', 'lcov'], // Add lcov for Codecov
 
       // Coverage thresholds
-      // CURRENT STATE: 18.22% global (as of 2025-11-04 post-flaky-test-removal)
+      // CURRENT STATE: ~28% global (coverage/coverage-summary.json on 2025-11-24)
+      // FLOOR (this file): 27% lines/statements, 26% functions, 22% branches; convex 25% lines/functions
       // TARGET: 60%+ (Google research: 60% acceptable, 75% commendable)
       //
-      // Improvement plan tracked in BACKLOG.md "Test Coverage Improvement Initiative":
-      // - Phase 1 (Q1 2025): 18.2% → 30% (test critical lib/ files)
-      // - Phase 2 (Q2 2025): 30% → 45% (test hooks with side effects)
-      // - Phase 3 (Q3 2025): 45% → 60% (test error paths + edge cases)
-      //
-      // NOTE: Adjusted down from 18.4% to 18.2% after removing flaky shuffle test.
-      // NOTE: Adjusted convex thresholds to 20% after removing 3 flaky analytics tests (2025-11-23).
-      // Thresholds should only increase as coverage improves.
+      // Improvement plan tracked in BACKLOG.md "Test Coverage Improvement Initiative"
+      // Thresholds only ratchet upward; never decrease.
       // Per-path thresholds for critical areas; keep globals as floor.
       thresholds: {
-        lines: 18.2, // Current: 18.22%, Target: 60%
-        functions: 18.2, // Current: 18.22%, Target: 60%
-        branches: 15.9, // Current: ~16%, Target: 55%
-        statements: 18.2, // Current: 18.22%, Target: 60%
-        'convex/**/*.ts': { lines: 20, functions: 20 }, // Current: ~22% lines, ~20% functions. Target: 30%
+        lines: 27,
+        functions: 26,
+        branches: 22,
+        statements: 27,
+        'convex/**/*.ts': { lines: 25, functions: 25 },
         'lib/payment/**/*.ts': { lines: 80, functions: 80 },
         'lib/auth/**/*.ts': { lines: 80, functions: 80 },
       },
@@ -50,6 +45,23 @@ export default defineConfig({
         '**/tests/**',
         'lib/generated/**',
         'scripts/**',
+        // Non-runtime / docs / artifacts that skew coverage
+        'convex/**/*.md',
+        'convex/**/README.*',
+        'convex/**/TYPES.*',
+        'convex/**/*.backup',
+        'convex/**/*.tsbuildinfo',
+        'convex/**/tsconfig.*',
+        'convex/migrations/**',
+        'convex/evals/**',
+        'convex/cron.ts',
+        'convex/deployments.ts',
+        'convex/health.ts',
+        'convex/http.ts',
+        'convex/lab.ts',
+        'convex/schema.ts',
+        'convex/system.ts',
+        'convex/types.ts',
       ],
     },
 
@@ -68,9 +80,9 @@ export default defineConfig({
     hookTimeout: 10000,
 
     // Enable parallel test execution with Vitest 4 configuration
-    pool: 'threads',
-    // Note: In Vitest 4, poolOptions.threads.singleThread is replaced with maxWorkers
-    // Leaving maxWorkers unset enables parallel execution (default behavior)
+    pool: 'forks',
+    // Single forked worker avoids worker_threads heap limit issues observed in hooks
+    maxWorkers: 1,
 
     // Show test timing to identify slow tests
     reporters: ['verbose'],

@@ -7,6 +7,9 @@ jobs:
   smoke-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NODE_VERSION: '20.19.0'
+      PNPM_VERSION: '10.12.1'
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +34,40 @@ jobs:
             echo "$response" | jq '.recommendations'
             exit 1
           fi
+
+      - uses: pnpm/action-setup@v2
+        if: steps.waitForDeployment.outcome == 'success'
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        if: steps.waitForDeployment.outcome == 'success'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: steps.waitForDeployment.outcome == 'success'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright chromium
+        if: steps.waitForDeployment.outcome == 'success'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests against preview
+        if: steps.waitForDeployment.outcome == 'success'
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.waitForDeployment.outputs.url }}
+        run: pnpm test:e2e:smoke
+
+      - name: Upload Playwright artifacts (on failure)
+        if: failure() && steps.waitForDeployment.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-preview-smoke-artifacts
+          path: |
+            test-results/**
+            playwright-report/**
 
       - name: Report deployment protection status
         if: steps.waitForDeployment.outcome == 'failure'

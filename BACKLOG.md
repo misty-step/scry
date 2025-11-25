@@ -150,6 +150,70 @@
 **Acceptance**: Test error in production → verify Sentry shows unminified stack trace with correct file/line; document findings
 **Effort**: 30m | **Impact**: Debugging UX confidence, validates observability stack integration
 
+### [TESTING][LOW] Coverage Threshold Optimization
+**Source**: PR #81 review feedback (Claude review P2)
+**Files**: .codecov.yml, vitest.config.ts
+**Problem**: 80% patch coverage threshold may be too strict for 27% global coverage project
+**Context**: Currently enforcing 80% patch coverage while global coverage is only 27%, creating friction
+**Acceptance**: Investigate optimal patch threshold; consider 60-70% for current state; document rationale; monitor merge difficulty over 2-4 weeks
+**Effort**: 1h | **Impact**: Developer experience, merge velocity
+
+### [TESTING][LOW] Test Script Naming Audit
+**Source**: PR #81 review feedback (Claude review P2)
+**Files**: package.json, tests/README.md
+**Problem**: Inconsistent naming between test:unit and test:integration scripts
+**Context**: Some scripts use colon separator, others don't; unclear distinction between unit/integration
+**Acceptance**: Standardize naming pattern; update docs; ensure all scripts have clear purpose documented
+**Effort**: 30m | **Impact**: Developer clarity, onboarding
+
+### [TESTING][LOW] Preview Smoke Test Timeout Tuning
+**Source**: PR #81 review feedback (Claude review P2)
+**Files**: .github/workflows/preview-smoke-test.yml
+**Problem**: Current timeout might need 15min for slow deployments
+**Context**: Preview deployment wait + smoke test execution may exceed current timeout
+**Acceptance**: Monitor timeout failures over 2-4 weeks; adjust if needed; document timeout rationale
+**Effort**: 15m | **Impact**: CI reliability
+
+### [TESTING][LOW] Hook Test Documentation
+**Source**: PR #81 review feedback (Claude review P2)
+**Files**: hooks/*.test.ts, hooks/*.test.tsx
+**Problem**: Hook tests lack documentation explaining WHY patterns used
+**Context**: Tests use specific patterns (mocking, timers, renders) without explaining rationale
+**Acceptance**: Add JSDoc comments to each test file explaining patterns, gotchas, and design decisions
+**Effort**: 1h | **Impact**: Test maintainability, team knowledge
+
+### [TESTING][LOW] TODO.md Cleanup
+**Source**: PR #81 review feedback (Claude review P2)
+**File**: TODO.md
+**Problem**: TODO.md shows completed items, should be archived or removed
+**Context**: All 14 items marked complete (lines 3-14)
+**Acceptance**: Archive completed items to docs/archive/TODO-2025-11-25.md or remove file; add note to CLAUDE.md
+**Effort**: 10m | **Impact**: Project hygiene
+
+### [TESTING][LOW] Coverage File Generation Verification
+**Source**: PR #81 review feedback (Claude review follow-up)
+**Files**: vitest.config.ts, .github/workflows/ci.yml
+**Problem**: Workflow expects coverage-final.json but vitest may generate lcov.info instead
+**Context**: CI uploads coverage successfully with Codecov, but file format uncertain
+**Acceptance**: Verify which files vitest generates; update CI to use correct file; document in vitest.config.ts
+**Effort**: 30m | **Impact**: CI correctness
+
+### [TESTING][LOW] Pre-push Skip Exit Code
+**Source**: PR #81 review feedback (Claude review follow-up)
+**File**: scripts/test-changed-batches.sh:34-37
+**Problem**: Script exits 0 when >50 files changed, allowing broken code to be pushed
+**Context**: Safety check for initial commit comparison skips tests but reports success
+**Acceptance**: Consider exit 1 or warning to stderr; document decision; test behavior with large changesets
+**Effort**: 15m | **Impact**: Quality gate visibility
+
+### [TESTING][LOW] Batch Error Handling
+**Source**: PR #81 review feedback (Claude review follow-up)
+**File**: scripts/test-changed-batches.sh:45-55
+**Problem**: Individual batch failures don't stop subsequent batches
+**Context**: Script runs all batches even if one fails, wasting time on known-broken code
+**Acceptance**: Add `set -e` equivalent for batch failures or explicit early exit; verify hook behavior
+**Effort**: 20m | **Impact**: Developer feedback speed
+
 ### [ARCH][HIGH] Split migrations.ts God Object (2,997 lines)
 **File**: convex/migrations.ts:1-2997
 **Perspectives**: complexity-archaeologist, architecture-guardian, maintainability-maven
