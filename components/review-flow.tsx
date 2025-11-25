@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { ArrowRight, Brain, Calendar, Clock, Info, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,12 +13,14 @@ import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LiveRegion } from '@/components/ui/live-region';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
 import { useConfirmation } from '@/hooks/use-confirmation';
+import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useQuestionMutations } from '@/hooks/use-question-mutations';
 import { useQuizInteractions } from '@/hooks/use-quiz-interactions';
@@ -49,6 +51,21 @@ export function ReviewFlow() {
 
   // Use context for current question
   const { setCurrentQuestion } = useCurrentQuestion();
+
+  // Instant feedback hook for immediate visual response
+  const {
+    feedbackState: instantFeedback,
+    showFeedback: _showFeedback,
+    clearFeedback: _clearFeedback,
+  } = useInstantFeedback();
+
+  // Track component mount status to prevent setState on unmounted component
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Local UI state for answer selection and feedback
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
@@ -120,13 +137,14 @@ export function ReviewFlow() {
   useEffect(() => {
     if (phrasingId && !isTransitioning) {
       setSelectedAnswer('');
+      _clearFeedback();
       setFeedbackState({
         showFeedback: false,
         nextReviewInfo: null,
       });
       setQuestionStartTime(Date.now());
     }
-  }, [phrasingId, isTransitioning]);
+  }, [phrasingId, isTransitioning, _clearFeedback]);
 
   const handleAnswerSelect = useCallback(
     (answer: string) => {
@@ -136,33 +154,56 @@ export function ReviewFlow() {
     [feedbackState.showFeedback]
   );
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(() => {
     if (!selectedAnswer || !question || !conceptId || !phrasingId) return;
 
     const isCorrect = selectedAnswer === question.correctAnswer;
 
-    // Track interaction with FSRS scheduling (before showing feedback)
-    const timeSpent = Date.now() - questionStartTime;
-    const reviewInfo = await trackAnswer(
-      conceptId,
-      phrasingId,
-      selectedAnswer,
-      isCorrect,
-      timeSpent,
-      sessionId
-    );
+    // 1. INSTANT: Show visual feedback (synchronous, <16ms)
+    _showFeedback(isCorrect);
 
-    // Batch state updates into a single render
+    // 2. INSTANT: Enable feedback section and Next button immediately
     setFeedbackState({
       showFeedback: true,
-      nextReviewInfo: reviewInfo
-        ? {
-            nextReview: reviewInfo.nextReview,
-            scheduledDays: reviewInfo.scheduledDays,
-          }
-        : null,
+      nextReviewInfo: null, // Will be filled progressively when backend responds
     });
-  }, [selectedAnswer, question, conceptId, phrasingId, questionStartTime, trackAnswer, sessionId]);
+
+    // 3. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
+    // Calculate time spent from question load to submission (milliseconds)
+    const timeSpent = Date.now() - questionStartTime;
+    trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
+      .then((reviewInfo) => {
+        // 4. PROGRESSIVE: Show scheduling details when backend responds
+        // Only update state if component is still mounted (race condition protection)
+        if (isMountedRef.current) {
+          setFeedbackState({
+            showFeedback: true,
+            nextReviewInfo: reviewInfo
+              ? {
+                  nextReview: reviewInfo.nextReview,
+                  scheduledDays: reviewInfo.scheduledDays,
+                }
+              : null,
+          });
+        }
+      })
+      .catch((error) => {
+        // Phase 1: Log error and notify user, Phase 2 will add retry logic
+        console.error('Failed to track answer:', error);
+        toast.error('Failed to save your answer', {
+          description: "Your progress wasn't saved. Please try again.",
+        });
+      });
+  }, [
+    selectedAnswer,
+    question,
+    conceptId,
+    phrasingId,
+    questionStartTime,
+    trackAnswer,
+    sessionId,
+    _showFeedback,
+  ]);
 
   const handleNext = useCallback(() => {
     // Tell the review flow we're done with this question
@@ -258,6 +299,11 @@ export function ReviewFlow() {
   if (phase === 'reviewing' && question) {
     return (
       <PageContainer className="py-6">
+        {/* ARIA live region for screen reader feedback announcements */}
+        <LiveRegion politeness="polite" atomic={true}>
+          {instantFeedback.visible ? (instantFeedback.isCorrect ? 'Correct' : 'Incorrect') : ''}
+        </LiveRegion>
+
         <div className="max-w-[760px]">
           <article className="space-y-6">
             {/* Due count indicator - refined pill design - always visible, maintains value during refetch */}
@@ -311,6 +357,7 @@ export function ReviewFlow() {
                 selectedAnswer={selectedAnswer}
                 showFeedback={feedbackState.showFeedback}
                 onAnswerSelect={handleAnswerSelect}
+                instantFeedback={instantFeedback}
               />
             </ReviewErrorBoundary>
 

@@ -8,6 +8,13 @@
 
 ## Now (<2 weeks, sprint-ready)
 
+### [PRODUCT] Learners should be able to edit, archive, and delete phrasings and concepts from the review screen
+
+### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen, with feedback
+- sometimes a concept or phrasing won't quite be right
+- a learner should be able to hit a regenerate button, specify whether the specific phrasing or the whole concept should be regenerated, and add some notes
+- regeneration should work even without notes -- the fact that the user wanted to regenerate it is note enough about the perceived low quality of the content (but notes help!)
+
 ### [SECURITY][CRITICAL] Update happy-dom Dependency - RCE Vulnerability
 **File**: package.json:118
 **Perspectives**: security-sentinel, architecture-guardian

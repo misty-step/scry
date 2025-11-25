@@ -13,6 +13,10 @@ interface ReviewQuestionDisplayProps {
   selectedAnswer: string;
   showFeedback: boolean;
   onAnswerSelect: (answer: string) => void;
+  instantFeedback?: {
+    isCorrect: boolean;
+    visible: boolean;
+  };
 }
 
 /**
@@ -29,9 +33,13 @@ function ReviewQuestionDisplayComponent({
   selectedAnswer,
   showFeedback,
   onAnswerSelect,
+  instantFeedback,
 }: ReviewQuestionDisplayProps) {
   // Shuffle options deterministically based on questionId + userId
   const shuffledOptions = useShuffledOptions(question.options, questionId);
+
+  // Use instant feedback if available, otherwise fall back to delayed feedback
+  const displayFeedback = instantFeedback?.visible || showFeedback;
 
   return (
     <>
@@ -52,29 +60,28 @@ function ReviewQuestionDisplayComponent({
                   'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   // Default state
                   'border-input hover:bg-accent/50 hover:border-accent',
-                  // Selected state
+                  // Selected state (before feedback)
                   selectedAnswer === option &&
-                    !showFeedback && ['border-info-border bg-info-background text-info'],
+                    !displayFeedback &&
+                    'border-info-border bg-info-background text-info',
                   // Feedback state - correct answer
-                  showFeedback &&
-                    option === question.correctAnswer && [
-                      'border-success-border bg-success-background text-success',
-                    ],
+                  displayFeedback &&
+                    option === question.correctAnswer &&
+                    'border-success-border bg-success-background text-success',
                   // Feedback state - wrong answer selected
-                  showFeedback &&
+                  displayFeedback &&
                     selectedAnswer === option &&
-                    option !== question.correctAnswer && [
-                      'border-error-border bg-error-background text-error',
-                    ]
+                    option !== question.correctAnswer &&
+                    'border-error-border bg-error-background text-error'
                 )}
-                disabled={showFeedback}
+                disabled={displayFeedback}
               >
                 <div className="flex flex-col items-center justify-center space-y-2">
                   <span className="text-lg">{option}</span>
-                  {showFeedback && option === question.correctAnswer && (
+                  {displayFeedback && option === question.correctAnswer && (
                     <CheckCircle className="h-6 w-6 text-success animate-scaleIn" />
                   )}
-                  {showFeedback &&
+                  {displayFeedback &&
                     selectedAnswer === option &&
                     option !== question.correctAnswer && (
                       <XCircle className="h-6 w-6 text-error animate-scaleIn" />
@@ -96,29 +103,32 @@ function ReviewQuestionDisplayComponent({
                 'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                 // Default state
                 'border-input hover:bg-accent/50 hover:border-accent',
-                // Selected state
+                // Selected state (before feedback)
                 selectedAnswer === option &&
-                  !showFeedback && ['border-info-border bg-info-background'],
+                  !displayFeedback &&
+                  'border-info-border bg-info-background',
                 // Feedback state - correct answer
-                showFeedback &&
-                  option === question.correctAnswer && [
-                    'border-success-border bg-success-background',
-                  ],
+                displayFeedback &&
+                  option === question.correctAnswer &&
+                  'border-success-border bg-success-background',
                 // Feedback state - wrong answer selected
-                showFeedback &&
+                displayFeedback &&
                   selectedAnswer === option &&
-                  option !== question.correctAnswer && ['border-error-border bg-error-background']
+                  option !== question.correctAnswer &&
+                  'border-error-border bg-error-background'
               )}
-              disabled={showFeedback}
+              disabled={displayFeedback}
             >
               <div className="flex items-center justify-between">
                 <span>{option}</span>
-                {showFeedback && option === question.correctAnswer && (
+                {displayFeedback && option === question.correctAnswer && (
                   <CheckCircle className="h-5 w-5 text-success animate-scaleIn" />
                 )}
-                {showFeedback && selectedAnswer === option && option !== question.correctAnswer && (
-                  <XCircle className="h-5 w-5 text-error animate-scaleIn" />
-                )}
+                {displayFeedback &&
+                  selectedAnswer === option &&
+                  option !== question.correctAnswer && (
+                    <XCircle className="h-5 w-5 text-error animate-scaleIn" />
+                  )}
               </div>
             </button>
           ))
@@ -129,33 +139,20 @@ function ReviewQuestionDisplayComponent({
 }
 
 // Custom comparison function for React.memo
-// Only re-render if specific props change that affect the display
+// Only re-render if props that affect display change
+// Includes instantFeedback to prevent re-renders during instant feedback transitions
+// while still maintaining responsiveness to backend-driven showFeedback updates
 function areEqual(
   prevProps: ReviewQuestionDisplayProps,
   nextProps: ReviewQuestionDisplayProps
 ): boolean {
-  // Re-render if question ID changes (new question)
-  if (prevProps.questionId !== nextProps.questionId) {
-    return false;
-  }
-
-  // Re-render if selected answer changes
-  if (prevProps.selectedAnswer !== nextProps.selectedAnswer) {
-    return false;
-  }
-
-  // Re-render if feedback state changes
-  if (prevProps.showFeedback !== nextProps.showFeedback) {
-    return false;
-  }
-
-  // Re-render if the question text itself changes (shouldn't happen in practice)
-  if (prevProps.question.question !== nextProps.question.question) {
-    return false;
-  }
-
-  // Don't re-render for any other prop changes
-  return true;
+  return (
+    prevProps.questionId === nextProps.questionId &&
+    prevProps.selectedAnswer === nextProps.selectedAnswer &&
+    prevProps.showFeedback === nextProps.showFeedback &&
+    prevProps.instantFeedback?.visible === nextProps.instantFeedback?.visible &&
+    prevProps.instantFeedback?.isCorrect === nextProps.instantFeedback?.isCorrect
+  );
 }
 
 // Export memoized component with custom comparison
