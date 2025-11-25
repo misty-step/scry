@@ -129,13 +129,14 @@ export function ReviewFlow() {
   useEffect(() => {
     if (phrasingId && !isTransitioning) {
       setSelectedAnswer('');
+      _clearFeedback();
       setFeedbackState({
         showFeedback: false,
         nextReviewInfo: null,
       });
       setQuestionStartTime(Date.now());
     }
-  }, [phrasingId, isTransitioning]);
+  }, [phrasingId, isTransitioning, _clearFeedback]);
 
   const handleAnswerSelect = useCallback(
     (answer: string) => {
@@ -145,33 +146,43 @@ export function ReviewFlow() {
     [feedbackState.showFeedback]
   );
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(() => {
     if (!selectedAnswer || !question || !conceptId || !phrasingId) return;
 
     const isCorrect = selectedAnswer === question.correctAnswer;
 
-    // Track interaction with FSRS scheduling (before showing feedback)
-    const timeSpent = Date.now() - questionStartTime;
-    const reviewInfo = await trackAnswer(
-      conceptId,
-      phrasingId,
-      selectedAnswer,
-      isCorrect,
-      timeSpent,
-      sessionId
-    );
+    // 1. INSTANT: Show visual feedback (synchronous, <16ms)
+    _showFeedback(isCorrect);
 
-    // Batch state updates into a single render
-    setFeedbackState({
-      showFeedback: true,
-      nextReviewInfo: reviewInfo
-        ? {
-            nextReview: reviewInfo.nextReview,
-            scheduledDays: reviewInfo.scheduledDays,
-          }
-        : null,
-    });
-  }, [selectedAnswer, question, conceptId, phrasingId, questionStartTime, trackAnswer, sessionId]);
+    // 2. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
+    const timeSpent = Date.now() - questionStartTime;
+    trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
+      .then((reviewInfo) => {
+        // 3. PROGRESSIVE: Show scheduling details when backend responds
+        setFeedbackState({
+          showFeedback: true,
+          nextReviewInfo: reviewInfo
+            ? {
+                nextReview: reviewInfo.nextReview,
+                scheduledDays: reviewInfo.scheduledDays,
+              }
+            : null,
+        });
+      })
+      .catch((error) => {
+        // Phase 1 MVP: Log errors, Phase 2 will add retry
+        console.error('Failed to track answer:', error);
+      });
+  }, [
+    selectedAnswer,
+    question,
+    conceptId,
+    phrasingId,
+    questionStartTime,
+    trackAnswer,
+    sessionId,
+    _showFeedback,
+  ]);
 
   const handleNext = useCallback(() => {
     // Tell the review flow we're done with this question
