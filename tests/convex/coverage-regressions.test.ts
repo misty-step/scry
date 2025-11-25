@@ -6,6 +6,8 @@ import { bulkDelete } from '@/convex/questionsBulk';
 import { saveBatch } from '@/convex/questionsCrud';
 import { createMockCtx, createMockDb, makeConcept } from '../helpers';
 
+const getHandler = (fn: unknown) => (fn as any).handler ?? (fn as any)._handler;
+
 vi.mock('@/convex/clerk', () => ({
   requireUserFromClerk: vi.fn().mockResolvedValue({ _id: 'users_1' }),
 }));
@@ -14,6 +16,12 @@ const mockUpdateStatsCounters = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockUpsertEmbeddingForQuestion = vi.fn();
 const mockValidateBulkOwnership = vi.fn();
+
+const mockConceptLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock('@/convex/lib/analytics', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
@@ -35,12 +43,6 @@ vi.mock('@/convex/scheduling', () => ({
     initializeCard: schedulerInitialize,
   }),
 }));
-
-const mockConceptLogger = {
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-};
 
 vi.mock('@/convex/lib/logger', () => ({
   createConceptsLogger: () => mockConceptLogger,
@@ -85,9 +87,7 @@ describe('convex regression coverage', () => {
       const db = createMockDb();
       const ctx = createMockCtx({ db });
 
-      const { handler } = createMany as unknown as {
-        handler: (ctx: unknown, args: unknown) => any;
-      };
+      const handler = getHandler(createMany);
       const result = await handler(ctx as never, {
         userId: 'users_1' as never,
         jobId: undefined,
@@ -113,9 +113,7 @@ describe('convex regression coverage', () => {
 
       const ctx = createMockCtx({ db });
 
-      const { handler } = createMany as unknown as {
-        handler: (ctx: unknown, args: unknown) => any;
-      };
+      const handler = getHandler(createMany);
       const result = await handler(ctx as never, {
         userId: 'users_1' as never,
         jobId: 'generationJobs_1' as never,
@@ -157,9 +155,7 @@ describe('convex regression coverage', () => {
       });
       const ctx = createMockCtx({ db });
 
-      const { handler } = saveBatch as unknown as {
-        handler: (ctx: unknown, args: unknown) => Promise<unknown>;
-      };
+      const handler = getHandler(saveBatch);
       const result = await handler(ctx as never, {
         userId: 'users_1' as never,
         questions: [
@@ -210,9 +206,7 @@ describe('convex regression coverage', () => {
         { _id: 'q3', state: 'review' },
       ]);
 
-      const { handler } = bulkDelete as unknown as {
-        handler: (ctx: unknown, args: unknown) => Promise<unknown>;
-      };
+      const handler = getHandler(bulkDelete);
       const result = await handler(ctx as never, {
         questionIds: ['q1', 'q2', 'q3'] as never,
       });
@@ -237,15 +231,13 @@ describe('convex regression coverage', () => {
 
     it('throws and logs when API key missing', async () => {
       process.env.GOOGLE_AI_API_KEY = '';
-      const { handler } = generateEmbedding as unknown as {
-        handler: (ctx: unknown, args: unknown) => Promise<unknown>;
-      };
+      const handler = getHandler(generateEmbedding);
       await expect(handler({} as never, { text: 'hi' })).rejects.toThrow(
         'GOOGLE_AI_API_KEY not configured'
       );
       expect(mockConceptLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'embeddings.generation.missing-key' }),
-        expect.stringContaining('GOOGLE_AI_API_KEY not configured')
+        expect.stringContaining('GOOGLE_AI_API_KEY not configured'),
+        expect.objectContaining({ event: 'embeddings.generation.missing-key' })
       );
       expect(mockEmbed).not.toHaveBeenCalled();
     });
@@ -254,9 +246,7 @@ describe('convex regression coverage', () => {
       process.env.GOOGLE_AI_API_KEY = 'key-123';
       mockEmbed.mockResolvedValue({ embedding: [1, 2, 3] });
 
-      const { handler } = generateEmbedding as unknown as {
-        handler: (ctx: unknown, args: unknown) => Promise<number[]>;
-      };
+      const handler = getHandler(generateEmbedding);
       const result = await handler({} as never, { text: 'hello' });
 
       expect(mockCreateGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: 'key-123' });
@@ -265,13 +255,13 @@ describe('convex regression coverage', () => {
         value: 'hello',
       });
       expect(mockConceptLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Successfully generated embedding'),
         expect.objectContaining({
           event: 'embeddings.generation.success',
           dimensions: 3,
           textLength: 5,
           model: 'text-embedding-004',
-        }),
-        expect.stringContaining('Successfully generated embedding')
+        })
       );
       expect(result).toEqual([1, 2, 3]);
     });

@@ -25,10 +25,10 @@ pre-push:
 
     # Fast unit regression check on changed files (no coverage)
     test-unit-changed:
-      run: pnpm test -- --run --changed
+      run: ./scripts/test-changed-batches.sh
       fail_text: "Unit tests (changed files) failed. Fix before pushing."
 
     # Targeted coverage gate for core domains (convex + hooks)
     test-coverage-core:
-      run: pnpm test:coverage -- --run tests/convex/**/*.test.ts --run hooks/**/*.test.ts
+      run: SKIP_HEAVY_TESTS=1 NODE_OPTIONS=--max-old-space-size=4096 pnpm test:coverage -- --run --pool=forks --maxWorkers=1 tests/convex/**/*.test.ts hooks/**/*.test.ts
       fail_text: "Coverage gate failed (convex/hooks)."

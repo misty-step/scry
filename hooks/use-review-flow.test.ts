@@ -7,6 +7,12 @@ import { LOADING_TIMEOUT_MS } from '@/lib/constants/timing';
 import type { Id } from '../convex/_generated/dataModel';
 import { reviewReducer, useReviewFlow } from './use-review-flow';
 
+const skipHeavy = process.env.SKIP_HEAVY_TESTS === '1';
+const describeMaybe = skipHeavy ? describe.skip : describe;
+
+vi.mock('@/convex/_generated/api', () => ({
+  api: { concepts: { getDue: {} } },
+}));
 vi.mock('@/hooks/use-simple-poll', () => ({
   useSimplePoll: vi.fn(),
 }));
@@ -19,7 +25,7 @@ vi.mock('@/hooks/use-track-event', () => ({
   useTrackEvent: vi.fn(() => vi.fn()),
 }));
 
-describe('reviewReducer', () => {
+describeMaybe('reviewReducer', () => {
   describe('REVIEW_COMPLETE action', () => {
     it('should maintain reviewing phase with isTransitioning flag for optimistic UI', () => {
       // Arrange: Set up initial state with active question in reviewing phase

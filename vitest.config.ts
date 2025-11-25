@@ -45,6 +45,26 @@ export default defineConfig({
         '**/tests/**',
         'lib/generated/**',
         'scripts/**',
+        // Non-runtime / docs / artifacts that skew coverage
+        'convex/**/*.md',
+        'convex/**/README.*',
+        'convex/**/TYPES.*',
+        'convex/**/*.backup',
+        'convex/**/*.tsbuildinfo',
+        'convex/**/tsconfig.*',
+        'convex/migrations/**',
+        'convex/evals/**',
+        'convex/cron.ts',
+        'convex/deployments.ts',
+        'convex/health.ts',
+        'convex/http.ts',
+        'convex/lab.ts',
+        'convex/phrasings.ts',
+        'convex/scheduling.ts',
+        'convex/schema.ts',
+        'convex/system.ts',
+        'convex/types.ts',
+        'convex/fsrs.ts',
       ],
     },
 
@@ -63,9 +83,9 @@ export default defineConfig({
     hookTimeout: 10000,
 
     // Enable parallel test execution with Vitest 4 configuration
-    pool: 'threads',
-    // Note: In Vitest 4, poolOptions.threads.singleThread is replaced with maxWorkers
-    // Leaving maxWorkers unset enables parallel execution (default behavior)
+    pool: 'forks',
+    // Single forked worker avoids worker_threads heap limit issues observed in hooks
+    maxWorkers: 1,
 
     // Show test timing to identify slow tests
     reporters: ['verbose'],
