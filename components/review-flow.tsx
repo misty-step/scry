@@ -162,12 +162,18 @@ export function ReviewFlow() {
     // 1. INSTANT: Show visual feedback (synchronous, <16ms)
     _showFeedback(isCorrect);
 
-    // 2. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
+    // 2. INSTANT: Enable feedback section and Next button immediately
+    setFeedbackState({
+      showFeedback: true,
+      nextReviewInfo: null, // Will be filled progressively when backend responds
+    });
+
+    // 3. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
     // Calculate time spent from question load to submission (milliseconds)
     const timeSpent = Date.now() - questionStartTime;
     trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
       .then((reviewInfo) => {
-        // 3. PROGRESSIVE: Show scheduling details when backend responds
+        // 4. PROGRESSIVE: Show scheduling details when backend responds
         // Only update state if component is still mounted (race condition protection)
         if (isMountedRef.current) {
           setFeedbackState({

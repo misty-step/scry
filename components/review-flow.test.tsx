@@ -409,4 +409,185 @@ describe('ReviewFlow - Instant Feedback Integration', () => {
       expect(liveRegion).toHaveTextContent('');
     });
   });
+
+  describe('Bug Fix: Feedback Section and Next Button', () => {
+    it('shows Next button immediately after submission (not waiting for backend)', async () => {
+      // Mock trackAnswer with LONG delay (2 seconds)
+      mockTrackAnswer.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  nextReview: new Date('2025-01-25'),
+                  scheduledDays: 5,
+                  newState: 'review',
+                }),
+              2000
+            );
+          })
+      );
+
+      render(<ReviewFlow />);
+
+      // Select and submit
+      fireEvent.click(screen.getByText('Unmerited favor'));
+      fireEvent.click(screen.getByText('Submit'));
+
+      // CRITICAL: Next button should appear immediately (not after 2 seconds!)
+      await waitFor(
+        () => {
+          expect(screen.getByText('Next')).toBeInTheDocument();
+        },
+        { timeout: 100 }
+      ); // Very short timeout proves it's instant
+
+      // Submit button should be gone
+      expect(screen.queryByText('Submit')).not.toBeInTheDocument();
+    });
+
+    it('shows feedback section immediately without waiting for backend', async () => {
+      // Mock trackAnswer with LONG delay
+      mockTrackAnswer.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  nextReview: new Date('2025-01-25'),
+                  scheduledDays: 5,
+                  newState: 'review',
+                }),
+              2000
+            );
+          })
+      );
+
+      // Add explanation to question
+      const mockQuestionWithExplanation = {
+        ...mockQuestion,
+        explanation: 'Grace is unmerited favor from God',
+      };
+
+      (useReviewFlow as any).mockReturnValue({
+        ...mockReviewFlowState,
+        question: mockQuestionWithExplanation,
+      });
+
+      render(<ReviewFlow />);
+
+      // Select and submit
+      fireEvent.click(screen.getByText('Unmerited favor'));
+      fireEvent.click(screen.getByText('Submit'));
+
+      // Explanation should appear immediately
+      await waitFor(
+        () => {
+          expect(screen.getByText('Grace is unmerited favor from God')).toBeInTheDocument();
+        },
+        { timeout: 100 }
+      );
+    });
+
+    it('progressively shows scheduling details after backend responds', async () => {
+      // Mock trackAnswer with moderate delay
+      mockTrackAnswer.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  nextReview: new Date('2025-01-30T10:00:00Z'),
+                  scheduledDays: 5,
+                  newState: 'review',
+                }),
+              500
+            );
+          })
+      );
+
+      render(<ReviewFlow />);
+
+      // Select and submit
+      fireEvent.click(screen.getByText('Unmerited favor'));
+      fireEvent.click(screen.getByText('Submit'));
+
+      // Next button appears immediately
+      await waitFor(
+        () => {
+          expect(screen.getByText('Next')).toBeInTheDocument();
+        },
+        { timeout: 100 }
+      );
+
+      // Scheduling details NOT present yet
+      expect(screen.queryByText(/Next review:/i)).not.toBeInTheDocument();
+
+      // Wait for backend to respond
+      await waitFor(
+        () => {
+          expect(screen.getByText(/Next review:/i)).toBeInTheDocument();
+        },
+        { timeout: 1000 }
+      );
+
+      // Verify scheduling details filled in
+      expect(screen.getByText(/In 5 days/i)).toBeInTheDocument();
+    });
+
+    it('shows Next button even when backend fails', async () => {
+      // Mock trackAnswer to reject
+      mockTrackAnswer.mockRejectedValue(new Error('Network error'));
+
+      render(<ReviewFlow />);
+
+      // Select and submit
+      fireEvent.click(screen.getByText('Unmerited favor'));
+      fireEvent.click(screen.getByText('Submit'));
+
+      // Next button should still appear (not blocked by error)
+      await waitFor(
+        () => {
+          expect(screen.getByText('Next')).toBeInTheDocument();
+        },
+        { timeout: 100 }
+      );
+
+      // User can click Next and advance
+      const nextButton = screen.getByText('Next');
+      expect(nextButton).not.toBeDisabled();
+    });
+
+    it('shows concept title immediately after submission', async () => {
+      // Mock trackAnswer with LONG delay
+      mockTrackAnswer.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  nextReview: new Date('2025-01-25'),
+                  scheduledDays: 5,
+                  newState: 'review',
+                }),
+              2000
+            );
+          })
+      );
+
+      render(<ReviewFlow />);
+
+      // Select and submit
+      fireEvent.click(screen.getByText('Unmerited favor'));
+      fireEvent.click(screen.getByText('Submit'));
+
+      // Concept title should appear immediately
+      await waitFor(
+        () => {
+          expect(screen.getByText('Grace')).toBeInTheDocument(); // mockReviewFlowState.conceptTitle
+        },
+        { timeout: 100 }
+      );
+    });
+  });
 });
