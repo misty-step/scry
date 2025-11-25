@@ -336,6 +336,7 @@ export function ReviewFlow() {
                 selectedAnswer={selectedAnswer}
                 showFeedback={feedbackState.showFeedback}
                 onAnswerSelect={handleAnswerSelect}
+                instantFeedback={instantFeedback}
               />
             </ReviewErrorBoundary>
 
