@@ -55,14 +55,14 @@ pnpm exec playwright show-report
 Tests are configured via `playwright.config.ts` with:
 
 - **Browsers**: Chromium (Desktop) and Mobile Chrome only (Firefox/WebKit removed for speed)
-- **Base URL**: https://scry.vercel.app on CI; http://localhost:3000 locally when `pnpm dev` running
+- **Base URL**: <https://scry.vercel.app> on CI; <http://localhost:3000> locally when `pnpm dev` running
 - **Timeouts**: 10s actions, 30s navigation, 60s global
 - **Retries**: 0 (fix flake instead of retry)
 - **Artifacts**: Screenshots/videos on failure, traces on first retry hook (smoke uses same defaults)
 
 ## Test Structure
 
-```
+```text
 tests/
 ├── e2e/
 │   ├── spaced-repetition.test.ts   # Full regression flow
