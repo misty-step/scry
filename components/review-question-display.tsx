@@ -140,6 +140,8 @@ function ReviewQuestionDisplayComponent({
 
 // Custom comparison function for React.memo
 // Only re-render if props that affect display change
+// Includes instantFeedback to prevent re-renders during instant feedback transitions
+// while still maintaining responsiveness to backend-driven showFeedback updates
 function areEqual(
   prevProps: ReviewQuestionDisplayProps,
   nextProps: ReviewQuestionDisplayProps

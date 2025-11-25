@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { ArrowRight, Brain, Calendar, Clock, Info, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,6 +58,14 @@ export function ReviewFlow() {
     showFeedback: _showFeedback,
     clearFeedback: _clearFeedback,
   } = useInstantFeedback();
+
+  // Track component mount status to prevent setState on unmounted component
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Local UI state for answer selection and feedback
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
@@ -155,23 +163,30 @@ export function ReviewFlow() {
     _showFeedback(isCorrect);
 
     // 2. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
+    // Calculate time spent from question load to submission (milliseconds)
     const timeSpent = Date.now() - questionStartTime;
     trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
       .then((reviewInfo) => {
         // 3. PROGRESSIVE: Show scheduling details when backend responds
-        setFeedbackState({
-          showFeedback: true,
-          nextReviewInfo: reviewInfo
-            ? {
-                nextReview: reviewInfo.nextReview,
-                scheduledDays: reviewInfo.scheduledDays,
-              }
-            : null,
-        });
+        // Only update state if component is still mounted (race condition protection)
+        if (isMountedRef.current) {
+          setFeedbackState({
+            showFeedback: true,
+            nextReviewInfo: reviewInfo
+              ? {
+                  nextReview: reviewInfo.nextReview,
+                  scheduledDays: reviewInfo.scheduledDays,
+                }
+              : null,
+          });
+        }
       })
       .catch((error) => {
-        // Phase 1 MVP: Log errors, Phase 2 will add retry
+        // Phase 1: Log error and notify user, Phase 2 will add retry logic
         console.error('Failed to track answer:', error);
+        toast.error('Failed to save your answer', {
+          description: "Your progress wasn't saved. Please try again.",
+        });
       });
   }, [
     selectedAnswer,
