@@ -7,15 +7,17 @@ fallback() {
   git rev-parse --verify "$1" >/dev/null 2>&1
 }
 
-BASE_REF=${BASE_REF:-origin/main}
+BASE_REF=${BASE_REF:-origin/master}
 if ! fallback "$BASE_REF"; then
-  if fallback main; then
+  if fallback master; then
+    BASE_REF=master
+  elif fallback main; then
     BASE_REF=main
   else
     BASE_REF=$(git rev-list --max-parents=0 HEAD)
   fi
 fi
-BATCH_SIZE=${BATCH_SIZE:-1}
+BATCH_SIZE=${BATCH_SIZE:-10}
 NODE_OPTIONS=${NODE_OPTIONS:-"--max-old-space-size=4096"}
 
 merge_base=$(git merge-base "$BASE_REF" HEAD)
@@ -25,6 +27,13 @@ changed_tests=$(git diff --name-only "$merge_base"...HEAD \
 
 if [[ -z "$changed_tests" ]]; then
   echo "No changed test files detected relative to $BASE_REF; skipping batch run."
+  exit 0
+fi
+
+file_count=$(echo "$changed_tests" | wc -l | tr -d ' ')
+if [[ $file_count -gt 50 ]]; then
+  echo "⚠️ Too many changed files ($file_count), likely comparing to initial commit. Skipping batched test run."
+  echo "Run 'pnpm test' manually to verify all tests pass."
   exit 0
 fi
 
