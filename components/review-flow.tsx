@@ -13,12 +13,14 @@ import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LiveRegion } from '@/components/ui/live-region';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
 import { useConfirmation } from '@/hooks/use-confirmation';
+import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useQuestionMutations } from '@/hooks/use-question-mutations';
 import { useQuizInteractions } from '@/hooks/use-quiz-interactions';
@@ -49,6 +51,13 @@ export function ReviewFlow() {
 
   // Use context for current question
   const { setCurrentQuestion } = useCurrentQuestion();
+
+  // Instant feedback hook for immediate visual response
+  const {
+    feedbackState: instantFeedback,
+    showFeedback: _showFeedback,
+    clearFeedback: _clearFeedback,
+  } = useInstantFeedback();
 
   // Local UI state for answer selection and feedback
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
@@ -258,6 +267,11 @@ export function ReviewFlow() {
   if (phase === 'reviewing' && question) {
     return (
       <PageContainer className="py-6">
+        {/* ARIA live region for screen reader feedback announcements */}
+        <LiveRegion politeness="polite" atomic={true}>
+          {instantFeedback.visible ? (instantFeedback.isCorrect ? 'Correct' : 'Incorrect') : ''}
+        </LiveRegion>
+
         <div className="max-w-[760px]">
           <article className="space-y-6">
             {/* Due count indicator - refined pill design - always visible, maintains value during refetch */}
