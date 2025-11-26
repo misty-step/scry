@@ -8,8 +8,6 @@
 
 ## Now (<2 weeks, sprint-ready)
 
-### [PRODUCT] Learners should be able to edit, archive, and delete phrasings and concepts from the review screen
-
 ### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen, with feedback
 - sometimes a concept or phrasing won't quite be right
 - a learner should be able to hit a regenerate button, specify whether the specific phrasing or the whole concept should be regenerated, and add some notes

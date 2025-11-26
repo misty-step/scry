@@ -873,6 +873,69 @@ export const updateConcept = mutation({
 });
 
 /**
+ * Update phrasing question, answer, explanation, and options.
+ * Preserves all stats (attemptCount, correctCount, lastAttemptedAt).
+ */
+export const updatePhrasing = mutation({
+  args: {
+    phrasingId: v.id('phrasings'),
+    question: v.string(),
+    correctAnswer: v.string(),
+    explanation: v.optional(v.string()),
+    options: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const phrasing = await ctx.db.get(args.phrasingId);
+
+    if (!phrasing) {
+      throw new Error('Phrasing not found');
+    }
+
+    if (phrasing.userId !== user._id) {
+      throw new Error('Phrasing not found or unauthorized');
+    }
+
+    // Trim and validate required fields
+    const question = args.question.trim();
+    const correctAnswer = args.correctAnswer.trim();
+
+    if (!question) {
+      throw new Error('Question cannot be empty');
+    }
+
+    if (!correctAnswer) {
+      throw new Error('Correct answer cannot be empty');
+    }
+
+    // For MC questions, validate correctAnswer exists in options
+    if (args.options && args.options.length > 0) {
+      if (!args.options.includes(correctAnswer)) {
+        throw new Error('Correct answer must be one of the provided options');
+      }
+    }
+
+    const now = Date.now();
+    const patch: Partial<PhrasingDoc> = {
+      question,
+      correctAnswer,
+      updatedAt: now,
+    };
+
+    // Only update optional fields if provided
+    if (args.explanation !== undefined) {
+      patch.explanation = args.explanation.trim();
+    }
+
+    if (args.options !== undefined) {
+      patch.options = args.options;
+    }
+
+    await ctx.db.patch(args.phrasingId, patch);
+  },
+});
+
+/**
  * Archive a concept and all its phrasings.
  * Removes it from review queues and stats.
  */

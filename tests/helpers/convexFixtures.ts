@@ -8,6 +8,7 @@ const makeId = <T extends TableNames>(table: T, suffix = '1') => `${table}_${suf
 
 type QuestionDoc = Doc<'questions'>;
 type ConceptDoc = Doc<'concepts'>;
+type PhrasingDoc = Doc<'phrasings'>;
 type GenerationJobDoc = Doc<'generationJobs'>;
 
 export function makeQuestion(overrides: Partial<QuestionDoc> = {}): QuestionDoc {
@@ -61,6 +62,34 @@ export function makeConcept(overrides: Partial<ConceptDoc> = {}): ConceptDoc {
     deletedAt: undefined,
     archivedAt: undefined,
     generationJobId: undefined,
+  };
+
+  return {
+    ...base,
+    ...overrides,
+  };
+}
+
+export function makePhrasing(overrides: Partial<PhrasingDoc> = {}): PhrasingDoc {
+  const base: PhrasingDoc = {
+    _id: makeId('phrasings'),
+    _creationTime: fixedNow,
+    userId: makeId('users'),
+    conceptId: makeId('concepts'),
+    question: 'What is the powerhouse of the cell?',
+    correctAnswer: 'Mitochondria',
+    explanation: 'Mitochondria generate ATP through cellular respiration',
+    type: 'multiple-choice',
+    options: ['Nucleus', 'Mitochondria', 'Ribosome', 'Golgi apparatus'],
+    attemptCount: 0,
+    correctCount: 0,
+    lastAttemptedAt: undefined,
+    createdAt: fixedNow,
+    updatedAt: undefined,
+    archivedAt: undefined,
+    deletedAt: undefined,
+    embedding: undefined,
+    embeddingGeneratedAt: undefined,
   };
 
   return {
