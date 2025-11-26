@@ -13,13 +13,17 @@ import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { LiveRegion } from '@/components/ui/live-region';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
+import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
+import { useConceptActions } from '@/hooks/use-concept-actions';
 import { useConfirmation } from '@/hooks/use-confirmation';
+import { useInlineEdit } from '@/hooks/use-inline-edit';
 import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useQuestionMutations } from '@/hooks/use-question-mutations';
@@ -118,6 +122,39 @@ export function ReviewFlow() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const { optimisticEdit, optimisticDelete } = useQuestionMutations();
   const confirm = useConfirmation();
+
+  // Inline editing for concept and phrasing
+  const conceptActions = useConceptActions({ conceptId: conceptId ?? '' });
+
+  const conceptEdit = useInlineEdit(
+    {
+      title: conceptTitle ?? '',
+      description: '', // Concepts don't have descriptions in current data model
+    },
+    async (data) => {
+      if (!conceptId) return;
+      await conceptActions.editConcept(data);
+    }
+  );
+
+  const phrasingEdit = useInlineEdit(
+    {
+      question: question?.question ?? '',
+      correctAnswer: question?.correctAnswer ?? '',
+      explanation: question?.explanation ?? '',
+      options: question?.options ?? [],
+    },
+    async (data) => {
+      if (!phrasingId) return;
+      await conceptActions.editPhrasing({
+        phrasingId,
+        question: data.question,
+        correctAnswer: data.correctAnswer,
+        explanation: data.explanation,
+        options: data.options,
+      });
+    }
+  );
 
   // Update context when current question changes
   useEffect(() => {
@@ -268,6 +305,33 @@ export function ReviewFlow() {
     [legacyQuestionId, optimisticEdit]
   );
 
+  // Handler for starting inline edit mode (E key)
+  const handleStartInlineEdit = useCallback(() => {
+    // Only allow editing in feedback mode and when not already editing
+    if (feedbackState.showFeedback && !conceptEdit.isEditing && !phrasingEdit.isEditing) {
+      // Start editing concept title by default
+      conceptEdit.startEdit();
+    }
+  }, [feedbackState.showFeedback, conceptEdit, phrasingEdit]);
+
+  // Listen for Escape key to save and exit edit mode
+  useEffect(() => {
+    const handleEscape = () => {
+      if (conceptEdit.isEditing) {
+        conceptEdit.save().catch(() => {
+          // Error already handled by save (toast shown)
+        });
+      } else if (phrasingEdit.isEditing) {
+        phrasingEdit.save().catch(() => {
+          // Error already handled by save (toast shown)
+        });
+      }
+    };
+
+    window.addEventListener('escape-pressed', handleEscape);
+    return () => window.removeEventListener('escape-pressed', handleEscape);
+  }, [conceptEdit, phrasingEdit]);
+
   // Wire up keyboard shortcuts
   const canModifyLegacyQuestion = Boolean(legacyQuestionId);
 
@@ -281,7 +345,7 @@ export function ReviewFlow() {
       : undefined,
     onSubmit: !feedbackState.showFeedback && selectedAnswer ? handleSubmit : undefined,
     onNext: feedbackState.showFeedback && !isTransitioning ? handleNext : undefined,
-    onEdit: canModifyLegacyQuestion ? handleEdit : undefined,
+    onEdit: conceptEdit.isEditing || phrasingEdit.isEditing ? undefined : handleStartInlineEdit,
     onDelete: canModifyLegacyQuestion ? handleDelete : undefined,
     showingFeedback: feedbackState.showFeedback,
     canSubmit: !!selectedAnswer,
@@ -423,15 +487,44 @@ export function ReviewFlow() {
                 interactions.length > 0 ||
                 feedbackState.nextReviewInfo?.nextReview) && (
                 <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-fadeIn">
-                  {/* Concept Title */}
+                  {/* Concept Title - Inline Editable */}
                   {conceptTitle && (
                     <div className="space-y-1 border-b border-border/30 pb-3">
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                         <span>Concept</span>
                       </div>
-                      <h3 className="text-xl font-semibold text-foreground break-words">
-                        {conceptTitle}
-                      </h3>
+                      {conceptEdit.isEditing ? (
+                        <div className="space-y-2">
+                          <Input
+                            value={conceptEdit.localData.title as string}
+                            onChange={(e) => conceptEdit.updateField('title', e.target.value)}
+                            placeholder="Concept title"
+                            className="text-xl font-semibold"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => conceptEdit.save()}
+                              disabled={conceptEdit.isSaving || !conceptEdit.isDirty}
+                            >
+                              {conceptEdit.isSaving ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => conceptEdit.cancel()}
+                              disabled={conceptEdit.isSaving}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <h3 className="text-xl font-semibold text-foreground break-words">
+                          {conceptTitle}
+                        </h3>
+                      )}
                       {(phrasingPositionLabel || selectionReasonLabel) && (
                         <p className="text-sm text-muted-foreground">
                           {phrasingPositionLabel}
@@ -442,9 +535,41 @@ export function ReviewFlow() {
                     </div>
                   )}
 
-                  {/* Explanation */}
-                  {question.explanation && (
-                    <p className="text-sm text-foreground/90">{question.explanation}</p>
+                  {/* Explanation - Inline Editable */}
+                  {(question.explanation || phrasingEdit.isEditing) && (
+                    <div className="space-y-2">
+                      {phrasingEdit.isEditing ? (
+                        <>
+                          <Textarea
+                            value={phrasingEdit.localData.explanation as string}
+                            onChange={(e) =>
+                              phrasingEdit.updateField('explanation', e.target.value)
+                            }
+                            placeholder="Explanation (optional)"
+                            className="text-sm min-h-[80px]"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => phrasingEdit.save()}
+                              disabled={phrasingEdit.isSaving || !phrasingEdit.isDirty}
+                            >
+                              {phrasingEdit.isSaving ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => phrasingEdit.cancel()}
+                              disabled={phrasingEdit.isSaving}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-foreground/90">{question.explanation}</p>
+                      )}
+                    </div>
                   )}
 
                   {/* Divider between explanation and other content */}
