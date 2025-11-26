@@ -834,6 +834,45 @@ async function findActiveGenerationJob(
 }
 
 /**
+ * Update concept title and description.
+ * Preserves all FSRS state and other fields.
+ */
+export const updateConcept = mutation({
+  args: {
+    conceptId: v.id('concepts'),
+    title: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+
+    // Trim and validate title
+    const title = args.title.trim();
+    if (!title) {
+      throw new Error('Title cannot be empty');
+    }
+
+    const now = Date.now();
+    const patch: Partial<ConceptDoc> = {
+      title,
+      updatedAt: now,
+    };
+
+    // Only update description if provided
+    if (args.description !== undefined) {
+      patch.description = args.description.trim();
+    }
+
+    await ctx.db.patch(args.conceptId, patch);
+  },
+});
+
+/**
  * Archive a concept and all its phrasings.
  * Removes it from review queues and stats.
  */
