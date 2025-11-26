@@ -292,10 +292,16 @@ export function ReviewFlow() {
   const handleArchivePhrasing = useCallback(async () => {
     if (!phrasingId) return;
 
+    // Prevent archiving the last phrasing - suggest archiving concept instead
+    if (totalPhrasings === 1) {
+      toast.error('This is the last phrasing. Archive the entire concept instead?');
+      return;
+    }
+
     await conceptActions.archivePhrasingWithUndo(phrasingId);
     // Move to next question after archiving
     handlers.onReviewComplete();
-  }, [phrasingId, conceptActions, handlers]);
+  }, [phrasingId, totalPhrasings, conceptActions, handlers]);
 
   // Archive concept handler with undo
   const handleArchiveConcept = useCallback(async () => {
@@ -480,18 +486,21 @@ export function ReviewFlow() {
                     </Button>
                   </>
                 )}
-                {feedbackState.showFeedback && phrasingId && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleArchivePhrasing}
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Archive this phrasing"
-                  >
-                    <Archive className="h-4 w-4 mr-2" />
-                    Archive Phrasing
-                  </Button>
-                )}
+                {feedbackState.showFeedback &&
+                  phrasingId &&
+                  totalPhrasings !== null &&
+                  totalPhrasings > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleArchivePhrasing}
+                      className="text-muted-foreground hover:text-foreground"
+                      title="Archive this phrasing"
+                    >
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archive Phrasing
+                    </Button>
+                  )}
                 {feedbackState.showFeedback && conceptId && (
                   <Button
                     variant="ghost"
