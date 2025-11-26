@@ -738,6 +738,70 @@ export const archivePhrasing = mutation({
   },
 });
 
+/**
+ * Unarchive a phrasing and recalculate concept scores.
+ * Reverses archivePhrasing operation.
+ */
+export const unarchivePhrasing = mutation({
+  args: {
+    conceptId: v.id('concepts'),
+    phrasingId: v.id('phrasings'),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+    const concept = await ctx.db.get(args.conceptId);
+    if (!concept || concept.userId !== user._id) {
+      throw new Error('Concept not found or unauthorized');
+    }
+
+    const phrasing = await ctx.db.get(args.phrasingId);
+    if (!phrasing || phrasing.userId !== user._id || phrasing.conceptId !== concept._id) {
+      throw new Error('Phrasing not found or unauthorized');
+    }
+
+    // Idempotent: return early if not archived
+    if (!phrasing.archivedAt) {
+      return { phrasingId: phrasing._id };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(phrasing._id, {
+      archivedAt: undefined,
+      updatedAt: now,
+    });
+
+    // Fetch all active phrasings (including newly unarchived)
+    const activePhrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', user._id).eq('conceptId', concept._id))
+      .filter((q) => q.eq(q.field('archivedAt'), undefined))
+      .collect();
+
+    const newCount = activePhrasings.length;
+    const thinScore = computeThinScoreFromCount(newCount);
+
+    // Recalculate conflictScore from active phrasings
+    let conflictScore: number | undefined = undefined;
+    if (newCount > 1) {
+      const questions = activePhrasings.map((p) => p.question.trim().toLowerCase());
+      const uniqueQuestions = new Set(questions);
+      const conflictCount = questions.length - uniqueQuestions.size;
+      conflictScore = conflictCount > 0 ? conflictCount : undefined;
+    }
+
+    const conceptPatch: Partial<ConceptDoc> = {
+      phrasingCount: newCount,
+      thinScore,
+      conflictScore,
+      updatedAt: now,
+    };
+
+    await ctx.db.patch(concept._id, conceptPatch);
+
+    return { phrasingId: phrasing._id };
+  },
+});
+
 export const requestPhrasingGeneration = mutation({
   args: {
     conceptId: v.id('concepts'),
