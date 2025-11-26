@@ -48,28 +48,29 @@
   Time: 45min (TDD: tests first, then implementation)
   ```
 
-- [ ] **Implement `concepts.updatePhrasing` mutation**
+- [x] **Implement `concepts.updatePhrasing` mutation**
   ```
-  File: convex/concepts.ts (new export ~line 800)
+  File: convex/concepts.ts (new export line 879)
   Architecture: Similar to updateConcept but with MC/TF validation
-  Pseudocode:
-    1. Validate user ownership (fetch phrasing, check userId)
-    2. Trim all string fields (question, correctAnswer, explanation)
-    3. Validate non-empty question and correctAnswer
-    4. If options provided: validate correctAnswer exists in options
-    5. Patch phrasing with { question, correctAnswer, explanation?, options?, updatedAt }
-    6. PRESERVE phrasing stats (attemptCount, lastAttemptedAt)
-  Success:
-    - All editable fields update
-    - MC validation blocks invalid correctAnswer
-    - Stats fields preserved
-  Test: tests/convex/concepts.update.test.ts
-    - Test question/answer editing
-    - Test MC validation (correctAnswer not in options → error)
-    - Test TF validation
-    - Test stats preservation
-  Dependencies: None
-  Time: 1hr
+  Implemented:
+    ✓ Validates user ownership (requireUserFromClerk → phrasing.userId check)
+    ✓ Trims all string fields (question, correctAnswer, explanation)
+    ✓ Validates non-empty question and correctAnswer
+    ✓ MC validation: correctAnswer must exist in options array
+    ✓ Patches phrasing with { question, correctAnswer, explanation?, options?, updatedAt }
+    ✓ PRESERVES all phrasing stats (attemptCount, correctCount, lastAttemptedAt)
+  Tests: tests/convex/concepts.update.test.ts (10 test cases, all pass)
+    ✓ Question/answer updates
+    ✓ Stats preservation verified
+    ✓ Empty question/answer rejection
+    ✓ MC validation (correctAnswer not in options → error)
+    ✓ Valid MC updates accepted
+    ✓ Whitespace trimming
+    ✓ Unauthorized access blocked
+    ✓ Non-existent phrasing handling
+    ✓ Optional explanation handling
+  Commit: aa083d1
+  Time: 30min (TDD: tests first, then implementation)
   ```
 
 - [ ] **Implement `concepts.unarchivePhrasing` mutation (complete mutation pair)**
