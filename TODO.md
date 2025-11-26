@@ -73,30 +73,34 @@
   Time: 30min (TDD: tests first, then implementation)
   ```
 
-- [ ] **Implement `concepts.unarchivePhrasing` mutation (complete mutation pair)**
+- [x] **Implement `concepts.unarchivePhrasing` mutation (complete mutation pair)**
   ```
-  File: convex/concepts.ts (new export ~line 840)
+  File: convex/concepts.ts (new export line 745)
   Architecture: Reverse of archivePhrasing (line 678), follows unarchiveConcept pattern
-  Pseudocode:
-    1. Validate user ownership
-    2. Return early if not archived (idempotent)
-    3. Clear archivedAt timestamp
-    4. Fetch all active phrasings (include newly unarchived)
-    5. Recalculate concept.phrasingCount
-    6. Recalculate thinScore using computeThinScoreFromCount()
-    7. Recalculate conflictScore (like archivePhrasing line 716-722)
-    8. Update concept with new counts/scores
-  Success:
-    - Phrasing restored (archivedAt cleared)
-    - Concept phrasingCount incremented
-    - Scores recalculated correctly
-  Test: tests/convex/concepts.archive.test.ts
-    - Test archive → unarchive cycle (idempotent)
-    - Test phrasingCount updates
-    - Test score recalculation
-    - Test unauthorized access blocked
-  Dependencies: None
-  Time: 1hr
+  Implemented:
+    ✓ Validates user ownership (concept + phrasing userId checks)
+    ✓ Idempotent operation (returns early if not archived)
+    ✓ Clears archivedAt timestamp
+    ✓ Fetches all active phrasings (including newly unarchived)
+    ✓ Recalculates concept.phrasingCount
+    ✓ Recalculates thinScore using computeThinScoreFromCount()
+    ✓ Recalculates conflictScore from duplicate questions
+    ✓ Updates concept with new counts/scores
+  Tests: tests/convex/concepts.archive.test.ts (7 test cases, all pass)
+    ✓ Unarchive phrasing and clear archivedAt
+    ✓ Recalculate thinScore (target 4 - count = 3)
+    ✓ Recalculate conflictScore from duplicates
+    ✓ Idempotent operation
+    ✓ Unauthorized concept access blocked
+    ✓ Unauthorized phrasing access blocked
+    ✓ Non-existent phrasing handling
+  Commit: 08d4caa
+  Time: 45min (TDD: tests first, then implementation)
+  Work Log:
+    - Followed archivePhrasing pattern closely
+    - Code simplicity review identified DRY opportunity with conflictScore
+    - Deferred refactoring: affects existing production code
+    - Future: extract to convex/lib/scoring.ts
   ```
 
 **Phase 1 Acceptance**:
