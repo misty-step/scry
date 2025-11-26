@@ -26,6 +26,8 @@ vi.mock('@/convex/_generated/api', () => ({
       setCanonicalPhrasing: { _functionPath: 'concepts:setCanonicalPhrasing' },
       archivePhrasing: { _functionPath: 'concepts:archivePhrasing' },
       unarchivePhrasing: { _functionPath: 'concepts:unarchivePhrasing' },
+      archiveConcept: { _functionPath: 'concepts:archiveConcept' },
+      unarchiveConcept: { _functionPath: 'concepts:unarchiveConcept' },
       updateConcept: { _functionPath: 'concepts:updateConcept' },
       updatePhrasing: { _functionPath: 'concepts:updatePhrasing' },
       requestPhrasingGeneration: { _functionPath: 'concepts:requestPhrasingGeneration' },
@@ -38,6 +40,8 @@ describe('useConceptActions', () => {
   let mockSetCanonical: any;
   let mockArchive: any;
   let mockUnarchive: any;
+  let mockArchiveConcept: any;
+  let mockUnarchiveConcept: any;
   let mockUpdateConcept: any;
   let mockUpdatePhrasing: any;
   let mockGenerate: any;
@@ -49,6 +53,8 @@ describe('useConceptActions', () => {
     mockSetCanonical = vi.fn().mockResolvedValue({});
     mockArchive = vi.fn().mockResolvedValue({});
     mockUnarchive = vi.fn().mockResolvedValue({});
+    mockArchiveConcept = vi.fn().mockResolvedValue({});
+    mockUnarchiveConcept = vi.fn().mockResolvedValue({});
     mockUpdateConcept = vi.fn().mockResolvedValue({});
     mockUpdatePhrasing = vi.fn().mockResolvedValue({});
     mockGenerate = vi.fn().mockResolvedValue({});
@@ -64,6 +70,10 @@ describe('useConceptActions', () => {
           return mockArchive;
         case 'concepts:unarchivePhrasing':
           return mockUnarchive;
+        case 'concepts:archiveConcept':
+          return mockArchiveConcept;
+        case 'concepts:unarchiveConcept':
+          return mockUnarchiveConcept;
         case 'concepts:updateConcept':
           return mockUpdateConcept;
         case 'concepts:updatePhrasing':
@@ -182,6 +192,35 @@ describe('useConceptActions', () => {
     expect(mockUnarchive).toHaveBeenCalledWith({
       conceptId,
       phrasingId: 'phrasing_1',
+    });
+  });
+
+  it('archives concept with undo', async () => {
+    const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+    await act(async () => {
+      await result.current.archiveConceptWithUndo();
+    });
+
+    expect(mockUndoableAction).toHaveBeenCalledWith({
+      action: expect.any(Function),
+      message: 'Concept archived',
+      undo: expect.any(Function),
+      duration: 8000,
+    });
+
+    // Verify action callback calls archiveConcept
+    const actionFn = mockUndoableAction.mock.calls[0][0].action;
+    await actionFn();
+    expect(mockArchiveConcept).toHaveBeenCalledWith({
+      conceptId,
+    });
+
+    // Verify undo callback calls unarchiveConcept
+    const undoFn = mockUndoableAction.mock.calls[0][0].undo;
+    await undoFn();
+    expect(mockUnarchiveConcept).toHaveBeenCalledWith({
+      conceptId,
     });
   });
 });

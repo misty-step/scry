@@ -14,6 +14,8 @@ export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
   const setCanonicalMutation = useMutation(api.concepts.setCanonicalPhrasing);
   const archivePhrasingMutation = useMutation(api.concepts.archivePhrasing);
   const unarchivePhrasingMutation = useMutation(api.concepts.unarchivePhrasing);
+  const archiveConceptMutation = useMutation(api.concepts.archiveConcept);
+  const unarchiveConceptMutation = useMutation(api.concepts.unarchiveConcept);
   const updateConceptMutation = useMutation(api.concepts.updateConcept);
   const updatePhrasingMutation = useMutation(api.concepts.updatePhrasing);
   const requestGenerationMutation = useMutation(api.concepts.requestPhrasingGeneration);
@@ -143,10 +145,26 @@ export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
     [conceptId, archivePhrasingMutation, unarchivePhrasingMutation, undoableAction]
   );
 
+  const archiveConceptWithUndo = useCallback(async () => {
+    await undoableAction({
+      action: () =>
+        archiveConceptMutation({
+          conceptId,
+        }),
+      message: 'Concept archived',
+      undo: () =>
+        unarchiveConceptMutation({
+          conceptId,
+        }),
+      duration: 8000,
+    });
+  }, [conceptId, archiveConceptMutation, unarchiveConceptMutation, undoableAction]);
+
   return {
     setCanonical,
     archivePhrasing,
     archivePhrasingWithUndo,
+    archiveConceptWithUndo,
     requestMorePhrasings,
     editConcept,
     editPhrasing,

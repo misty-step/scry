@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
-import { ArrowRight, Brain, Calendar, Clock, Info, Loader2, Pencil, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  ArrowRight,
+  Brain,
+  Calendar,
+  Clock,
+  Info,
+  Loader2,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { EditQuestionModal } from '@/components/edit-question-modal';
 import { PageContainer } from '@/components/page-container';
@@ -278,6 +288,24 @@ export function ReviewFlow() {
     }
   }, [question, legacyQuestionId, optimisticDelete, handlers, confirm]);
 
+  // Archive phrasing handler with undo
+  const handleArchivePhrasing = useCallback(async () => {
+    if (!phrasingId) return;
+
+    await conceptActions.archivePhrasingWithUndo(phrasingId);
+    // Move to next question after archiving
+    handlers.onReviewComplete();
+  }, [phrasingId, conceptActions, handlers]);
+
+  // Archive concept handler with undo
+  const handleArchiveConcept = useCallback(async () => {
+    if (!conceptId) return;
+
+    await conceptActions.archiveConceptWithUndo();
+    // Move to next question after archiving
+    handlers.onReviewComplete();
+  }, [conceptId, conceptActions, handlers]);
+
   // Handle save from edit modal - now supports all fields
   const handleSaveEdit = useCallback(
     async (updates: {
@@ -427,32 +455,56 @@ export function ReviewFlow() {
 
             {/* Action buttons - positioned above feedback for layout stability */}
             <div className="flex items-center justify-between mt-6 mb-4">
-              {canModifyLegacyQuestion ? (
-                <div className="flex gap-2">
+              <div className="flex gap-2">
+                {canModifyLegacyQuestion && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleEdit}
+                      className="text-muted-foreground hover:text-foreground"
+                      title="Edit question (E)"
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDelete}
+                      className="text-muted-foreground hover:text-error"
+                      title="Delete question (D)"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  </>
+                )}
+                {feedbackState.showFeedback && phrasingId && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleEdit}
+                    onClick={handleArchivePhrasing}
                     className="text-muted-foreground hover:text-foreground"
-                    title="Edit question (E)"
+                    title="Archive this phrasing"
                   >
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit
+                    <Archive className="h-4 w-4 mr-2" />
+                    Archive Phrasing
                   </Button>
+                )}
+                {feedbackState.showFeedback && conceptId && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleDelete}
-                    className="text-muted-foreground hover:text-error"
-                    title="Delete question (D)"
+                    onClick={handleArchiveConcept}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Archive this concept"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
+                    <Archive className="h-4 w-4 mr-2" />
+                    Archive Concept
                   </Button>
-                </div>
-              ) : (
-                <div />
-              )}
+                )}
+              </div>
 
               {!feedbackState.showFeedback ? (
                 <Button onClick={handleSubmit} disabled={!selectedAnswer} size="lg">
