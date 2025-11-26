@@ -151,7 +151,9 @@ function areEqual(
     prevProps.selectedAnswer === nextProps.selectedAnswer &&
     prevProps.showFeedback === nextProps.showFeedback &&
     prevProps.instantFeedback?.visible === nextProps.instantFeedback?.visible &&
-    prevProps.instantFeedback?.isCorrect === nextProps.instantFeedback?.isCorrect
+    prevProps.instantFeedback?.isCorrect === nextProps.instantFeedback?.isCorrect &&
+    // Deep comparison of question content for inline edit updates
+    JSON.stringify(prevProps.question) === JSON.stringify(nextProps.question)
   );
 }
 

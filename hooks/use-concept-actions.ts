@@ -110,10 +110,11 @@ export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
     }) => {
       try {
         setPendingAction('edit-phrasing');
-        await updatePhrasingMutation({
+        const updated = await updatePhrasingMutation({
           ...data,
         });
         toast.success('Phrasing updated');
+        return updated;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update phrasing';
         toast.error(message);

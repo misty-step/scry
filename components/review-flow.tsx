@@ -1,24 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
-import {
-  Archive,
-  ArrowRight,
-  Brain,
-  Calendar,
-  Clock,
-  Info,
-  Loader2,
-  Pencil,
-  Trash2,
-} from 'lucide-react';
+import { ArrowRight, Brain, Calendar, Clock, Info, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EditQuestionModal } from '@/components/edit-question-modal';
 import { PageContainer } from '@/components/page-container';
 import { QuestionHistory } from '@/components/question-history';
 import { ReviewQuestionDisplay } from '@/components/review-question-display';
 import { LearningModeExplainer } from '@/components/review/learning-mode-explainer';
+import { PhrasingEditForm } from '@/components/review/phrasing-edit-form';
+import { ReviewActionsDropdown } from '@/components/review/review-actions-dropdown';
 import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
 import { Badge } from '@/components/ui/badge';
@@ -147,6 +139,14 @@ export function ReviewFlow() {
     }
   );
 
+  // Optimistic update state: holds mutation result until Convex reactivity catches up
+  const [optimisticPhrasing, setOptimisticPhrasing] = useState<{
+    question: string;
+    correctAnswer: string;
+    explanation: string;
+    options: string[];
+  } | null>(null);
+
   const phrasingEdit = useInlineEdit(
     {
       question: question?.question ?? '',
@@ -156,15 +156,59 @@ export function ReviewFlow() {
     },
     async (data) => {
       if (!phrasingId) return;
-      await conceptActions.editPhrasing({
+      const updated = await conceptActions.editPhrasing({
         phrasingId,
         question: data.question,
         correctAnswer: data.correctAnswer,
         explanation: data.explanation,
         options: data.options,
       });
+
+      // Set optimistic state for immediate UI feedback
+      // This bridges the ~50-200ms gap before Convex's reactive query updates
+      if (updated) {
+        const optimisticData = {
+          question: updated.question,
+          correctAnswer: updated.correctAnswer ?? '',
+          explanation: updated.explanation ?? '',
+          options: updated.options ?? [],
+        };
+        setOptimisticPhrasing(optimisticData);
+        return optimisticData;
+      }
     }
   );
+
+  // Clear optimistic state when Convex reactive query catches up
+  // This auto-heals the UI once the authoritative data source updates
+  useEffect(() => {
+    if (optimisticPhrasing && question) {
+      const questionsMatch =
+        question.question === optimisticPhrasing.question &&
+        question.correctAnswer === optimisticPhrasing.correctAnswer &&
+        question.explanation === optimisticPhrasing.explanation &&
+        JSON.stringify(question.options) === JSON.stringify(optimisticPhrasing.options);
+
+      if (questionsMatch) {
+        setOptimisticPhrasing(null); // Convex has caught up, clear optimistic overlay
+      }
+    }
+  }, [optimisticPhrasing, question]);
+
+  // Merge optimistic data with real question data for display
+  // Uses optimistic overlay if available, falls back to Convex query result
+  const displayQuestion = useMemo(() => {
+    if (!question) return question;
+    if (!optimisticPhrasing) return question;
+
+    return {
+      ...question,
+      question: optimisticPhrasing.question,
+      correctAnswer: optimisticPhrasing.correctAnswer,
+      explanation: optimisticPhrasing.explanation,
+      options: optimisticPhrasing.options,
+    };
+  }, [question, optimisticPhrasing]);
 
   // Update context when current question changes
   useEffect(() => {
@@ -259,8 +303,8 @@ export function ReviewFlow() {
     // State will reset when new question arrives via useEffect
   }, [handlers]);
 
-  // Edit handler
-  const handleEdit = useCallback(() => {
+  // Edit handler (legacy modal-based edit, currently unused - inline editing is used instead)
+  const _handleEdit = useCallback(() => {
     if (!question || !legacyQuestionId) return;
     setEditModalOpen(true);
   }, [question, legacyQuestionId]);
@@ -312,6 +356,25 @@ export function ReviewFlow() {
     handlers.onReviewComplete();
   }, [conceptId, conceptActions, handlers]);
 
+  // Shortcut-friendly archive that chooses phrasing when possible, else concept
+  const handleArchiveViaShortcut = useCallback(() => {
+    if (!feedbackState.showFeedback) return;
+    if (phrasingId && totalPhrasings !== null && totalPhrasings > 1) {
+      void handleArchivePhrasing();
+      return;
+    }
+    if (conceptId) {
+      void handleArchiveConcept();
+    }
+  }, [
+    feedbackState.showFeedback,
+    phrasingId,
+    totalPhrasings,
+    conceptId,
+    handleArchivePhrasing,
+    handleArchiveConcept,
+  ]);
+
   // Handle save from edit modal - now supports all fields
   const handleSaveEdit = useCallback(
     async (updates: {
@@ -341,12 +404,12 @@ export function ReviewFlow() {
 
   // Handler for starting inline edit mode (E key)
   const handleStartInlineEdit = useCallback(() => {
-    // Only allow editing in feedback mode and when not already editing
-    if (feedbackState.showFeedback && !conceptEdit.isEditing && !phrasingEdit.isEditing) {
-      // Start editing concept title by default
-      conceptEdit.startEdit();
+    // Allow editing anytime when not already editing
+    if (!conceptEdit.isEditing && !phrasingEdit.isEditing) {
+      // Start editing phrasing by default (more common use case)
+      phrasingEdit.startEdit();
     }
-  }, [feedbackState.showFeedback, conceptEdit, phrasingEdit]);
+  }, [conceptEdit, phrasingEdit]);
 
   // Listen for Escape key to save and exit edit mode
   useEffect(() => {
@@ -381,6 +444,7 @@ export function ReviewFlow() {
     onNext: feedbackState.showFeedback && !isTransitioning ? handleNext : undefined,
     onEdit: conceptEdit.isEditing || phrasingEdit.isEditing ? undefined : handleStartInlineEdit,
     onDelete: canModifyLegacyQuestion ? handleDelete : undefined,
+    onArchive: handleArchiveViaShortcut,
     showingFeedback: feedbackState.showFeedback,
     canSubmit: !!selectedAnswer,
   });
@@ -404,23 +468,34 @@ export function ReviewFlow() {
 
         <div className="max-w-[760px]">
           <article className="space-y-6">
-            {/* Due count indicator - refined pill design - always visible, maintains value during refetch */}
-            <div className="mb-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border/50 shadow-sm">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium tabular-nums">
-                <span className="text-foreground">{cachedData.conceptsDue}</span>
-                <span className="text-muted-foreground ml-1">concepts due</span>
-                {cachedData.orphanedQuestions > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3 w-3 ml-1 inline text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Plus {cachedData.orphanedQuestions} orphaned questions (need migration)
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </span>
+            {/* Header row: Due count + Actions dropdown - always visible, maintains value during refetch */}
+            <div className="mb-6 flex items-center justify-between">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card border border-border/50 shadow-sm">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium tabular-nums">
+                  <span className="text-foreground">{cachedData.conceptsDue}</span>
+                  <span className="text-muted-foreground ml-1">concepts due</span>
+                  {cachedData.orphanedQuestions > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 ml-1 inline text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Plus {cachedData.orphanedQuestions} orphaned questions (need migration)
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </span>
+              </div>
+              {conceptId && (
+                <ReviewActionsDropdown
+                  totalPhrasings={totalPhrasings}
+                  onEditConcept={() => conceptEdit.startEdit()}
+                  onEditPhrasing={() => phrasingEdit.startEdit()}
+                  onArchiveConcept={handleArchiveConcept}
+                  onArchivePhrasing={handleArchivePhrasing}
+                />
+              )}
             </div>
 
             {/* FSRS State Badge - Learning Mode Indicator */}
@@ -439,82 +514,55 @@ export function ReviewFlow() {
               <LearningModeExplainer />
             )}
 
-            {/* Use memoized component for question display with error boundary */}
-            <ReviewErrorBoundary
-              fallbackMessage="Unable to display this question. Try refreshing or moving to the next question."
-              onReset={() => {
-                // Reset local state and try to move to next question
-                setSelectedAnswer('');
-                setFeedbackState({ showFeedback: false, nextReviewInfo: null });
-                handlers.onReviewComplete();
-              }}
-            >
-              <ReviewQuestionDisplay
-                question={question}
-                questionId={phrasingId ?? undefined}
-                selectedAnswer={selectedAnswer}
-                showFeedback={feedbackState.showFeedback}
-                onAnswerSelect={handleAnswerSelect}
-                instantFeedback={instantFeedback}
-              />
-            </ReviewErrorBoundary>
-
-            {/* Action buttons - positioned above feedback for layout stability */}
-            <div className="flex items-center justify-between mt-6 mb-4">
-              <div className="flex gap-2">
-                {canModifyLegacyQuestion && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleEdit}
-                      className="text-muted-foreground hover:text-foreground"
-                      title="Edit question (E)"
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleDelete}
-                      className="text-muted-foreground hover:text-error"
-                      title="Delete question (D)"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </Button>
-                  </>
-                )}
-                {feedbackState.showFeedback &&
-                  phrasingId &&
-                  totalPhrasings !== null &&
-                  totalPhrasings > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleArchivePhrasing}
-                      className="text-muted-foreground hover:text-foreground"
-                      title="Archive this phrasing"
-                    >
-                      <Archive className="h-4 w-4 mr-2" />
-                      Archive Phrasing
-                    </Button>
-                  )}
-                {feedbackState.showFeedback && conceptId && (
+            {/* Conditional: Show edit form OR question display */}
+            {phrasingEdit.isEditing ? (
+              <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                <PhrasingEditForm
+                  questionType={question.type || 'multiple-choice'}
+                  editState={phrasingEdit}
+                />
+                <div className="flex items-center gap-2">
                   <Button
-                    variant="ghost"
                     size="sm"
-                    onClick={handleArchiveConcept}
-                    className="text-muted-foreground hover:text-foreground"
-                    title="Archive this concept"
+                    onClick={() => phrasingEdit.save()}
+                    disabled={phrasingEdit.isSaving || !phrasingEdit.isDirty}
                   >
-                    <Archive className="h-4 w-4 mr-2" />
-                    Archive Concept
+                    {phrasingEdit.isSaving ? 'Saving...' : 'Save'}
                   </Button>
-                )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => phrasingEdit.cancel()}
+                    disabled={phrasingEdit.isSaving}
+                  >
+                    Cancel
+                  </Button>
+                  <FsrsPreservationTooltip />
+                </div>
               </div>
+            ) : (
+              <ReviewErrorBoundary
+                fallbackMessage="Unable to display this question. Try refreshing or moving to the next question."
+                onReset={() => {
+                  // Reset local state and try to move to next question
+                  setSelectedAnswer('');
+                  setFeedbackState({ showFeedback: false, nextReviewInfo: null });
+                  handlers.onReviewComplete();
+                }}
+              >
+                <ReviewQuestionDisplay
+                  question={displayQuestion!}
+                  questionId={phrasingId ?? undefined}
+                  selectedAnswer={selectedAnswer}
+                  showFeedback={feedbackState.showFeedback}
+                  onAnswerSelect={handleAnswerSelect}
+                  instantFeedback={instantFeedback}
+                />
+              </ReviewErrorBoundary>
+            )}
 
+            {/* Action button - positioned above feedback for layout stability */}
+            <div className="flex items-center justify-end mt-6 mb-4">
               {!feedbackState.showFeedback ? (
                 <Button onClick={handleSubmit} disabled={!selectedAnswer} size="lg">
                   Submit
@@ -563,7 +611,7 @@ export function ReviewFlow() {
                             className="text-xl font-semibold"
                             autoFocus
                           />
-                          <div className="flex gap-2">
+                          <div className="flex items-center gap-2">
                             <Button
                               size="sm"
                               onClick={() => conceptEdit.save()}
@@ -579,6 +627,7 @@ export function ReviewFlow() {
                             >
                               Cancel
                             </Button>
+                            <FsrsPreservationTooltip />
                           </div>
                         </div>
                       ) : (
@@ -609,7 +658,7 @@ export function ReviewFlow() {
                             placeholder="Explanation (optional)"
                             className="text-sm min-h-[80px]"
                           />
-                          <div className="flex gap-2">
+                          <div className="flex items-center gap-2">
                             <Button
                               size="sm"
                               onClick={() => phrasingEdit.save()}
@@ -625,6 +674,7 @@ export function ReviewFlow() {
                             >
                               Cancel
                             </Button>
+                            <FsrsPreservationTooltip />
                           </div>
                         </>
                       ) : (
@@ -702,4 +752,25 @@ export function ReviewFlow() {
 
   // Fallback for unexpected states
   return null;
+}
+
+function FsrsPreservationTooltip() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Edits preserve your learning progress"
+          className="h-10 w-10 p-0 text-muted-foreground"
+        >
+          <Info className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[260px]">
+        Edits preserve your learning progress. For major changes, archive and create a new concept
+        instead.
+      </TooltipContent>
+    </Tooltip>
+  );
 }

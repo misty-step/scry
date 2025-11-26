@@ -27,7 +27,7 @@ import { useCallback, useState } from 'react';
  */
 export function useInlineEdit<T extends Record<string, unknown>>(
   initialData: T,
-  onSave: (data: T) => Promise<void>
+  onSave: (data: T) => Promise<T | void>
 ) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,7 +51,13 @@ export function useInlineEdit<T extends Record<string, unknown>>(
   const save = useCallback(async () => {
     setIsSaving(true);
     try {
-      await onSave(localData);
+      const result = await onSave(localData);
+
+      // If mutation returned updated data, sync localData for immediate UI update
+      if (result) {
+        setLocalData(result);
+      }
+
       setIsEditing(false);
     } catch (error) {
       // Rollback on error - reuse cancel logic

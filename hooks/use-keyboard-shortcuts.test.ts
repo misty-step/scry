@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useKeyboardShortcuts } from './use-keyboard-shortcuts';
+import { useKeyboardShortcuts, useReviewShortcuts } from './use-keyboard-shortcuts';
 
 const push = vi.fn();
 const toastInfo = vi.fn();
@@ -82,5 +82,42 @@ describe('useKeyboardShortcuts', () => {
     expect(dispatchEventSpy).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'open-generation-modal' })
     );
+  });
+
+  it('fires archive shortcut with # when enabled', () => {
+    const onArchive = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onArchive,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      triggerKey('#');
+    });
+
+    expect(onArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire archive shortcut while typing in input', () => {
+    const onArchive = vi.fn();
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onArchive,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      input.focus();
+      triggerKey('#', {}, input);
+    });
+
+    expect(onArchive).not.toHaveBeenCalled();
   });
 });

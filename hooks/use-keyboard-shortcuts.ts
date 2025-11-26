@@ -120,6 +120,7 @@ export function useReviewShortcuts({
   onNext,
   onEdit,
   onDelete,
+  onArchive,
   onUndo,
   onGenerateFromContext,
   showingFeedback,
@@ -131,6 +132,7 @@ export function useReviewShortcuts({
   onNext?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onArchive?: () => void;
   onUndo?: () => void;
   onGenerateFromContext?: () => void;
   showingFeedback?: boolean;
@@ -205,6 +207,21 @@ export function useReviewShortcuts({
       key: 'Delete',
       description: 'Delete question',
       action: onDelete,
+      context: 'review',
+    });
+  }
+
+  if (onArchive) {
+    shortcuts.push({
+      key: '#',
+      description: 'Archive current item',
+      action: onArchive,
+      context: 'review',
+    });
+    shortcuts.push({
+      key: 'Backspace',
+      description: 'Archive current item',
+      action: onArchive,
       context: 'review',
     });
   }

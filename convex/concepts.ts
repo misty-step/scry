@@ -996,6 +996,10 @@ export const updatePhrasing = mutation({
     }
 
     await ctx.db.patch(args.phrasingId, patch);
+
+    // Return the updated phrasing for immediate UI update
+    const updated = await ctx.db.get(args.phrasingId);
+    return updated;
   },
 });
 
