@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useMutation } from 'convex/react';
 import { toast } from 'sonner';
 import { api } from '@/convex/_generated/api';
+import { useUndoableAction } from './use-undoable-action';
 
 interface UseConceptActionsArgs {
   conceptId: string;
@@ -12,11 +13,16 @@ interface UseConceptActionsArgs {
 export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
   const setCanonicalMutation = useMutation(api.concepts.setCanonicalPhrasing);
   const archivePhrasingMutation = useMutation(api.concepts.archivePhrasing);
+  const unarchivePhrasingMutation = useMutation(api.concepts.unarchivePhrasing);
+  const updateConceptMutation = useMutation(api.concepts.updateConcept);
+  const updatePhrasingMutation = useMutation(api.concepts.updatePhrasing);
   const requestGenerationMutation = useMutation(api.concepts.requestPhrasingGeneration);
 
-  const [pendingAction, setPendingAction] = useState<'canonical' | 'archive' | 'generate' | null>(
-    null
-  );
+  const undoableAction = useUndoableAction();
+
+  const [pendingAction, setPendingAction] = useState<
+    'canonical' | 'archive' | 'generate' | 'edit-concept' | 'edit-phrasing' | null
+  >(null);
 
   const setCanonical = useCallback(
     async (phrasingId: string | null) => {
@@ -72,12 +78,82 @@ export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
     }
   }, [conceptId, requestGenerationMutation]);
 
+  const editConcept = useCallback(
+    async (data: { title: string; description?: string }) => {
+      try {
+        setPendingAction('edit-concept');
+        await updateConceptMutation({
+          conceptId,
+          ...data,
+        });
+        toast.success('Concept updated');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update concept';
+        toast.error(message);
+        throw error;
+      } finally {
+        setPendingAction((action) => (action === 'edit-concept' ? null : action));
+      }
+    },
+    [conceptId, updateConceptMutation]
+  );
+
+  const editPhrasing = useCallback(
+    async (data: {
+      phrasingId: string;
+      question: string;
+      correctAnswer: string;
+      explanation?: string;
+      options?: string[];
+    }) => {
+      try {
+        setPendingAction('edit-phrasing');
+        await updatePhrasingMutation({
+          ...data,
+        });
+        toast.success('Phrasing updated');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update phrasing';
+        toast.error(message);
+        throw error;
+      } finally {
+        setPendingAction((action) => (action === 'edit-phrasing' ? null : action));
+      }
+    },
+    [updatePhrasingMutation]
+  );
+
+  const archivePhrasingWithUndo = useCallback(
+    async (phrasingId: string) => {
+      await undoableAction({
+        action: () =>
+          archivePhrasingMutation({
+            conceptId,
+            phrasingId,
+          }),
+        message: 'Phrasing archived',
+        undo: () =>
+          unarchivePhrasingMutation({
+            conceptId,
+            phrasingId,
+          }),
+        duration: 8000,
+      });
+    },
+    [conceptId, archivePhrasingMutation, unarchivePhrasingMutation, undoableAction]
+  );
+
   return {
     setCanonical,
     archivePhrasing,
+    archivePhrasingWithUndo,
     requestMorePhrasings,
+    editConcept,
+    editPhrasing,
     isSettingCanonical: pendingAction === 'canonical',
     isArchiving: pendingAction === 'archive',
     isRequestingGeneration: pendingAction === 'generate',
+    isEditingConcept: pendingAction === 'edit-concept',
+    isEditingPhrasing: pendingAction === 'edit-phrasing',
   };
 }
