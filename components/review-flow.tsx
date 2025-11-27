@@ -127,6 +127,11 @@ export function ReviewFlow() {
   const conceptActions = useConceptActions({ conceptId: conceptId ?? '' });
 
   // Optimistic update state: holds mutation result until Convex reactivity catches up
+  const [optimisticConcept, setOptimisticConcept] = useState<{
+    title: string;
+    description?: string;
+  } | null>(null);
+
   const [optimisticPhrasing, setOptimisticPhrasing] = useState<{
     question: string;
     correctAnswer: string;
@@ -146,6 +151,15 @@ export function ReviewFlow() {
     async (data) => {
       if (!conceptId) return;
       await conceptActions.editConcept(data);
+
+      // Set optimistic state for immediate UI feedback
+      // This bridges the ~50-200ms gap before Convex's reactive query updates
+      const optimisticData = {
+        title: data.title,
+        description: data.description,
+      };
+      setOptimisticConcept(optimisticData);
+      return optimisticData;
     },
     async (data) => {
       if (!phrasingId) return;
@@ -173,7 +187,18 @@ export function ReviewFlow() {
     question?.type || 'multiple-choice'
   );
 
-  // Clear optimistic state when Convex reactive query catches up
+  // Clear optimistic concept state when Convex reactive query catches up
+  useEffect(() => {
+    if (optimisticConcept && conceptTitle) {
+      const conceptMatches = conceptTitle === optimisticConcept.title;
+
+      if (conceptMatches) {
+        setOptimisticConcept(null); // Convex has caught up, clear optimistic overlay
+      }
+    }
+  }, [optimisticConcept, conceptTitle]);
+
+  // Clear optimistic phrasing state when Convex reactive query catches up
   // This auto-heals the UI once the authoritative data source updates
   useEffect(() => {
     if (optimisticPhrasing && question) {
@@ -189,20 +214,48 @@ export function ReviewFlow() {
     }
   }, [optimisticPhrasing, question]);
 
-  // Merge optimistic data with real question data for display
+  // Merge optimistic concept data with real data for display
+  // Shows localData during editing, optimistic updates after save, real data otherwise
+  const displayConceptTitle = useMemo(() => {
+    if (unifiedEdit.isEditing) {
+      return unifiedEdit.localData.conceptTitle;
+    }
+    if (optimisticConcept) {
+      return optimisticConcept.title;
+    }
+    return conceptTitle ?? '';
+  }, [unifiedEdit.isEditing, unifiedEdit.localData.conceptTitle, optimisticConcept, conceptTitle]);
+
+  // Merge optimistic phrasing data with real question data for display
   // Uses optimistic overlay if available, falls back to Convex query result
   const displayQuestion = useMemo(() => {
     if (!question) return question;
-    if (!optimisticPhrasing) return question;
 
-    return {
-      ...question,
-      question: optimisticPhrasing.question,
-      correctAnswer: optimisticPhrasing.correctAnswer,
-      explanation: optimisticPhrasing.explanation,
-      options: optimisticPhrasing.options,
-    };
-  }, [question, optimisticPhrasing]);
+    // If editing, use localData for all fields
+    if (unifiedEdit.isEditing) {
+      return {
+        ...question,
+        question: unifiedEdit.localData.question,
+        correctAnswer: unifiedEdit.localData.correctAnswer,
+        explanation: unifiedEdit.localData.explanation,
+        options: unifiedEdit.localData.options,
+      };
+    }
+
+    // After save but before Convex update, use optimistic data
+    if (optimisticPhrasing) {
+      return {
+        ...question,
+        question: optimisticPhrasing.question,
+        correctAnswer: optimisticPhrasing.correctAnswer,
+        explanation: optimisticPhrasing.explanation,
+        options: optimisticPhrasing.options,
+      };
+    }
+
+    // Default: use real Convex data
+    return question;
+  }, [question, optimisticPhrasing, unifiedEdit.isEditing, unifiedEdit.localData]);
 
   // Update context when current question changes
   useEffect(() => {
@@ -565,19 +618,19 @@ export function ReviewFlow() {
 
             {/* Feedback section */}
             {feedbackState.showFeedback &&
-              (conceptTitle ||
+              (displayConceptTitle ||
                 question.explanation ||
                 interactions.length > 0 ||
                 feedbackState.nextReviewInfo?.nextReview) && (
                 <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-fadeIn">
                   {/* Concept Title */}
-                  {conceptTitle && (
+                  {displayConceptTitle && (
                     <div className="space-y-1 border-b border-border/30 pb-3">
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                         <span>Concept</span>
                       </div>
                       <h3 className="text-xl font-semibold text-foreground break-words">
-                        {conceptTitle}
+                        {displayConceptTitle}
                       </h3>
                       {(phrasingPositionLabel || selectionReasonLabel) && (
                         <p className="text-sm text-muted-foreground">

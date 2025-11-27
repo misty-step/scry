@@ -29,7 +29,7 @@
   All 14 review-flow tests passing.
   ```
 
-- [ ] **Update optimistic state management for unified edits**
+- [x] **Update optimistic state management for unified edits**
   - Location: `components/review-flow.tsx` lines ~170-196
   - Current: Manual `optimisticPhrasing` state for phrasing only
   - Change: Extend to support both concept and phrasing optimistic updates
@@ -37,13 +37,24 @@
   - Wire: useUnifiedEdit save handler returns optimistic data for both domains
   - Cleanup: Clear optimistic state when Convex reactivity catches up (separate useEffect for each domain)
   - Success criteria: Both concept title and phrasing fields show immediate UI feedback on save; optimistic state clears when real data arrives
+  ```
+  COMPLETED: Added optimisticConcept state, updated concept save handler to return
+  optimistic data, added cleanup effect for concept optimistic state, created
+  displayConceptTitle and enhanced displayQuestion memos to handle editing state,
+  optimistic updates, and real data. Updated UI to use displayConceptTitle.
+  All 14 review-flow tests passing, all 24 use-unified-edit tests passing.
+  ```
 
-- [ ] **Create memoized display properties for concept and phrasing**
+- [x] **Create memoized display properties for concept and phrasing**
   - Location: `components/review-flow.tsx` (new code after hook declarations)
   - Add: `displayConceptTitle` useMemo - returns `unifiedEdit.localData.conceptTitle` if editing, else `conceptTitle`
   - Add: `displayQuestion` useMemo - returns question with merged optimistic phrasing data if editing
   - Wire: Update all references to `conceptTitle` and `question` in render to use display properties
   - Success criteria: UI shows localData during editing, real data when not editing; no flicker on mode transitions
+  ```
+  COMPLETED: Created displayConceptTitle useMemo with 3-tier logic (editing → optimistic → real).
+  Enhanced displayQuestion useMemo to also handle editing state. Updated UI to use displayConceptTitle.
+  ```
 
 - [ ] **Replace edit form rendering with UnifiedEditForm**
   - Location: `components/review-flow.tsx` lines ~527-644 (current PhrasingEditForm and concept inline fields)
