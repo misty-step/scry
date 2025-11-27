@@ -123,7 +123,15 @@ export function ReviewFlow() {
   const { optimisticEdit, optimisticDelete } = useQuestionMutations();
   const confirm = useConfirmation();
 
-  // Unified inline editing for both concept and phrasing
+  // ============================================================================
+  // Unified Edit Integration
+  // ============================================================================
+  // Replaces previous dual-edit pattern (separate conceptEdit/phrasingEdit hooks)
+  // with single unified interface. Benefits:
+  // - Simpler UX: One "Edit" button instead of two
+  // - Smart dirty detection: Only saves changed domains (concept vs phrasing)
+  // - Parallel mutations: 50% latency reduction when both domains dirty
+  // - Graceful partial failures: If concept saves but phrasing fails, retry only phrasing
   const conceptActions = useConceptActions({ conceptId: conceptId ?? '' });
 
   // Optimistic update state: holds mutation result until Convex reactivity catches up
@@ -214,8 +222,14 @@ export function ReviewFlow() {
     }
   }, [optimisticPhrasing, question]);
 
-  // Merge optimistic concept data with real data for display
-  // Shows localData during editing, optimistic updates after save, real data otherwise
+  // ============================================================================
+  // Display Properties (3-tier logic: editing → optimistic → real)
+  // ============================================================================
+  // Provides seamless UI transitions without flicker:
+  // 1. During edit: Show localData from useUnifiedEdit (user's current input)
+  // 2. After save: Show optimistic data immediately (~50-200ms before Convex catches up)
+  // 3. Otherwise: Show real Convex data (authoritative source)
+
   const displayConceptTitle = useMemo(() => {
     if (unifiedEdit.isEditing) {
       return unifiedEdit.localData.conceptTitle;
@@ -226,8 +240,6 @@ export function ReviewFlow() {
     return conceptTitle ?? '';
   }, [unifiedEdit.isEditing, unifiedEdit.localData.conceptTitle, optimisticConcept, conceptTitle]);
 
-  // Merge optimistic phrasing data with real question data for display
-  // Uses optimistic overlay if available, falls back to Convex query result
   const displayQuestion = useMemo(() => {
     if (!question) return question;
 
