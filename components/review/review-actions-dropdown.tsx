@@ -1,6 +1,6 @@
 'use client';
 
-import { Archive, MoreVertical, Pencil, PenSquare } from 'lucide-react';
+import { Archive, MoreVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,16 +12,14 @@ import {
 
 interface ReviewActionsDropdownProps {
   totalPhrasings: number | null;
-  onEditPhrasing: () => void;
-  onEditConcept: () => void;
+  onEdit: () => void; // Single unified edit handler
   onArchivePhrasing: () => void;
   onArchiveConcept: () => void;
 }
 
 export function ReviewActionsDropdown({
   totalPhrasings,
-  onEditPhrasing,
-  onEditConcept,
+  onEdit,
   onArchivePhrasing,
   onArchiveConcept,
 }: ReviewActionsDropdownProps) {
@@ -40,13 +38,9 @@ export function ReviewActionsDropdown({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[220px]" sideOffset={6}>
-        <DropdownMenuItem onClick={onEditPhrasing} className="gap-2" style={{ minHeight: 44 }}>
+        <DropdownMenuItem onClick={onEdit} className="gap-2" style={{ minHeight: 44 }}>
           <Pencil className="h-4 w-4" />
-          Edit Phrasing
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onEditConcept} className="gap-2" style={{ minHeight: 44 }}>
-          <PenSquare className="h-4 w-4" />
-          Edit Concept
+          Edit
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {canArchivePhrasing && (

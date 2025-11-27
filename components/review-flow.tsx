@@ -9,28 +9,26 @@ import { PageContainer } from '@/components/page-container';
 import { QuestionHistory } from '@/components/question-history';
 import { ReviewQuestionDisplay } from '@/components/review-question-display';
 import { LearningModeExplainer } from '@/components/review/learning-mode-explainer';
-import { PhrasingEditForm } from '@/components/review/phrasing-edit-form';
 import { ReviewActionsDropdown } from '@/components/review/review-actions-dropdown';
 import { ReviewEmptyState } from '@/components/review/review-empty-state';
 import { ReviewErrorBoundary } from '@/components/review/review-error-boundary';
+import { UnifiedEditForm } from '@/components/review/unified-edit-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { LiveRegion } from '@/components/ui/live-region';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
-import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
 import { useConceptActions } from '@/hooks/use-concept-actions';
 import { useConfirmation } from '@/hooks/use-confirmation';
-import { useInlineEdit } from '@/hooks/use-inline-edit';
 import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useQuestionMutations } from '@/hooks/use-question-mutations';
 import { useQuizInteractions } from '@/hooks/use-quiz-interactions';
 import { useReviewFlow } from '@/hooks/use-review-flow';
+import { useUnifiedEdit } from '@/hooks/use-unified-edit';
 
 /**
  * Unified ReviewFlow component that combines ReviewMode + ReviewSession
@@ -125,19 +123,8 @@ export function ReviewFlow() {
   const { optimisticEdit, optimisticDelete } = useQuestionMutations();
   const confirm = useConfirmation();
 
-  // Inline editing for concept and phrasing
+  // Unified inline editing for both concept and phrasing
   const conceptActions = useConceptActions({ conceptId: conceptId ?? '' });
-
-  const conceptEdit = useInlineEdit(
-    {
-      title: conceptTitle ?? '',
-      description: '', // Concepts don't have descriptions in current data model
-    },
-    async (data) => {
-      if (!conceptId) return;
-      await conceptActions.editConcept(data);
-    }
-  );
 
   // Optimistic update state: holds mutation result until Convex reactivity catches up
   const [optimisticPhrasing, setOptimisticPhrasing] = useState<{
@@ -147,12 +134,18 @@ export function ReviewFlow() {
     options: string[];
   } | null>(null);
 
-  const phrasingEdit = useInlineEdit(
+  const unifiedEdit = useUnifiedEdit(
     {
+      conceptTitle: conceptTitle ?? '',
+      conceptDescription: '', // Concepts don't have descriptions in current data model
       question: question?.question ?? '',
       correctAnswer: question?.correctAnswer ?? '',
       explanation: question?.explanation ?? '',
       options: question?.options ?? [],
+    },
+    async (data) => {
+      if (!conceptId) return;
+      await conceptActions.editConcept(data);
     },
     async (data) => {
       if (!phrasingId) return;
@@ -176,7 +169,8 @@ export function ReviewFlow() {
         setOptimisticPhrasing(optimisticData);
         return optimisticData;
       }
-    }
+    },
+    question?.type || 'multiple-choice'
   );
 
   // Clear optimistic state when Convex reactive query catches up
@@ -402,32 +396,30 @@ export function ReviewFlow() {
     [legacyQuestionId, optimisticEdit]
   );
 
-  // Handler for starting inline edit mode (E key)
+  // Handler for starting unified edit mode (E key)
   const handleStartInlineEdit = useCallback(() => {
     // Allow editing anytime when not already editing
-    if (!conceptEdit.isEditing && !phrasingEdit.isEditing) {
-      // Start editing phrasing by default (more common use case)
-      phrasingEdit.startEdit();
+    if (!unifiedEdit.isEditing) {
+      // Force feedback section visible to show edit form
+      setFeedbackState((prev) => ({ ...prev, showFeedback: true }));
+      // Start unified edit mode
+      unifiedEdit.startEdit();
     }
-  }, [conceptEdit, phrasingEdit]);
+  }, [unifiedEdit, setFeedbackState]);
 
-  // Listen for Escape key to save and exit edit mode
+  // Listen for Escape key to save and exit unified edit mode
   useEffect(() => {
     const handleEscape = () => {
-      if (conceptEdit.isEditing) {
-        conceptEdit.save().catch(() => {
-          // Error already handled by save (toast shown)
-        });
-      } else if (phrasingEdit.isEditing) {
-        phrasingEdit.save().catch(() => {
-          // Error already handled by save (toast shown)
+      if (unifiedEdit.isEditing) {
+        unifiedEdit.save().catch(() => {
+          // Error already handled by save (toast shown, field-level errors displayed)
         });
       }
     };
 
     window.addEventListener('escape-pressed', handleEscape);
     return () => window.removeEventListener('escape-pressed', handleEscape);
-  }, [conceptEdit, phrasingEdit]);
+  }, [unifiedEdit]);
 
   // Wire up keyboard shortcuts
   const canModifyLegacyQuestion = Boolean(legacyQuestionId);
@@ -442,7 +434,7 @@ export function ReviewFlow() {
       : undefined,
     onSubmit: !feedbackState.showFeedback && selectedAnswer ? handleSubmit : undefined,
     onNext: feedbackState.showFeedback && !isTransitioning ? handleNext : undefined,
-    onEdit: conceptEdit.isEditing || phrasingEdit.isEditing ? undefined : handleStartInlineEdit,
+    onEdit: unifiedEdit.isEditing ? undefined : handleStartInlineEdit,
     onDelete: canModifyLegacyQuestion ? handleDelete : undefined,
     onArchive: handleArchiveViaShortcut,
     showingFeedback: feedbackState.showFeedback,
@@ -490,8 +482,10 @@ export function ReviewFlow() {
               {conceptId && (
                 <ReviewActionsDropdown
                   totalPhrasings={totalPhrasings}
-                  onEditConcept={() => conceptEdit.startEdit()}
-                  onEditPhrasing={() => phrasingEdit.startEdit()}
+                  onEdit={() => {
+                    setFeedbackState((prev) => ({ ...prev, showFeedback: true }));
+                    unifiedEdit.startEdit();
+                  }}
                   onArchiveConcept={handleArchiveConcept}
                   onArchivePhrasing={handleArchivePhrasing}
                 />
@@ -514,32 +508,12 @@ export function ReviewFlow() {
               <LearningModeExplainer />
             )}
 
-            {/* Conditional: Show edit form OR question display */}
-            {phrasingEdit.isEditing ? (
-              <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
-                <PhrasingEditForm
-                  questionType={question.type || 'multiple-choice'}
-                  editState={phrasingEdit}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => phrasingEdit.save()}
-                    disabled={phrasingEdit.isSaving || !phrasingEdit.isDirty}
-                  >
-                    {phrasingEdit.isSaving ? 'Saving...' : 'Save'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => phrasingEdit.cancel()}
-                    disabled={phrasingEdit.isSaving}
-                  >
-                    Cancel
-                  </Button>
-                  <FsrsPreservationTooltip />
-                </div>
-              </div>
+            {/* Conditional: Show unified edit form OR question display */}
+            {unifiedEdit.isEditing ? (
+              <UnifiedEditForm
+                questionType={question.type || 'multiple-choice'}
+                editState={unifiedEdit}
+              />
             ) : (
               <ReviewErrorBoundary
                 fallbackMessage="Unable to display this question. Try refreshing or moving to the next question."
@@ -596,45 +570,15 @@ export function ReviewFlow() {
                 interactions.length > 0 ||
                 feedbackState.nextReviewInfo?.nextReview) && (
                 <div className="space-y-3 p-4 bg-muted/30 rounded-lg border border-border/50 animate-fadeIn">
-                  {/* Concept Title - Inline Editable */}
+                  {/* Concept Title */}
                   {conceptTitle && (
                     <div className="space-y-1 border-b border-border/30 pb-3">
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                         <span>Concept</span>
                       </div>
-                      {conceptEdit.isEditing ? (
-                        <div className="space-y-2">
-                          <Input
-                            value={conceptEdit.localData.title as string}
-                            onChange={(e) => conceptEdit.updateField('title', e.target.value)}
-                            placeholder="Concept title"
-                            className="text-xl font-semibold"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => conceptEdit.save()}
-                              disabled={conceptEdit.isSaving || !conceptEdit.isDirty}
-                            >
-                              {conceptEdit.isSaving ? 'Saving...' : 'Save'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => conceptEdit.cancel()}
-                              disabled={conceptEdit.isSaving}
-                            >
-                              Cancel
-                            </Button>
-                            <FsrsPreservationTooltip />
-                          </div>
-                        </div>
-                      ) : (
-                        <h3 className="text-xl font-semibold text-foreground break-words">
-                          {conceptTitle}
-                        </h3>
-                      )}
+                      <h3 className="text-xl font-semibold text-foreground break-words">
+                        {conceptTitle}
+                      </h3>
                       {(phrasingPositionLabel || selectionReasonLabel) && (
                         <p className="text-sm text-muted-foreground">
                           {phrasingPositionLabel}
@@ -645,41 +589,10 @@ export function ReviewFlow() {
                     </div>
                   )}
 
-                  {/* Explanation - Inline Editable */}
-                  {(question.explanation || phrasingEdit.isEditing) && (
+                  {/* Explanation */}
+                  {question.explanation && (
                     <div className="space-y-2">
-                      {phrasingEdit.isEditing ? (
-                        <>
-                          <Textarea
-                            value={phrasingEdit.localData.explanation as string}
-                            onChange={(e) =>
-                              phrasingEdit.updateField('explanation', e.target.value)
-                            }
-                            placeholder="Explanation (optional)"
-                            className="text-sm min-h-[80px]"
-                          />
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => phrasingEdit.save()}
-                              disabled={phrasingEdit.isSaving || !phrasingEdit.isDirty}
-                            >
-                              {phrasingEdit.isSaving ? 'Saving...' : 'Save'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => phrasingEdit.cancel()}
-                              disabled={phrasingEdit.isSaving}
-                            >
-                              Cancel
-                            </Button>
-                            <FsrsPreservationTooltip />
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-sm text-foreground/90">{question.explanation}</p>
-                      )}
+                      <p className="text-sm text-foreground/90">{question.explanation}</p>
                     </div>
                   )}
 
@@ -752,25 +665,4 @@ export function ReviewFlow() {
 
   // Fallback for unexpected states
   return null;
-}
-
-function FsrsPreservationTooltip() {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Edits preserve your learning progress"
-          className="h-10 w-10 p-0 text-muted-foreground"
-        >
-          <Info className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-[260px]">
-        Edits preserve your learning progress. For major changes, archive and create a new concept
-        instead.
-      </TooltipContent>
-    </Tooltip>
-  );
 }
