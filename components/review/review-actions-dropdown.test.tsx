@@ -4,8 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ReviewActionsDropdown } from './review-actions-dropdown';
 
 const defaultHandlers = () => ({
-  onEditPhrasing: vi.fn(),
-  onEditConcept: vi.fn(),
+  onEdit: vi.fn(),
   onArchivePhrasing: vi.fn(),
   onArchiveConcept: vi.fn(),
 });
@@ -17,15 +16,10 @@ describe('ReviewActionsDropdown', () => {
 
     render(<ReviewActionsDropdown totalPhrasings={3} {...handlers} />);
 
-    // Test Edit Phrasing
+    // Test unified Edit button
     await user.click(screen.getByRole('button', { name: /review actions/i }));
-    await user.click(screen.getByText('Edit Phrasing'));
-    expect(handlers.onEditPhrasing).toHaveBeenCalledTimes(1);
-
-    // Test Edit Concept
-    await user.click(screen.getByRole('button', { name: /review actions/i }));
-    await user.click(screen.getByText('Edit Concept'));
-    expect(handlers.onEditConcept).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByText('Edit'));
+    expect(handlers.onEdit).toHaveBeenCalledTimes(1);
 
     // Test Archive Phrasing
     await user.click(screen.getByRole('button', { name: /review actions/i }));
