@@ -11,9 +11,9 @@ import {
  *
  * **Key Features:**
  * - Smart dirty detection per domain (concept vs phrasing)
- * - Parallel mutation execution when both dirty (50% latency reduction)
+ * - Parallel mutation execution when both dirty (50% latency reduction via Promise.all)
  * - Field-level error mapping for precise feedback
- * - Graceful partial failure handling
+ * - Graceful partial failure handling with automatic retry support
  *
  * **Save Orchestration:**
  * 1. Validates all fields first (fail fast)
@@ -21,7 +21,29 @@ import {
  * 3. Executes mutations in parallel with Promise.all
  * 4. Maps errors to specific fields on failure
  * 5. Keeps edit mode open if any mutation fails
- * 6. Updates initialData for successful saves to prevent re-saving
+ * 6. Updates baseline data for successful saves to prevent re-saving on retry
+ *
+ * **Partial Failure Handling:**
+ * If concept saves successfully but phrasing fails, the concept is marked clean
+ * and won't be resaved on retry. Only the failed phrasing mutation will be retried.
+ *
+ * @param initialData - Initial values for all editable fields (concept + phrasing)
+ * @param onSaveConcept - Async function to save concept data. Can return optimistic data or void.
+ * @param onSavePhrasing - Async function to save phrasing data. Can return optimistic data or void.
+ * @param questionType - Type of question ('multiple-choice' | 'true-false') for validation
+ *
+ * @returns Object containing:
+ *   - `isEditing`: boolean - Whether edit mode is active
+ *   - `isSaving`: boolean - Whether save is in progress
+ *   - `localData`: UnifiedEditData - Current field values (use for controlled inputs)
+ *   - `isDirty`: boolean - Whether any field has changed
+ *   - `conceptIsDirty`: boolean - Whether concept fields changed
+ *   - `phrasingIsDirty`: boolean - Whether phrasing fields changed
+ *   - `errors`: Record<string, string> - Field-level validation/mutation errors
+ *   - `startEdit()`: Function to enter edit mode
+ *   - `updateField(key, value)`: Function to update a specific field
+ *   - `save()`: Async function to validate and save changes
+ *   - `cancel()`: Function to exit edit mode and revert changes
  *
  * @example
  * ```tsx
@@ -39,9 +61,18 @@ import {
  *   'multiple-choice'
  * );
  *
- * // Only saves concept if conceptTitle/conceptDescription changed
- * // Only saves phrasing if question/correctAnswer/explanation/options changed
- * await unifiedEdit.save();
+ * // Start editing
+ * unifiedEdit.startEdit();
+ *
+ * // Update fields
+ * unifiedEdit.updateField('conceptTitle', 'Advanced JS');
+ * unifiedEdit.updateField('question', 'What is a higher-order function?');
+ *
+ * // Save (only calls mutations for dirty domains)
+ * await unifiedEdit.save(); // Calls both mutations in parallel
+ *
+ * // Or cancel
+ * unifiedEdit.cancel();
  * ```
  */
 export function useUnifiedEdit(
