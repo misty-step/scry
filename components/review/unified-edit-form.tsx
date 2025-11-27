@@ -12,27 +12,53 @@ import type { useUnifiedEdit } from '@/hooks/use-unified-edit';
 import type { QuestionType } from '@/lib/unified-edit-validation';
 
 interface UnifiedEditFormProps {
+  /** Type of question ('multiple-choice' | 'true-false') - determines answer editor UI */
   questionType: QuestionType;
+  /** State object from useUnifiedEdit hook containing all form state and actions */
   editState: ReturnType<typeof useUnifiedEdit>;
 }
 
 /**
  * Unified edit form for editing both concept and phrasing fields in one interface.
  *
- * **Simplifies UX:**
- * - Before: Two separate edit buttons → Two separate forms → Confusion
- * - After: Single "Edit" button → One unified form → Just fix what needs fixing
+ * This component replaces the previous dual-edit pattern (separate concept/phrasing editors)
+ * with a single unified form that intelligently saves only what changed. Used within the
+ * review flow when user clicks "Edit" or presses E key.
  *
- * **Features:**
- * - Smart dirty detection (only saves what changed)
- * - Field-level error display with aria-invalid attributes
- * - Preserves FSRS scheduling state (with educational tooltip)
- * - Single Save button with intelligent orchestration
+ * **UX Improvement:**
+ * - Before: Two separate edit buttons → Two separate forms → User confusion about which to use
+ * - After: Single "Edit" button → One unified form → Clear and intuitive
  *
- * **Layout:**
- * 1. Concept section (title, description)
- * 2. Phrasing section (question, options/answer, explanation)
- * 3. Save/Cancel buttons with FSRS preservation tooltip
+ * **Key Features:**
+ * - **Smart dirty detection**: Only saves concept if title/description changed, only saves
+ *   phrasing if question/answer/explanation/options changed
+ * - **Field-level errors**: Each input shows aria-invalid when it has validation/mutation errors
+ * - **FSRS preservation**: Tooltip educates users that FSRS scheduling state is preserved
+ *   (stability, difficulty, nextReview all unchanged)
+ * - **Parallel mutations**: When both concept and phrasing are dirty, saves execute in parallel
+ *   via Promise.all for 50% latency reduction
+ *
+ * **Layout Structure:**
+ * 1. Error summary (if validation/mutation errors exist)
+ * 2. Concept section - Title (required), Description (optional)
+ * 3. Phrasing section - Question (required), Answer editor (type-specific), Explanation (required)
+ * 4. Action buttons - Save (with FSRS tooltip), Cancel
+ *
+ * **Answer Editors:**
+ * - Multiple-choice: OptionsEditor component (add/remove/reorder options, select correct)
+ * - True-false: TrueFalseEditor component (radio buttons for True/False)
+ *
+ * @example
+ * ```tsx
+ * const editState = useUnifiedEdit(initialData, onSaveConcept, onSavePhrasing, 'multiple-choice');
+ *
+ * {editState.isEditing && (
+ *   <UnifiedEditForm
+ *     questionType="multiple-choice"
+ *     editState={editState}
+ *   />
+ * )}
+ * ```
  */
 export function UnifiedEditForm({ questionType, editState }: UnifiedEditFormProps) {
   const hasErrors = Object.keys(editState.errors).length > 0;
