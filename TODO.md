@@ -210,7 +210,7 @@ Integration tests below would provide additional end-to-end coverage but are not
 
 ---
 
-## Code Quality & Documentation
+## Code Quality & Documentation ✅
 
 - [x] **Add JSDoc comments to useUnifiedEdit hook**
   ```
@@ -224,12 +224,13 @@ Integration tests below would provide additional end-to-end coverage but are not
   rationale, key features, layout structure, and answer editor types. Added usage example.
   ```
 
-- [ ] **Update inline comments in review-flow.tsx**
-  - Location: `components/review-flow.tsx`
-  - Update: Comments referencing old conceptEdit/phrasingEdit hooks
-  - Add: Comment explaining unified edit integration
-  - Remove: Outdated comments about separate edit flows
-  - Success criteria: Comments accurate; explain why unified approach chosen
+- [x] **Update inline comments in review-flow.tsx**
+  ```
+  COMPLETED (commit 9be0d47): Added comprehensive section headers for "Unified Edit
+  Integration" and "Display Properties" explaining architectural decisions, benefits
+  (simpler UX, smart dirty detection, parallel mutations, graceful failures), and
+  3-tier display logic with specific timing characteristics (~50-200ms optimistic updates).
+  ```
 
 ---
 
