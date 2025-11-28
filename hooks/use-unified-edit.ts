@@ -260,15 +260,7 @@ export function useUnifiedEdit(
     } finally {
       setIsSaving(false);
     }
-  }, [
-    localData,
-    baselineData,
-    questionType,
-    conceptIsDirty,
-    phrasingIsDirty,
-    onSaveConcept,
-    onSavePhrasing,
-  ]);
+  }, [localData, questionType, conceptIsDirty, phrasingIsDirty, onSaveConcept, onSavePhrasing]);
 
   return {
     isEditing,

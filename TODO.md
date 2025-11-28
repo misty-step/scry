@@ -243,11 +243,12 @@ Integration tests below would provide additional end-to-end coverage but are not
   Note: Exit code 1 from console.error output in error-handling tests (pre-existing).
   ```
 
-- [ ] **Run linter and fix any issues**
-  - Command: `pnpm lint`
-  - Fix: Any linting errors in new files (unified-edit-validation.ts, use-unified-edit.ts, etc.)
-  - Address: Unused variables, import order, accessibility warnings
-  - Success criteria: Zero linting errors; code follows project style guide
+- [x] **Run linter and fix any issues**
+  ```
+  COMPLETED: All new unified edit files pass linting with zero warnings or errors.
+  Fixed: Removed unnecessary 'baselineData' dependency from useCallback in use-unified-edit.ts
+  All 24 hook tests still passing after lint fix.
+  ```
 
 ---
 
