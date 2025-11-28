@@ -207,17 +207,17 @@ Integration tests below would provide additional end-to-end coverage but are not
 
 ## Code Quality & Documentation
 
-- [ ] **Add JSDoc comments to useUnifiedEdit hook**
-  - Location: `hooks/use-unified-edit.ts`
-  - Document: Hook purpose, parameters, return values, usage examples
-  - Include: Notes about parallel mutation execution and partial failure handling
-  - Success criteria: JSDoc comprehensive; developers understand hook behavior without reading implementation
+- [x] **Add JSDoc comments to useUnifiedEdit hook**
+  ```
+  COMPLETED (commit 80d33f1): Enhanced JSDoc with @param/@returns tags, partial failure
+  handling notes, expanded usage example, and parallel mutation documentation.
+  ```
 
-- [ ] **Add JSDoc comments to UnifiedEditForm component**
-  - Location: `components/review/unified-edit-form.tsx`
-  - Document: Component purpose, props, UX design decisions
-  - Include: Notes about field-level errors and FSRS preservation tooltip
-  - Success criteria: JSDoc explains component role in unified edit flow
+- [x] **Add JSDoc comments to UnifiedEditForm component**
+  ```
+  COMPLETED (commit 1e0b78e): Enhanced JSDoc with props documentation, UX improvement
+  rationale, key features, layout structure, and answer editor types. Added usage example.
+  ```
 
 - [ ] **Update inline comments in review-flow.tsx**
   - Location: `components/review-flow.tsx`
@@ -230,11 +230,11 @@ Integration tests below would provide additional end-to-end coverage but are not
 
 ## Type Safety & Validation
 
-- [ ] **Verify TypeScript compilation with strict mode**
-  - Command: `npx tsc --noEmit`
-  - Check: No type errors in review-flow.tsx integration
-  - Fix: Any type mismatches between UnifiedEditData and actual data structure
-  - Success criteria: Zero TypeScript errors; all types correctly inferred
+- [x] **Verify TypeScript compilation with strict mode**
+  ```
+  COMPLETED: TypeScript compilation passes with zero errors. All types correctly
+  inferred across unified edit integration. No type mismatches detected.
+  ```
 
 - [ ] **Run full test suite to verify no regressions**
   - Command: `pnpm test`
