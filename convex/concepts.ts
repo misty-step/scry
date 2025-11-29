@@ -898,14 +898,13 @@ async function findActiveGenerationJob(
 }
 
 /**
- * Update concept title and description.
+ * Update concept title.
  * Preserves all FSRS state and other fields.
  */
 export const updateConcept = mutation({
   args: {
     conceptId: v.id('concepts'),
     title: v.string(),
-    description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
@@ -926,11 +925,6 @@ export const updateConcept = mutation({
       title,
       updatedAt: now,
     };
-
-    // Only update description if provided
-    if (args.description !== undefined) {
-      patch.description = args.description.trim();
-    }
 
     await ctx.db.patch(args.conceptId, patch);
   },

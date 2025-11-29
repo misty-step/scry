@@ -50,7 +50,6 @@ import {
  * const unifiedEdit = useUnifiedEdit(
  *   {
  *     conceptTitle: 'JavaScript Basics',
- *     conceptDescription: 'Fundamentals of JS',
  *     question: 'What is a closure?',
  *     correctAnswer: 'A function with access to outer scope',
  *     explanation: 'Closures maintain references...',
@@ -77,10 +76,7 @@ import {
  */
 export function useUnifiedEdit(
   initialData: UnifiedEditData,
-  onSaveConcept: (data: {
-    title: string;
-    description?: string;
-  }) => Promise<{ title: string; description?: string } | void>,
+  onSaveConcept: (data: { title: string }) => Promise<{ title: string } | void>,
   onSavePhrasing: (data: {
     question: string;
     correctAnswer: string;
@@ -106,9 +102,7 @@ export function useUnifiedEdit(
   // Dirty Detection (per domain)
   // ============================================================================
 
-  const conceptIsDirty =
-    localData.conceptTitle !== baselineData.conceptTitle ||
-    localData.conceptDescription !== baselineData.conceptDescription;
+  const conceptIsDirty = localData.conceptTitle !== baselineData.conceptTitle;
 
   const phrasingIsDirty =
     localData.question !== baselineData.question ||
@@ -174,7 +168,6 @@ export function useUnifiedEdit(
         promises.push(
           onSaveConcept({
             title: localData.conceptTitle,
-            description: localData.conceptDescription,
           })
             .then(() => {
               conceptSucceeded = true;
@@ -231,7 +224,6 @@ export function useUnifiedEdit(
           setBaselineData((prev) => ({
             ...prev,
             conceptTitle: localData.conceptTitle,
-            conceptDescription: localData.conceptDescription,
           }));
         }
 

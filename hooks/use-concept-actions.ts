@@ -81,12 +81,12 @@ export function useConceptActions({ conceptId }: UseConceptActionsArgs) {
   }, [conceptId, requestGenerationMutation]);
 
   const editConcept = useCallback(
-    async (data: { title: string; description?: string }) => {
+    async (data: { title: string }) => {
       try {
         setPendingAction('edit-concept');
         await updateConceptMutation({
           conceptId,
-          ...data,
+          title: data.title,
         });
         toast.success('Concept updated');
       } catch (error) {

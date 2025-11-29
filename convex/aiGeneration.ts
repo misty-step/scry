@@ -783,7 +783,6 @@ export const generatePhrasingsForConcept = internalAction({
 
       const prompt = buildPhrasingGenerationPrompt({
         conceptTitle: concept.title,
-        conceptDescription: concept.description ?? '',
         contentType: concept.contentType as ContentType | undefined,
         originIntent: concept.originIntent,
         targetCount: TARGET_PHRASINGS_PER_CONCEPT,

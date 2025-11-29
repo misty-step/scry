@@ -22,12 +22,11 @@ describe('concepts.updateConcept', () => {
     } as any);
   });
 
-  it('should update concept title and description', async () => {
+  it('should update concept title', async () => {
     const concept = makeConcept({
       _id: 'concept_1' as Id<'concepts'>,
       userId: mockUserId,
       title: 'Original Title',
-      description: 'Original description',
     });
 
     const patchSpy = vi.fn();
@@ -40,14 +39,12 @@ describe('concepts.updateConcept', () => {
     await (updateConcept as any)._handler(ctx, {
       conceptId: concept._id,
       title: 'Updated Title',
-      description: 'Updated description',
     });
 
     expect(patchSpy).toHaveBeenCalledWith(
       concept._id,
       expect.objectContaining({
         title: 'Updated Title',
-        description: 'Updated description',
         updatedAt: expect.any(Number),
       })
     );
@@ -118,12 +115,11 @@ describe('concepts.updateConcept', () => {
       (updateConcept as any)._handler(ctx, {
         conceptId: concept._id,
         title: '',
-        description: 'Some description',
       })
     ).rejects.toThrow('Title cannot be empty');
   });
 
-  it('should trim whitespace from title and description', async () => {
+  it('should trim whitespace from title', async () => {
     const concept = makeConcept({
       _id: 'concept_4' as Id<'concepts'>,
       userId: mockUserId,
@@ -139,14 +135,12 @@ describe('concepts.updateConcept', () => {
     await (updateConcept as any)._handler(ctx, {
       conceptId: concept._id,
       title: '  Trimmed Title  ',
-      description: '  Trimmed Description  ',
     });
 
     expect(patchSpy).toHaveBeenCalledWith(
       concept._id,
       expect.objectContaining({
         title: 'Trimmed Title',
-        description: 'Trimmed Description',
       })
     );
   });
@@ -183,38 +177,6 @@ describe('concepts.updateConcept', () => {
         title: 'New Title',
       })
     ).rejects.toThrow('Concept not found');
-  });
-
-  it('should handle optional description field', async () => {
-    const concept = makeConcept({
-      _id: 'concept_6' as Id<'concepts'>,
-      userId: mockUserId,
-      description: 'Original description',
-    });
-
-    const patchSpy = vi.fn();
-    const mockDb = createMockDb({
-      get: vi.fn().mockResolvedValue(concept),
-      patch: patchSpy,
-    });
-    const ctx = createMockCtx({ db: mockDb });
-
-    // Update only title
-    await (updateConcept as any)._handler(ctx, {
-      conceptId: concept._id,
-      title: 'Updated Title',
-    });
-
-    expect(patchSpy).toHaveBeenCalledWith(
-      concept._id,
-      expect.objectContaining({
-        title: 'Updated Title',
-      })
-    );
-
-    // Description should not be in patch if not provided
-    const patchCall = patchSpy.mock.calls[0][1];
-    expect(patchCall).not.toHaveProperty('description');
   });
 });
 

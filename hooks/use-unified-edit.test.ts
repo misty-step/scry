@@ -6,7 +6,6 @@ import { useUnifiedEdit } from './use-unified-edit';
 describe('useUnifiedEdit', () => {
   const createTestData = (overrides?: Partial<UnifiedEditData>): UnifiedEditData => ({
     conceptTitle: 'Test Concept',
-    conceptDescription: 'Test description',
     question: 'What is 2 + 2?',
     correctAnswer: '4',
     explanation: 'Two plus two equals four',
@@ -135,21 +134,6 @@ describe('useUnifiedEdit', () => {
       expect(result.current.isDirty).toBe(true);
     });
 
-    it('should detect concept as dirty when description changes', () => {
-      const { result } = renderHook(() =>
-        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
-      );
-
-      act(() => {
-        result.current.startEdit();
-        result.current.updateField('conceptDescription', 'New description');
-      });
-
-      expect(result.current.conceptIsDirty).toBe(true);
-      expect(result.current.phrasingIsDirty).toBe(false);
-      expect(result.current.isDirty).toBe(true);
-    });
-
     it('should detect phrasing as dirty when question changes', () => {
       const { result } = renderHook(() =>
         useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
@@ -229,7 +213,6 @@ describe('useUnifiedEdit', () => {
       expect(mockSaveConcept).toHaveBeenCalledOnce();
       expect(mockSaveConcept).toHaveBeenCalledWith({
         title: 'New Title',
-        description: 'Test description',
       });
       expect(mockSavePhrasing).not.toHaveBeenCalled();
     });

@@ -18,7 +18,7 @@ interface OptionsEditorProps {
 /**
  * Multiple-choice options editor component.
  *
- * Extracted from PhrasingEditForm for reuse in UnifiedEditForm.
+ * Extracted from PhrasingEditForm for reuse in inline editing.
  *
  * **Features:**
  * - Add/remove options (with min/max constraints)
@@ -82,6 +82,7 @@ export function OptionsEditor({
       </div>
 
       <RadioGroup value={correctAnswer} onValueChange={onCorrectAnswerChange}>
+        <p className="text-sm text-muted-foreground mb-2">Select the correct answer:</p>
         {options.map((option, idx) => (
           <div key={idx} className="flex items-start gap-3 border rounded-lg p-3">
             <RadioGroupItem value={option} id={`opt-${idx}`} className="mt-2" />

@@ -9,7 +9,6 @@ describe('validateUnifiedEdit', () => {
   // Helper to create valid test data
   const createValidData = (overrides?: Partial<UnifiedEditData>): UnifiedEditData => ({
     conceptTitle: 'Test Concept',
-    conceptDescription: 'Test description',
     question: 'What is 2 + 2?',
     correctAnswer: '4',
     explanation: 'Two plus two equals four',
@@ -41,14 +40,6 @@ describe('validateUnifiedEdit', () => {
 
       const conceptErrors = errors.filter((e) => e.field === 'conceptTitle');
       expect(conceptErrors).toHaveLength(1);
-    });
-
-    it('should allow empty concept description (optional field)', () => {
-      const data = createValidData({ conceptDescription: '' });
-      const errors = validateUnifiedEdit(data, 'multiple-choice');
-
-      const descErrors = errors.filter((e) => e.field === 'conceptDescription');
-      expect(descErrors).toHaveLength(0);
     });
   });
 

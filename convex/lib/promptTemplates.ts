@@ -84,7 +84,6 @@ OUTPUT (JSON only, all fields required):
 
 export function buildPhrasingGenerationPrompt(params: {
   conceptTitle: string;
-  conceptDescription: string;
   contentType?: 'verbatim' | 'enumerable' | 'conceptual' | 'mixed';
   originIntent?: string;
   targetCount: number;
@@ -97,7 +96,6 @@ export function buildPhrasingGenerationPrompt(params: {
 
   return `# Concept
 Title: ${params.conceptTitle}
-Description: ${params.conceptDescription}
 Content Type: ${params.contentType ?? 'unspecified'}
 Origin Intent: ${params.originIntent ?? 'not provided'}
 

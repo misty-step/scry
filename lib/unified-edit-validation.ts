@@ -8,7 +8,6 @@
 export interface UnifiedEditData {
   // Concept fields
   conceptTitle: string;
-  conceptDescription?: string;
 
   // Phrasing fields
   question: string;
@@ -48,8 +47,6 @@ export function validateUnifiedEdit(
       message: 'Concept title cannot be empty',
     });
   }
-
-  // Concept description is optional - no validation needed
 
   // ============================================================================
   // Phrasing Validation (from PhrasingEditForm lines 44-79)

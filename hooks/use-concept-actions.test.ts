@@ -131,14 +131,12 @@ describe('useConceptActions', () => {
     await act(async () => {
       await result.current.editConcept({
         title: 'Updated Title',
-        description: 'Updated Description',
       });
     });
 
     expect(mockUpdateConcept).toHaveBeenCalledWith({
       conceptId,
       title: 'Updated Title',
-      description: 'Updated Description',
     });
     expect(toast.success).toHaveBeenCalledWith('Concept updated');
   });

@@ -11,7 +11,7 @@ interface TrueFalseEditorProps {
 /**
  * True/False answer selector component.
  *
- * Extracted from PhrasingEditForm for reuse in UnifiedEditForm.
+ * Extracted from PhrasingEditForm for reuse in inline editing.
  *
  * Simple radio group for selecting "True" or "False" as the correct answer.
  */
