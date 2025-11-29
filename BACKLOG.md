@@ -13,6 +13,12 @@
 - a learner should be able to hit a regenerate button, specify whether the specific phrasing or the whole concept should be regenerated, and add some notes
 - regeneration should work even without notes -- the fact that the user wanted to regenerate it is note enough about the perceived low quality of the content (but notes help!)
 
+### [PRODUCT] Concepts should be tied to other concepts as prerequisites, and this should impact scheduling
+- right now we just generate a bunch of concepts and they all get scheduled
+- some concepts depend on the understanding of other concepts in order to be understood themselves
+- we should modify (1) concept generation to take this into account, (2) daily cronjobs to go find and suggest updates to these relationships, (3) scheduling to take these relationships into account so learners have to achieve a certain threshold of understanding of a prereq concept before a dependent concept is unlocked and scheduled for review
+- this all needs to be visualized in a clean, elegant, approachable, simple way
+
 ### [SECURITY][CRITICAL] Update happy-dom Dependency - RCE Vulnerability
 **File**: package.json:118
 **Perspectives**: security-sentinel, architecture-guardian
@@ -186,14 +192,6 @@
 **Context**: Tests use specific patterns (mocking, timers, renders) without explaining rationale
 **Acceptance**: Add JSDoc comments to each test file explaining patterns, gotchas, and design decisions
 **Effort**: 1h | **Impact**: Test maintainability, team knowledge
-
-### [TESTING][LOW] TODO.md Cleanup
-**Source**: PR #81 review feedback (Claude review P2)
-**File**: TODO.md
-**Problem**: TODO.md shows completed items, should be archived or removed
-**Context**: All 14 items marked complete (lines 3-14)
-**Acceptance**: Archive completed items to docs/archive/TODO-2025-11-25.md or remove file; add note to CLAUDE.md
-**Effort**: 10m | **Impact**: Project hygiene
 
 ### [TESTING][LOW] Coverage File Generation Verification
 **Source**: PR #81 review feedback (Claude review follow-up)
