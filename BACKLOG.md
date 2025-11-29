@@ -1,507 +1,387 @@
 # BACKLOG
 
-**Last Groomed**: 2025-11-20
-**Analysis Method**: 8-perspective comprehensive audit (complexity-archaeologist, architecture-guardian, security-sentinel, performance-pathfinder, maintainability-maven, user-experience-advocate, product-visionary, design-systems-architect)
-**Overall Assessment**: Strong technical foundation with critical go-to-market gaps. God objects (migrations.ts, concepts.ts) and unbounded queries need refactoring. Hidden gem: IQC system 90% built, needs UX polish.
+**Last Groomed**: 2025-11-29
+**Analysis Method**: 15-perspective comprehensive audit (8 specialists + 7 master personas)
+**Agents Completed**: security-sentinel, performance-pathfinder, user-experience-advocate, product-visionary, design-systems-architect, grug, jobs
+**Overall Assessment**: Strong technical foundation with critical go-to-market gaps. Dual data model and god objects creating invisible complexity. IQC system 90% built but over-engineered for main UI. Performance bottlenecks in hot paths (N+1 getDue, unbounded .collect()).
 
 ---
 
 ## Now (<2 weeks, sprint-ready)
 
-### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen, with feedback
-- sometimes a concept or phrasing won't quite be right
-- a learner should be able to hit a regenerate button, specify whether the specific phrasing or the whole concept should be regenerated, and add some notes
-- regeneration should work even without notes -- the fact that the user wanted to regenerate it is note enough about the perceived low quality of the content (but notes help!)
+### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen
+- Sometimes a concept or phrasing won't quite be right
+- Learner hits regenerate button, specifies phrasing vs whole concept, adds optional notes
+- Regeneration works even without notes (request = signal of low quality)
+- **Effort**: 2-3d | **Value**: User agency over AI-generated content
 
-### [PRODUCT] Concepts should be tied to other concepts as prerequisites, and this should impact scheduling
-- right now we just generate a bunch of concepts and they all get scheduled
-- some concepts depend on the understanding of other concepts in order to be understood themselves
-- we should modify (1) concept generation to take this into account, (2) daily cronjobs to go find and suggest updates to these relationships, (3) scheduling to take these relationships into account so learners have to achieve a certain threshold of understanding of a prereq concept before a dependent concept is unlocked and scheduled for review
-- this all needs to be visualized in a clean, elegant, approachable, simple way
+### [PRODUCT] Concepts should be tied as prerequisites, impacting scheduling
+- Modify concept generation to capture prerequisite relationships
+- Daily cronjob to suggest relationship updates
+- Scheduling respects prereq thresholds before unlocking dependents
+- Clean, elegant visualization of concept graph
+- **Effort**: 5d | **Value**: Better learning sequencing
 
-### [SECURITY][CRITICAL] Update happy-dom Dependency - RCE Vulnerability
-**File**: package.json:118
-**Perspectives**: security-sentinel, architecture-guardian
-**Problem**: happy-dom@18.0.1 has CRITICAL RCE vulnerability (CVE-2025-XXXXX) via VM context escape
-**Impact**: DevDependency only (not in production), but affects test environment and CI/CD
-**Fix**: `pnpm update happy-dom@^20.0.2`
-**Acceptance**: Tests pass with updated version, CVE resolved, no breaking changes
-**Effort**: 15m | **Risk**: CRITICAL → NONE
-
-### [SECURITY][CRITICAL] Update glob Dependency - Command Injection
-**File**: package.json (transitive via @vitest/coverage-v8)
-**Perspectives**: security-sentinel
-**Problem**: glob@<10.5.0 has HIGH command injection vulnerability via `-c/--cmd` flag
-**Impact**: DevDependency, unlikely attack vector (requires glob CLI usage with user input)
-**Fix**: `pnpm update glob@^10.5.0 vite@^7.2.4`
-**Acceptance**: vitest coverage works, vulnerabilities resolved
+### [SECURITY][HIGH] Unvalidated Limit Parameters - DoS Vulnerability
+**Files**: convex/questionsLibrary.ts:136, :241
+**Perspectives**: security-sentinel, performance-pathfinder
+**Problem**: `limit` param accepts any number → malicious `limit: 999999999` causes bandwidth spike
+**Fix**: Add `const safeLimit = Math.min(Math.max(args.limit ?? 50, 10), 500);`
+**Acceptance**: All limit params validated; tests for edge cases
 **Effort**: 15m | **Risk**: HIGH → NONE
 
-### [SECURITY][CRITICAL] Fail-closed Clerk webhooks
-**File**: convex/http.ts:56-62
-**Perspectives**: security-sentinel, architecture-guardian
-**Problem**: Returns 200 when `CLERK_WEBHOOK_SECRET` missing → spoofed user create/delete possible
-**Acceptance**: Secret required in prod; failure returns 500 + structured log/alert; test for missing/invalid signature; deploy script check blocks rollout without secret
-**Effort**: 0.5d | **Principles**: Fail-closed config, Ousterhout info hiding
-
-### [SECURITY][CRITICAL] HttpOnly session token handling
-**File**: lib/auth-cookies.ts:5-33
+### [SECURITY][HIGH] Webhook Fallback Accepts Unauthenticated Requests
+**File**: convex/http.ts:61
 **Perspectives**: security-sentinel
-**Problem**: Sets session token via JS, non-HttpOnly and not always `Secure` → XSS/sniff risk
-**Acceptance**: Move to server-set HttpOnly `SameSite=Lax; Secure` cookie; remove JS setters/getters; regression test auth boot; doc migration for existing sessions
-**Effort**: 1d | **Principles**: Make misuse hard, least exposure
+**Problem**: Returns 200 when `CLERK_WEBHOOK_SECRET` missing → spoofed user operations
+**Fix**: Return 500 instead of 200 when secret missing; log security incident
+**Acceptance**: Secret required in prod; failure returns 500; test coverage
+**Effort**: 20m | **Risk**: MEDIUM → NONE
 
-### [PRODUCT][CRITICAL] Monetization Foundation
-**File**: New - Stripe integration
-**Perspectives**: product-visionary, business-survival
-**Problem**: -$0.50/user/mo, $0 revenue (existential threat)
-**Business Case**: $8/mo × 10% conversion × 1K users = $800/mo → $9,600/year; survival blocker
-**Acceptance**: Stripe Checkout + webhooks live; schema (`subscriptionId`, `isPro`, `planType`) migrated; free tier enforced at 100 questions in `questionsCrud`; `/pricing` + upgrade modal shipped; happy-path e2e
-**Effort**: 8d | **Impact**: Unlock revenue, enable sustainable growth
+### [SECURITY][MEDIUM] CSP Permits unsafe-eval in Production
+**File**: next.config.ts:90
+**Perspectives**: security-sentinel
+**Problem**: `unsafe-eval` in CSP allows dynamic code execution
+**Fix**: Conditionally disable `unsafe-eval` in production (only needed for Vercel live editing)
+**Acceptance**: Production CSP excludes unsafe-eval; preview/dev retain it
+**Effort**: 30m | **Risk**: MEDIUM → LOW
 
-### [PRODUCT][CRITICAL] Import/Export (Adoption Block)
-**File**: New feature
-**Perspectives**: user-experience-advocate, product-visionary
-**Problem**: Anki users churn without data portability (80% of TAM blocked)
-**Business Case**: Primary acquisition channel; table-stakes feature for Anki switchers
-**Acceptance**: `.apkg` import to concepts/phrasings; CSV + JSON export; progress/error UI; 5k card smoke test; FSRS state preserved on import
-**Effort**: 7d | **Impact**: Opens 80% of addressable market
+### [SECURITY][MEDIUM] Update Sentry Dependencies
+**File**: package.json (@sentry/nextjs@10.26.0)
+**Perspectives**: security-sentinel
+**Problem**: Vulnerable version leaks headers when sendDefaultPii=true (mitigated by config but unpatched)
+**Fix**: `pnpm update @sentry/nextjs @sentry/node @sentry/node-core` to >=10.27.0
+**Acceptance**: Vulnerabilities resolved; tests pass
+**Effort**: 10m | **Risk**: MEDIUM → NONE
 
-### [PERF][HIGH] Library selection O(N×M) - Already Tracked
-**File**: app/library/_components/library-table.tsx:320-358
-**Perspectives**: performance-pathfinder, architecture-guardian
-**Problem**: Rebuilds selection with `findIndex` per tick; 50×20 → 1000 ops/render
-**Acceptance**: Memoized id→flag map; updates O(M); selection stable after sort/filter; perf check <5ms per change; test for selection persistence
-**Effort**: 0.5d | **Principles**: Deep module, avoid temporal decomposition
+### [PERF][CRITICAL] N+1 Queries in getDue() - 200-400ms per quiz load
+**File**: convex/concepts.ts:162-164
+**Perspectives**: performance-pathfinder
+**Problem**: Loop executes 35+ sequential queries per getDue() call (selectActivePhrasing + interactions + legacyQuestion per candidate)
+**Fix**: Filter candidates with `phrasingCount > 0` in-memory BEFORE querying; batch lookups
+**Acceptance**: Per-session queries reduced from 35+ to 3-5; latency 200-400ms → 50-100ms
+**Effort**: 10m | **Impact**: 3-4x faster quiz initialization
 
-### [TEST][HIGH] Embed helpers coverage - Already Tracked
+### [PERF][CRITICAL] Unbounded .collect() in Archive/Restore
+**Files**: convex/concepts.ts:710, 778, 1143, 1173, 1204, 1234
+**Perspectives**: performance-pathfinder, security-sentinel (DoS)
+**Problem**: `.collect()` fetches ALL phrasings without limit → 600KB+ per archive, quota burn
+**Fix**: Replace with `.take(MAX_PHRASINGS)`; pre-compute conflictScore on creation
+**Acceptance**: Bandwidth per query <100KB; 10k cards smoke test <500ms
+**Effort**: 15m | **Impact**: 5-7x faster archive, 500KB+ saved per operation
+
+### [PERF][HIGH] Linear Search in findActiveGenerationJob()
+**File**: convex/concepts.ts:879-898
+**Perspectives**: performance-pathfinder
+**Problem**: O(n×m) array search (25 jobs × 10 conceptIds = 250 ops) per call
+**Fix**: Use Set for O(1) conceptId lookup instead of nested `.find()` + `.some()`
+**Acceptance**: Lookup time 5-10ms → 1-2ms
+**Effort**: 5m | **Impact**: 5x faster phrasing generation UI
+
+### [UX][HIGH] Vague Error Messages Without Recovery Guidance
+**File**: lib/error-summary.ts:36-62
+**Perspectives**: user-experience-advocate, security-sentinel (info disclosure)
+**Problem**: "Rate limit reached. Please wait a moment." - no retry time, no action guidance
+**Fix**: Add specific wait times, recovery steps, status page links
+**Acceptance**: 10+ common errors mapped to actionable messages; unit tests
+**Effort**: 1h | **Value**: Users fix problems without support
+
+### [UX][HIGH] Silent Search Failures
+**File**: app/library/_components/library-client.tsx:84-95
+**Perspectives**: user-experience-advocate
+**Problem**: Search errors clear results with only a toast (disappears in 5s) → user confusion
+**Fix**: Show persistent error state in results area with retry button; preserve last results
+**Acceptance**: Error state distinguishes "no results" vs "search failed"; retry button works
+**Effort**: 2h | **Value**: Users understand what happened
+
+### [UX][HIGH] No Retry Mechanism for Failed Mutations
+**File**: app/library/_components/library-client.tsx:193-237
+**Perspectives**: user-experience-advocate
+**Problem**: Archive/delete fails → toast disappears → no retry without manual re-trigger
+**Fix**: Show retry dialog on failure; track failed action state
+**Acceptance**: Failed actions show retry modal; retry works
+**Effort**: 3h | **Value**: Transient errors recoverable
+
+### [UX][CRITICAL] Missing Confirmation on Permanent Delete
+**File**: app/library/_components/library-client.tsx:269-290
+**Perspectives**: user-experience-advocate
+**Problem**: Permanent deletion (irreversible) has no require-typing confirmation
+**Fix**: Add `useConfirmation()` with `requireTyping: 'delete permanently'`
+**Acceptance**: Permanent delete requires typing; tests for confirmation flow
+**Effort**: 1h | **Value**: Prevents accidental data loss
+
+### [DESIGN][HIGH] Input Component References Undefined CSS Variables
+**File**: components/ui/input.tsx:11-12
+**Perspectives**: design-systems-architect
+**Problem**: `border-line`, `bg-paper`, `focus:ring-blueprint` are not defined → focus states may be broken
+**Fix**: Replace with existing variables: `border-input`, `bg-background`, `focus:ring-ring`
+**Acceptance**: Focus states work; aria-invalid states display correctly
+**Effort**: 30m | **Impact**: BLOCKER - inputs may be displaying incorrectly
+
+### [DESIGN][HIGH] Create Semantic Color System
+**Files**: 15+ components using bg-red-50, text-blue-700 instead of tokens
+**Perspectives**: design-systems-architect
+**Problem**: Semantic colors defined in globals.css but ignored → inconsistent error/success UX
+**Fix**: Create `lib/design-system/state-colors.ts` with error/success/warning/info tokens
+**Acceptance**: 15 components migrated; dark mode automatic; design tokens documented
+**Effort**: 2h tokens + 4h migration | **Impact**: Consistent state colors, rebrandable
+
+### [COMPLEXITY][HIGH] Delete Unused ConfigManager/InputManager
+**Files**: components/lab/config-manager.tsx (363 lines), components/lab/input-manager.tsx (210 lines)
+**Perspectives**: grug, jobs
+**Problem**: Generic CRUD managers with full state management - NOT USED ANYWHERE yet
+**Violation**: Abstraction before having two concrete uses (Ousterhout sin #1)
+**Fix**: Delete both files now; implement inline when needed
+**Acceptance**: Files deleted; no compile errors; git history preserves code
+**Effort**: 5m | **Impact**: -573 lines of unused abstraction
+
+### [TEST][HIGH] Embed helpers coverage
 **File**: convex/lib/embeddingHelpers.ts
 **Perspectives**: maintainability-maven, security-sentinel
 **Problem**: Untested (userId mismatch, race deletion vulnerabilities)
-**Acceptance**: `convex/lib/embeddingHelpers.test.ts` covering get/upsert/delete, 768-dim guard, duplicate protection; Vitest green in CI
-**Effort**: 0.5d | **Principles**: Correctness guardrail
-
-### [TEST][HIGH] Payment/auth test coverage - Already Tracked
-**File**: New tests
-**Perspectives**: maintainability-maven, security-sentinel
-**Problem**: 0% test coverage on payment/subscription logic → no regression detection for money code
-**Acceptance**: Tests for subscription validation, upgrade flow, free tier enforcement; auth cookie handling tested; critical paths >80% coverage; CI enforces thresholds
-**Effort**: 1.5d | **Principles**: Test critical paths, money code gets tests
-
-### [COMPLEXITY][HIGH] Extract User Stats Counter Logic
-**Files**: convex/questionsBulk.ts:140-156, :203-218, :262-279; convex/questionsCrud.ts:63-68
-**Perspectives**: complexity-archaeologist, maintainability-maven
-**Problem**: State counting logic duplicated 4 times (totalCards, newCount, learningCount, matureCount calculation repeated)
-**Violation**: DRY principle, temporal decomposition (logic scattered across lifecycle operations)
-**Fix**: Extract `calculateStatsDeltaFromQuestions(questions, 'increment' | 'decrement')` to convex/lib/userStatsHelpers.ts
-**Acceptance**: 4 call sites use helper; tests cover increment/decrement; no behavior change
-**Effort**: 1.5h | **Impact**: Eliminates 45 lines of duplication, single source of truth for stat deltas
-
-### [UX][HIGH] Error Message Translation Layer
-**Files**: convex/generationJobs.ts:27-35, questionsCrud.ts:187-228, validation.ts:54-58
-**Perspectives**: user-experience-advocate, security-sentinel (info disclosure)
-**Problem**: Backend errors expose technical details ("Question not found or unauthorized: k17abc123")
-**Impact**: Users see jargon, attackers get reconnaissance data
-**Fix**: Create `translateBackendError()` in lib/error-handlers.ts; map common errors to user-friendly messages
-**Acceptance**: 10+ common errors mapped; unit tests for translation; rollout to frontend mutation calls
-**Effort**: 2h | **Value**: Users understand errors and how to fix them
+**Acceptance**: Tests covering get/upsert/delete, 768-dim guard, duplicate protection
+**Effort**: 0.5d
 
 ### [TEST][MEDIUM] Fix Analytics Module Caching for Testability
 **File**: lib/analytics.ts
-**Perspectives**: maintainability-maven
-**Problem**: Module-level `serverTrackPromise` caching prevents proper test isolation; 3 tests removed due to flakiness (passed in isolation, failed in suite)
-**Impact**: Lost coverage for analytics enable/disable paths, Sentry integration, user context clearing
-**Fix**: Refactor to eliminate module-level state or add factory pattern for testable initialization
-**Acceptance**: Restore 3 removed tests (see lib/analytics.test.ts:21-29 comment); all tests pass in suite and isolation; no vi.resetModules() required
-**Effort**: 4-6h | **Value**: Full analytics code path coverage without flakiness
-
-### [TEST][LOW] Extract __test Exports to Public Helpers
-**Files**: tests/helpers/loggerStub.ts, tests/helpers/convexFixtures.ts
-**Perspectives**: maintainability-maven
-**Problem**: Test helpers expose `__test` namespace for internal utilities (makePaginate, makeId) - awkward convention
-**Fix**: Either (a) extract to dedicated test utility module or (b) make part of public API if generally useful
-**Acceptance**: No `__test` exports; utilities available via clearer import path; tests updated
-**Effort**: 1h | **Value**: Cleaner test helper API
-
-### [TEST][LOW] Add Edge Case Coverage to Convex Tests
-**Files**: tests/convex/questionsInteractions.record.test.ts, generationJobs.logic.test.ts
-**Perspectives**: maintainability-maven
-**Problem**: Missing edge cases: null userAnswer, negative timeSpent, maxInt scheduledDays, concurrent job race conditions
-**Fix**: Add test cases for boundary conditions and error paths
-**Acceptance**: 4+ edge case tests added; coverage increases 3-5% on affected modules
-**Effort**: 3-4h | **Value**: Increased confidence in error handling
-
-### [TEST][LOW] Relax Migration Replace Assertions
-**File**: tests/convex/migrations.helpers.test.ts:116-119
-**Perspectives**: maintainability-maven
-**Problem**: `db.replace` test assertion expects exact object match - brittle if migration adds fields
-**Fix**: Use `expect.objectContaining()` instead of exact match
-**Acceptance**: Migration tests resilient to non-breaking field additions
-**Effort**: 15m | **Value**: Reduced test maintenance burden
+**Problem**: Module-level caching prevents test isolation; 3 tests removed due to flakiness
+**Fix**: Refactor to eliminate module-level state or add factory pattern
+**Acceptance**: Restore 3 removed tests; all pass in suite and isolation
+**Effort**: 4-6h
 
 ---
 
 ## Next (<6 weeks)
 
-### [INFRA][LOW] Extract Sentry Org/Project to GitHub Actions Variables
-**File**: .github/workflows/release.yml:52-53
-**Perspectives**: maintainability-maven
-**Problem**: `SENTRY_ORG` and `SENTRY_PROJECT` are hardcoded in workflow
-**Impact**: Low - values rarely change, but hardcoding reduces portability across forks/environments
-**Fix**: Extract to repository variables or add inline comment explaining intentional hardcoding
-**Acceptance**: Either (a) values moved to GitHub Actions variables, or (b) comment added explaining stability
-**Effort**: 15m | **Impact**: Maintainability improvement for multi-tenant/fork scenarios
-
-### [INFRA][LOW] Verify Sentry Source Map Alignment in Production
-**File**: .github/workflows/release.yml + Next.js build
-**Perspectives**: user-experience-advocate (debugging UX)
-**Problem**: GitHub Actions uses `github.sha` for release name, Vercel uses `VERCEL_GIT_COMMIT_SHA`
-**Current state**: Documented alignment (deployment-checklist.md:65-67) states they match for GitHub-triggered deployments
-**Validation needed**: Verify in production that source maps uploaded by both paths reference same release ID
-**Acceptance**: Test error in production → verify Sentry shows unminified stack trace with correct file/line; document findings
-**Effort**: 30m | **Impact**: Debugging UX confidence, validates observability stack integration
-
-### [TESTING][LOW] Coverage Threshold Optimization
-**Source**: PR #81 review feedback (Claude review P2)
-**Files**: .codecov.yml, vitest.config.ts
-**Problem**: 80% patch coverage threshold may be too strict for 27% global coverage project
-**Context**: Currently enforcing 80% patch coverage while global coverage is only 27%, creating friction
-**Acceptance**: Investigate optimal patch threshold; consider 60-70% for current state; document rationale; monitor merge difficulty over 2-4 weeks
-**Effort**: 1h | **Impact**: Developer experience, merge velocity
-
-### [TESTING][LOW] Test Script Naming Audit
-**Source**: PR #81 review feedback (Claude review P2)
-**Files**: package.json, tests/README.md
-**Problem**: Inconsistent naming between test:unit and test:integration scripts
-**Context**: Some scripts use colon separator, others don't; unclear distinction between unit/integration
-**Acceptance**: Standardize naming pattern; update docs; ensure all scripts have clear purpose documented
-**Effort**: 30m | **Impact**: Developer clarity, onboarding
-
-### [TESTING][LOW] Preview Smoke Test Timeout Tuning
-**Source**: PR #81 review feedback (Claude review P2)
-**Files**: .github/workflows/preview-smoke-test.yml
-**Problem**: Current timeout might need 15min for slow deployments
-**Context**: Preview deployment wait + smoke test execution may exceed current timeout
-**Acceptance**: Monitor timeout failures over 2-4 weeks; adjust if needed; document timeout rationale
-**Effort**: 15m | **Impact**: CI reliability
-
-### [TESTING][LOW] Hook Test Documentation
-**Source**: PR #81 review feedback (Claude review P2)
-**Files**: hooks/*.test.ts, hooks/*.test.tsx
-**Problem**: Hook tests lack documentation explaining WHY patterns used
-**Context**: Tests use specific patterns (mocking, timers, renders) without explaining rationale
-**Acceptance**: Add JSDoc comments to each test file explaining patterns, gotchas, and design decisions
-**Effort**: 1h | **Impact**: Test maintainability, team knowledge
-
-### [TESTING][LOW] Coverage File Generation Verification
-**Source**: PR #81 review feedback (Claude review follow-up)
-**Files**: vitest.config.ts, .github/workflows/ci.yml
-**Problem**: Workflow expects coverage-final.json but vitest may generate lcov.info instead
-**Context**: CI uploads coverage successfully with Codecov, but file format uncertain
-**Acceptance**: Verify which files vitest generates; update CI to use correct file; document in vitest.config.ts
-**Effort**: 30m | **Impact**: CI correctness
-
-### [TESTING][LOW] Pre-push Skip Exit Code
-**Source**: PR #81 review feedback (Claude review follow-up)
-**File**: scripts/test-changed-batches.sh:34-37
-**Problem**: Script exits 0 when >50 files changed, allowing broken code to be pushed
-**Context**: Safety check for initial commit comparison skips tests but reports success
-**Acceptance**: Consider exit 1 or warning to stderr; document decision; test behavior with large changesets
-**Effort**: 15m | **Impact**: Quality gate visibility
-
-### [TESTING][LOW] Batch Error Handling
-**Source**: PR #81 review feedback (Claude review follow-up)
-**File**: scripts/test-changed-batches.sh:45-55
-**Problem**: Individual batch failures don't stop subsequent batches
-**Context**: Script runs all batches even if one fails, wasting time on known-broken code
-**Acceptance**: Add `set -e` equivalent for batch failures or explicit early exit; verify hook behavior
-**Effort**: 20m | **Impact**: Developer feedback speed
+### [ARCH][CRITICAL] Complete Dual Data Model Migration (Kill Questions Table)
+**Files**: convex/schema.ts:32-174, convex/migrations.ts (2,997 lines)
+**Perspectives**: jobs, grug, performance-pathfinder
+**Problem**: Dual system (questions + concepts/phrasings) creates invisible complexity everywhere
+**Business Case**: Every new feature is 30% simpler after migration; single scheduling system
+**Fix**: Complete Phase 1→2→3 migration atomically; delete questions table; remove 2,997 lines
+**Acceptance**: Zero references to questions table; migrations.ts deleted or <200 lines
+**Effort**: 3-5d | **Impact**: MASSIVE simplification, unblocks velocity
 
 ### [ARCH][HIGH] Split migrations.ts God Object (2,997 lines)
 **File**: convex/migrations.ts:1-2997
-**Perspectives**: complexity-archaeologist, architecture-guardian, maintainability-maven
-**Problem**: 2,997 lines (8× complexity threshold), unbounded growth pattern, merge conflict magnet
-**Violation**: Single Responsibility (quiz migration + field cleanup + clustering + synthesis all in one file)
+**Perspectives**: complexity-archaeologist, architecture-guardian, jobs
+**Problem**: 8× complexity threshold, merge conflict magnet, unbounded growth
 **Fix**: Adopt migration-per-file pattern (Rails/Django convention)
-```
-convex/migrations/
-  2025_01_15_quiz_results_migration.ts
-  2025_01_20_remove_difficulty_field.ts
-  2025_02_01_user_created_at_backfill.ts
-  index.ts (registry)
-```
-**Acceptance**: Next 3 migrations use new pattern; existing migrations optionally extracted; migrations/ documented in CLAUDE.md
-**Effort**: 2h initial setup + 8h extraction (optional) | **Impact**: Prevents unlimited growth, clearer git history
-
-### [ARCH][MEDIUM] Model Concept Prerequisite Graph
-**File**: New (concept relationships)
-**Perspectives**: architecture-guardian, product-visionary
-**Problem**: Scheduling/visualization lacks prerequisites; cannot surface learning order or dependency-aware spacing.
-**Fix**: Add concept→concept relationship table (type, direction), UI to display graph, scheduler hook to respect prereqs.
-**Acceptance**: Relationships persisted; optional visual map; scheduling can prefer prerequisites before dependents.
-**Effort**: 3-4d | **Impact**: Better sequencing, clearer study plans
+**Acceptance**: Next 3 migrations use new pattern; existing optionally extracted
+**Effort**: 2h setup + 8h extraction | **Impact**: Prevents unlimited growth
 
 ### [ARCH][HIGH] Split concepts.ts God Object (1,072 lines)
 **File**: convex/concepts.ts:1-1072
 **Perspectives**: complexity-archaeologist, architecture-guardian, performance-pathfinder
-**Problem**: 1,072 lines, 19 exports, 7 distinct responsibilities (CRUD + review + pagination + generation + bulk + stats)
-**Violation**: Single Responsibility, high coupling (6/10), O(N) phrasing fetches for counts
-**Fix**: Split into 5 focused modules
-- conceptsCrud.ts (createMany, getDetail - 200 lines)
-- conceptsReview.ts (getDue, recordInteraction, FSRS - 250 lines)
-- conceptsLibrary.ts (listForLibrary, pagination - 300 lines)
-- conceptsBulk.ts (runBulkAction, archive/restore - 250 lines)
-- conceptsGeneration.ts (requestPhrasingGeneration - 100 lines)
-**Acceptance**: Tests pass; no behavior change; coupling reduced to 3/10; each module <300 lines
-**Effort**: 10h | **Impact**: Focused modules, reduced coupling, easier testing
+**Problem**: 19 exports, 7 distinct responsibilities (CRUD + review + pagination + generation + bulk + stats)
+**Fix**: Split into conceptsCrud, conceptsReview, conceptsLibrary, conceptsBulk, conceptsGeneration
+**Acceptance**: Each module <300 lines; tests pass; no behavior change
+**Effort**: 10h | **Impact**: Focused modules, easier testing
 
-### [PERF][HIGH] Fix Unbounded .collect() in migrations.ts
-**Files**: convex/migrations.ts (20+ instances), spacedRepetition.ts:216-275 (getUserCardStats_DEPRECATED)
-**Perspectives**: performance-pathfinder, architecture-guardian
-**Problem**: 20+ unbounded `.collect()` calls fetch ALL records → bandwidth quota exhaustion (1GB/month Starter)
-**Impact**: User with 10k cards → 2-3s query time, ~10MB response, quota burn
-**Fix**: Paginate with cursor iteration; remove deprecated `getUserCardStats_DEPRECATED` if unused
-**Acceptance**: All migrations use pagination; bandwidth per query <1MB; smoke test with 10k cards <500ms
-**Effort**: 4h | **Impact**: 100× bandwidth reduction, prevents quota exhaustion
+### [PRODUCT][CRITICAL] Monetization Foundation - Stripe Integration
+**Perspectives**: product-visionary
+**Problem**: $0 revenue, -$0.50/user/mo burn rate (existential threat)
+**Business Case**: $8/mo × 10% conversion × 1K users = $9,600/year; survival blocker
+**Fix**: Stripe Checkout + webhooks; schema adds subscriptionId/isPro/planType; free tier at 100 questions
+**Acceptance**: Checkout works; free tier enforced; /pricing page shipped
+**Effort**: 8d | **Value**: Unlock revenue, enable growth
 
-### [DESIGN][HIGH] Migrate Hardcoded Semantic Colors to Tokens
-**Files**: components/generation-task-card.tsx, review/review-mode.tsx, review/learning-mode-explainer.tsx, concepts/concepts-table.tsx (15 components total)
-**Perspectives**: design-systems-architect, maintainability-maven
-**Problem**: 15 components use `bg-red-50`, `text-blue-700` instead of semantic tokens → manual dark mode, can't rebrand
-**Fix**: Extend CSS token system with `--error-background`, `--success-border`, `--info-foreground`; migrate 15 components
-**Acceptance**: All semantic states use tokens; dark mode automatic; design tokens documented
-**Effort**: 2h | **Impact**: Consistent semantic colors, automatic dark mode, rebrandable
+### [PRODUCT][CRITICAL] Import/Export - Anki Deck Compatibility
+**Perspectives**: product-visionary, user-experience-advocate
+**Problem**: 80% of TAM blocked without data portability (Anki users can't migrate)
+**Business Case**: Primary acquisition channel; table-stakes for Anki switchers
+**Fix**: .apkg import to concepts/phrasings; CSV + JSON export; FSRS state preserved
+**Acceptance**: Import works with 5k card smoke test; export includes all user data
+**Effort**: 7d | **Value**: Opens 80% of addressable market
 
-### [COMPLEXITY][HIGH] Extract Unified EmptyState Component
-**Files**: components/empty-states.tsx, app/library/_components/library-empty-states.tsx, components/concepts/concepts-empty-state.tsx, components/review/review-empty-state.tsx
-**Perspectives**: complexity-archaeologist, design-systems-architect
-**Problem**: 4 files with 80% identical empty state code (icon + title + description + action pattern)
-**Violation**: DRY principle, visual drift (inconsistent spacing, icon sizes)
-**Fix**: Create components/ui/empty-state.tsx with variants ('default' | 'zen' | 'inline')
-**Acceptance**: 4 implementations migrated; visual consistency verified; prop interface documented
-**Effort**: 3h | **Impact**: Single source of truth, consistent spacing, faster iteration
+### [PRODUCT][HIGH] IQC Quality Dashboard (Hidden Gem → Flagship Feature)
+**File**: convex/iqc.ts (90% complete, no frontend!)
+**Perspectives**: product-visionary, grug, jobs
+**Problem**: IQC system built but hidden; too complex for main UI (Jobs: "feature creep")
+**Strategy**: Surface as opt-in Pro feature, not main UI requirement
+**Fix**: Build /quality route with health score, duplicate proposals, merge UI; auto-accept toggle (Pro)
+**Acceptance**: Dashboard shows collection health; action cards surfaced; Pro-gated auto-accept
+**Effort**: 3d | **Value**: FLAGSHIP DIFFERENTIATOR (only SRS with auto-cleanup)
 
-### [UX][MEDIUM] Mobile PWA - Already Tracked
-**File**: New - PWA configuration
+### [COMPLEXITY][HIGH] Simplify useReviewFlow (8-Layer State Machine)
+**File**: hooks/use-review-flow.ts (397 lines)
+**Perspectives**: grug, jobs
+**Problem**: useReducer + 12 state props + 3 refs + 3 useEffects + lock mechanism + session tracking
+**Violation**: 8-layer indirection to change currentQuestion
+**Fix**: Extract session tracking to separate hook; simplify to 3-4 state fields
+**Acceptance**: Hook <150 lines; session tracking in useSessionMetrics; tests pass
+**Effort**: 4h | **Impact**: Clear data flow, easier debugging
+
+### [COMPLEXITY][HIGH] Consolidate Hooks (30 → 15)
+**Files**: hooks/*.ts (30 files)
+**Perspectives**: jobs, grug
+**Problem**: Overlapping mutation hooks, single-use state abstractions, entropy
+**Fix**: Merge use-question-mutations + use-concept-actions → single useMutations()
+       Inline use-inline-edit (only used once)
+       Merge feedback hooks
+**Acceptance**: 15 hooks remain; no behavior change; import paths updated
+**Effort**: 4h | **Impact**: -600 lines, clearer flow
+
+### [DESIGN][HIGH] Create Error State Component
+**Files**: 6+ different error UI patterns across codebase
+**Perspectives**: design-systems-architect, user-experience-advocate
+**Problem**: No standard ErrorState component → hardcoded inline errors everywhere
+**Fix**: Create components/ui/error-state.tsx with card/inline/minimal variants
+**Acceptance**: 6 implementations migrated; retry button works; testable
+**Effort**: 2h component + 2h migration | **Impact**: Consistent error UX
+
+### [DESIGN][MEDIUM] Create Modal State Hook
+**Files**: edit-question-modal.tsx, generation-modal.tsx, generate-phrasings-dialog.tsx
+**Perspectives**: design-systems-architect
+**Problem**: Same state reset pattern duplicated in 4 modals (open → reset → validate → save)
+**Fix**: Create `useModalForm` hook with lifecycle management
+**Acceptance**: 4 modals migrated; no behavior change; 40% less boilerplate
+**Effort**: 3h hook + 2h migration | **Impact**: DRY, consistent modal behavior
+
+### [UX][HIGH] Reduce Keyboard Shortcuts (13 → 5)
+**File**: hooks/use-keyboard-shortcuts.ts
+**Perspectives**: jobs
+**Problem**: 13 shortcuts nobody remembers; 3 ways to go next (Space, →, Enter)
+**Fix**: Keep ?, 1-4, Enter, e, Escape. Move h/Ctrl+S/n to visible navbar buttons.
+**Acceptance**: 5 shortcuts remain; help modal updated; navbar has visible actions
+**Effort**: 1h | **Impact**: Discoverability, less code
+
+### [UX][MEDIUM] Delete Settings Page (One Setting = Modal)
+**File**: app/settings/settings-client.tsx
+**Perspectives**: jobs
+**Problem**: Entire page for one setting (Delete Account) + Clerk auth explanation nobody needs
+**Fix**: Move delete account to modal in user menu; delete settings page
+**Acceptance**: /settings redirects to /library; user menu has delete option
+**Effort**: 1h | **Impact**: Simpler navigation, -150 lines
+
+### [PERF][HIGH] Fix Unbounded .collect() in migrations.ts (20+ instances)
+**Files**: convex/migrations.ts (20+ instances)
+**Perspectives**: performance-pathfinder
+**Problem**: 20+ unbounded `.collect()` calls → bandwidth quota exhaustion
+**Fix**: Paginate with cursor iteration
+**Acceptance**: All migrations use pagination; bandwidth per query <1MB
+**Effort**: 4h | **Impact**: 100× bandwidth reduction
+
+### [PRODUCT] Deck Sharing & Viral Growth (K-factor engine)
+**Perspectives**: product-visionary
+**Business Case**: Quizlet growth = 70% from sharing; K-factor 0.3-0.5 per shared deck
+**Phase 1**: Share links, clone functionality, basic permissions
+**Acceptance**: Share link generates read-only access; clone to library works
+**Effort**: 5d | **Value**: Primary viral growth engine
+
+### [PRODUCT] Mobile PWA + Offline Support
 **Perspectives**: product-visionary
 **Problem**: Web-only blocks 40% of market (mobile-first learners)
-**Business Case**: Mobile users 2× engagement, 5× longer lifetime
-**Acceptance**: Manifest + service worker + offline caching; touch targets ≥44px; Lighthouse PWA score ≥90; offline review for last-synced deck
-**Effort**: 5d | **Principles**: Availability, user-first
+**Business Case**: Mobile users 2× engagement, 5× longer LTV
+**Fix**: Manifest + service worker + offline review for last-synced deck
+**Acceptance**: Lighthouse PWA ≥90; offline review works; touch targets ≥44px
+**Effort**: 5d | **Value**: Opens 40% market
 
-### [PERF][MEDIUM] Search cancel/backpressure - Already Tracked
-**File**: app/library/_components/library-client.tsx:62-102
-**Perspectives**: performance-pathfinder
-**Problem**: Debounces but still fires every change; no Abort/backoff → wasted tokens
-**Acceptance**: AbortController or action cancel; rate-limit to 1 in-flight; tests for stale-response ignore and request-count drop
-**Effort**: 1d | **Principles**: Efficiency, explicit resource limits
-
-### [DESIGN][MEDIUM] Consolidate empty states - Already Tracked
-**File**: components/empty-states.tsx vs app/library/_components/library-empty-states.tsx
-**Perspectives**: design-systems-architect
-**Problem**: Parallel empty-state components drift
-**Acceptance**: Single token-driven empty-state primitive; replace library variants; docs added
-**Effort**: 1d (overlaps with Extract Unified EmptyState) | **Principles**: Design-system coherence
-
-### [ARCH][MEDIUM] Retire deprecated questions table - Already Tracked
-**File**: convex/schema.ts:33-104
-**Perspectives**: architecture-guardian
-**Problem**: Keeps deprecated `questions` + vector index beyond 2025-12-17 window
-**Acceptance**: Phase-out plan (optional → migrate → drop field/index); diagnostics show zero dependents; deploy after migration
-**Effort**: 2d | **Principles**: Remove shallow legacy
-
-### [MAINT][MEDIUM] Component tests for primitives - Already Tracked
-**Perspectives**: maintainability-maven
-**Acceptance**: Vitest for Button, CustomEmptyState, Card; cover disabled/variants/a11y
-**Effort**: 1d | **Principles**: Refactor safety
-
-### [DATA][MEDIUM] Make users.createdAt required - Already Tracked
-**File**: convex/schema.ts:13
-**Problem**: Optional createdAt left as TODO without migration plan
-**Acceptance**: Backfill timestamps; schema required; guard in creates; migration plan documented
-**Effort**: 1d | **Principles**: Explicit invariants
-
-### [TEST][MEDIUM] Cleanup skipped tests - Already Tracked
-**Perspectives**: maintainability-maven
-**Problem**: 7 tests with `.skip` → false green in CI; skipped tests rot
-**Acceptance**: Review each skip; fix or delete; document unskip plan; zero skips in main
-**Effort**: 0.5d | **Principles**: Tests or no tests, no limbo
-
-### [TEST][MEDIUM] E2E smoke tests foundation - Already Tracked
-**Perspectives**: user-experience-advocate, maintainability-maven
-**Problem**: Playwright configured but zero tests → happy-path regressions not caught
-**Acceptance**: Smoke tests for auth flow, quiz creation, review session; run in CI on PRs; <2min total runtime; or delete config if decision is no E2E
-**Effort**: 1.5d | **Principles**: Test user flows, no config theater
-
-### [CI][LOW] Fix Lighthouse workflow Convex deploy - Already Tracked
-**File**: .github/workflows/lighthouse.yml
-**Perspectives**: architecture-guardian
-**Problem**: Runs `pnpm build` without Convex deploy → may fail or test stale backend
-**Acceptance**: Use vercel-build.sh or add `npx convex deploy &&` prefix; verify Lighthouse runs post-deploy
-**Effort**: 0.25d | **Principles**: Stack-aware automation, Convex-first
-
-### [UX][MEDIUM] Undo Toast for Deletions
-**Files**: components/review-flow.tsx:181-201, hooks/use-question-mutations.ts
-**Perspectives**: user-experience-advocate
-**Problem**: After confirmation, deletion instant with no undo → high cognitive load for accidents
-**Fix**: Add undo action to toast (Sonner supports `action` prop)
-```typescript
-toast.success('Question moved to trash', {
-  action: {
-    label: 'Undo',
-    onClick: async () => {
-      await restoreQuestion({ questionId });
-      toast.success('Question restored');
-    },
-  },
-  duration: 8000,
-});
-```
-**Acceptance**: Undo button in delete toast; 8s window to undo; restoration works; tests for undo flow
-**Effort**: 45m | **Impact**: Users fix mistakes without breaking flow
-
-### [UX][MEDIUM] Generation Progress Indicator
-**Files**: components/generation-modal.tsx:76-91, navbar (new badge)
-**Perspectives**: user-experience-advocate
-**Problem**: Modal closes instantly, no progress visibility unless user navigates to /tasks
-**Fix**: Add background job indicator to navbar ("⏳ 1 generating" badge); toast with "View Progress" action
-**Acceptance**: Navbar shows active job count; clicking badge navigates to /tasks; toast includes progress link
-**Effort**: 2h | **Impact**: Users aware of progress without checking separate page
+### [PRODUCT] Advanced Analytics Dashboard (Pro tier driver)
+**Perspectives**: product-visionary
+**Features**: Retention curves, forgetting curve viz, knowledge graph, mastery tracking
+**Business Case**: #2 most requested feature; 10-15% of Pro conversions cite analytics
+**Acceptance**: 8+ chart types; export PDF/CSV; Pro-gated
+**Effort**: 10d | **Value**: Pro tier conversion driver
 
 ---
 
 ## Soon (3–6 months)
 
-### [PRODUCT] Deck Sharing & Viral Growth
-**Perspectives**: product-visionary
-**Business Case**: K-factor 0.3-0.5 (each shared deck = 5-20 acquisitions); Quizlet's growth = 70% from sharing
-**Phase 1** (5d): Share links, clone functionality, basic permissions
-**Phase 2** (10d): Marketplace with discovery, ratings, creator profiles
-**Monetization**: Free tier 3 shared decks, Pro unlimited, revenue share on premium decks
-**Acceptance**: Share link generates read-only access; clone to library; public/private/link permissions
-**Effort**: 5d (Phase 1) | **Value**: Primary viral growth engine
-
-### [PRODUCT] IQC Feature Polish (Hidden Gem)
-**File**: convex/iqc.ts (already 90% built!)
-**Perspectives**: product-visionary, complexity-archaeologist
-**Opportunity**: IQC system (concept clustering, duplicate detection, AI merging) is hidden - no frontend!
-**Business Case**: Unique differentiator ("The only SRS app that auto-cleans your deck"), premium feature for auto-accept
-**Fix**: Build Quality Dashboard showing health score, duplicate proposals, thin concepts, one-click merge UI
-**Acceptance**: /quality route shows collection health; action cards surfaced; merge proposals reviewable; auto-accept toggle (Pro)
-**Effort**: 3d | **Impact**: FLAGSHIP FEATURE differentiation
-
 ### [ARCH] Split embeddings.ts God Object (1,048 lines)
-**File**: convex/embeddings.ts:1-1048
-**Perspectives**: complexity-archaeologist, architecture-guardian
-**Problem**: 12+ exports, conflates AI provider with search logic
-**Fix**: Split into embeddingGeneration.ts, embeddingSearch.ts, embeddingBatch.ts, embeddingMigration.ts
-**Effort**: 8h | **Impact**: Decouples AI provider from search
+- 12+ exports, conflates AI provider with search logic
+- Split into embeddingGeneration, embeddingSearch, embeddingBatch, embeddingMigration
+- **Effort**: 8h
 
 ### [PERF] Optimize getQuestionsWithoutEmbeddings
-**File**: convex/embeddings.ts:525-572
-**Perspectives**: performance-pathfinder
-**Problem**: Loads ALL questionEmbeddings into memory (50k+ records = 50MB + 5s) to find missing
-**Fix**: Use LEFT JOIN pattern or filter directly in query instead of building full Map
-**Effort**: 2h | **Impact**: 5s → <500ms cron startup (10× faster)
+- Loads ALL questionEmbeddings into memory (50k+ = 50MB + 5s) to find missing
+- Use LEFT JOIN pattern or filter directly in query
+- **Effort**: 2h | **Impact**: 5s → <500ms cron startup
 
 ### [PRODUCT] Public API for Ecosystem
-**Perspectives**: product-visionary
-**Business Case**: Developer ecosystem = force multiplier; API access = enterprise requirement; Anki API dated
-**Implementation**: REST wrapper around Convex, OAuth (Clerk), rate limiting, webhooks, developer portal
-**Monetization**: Free 100 req/hr, Pro 1K req/hr, Enterprise custom + SLA
-**Effort**: 15d | **Value**: Ecosystem enabler, enterprise sales channel
+- REST wrapper around Convex, OAuth, rate limiting, webhooks, developer portal
+- Monetization: Free 100 req/hr, Pro 1K req/hr, Enterprise custom
+- **Effort**: 15d | **Value**: Ecosystem enabler, enterprise channel
 
-### [UX] Bulk Operations UI
-**File**: app/library/_components/library-table.tsx
-**Perspectives**: user-experience-advocate, performance-pathfinder (already tracked O(N×M) issue)
-**Problem**: Managing 1,000+ cards requires one-by-one operations
-**Fix**: Selection system (checkbox, select all/none/filtered) + bulk actions bar (archive, delete, export, reschedule)
-**Note**: Perf optimization (memoized selection) already in Now section
-**Acceptance**: Multi-select works; bulk actions confirmed; performance <50ms for 100 selections
-**Effort**: 3d UI (after perf fix) | **Impact**: 10× faster for large collections
+### [COMPLEXITY] Split unified-lab-client.tsx (721 lines)
+- 15+ state variables, loading + execution + UI rendering mixed
+- Extract ConfigSelector, TestResultsDisplay, ComparisonView, ExecutionOrchestrator
+- **Effort**: 4h
 
-### [PRODUCT] Advanced Analytics Dashboard
-**Perspectives**: product-visionary
-**Features**: Retention curves, forgetting curve viz, knowledge graph, mastery tracking, time invested, streak heatmap
-**Monetization**: Free tier basic stats, Pro tier full analytics, Team tier aggregate analytics
-**Acceptance**: 8+ chart types; export reports (PDF/CSV); Pro-gated features enforced
-**Effort**: 10d | **Value**: Pro tier conversion driver (#2 most requested feature)
+### [COMPLEXITY] Consolidate Validation Approaches
+- Three different patterns: manual functions, Zod schemas, direct mutation checks
+- Pick one approach (Zod) and migrate
+- **Effort**: 4h
 
-- Schema observability: Convex metrics + alerting for webhook/auth failures (post fail-closed work)
-- AI prompt hardening (sanitize + allowlist) once monetization covers cost
+### [COMPLEXITY] Simplify library-client Props (16+ passed to 3 identical tabs)
+- Use context or provider pattern instead of threading 16 props
+- **Effort**: 3h
 
 ---
 
 ## Later (6+ months)
 
 ### [PRODUCT] Medical Education Vertical
-**Market**: 900k medical students globally, $2B market, willingness to pay $20-50/mo (10× general)
-**Features**: Medical content templates (drug cards, anatomy, clinical cases), pre-made USMLE/COMLEX decks, LMS integration, faculty dashboard
-**Monetization**: Individual $20/mo, school license $500/year/student, institutional custom
-**Effort**: 15d | **Value**: 10× ARPU, $10M+ ARR potential
+- 900K medical students, $20-50/mo willingness (10× general market)
+- USMLE/COMLEX decks, drug card templates, faculty dashboard
+- **Effort**: 15d | **Value**: 10× ARPU, $10M+ ARR potential
 
 ### [PRODUCT] AI Document Processing
-**Features**: PDF upload, web clipping browser extension, Markdown import, text extraction → concept generation
-**Use Case**: "Create 50 cards from lecture notes in 2 minutes"
-**Monetization**: Free text input only, Pro unlimited + file upload, Team bulk processing
-**Effort**: 3d text → 5d files → 8d extension (16d total) | **Value**: Content acquisition, reduces creation friction
+- PDF upload, web clipping extension, Markdown import → concept generation
+- "Create 50 cards from lecture notes in 2 minutes"
+- **Effort**: 16d total | **Value**: Content acquisition
 
 ### [PLATFORM] Team Collaboration & Workspaces
-**Features**: Shared workspaces, team admin dashboard, usage analytics, SSO/SAML
-**Monetization**: $40/user/month B2B tier
-**Effort**: 20d | **Value**: Enterprise sales channel
+- Shared workspaces, team admin dashboard, SSO/SAML
+- $40/user/month B2B tier
+- **Effort**: 20d | **Value**: Enterprise sales channel
 
-- React Native mobile app (app store presence, native features)
+- React Native mobile app (app store presence)
 - Browser extension (quick capture)
 
 ---
 
 ## Learnings
 
-**From this grooming session:**
-- **God object bloat**: Time pressure led to accumulation (migrations.ts 3k lines, concepts.ts 1k lines) vs strategic splitting
-- **Hidden gem discovered**: IQC system 90% built but not surfaced to users - flagship differentiator waiting for UX
-- **Bandwidth anti-patterns**: 20+ unbounded `.collect()` calls risk quota exhaustion (1GB/month Starter plan)
-- **Design system strength**: Strong token foundation but 15 components bypass semantic colors (hardcoded blue/red/green)
-- **Cross-perspective validation works**: God objects flagged by 3+ agents (complexity, architecture, maintainability) = highest confidence signal
-- **Product-market fit gap**: Technical excellence but missing go-to-market features (monetization, import/export, mobile, sharing)
-- **Security posture strong**: No critical production vulnerabilities; main risks are devDependency CVEs (happy-dom RCE)
-- **80/20 insight**: 5 features in 28 days unlock revenue + 3× adoption + viral growth + differentiation
+**From this grooming session (2025-11-29):**
+- **Dual data model is the root cause**: Questions + Concepts coexisting creates 2,997 lines of migration code, dual scheduling, and query complexity everywhere. Complete migration unlocks 30% simpler features.
+- **IQC positioning wrong**: 90% built but over-engineered for main UI. Should be opt-in Pro feature, not default experience. Jobs: "Users don't know why action cards appear."
+- **N+1 in hot path**: getDue() does 35+ queries per call due to loop + await pattern. 10-minute fix for 3-4× speedup.
+- **Hook entropy**: 30 hooks for overlapping concerns. Grug: "Abstraction before two uses."
+- **Persona convergence**: Jobs + Grug agree on 5 deletions (unused managers, settings page, keyboard shortcuts, IQC complexity).
 
 **Keep 2-3 recent learnings:**
-- Fail-open auth surfaced; config validation must be part of deploy scripts
-- Library UI still mixes state/render logic; small perf fixes deliver big UX wins
-- Quality gates audit: Excellent foundation (Lefthook + Gitleaks + Trivy + Changesets); main gap is test coverage (18% vs 60% target) + Husky/Lefthook conflict resolved
+- Cross-perspective validation works: God objects flagged by 3+ agents (complexity, architecture, performance, design) = highest confidence signal
+- Security posture strong: No critical production vulnerabilities; main risks are devDependency CVEs and DoS via unbounded queries
+- 80/20 insight: Complete dual-model migration + monetization + import/export = unblock 80% of value in next quarter
 
 ---
 
 ## Report
 
-**Analysis Method**: 8 parallel agents (complexity-archaeologist, architecture-guardian, security-sentinel, performance-pathfinder, maintainability-maven, user-experience-advocate, product-visionary, design-systems-architect)
+**Analysis Method**: 15-perspective audit (8 specialists + 7 master personas)
+**Completed Agents**: security-sentinel, performance-pathfinder, user-experience-advocate, product-visionary, design-systems-architect, grug, jobs
 
 **Multi-Perspective Cross-Validation**:
-- **3+ agents**: God objects (migrations.ts, concepts.ts), dependency CVEs (happy-dom RCE)
-- **2 agents**: Hardcoded colors breaking tokens, empty state duplication, unbounded `.collect()`, poor error messages, stat counter duplication
+- **3+ agents**: Dual data model complexity, god objects (migrations.ts, concepts.ts), IQC over-engineering
+- **2 agents**: Unbounded .collect() (perf+security), semantic colors (design+UX), error messages (UX+security)
+
+**Persona Convergence Signals**:
+- **Jobs + Grug agree on deletion**: ConfigManager/InputManager (unused), settings page (1 setting), keyboard shortcuts (13→5)
+- **Performance + Security agree**: Validate all limit params, fix unbounded queries
 
 **Strategic Insights**:
-- **Technical Foundation**: Excellent (7.5/10) - clean architecture, no circular dependencies, deep modules, comprehensive infrastructure
-- **Go-to-Market Gaps**: Critical - no revenue ($0), no import/export (80% TAM blocked), no mobile (40% market lost), no sharing (zero viral growth)
-- **Hidden Opportunities**: IQC system 90% complete (unique differentiator), design token system strong (needs semantic color migration)
-- **High-Leverage Wins**: 5 features × 28 days = revenue + adoption + growth + differentiation
-
-**Shifts from Previous Backlog**:
-- **Added**: 10+ new items from 8-perspective audit (god object splits, `.collect()` fixes, UX improvements, design system refinements)
-- **Preserved**: All existing CRITICAL items (security, monetization, import/export, perf)
-- **Enhanced**: Business justification for product features, effort estimates for technical work
-- **Organized**: Clear Now/Next/Soon/Later with detail gradient
+- **Technical Foundation**: Excellent (8/10) - clean architecture, good security, deep modules
+- **Complexity Debt**: High - dual data model, 3K line migrations.ts, 30 hooks with overlap
+- **Go-to-Market Gaps**: Critical - $0 revenue, no import/export, no mobile, no sharing
+- **Hidden Gem**: IQC system 90% complete → unique differentiator waiting for right UX
 
 **Next Three Priorities**:
-1. Security updates (happy-dom, glob CVEs - 30m)
-2. Monetization foundation (8d - survival blocker)
-3. Import/Export (7d - adoption unlocker)
+1. Security fixes (validate limits, webhook auth) - 1h total
+2. Performance fixes (N+1 getDue, unbounded .collect()) - 30m total
+3. Complete dual-model migration - 3-5d (unblocks everything)
 
 **Risks/Asks**:
-- Dependency updates should be immediate (security)
-- God object splits are high-value but require 18h investment (migrations + concepts)
-- IQC feature polish is quick win (3d) for unique differentiation
-- Product priorities (monetization, import/export, mobile PWA) already well-prioritized in existing backlog
+- Dual data model migration is high-value but requires focused 3-5d investment
+- IQC needs UX redesign before shipping as flagship (hide behind Pro opt-in)
+- 30 hooks → 15 hooks consolidation prevents future entropy
