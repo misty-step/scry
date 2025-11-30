@@ -153,15 +153,6 @@
 
 ## Next (<6 weeks)
 
-### [ARCH][CRITICAL] Complete Dual Data Model Migration (Kill Questions Table)
-**Files**: convex/schema.ts:32-174, convex/migrations.ts (2,997 lines)
-**Perspectives**: jobs, grug, performance-pathfinder
-**Problem**: Dual system (questions + concepts/phrasings) creates invisible complexity everywhere
-**Business Case**: Every new feature is 30% simpler after migration; single scheduling system
-**Fix**: Complete Phase 1→2→3 migration atomically; delete questions table; remove 2,997 lines
-**Acceptance**: Zero references to questions table; migrations.ts deleted or <200 lines
-**Effort**: 3-5d | **Impact**: MASSIVE simplification, unblocks velocity
-
 ### [ARCH][HIGH] Split migrations.ts God Object (2,997 lines)
 **File**: convex/migrations.ts:1-2997
 **Perspectives**: complexity-archaeologist, architecture-guardian, jobs
