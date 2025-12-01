@@ -30,8 +30,7 @@ CRITICAL_FUNCTIONS=(
   "generationJobs:cancelJob"
   "aiGeneration:processJob"
   "questions:saveBatch"
-  "spacedRepetition:getNextReview"
-  "spacedRepetition:scheduleReview"
+  "concepts:getDue"
   "health:check"
 )
 
@@ -116,7 +115,7 @@ echo "📋 Checking database schema (userStats table and indexes)..."
 echo ""
 
 # Check if userStats table exists by trying to query it
-USERSTATS_CHECK=$(npx convex run spacedRepetition:getUserCardStats 2>&1 || echo "ERROR")
+USERSTATS_CHECK=$(npx convex run concepts:getConceptsDueCount 2>&1 || echo "ERROR")
 
 if echo "$USERSTATS_CHECK" | grep -q "Table.*userStats.*does not exist\|not found"; then
   echo -e "${RED}❌ FAILED: userStats table not found in schema${NC}"

@@ -40,7 +40,7 @@ Scry implements a comprehensive structured logging system using Pino.js, designe
   "userId": "user_xyz789", 
   "topic": "javascript",
   "duration": 1250,
-  "questionCount": 10,
+  "phrasingCount": 10,
   "msg": "Successfully generated 10 questions for javascript"
 }
 ```

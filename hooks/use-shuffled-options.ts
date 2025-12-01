@@ -1,9 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useUser } from '@clerk/nextjs';
-
-import { getShuffleSeed, shuffleWithSeed } from '@/lib/utils/shuffle';
+import { shuffle } from '@/lib/utils/shuffle';
 
 /**
  * Shuffle question options deterministically based on questionId and userId
@@ -36,22 +34,6 @@ import { getShuffleSeed, shuffleWithSeed } from '@/lib/utils/shuffle';
  * }
  * ```
  */
-export function useShuffledOptions(
-  options: string[],
-  questionId: string | null | undefined
-): string[] {
-  const { user } = useUser();
-
-  return useMemo(() => {
-    // Don't shuffle if no questionId (preview mode, temporary questions)
-    if (!questionId) {
-      return options;
-    }
-
-    // Generate deterministic seed from questionId + userId
-    const seed = getShuffleSeed(questionId, user?.id);
-
-    // Shuffle options using seeded shuffle
-    return shuffleWithSeed(options, seed);
-  }, [options, questionId, user?.id]);
+export function useShuffledOptions(options: string[]): string[] {
+  return useMemo(() => shuffle(options), [options]);
 }

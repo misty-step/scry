@@ -6,30 +6,9 @@ export const fixedNow = new Date('2025-01-16T12:00:00Z').getTime();
 
 const makeId = <T extends TableNames>(table: T, suffix = '1') => `${table}_${suffix}` as Id<T>;
 
-type QuestionDoc = Doc<'questions'>;
 type ConceptDoc = Doc<'concepts'>;
 type PhrasingDoc = Doc<'phrasings'>;
 type GenerationJobDoc = Doc<'generationJobs'>;
-
-export function makeQuestion(overrides: Partial<QuestionDoc> = {}): QuestionDoc {
-  const base: QuestionDoc = {
-    _id: makeId('questions'),
-    _creationTime: fixedNow,
-    userId: makeId('users'),
-    question: 'What is ATP?',
-    type: 'multiple-choice',
-    options: ['A', 'B', 'C'],
-    correctAnswer: 'A',
-    generatedAt: fixedNow,
-    attemptCount: 0,
-    correctCount: 0,
-  };
-
-  return {
-    ...base,
-    ...overrides,
-  };
-}
 
 export function makeConcept(overrides: Partial<ConceptDoc> = {}): ConceptDoc {
   const base: ConceptDoc = {
@@ -106,11 +85,10 @@ export function makeGenerationJob(overrides: Partial<GenerationJobDoc> = {}): Ge
     prompt: 'Explain mitochondria',
     status: 'pending',
     phase: 'clarifying',
-    questionsGenerated: 0,
-    questionsSaved: 0,
+    phrasingGenerated: 0,
+    phrasingSaved: 0,
     estimatedTotal: undefined,
     topic: undefined,
-    questionIds: [],
     conceptIds: [],
     pendingConceptIds: [],
     durationMs: undefined,

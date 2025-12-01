@@ -8,6 +8,3 @@ export * from './auth-helpers';
 
 // Render utilities for React Testing Library
 export * from './render-with-providers';
-
-// Test data fixtures
-export * from './fixtures';

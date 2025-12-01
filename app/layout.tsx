@@ -10,7 +10,6 @@ import { Footer } from '@/components/footer';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { CurrentQuestionProvider } from '@/contexts/current-question-context';
 import { ConfirmationProvider } from '@/hooks/use-confirmation';
 import { validateEnv } from '@/lib/env';
 import { getLayoutClassName, needsNavbarSpacer } from '@/lib/layout-mode';
@@ -55,17 +54,15 @@ export default function RootLayout({
               <ClerkConvexProvider>
                 <ConvexErrorBoundary>
                   <DeploymentVersionGuard>
-                    <CurrentQuestionProvider>
-                      <div className={getLayoutClassName()}>
-                        <ConditionalNavbar />
-                        {needsNavbarSpacer() && <div className="h-16" />}
-                        <main>{children}</main>
-                        <Footer />
-                      </div>
-                      <Toaster />
-                      <AnalyticsWrapper />
-                      <SpeedInsights />
-                    </CurrentQuestionProvider>
+                    <div className={getLayoutClassName()}>
+                      <ConditionalNavbar />
+                      {needsNavbarSpacer() && <div className="h-16" />}
+                      <main>{children}</main>
+                      <Footer />
+                    </div>
+                    <Toaster />
+                    <AnalyticsWrapper />
+                    <SpeedInsights />
                   </DeploymentVersionGuard>
                 </ConvexErrorBoundary>
               </ClerkConvexProvider>
