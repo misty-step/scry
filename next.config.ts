@@ -174,11 +174,6 @@ const nextConfig: NextConfig = {
         destination: '/concepts',
         permanent: true,
       },
-      {
-        source: '/tasks',
-        destination: '/concepts',
-        permanent: true,
-      },
     ];
   },
 };
