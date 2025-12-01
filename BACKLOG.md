@@ -9,18 +9,6 @@
 
 ## Now (<2 weeks, sprint-ready)
 
-### [TESTING][CRITICAL] 70%+ Coverage Sprint (In Progress)
-**Files**: 10 critical modules (convex/fsrs/engine.ts, spacedRepetition.ts, rateLimit.ts, aiGeneration.ts, generationJobs.ts, concepts.ts, embeddings.ts, userStats.ts, questionsCrud.ts, lib/ai-client.ts)
-**Problem**: Coverage at 39%, Codecov broken showing "unknown" badge, no PR-level feedback
-**Target**: 70%+ with hard threshold enforcement
-**Features**:
-- Dedicated test sprint for critical business logic
-- Hard 70% threshold (PRs blocked if below)
-- Dynamic PR coverage comments via vitest-coverage-report-action (Codecov removed)
-- Self-hosted shields.io badge (no external dependencies)
-**Tracking**: See TASK.md (PRD), TODO.md (checklist), DESIGN.md (architecture)
-**Effort**: 12-16 hours test writing + 30min infrastructure | **Impact**: Every PR gets coverage feedback, regressions blocked
-
 ### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen
 - Sometimes a concept or phrasing won't quite be right
 - Learner hits regenerate button, specifies phrasing vs whole concept, adds optional notes
