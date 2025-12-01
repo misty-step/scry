@@ -74,7 +74,6 @@ export default defineConfig({
       'dist/',
       '.next/',
       'tests/e2e/**', // Keep Playwright E2E tests separate
-      'tests/perf/**', // Run via pnpm test:perf (large fixtures)
       'lib/generated/**',
     ],
 

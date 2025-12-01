@@ -4,7 +4,7 @@ import * as conceptsModule from '@/convex/concepts';
 import { createMockCtx, createMockDb, makePhrasing } from '@/tests/helpers';
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 vi.mock('@/convex/fsrs', () => ({
@@ -64,8 +64,6 @@ describe('concepts.createMany', () => {
   });
 });
 
-// Skip: These tests access private unexported functions.
-// TODO: Either export via __test pattern or test through public API.
 describe('concepts helpers (private functions)', () => {
   const { prioritizeConcepts, selectActivePhrasing } = conceptsModule.__test as {
     prioritizeConcepts: (
