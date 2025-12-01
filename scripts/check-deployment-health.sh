@@ -29,7 +29,6 @@ CRITICAL_FUNCTIONS=(
   "generationJobs:createJob"
   "generationJobs:cancelJob"
   "aiGeneration:processJob"
-  "questions:saveBatch"
   "concepts:getDue"
   "health:check"
 )
@@ -110,71 +109,39 @@ fi
 echo -e "${GREEN}✅ All critical functions are deployed${NC}"
 echo ""
 
-# Check 4: Verify userStats table exists and compound indexes are deployed
-echo "📋 Checking database schema (userStats table and indexes)..."
+# Check 4: Verify schema includes active concept/phrasing/generation tables and key indexes
+echo "📋 Checking database schema (core tables and indexes)..."
 echo ""
 
-# Check if userStats table exists by trying to query it
-USERSTATS_CHECK=$(npx convex run concepts:getConceptsDueCount 2>&1 || echo "ERROR")
-
-if echo "$USERSTATS_CHECK" | grep -q "Table.*userStats.*does not exist\|not found"; then
-  echo -e "${RED}❌ FAILED: userStats table not found in schema${NC}"
-  echo "   This table is required for bandwidth optimization"
-  echo ""
-  echo -e "${YELLOW}💡 Fix: Ensure schema changes are deployed${NC}"
-  echo "   The userStats table should be defined in convex/schema.ts"
-  echo "   Run: npx convex deploy"
-  echo ""
-  exit 1
-fi
-
-echo -e "${GREEN}✓${NC} userStats table exists"
-
-# Verify compound indexes by checking if queries use them
-# We can't directly check index existence, but we can verify the schema defines them
 SCHEMA_CHECK=$(cat convex/schema.ts 2>/dev/null || echo "")
 
-if echo "$SCHEMA_CHECK" | grep -q "by_user_active"; then
-  echo -e "${GREEN}✓${NC} by_user_active compound index defined in schema"
+REQUIRED_TABLES=(
+  "concepts:"
+  "phrasings:"
+  "generationJobs:"
+  "interactions:"
+)
+
+for table in "${REQUIRED_TABLES[@]}"; do
+  if echo "$SCHEMA_CHECK" | grep -q "$table"; then
+    echo -e "${GREEN}✓${NC} ${table%%:*} table defined in schema"
+  else
+    echo -e "${RED}✗${NC} ${table%%:*} table not found in schema"
+    MISSING_FUNCTIONS+=("${table%%:*} table missing")
+  fi
+done
+
+# Key indexes we rely on for performance
+if echo "$SCHEMA_CHECK" | grep -q "by_user_status"; then
+  echo -e "${GREEN}✓${NC} generationJobs by_user_status index defined"
 else
-  echo -e "${YELLOW}⚠${NC}  by_user_active index not found in schema (may not be deployed)"
+  echo -e "${YELLOW}⚠${NC} generationJobs by_user_status index not found (may impact dashboard pagination)"
 fi
 
-if echo "$SCHEMA_CHECK" | grep -q "by_user_state"; then
-  echo -e "${GREEN}✓${NC} by_user_state compound index defined in schema"
+if echo "$SCHEMA_CHECK" | grep -q "by_user_phrasing"; then
+  echo -e "${GREEN}✓${NC} interactions by_user_phrasing index defined"
 else
-  echo -e "${YELLOW}⚠${NC}  by_user_state index not found in schema (may not be deployed)"
-fi
-
-echo ""
-
-# Check if questionEmbeddings table exists (bandwidth optimization - embeddings separation)
-echo "📋 Checking questionEmbeddings table (embeddings separation)..."
-echo ""
-
-if echo "$SCHEMA_CHECK" | grep -q "questionEmbeddings:"; then
-  echo -e "${GREEN}✓${NC} questionEmbeddings table defined in schema"
-else
-  echo -e "${YELLOW}⚠${NC}  questionEmbeddings table not found in schema"
-  echo "   Note: Required for embeddings separation (bandwidth optimization)"
-fi
-
-# Check for questionEmbeddings indexes
-# Extract only the questionEmbeddings table definition to avoid false positives
-# (interactions table also has a by_question index, questions table has deprecated by_embedding)
-# Pattern: From 'questionEmbeddings:' to the closing vector index line '    }),'
-EMBEDDINGS_TABLE=$(echo "$SCHEMA_CHECK" | sed -n '/questionEmbeddings: defineTable/,/^    }),$/p')
-
-if echo "$EMBEDDINGS_TABLE" | grep -q "by_question"; then
-  echo -e "${GREEN}✓${NC} by_question index defined in questionEmbeddings"
-else
-  echo -e "${YELLOW}⚠${NC}  by_question index not found in questionEmbeddings"
-fi
-
-if echo "$EMBEDDINGS_TABLE" | grep -q "vectorIndex('by_embedding'"; then
-  echo -e "${GREEN}✓${NC} by_embedding vector index defined in questionEmbeddings"
-else
-  echo -e "${YELLOW}⚠${NC}  by_embedding vector index not found in questionEmbeddings"
+  echo -e "${YELLOW}⚠${NC} interactions by_user_phrasing index not found (may impact review flow)"
 fi
 
 echo ""
