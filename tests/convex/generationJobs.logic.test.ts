@@ -163,10 +163,10 @@ describe('generationJobs mutations', () => {
 
       await (updateProgress as any)._handler(ctx, {
         jobId: 'job_proc',
-        questionsGenerated: 5,
+        phrasingGenerated: 5,
       });
 
-      expect(db.patch).toHaveBeenCalledWith('job_proc', { questionsGenerated: 5 });
+      expect(db.patch).toHaveBeenCalledWith('job_proc', { phrasingGenerated: 5 });
     });
   });
 
@@ -212,11 +212,11 @@ describe('generationJobs mutations', () => {
       const result = await (advancePendingConcept as any)._handler(ctx, {
         jobId: 'missing_job',
         conceptId: 'c1' as Id<'concepts'>,
-        questionsGeneratedDelta: 1,
-        questionsSavedDelta: 1,
+        phrasingGeneratedDelta: 1,
+        phrasingSavedDelta: 1,
       });
 
-      expect(result).toEqual({ pendingCount: 0, questionsGenerated: 0, questionsSaved: 0 });
+      expect(result).toEqual({ pendingCount: 0, phrasingGenerated: 0, phrasingSaved: 0 });
       expect(db.patch).not.toHaveBeenCalled();
     });
   });

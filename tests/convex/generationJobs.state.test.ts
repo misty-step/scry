@@ -39,13 +39,13 @@ describe('generationJobs state transitions', () => {
       await (updateProgress as any)._handler(ctx, {
         jobId: 'job_proc' as Id<'generationJobs'>,
         phase: 'generating',
-        questionsGenerated: 1,
+        phrasingGenerated: 1,
       });
 
       // updateProgress only patches provided fields, doesn't copy status/startedAt
       expect(db.patch).toHaveBeenCalledWith('job_proc', {
         phase: 'generating',
-        questionsGenerated: 1,
+        phrasingGenerated: 1,
       });
     });
   });
@@ -77,8 +77,8 @@ describe('generationJobs state transitions', () => {
       const result = await (advancePendingConcept as any)._handler(ctx, {
         jobId: 'job_1',
         conceptId: 'c1' as Id<'concepts'>,
-        questionsGeneratedDelta: 1,
-        questionsSavedDelta: 1,
+        phrasingGeneratedDelta: 1,
+        phrasingSavedDelta: 1,
       });
 
       expect(result.pendingCount).toBe(1);
@@ -98,8 +98,8 @@ describe('generationJobs state transitions', () => {
       await (completeJob as any)._handler(ctx, {
         jobId: 'job_done',
         topic: 'History',
-        questionIds: ['q1', 'q2'],
         conceptIds: ['c1' as any],
+        phrasingSaved: 2,
         durationMs: 2000,
       });
 
@@ -108,7 +108,7 @@ describe('generationJobs state transitions', () => {
         expect.objectContaining({
           status: 'completed',
           pendingConceptIds: [],
-          questionsSaved: 2,
+          phrasingSaved: 2,
           durationMs: 2000,
         })
       );
