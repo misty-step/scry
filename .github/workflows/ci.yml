@@ -48,6 +48,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -63,17 +66,11 @@ jobs:
       - name: Run tests with coverage
         run: pnpm test:ci
 
-      # TODO: Re-enable after fixing coverage file generation (vitest not writing json files)
-      # - name: Coverage Report
-      #   if: github.event_name == 'pull_request'
-      #   uses: davelosert/vitest-coverage-report-action@v2
-      #   with:
-      #     json-summary-path: ./coverage/coverage-summary.json
-      #     json-final-path: ./coverage/coverage-final.json
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Coverage Report
+        if: always() && github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
         with:
-          files: ./coverage/coverage-final.json
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+          json-summary-path: ./coverage/coverage-summary.json
+          json-final-path: ./coverage/coverage-final.json
+          vite-config-path: ./vitest.config.ts
+          file-coverage-mode: changes

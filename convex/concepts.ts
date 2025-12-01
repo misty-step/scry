@@ -1200,3 +1200,8 @@ async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
 
   return true;
 }
+
+export const __test = {
+  prioritizeConcepts,
+  selectActivePhrasing,
+};

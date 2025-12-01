@@ -1,8 +1,5 @@
 # Scry
 
-[![codecov](https://codecov.io/gh/phrazzld/scry/graph/badge.svg?flag=project)](https://codecov.io/gh/phrazzld/scry)
-[![patch coverage](https://codecov.io/gh/phrazzld/scry/graph/badge.svg?flag=patch)](https://codecov.io/gh/phrazzld/scry)
-
 An AI-powered quiz generation and learning application built with Next.js 15 and Convex. Uses Google Gemini for intelligent content generation and implements spaced repetition algorithms for optimized learning.
 
 ## Features
