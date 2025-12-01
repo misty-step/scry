@@ -149,16 +149,12 @@ export default defineSchema({
     .index('by_status_created', ['status', 'createdAt']),
 
   // ============================================================================
-  // Concepts & Phrasings Architecture (v2.3.0)
+  // Concepts & Phrasings Architecture (v3.0.0 - questions removed)
   // ============================================================================
   // New table architecture supporting atomic knowledge concepts with multiple
   // phrasing variations. FSRS scheduling moves to concept-level to eliminate
-  // duplicate scheduling pressure from near-identical questions.
-  //
-  // Migration Path (3-phase):
-  // - Phase 1: Add tables + optional conceptId to questions (this deployment)
-  // - Phase 2: Run backfill migration (1 concept per existing question)
-  // - Phase 3: Enforce conceptId requirement, deprecate question-level FSRS
+  // duplicate scheduling pressure from near-identical questions. Phrasings are
+  // variations of a single concept; concept.fsrs is the sole source of truth.
 
   // Concepts: Atomic units of knowledge with concept-level FSRS scheduling
   concepts: defineTable({
