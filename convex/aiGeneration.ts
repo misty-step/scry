@@ -557,8 +557,8 @@ export const processJob = internalAction({
       await ctx.runMutation(internal.generationJobs.updateProgress, {
         jobId: args.jobId,
         phase: 'phrasing_generation',
-        questionsGenerated: conceptIds.length,
-        questionsSaved: 0,
+        phrasingGenerated: conceptIds.length,
+        phrasingSaved: 0,
         estimatedTotal: conceptIds.length * TARGET_PHRASINGS_PER_CONCEPT,
       });
 
@@ -634,7 +634,7 @@ export const processJob = internalAction({
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
         provider,
-        questionCount: job ? job.questionsSaved : 0,
+        phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
       });
@@ -709,8 +709,8 @@ export const generatePhrasingsForConcept = internalAction({
           await ctx.runMutation(internal.generationJobs.advancePendingConcept, {
             jobId: job._id,
             conceptId: args.conceptId,
-            questionsGeneratedDelta: 0,
-            questionsSavedDelta: 0,
+            phrasingGeneratedDelta: 0,
+            phrasingSavedDelta: 0,
           });
         }
         return;
@@ -900,8 +900,8 @@ export const generatePhrasingsForConcept = internalAction({
       const progress = await ctx.runMutation(internal.generationJobs.advancePendingConcept, {
         jobId: job._id,
         conceptId: args.conceptId,
-        questionsGeneratedDelta: normalizedPhrasings.length,
-        questionsSavedDelta: insertedIds.length,
+        phrasingGeneratedDelta: normalizedPhrasings.length,
+        phrasingSavedDelta: insertedIds.length,
       });
 
       if (progress.pendingCount === 0) {
@@ -909,7 +909,7 @@ export const generatePhrasingsForConcept = internalAction({
         await ctx.runMutation(internal.generationJobs.completeJob, {
           jobId: job._id,
           topic: job.prompt,
-          questionIds: [],
+          phrasingSaved: progress.phrasingSaved,
           conceptIds: job.conceptIds,
           durationMs,
         });
@@ -918,7 +918,7 @@ export const generatePhrasingsForConcept = internalAction({
           jobId: job._id,
           userId: String(job.userId),
           provider,
-          questionCount: progress.questionsSaved,
+          phrasingCount: progress.phrasingSaved,
           durationMs,
         });
       }
@@ -961,7 +961,7 @@ export const generatePhrasingsForConcept = internalAction({
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
         provider,
-        questionCount: job ? job.questionsSaved : 0,
+        phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
       });

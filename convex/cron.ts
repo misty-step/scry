@@ -24,38 +24,14 @@ crons.daily(
   internal.generationJobs.cleanup
 );
 
-// Schedule userStats reconciliation to run daily at 3 AM UTC
-// Detects and auto-corrects drift in cached statistics
-// Samples 100 random users, fixes drift >5 cards
-crons.daily(
-  'reconcileUserStats',
-  {
-    hourUTC: 3,
-    minuteUTC: 15, // 15 minutes after job cleanup
-  },
-  internal.userStats.reconcileUserStats
-);
-
-// Schedule concept scores reconciliation to run daily at 3:20 AM UTC
-// Detects and auto-corrects drift in thinScore/conflictScore
-// Samples 100 random concepts, recalculates from actual phrasings
-crons.daily(
-  'reconcileConceptScores',
-  {
-    hourUTC: 3,
-    minuteUTC: 20, // 5 minutes after userStats reconciliation
-  },
-  internal.migrations.reconcileConceptScores
-);
-
 // Schedule embedding sync to run daily at 3:30 AM UTC
-// Backfills embeddings for questions that don't have them
-// Processes up to 100 questions/day in batches of 10
+// Backfills embeddings for concepts/phrasings that don't have them
+// Processes up to configured limits in batches of 10
 crons.daily(
-  'syncQuestionEmbeddings',
+  'syncEmbeddings',
   {
     hourUTC: 3,
-    minuteUTC: 30, // 30 minutes after job cleanup, 15 minutes after stats reconciliation
+    minuteUTC: 30, // 30 minutes after job cleanup
   },
   internal.embeddings.syncMissingEmbeddings
 );

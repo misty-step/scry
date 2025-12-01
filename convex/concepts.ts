@@ -174,18 +174,6 @@ export const getDue = query({
         .order('desc')
         .take(MAX_INTERACTIONS);
 
-      const legacyQuestion = await ctx.db
-        .query('questions')
-        .withIndex('by_concept', (q) => q.eq('conceptId', candidate.concept._id))
-        .filter((q) =>
-          q.and(
-            q.eq(q.field('userId'), userId),
-            q.eq(q.field('deletedAt'), undefined),
-            q.eq(q.field('archivedAt'), undefined)
-          )
-        )
-        .first();
-
       return {
         concept: candidate.concept,
         phrasing: phrasingSelection.phrasing,
@@ -196,7 +184,6 @@ export const getDue = query({
         },
         retrievability: candidate.retrievability,
         interactions,
-        legacyQuestionId: legacyQuestion?._id ?? null,
         serverTime: nowMs,
       };
     }
@@ -225,18 +212,8 @@ export const getConceptsDueCount = query({
       .filter((q) => q.gt(q.field('phrasingCount'), 0))
       .take(1000); // Safety limit for large collections
 
-    // Count orphaned questions (questions without conceptId)
-    const orphanedQuestions = await ctx.db
-      .query('questions')
-      .withIndex('by_user_active', (q) =>
-        q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
-      )
-      .filter((q) => q.eq(q.field('conceptId'), undefined))
-      .take(5000); // Higher limit for legacy data
-
     return {
       conceptsDue: dueConcepts.length,
-      orphanedQuestions: orphanedQuestions.length,
     };
   },
 });
@@ -263,18 +240,6 @@ export const recordInteraction = mutation({
     if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
       throw new Error('Phrasing not found or unauthorized');
     }
-
-    const legacyQuestion = await ctx.db
-      .query('questions')
-      .withIndex('by_concept', (q) => q.eq('conceptId', concept._id))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field('userId'), userId),
-          q.eq(q.field('deletedAt'), undefined),
-          q.eq(q.field('archivedAt'), undefined)
-        )
-      )
-      .first();
 
     const nowMs = Date.now();
     const now = new Date(nowMs);
@@ -322,18 +287,9 @@ export const recordInteraction = mutation({
       await updateStatsCounters(ctx, userId, statsDelta);
     }
 
-    if (legacyQuestion) {
-      await ctx.db.patch(legacyQuestion._id, {
-        attemptCount: (legacyQuestion.attemptCount ?? 0) + 1,
-        correctCount: (legacyQuestion.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
-        lastAttemptedAt: nowMs,
-      });
-    }
-
     return {
       conceptId: concept._id,
       phrasingId: phrasing._id,
-      legacyQuestionId: legacyQuestion?._id ?? null,
       nextReview: scheduleResult.nextReview,
       scheduledDays: scheduleResult.scheduledDays,
       newState: scheduleResult.state,
@@ -715,9 +671,9 @@ export const archivePhrasing = mutation({
     // Recalculate conflictScore from remaining phrasings
     let conflictScore: number | undefined = undefined;
     if (newCount > 1) {
-      const questions = remainingPhrasings.map((p) => p.question.trim().toLowerCase());
-      const uniqueQuestions = new Set(questions);
-      const conflictCount = questions.length - uniqueQuestions.size;
+      const phrasingsNormalized = remainingPhrasings.map((p) => p.question.trim().toLowerCase());
+      const uniqueQuestions = new Set(phrasingsNormalized);
+      const conflictCount = phrasingsNormalized.length - uniqueQuestions.size;
       conflictScore = conflictCount > 0 ? conflictCount : undefined;
     }
 
@@ -783,9 +739,9 @@ export const unarchivePhrasing = mutation({
     // Recalculate conflictScore from active phrasings
     let conflictScore: number | undefined = undefined;
     if (newCount > 1) {
-      const questions = activePhrasings.map((p) => p.question.trim().toLowerCase());
-      const uniqueQuestions = new Set(questions);
-      const conflictCount = questions.length - uniqueQuestions.size;
+      const normalized = activePhrasings.map((p) => p.question.trim().toLowerCase());
+      const uniqueQuestions = new Set(normalized);
+      const conflictCount = normalized.length - uniqueQuestions.size;
       conflictScore = conflictCount > 0 ? conflictCount : undefined;
     }
 
@@ -824,11 +780,10 @@ export const requestPhrasingGeneration = mutation({
       prompt: `Manual concept phrasing request: ${concept.title}`,
       status: 'pending',
       phase: 'phrasing_generation',
-      questionsGenerated: 0,
-      questionsSaved: 0,
+      phrasingGenerated: 0,
+      phrasingSaved: 0,
       estimatedTotal: TARGET_PHRASINGS_PER_CONCEPT,
       topic: concept.title,
-      questionIds: [],
       conceptIds: [],
       pendingConceptIds: [],
       durationMs: undefined,

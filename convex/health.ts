@@ -7,7 +7,6 @@
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
-
 import { action, query } from './_generated/server';
 import { getSecretDiagnostics } from './lib/envDiagnostics';
 
@@ -218,11 +217,11 @@ export const detailed = query({
 /**
  * Embedding coverage health check
  *
- * Checks what percentage of active questions have vector embeddings.
- * Samples first 1000 questions for performance. Returns:
+ * Checks what percentage of active concepts have vector embeddings.
+ * Samples first 1000 concepts for performance. Returns:
  * - status: "healthy" (≥95%), "degraded" (80-95%), "failing" (<80%)
- * - coverage: percentage of questions with embeddings (0.0-1.0)
- * - totalQuestions: number of questions sampled
+ * - coverage: percentage of concepts with embeddings (0.0-1.0)
+ * - totalConcepts: number of concepts sampled
  * - withEmbeddings: count with embeddings
  * - withoutEmbeddings: count without embeddings
  *
@@ -236,22 +235,22 @@ export const checkEmbeddingHealth = query({
   ): Promise<{
     status: 'healthy' | 'degraded' | 'failing';
     coverage: number;
-    totalQuestions: number;
+    totalConcepts: number;
     withEmbeddings: number;
     withoutEmbeddings: number;
   }> => {
-    // Sample first 1000 active questions for performance
+    // Sample first 1000 active concepts for performance
     // Active = not deleted and not archived
-    const questions = await ctx.db
-      .query('questions')
+    const concepts = await ctx.db
+      .query('concepts')
       .withIndex('by_user_active')
       .filter((q) =>
         q.and(q.eq(q.field('deletedAt'), undefined), q.eq(q.field('archivedAt'), undefined))
       )
       .take(1000);
 
-    const withEmbeddings = questions.filter((q) => q.embedding).length;
-    const coverage = questions.length > 0 ? withEmbeddings / questions.length : 1.0;
+    const withEmbeddings = concepts.filter((c) => c.embedding).length;
+    const coverage = concepts.length > 0 ? withEmbeddings / concepts.length : 1.0;
 
     let status: 'healthy' | 'degraded' | 'failing';
     if (coverage >= 0.95) status = 'healthy';
@@ -261,9 +260,9 @@ export const checkEmbeddingHealth = query({
     return {
       status,
       coverage,
-      totalQuestions: questions.length,
+      totalConcepts: concepts.length,
       withEmbeddings,
-      withoutEmbeddings: questions.length - withEmbeddings,
+      withoutEmbeddings: concepts.length - withEmbeddings,
     };
   },
 });

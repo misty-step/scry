@@ -22,28 +22,5 @@ export type User = {
   createdAt?: number;
 };
 
-/**
- * @deprecated The quizResults table is deprecated. Use questions and interactions tables instead.
- * This type is kept for backward compatibility but should not be used for new features.
- */
-export type QuizResult = {
-  _id: Id<'quizResults'>;
-  _creationTime: number;
-  userId: Id<'users'>;
-  topic: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  score: number;
-  totalQuestions: number;
-  completedAt: number;
-  questions: Array<{
-    question: string;
-    options: string[];
-    correctAnswer: number;
-    userAnswer: number;
-    isCorrect: boolean;
-  }>;
-};
-
 // Re-export Id type with specific table names for convenience
 export type UserId = Id<'users'>;
-export type QuizResultId = Id<'quizResults'>;

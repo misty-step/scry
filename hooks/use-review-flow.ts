@@ -7,7 +7,14 @@ import { useDataHash } from '@/hooks/use-data-hash';
 import { useSimplePoll } from '@/hooks/use-simple-poll';
 import { useTrackEvent } from '@/hooks/use-track-event';
 import { LOADING_TIMEOUT_MS, POLLING_INTERVAL_MS } from '@/lib/constants/timing';
-import type { SimpleQuestion } from '@/types/questions';
+
+type SimpleQuestion = {
+  question: string;
+  type?: 'multiple-choice' | 'true-false' | 'cloze' | 'short-answer';
+  options: string[];
+  correctAnswer: string;
+  explanation?: string;
+};
 
 // State machine definition
 interface ReviewModeState {
@@ -19,7 +26,6 @@ interface ReviewModeState {
   phrasingId: Id<'phrasings'> | null;
   phrasingIndex: number | null;
   totalPhrasings: number | null;
-  legacyQuestionId: Id<'questions'> | null;
   selectionReason: string | null;
   lockId: string | null;
   isTransitioning: boolean;
@@ -44,7 +50,6 @@ type ReviewAction =
         conceptTitle: string;
         phrasingId: Id<'phrasings'>;
         phrasingStats: { index: number; total: number } | null;
-        legacyQuestionId: Id<'questions'> | null;
         selectionReason: string | null;
         lockId: string;
         conceptFsrs: {
@@ -66,7 +71,6 @@ const initialState: ReviewModeState = {
   phrasingId: null,
   phrasingIndex: null,
   totalPhrasings: null,
-  legacyQuestionId: null,
   selectionReason: null,
   lockId: null,
   isTransitioning: false,
@@ -90,7 +94,6 @@ export function reviewReducer(state: ReviewModeState, action: ReviewAction): Rev
         phrasingId: null,
         phrasingIndex: null,
         totalPhrasings: null,
-        legacyQuestionId: null,
         selectionReason: null,
         lockId: null,
         isTransitioning: false,
@@ -116,7 +119,6 @@ export function reviewReducer(state: ReviewModeState, action: ReviewAction): Rev
         phrasingId: action.payload.phrasingId,
         phrasingIndex: action.payload.phrasingStats?.index ?? null,
         totalPhrasings: action.payload.phrasingStats?.total ?? null,
-        legacyQuestionId: action.payload.legacyQuestionId,
         selectionReason: action.payload.selectionReason,
         lockId: action.payload.lockId,
         isTransitioning: false, // Clear transitioning state
@@ -312,7 +314,6 @@ export function useReviewFlow() {
           conceptTitle: nextReview.concept.title,
           phrasingId: nextReview.phrasing._id,
           phrasingStats: nextReview.phrasingStats ?? null,
-          legacyQuestionId: nextReview.legacyQuestionId,
           selectionReason: nextReview.selectionReason ?? null,
           lockId,
           conceptFsrs: {
@@ -334,7 +335,6 @@ export function useReviewFlow() {
           conceptTitle: nextReview.concept.title,
           phrasingId: nextReview.phrasing._id,
           phrasingStats: nextReview.phrasingStats ?? null,
-          legacyQuestionId: nextReview.legacyQuestionId,
           selectionReason: nextReview.selectionReason ?? null,
           lockId,
           conceptFsrs: {
@@ -384,7 +384,6 @@ export function useReviewFlow() {
     phrasingId: state.phrasingId,
     phrasingIndex: state.phrasingIndex,
     totalPhrasings: state.totalPhrasings,
-    legacyQuestionId: state.legacyQuestionId,
     selectionReason: state.selectionReason,
     interactions: state.interactions,
     isTransitioning: state.isTransitioning,

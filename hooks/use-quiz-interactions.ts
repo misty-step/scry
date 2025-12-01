@@ -3,6 +3,7 @@ import { useUser } from '@clerk/nextjs';
 import { useMutation } from 'convex/react';
 import { toast } from 'sonner';
 import { api } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
 import { TOAST_DURATION } from '@/lib/constants/ui';
 
 export function useQuizInteractions() {
@@ -11,8 +12,8 @@ export function useQuizInteractions() {
 
   const trackAnswer = useCallback(
     async (
-      conceptId: string,
-      phrasingId: string,
+      conceptId: Id<'concepts'>,
+      phrasingId: Id<'phrasings'>,
       userAnswer: string,
       isCorrect: boolean,
       timeSpent?: number,

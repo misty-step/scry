@@ -446,23 +446,6 @@ export const applyActionCard = mutation({
       }
     }
 
-    const relatedQuestions = await ctx.db
-      .query('questions')
-      .withIndex('by_concept', (q) => q.eq('conceptId', mergeConcept._id))
-      .collect();
-
-    if (relatedQuestions.length > 0) {
-      for (const chunk of chunkArray(relatedQuestions, 25)) {
-        await Promise.all(
-          chunk.map((question) =>
-            ctx.db.patch(question._id, {
-              conceptId: canonicalConcept._id,
-            })
-          )
-        );
-      }
-    }
-
     const mergeInteractions = await ctx.db
       .query('interactions')
       .withIndex('by_concept', (q) => q.eq('conceptId', mergeConcept._id))
@@ -539,7 +522,6 @@ export const applyActionCard = mutation({
       canonicalConceptId,
       mergeConceptId,
       movedPhrasings: mergePhrasings.length,
-      movedQuestions: relatedQuestions.length,
       interactionsReassigned: mergeInteractions.length,
       interactionsReplayed,
       correlationId,
@@ -553,7 +535,6 @@ export const applyActionCard = mutation({
       actionCardId: args.actionCardId,
       conceptIds: conceptIdStrings,
       movedPhrasings: mergePhrasings.length,
-      movedQuestions: relatedQuestions.length,
       interactionsReassigned: mergeInteractions.length,
       interactionsReplayed,
     });
@@ -563,7 +544,6 @@ export const applyActionCard = mutation({
       canonicalConceptId,
       mergeConceptId,
       movedPhrasings: mergePhrasings.length,
-      movedQuestions: relatedQuestions.length,
       interactionsReassigned: mergeInteractions.length,
       interactionsReplayed,
     };

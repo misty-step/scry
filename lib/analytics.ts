@@ -23,13 +23,13 @@ export interface AnalyticsEventDefinitions {
   'Quiz Generation Started': {
     jobId: string;
     userId?: string;
-    questionCount?: number;
+    phrasingCount?: number;
     provider?: string;
   };
   'Quiz Generation Completed': {
     jobId: string;
     userId?: string;
-    questionCount: number;
+    phrasingCount: number;
     provider: string;
     durationMs: number;
   };
@@ -37,6 +37,7 @@ export interface AnalyticsEventDefinitions {
     jobId: string;
     userId?: string;
     provider?: string;
+    phrasingCount?: number;
     errorType?: string;
   };
   'Review Session Started': {
@@ -49,38 +50,13 @@ export interface AnalyticsEventDefinitions {
     userId?: string;
     deckId?: string;
     durationMs?: number;
-    questionCount?: number;
+    phrasingCount?: number;
   };
   'Review Session Abandoned': {
     sessionId: string;
     userId?: string;
     deckId?: string;
-    questionIndex?: number;
-  };
-  'Question Created': {
-    questionId: string;
-    userId?: string;
-    source?: string;
-  };
-  'Question Updated': {
-    questionId: string;
-    userId?: string;
-    source?: string;
-  };
-  'Question Deleted': {
-    questionId: string;
-    userId?: string;
-    source?: string;
-  };
-  'Question Archived': {
-    questionId: string;
-    userId?: string;
-    source?: string;
-  };
-  'Question Restored': {
-    questionId: string;
-    userId?: string;
-    source?: string;
+    phrasingIndex?: number;
   };
 }
 

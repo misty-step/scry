@@ -2,8 +2,6 @@ import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { internalMutation, mutation, MutationCtx, QueryCtx } from './_generated/server';
 
-const QUESTION_DELETE_BATCH_SIZE = 200;
-
 /**
  * Internal mutation to sync a user from Clerk to our database.
  * This should only be called from Clerk webhooks or other internal functions.
@@ -90,39 +88,10 @@ export const deleteUser = internalMutation({
       return;
     }
 
-    const now = Date.now();
-
-    const questionQuery = ctx.db
-      .query('questions')
-      .withIndex('by_user', (q) => q.eq('userId', user._id))
-      .order('asc');
-
-    let page = await questionQuery.paginate({ numItems: QUESTION_DELETE_BATCH_SIZE, cursor: null });
-    await softDeleteQuestions(ctx, page.page, now);
-
-    while (!page.isDone) {
-      page = await questionQuery.paginate({
-        numItems: QUESTION_DELETE_BATCH_SIZE,
-        cursor: page.continueCursor,
-      });
-      await softDeleteQuestions(ctx, page.page, now);
-    }
-
-    // Note: We keep the user record for audit purposes
-    // If you want to fully delete, uncomment:
-    // await ctx.db.delete(user._id);
+    // All question data removed in concept migration; nothing to soft-delete.
+    // Keep user record for audit purposes.
   },
 });
-
-async function softDeleteQuestions(
-  ctx: MutationCtx,
-  questions: Array<Doc<'questions'>>,
-  timestamp: number
-) {
-  for (const question of questions) {
-    await ctx.db.patch(question._id, { deletedAt: timestamp });
-  }
-}
 
 /**
  * Helper to get user from Clerk identity in Convex context.

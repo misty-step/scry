@@ -1,185 +1,214 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useUser } from '@clerk/nextjs';
 import { useQuery } from 'convex/react';
-
-import { LibraryPagination } from '@/app/library/_components/library-pagination';
+import { Loader2 } from 'lucide-react';
+import { GenerationTaskCard } from '@/components/generation-task-card';
 import { PageContainer } from '@/components/page-container';
-import { TableSkeleton } from '@/components/ui/loading-skeletons';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/convex/_generated/api';
-import type { JobStatus } from '@/types/generation-jobs';
-
-import { TasksTable } from './tasks-table';
+import type { GenerationJob } from '@/types/generation-jobs';
+import { isActiveJob, isCancelledJob, isCompletedJob, isFailedJob } from '@/types/generation-jobs';
 
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed';
 
-export function TasksClient() {
-  const { isSignedIn } = useUser();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+function filterJobsByStatus(jobs: GenerationJob[] | undefined, filter: StatusFilter) {
+  if (!jobs) return undefined;
 
-  // Pagination state
+  switch (filter) {
+    case 'all':
+      return jobs;
+    case 'active':
+      return jobs.filter((job) => isActiveJob(job));
+    case 'completed':
+      return jobs.filter((job) => isCompletedJob(job));
+    case 'failed':
+      return jobs.filter((job) => isFailedJob(job) || isCancelledJob(job));
+    default:
+      return jobs;
+  }
+}
+
+function countByStatus(jobs: GenerationJob[] | undefined, status: StatusFilter) {
+  if (!jobs) return 0;
+
+  if (status === 'all') return jobs.length;
+  return filterJobsByStatus(jobs, status)?.length ?? 0;
+}
+
+export function TasksClient() {
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [cursor, setCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<number>(25);
 
-  // Query jobs with cursor pagination
-  // Skip query when not authenticated to prevent race condition during Clerk auth loading
-  const paginationData = useQuery(
-    api.generationJobs.getRecentJobs,
-    isSignedIn ? { cursor: cursor ?? undefined, pageSize } : 'skip'
-  );
+  const paginationData = useQuery(api.generationJobs.getRecentJobs, {
+    cursor: cursor ?? undefined,
+    pageSize,
+  });
 
-  // Extract pagination results
-  const allJobs = paginationData?.results;
+  const jobs = paginationData?.results as GenerationJob[] | undefined;
   const continueCursor = paginationData?.continueCursor ?? null;
   const isDone = paginationData?.isDone ?? true;
 
-  // Client-side filtering by status
-  const filteredJobs = useMemo(() => {
-    if (!allJobs) return undefined;
+  const filteredJobs = useMemo(() => filterJobsByStatus(jobs, statusFilter), [jobs, statusFilter]);
 
-    switch (statusFilter) {
-      case 'all':
-        return allJobs;
-      case 'active':
-        return allJobs.filter(
-          (job: { status: JobStatus }) => job.status === 'pending' || job.status === 'processing'
-        );
-      case 'completed':
-        return allJobs.filter((job: { status: JobStatus }) => job.status === 'completed');
-      case 'failed':
-        return allJobs.filter(
-          (job: { status: JobStatus }) => job.status === 'failed' || job.status === 'cancelled'
-        );
-      default:
-        return allJobs;
-    }
-  }, [allJobs, statusFilter]);
-
-  // Pagination handlers
   const handleNextPage = () => {
     if (!continueCursor || isDone) return;
 
-    // Push current cursor to stack for backward navigation
-    if (cursor !== null) {
-      setCursorStack([...cursorStack, cursor]);
-    } else {
-      // First page -> second page, push null to stack
-      setCursorStack([...cursorStack, '']);
-    }
-
+    setCursorStack((prev) => [...prev, cursor ?? '']);
     setCursor(continueCursor);
   };
 
   const handlePrevPage = () => {
-    if (cursorStack.length === 0) return;
-
-    // Pop last cursor from stack
-    const newStack = [...cursorStack];
-    const previousCursor = newStack.pop();
-    setCursorStack(newStack);
-
-    // Empty string represents null (first page)
-    setCursor(previousCursor === '' ? null : (previousCursor ?? null));
+    setCursorStack((prev) => {
+      if (prev.length === 0) return prev;
+      const nextStack = [...prev];
+      const previousCursor = nextStack.pop();
+      setCursor(previousCursor === '' ? null : (previousCursor ?? null));
+      return nextStack;
+    });
   };
 
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCursor(null);
-    setCursorStack([]);
-  };
-
-  // Reset pagination when filter changes
-  const handleFilterChange = (value: string) => {
-    setStatusFilter(value as StatusFilter);
-    setCursor(null);
-    setCursorStack([]);
-  };
-
-  // Reset pagination when pageSize changes (via useEffect for safety)
   useEffect(() => {
-    setCursor(null);
-    setCursorStack([]);
-  }, [pageSize]);
+    if (cursor === null && cursorStack.length === 0) {
+      return;
+    }
+
+    // Defer pagination reset to avoid cascading renders in strict mode
+    const id = window.setTimeout(() => {
+      setCursor(null);
+      setCursorStack([]);
+    }, 0);
+
+    return () => window.clearTimeout(id);
+  }, [statusFilter, pageSize, cursor, cursorStack.length]);
+
+  const isLoading = jobs === undefined;
+
+  const totalAll = countByStatus(jobs, 'all');
+  const totalActive = countByStatus(jobs, 'active');
+  const totalCompleted = countByStatus(jobs, 'completed');
+  const totalFailed = countByStatus(jobs, 'failed');
 
   return (
-    <PageContainer className="py-8">
-      <h1 className="text-3xl font-bold mb-6">Background Tasks</h1>
-      <p className="text-muted-foreground mb-6">Manage AI question generation jobs</p>
+    <PageContainer className="py-8 space-y-6">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Background Tasks</h1>
+        <p className="text-sm text-muted-foreground">
+          Monitor AI generation jobs, cancel stuck runs, and inspect failures.
+        </p>
+      </div>
 
-      <Tabs value={statusFilter} onValueChange={handleFilterChange}>
-        <TabsList>
-          <TabsTrigger value="all">
-            All
-            {allJobs && <span className="ml-2 text-xs">({allJobs.length})</span>}
-          </TabsTrigger>
-          <TabsTrigger value="active">
-            Active
-            {allJobs && (
-              <span className="ml-2 text-xs">
-                (
-                {
-                  allJobs.filter(
-                    (j: { status: JobStatus }) =>
-                      j.status === 'pending' || j.status === 'processing'
-                  ).length
-                }
-                )
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Completed
-            {allJobs && (
-              <span className="ml-2 text-xs">
-                ({allJobs.filter((j: { status: JobStatus }) => j.status === 'completed').length})
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="failed">
-            Failed
-            {allJobs && (
-              <span className="ml-2 text-xs">
-                (
-                {
-                  allJobs.filter(
-                    (j: { status: JobStatus }) => j.status === 'failed' || j.status === 'cancelled'
-                  ).length
-                }
-                )
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <Tabs
+          value={statusFilter}
+          onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+          className="md:w-auto"
+        >
+          <TabsList>
+            <TabsTrigger value="all">
+              All
+              {totalAll > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground">({totalAll})</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="active">
+              Active
+              {totalActive > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground">({totalActive})</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="completed">
+              Completed
+              {totalCompleted > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground">({totalCompleted})</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="failed">
+              Failed
+              {totalFailed > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground">({totalFailed})</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-        <div className="mt-6">
-          {filteredJobs === undefined ? (
-            <TableSkeleton rows={10} />
-          ) : filteredJobs.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {statusFilter === 'all'
-                ? 'No tasks yet. Generate questions to see them here.'
-                : `No ${statusFilter} tasks.`}
-            </div>
-          ) : (
-            <>
-              <TasksTable jobs={filteredJobs} />
-
-              <LibraryPagination
-                isDone={isDone}
-                onNextPage={handleNextPage}
-                onPrevPage={handlePrevPage}
-                hasPrevious={cursorStack.length > 0}
-                pageSize={pageSize}
-                onPageSizeChange={handlePageSizeChange}
-                totalShown={filteredJobs.length}
-              />
-            </>
-          )}
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Page size</span>
+            <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 25, 50].map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size} / page
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </Tabs>
+      </div>
+
+      {isLoading ? (
+        <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading tasks…
+          </div>
+        </div>
+      ) : !filteredJobs || filteredJobs.length === 0 ? (
+        <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
+          <p className="text-sm text-muted-foreground">
+            {statusFilter === 'all'
+              ? 'No background tasks yet. Generate concepts to see jobs here.'
+              : `No ${statusFilter} tasks on this page.`}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredJobs.map((job) => (
+            <GenerationTaskCard key={job._id} job={job} />
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          {jobs && jobs.length > 0
+            ? `Showing ${filteredJobs?.length ?? 0} of ${jobs.length} tasks on this page.`
+            : 'No tasks to display.'}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrevPage}
+            disabled={cursorStack.length === 0}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNextPage}
+            disabled={!continueCursor || isDone}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
     </PageContainer>
   );
 }

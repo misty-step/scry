@@ -57,9 +57,8 @@ export const createJob = mutation({
       prompt: args.prompt.trim(),
       status: 'pending',
       phase: 'clarifying',
-      questionsGenerated: 0,
-      questionsSaved: 0,
-      questionIds: [],
+      phrasingGenerated: 0,
+      phrasingSaved: 0,
       conceptIds: [],
       pendingConceptIds: [],
       createdAt: Date.now(),
@@ -191,8 +190,8 @@ export const updateProgress = internalMutation({
         v.literal('finalizing')
       )
     ),
-    questionsGenerated: v.optional(v.number()),
-    questionsSaved: v.optional(v.number()),
+    phrasingGenerated: v.optional(v.number()),
+    phrasingSaved: v.optional(v.number()),
     estimatedTotal: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -201,11 +200,11 @@ export const updateProgress = internalMutation({
     if (args.phase !== undefined) {
       updates.phase = args.phase;
     }
-    if (args.questionsGenerated !== undefined) {
-      updates.questionsGenerated = args.questionsGenerated;
+    if (args.phrasingGenerated !== undefined) {
+      updates.phrasingGenerated = args.phrasingGenerated;
     }
-    if (args.questionsSaved !== undefined) {
-      updates.questionsSaved = args.questionsSaved;
+    if (args.phrasingSaved !== undefined) {
+      updates.phrasingSaved = args.phrasingSaved;
     }
     if (args.estimatedTotal !== undefined) {
       updates.estimatedTotal = args.estimatedTotal;
@@ -239,25 +238,25 @@ export const advancePendingConcept = internalMutation({
   args: {
     jobId: v.id('generationJobs'),
     conceptId: v.id('concepts'),
-    questionsGeneratedDelta: v.number(),
-    questionsSavedDelta: v.number(),
+    phrasingGeneratedDelta: v.number(),
+    phrasingSavedDelta: v.number(),
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) {
-      return { pendingCount: 0, questionsGenerated: 0, questionsSaved: 0 };
+      return { pendingCount: 0, phrasingGenerated: 0, phrasingSaved: 0 };
     }
 
     const pendingConceptIds = job.pendingConceptIds ?? [];
     const nextPending = pendingConceptIds.filter((id) => id !== args.conceptId);
 
-    const questionsGenerated = (job.questionsGenerated ?? 0) + args.questionsGeneratedDelta;
-    const questionsSaved = (job.questionsSaved ?? 0) + args.questionsSavedDelta;
+    const phrasingGenerated = (job.phrasingGenerated ?? 0) + args.phrasingGeneratedDelta;
+    const phrasingSaved = (job.phrasingSaved ?? 0) + args.phrasingSavedDelta;
 
     const updates: Record<string, unknown> = {
       pendingConceptIds: nextPending,
-      questionsGenerated,
-      questionsSaved,
+      phrasingGenerated,
+      phrasingSaved,
     };
 
     if (nextPending.length === 0) {
@@ -268,7 +267,7 @@ export const advancePendingConcept = internalMutation({
 
     await ctx.db.patch(args.jobId, updates);
 
-    return { pendingCount: nextPending.length, questionsGenerated, questionsSaved };
+    return { pendingCount: nextPending.length, phrasingGenerated, phrasingSaved };
   },
 });
 
@@ -279,22 +278,20 @@ export const completeJob = internalMutation({
   args: {
     jobId: v.id('generationJobs'),
     topic: v.string(),
-    questionIds: v.optional(v.array(v.id('questions'))),
     conceptIds: v.optional(v.array(v.id('concepts'))),
+    phrasingSaved: v.optional(v.number()),
     durationMs: v.number(),
   },
   handler: async (ctx, args) => {
-    const questionIds = args.questionIds ?? [];
     const conceptIds = args.conceptIds ?? [];
-    const savedCount = questionIds.length > 0 ? questionIds.length : conceptIds.length;
+    const savedCount = args.phrasingSaved ?? conceptIds.length;
 
     await ctx.db.patch(args.jobId, {
       status: 'completed',
       topic: args.topic,
-      questionIds,
       conceptIds,
       pendingConceptIds: [],
-      questionsSaved: savedCount,
+      phrasingSaved: savedCount,
       durationMs: args.durationMs,
       completedAt: Date.now(),
     });

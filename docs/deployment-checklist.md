@@ -240,9 +240,9 @@ git push origin <your-branch>
 3. [ ] Verify events in Vercel Analytics
 
 **Test CRUD events:**
-1. [ ] Create a question (trigger "Question Created")
-2. [ ] Edit question (trigger "Question Updated")
-3. [ ] Delete/archive (trigger respective events)
+1. [ ] Generate concepts/phrasings (covered by Quiz Generation events)
+2. [ ] Edit concept and phrasing in review (no dedicated CRUD events; validated via functional tests)
+3. [ ] Archive/restore concepts from library (future analytics events TBD)
 
 ### Performance Verification
 
