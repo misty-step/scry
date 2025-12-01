@@ -1046,3 +1046,8 @@ export const syncMissingEmbeddings = internalAction({
     });
   },
 });
+
+export const __test = {
+  getActiveQuestionPageSize,
+  collectQuestionEmbeddings,
+};

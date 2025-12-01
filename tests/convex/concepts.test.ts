@@ -66,17 +66,14 @@ describe('concepts.createMany', () => {
 
 // Skip: These tests access private unexported functions.
 // TODO: Either export via __test pattern or test through public API.
-describe.skip('concepts helpers (private functions)', () => {
-  const prioritizeConcepts = (conceptsModule as any).prioritizeConcepts as (
-    concepts: Array<Doc<'concepts'>>,
-    now: Date
-  ) => Array<{ concept: Doc<'concepts'>; retrievability: number }>;
-
-  const selectActivePhrasing = (conceptsModule as any).selectActivePhrasing as (
-    ctx: any,
-    concept: Doc<'concepts'>,
-    userId: Id<'users'>
-  ) => Promise<any>;
+describe('concepts helpers (private functions)', () => {
+  const { prioritizeConcepts, selectActivePhrasing } = conceptsModule.__test as {
+    prioritizeConcepts: (
+      concepts: Array<Doc<'concepts'>>,
+      now: Date
+    ) => Array<{ concept: Doc<'concepts'>; retrievability: number }>;
+    selectActivePhrasing: (ctx: any, concept: Doc<'concepts'>, userId: Id<'users'>) => Promise<any>;
+  };
 
   it('prioritizeConcepts filters concepts without phrasings and sorts by retrievability', () => {
     const now = new Date('2025-01-16T12:00:00Z');

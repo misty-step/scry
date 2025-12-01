@@ -1,7 +1,14 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { embed } from 'ai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateEmbedding } from '@/convex/embeddings';
+import {
+  generateEmbedding,
+  getQuestionForEmbedding,
+  saveConceptEmbedding,
+  saveEmbedding,
+  savePhrasingEmbedding,
+} from '@/convex/embeddings';
+import { createMockCtx, createMockDb } from '@/tests/helpers';
 
 vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: vi.fn(),
@@ -75,5 +82,110 @@ describe('generateEmbedding', () => {
       name: 'rate-limit-error',
       errorType: 'rate-limit-error',
     });
+  });
+});
+
+describe('embeddings persistence helpers', () => {
+  it('saveEmbedding throws when question missing and does not call upsert helper', async () => {
+    const db = createMockDb({
+      get: vi.fn().mockResolvedValue(null),
+    });
+
+    const ctx = createMockCtx({ db });
+
+    await expect(
+      // @ts-expect-error - internal Convex handler
+      saveEmbedding._handler(ctx as any, {
+        questionId: 'questions_1' as any,
+        embedding: [0.1, 0.2],
+        embeddingGeneratedAt: Date.now(),
+      })
+    ).rejects.toThrow('Question not found');
+  });
+
+  it('saveEmbedding delegates to upsertEmbeddingForQuestion with userId and timestamp', async () => {
+    const upsertSpy = vi.fn();
+    vi.doMock('@/convex/lib/embeddingHelpers', () => ({
+      upsertEmbeddingForQuestion: upsertSpy,
+    }));
+
+    const question = {
+      _id: 'questions_1',
+      userId: 'users_1',
+    } as any;
+
+    const db = createMockDb({
+      get: vi.fn().mockResolvedValue(question),
+    });
+    const ctx = createMockCtx({ db });
+
+    const embedding = [0.1, 0.2, 0.3];
+    const timestamp = 123456;
+
+    await (saveEmbedding as any)._handler(ctx, {
+      questionId: question._id,
+      embedding,
+      embeddingGeneratedAt: timestamp,
+    });
+
+    expect(upsertSpy).toHaveBeenCalledWith(
+      ctx,
+      question._id,
+      question.userId,
+      embedding,
+      timestamp
+    );
+  });
+
+  it('saveConceptEmbedding patches concept with embedding and timestamp', async () => {
+    const patch = vi.fn();
+    const db = createMockDb({ patch });
+    const ctx = createMockCtx({ db });
+
+    const embedding = [0.1, 0.2];
+    const timestamp = 123;
+
+    await (saveConceptEmbedding as any)._handler(ctx, {
+      conceptId: 'concepts_1' as any,
+      embedding,
+      embeddingGeneratedAt: timestamp,
+    });
+
+    expect(patch).toHaveBeenCalledWith('concepts_1', {
+      embedding,
+      embeddingGeneratedAt: timestamp,
+    });
+  });
+
+  it('savePhrasingEmbedding patches phrasing with embedding and timestamp', async () => {
+    const patch = vi.fn();
+    const db = createMockDb({ patch });
+    const ctx = createMockCtx({ db });
+
+    const embedding = [0.5];
+    const timestamp = 999;
+
+    await (savePhrasingEmbedding as any)._handler(ctx, {
+      phrasingId: 'phrasings_1' as any,
+      embedding,
+      embeddingGeneratedAt: timestamp,
+    });
+
+    expect(patch).toHaveBeenCalledWith('phrasings_1', {
+      embedding,
+      embeddingGeneratedAt: timestamp,
+    });
+  });
+
+  it('getQuestionForEmbedding returns question when present', async () => {
+    const question = { _id: 'questions_1' } as any;
+    const db = createMockDb({ get: vi.fn().mockResolvedValue(question) });
+    const ctx = createMockCtx({ db });
+
+    const result = await (getQuestionForEmbedding as any)._handler(ctx, {
+      questionId: 'questions_1' as any,
+    });
+
+    expect(result).toBe(question);
   });
 });

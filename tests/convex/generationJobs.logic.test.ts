@@ -5,9 +5,13 @@ import { requireUserFromClerk } from '@/convex/clerk';
 import {
   advancePendingConcept,
   cancelJob,
+  cleanup,
   completeJob,
   createJob,
   failJob,
+  getJobById,
+  getJobByIdInternal,
+  getRecentJobs,
   setConceptWork,
   updateProgress,
 } from '@/convex/generationJobs';
@@ -152,6 +156,18 @@ describe('generationJobs mutations', () => {
         })
       );
     });
+
+    it('patches only provided fields when job already processing', async () => {
+      db.get.mockResolvedValue(makeGenerationJob({ status: 'processing', startedAt: 1 }));
+      db.patch.mockResolvedValue(undefined);
+
+      await (updateProgress as any)._handler(ctx, {
+        jobId: 'job_proc',
+        questionsGenerated: 5,
+      });
+
+      expect(db.patch).toHaveBeenCalledWith('job_proc', { questionsGenerated: 5 });
+    });
   });
 
   describe('setConceptWork & advancePendingConcept', () => {
@@ -188,6 +204,20 @@ describe('generationJobs mutations', () => {
           questionsSaved: 2,
         })
       );
+    });
+
+    it('returns zero counts when job is missing', async () => {
+      db.get.mockResolvedValue(null);
+
+      const result = await (advancePendingConcept as any)._handler(ctx, {
+        jobId: 'missing_job',
+        conceptId: 'c1' as Id<'concepts'>,
+        questionsGeneratedDelta: 1,
+        questionsSavedDelta: 1,
+      });
+
+      expect(result).toEqual({ pendingCount: 0, questionsGenerated: 0, questionsSaved: 0 });
+      expect(db.patch).not.toHaveBeenCalled();
     });
   });
 
@@ -230,6 +260,129 @@ describe('generationJobs mutations', () => {
           retryable: true,
         })
       );
+    });
+  });
+
+  describe('getRecentJobs query', () => {
+    it('clamps pageSize to minimum 10 and uses null cursor by default', async () => {
+      const paginate = vi.fn().mockResolvedValue({
+        page: [makeGenerationJob({ _id: 'job_1' as any })],
+        continueCursor: 'cursor_next',
+        isDone: false,
+      });
+      const order = vi.fn().mockReturnValue({ paginate });
+      const withIndex = vi.fn().mockReturnValue({ order });
+
+      db.query.mockReturnValue({ withIndex });
+
+      const result = await (getRecentJobs as any)._handler(ctx, {
+        cursor: undefined,
+        pageSize: 5,
+      });
+
+      expect(order).toHaveBeenCalledWith('desc');
+      expect(paginate).toHaveBeenCalledWith({ numItems: 10, cursor: null });
+      expect(result).toEqual({
+        results: expect.arrayContaining([expect.objectContaining({ _id: expect.anything() })]),
+        continueCursor: 'cursor_next',
+        isDone: false,
+      });
+    });
+
+    it('caps pageSize at 100 and forwards cursor', async () => {
+      const paginate = vi.fn().mockResolvedValue({
+        page: [],
+        continueCursor: null,
+        isDone: true,
+      });
+      const order = vi.fn().mockReturnValue({ paginate });
+      const withIndex = vi.fn().mockReturnValue({ order });
+
+      db.query.mockReturnValue({ withIndex });
+
+      await (getRecentJobs as any)._handler(ctx, {
+        cursor: 'cursor_1',
+        pageSize: 500,
+      });
+
+      expect(paginate).toHaveBeenCalledWith({ numItems: 100, cursor: 'cursor_1' });
+    });
+  });
+
+  describe('getJobById queries', () => {
+    it('returns job when owned by authenticated user', async () => {
+      const job = makeGenerationJob({ _id: 'job_1' as any, userId: 'user_1' as any });
+      db.get.mockResolvedValue(job);
+
+      const result = await (getJobById as any)._handler(ctx, { jobId: 'job_1' as any });
+
+      expect(mockedRequireUser).toHaveBeenCalledTimes(1);
+      expect(db.get).toHaveBeenCalledWith('job_1');
+      expect(result).toBe(job);
+    });
+
+    it('returns null when job missing or owned by another user', async () => {
+      db.get.mockResolvedValueOnce(null);
+
+      const missing = await (getJobById as any)._handler(ctx, {
+        jobId: 'missing_job' as any,
+      });
+      expect(missing).toBeNull();
+
+      const foreignJob = makeGenerationJob({ _id: 'job_2' as any, userId: 'other_user' as any });
+      db.get.mockResolvedValueOnce(foreignJob);
+
+      const foreign = await (getJobById as any)._handler(ctx, {
+        jobId: 'job_2' as any,
+      });
+      expect(foreign).toBeNull();
+    });
+
+    it('getJobByIdInternal bypasses auth and returns raw job', async () => {
+      const job = makeGenerationJob({ _id: 'job_internal' as any });
+      db.get.mockResolvedValue(job);
+
+      const result = await (getJobByIdInternal as any)._handler(ctx, {
+        jobId: 'job_internal' as any,
+      });
+
+      expect(mockedRequireUser).toHaveBeenCalledTimes(0);
+      expect(db.get).toHaveBeenCalledWith('job_internal');
+      expect(result).toBe(job);
+    });
+  });
+
+  describe('cleanup internal mutation', () => {
+    it('deletes completed and failed jobs returned by queries', async () => {
+      const completedJobs = [{ _id: 'completed_1' as any }, { _id: 'completed_2' as any }];
+      const failedJobs = [{ _id: 'failed_1' as any }];
+
+      const completedCollect = vi.fn().mockResolvedValue(completedJobs);
+      const failedCollect = vi.fn().mockResolvedValue(failedJobs);
+
+      db.query
+        .mockReturnValueOnce({
+          withIndex: vi.fn().mockReturnValue({
+            filter: vi.fn().mockReturnValue({ collect: completedCollect }),
+          }),
+        })
+        .mockReturnValueOnce({
+          withIndex: vi.fn().mockReturnValue({
+            filter: vi.fn().mockReturnValue({ collect: failedCollect }),
+          }),
+        });
+
+      db.delete.mockResolvedValue(undefined);
+
+      const result = await (cleanup as any)._handler(ctx, {});
+
+      expect(completedCollect).toHaveBeenCalledTimes(1);
+      expect(failedCollect).toHaveBeenCalledTimes(1);
+      expect(db.delete).toHaveBeenCalledTimes(3);
+      expect(db.delete).toHaveBeenCalledWith('completed_1');
+      expect(db.delete).toHaveBeenCalledWith('completed_2');
+      expect(db.delete).toHaveBeenCalledWith('failed_1');
+      expect(result).toEqual({ deletedCompleted: 2, deletedFailed: 1, total: 3 });
     });
   });
 });

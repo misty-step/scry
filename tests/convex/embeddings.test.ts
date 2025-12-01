@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Id } from '../../convex/_generated/dataModel';
-import { enforcePerUserLimit } from '../../convex/embeddings';
+import { __test, enforcePerUserLimit } from '../../convex/embeddings';
 import { chunkArray } from '../../convex/lib/chunkArray';
 
 /**
@@ -69,6 +69,10 @@ function createMockResult(id: string, score: number, question: string): SearchRe
     question,
   };
 }
+
+const { getActiveQuestionPageSize } = __test as {
+  getActiveQuestionPageSize: (limit: number) => number;
+};
 
 describe('Embeddings Module - mergeSearchResults', () => {
   describe('Deduplication', () => {
@@ -431,5 +435,21 @@ describe('Embeddings Module - enforcePerUserLimit', () => {
       { userId: 'user1' as Id<'users'>, value: 1 },
       { userId: 'user2' as Id<'users'>, value: 2 },
     ]);
+  });
+});
+
+describe('Embeddings Module - getActiveQuestionPageSize', () => {
+  it('returns at least MIN_ACTIVE_QUESTION_PAGE_SIZE when limit is small', () => {
+    expect(getActiveQuestionPageSize(1)).toBeGreaterThanOrEqual(100);
+  });
+
+  it('caps size at MAX_ACTIVE_QUESTION_PAGE_SIZE for very large limit', () => {
+    const size = getActiveQuestionPageSize(1000);
+    expect(size).toBeLessThanOrEqual(500);
+  });
+
+  it('scales to roughly 2x the limit within bounds', () => {
+    const size = getActiveQuestionPageSize(80);
+    expect(size).toBe(160);
   });
 });
