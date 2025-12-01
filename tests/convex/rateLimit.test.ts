@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  checkApiRateLimit,
   checkEmailRateLimit,
   cleanupExpiredRateLimits,
+  enforceRateLimit,
+  getRateLimitStatus,
   RATE_LIMITS,
   __test as rateLimitTestConstants,
   recordRateLimitAttempt,
@@ -373,6 +376,142 @@ describe('Rate limit bandwidth guards', () => {
       rateLimitTestConstants.CLEANUP_DELETE_BATCH_SIZE
     );
     expect(ctx.db.tables.rateLimits.length).toBe(50);
+  });
+});
+
+describe('Rate limit behavior', () => {
+  const NOW = new Date('2025-01-16T12:00:00Z').getTime();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('enforces limit and records attempt when under threshold', async () => {
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'ip-allow',
+        count: 2,
+        startTimestamp: NOW - 1000,
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'ip-allow', 'magicLink', false)
+    ).resolves.not.toThrow();
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'ip-allow').length).toBe(3);
+  });
+
+  it('throws with retryAfter when threshold reached', async () => {
+    const limit = RATE_LIMITS.magicLink;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'ip-block',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+      })
+    );
+
+    const promise = enforceRateLimit(ctx as any, 'ip-block', 'magicLink', false);
+    await expect(promise).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      retryAfter: expect.any(Number),
+      message: limit.errorMessage,
+    });
+    // No extra insert when blocked
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'ip-block').length).toBe(
+      limit.maxAttempts
+    );
+  });
+
+  it('reports current status with attempts remaining', async () => {
+    const limit = RATE_LIMITS.magicLink;
+    const attempts = createRateLimitEntries({
+      identifier: 'status@example.com',
+      count: 3,
+      startTimestamp: NOW - 5000,
+    });
+    const ctx = createRateLimitCtx(attempts);
+
+    // @ts-expect-error testing private handler
+    const result = await getRateLimitStatus._handler(ctx as any, {
+      identifier: 'status@example.com',
+      limitType: 'magicLink',
+    });
+
+    expect(result.attemptsUsed).toBe(3);
+    expect(result.attemptsRemaining).toBe(limit.maxAttempts - 3);
+    expect(result.maxAttempts).toBe(limit.maxAttempts);
+    // Implementation orders DESC, so last in result = oldest = attempts[0]
+    expect(result.resetTime).toBe(attempts[0].timestamp + limit.windowMs);
+    expect(result.isLimited).toBe(false);
+  });
+
+  it('checkApiRateLimit blocks and returns retryAfter when over limit', async () => {
+    const limit = RATE_LIMITS.magicLink;
+    const attempts = createRateLimitEntries({
+      identifier: '10.0.0.1',
+      count: limit.maxAttempts,
+      startTimestamp: NOW - 2000,
+    });
+    const ctx = createRateLimitCtx(attempts);
+
+    // @ts-expect-error testing private handler
+    const result = await checkApiRateLimit._handler(ctx as any, {
+      ipAddress: '10.0.0.1',
+      operation: 'magicLink',
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.retryAfter).toBeGreaterThan(0);
+    expect(result.maxAttempts).toBe(limit.maxAttempts);
+  });
+
+  it('checkApiRateLimit allows and records attempt under limit', async () => {
+    const limit = RATE_LIMITS.magicLink;
+    const attempts = createRateLimitEntries({
+      identifier: '10.0.0.2',
+      count: 2,
+      startTimestamp: NOW - 2000,
+    });
+    const ctx = createRateLimitCtx(attempts);
+
+    // @ts-expect-error testing private handler
+    const result = await checkApiRateLimit._handler(ctx as any, {
+      ipAddress: '10.0.0.2',
+      operation: 'magicLink',
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.attemptsUsed).toBe(3);
+    expect(result.attemptsRemaining).toBe(limit.maxAttempts - 3);
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === '10.0.0.2').length).toBe(3);
+  });
+
+  it('cleanupExpiredRateLimits deletes only old entries', async () => {
+    const maxWindowMs = Math.max(...Object.values(RATE_LIMITS).map((l) => l.windowMs));
+    const oldEntries = createRateLimitEntries({
+      identifier: 'stale',
+      count: 120,
+      startTimestamp: NOW - maxWindowMs * 3,
+    });
+    const freshEntries = createRateLimitEntries({
+      identifier: 'fresh',
+      count: 5,
+      startTimestamp: NOW - 1000,
+    });
+
+    const ctx = createRateLimitCtx([...oldEntries, ...freshEntries]);
+    // @ts-expect-error testing private handler
+    const result = await cleanupExpiredRateLimits._handler(ctx as any, {});
+
+    expect(result.deletedCount).toBe(oldEntries.length);
+    expect(ctx.db.tables.rateLimits.length).toBe(freshEntries.length);
+    expect(ctx.db.tables.rateLimits.every((row) => row.identifier === 'fresh')).toBe(true);
   });
 });
 

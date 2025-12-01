@@ -8,6 +8,18 @@
 
 ## Now (<2 weeks, sprint-ready)
 
+### [TESTING][CRITICAL] 70%+ Coverage Sprint (In Progress)
+**Files**: 10 critical modules (convex/fsrs/engine.ts, spacedRepetition.ts, rateLimit.ts, aiGeneration.ts, generationJobs.ts, concepts.ts, embeddings.ts, userStats.ts, questionsCrud.ts, lib/ai-client.ts)
+**Problem**: Coverage at 39%, Codecov broken showing "unknown" badge, no PR-level feedback
+**Target**: 70%+ with hard threshold enforcement
+**Features**:
+- Dedicated test sprint for critical business logic
+- Hard 70% threshold (PRs blocked if below)
+- Dynamic PR coverage comments via vitest-coverage-report-action (Codecov removed)
+- Self-hosted shields.io badge (no external dependencies)
+**Tracking**: See TASK.md (PRD), TODO.md (checklist), DESIGN.md (architecture)
+**Effort**: 12-16 hours test writing + 30min infrastructure | **Impact**: Every PR gets coverage feedback, regressions blocked
+
 ### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen, with feedback
 - sometimes a concept or phrasing won't quite be right
 - a learner should be able to hit a regenerate button, specify whether the specific phrasing or the whole concept should be regenerated, and add some notes
@@ -161,14 +173,6 @@
 **Acceptance**: Test error in production → verify Sentry shows unminified stack trace with correct file/line; document findings
 **Effort**: 30m | **Impact**: Debugging UX confidence, validates observability stack integration
 
-### [TESTING][LOW] Coverage Threshold Optimization
-**Source**: PR #81 review feedback (Claude review P2)
-**Files**: .codecov.yml, vitest.config.ts
-**Problem**: 80% patch coverage threshold may be too strict for 27% global coverage project
-**Context**: Currently enforcing 80% patch coverage while global coverage is only 27%, creating friction
-**Acceptance**: Investigate optimal patch threshold; consider 60-70% for current state; document rationale; monitor merge difficulty over 2-4 weeks
-**Effort**: 1h | **Impact**: Developer experience, merge velocity
-
 ### [TESTING][LOW] Test Script Naming Audit
 **Source**: PR #81 review feedback (Claude review P2)
 **Files**: package.json, tests/README.md
@@ -192,14 +196,6 @@
 **Context**: Tests use specific patterns (mocking, timers, renders) without explaining rationale
 **Acceptance**: Add JSDoc comments to each test file explaining patterns, gotchas, and design decisions
 **Effort**: 1h | **Impact**: Test maintainability, team knowledge
-
-### [TESTING][LOW] Coverage File Generation Verification
-**Source**: PR #81 review feedback (Claude review follow-up)
-**Files**: vitest.config.ts, .github/workflows/ci.yml
-**Problem**: Workflow expects coverage-final.json but vitest may generate lcov.info instead
-**Context**: CI uploads coverage successfully with Codecov, but file format uncertain
-**Acceptance**: Verify which files vitest generates; update CI to use correct file; document in vitest.config.ts
-**Effort**: 30m | **Impact**: CI correctness
 
 ### [TESTING][LOW] Pre-push Skip Exit Code
 **Source**: PR #81 review feedback (Claude review follow-up)

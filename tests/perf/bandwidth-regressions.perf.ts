@@ -22,11 +22,15 @@ describe('Bandwidth regressions (>1,100 docs)', () => {
       const questions = generateQuestions({ userId: users[0]._id, count: 1_200 });
       const ctx = createUserStatsCtx(users, questions);
 
-      // @ts-expect-error - Accessing private _handler for testing
-      const result = await reconcileUserStats._handler(ctx as any, {
+      const reconcileHandler = (
+        reconcileUserStats as unknown as {
+          _handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+        }
+      )._handler;
+      const result = (await reconcileHandler(ctx, {
         sampleSize: 100,
         driftThreshold: 0,
-      });
+      })) as { stats: { usersChecked: number } };
 
       expect(result.stats.usersChecked).toBeGreaterThan(0);
       expect(ctx.metrics.userReads).toBeLessThanOrEqual(200);
@@ -47,7 +51,11 @@ describe('Bandwidth regressions (>1,100 docs)', () => {
       });
       const ctx = createRateLimitCtx(entries);
 
-      const result = await checkEmailRateLimit(ctx as any, 'user@example.com', 'magicLink');
+      const result = await checkEmailRateLimit(
+        ctx as unknown as Parameters<typeof checkEmailRateLimit>[0],
+        'user@example.com',
+        'magicLink'
+      );
       expect(result.allowed).toBe(false);
       expect(ctx.metrics.maxBatchRead).toBeLessThanOrEqual(rateLimitTest.MAX_RATE_LIMIT_READS);
       expect(ctx.flags.collectCalled).toBe(false);
@@ -61,7 +69,11 @@ describe('Bandwidth regressions (>1,100 docs)', () => {
       });
       const ctx = createRateLimitCtx(entries);
 
-      await recordRateLimitAttempt(ctx as any, 'ip-123', 'default');
+      await recordRateLimitAttempt(
+        ctx as unknown as Parameters<typeof recordRateLimitAttempt>[0],
+        'ip-123',
+        'default'
+      );
       expect(ctx.metrics.maxBatchRead).toBeLessThanOrEqual(rateLimitTest.CLEANUP_DELETE_BATCH_SIZE);
       expect(ctx.flags.collectCalled).toBe(false);
       expect(ctx.db.tables.rateLimits.length).toBe(1);
@@ -77,10 +89,14 @@ describe('Bandwidth regressions (>1,100 docs)', () => {
       });
       const ctx = createInteractionsCtx('user_stream', interactions);
 
-      // @ts-expect-error - Accessing private _handler for testing
-      const stats = await getQuizInteractionStats._handler(ctx as any, {
+      const statsHandler = (
+        getQuizInteractionStats as unknown as {
+          _handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+        }
+      )._handler;
+      const stats = (await statsHandler(ctx, {
         sessionId: 'session-stream',
-      });
+      })) as { totalInteractions: number; isTruncated: boolean };
 
       expect(stats.totalInteractions).toBe(__quizStatsTest.MAX_SESSION_INTERACTIONS);
       expect(stats.isTruncated).toBe(true);
@@ -93,8 +109,14 @@ describe('Bandwidth regressions (>1,100 docs)', () => {
       const questions = generateQuestions({ userId: 'user_delete' as Id<'users'>, count: 1_200 });
       const ctx = createDeleteCtx(questions);
 
-      // @ts-expect-error - Accessing private _handler for testing
-      await deleteUser._handler(ctx as any, { clerkId: 'clerk_delete' });
+      const deleteHandler = (
+        deleteUser as unknown as {
+          _handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+        }
+      )._handler;
+      await deleteHandler(ctx, {
+        clerkId: 'clerk_delete',
+      });
 
       expect(ctx.db.patch).toHaveBeenCalledTimes(questions.length);
       expect(ctx.metrics.maxBatchRead).toBeLessThanOrEqual(200);
@@ -228,7 +250,12 @@ class GenericQuery<T extends Record<string, unknown>> {
 
     const key = this.orderDirection ? getSortKey(result[0]) : null;
     if (key) {
-      result.sort((a, b) => ((a as any)[key] ?? 0) - ((b as any)[key] ?? 0));
+      const typedKey = key as keyof T;
+      result.sort((a, b) => {
+        const left = a[typedKey];
+        const right = b[typedKey];
+        return Number(left ?? 0) - Number(right ?? 0);
+      });
       if (this.orderDirection === 'desc') {
         result.reverse();
       }

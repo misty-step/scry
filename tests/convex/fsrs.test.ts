@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from '../../convex/_generated/dataModel';
 import {
   FsrsEngine,
@@ -8,6 +8,10 @@ import {
   scheduleConceptReview,
   selectPhrasingForConcept,
 } from '../../convex/fsrs';
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 const engine = new FsrsEngine();
 const fixedNow = new Date('2025-01-16T12:00:00Z');
