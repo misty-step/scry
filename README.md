@@ -1,7 +1,5 @@
 # Scry
 
-![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)
-
 An AI-powered quiz generation and learning application built with Next.js 15 and Convex. Uses Google Gemini for intelligent content generation and implements spaced repetition algorithms for optimized learning.
 
 ## Features
