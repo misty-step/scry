@@ -110,8 +110,9 @@ export const generateEmbedding = internalAction({
           duration: Date.now() - startTime,
           dimensions: embedding.length,
           textLength: args.text.length,
+          model: 'text-embedding-004',
         },
-        'Embedding generated'
+        'Successfully generated embedding'
       );
 
       return embedding;
