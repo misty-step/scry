@@ -7,11 +7,10 @@ import { defineConfig } from 'vitest/config';
 const nodeMajor = Number(process.versions.node.split('.')[0] || '20');
 const pool: 'threads' | 'forks' = nodeMajor >= 22 ? 'forks' : 'threads';
 
-// For newer Node versions where forks are used, ensure workers have enough heap
-// Doing this here keeps callers simple (`pnpm test`) while hiding env tuning.
+// For modern Node, pre-set heap for test workers so callers don't need to pass flags
 if (nodeMajor >= 22 && !process.env.NODE_OPTIONS?.includes('--max-old-space-size')) {
   const base = process.env.NODE_OPTIONS ? `${process.env.NODE_OPTIONS} ` : '';
-  process.env.NODE_OPTIONS = `${base}--max-old-space-size=6144`;
+  process.env.NODE_OPTIONS = `${base}--max-old-space-size=8192`;
 }
 
 export default defineConfig({
