@@ -68,8 +68,8 @@ describe('generationJobs state transitions', () => {
       db.get.mockResolvedValue(
         makeGenerationJob({
           pendingConceptIds: ['c1' as Id<'concepts'>, 'c2' as Id<'concepts'>],
-          questionsGenerated: 1,
-          questionsSaved: 1,
+          phrasingGenerated: 1,
+          phrasingSaved: 1,
         })
       );
       db.patch.mockResolvedValue(undefined);

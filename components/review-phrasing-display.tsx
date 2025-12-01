@@ -5,10 +5,16 @@ import { CheckCircle, XCircle } from 'lucide-react';
 import { OptionsEditor } from '@/components/review/options-editor';
 import { TrueFalseEditor } from '@/components/review/true-false-editor';
 import { Textarea } from '@/components/ui/textarea';
-import type { Id } from '@/convex/_generated/dataModel';
 import { useShuffledOptions } from '@/hooks/use-shuffled-options';
 import { cn } from '@/lib/utils';
-import type { SimpleQuestion } from '@/types/questions';
+
+type SimpleQuestion = {
+  question: string;
+  type?: 'multiple-choice' | 'true-false' | 'cloze' | 'short-answer';
+  options: string[];
+  correctAnswer: string;
+  explanation?: string;
+};
 
 /**
  * Edit state interface for inline editing mode.
@@ -24,9 +30,8 @@ interface EditState {
   errors: Record<string, string>;
 }
 
-interface ReviewQuestionDisplayProps {
+interface ReviewPhrasingDisplayProps {
   question: SimpleQuestion;
-  questionId?: Id<'questions'> | Id<'phrasings'> | null;
   selectedAnswer: string;
   showFeedback: boolean;
   onAnswerSelect: (answer: string) => void;
@@ -34,6 +39,8 @@ interface ReviewQuestionDisplayProps {
     isCorrect: boolean;
     visible: boolean;
   };
+  // Optional identifier for analytics and future enhancements
+  phrasingId?: string;
   /** When true, renders editable fields instead of display elements */
   isEditing?: boolean;
   /** Edit state from useUnifiedEdit hook - required when isEditing is true */
@@ -45,21 +52,19 @@ interface ReviewQuestionDisplayProps {
  * Memoized to prevent unnecessary re-renders when parent state changes
  * Only re-renders when question ID, selected answer, or feedback state changes
  *
- * Answer options are shuffled deterministically based on questionId + userId
- * to prevent the correct answer from always appearing in the same position
+ * Answer options are shuffled randomly (true shuffle per render)
  */
-function ReviewQuestionDisplayComponent({
+function ReviewPhrasingDisplayComponent({
   question,
-  questionId,
   selectedAnswer,
   showFeedback,
   onAnswerSelect,
   instantFeedback,
   isEditing = false,
   editState,
-}: ReviewQuestionDisplayProps) {
-  // Shuffle options deterministically based on questionId + userId
-  const shuffledOptions = useShuffledOptions(question.options, questionId);
+}: ReviewPhrasingDisplayProps) {
+  // Shuffle options (true random per render)
+  const shuffledOptions = useShuffledOptions(question.options);
 
   // Use instant feedback if available, otherwise fall back to delayed feedback
   const displayFeedback = instantFeedback?.visible || showFeedback;
@@ -218,8 +223,8 @@ function ReviewQuestionDisplayComponent({
 // Includes instantFeedback to prevent re-renders during instant feedback transitions
 // while still maintaining responsiveness to backend-driven showFeedback updates
 function areEqual(
-  prevProps: ReviewQuestionDisplayProps,
-  nextProps: ReviewQuestionDisplayProps
+  prevProps: ReviewPhrasingDisplayProps,
+  nextProps: ReviewPhrasingDisplayProps
 ): boolean {
   // Edit mode changes always trigger re-render
   if (prevProps.isEditing !== nextProps.isEditing) return false;
@@ -240,7 +245,6 @@ function areEqual(
 
   // Display mode comparison (original behavior)
   return (
-    prevProps.questionId === nextProps.questionId &&
     prevProps.selectedAnswer === nextProps.selectedAnswer &&
     prevProps.showFeedback === nextProps.showFeedback &&
     prevProps.instantFeedback?.visible === nextProps.instantFeedback?.visible &&
@@ -251,4 +255,4 @@ function areEqual(
 }
 
 // Export memoized component with custom comparison
-export const ReviewQuestionDisplay = React.memo(ReviewQuestionDisplayComponent, areEqual);
+export const ReviewPhrasingDisplay = React.memo(ReviewPhrasingDisplayComponent, areEqual);

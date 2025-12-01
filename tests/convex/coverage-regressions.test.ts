@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Id } from '@/convex/_generated/dataModel';
 import { createMany } from '@/convex/concepts';
 import { enforcePerUserLimit, generateEmbedding } from '@/convex/embeddings';
-import { bulkDelete } from '@/convex/questionsBulk';
-import { saveBatch } from '@/convex/questionsCrud';
 import { createMockCtx, createMockDb, makeConcept } from '../helpers';
 
 const getHandler = (fn: unknown) => (fn as any).handler ?? (fn as any)._handler;
@@ -14,7 +12,6 @@ vi.mock('@/convex/clerk', () => ({
 
 const mockUpdateStatsCounters = vi.fn();
 const mockTrackEvent = vi.fn();
-const mockUpsertEmbeddingForQuestion = vi.fn();
 const mockValidateBulkOwnership = vi.fn();
 
 const mockConceptLogger = vi.hoisted(() => ({
@@ -29,10 +26,7 @@ vi.mock('@/convex/lib/analytics', () => ({
 vi.mock('@/convex/lib/userStatsHelpers', () => ({
   updateStatsCounters: (...args: unknown[]) => mockUpdateStatsCounters(...args),
 }));
-vi.mock('@/convex/lib/embeddingHelpers', () => ({
-  upsertEmbeddingForQuestion: (...args: unknown[]) => mockUpsertEmbeddingForQuestion(...args),
-  deleteEmbeddingForQuestion: vi.fn(),
-}));
+// Question embedding helpers and validation removed with questions table.
 vi.mock('@/convex/lib/validation', () => ({
   validateBulkOwnership: (...args: unknown[]) => mockValidateBulkOwnership(...args),
 }));
@@ -68,8 +62,6 @@ describe('convex regression coverage', () => {
     vi.useFakeTimers().setSystemTime(new Date('2025-02-01T00:00:00Z'));
     mockUpdateStatsCounters.mockReset();
     mockTrackEvent.mockReset();
-    mockUpsertEmbeddingForQuestion.mockReset();
-    mockValidateBulkOwnership.mockReset();
     schedulerInitialize.mockClear();
     mockEmbed.mockReset();
     mockConceptLogger.info.mockReset();
@@ -148,80 +140,6 @@ describe('convex regression coverage', () => {
     });
   });
 
-  describe('questionsCrud.saveBatch', () => {
-    it('persists embeddings only when provided and updates stats', async () => {
-      const db = createMockDb({
-        insert: vi.fn().mockResolvedValueOnce('questions_1').mockResolvedValueOnce('questions_2'),
-      });
-      const ctx = createMockCtx({ db });
-
-      const handler = getHandler(saveBatch);
-      const result = await handler(ctx as never, {
-        userId: 'users_1' as never,
-        questions: [
-          {
-            question: 'Q1',
-            options: ['a'],
-            correctAnswer: 'a',
-            explanation: 'e1',
-            embedding: [0.1, 0.2],
-            embeddingGeneratedAt: 123,
-          },
-          {
-            question: 'Q2',
-            options: ['b'],
-            correctAnswer: 'b',
-            explanation: 'e2',
-          },
-        ],
-      });
-
-      expect(result).toEqual(['questions_1', 'questions_2']);
-      expect(schedulerInitialize).toHaveBeenCalledTimes(1);
-      expect(mockUpsertEmbeddingForQuestion).toHaveBeenCalledTimes(1);
-      expect(mockUpsertEmbeddingForQuestion).toHaveBeenCalledWith(
-        ctx,
-        'questions_1',
-        'users_1',
-        [0.1, 0.2],
-        123
-      );
-      expect(mockUpdateStatsCounters).toHaveBeenCalledWith(ctx, 'users_1', {
-        totalCards: 2,
-        newCount: 2,
-      });
-    });
-  });
-
-  describe('questionsBulk.bulkDelete', () => {
-    it('applies stats deltas based on question states', async () => {
-      const db = createMockDb({
-        patch: vi.fn().mockResolvedValue(undefined),
-      });
-      const ctx = createMockCtx({ db });
-
-      mockValidateBulkOwnership.mockResolvedValue([
-        { _id: 'q1', state: 'new' },
-        { _id: 'q2', state: 'learning' },
-        { _id: 'q3', state: 'review' },
-      ]);
-
-      const handler = getHandler(bulkDelete);
-      const result = await handler(ctx as never, {
-        questionIds: ['q1', 'q2', 'q3'] as never,
-      });
-
-      expect(db.patch).toHaveBeenCalledTimes(3);
-      expect(mockUpdateStatsCounters).toHaveBeenCalledWith(ctx, 'users_1', {
-        totalCards: -3,
-        newCount: -1,
-        learningCount: -1,
-        matureCount: -1,
-      });
-      expect(result).toEqual({ deleted: 3 });
-    });
-  });
-
   describe('embeddings.generateEmbedding', () => {
     const originalKey = process.env.GOOGLE_AI_API_KEY;
 
@@ -277,8 +195,8 @@ describe('convex regression coverage', () => {
       ];
 
       expect(enforcePerUserLimit(items, 0)).toEqual([]);
-      expect(enforcePerUserLimit(items, 1).map((i) => i.value)).toEqual([1, 3]);
-      expect(enforcePerUserLimit(items, 2).map((i) => i.value)).toEqual([1, 2, 3]);
+      expect(enforcePerUserLimit(items, 1).map((i: Item) => i.value)).toEqual([1, 3]);
+      expect(enforcePerUserLimit(items, 2).map((i: Item) => i.value)).toEqual([1, 2, 3]);
     });
   });
 });

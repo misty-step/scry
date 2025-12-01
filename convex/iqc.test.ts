@@ -74,7 +74,6 @@ describe('IQC helpers', () => {
       _creationTime: attemptedAt,
       userId: 'user1' as Id<'users'>,
       conceptId: 'concept2' as Id<'concepts'>,
-      questionId: undefined,
       phrasingId: undefined,
       userAnswer: isCorrect ? 'correct' : 'incorrect',
       isCorrect,

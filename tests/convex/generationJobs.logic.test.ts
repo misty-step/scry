@@ -144,7 +144,7 @@ describe('generationJobs mutations', () => {
       await (updateProgress as any)._handler(ctx, {
         jobId: 'job_1',
         phase: 'generating',
-        questionsGenerated: 2,
+        phrasingGenerated: 2,
       });
       expect(db.patch).toHaveBeenCalledWith(
         'job_1',
@@ -152,7 +152,7 @@ describe('generationJobs mutations', () => {
           status: 'processing',
           startedAt: expect.any(Number),
           phase: 'generating',
-          questionsGenerated: 2,
+          phrasingGenerated: 2,
         })
       );
     });
@@ -182,26 +182,26 @@ describe('generationJobs mutations', () => {
       db.get.mockResolvedValue(
         makeGenerationJob({
           pendingConceptIds: ['c1' as Id<'concepts'>],
-          questionsGenerated: 1,
-          questionsSaved: 1,
+          phrasingGenerated: 1,
+          phrasingSaved: 1,
         })
       );
       db.patch.mockResolvedValue(undefined);
       const result = await (advancePendingConcept as any)._handler(ctx, {
         jobId: 'job_1',
         conceptId: 'c1' as Id<'concepts'>,
-        questionsGeneratedDelta: 2,
-        questionsSavedDelta: 1,
+        phrasingGeneratedDelta: 2,
+        phrasingSavedDelta: 1,
       });
 
-      expect(result).toEqual({ pendingCount: 0, questionsGenerated: 3, questionsSaved: 2 });
+      expect(result).toEqual({ pendingCount: 0, phrasingGenerated: 3, phrasingSaved: 2 });
       expect(db.patch).toHaveBeenCalledWith(
         'job_1',
         expect.objectContaining({
           pendingConceptIds: [],
           phase: 'finalizing',
-          questionsGenerated: 3,
-          questionsSaved: 2,
+          phrasingGenerated: 3,
+          phrasingSaved: 2,
         })
       );
     });
@@ -227,8 +227,8 @@ describe('generationJobs mutations', () => {
       await (completeJob as any)._handler(ctx, {
         jobId: 'job_1',
         topic: 'Biology',
-        questionIds: ['q1', 'q2'],
         conceptIds: ['c1' as any],
+        phrasingSaved: 2,
         durationMs: 5000,
       });
       expect(db.patch).toHaveBeenCalledWith(
@@ -236,7 +236,7 @@ describe('generationJobs mutations', () => {
         expect.objectContaining({
           status: 'completed',
           topic: 'Biology',
-          questionsSaved: 2,
+          phrasingSaved: 2,
           durationMs: 5000,
           pendingConceptIds: [],
         })

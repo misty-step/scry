@@ -163,16 +163,15 @@ const nextConfig: NextConfig = {
   // Configure redirects for legacy routes
   async redirects() {
     return [
-      // Redirect old /concepts route to /library (concepts are now shown at /library)
-      {
-        source: '/concepts',
-        destination: '/library',
-        permanent: true,
-      },
-      // Redirect old /questions route to /library
+      // Redirect legacy questions/library routes to the concepts library
       {
         source: '/questions',
-        destination: '/library',
+        destination: '/concepts',
+        permanent: true,
+      },
+      {
+        source: '/library',
+        destination: '/concepts',
         permanent: true,
       },
     ];

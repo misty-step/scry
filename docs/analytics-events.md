@@ -12,7 +12,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 
 #### `Quiz Generation Started`
 
-**Purpose:** Track when background question generation jobs begin
+**Purpose:** Track when background concept/phrasing generation jobs begin
 
 **Trigger:** `convex/aiGeneration.ts:processJob()` - Start of generation workflow
 
@@ -21,7 +21,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 |---|---|---|---|
 | `jobId` | string | Yes | Unique identifier for generation job |
 | `userId` | string | No | Clerk user ID (auto-added by `useTrackEvent`) |
-| `questionCount` | number | No | Target number of questions to generate |
+| `phrasingCount` | number | No | Target number of phrasings to generate |
 | `provider` | string | No | AI provider (`openai` or `google`) |
 
 **Example Payload:**
@@ -29,7 +29,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 {
   "jobId": "k17abc123",
   "userId": "user_2abc",
-  "questionCount": 10,
+  "phrasingCount": 10,
   "provider": "openai"
 }
 ```
@@ -47,7 +47,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 |---|---|---|---|
 | `jobId` | string | Yes | Unique identifier for generation job |
 | `userId` | string | No | Clerk user ID |
-| `questionCount` | number | Yes | Actual number of questions generated |
+| `phrasingCount` | number | Yes | Actual number of phrasings generated |
 | `provider` | string | Yes | AI provider used |
 | `durationMs` | number | Yes | Total generation time in milliseconds |
 
@@ -56,7 +56,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 {
   "jobId": "k17abc123",
   "userId": "user_2abc",
-  "questionCount": 10,
+  "phrasingCount": 10,
   "provider": "openai",
   "durationMs": 12450
 }
@@ -81,6 +81,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 | `jobId` | string | Yes | Unique identifier for generation job |
 | `userId` | string | No | Clerk user ID |
 | `provider` | string | No | AI provider that failed |
+| `phrasingCount` | number | No | Number of phrasings saved when failure occurred |
 | `errorType` | string | No | High-level error category (e.g., `timeout`, `api_error`) |
 
 **Example Payload:**
@@ -89,6 +90,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
   "jobId": "k17abc123",
   "userId": "user_2abc",
   "provider": "openai",
+  "phrasingCount": 10,
   "errorType": "rate_limit"
 }
 ```
@@ -139,14 +141,14 @@ This document defines all custom analytics events tracked in Scry. Events are se
 | `userId` | string | No | Clerk user ID |
 | `deckId` | string | No | If reviewing specific deck |
 | `durationMs` | number | No | Total session duration in milliseconds |
-| `questionCount` | number | No | Number of questions reviewed |
+| `phrasingCount` | number | No | Number of phrasings reviewed |
 
 **Example Payload:**
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
   "userId": "user_2abc",
-  "questionCount": 15,
+  "phrasingCount": 15,
   "durationMs": 180000
 }
 ```
@@ -170,14 +172,14 @@ This document defines all custom analytics events tracked in Scry. Events are se
 | `sessionId` | string | Yes | UUID for this review session |
 | `userId` | string | No | Clerk user ID |
 | `deckId` | string | No | If reviewing specific deck |
-| `questionIndex` | number | No | How many questions were answered before abandoning |
+| `phrasingIndex` | number | No | How many phrasings were answered before abandoning |
 
 **Example Payload:**
 ```json
 {
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
   "userId": "user_2abc",
-  "questionIndex": 5
+  "phrasingIndex": 5
 }
 ```
 
@@ -189,123 +191,7 @@ This document defines all custom analytics events tracked in Scry. Events are se
 
 ### Question CRUD Events
 
-#### `Question Created`
-
-**Purpose:** Track question creation (manual or AI-generated)
-
-**Trigger:** `convex/questionsCrud.ts` - Create mutation success
-
-**Properties:**
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `questionId` | string | Yes | Convex document ID |
-| `userId` | string | No | Clerk user ID |
-| `source` | string | No | Creation source (`manual`, `ai`, `import`) |
-
-**Example Payload:**
-```json
-{
-  "questionId": "jk9abc123",
-  "userId": "user_2abc",
-  "source": "ai"
-}
-```
-
----
-
-#### `Question Updated`
-
-**Purpose:** Track question edits
-
-**Trigger:** `convex/questionsCrud.ts` - Update mutation success
-
-**Properties:**
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `questionId` | string | Yes | Convex document ID |
-| `userId` | string | No | Clerk user ID |
-| `source` | string | No | Update source (`manual`, `ai_regenerate`) |
-
-**Example Payload:**
-```json
-{
-  "questionId": "jk9abc123",
-  "userId": "user_2abc",
-  "source": "manual"
-}
-```
-
----
-
-#### `Question Deleted`
-
-**Purpose:** Track soft deletions
-
-**Trigger:** `convex/questionsCrud.ts` - Soft delete mutation success
-
-**Properties:**
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `questionId` | string | Yes | Convex document ID |
-| `userId` | string | No | Clerk user ID |
-| `source` | string | No | Deletion source (`manual`, `bulk`) |
-
-**Example Payload:**
-```json
-{
-  "questionId": "jk9abc123",
-  "userId": "user_2abc",
-  "source": "manual"
-}
-```
-
----
-
-#### `Question Archived`
-
-**Purpose:** Track question archival (reversible removal from active review)
-
-**Trigger:** `convex/questionsBulk.ts` - Archive mutation success
-
-**Properties:**
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `questionId` | string | Yes | Convex document ID (or count for bulk) |
-| `userId` | string | No | Clerk user ID |
-| `source` | string | No | Archive source (`manual`, `bulk`) |
-
-**Example Payload:**
-```json
-{
-  "questionId": "jk9abc123",
-  "userId": "user_2abc",
-  "source": "bulk"
-}
-```
-
----
-
-#### `Question Restored`
-
-**Purpose:** Track question restoration (undoing soft delete or archive)
-
-**Trigger:** `convex/questionsBulk.ts` - Restore mutation success
-
-**Properties:**
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `questionId` | string | Yes | Convex document ID (or count for bulk) |
-| `userId` | string | No | Clerk user ID |
-| `source` | string | No | Restore source (`manual`, `bulk`) |
-
-**Example Payload:**
-```json
-{
-  "questionId": "jk9abc123",
-  "userId": "user_2abc",
-  "source": "manual"
-}
-```
+Legacy question CRUD events (`Question Created`, `Question Updated`, `Question Deleted`, `Question Archived`, `Question Restored`) were removed with the migration to concept/phrasing tables. Historical references remain in ADRs only.
 
 ---
 
@@ -323,7 +209,7 @@ function MyComponent() {
     // TypeScript will autocomplete event names and validate properties
     track('Quiz Generation Started', {
       jobId: 'k17abc',
-      questionCount: 10,
+      phrasingCount: 10,
       provider: 'openai'
     });
   };
@@ -340,10 +226,11 @@ export const myMutation = mutation({
     // ... do work
 
     // Track event server-side
-    trackEvent('Question Created', {
-      questionId: result._id,
-      userId: ctx.auth.userId,
-      source: 'ai'
+    trackEvent('Quiz Generation Completed', {
+      jobId: result.jobId,
+      phrasingCount: result.phrasingCount,
+      provider: result.provider,
+      durationMs: result.durationMs
     });
 
     return result;
@@ -362,7 +249,7 @@ export interface AnalyticsEventDefinitions {
   'Quiz Generation Started': {
     jobId: string;
     userId?: string;
-    questionCount?: number;
+    phrasingCount?: number;
     provider?: string;
   };
   // ... other events

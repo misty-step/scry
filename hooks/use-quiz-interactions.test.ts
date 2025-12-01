@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { useMutation } from 'convex/react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Id } from '@/convex/_generated/dataModel';
 import { useQuizInteractions } from './use-quiz-interactions';
 
 // Mock dependencies
@@ -59,8 +60,8 @@ describe('useQuizInteractions', () => {
       let response: any;
       await act(async () => {
         response = await result.current.trackAnswer(
-          'concept-1',
-          'phrasing-1',
+          'concept-1' as Id<'concepts'>,
+          'phrasing-1' as Id<'phrasings'>,
           'Answer A',
           true,
           15000,
@@ -97,7 +98,12 @@ describe('useQuizInteractions', () => {
 
       let response: any;
       await act(async () => {
-        response = await result.current.trackAnswer('concept-2', 'phrasing-2', 'Answer B', false);
+        response = await result.current.trackAnswer(
+          'concept-2' as Id<'concepts'>,
+          'phrasing-2' as Id<'phrasings'>,
+          'Answer B',
+          false
+        );
       });
 
       expect(mockRecordInteraction).toHaveBeenCalledWith({
@@ -123,7 +129,12 @@ describe('useQuizInteractions', () => {
 
       let response: any;
       await act(async () => {
-        response = await result.current.trackAnswer('concept-3', 'phrasing-3', 'Answer C', true);
+        response = await result.current.trackAnswer(
+          'concept-3' as Id<'concepts'>,
+          'phrasing-3' as Id<'phrasings'>,
+          'Answer C',
+          true
+        );
       });
 
       expect(mockRecordInteraction).not.toHaveBeenCalled();
@@ -135,14 +146,24 @@ describe('useQuizInteractions', () => {
 
       let response: any;
       await act(async () => {
-        response = await result.current.trackAnswer('', 'phrasing-3', 'Answer D', false);
+        response = await result.current.trackAnswer(
+          '' as unknown as Id<'concepts'>,
+          'phrasing-3' as Id<'phrasings'>,
+          'Answer D',
+          false
+        );
       });
 
       expect(mockRecordInteraction).not.toHaveBeenCalled();
       expect(response).toBeNull();
 
       await act(async () => {
-        response = await result.current.trackAnswer('concept-3', '', 'Answer D', false);
+        response = await result.current.trackAnswer(
+          'concept-3' as Id<'concepts'>,
+          '' as unknown as Id<'phrasings'>,
+          'Answer D',
+          false
+        );
       });
 
       expect(mockRecordInteraction).not.toHaveBeenCalled();
@@ -160,7 +181,12 @@ describe('useQuizInteractions', () => {
 
       let response: any;
       await act(async () => {
-        response = await result.current.trackAnswer('concept-4', 'phrasing-4', 'Answer E', true);
+        response = await result.current.trackAnswer(
+          'concept-4' as Id<'concepts'>,
+          'phrasing-4' as Id<'phrasings'>,
+          'Answer E',
+          true
+        );
       });
 
       expect(mockRecordInteraction).toHaveBeenCalled();
@@ -213,8 +239,8 @@ describe('useQuizInteractions', () => {
       let response: any;
       await act(async () => {
         response = await result.current.trackAnswer(
-          'concept-5',
-          'phrasing-5',
+          'concept-5' as Id<'concepts'>,
+          'phrasing-5' as Id<'phrasings'>,
           'Answer F',
           true,
           8500
@@ -245,7 +271,12 @@ describe('useQuizInteractions', () => {
 
       let response: any;
       await act(async () => {
-        response = await result.current.trackAnswer('concept-6', 'phrasing-6', 'a1', true);
+        response = await result.current.trackAnswer(
+          'concept-6' as Id<'concepts'>,
+          'phrasing-6' as Id<'phrasings'>,
+          'a1',
+          true
+        );
       });
 
       expect(response).toBeDefined();
@@ -256,7 +287,12 @@ describe('useQuizInteractions', () => {
       rerender();
 
       await act(async () => {
-        response = await result.current.trackAnswer('concept-7', 'phrasing-7', 'a2', false);
+        response = await result.current.trackAnswer(
+          'concept-7' as Id<'concepts'>,
+          'phrasing-7' as Id<'phrasings'>,
+          'a2',
+          false
+        );
       });
 
       expect(response).toBeNull();

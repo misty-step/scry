@@ -1,8 +1,8 @@
 import { useUser } from '@clerk/nextjs';
 import { useQuery } from 'convex/react';
-
 import { api } from '@/convex/_generated/api';
 import type { Doc } from '@/convex/_generated/dataModel';
+import { isActiveJob, type GenerationJob } from '@/types/generation-jobs';
 
 /**
  * Hook to fetch and filter generation jobs
@@ -22,7 +22,7 @@ export function useActiveJobs() {
   );
 
   // Extract results from pagination response
-  const jobs = paginationData?.results;
+  const jobs = paginationData?.results as GenerationJob[] | undefined;
 
   if (!jobs) {
     return {
@@ -33,9 +33,7 @@ export function useActiveJobs() {
     };
   }
 
-  const activeJobs = jobs.filter(
-    (job: Doc<'generationJobs'>) => job.status === 'pending' || job.status === 'processing'
-  );
+  const activeJobs = jobs.filter((job: Doc<'generationJobs'>) => isActiveJob(job as GenerationJob));
 
   return {
     jobs,

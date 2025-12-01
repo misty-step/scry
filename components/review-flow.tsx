@@ -1,13 +1,12 @@
+/** @jest-environment jsdom */
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { ArrowRight, Brain, Calendar, Clock, Info, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { EditQuestionModal } from '@/components/edit-question-modal';
 import { PageContainer } from '@/components/page-container';
-import { QuestionHistory } from '@/components/question-history';
-import { ReviewQuestionDisplay } from '@/components/review-question-display';
+import { ReviewPhrasingDisplay } from '@/components/review-phrasing-display';
 import { LearningModeExplainer } from '@/components/review/learning-mode-explainer';
 import { ReviewActionsDropdown } from '@/components/review/review-actions-dropdown';
 import { ReviewEmptyState } from '@/components/review/review-empty-state';
@@ -20,18 +19,14 @@ import { LiveRegion } from '@/components/ui/live-region';
 import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useCurrentQuestion } from '@/contexts/current-question-context';
 import { api } from '@/convex/_generated/api';
-import type { Doc } from '@/convex/_generated/dataModel';
 import { useConceptActions } from '@/hooks/use-concept-actions';
-import { useConfirmation } from '@/hooks/use-confirmation';
 import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
-import { useQuestionMutations } from '@/hooks/use-question-mutations';
 import { useQuizInteractions } from '@/hooks/use-quiz-interactions';
 import { useReviewFlow } from '@/hooks/use-review-flow';
 import { useUnifiedEdit } from '@/hooks/use-unified-edit';
+import type { QuestionType } from '@/lib/unified-edit-validation';
 import { cn } from '@/lib/utils';
 
 /**
@@ -49,16 +44,12 @@ export function ReviewFlow() {
     phrasingId,
     phrasingIndex,
     totalPhrasings,
-    legacyQuestionId,
     selectionReason,
     interactions,
     isTransitioning,
     conceptFsrs,
     handlers,
   } = useReviewFlow();
-
-  // Use context for current question
-  const { setCurrentQuestion } = useCurrentQuestion();
 
   // Instant feedback hook for immediate visual response
   const {
@@ -97,7 +88,7 @@ export function ReviewFlow() {
 
   const { trackAnswer } = useQuizInteractions();
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
-  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [questionStartTime, setQuestionStartTime] = useState(() => Date.now());
   const selectionReasonDescriptions: Record<string, string> = {
     canonical: 'Your preferred phrasing',
     'least-seen': 'Least practiced',
@@ -120,7 +111,7 @@ export function ReviewFlow() {
   const dueCountData = useQuery(api.concepts.getConceptsDueCount);
 
   // Cache the last known due count to prevent flicker during refetch
-  const [cachedData, setCachedData] = useState({ conceptsDue: 0, orphanedQuestions: 0 });
+  const [cachedData, setCachedData] = useState({ conceptsDue: 0 });
   useEffect(() => {
     if (dueCountData !== undefined) {
       setCachedData(dueCountData);
@@ -128,9 +119,7 @@ export function ReviewFlow() {
   }, [dueCountData]);
 
   // Edit/Delete functionality
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const { optimisticEdit, optimisticDelete } = useQuestionMutations();
-  const confirm = useConfirmation();
+  // Legacy modal-based edit/delete removed; unified inline edit handles edits.
 
   // ============================================================================
   // Unified Edit Integration
@@ -154,6 +143,9 @@ export function ReviewFlow() {
     explanation: string;
     options: string[];
   } | null>(null);
+
+  const questionType: QuestionType =
+    question?.type === 'true-false' ? 'true-false' : 'multiple-choice';
 
   const unifiedEdit = useUnifiedEdit(
     {
@@ -196,7 +188,7 @@ export function ReviewFlow() {
         return optimisticData;
       }
     },
-    question?.type || 'multiple-choice'
+    questionType
   );
 
   // Clear optimistic concept state when Convex reactive query catches up
@@ -272,19 +264,6 @@ export function ReviewFlow() {
     // Default: use real Convex data
     return question;
   }, [question, optimisticPhrasing, unifiedEdit.isEditing, unifiedEdit.localData]);
-
-  // Update context when current question changes
-  useEffect(() => {
-    if (question && legacyQuestionId) {
-      setCurrentQuestion({
-        ...question,
-        _id: legacyQuestionId,
-        type: question.type || 'multiple-choice',
-      } as Doc<'questions'>);
-    } else {
-      setCurrentQuestion(undefined);
-    }
-  }, [question, legacyQuestionId, setCurrentQuestion]);
 
   // Reset state when question changes OR when transition completes
   // This handles both normal question changes AND FSRS immediate re-review (same phrasing)
@@ -372,34 +351,6 @@ export function ReviewFlow() {
   }, [handlers]);
 
   // Edit handler (legacy modal-based edit, currently unused - inline editing is used instead)
-  const _handleEdit = useCallback(() => {
-    if (!question || !legacyQuestionId) return;
-    setEditModalOpen(true);
-  }, [question, legacyQuestionId]);
-
-  // Delete handler with confirmation
-  const handleDelete = useCallback(async () => {
-    if (!question || !legacyQuestionId) return;
-
-    const confirmed = await confirm({
-      title: 'Delete this question?',
-      description:
-        'This will move the question to trash. You can restore it later from the Library.',
-      confirmText: 'Move to Trash',
-      cancelText: 'Cancel',
-      variant: 'destructive',
-    });
-
-    if (confirmed) {
-      const result = await optimisticDelete({ questionId: legacyQuestionId });
-      if (result.success) {
-        // Toast already shown by optimisticDelete hook
-        // Move to next question after delete
-        handlers.onReviewComplete();
-      }
-    }
-  }, [question, legacyQuestionId, optimisticDelete, handlers, confirm]);
-
   // Archive phrasing handler with undo
   const handleArchivePhrasing = useCallback(async () => {
     if (!phrasingId) return;
@@ -443,33 +394,6 @@ export function ReviewFlow() {
     handleArchiveConcept,
   ]);
 
-  // Handle save from edit modal - now supports all fields
-  const handleSaveEdit = useCallback(
-    async (updates: {
-      question: string;
-      options: string[];
-      correctAnswer: string;
-      explanation: string;
-    }) => {
-      if (!legacyQuestionId) return;
-
-      // Pass all fields including options and correctAnswer
-      const result = await optimisticEdit({
-        questionId: legacyQuestionId,
-        question: updates.question,
-        explanation: updates.explanation,
-        options: updates.options,
-        correctAnswer: updates.correctAnswer,
-      });
-
-      if (result.success) {
-        setEditModalOpen(false);
-        toast.success('Question updated');
-      }
-    },
-    [legacyQuestionId, optimisticEdit]
-  );
-
   // Handler for starting unified edit mode (E key)
   const handleStartInlineEdit = useCallback(() => {
     // Allow editing anytime when not already editing
@@ -506,8 +430,6 @@ export function ReviewFlow() {
   }, [unifiedEdit.isEditing, hasAnsweredCurrentQuestion, feedbackState.showFeedback]);
 
   // Wire up keyboard shortcuts
-  const canModifyLegacyQuestion = Boolean(legacyQuestionId);
-
   useReviewShortcuts({
     onSelectAnswer: !feedbackState.showFeedback
       ? (index: number) => {
@@ -519,7 +441,6 @@ export function ReviewFlow() {
     onSubmit: !feedbackState.showFeedback && selectedAnswer ? handleSubmit : undefined,
     onNext: feedbackState.showFeedback && !isTransitioning ? handleNext : undefined,
     onEdit: unifiedEdit.isEditing ? undefined : handleStartInlineEdit,
-    onDelete: canModifyLegacyQuestion ? handleDelete : undefined,
     onArchive: handleArchiveViaShortcut,
     showingFeedback: feedbackState.showFeedback,
     canSubmit: !!selectedAnswer,
@@ -551,16 +472,7 @@ export function ReviewFlow() {
                 <span className="text-sm font-medium tabular-nums">
                   <span className="text-foreground">{cachedData.conceptsDue}</span>
                   <span className="text-muted-foreground ml-1">concepts due</span>
-                  {cachedData.orphanedQuestions > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 ml-1 inline text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Plus {cachedData.orphanedQuestions} orphaned questions (need migration)
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                  {/* Orphaned questions removed with legacy questions system */}
                 </span>
               </div>
               {conceptId && (
@@ -602,9 +514,9 @@ export function ReviewFlow() {
                 handlers.onReviewComplete();
               }}
             >
-              <ReviewQuestionDisplay
+              <ReviewPhrasingDisplay
                 question={displayQuestion!}
-                questionId={phrasingId ?? undefined}
+                phrasingId={phrasingId ?? undefined}
                 selectedAnswer={selectedAnswer}
                 showFeedback={feedbackState.showFeedback}
                 onAnswerSelect={handleAnswerSelect}
@@ -741,11 +653,7 @@ export function ReviewFlow() {
                       <hr className="border-border/30" />
                     )}
 
-                  {/* Question History (hidden when editing) */}
-                  {!unifiedEdit.isEditing && interactions.length > 0 && (
-                    <QuestionHistory interactions={interactions} loading={false} />
-                  )}
-
+                  {/* Question history UI removed with legacy questions system; interactions preserved for future analytics/visualization. */}
                   {/* Next Review - inline and subtle (hidden when editing) */}
                   {!unifiedEdit.isEditing &&
                     feedbackState.nextReviewInfo &&
@@ -813,31 +721,7 @@ export function ReviewFlow() {
             )}
           </article>
 
-          {/* Edit Question Modal */}
-          {question && legacyQuestionId && (
-            <EditQuestionModal
-              open={editModalOpen}
-              onOpenChange={setEditModalOpen}
-              question={
-                {
-                  _id: legacyQuestionId,
-                  _creationTime: Date.now(),
-                  userId: '' as Doc<'questions'>['userId'], // Type assertion for missing field
-                  question: question.question,
-                  topic: '', // SimpleQuestion doesn't have topic
-                  difficulty: 'medium', // Default since not in SimpleQuestion
-                  type: question.type || 'multiple-choice',
-                  options: question.options,
-                  correctAnswer: question.correctAnswer,
-                  explanation: question.explanation,
-                  generatedAt: Date.now(),
-                  attemptCount: 0, // Not available in SimpleQuestion
-                  correctCount: 0, // Not available in SimpleQuestion
-                } as Doc<'questions'>
-              }
-              onSave={handleSaveEdit}
-            />
-          )}
+          {/* Legacy edit modal removed */}
         </div>
       </PageContainer>
     );

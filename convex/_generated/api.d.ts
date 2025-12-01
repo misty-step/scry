@@ -31,7 +31,6 @@ import type * as lib_chunkArray from "../lib/chunkArray.js";
 import type * as lib_conceptConstants from "../lib/conceptConstants.js";
 import type * as lib_conceptFsrsHelpers from "../lib/conceptFsrsHelpers.js";
 import type * as lib_constants from "../lib/constants.js";
-import type * as lib_embeddingHelpers from "../lib/embeddingHelpers.js";
 import type * as lib_envDiagnostics from "../lib/envDiagnostics.js";
 import type * as lib_fsrsReplay from "../lib/fsrsReplay.js";
 import type * as lib_generationContracts from "../lib/generationContracts.js";
@@ -41,24 +40,12 @@ import type * as lib_productionConfig from "../lib/productionConfig.js";
 import type * as lib_promptTemplates from "../lib/promptTemplates.js";
 import type * as lib_responsesApi from "../lib/responsesApi.js";
 import type * as lib_userStatsHelpers from "../lib/userStatsHelpers.js";
-import type * as lib_validation from "../lib/validation.js";
-import type * as migrations from "../migrations.js";
-import type * as migrations_clusterQuestions from "../migrations/clusterQuestions.js";
-import type * as migrations_clusterQuestionsV3 from "../migrations/clusterQuestionsV3.js";
-import type * as migrations_synthesizeConcept from "../migrations/synthesizeConcept.js";
 import type * as phrasings from "../phrasings.js";
-import type * as questionsBulk from "../questionsBulk.js";
-import type * as questionsCrud from "../questionsCrud.js";
-import type * as questionsInteractions from "../questionsInteractions.js";
-import type * as questionsLibrary from "../questionsLibrary.js";
-import type * as questionsRelated from "../questionsRelated.js";
 import type * as rateLimit from "../rateLimit.js";
-import type * as scheduling from "../scheduling.js";
 import type * as schemaVersion from "../schemaVersion.js";
 import type * as spacedRepetition from "../spacedRepetition.js";
 import type * as system from "../system.js";
 import type * as types from "../types.js";
-import type * as userStats from "../userStats.js";
 
 import type {
   ApiFromModules,
@@ -90,7 +77,6 @@ declare const fullApi: ApiFromModules<{
   "lib/conceptConstants": typeof lib_conceptConstants;
   "lib/conceptFsrsHelpers": typeof lib_conceptFsrsHelpers;
   "lib/constants": typeof lib_constants;
-  "lib/embeddingHelpers": typeof lib_embeddingHelpers;
   "lib/envDiagnostics": typeof lib_envDiagnostics;
   "lib/fsrsReplay": typeof lib_fsrsReplay;
   "lib/generationContracts": typeof lib_generationContracts;
@@ -100,24 +86,12 @@ declare const fullApi: ApiFromModules<{
   "lib/promptTemplates": typeof lib_promptTemplates;
   "lib/responsesApi": typeof lib_responsesApi;
   "lib/userStatsHelpers": typeof lib_userStatsHelpers;
-  "lib/validation": typeof lib_validation;
-  migrations: typeof migrations;
-  "migrations/clusterQuestions": typeof migrations_clusterQuestions;
-  "migrations/clusterQuestionsV3": typeof migrations_clusterQuestionsV3;
-  "migrations/synthesizeConcept": typeof migrations_synthesizeConcept;
   phrasings: typeof phrasings;
-  questionsBulk: typeof questionsBulk;
-  questionsCrud: typeof questionsCrud;
-  questionsInteractions: typeof questionsInteractions;
-  questionsLibrary: typeof questionsLibrary;
-  questionsRelated: typeof questionsRelated;
   rateLimit: typeof rateLimit;
-  scheduling: typeof scheduling;
   schemaVersion: typeof schemaVersion;
   spacedRepetition: typeof spacedRepetition;
   system: typeof system;
   types: typeof types;
-  userStats: typeof userStats;
 }>;
 
 /**

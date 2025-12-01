@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Id } from '../../convex/_generated/dataModel';
-import { __test, enforcePerUserLimit } from '../../convex/embeddings';
+import { enforcePerUserLimit } from '../../convex/embeddings';
 import { chunkArray } from '../../convex/lib/chunkArray';
 
 /**
@@ -15,7 +15,7 @@ import { chunkArray } from '../../convex/lib/chunkArray';
  * Type for search results (copied from embeddings.ts for testing)
  */
 type SearchResult = {
-  _id: Id<'questions'>;
+  _id: Id<'phrasings'>;
   _score: number;
   [key: string]: unknown;
 };
@@ -44,7 +44,7 @@ function mergeSearchResults(
   // Add text results that aren't duplicates
   // Assign default score of 0.5 to text-only matches (between low/high vector scores)
   for (const result of textResults) {
-    const typedResult = result as { _id: Id<'questions'>; [key: string]: unknown };
+    const typedResult = result as { _id: Id<'phrasings'>; [key: string]: unknown };
     const id = typedResult._id.toString();
     if (!seen.has(id)) {
       seen.add(id);
@@ -64,15 +64,11 @@ function mergeSearchResults(
  */
 function createMockResult(id: string, score: number, question: string): SearchResult {
   return {
-    _id: id as Id<'questions'>,
+    _id: id as Id<'phrasings'>,
     _score: score,
     question,
   };
 }
-
-const { getActiveQuestionPageSize } = __test as {
-  getActiveQuestionPageSize: (limit: number) => number;
-};
 
 describe('Embeddings Module - mergeSearchResults', () => {
   describe('Deduplication', () => {
@@ -412,8 +408,12 @@ describe('Embeddings Module - enforcePerUserLimit', () => {
 
     const limited = enforcePerUserLimit(items, 2);
     expect(limited.length).toBe(3);
-    expect(limited.filter((item) => item.userId === ('user1' as Id<'users'>))).toHaveLength(2);
-    expect(limited.filter((item) => item.userId === ('user2' as Id<'users'>))).toHaveLength(1);
+    expect(
+      limited.filter((item: (typeof items)[number]) => item.userId === ('user1' as Id<'users'>))
+    ).toHaveLength(2);
+    expect(
+      limited.filter((item: (typeof items)[number]) => item.userId === ('user2' as Id<'users'>))
+    ).toHaveLength(1);
   });
 
   it('returns empty array when limit is zero', () => {
@@ -435,21 +435,5 @@ describe('Embeddings Module - enforcePerUserLimit', () => {
       { userId: 'user1' as Id<'users'>, value: 1 },
       { userId: 'user2' as Id<'users'>, value: 2 },
     ]);
-  });
-});
-
-describe('Embeddings Module - getActiveQuestionPageSize', () => {
-  it('returns at least MIN_ACTIVE_QUESTION_PAGE_SIZE when limit is small', () => {
-    expect(getActiveQuestionPageSize(1)).toBeGreaterThanOrEqual(100);
-  });
-
-  it('caps size at MAX_ACTIVE_QUESTION_PAGE_SIZE for very large limit', () => {
-    const size = getActiveQuestionPageSize(1000);
-    expect(size).toBeLessThanOrEqual(500);
-  });
-
-  it('scales to roughly 2x the limit within bounds', () => {
-    const size = getActiveQuestionPageSize(80);
-    expect(size).toBe(160);
   });
 });

@@ -59,10 +59,7 @@ export function GenerationTaskCard({ job }: GenerationTaskCardProps) {
   };
 
   // Calculate progress percentage
-  const savedCount =
-    job.questionIds.length > 0
-      ? job.questionIds.length
-      : (job.conceptIds?.length ?? job.questionsSaved ?? 0);
+  const savedCount = job.phrasingSaved ?? job.conceptIds?.length ?? 0;
   const progressValue =
     isProcessingJob(job) && job.estimatedTotal
       ? Math.min(100, Math.round((savedCount / job.estimatedTotal) * 100))
@@ -144,10 +141,7 @@ export function GenerationTaskCard({ job }: GenerationTaskCardProps) {
 
         {isCompletedJob(job) && (
           <div className="text-xs text-muted-foreground pl-6">
-            {savedCount}{' '}
-            {job.questionIds.length > 0
-              ? `question${savedCount !== 1 ? 's' : ''}`
-              : `concept${savedCount !== 1 ? 's' : ''}`}
+            {savedCount} phrasing{savedCount !== 1 ? 's' : ''}
             {job.durationMs && ` · ${Math.round(job.durationMs / 1000)}s`}
           </div>
         )}
@@ -204,10 +198,7 @@ export function GenerationTaskCard({ job }: GenerationTaskCardProps) {
 
         {isCancelledJob(job) && savedCount > 0 && (
           <div className="text-xs text-muted-foreground pl-6">
-            Saved {savedCount} partial{' '}
-            {job.questionIds.length > 0
-              ? `question${savedCount !== 1 ? 's' : ''}`
-              : `concept${savedCount !== 1 ? 's' : ''}`}
+            Saved {savedCount} partial phrasing{savedCount !== 1 ? 's' : ''}
           </div>
         )}
       </div>

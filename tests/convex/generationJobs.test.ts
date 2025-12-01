@@ -78,9 +78,8 @@ class GenerationJobsSimulator {
       prompt: prompt.trim(),
       status: 'pending',
       phase: 'clarifying',
-      questionsGenerated: 0,
-      questionsSaved: 0,
-      questionIds: [],
+      phrasingGenerated: 0,
+      phrasingSaved: 0,
       conceptIds: [],
       pendingConceptIds: [],
       createdAt: Date.now(),
@@ -159,8 +158,8 @@ class GenerationJobsSimulator {
     jobId: string,
     updates: {
       phase?: 'clarifying' | 'generating' | 'finalizing';
-      questionsGenerated?: number;
-      questionsSaved?: number;
+      phrasingGenerated?: number;
+      phrasingSaved?: number;
       estimatedTotal?: number;
     }
   ) {
@@ -171,11 +170,11 @@ class GenerationJobsSimulator {
     if (updates.phase !== undefined) {
       job.phase = updates.phase;
     }
-    if (updates.questionsGenerated !== undefined) {
-      job.questionsGenerated = updates.questionsGenerated;
+    if (updates.phrasingGenerated !== undefined) {
+      job.phrasingGenerated = updates.phrasingGenerated;
     }
-    if (updates.questionsSaved !== undefined) {
-      job.questionsSaved = updates.questionsSaved;
+    if (updates.phrasingSaved !== undefined) {
+      job.phrasingSaved = updates.phrasingSaved;
     }
     if (updates.estimatedTotal !== undefined) {
       job.estimatedTotal = updates.estimatedTotal;
@@ -194,7 +193,7 @@ class GenerationJobsSimulator {
   async completeJob(
     jobId: string,
     topic: string,
-    questionIds: string[],
+    phrasingSaved: number,
     durationMs: number,
     conceptIds: string[] = []
   ) {
@@ -203,10 +202,9 @@ class GenerationJobsSimulator {
 
     job.status = 'completed';
     job.topic = topic;
-    job.questionIds = questionIds as Id<'questions'>[];
     job.conceptIds = conceptIds as Id<'concepts'>[];
     job.pendingConceptIds = [];
-    job.questionsSaved = questionIds.length > 0 ? questionIds.length : conceptIds.length;
+    job.phrasingSaved = phrasingSaved;
     job.durationMs = durationMs;
     job.completedAt = Date.now();
 
@@ -268,9 +266,8 @@ class GenerationJobsSimulator {
       prompt: 'Test prompt',
       status: 'pending',
       phase: 'clarifying',
-      questionsGenerated: 0,
-      questionsSaved: 0,
-      questionIds: [],
+      phrasingGenerated: 0,
+      phrasingSaved: 0,
       conceptIds: [],
       pendingConceptIds: [],
       createdAt: Date.now(),
@@ -522,9 +519,8 @@ describe('GenerationJobs - Job Creation', () => {
       expect(createdJob.prompt).toBe('Test prompt');
       expect(createdJob.status).toBe('pending');
       expect(createdJob.phase).toBe('clarifying');
-      expect(createdJob.questionsGenerated).toBe(0);
-      expect(createdJob.questionsSaved).toBe(0);
-      expect(createdJob.questionIds).toEqual([]);
+      expect(createdJob.phrasingGenerated).toBe(0);
+      expect(createdJob.phrasingSaved).toBe(0);
       expect(createdJob.createdAt).toBeDefined();
       expect(createdJob.ipAddress).toBeUndefined();
     });
@@ -657,28 +653,28 @@ describe('GenerationJobs - Job Mutations', () => {
       expect(job?.phase).toBe('generating');
     });
 
-    it('should update questionsGenerated', async () => {
+    it('should update phrasingGenerated', async () => {
       const jobId = simulator.addTestJob({
         status: 'processing',
-        questionsGenerated: 5,
+        phrasingGenerated: 5,
       });
 
-      await simulator.updateProgress(jobId as string, { questionsGenerated: 10 });
+      await simulator.updateProgress(jobId as string, { phrasingGenerated: 10 });
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
-      expect(job?.questionsGenerated).toBe(10);
+      expect(job?.phrasingGenerated).toBe(10);
     });
 
-    it('should update questionsSaved', async () => {
+    it('should update phrasingSaved', async () => {
       const jobId = simulator.addTestJob({
         status: 'processing',
-        questionsSaved: 3,
+        phrasingSaved: 3,
       });
 
-      await simulator.updateProgress(jobId as string, { questionsSaved: 8 });
+      await simulator.updateProgress(jobId as string, { phrasingSaved: 8 });
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
-      expect(job?.questionsSaved).toBe(8);
+      expect(job?.phrasingSaved).toBe(8);
     });
 
     it('should update estimatedTotal', async () => {
@@ -699,15 +695,15 @@ describe('GenerationJobs - Job Mutations', () => {
 
       await simulator.updateProgress(jobId as string, {
         phase: 'finalizing',
-        questionsGenerated: 15,
-        questionsSaved: 15,
+        phrasingGenerated: 15,
+        phrasingSaved: 15,
         estimatedTotal: 15,
       });
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.phase).toBe('finalizing');
-      expect(job?.questionsGenerated).toBe(15);
-      expect(job?.questionsSaved).toBe(15);
+      expect(job?.phrasingGenerated).toBe(15);
+      expect(job?.phrasingSaved).toBe(15);
       expect(job?.estimatedTotal).toBe(15);
     });
 
@@ -730,7 +726,7 @@ describe('GenerationJobs - Job Mutations', () => {
         startedAt,
       });
 
-      await simulator.updateProgress(jobId as string, { questionsGenerated: 5 });
+      await simulator.updateProgress(jobId as string, { phrasingGenerated: 5 });
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.status).toBe('processing');
@@ -745,29 +741,27 @@ describe('GenerationJobs - Job Mutations', () => {
         startedAt: Date.now() - 5000,
       });
 
-      const questionIds = ['q1', 'q2', 'q3'];
-      await simulator.completeJob(jobId as string, 'React Basics', questionIds, 5000);
+      const phrasingSaved = 3;
+      await simulator.completeJob(jobId as string, 'React Basics', phrasingSaved, 5000);
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.status).toBe('completed');
       expect(job?.topic).toBe('React Basics');
-      expect(job?.questionIds).toEqual(questionIds);
-      expect(job?.questionsSaved).toBe(questionIds.length);
+      expect(job?.phrasingSaved).toBe(phrasingSaved);
       expect(job?.durationMs).toBe(5000);
       expect(job?.completedAt).toBeDefined();
     });
 
-    it('should handle empty questionIds array', async () => {
+    it('should handle zero phrasingSaved value', async () => {
       const jobId = simulator.addTestJob({
         status: 'processing',
       });
 
-      await simulator.completeJob(jobId as string, 'Topic', [], 1000);
+      await simulator.completeJob(jobId as string, 'Topic', 0, 1000);
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.status).toBe('completed');
-      expect(job?.questionIds).toEqual([]);
-      expect(job?.questionsSaved).toBe(0);
+      expect(job?.phrasingSaved).toBe(0);
     });
 
     it('should record conceptIds when provided', async () => {
@@ -776,11 +770,11 @@ describe('GenerationJobs - Job Mutations', () => {
       });
 
       const conceptIds = ['concept1', 'concept2'];
-      await simulator.completeJob(jobId as string, 'Topic', [], 1200, conceptIds);
+      await simulator.completeJob(jobId as string, 'Topic', conceptIds.length, 1200, conceptIds);
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.conceptIds).toEqual(conceptIds);
-      expect(job?.questionsSaved).toBe(conceptIds.length);
+      expect(job?.phrasingSaved).toBe(conceptIds.length);
     });
 
     it('should handle zero duration', async () => {
@@ -788,7 +782,7 @@ describe('GenerationJobs - Job Mutations', () => {
         status: 'processing',
       });
 
-      await simulator.completeJob(jobId as string, 'Topic', ['q1'], 0);
+      await simulator.completeJob(jobId as string, 'Topic', 0, 0);
 
       const job = await simulator.getJobById('clerk_user123', jobId as string);
       expect(job?.durationMs).toBe(0);
