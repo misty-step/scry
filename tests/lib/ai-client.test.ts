@@ -39,12 +39,11 @@ describe('ai-client.generateQuizWithAI', () => {
 
   beforeEach(() => {
     vi.useFakeTimers().setSystemTime(new Date('2025-01-16T12:00:00Z'));
-    mockedCreateGoogleGenerativeAI.mockReturnValue({
-      languageModel: vi.fn(),
-      chat: vi.fn(),
-      image: vi.fn(),
-      generativeAI: vi.fn(),
-    } as unknown as ReturnType<typeof createGoogleGenerativeAI>);
+    // createGoogleGenerativeAI returns a provider function.
+    // We make it return the modelId string so assertions checking for 'gemini-2.5-flash' pass.
+    const mockProvider = vi.fn().mockImplementation((modelId) => modelId);
+    mockedCreateGoogleGenerativeAI.mockReturnValue(mockProvider as any);
+
     mockedGenerateText.mockReset();
     mockedGenerateObject.mockReset();
     mockedAiLogger.info.mockClear();
