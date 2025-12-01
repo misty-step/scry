@@ -1,6 +1,19 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
+// Choose test worker pool based on Node version to keep tests stable
+// - Node <22: use threads (faster startup)
+// - Node >=22: use forks to avoid worker heap fragmentation / OOM issues
+const nodeMajor = Number(process.versions.node.split('.')[0] || '20');
+const pool: 'threads' | 'forks' = nodeMajor >= 22 ? 'forks' : 'threads';
+
+// For newer Node versions where forks are used, ensure workers have enough heap
+// Doing this here keeps callers simple (`pnpm test`) while hiding env tuning.
+if (nodeMajor >= 22 && !process.env.NODE_OPTIONS?.includes('--max-old-space-size')) {
+  const base = process.env.NODE_OPTIONS ? `${process.env.NODE_OPTIONS} ` : '';
+  process.env.NODE_OPTIONS = `${base}--max-old-space-size=6144`;
+}
+
 export default defineConfig({
   test: {
     // Global test settings
@@ -70,9 +83,9 @@ export default defineConfig({
     testTimeout: 10000,
     hookTimeout: 10000,
 
-    // Use threads pool with memory limit for worker stability
-    pool: 'threads',
-    maxWorkers: 1, // Sequential execution for stability
+    // Use a single worker pool tuned per Node runtime for stability
+    pool,
+    maxWorkers: 1, // Sequential execution for stability across Node versions
 
     // Show test timing to identify slow tests
     reporters: ['verbose'],

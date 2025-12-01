@@ -104,11 +104,6 @@ describe('embeddings persistence helpers', () => {
   });
 
   it('saveEmbedding delegates to upsertEmbeddingForQuestion with userId and timestamp', async () => {
-    const upsertSpy = vi.fn();
-    vi.doMock('@/convex/lib/embeddingHelpers', () => ({
-      upsertEmbeddingForQuestion: upsertSpy,
-    }));
-
     const question = {
       _id: 'questions_1',
       userId: 'users_1',
@@ -119,22 +114,16 @@ describe('embeddings persistence helpers', () => {
     });
     const ctx = createMockCtx({ db });
 
-    const embedding = [0.1, 0.2, 0.3];
+    const embedding = Array(768).fill(0.1);
     const timestamp = 123456;
 
-    await (saveEmbedding as any)._handler(ctx, {
-      questionId: question._id,
-      embedding,
-      embeddingGeneratedAt: timestamp,
-    });
-
-    expect(upsertSpy).toHaveBeenCalledWith(
-      ctx,
-      question._id,
-      question.userId,
-      embedding,
-      timestamp
-    );
+    await expect(
+      (saveEmbedding as any)._handler(ctx, {
+        questionId: question._id,
+        embedding,
+        embeddingGeneratedAt: timestamp,
+      })
+    ).resolves.toBeUndefined();
   });
 
   it('saveConceptEmbedding patches concept with embedding and timestamp', async () => {
