@@ -43,6 +43,7 @@ import type * as lib_userStatsHelpers from "../lib/userStatsHelpers.js";
 import type * as phrasings from "../phrasings.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as schemaVersion from "../schemaVersion.js";
+import type * as spacedRepetition from "../spacedRepetition.js";
 import type * as system from "../system.js";
 import type * as types from "../types.js";
 

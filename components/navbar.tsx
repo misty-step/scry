@@ -59,14 +59,14 @@ export function Navbar() {
                   <span className="sr-only">Generate questions</span>
                 </Button>
                 <Link
-                  href="/library"
+                  href="/concepts"
                   className={`relative size-9 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${
-                    pathname === '/library' || pathname?.startsWith('/concepts')
+                    pathname?.startsWith('/concepts')
                       ? 'bg-accent text-foreground'
                       : 'bg-accent/50 text-muted-foreground hover:bg-accent/70 hover:text-foreground'
                   }`}
-                  aria-label="Library"
-                  title="Library"
+                  aria-label="Concepts"
+                  title="Concepts"
                 >
                   <Library className="h-4 w-4" />
                 </Link>

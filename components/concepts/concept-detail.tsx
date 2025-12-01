@@ -45,8 +45,8 @@ export function ConceptDetail({
       {showLibraryLink ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          <Link href="/library" className="hover:underline">
-            Back to Library
+          <Link href="/concepts" className="hover:underline">
+            Back to Concepts
           </Link>
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export function ConceptDetail({
             </p>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/library">View all concepts</Link>
+            <Link href="/concepts">View all concepts</Link>
           </Button>
         </div>
         <PhrasingList
