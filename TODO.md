@@ -32,7 +32,7 @@
 
 ## Phase 2: Extract Pure Functions from concepts.ts
 
-- [ ] Create convex/lib/conceptHelpers.ts with extracted functions
+- [x] Create convex/lib/conceptHelpers.ts with extracted functions
   ```
   Files: convex/lib/conceptHelpers.ts (new), convex/concepts.ts (modify)
   Extract from concepts.ts:

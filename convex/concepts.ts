@@ -13,6 +13,13 @@ import {
 } from './fsrs';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
+import {
+  clampPageSize,
+  computeThinScoreFromCount,
+  matchesConceptView,
+  prioritizeConcepts,
+  type ConceptLibraryView,
+} from './lib/conceptHelpers';
 import { buildInteractionContext } from './lib/interactionContext';
 import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
 
@@ -34,8 +41,6 @@ const MAX_EXISTING_TITLES = 250;
 const DEFAULT_LIBRARY_PAGE_SIZE = 25;
 const MAX_LIBRARY_PAGE_SIZE = 100;
 const MIN_LIBRARY_PAGE_SIZE = 10;
-
-type ConceptLibraryView = 'all' | 'due' | 'thin' | 'tension' | 'archived' | 'deleted';
 type ConceptLibrarySort = 'recent' | 'nextReview';
 
 export const createMany = internalMutation({
@@ -159,7 +164,9 @@ export const getDue = query({
       candidates = newConcepts;
     }
 
-    const prioritized = prioritizeConcepts(candidates, now);
+    const prioritized = prioritizeConcepts(candidates, now, (fsrs, date) =>
+      conceptEngine.getRetrievability(fsrs, date)
+    );
     for (const candidate of prioritized) {
       const phrasingSelection = await selectActivePhrasing(ctx, candidate.concept, userId);
       if (!phrasingSelection) {
@@ -297,39 +304,6 @@ export const recordInteraction = mutation({
   },
 });
 
-function prioritizeConcepts(concepts: ConceptDoc[], now: Date) {
-  const prioritized = concepts
-    .filter((concept) => concept.phrasingCount > 0)
-    .map((concept) => ({
-      concept,
-      retrievability:
-        concept.fsrs.retrievability ?? conceptEngine.getRetrievability(concept.fsrs, now),
-    }))
-    .sort((a, b) => a.retrievability - b.retrievability);
-
-  const base = prioritized[0]?.retrievability;
-  if (base === undefined) {
-    return [];
-  }
-
-  const URGENCY_DELTA = 0.05;
-  const urgentTier: typeof prioritized = [];
-  for (const item of prioritized) {
-    if (Math.abs(item.retrievability - base) <= URGENCY_DELTA) {
-      urgentTier.push(item);
-    } else {
-      break;
-    }
-  }
-
-  for (let i = urgentTier.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [urgentTier[i], urgentTier[j]] = [urgentTier[j], urgentTier[i]];
-  }
-
-  return [...urgentTier, ...prioritized.slice(urgentTier.length)];
-}
-
 async function selectActivePhrasing(
   ctx: QueryCtx,
   concept: ConceptDoc,
@@ -414,7 +388,11 @@ export const listForLibrary = query({
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     const now = Date.now();
-    const pageSize = clampPageSize(args.pageSize);
+    const pageSize = clampPageSize(args.pageSize, {
+      min: MIN_LIBRARY_PAGE_SIZE,
+      max: MAX_LIBRARY_PAGE_SIZE,
+      default: DEFAULT_LIBRARY_PAGE_SIZE,
+    });
     const view = (args.view ?? 'all') as ConceptLibraryView;
     const sort = (args.sort ?? 'nextReview') as ConceptLibrarySort;
     const searchTerm = args.search?.trim() ?? '';
@@ -521,52 +499,6 @@ export const listForLibrary = query({
 
 // Removed collectConceptPage helper function entirely to prevent future misuse
 
-function clampPageSize(pageSize?: number | null) {
-  if (!pageSize) {
-    return DEFAULT_LIBRARY_PAGE_SIZE;
-  }
-  return Math.max(MIN_LIBRARY_PAGE_SIZE, Math.min(MAX_LIBRARY_PAGE_SIZE, pageSize));
-}
-
-function matchesConceptView(concept: ConceptDoc, now: number, view: ConceptLibraryView) {
-  if (view === 'deleted') {
-    return !!concept.deletedAt;
-  }
-
-  // For all other views, exclude deleted items
-  if (concept.deletedAt) {
-    return false;
-  }
-
-  if (view === 'archived') {
-    return !!concept.archivedAt;
-  }
-
-  // For standard views (all, due, thin, tension), exclude archived items
-  if (concept.archivedAt) {
-    return false;
-  }
-
-  if (view === 'all') {
-    return true;
-  }
-
-  const isDue = concept.fsrs.nextReview <= now;
-  const isThin = (concept.thinScore ?? 0) > 0;
-  const hasTension = (concept.conflictScore ?? 0) > 0;
-
-  if (view === 'due') {
-    return isDue;
-  }
-  if (view === 'thin') {
-    return isThin;
-  }
-  if (view === 'tension') {
-    return hasTension;
-  }
-  return true;
-}
-
 export const getDetail = query({
   args: {
     conceptId: v.id('concepts'),
@@ -666,7 +598,7 @@ export const archivePhrasing = mutation({
       .collect();
 
     const newCount = remainingPhrasings.length;
-    const thinScore = computeThinScoreFromCount(newCount);
+    const thinScore = computeThinScoreFromCount(newCount, TARGET_PHRASINGS_PER_CONCEPT);
 
     // Recalculate conflictScore from remaining phrasings
     let conflictScore: number | undefined = undefined;
@@ -734,7 +666,7 @@ export const unarchivePhrasing = mutation({
       .collect();
 
     const newCount = activePhrasings.length;
-    const thinScore = computeThinScoreFromCount(newCount);
+    const thinScore = computeThinScoreFromCount(newCount, TARGET_PHRASINGS_PER_CONCEPT);
 
     // Recalculate conflictScore from active phrasings
     let conflictScore: number | undefined = undefined;
@@ -815,14 +747,6 @@ export const requestPhrasingGeneration = mutation({
     return { jobId };
   },
 });
-
-function computeThinScoreFromCount(count: number) {
-  if (count >= TARGET_PHRASINGS_PER_CONCEPT) {
-    return undefined;
-  }
-  const delta = TARGET_PHRASINGS_PER_CONCEPT - Math.max(0, count);
-  return delta > 0 ? delta : undefined;
-}
 
 async function findActiveGenerationJob(
   ctx: QueryCtx | MutationCtx,
