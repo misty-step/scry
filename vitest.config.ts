@@ -30,11 +30,11 @@ export default defineConfig({
       reporter: ['text', 'json', 'json-summary', 'html'],
       reportOnFailure: true,
       thresholds: {
-        // Ratcheted to actual coverage (43.8%) - increase as tests improve
-        lines: 43.8,
-        functions: 38.3,
-        branches: 34.8,
-        statements: 43.6,
+        // Final targets for coverage gate
+        lines: 70,
+        functions: 65,
+        branches: 55,
+        statements: 70,
       },
       include: ['lib/**', 'convex/**', 'hooks/**'],
       exclude: [

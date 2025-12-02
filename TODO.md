@@ -107,7 +107,7 @@
 
 ## Phase 6: Ratchet Thresholds
 
-- [ ] Update vitest.config.ts thresholds to final targets
+- [x] Update vitest.config.ts thresholds to final targets
   ```
   Files: vitest.config.ts
   Change thresholds to:
