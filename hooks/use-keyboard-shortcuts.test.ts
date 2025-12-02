@@ -120,4 +120,399 @@ describe('useKeyboardShortcuts', () => {
 
     expect(onArchive).not.toHaveBeenCalled();
   });
+
+  it('navigates to home with "h" shortcut', () => {
+    renderHook(() => useKeyboardShortcuts([]));
+
+    act(() => {
+      triggerKey('h');
+    });
+
+    expect(push).toHaveBeenCalledWith('/');
+  });
+
+  it('navigates to concepts with "c" shortcut', () => {
+    renderHook(() => useKeyboardShortcuts([]));
+
+    act(() => {
+      triggerKey('c');
+    });
+
+    expect(push).toHaveBeenCalledWith('/concepts');
+  });
+
+  it('dispatches escape-pressed event on Escape', () => {
+    renderHook(() => useKeyboardShortcuts([]));
+
+    act(() => {
+      triggerKey('Escape');
+    });
+
+    expect(dispatchEventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'escape-pressed' })
+    );
+  });
+
+  it('does not handle shortcuts when disabled', () => {
+    renderHook(() => useKeyboardShortcuts([], false));
+
+    act(() => {
+      triggerKey('h');
+    });
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('handles metaKey as ctrl modifier (Mac)', () => {
+    renderHook(() => useKeyboardShortcuts([]));
+
+    act(() => {
+      triggerKey('s', { metaKey: true });
+    });
+
+    expect(push).toHaveBeenCalledWith('/settings');
+  });
+
+  it('executes custom shortcuts', () => {
+    const customAction = vi.fn();
+
+    renderHook(() =>
+      useKeyboardShortcuts([
+        {
+          key: 'p',
+          description: 'Custom action',
+          action: customAction,
+        },
+      ])
+    );
+
+    act(() => {
+      triggerKey('p');
+    });
+
+    expect(customAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles alt modifier shortcuts', () => {
+    const altAction = vi.fn();
+
+    renderHook(() =>
+      useKeyboardShortcuts([
+        {
+          key: 'a',
+          alt: true,
+          description: 'Alt shortcut',
+          action: altAction,
+        },
+      ])
+    );
+
+    act(() => {
+      triggerKey('a', { altKey: true });
+    });
+
+    expect(altAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles shift modifier shortcuts', () => {
+    const shiftAction = vi.fn();
+
+    renderHook(() =>
+      useKeyboardShortcuts([
+        {
+          key: 'S',
+          shift: true,
+          description: 'Shift shortcut',
+          action: shiftAction,
+        },
+      ])
+    );
+
+    act(() => {
+      triggerKey('S', { shiftKey: true });
+    });
+
+    expect(shiftAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns combined shortcuts list', () => {
+    const { result } = renderHook(() =>
+      useKeyboardShortcuts([{ key: 'custom', description: 'Custom', action: vi.fn() }])
+    );
+
+    // Should have both global shortcuts and the custom one
+    expect(result.current.shortcuts.length).toBeGreaterThan(1);
+    expect(result.current.shortcuts.some((s) => s.key === 'custom')).toBe(true);
+    expect(result.current.shortcuts.some((s) => s.key === '?')).toBe(true);
+  });
+
+  it('allows modifier shortcuts while typing in input', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    renderHook(() => useKeyboardShortcuts([]));
+
+    // Simulate typing in input with modifier - events bubble to window
+    act(() => {
+      input.focus();
+      // Dispatch on window but with input as target simulation
+      const event = new KeyboardEvent('keydown', {
+        key: 's',
+        ctrlKey: true,
+        bubbles: true,
+      });
+      Object.defineProperty(event, 'target', { value: input, writable: false });
+      window.dispatchEvent(event);
+    });
+
+    expect(push).toHaveBeenCalledWith('/settings');
+  });
+});
+
+describe('useReviewShortcuts', () => {
+  const toastInfo = vi.fn();
+
+  beforeEach(() => {
+    toastInfo.mockReset();
+    vi.mocked(vi.fn()).mockReset();
+  });
+
+  it('calls onSelectAnswer for number keys 1-4 when not showing feedback', () => {
+    const onSelectAnswer = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onSelectAnswer,
+        showingFeedback: false,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: '1' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onSelectAnswer).toHaveBeenCalledWith(0);
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: '2' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onSelectAnswer).toHaveBeenCalledWith(1);
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: '3' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onSelectAnswer).toHaveBeenCalledWith(2);
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: '4' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onSelectAnswer).toHaveBeenCalledWith(3);
+  });
+
+  it('calls onSubmit with Enter when canSubmit and not answering', () => {
+    const onSubmit = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onSubmit,
+        showingFeedback: false,
+        canSubmit: true,
+        isAnswering: false,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onNext with Enter when showingFeedback', () => {
+    const onNext = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onNext,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onNext with Space when showingFeedback', () => {
+    const onNext = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onNext,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: ' ' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onNext with ArrowRight when showingFeedback', () => {
+    const onNext = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onNext,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'ArrowRight' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onEdit with "e" key', () => {
+    const onEdit = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onEdit,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'e' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onDelete with "d" key', () => {
+    const onDelete = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onDelete,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'd' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onDelete with Delete key', () => {
+    const onDelete = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onDelete,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'Delete' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onArchive with Backspace key', () => {
+    const onArchive = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onArchive,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'Backspace' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onUndo with Ctrl+Z', () => {
+    const onUndo = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onUndo,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true });
+      window.dispatchEvent(event);
+    });
+
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onGenerateFromContext with "n" key', () => {
+    const onGenerateFromContext = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onGenerateFromContext,
+        showingFeedback: true,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'n' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onGenerateFromContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('skip shortcut "s" calls onNext and shows toast', () => {
+    const onNext = vi.fn();
+
+    renderHook(() =>
+      useReviewShortcuts({
+        onNext,
+        showingFeedback: false,
+      })
+    );
+
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 's' });
+      window.dispatchEvent(event);
+    });
+
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
 });

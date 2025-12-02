@@ -30,6 +30,21 @@ describe('formatShortRelativeTime', () => {
     const future = Date.now() + 2 * 60 * 60 * 1000;
     expect(formatShortRelativeTime(future)).toBe('in 2h');
   });
+
+  it('handles future timestamps more than 24h away', () => {
+    const twoDaysAhead = Date.now() + 2 * 24 * 60 * 60 * 1000;
+    expect(formatShortRelativeTime(twoDaysAhead)).toBe('in 2d');
+  });
+
+  it('handles future minutes', () => {
+    const thirtyMinutesAhead = Date.now() + 30 * 60 * 1000;
+    expect(formatShortRelativeTime(thirtyMinutesAhead)).toBe('in 30m');
+  });
+
+  it('formats years-old timestamps', () => {
+    const twoYearsAgo = Date.now() - 2 * 365 * 24 * 60 * 60 * 1000;
+    expect(formatShortRelativeTime(twoYearsAgo)).toBe('2y');
+  });
 });
 
 describe('formatCardDate', () => {

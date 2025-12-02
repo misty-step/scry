@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import type { ExecutionResult, InfraConfig, TestInput } from '@/types/lab';
-
 import {
   clearAllLabData,
   clearResults,
@@ -266,6 +264,67 @@ describe('Lab Storage', () => {
       expect(saved).toBe(false);
 
       localStorageMock.setItem = originalSetItem;
+    });
+
+    it('handles saveResults JSON.stringify errors', () => {
+      const circular: any = {
+        configId: '1',
+        configName: 'Test',
+        input: 'Test',
+        questions: [],
+        rawOutput: {},
+        latency: 0,
+        valid: true,
+        errors: [],
+        executedAt: Date.now(),
+      };
+      circular.self = circular;
+
+      const saved = saveResults([circular as ExecutionResult]);
+      expect(saved).toBe(false);
+    });
+
+    it('handles loadResults invalid JSON gracefully', () => {
+      localStorageMock.setItem('scry-lab-results', 'invalid json');
+      const loaded = loadResults();
+      expect(loaded).toEqual([]);
+    });
+
+    it('handles loadResults non-array JSON gracefully', () => {
+      localStorageMock.setItem('scry-lab-results', '{"key": "value"}');
+      const loaded = loadResults();
+      expect(loaded).toEqual([]);
+    });
+
+    it('handles getLabDataSize errors gracefully', () => {
+      const originalGetItem = localStorageMock.getItem;
+      localStorageMock.getItem = vi.fn(() => {
+        throw new Error('Storage error');
+      });
+
+      const size = getLabDataSize();
+      expect(size).toBe(0);
+
+      localStorageMock.getItem = originalGetItem;
+    });
+
+    it('handles saveConfigs JSON.stringify errors', () => {
+      const circular: any = {
+        id: '1',
+        name: 'Test',
+        isProd: false,
+        provider: 'google',
+        model: 'test',
+        temperature: 1.0,
+        maxTokens: 100,
+        phases: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      circular.self = circular;
+
+      const saved = saveConfigs([circular as InfraConfig]);
+      expect(saved).toBe(false);
     });
   });
 });

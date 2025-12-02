@@ -154,4 +154,54 @@ describe('useInlineEdit', () => {
     // Not dirty anymore
     expect(result.current.isDirty).toBe(false);
   });
+
+  it('should sync localData when save returns updated data', async () => {
+    const initialData = { title: 'Original Title' };
+    const serverUpdatedData = { title: 'Server Updated Title' };
+    const onSave = vi.fn().mockResolvedValue(serverUpdatedData);
+
+    const { result } = renderHook(() => useInlineEdit(initialData, onSave));
+
+    act(() => {
+      result.current.startEdit();
+      result.current.updateField('title', 'Client Updated Title');
+    });
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    // localData should be updated with server response
+    expect(result.current.localData).toEqual(serverUpdatedData);
+    expect(result.current.isEditing).toBe(false);
+  });
+
+  it('should rollback on save error and rethrow', async () => {
+    const initialData = { title: 'Original Title' };
+    const saveError = new Error('Save failed');
+    const onSave = vi.fn().mockRejectedValue(saveError);
+
+    const { result } = renderHook(() => useInlineEdit(initialData, onSave));
+
+    act(() => {
+      result.current.startEdit();
+      result.current.updateField('title', 'Updated Title');
+    });
+
+    let thrownError: Error | null = null;
+    await act(async () => {
+      try {
+        await result.current.save();
+      } catch (error) {
+        thrownError = error as Error;
+      }
+    });
+
+    // Should have rolled back to initial data
+    expect(result.current.localData).toEqual(initialData);
+    expect(result.current.isEditing).toBe(false);
+    expect(result.current.isSaving).toBe(false);
+    // Should have rethrown the error
+    expect(thrownError).toBe(saveError);
+  });
 });

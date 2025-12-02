@@ -442,4 +442,129 @@ describe('useUnifiedEdit', () => {
       expect(result.current.localData.options).toEqual(newOptions);
     });
   });
+
+  describe('Error Message Mapping', () => {
+    it('should map title-related errors to conceptTitle field', async () => {
+      mockSaveConcept.mockRejectedValue(new Error('Title is required'));
+
+      const { result } = renderHook(() =>
+        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
+      );
+
+      act(() => {
+        result.current.startEdit();
+        result.current.updateField('conceptTitle', 'New Title');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.save();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(result.current.errors.conceptTitle).toBe('Title is required');
+    });
+
+    it('should map question-related errors to question field', async () => {
+      mockSavePhrasing.mockRejectedValue(new Error('Question cannot be empty'));
+
+      const { result } = renderHook(() =>
+        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
+      );
+
+      act(() => {
+        result.current.startEdit();
+        result.current.updateField('question', 'New Question');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.save();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(result.current.errors.question).toBe('Question cannot be empty');
+    });
+
+    it('should map correct answer-related errors to correctAnswer field', async () => {
+      mockSavePhrasing.mockRejectedValue(new Error('Correct answer must match an option'));
+
+      const { result } = renderHook(() =>
+        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
+      );
+
+      act(() => {
+        result.current.startEdit();
+        // Change to a valid option to pass client validation, but mutation will reject
+        result.current.updateField('correctAnswer', '3');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.save();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(result.current.errors.correctAnswer).toBe('Correct answer must match an option');
+    });
+
+    it('should map option-related errors to correctAnswer field', async () => {
+      mockSavePhrasing.mockRejectedValue(new Error('Option is invalid'));
+
+      const { result } = renderHook(() =>
+        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
+      );
+
+      act(() => {
+        result.current.startEdit();
+        // Update options along with correctAnswer to pass client validation
+        result.current.updateField('options', ['a', 'b']);
+        result.current.updateField('correctAnswer', 'a');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.save();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(result.current.errors.correctAnswer).toBe('Option is invalid');
+    });
+
+    it('should handle phrasing success with concept failure', async () => {
+      mockSaveConcept.mockRejectedValue(new Error('Concept save failed'));
+      mockSavePhrasing.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() =>
+        useUnifiedEdit(createTestData(), mockSaveConcept, mockSavePhrasing, 'multiple-choice')
+      );
+
+      act(() => {
+        result.current.startEdit();
+        result.current.updateField('conceptTitle', 'New Title');
+        result.current.updateField('question', 'New Question');
+      });
+
+      await act(async () => {
+        try {
+          await result.current.save();
+        } catch {
+          // Expected
+        }
+      });
+
+      // Phrasing should no longer be dirty (succeeded)
+      expect(result.current.phrasingIsDirty).toBe(false);
+      // Concept should still be dirty (failed)
+      expect(result.current.conceptIsDirty).toBe(true);
+    });
+  });
 });

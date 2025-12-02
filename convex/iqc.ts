@@ -81,12 +81,14 @@ const mergeActionPayloadSchema = z.object({
 
 type MergeActionPayload = z.infer<typeof mergeActionPayloadSchema>;
 
-type MergeCandidate = {
+export type MergeCandidate = {
   source: ConceptDoc;
   target: ConceptDoc;
   vectorScore: number;
   titleSimilarity: number;
 };
+
+export type { MergeDecision };
 
 /**
  * Internal action that scans recent concepts, finds near-duplicates, and
@@ -727,7 +729,7 @@ async function adjudicateMergeCandidate({
   return null;
 }
 
-function buildMergePrompt(candidate: MergeCandidate): string {
+export function buildMergePrompt(candidate: MergeCandidate): string {
   const { source, target, vectorScore, titleSimilarity } = candidate;
   return `You are an IQC reviewer that decides whether two study concepts are duplicates.
 
@@ -807,7 +809,7 @@ export function shouldConsiderMerge(
   return vectorScore >= 0.94 && titleSimilarity >= 0.5 && bothThin;
 }
 
-function buildMergePayload(
+export function buildMergePayload(
   candidate: MergeCandidate,
   decision: MergeDecision,
   proposalKey: string,
@@ -835,7 +837,7 @@ function buildMergePayload(
   };
 }
 
-function snapshotConcept(concept: ConceptDoc) {
+export function snapshotConcept(concept: ConceptDoc) {
   return {
     conceptId: concept._id,
     title: concept.title,

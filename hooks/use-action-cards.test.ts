@@ -76,4 +76,114 @@ describe('useActionCards', () => {
     expect(rejectMutation).toHaveBeenCalledWith({ actionCardId: 'card1' });
     expect(toast.success).toHaveBeenCalledWith('Action rejected');
   });
+
+  it('handles accept error with Error instance', async () => {
+    applyMutation.mockRejectedValue(new Error('Apply failed'));
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.acceptSelected();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Apply failed');
+  });
+
+  it('handles accept error with non-Error', async () => {
+    applyMutation.mockRejectedValue('string error');
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.acceptSelected();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Failed to apply action');
+  });
+
+  it('handles reject error with Error instance', async () => {
+    rejectMutation.mockRejectedValue(new Error('Reject failed'));
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.rejectSelected();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Reject failed');
+  });
+
+  it('handles reject error with non-Error', async () => {
+    rejectMutation.mockRejectedValue('string error');
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.rejectSelected();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Failed to reject action');
+  });
+
+  it('does nothing when accepting with no selected card', async () => {
+    (useQuery as Mock).mockReturnValue([]);
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.acceptSelected();
+    });
+
+    expect(applyMutation).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when rejecting with no selected card', async () => {
+    (useQuery as Mock).mockReturnValue([]);
+
+    const { result } = renderHook(() => useActionCards());
+    await act(async () => {
+      await result.current.rejectSelected();
+    });
+
+    expect(rejectMutation).not.toHaveBeenCalled();
+  });
+
+  it('returns -1 for selectedIndex when no cards', () => {
+    (useQuery as Mock).mockReturnValue([]);
+
+    const { result } = renderHook(() => useActionCards());
+    expect(result.current.selectedIndex).toBe(-1);
+  });
+
+  it('wraps around when selecting beyond bounds', () => {
+    const multiCards = [{ _id: 'card1' }, { _id: 'card2' }, { _id: 'card3' }];
+    (useQuery as Mock).mockReturnValue(multiCards);
+
+    const { result } = renderHook(() => useActionCards());
+
+    act(() => {
+      result.current.selectOffset(-1); // Should wrap to end
+    });
+    expect(result.current.selectedIndex).toBe(2);
+
+    act(() => {
+      result.current.selectOffset(1); // Should wrap to start
+    });
+    expect(result.current.selectedIndex).toBe(0);
+  });
+
+  it('shows loading state when query is undefined', () => {
+    (useQuery as Mock).mockReturnValue(undefined);
+
+    const { result } = renderHook(() => useActionCards());
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.cards).toEqual([]);
+  });
+
+  it('allows setting selected index directly', () => {
+    const multiCards = [{ _id: 'card1' }, { _id: 'card2' }];
+    (useQuery as Mock).mockReturnValue(multiCards);
+
+    const { result } = renderHook(() => useActionCards());
+
+    act(() => {
+      result.current.setSelectedIndex(1);
+    });
+    expect(result.current.selectedIndex).toBe(1);
+  });
 });

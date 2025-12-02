@@ -69,7 +69,7 @@ type SecretDiagnostics = {
   fingerprint: string | null;
 };
 
-function getSecretDiagnostics(value: string | undefined): SecretDiagnostics {
+export function getSecretDiagnostics(value: string | undefined): SecretDiagnostics {
   if (!value) {
     return { present: false, length: 0, fingerprint: null };
   }
