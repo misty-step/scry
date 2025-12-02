@@ -61,7 +61,7 @@
 
 ## Phase 3: Test Review Flow Reducer (already exported)
 
-- [ ] Add tests for hooks/use-review-flow.ts reducer
+- [x] Add tests for hooks/use-review-flow.ts reducer
   ```
   Files: hooks/use-review-flow.test.ts (new)
   Import: reviewReducer from './use-review-flow'
