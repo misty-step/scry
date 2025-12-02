@@ -93,7 +93,7 @@
 
 ## Phase 5: Push Near-100% Files to 100%
 
-- [ ] Add edge case tests for convex/fsrs/engine.ts
+- [x] Add edge case tests for convex/fsrs/engine.ts
   ```
   Files: convex/fsrs/engine.test.ts (expand)
   Missing coverage:

@@ -70,6 +70,12 @@ describe('FsrsEngine.getRetrievability', () => {
 
     expect(engine.getRetrievability(undefined, fixedNow)).toBe(-1);
     expect(engine.getRetrievability(null, fixedNow)).toBe(-1);
+    expect(
+      engine.getRetrievability(
+        { state: 'new', reps: 0, nextReview: emptyState.nextReview, stability: 0, difficulty: 0 },
+        fixedNow
+      )
+    ).toBe(-1);
     // @ts-expect-error - intentionally testing missing nextReview field
     expect(engine.getRetrievability({ ...emptyState, nextReview: undefined }, fixedNow)).toBe(-1);
     expect(engine.getRetrievability(emptyState, fixedNow)).toBe(-1);
@@ -101,6 +107,8 @@ describe('FsrsEngine.isDue', () => {
     const base = engine.initializeState(fixedNow);
 
     expect(engine.isDue()).toBe(true);
+    // @ts-expect-error intentionally missing nextReview
+    expect(engine.isDue({ ...base, nextReview: undefined }, fixedNow)).toBe(true);
     expect(engine.isDue({ ...base, nextReview: fixedNow.getTime() + 60_000 }, fixedNow)).toBe(
       false
     );
