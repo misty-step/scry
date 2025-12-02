@@ -46,7 +46,7 @@
   Time: 45min
   ```
 
-- [ ] Add tests for convex/lib/conceptHelpers.ts
+- [~] Add tests for convex/lib/conceptHelpers.ts
   ```
   Files: convex/lib/conceptHelpers.test.ts (new)
   Tests per DESIGN.md:
