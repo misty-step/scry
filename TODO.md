@@ -18,7 +18,7 @@
   Time: 15min
   ```
 
-- [ ] Add tests for lib/utils/date-format.ts
+- [x] Add tests for lib/utils/date-format.ts
   ```
   Files: lib/utils/date-format.test.ts (new)
   Pattern: Use vi.useFakeTimers() like format-review-time.test.ts
