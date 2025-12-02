@@ -56,10 +56,10 @@ describe('shuffle', () => {
     mathRandomSpy.mockRestore();
   });
 
-  it('falls back to Math.random when crypto is unavailable', () => {
-    const originalCrypto = globalThis.crypto;
-    // @ts-expect-error override for test
-    globalThis.crypto = undefined;
+  it('falls back to Math.random when crypto.getRandomValues is unavailable', () => {
+    const originalGetRandomValues = globalThis.crypto?.getRandomValues;
+    // @ts-expect-error mutate for test
+    globalThis.crypto.getRandomValues = undefined;
 
     const mathRandomSpy = vi
       .spyOn(Math, 'random')
@@ -72,7 +72,9 @@ describe('shuffle', () => {
       expect(result).toEqual([4, 2, 1, 3]);
     } finally {
       mathRandomSpy.mockRestore();
-      globalThis.crypto = originalCrypto;
+      if (originalGetRandomValues) {
+        globalThis.crypto.getRandomValues = originalGetRandomValues;
+      }
     }
   });
 });
