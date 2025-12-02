@@ -778,7 +778,7 @@ export function computeTitleSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-function tokenizeTitle(title: string): Set<string> {
+export function tokenizeTitle(title: string): Set<string> {
   return new Set(
     title
       .toLowerCase()
@@ -847,7 +847,7 @@ function snapshotConcept(concept: ConceptDoc) {
   };
 }
 
-function accumulateStatDelta(target: StatDeltas, delta?: StatDeltas | null) {
+export function accumulateStatDelta(target: StatDeltas, delta?: StatDeltas | null) {
   if (!delta) {
     return;
   }

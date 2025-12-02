@@ -79,7 +79,7 @@
 
 ## Phase 4: Expand IQC Pure Function Tests
 
-- [ ] Export and test additional IQC helpers
+- [x] Export and test additional IQC helpers
   ```
   Files: convex/iqc.ts (modify exports), convex/iqc.test.ts (expand)
   Export: tokenizeTitle, accumulateStatDelta (already internal)

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from './_generated/dataModel';
 import { initializeConceptFsrs } from './fsrs';
-import { buildProposalKey, computeTitleSimilarity, shouldConsiderMerge } from './iqc';
+import {
+  accumulateStatDelta,
+  buildProposalKey,
+  computeTitleSimilarity,
+  shouldConsiderMerge,
+  tokenizeTitle,
+} from './iqc';
 import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
 import { logConceptEvent, type ConceptsLogger } from './lib/logger';
 
@@ -13,6 +19,28 @@ describe('IQC helpers', () => {
 
       expect(keyA).toBe(keyB);
       expect(keyA).toBe('1::2');
+    });
+  });
+
+  describe('tokenizeTitle', () => {
+    it('lowercases, strips punctuation, and filters short tokens', () => {
+      const tokens = tokenizeTitle('Hello, an AI-based world!');
+      expect(tokens).toEqual(new Set(['hello', 'based', 'world']));
+    });
+  });
+
+  describe('accumulateStatDelta', () => {
+    it('ignores nullish deltas', () => {
+      const target: any = { totalCards: 1 };
+      accumulateStatDelta(target, null);
+      accumulateStatDelta(target, undefined);
+      expect(target).toEqual({ totalCards: 1 });
+    });
+
+    it('sums numeric deltas per key', () => {
+      const target: any = { totalCards: 1, newCount: 2 };
+      accumulateStatDelta(target, { totalCards: -1, newCount: 3, matureCount: 5 });
+      expect(target).toEqual({ totalCards: 0, newCount: 5, matureCount: 5 });
     });
   });
 
