@@ -3,7 +3,7 @@
  *
  * Handles execution of infrastructure configurations for testing.
  * Supports both single-phase (recommended) and multi-phase prompt chains.
- * Supports Google AI and OpenAI providers (including GPT-5 reasoning models).
+ * Uses Google Gemini 3 Pro provider.
  *
  * RECOMMENDED: 1-phase learning science architecture (see PROD_CONFIG_METADATA)
  * LEGACY: Multi-phase chains with template interpolation (for experimentation)
@@ -14,8 +14,7 @@ import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
 import { action } from './_generated/server';
-import { initializeProvider, type ProviderClient } from './lib/aiProviders';
-import { generateObjectWithResponsesApi } from './lib/responsesApi';
+import { initializeGoogleProvider } from './lib/aiProviders';
 
 // Logger for this module
 const logger = pino({ name: 'lab' });
@@ -26,7 +25,7 @@ const questionSchema = z.object({
   type: z.enum(['multiple-choice', 'true-false']),
   options: z.array(z.string()).min(2).max(4),
   correctAnswer: z.string(),
-  explanation: z.string(), // Required for OpenAI strict mode + learning science principles
+  explanation: z.string(),
 });
 
 const questionsSchema = z.object({
@@ -83,12 +82,6 @@ export const executeConfig = action({
     temperature: v.optional(v.number()),
     maxTokens: v.optional(v.number()),
     topP: v.optional(v.number()),
-    // OpenAI reasoning parameters
-    reasoningEffort: v.optional(
-      v.union(v.literal('minimal'), v.literal('low'), v.literal('medium'), v.literal('high'))
-    ),
-    verbosity: v.optional(v.union(v.literal('low'), v.literal('medium'), v.literal('high'))),
-    maxCompletionTokens: v.optional(v.number()),
     phases: v.array(
       v.object({
         name: v.string(),
@@ -115,15 +108,15 @@ export const executeConfig = action({
         {
           configId: args.configId,
           configName: args.configName,
-          provider: args.provider,
+          provider: 'google',
           model: args.model,
           phasesCount: args.phases.length,
         },
         'Starting config execution'
       );
 
-      // Initialize provider based on config
-      const providerClient = await initializeProvider(args.provider, args.model, {
+      // Initialize Google provider
+      const providerClient = initializeGoogleProvider(args.model, {
         logger,
         logContext: {
           configId: args.configId,
@@ -132,9 +125,7 @@ export const executeConfig = action({
         deployment: process.env.CONVEX_CLOUD_URL ?? 'unknown',
       });
 
-      const provider: ProviderClient['provider'] = providerClient.provider;
-      const model: ProviderClient['model'] = providerClient.model;
-      const openaiClient: ProviderClient['openaiClient'] = providerClient.openaiClient;
+      const model = providerClient.model;
 
       // Execute N-phase chain
       const context: Record<string, string> = {
@@ -165,22 +156,19 @@ export const executeConfig = action({
 
         // Execute phase based on output type
         if (outputType === 'text') {
-          // Text output (Phase 1, 2) - only supported for Google provider
-          if (!model) {
-            throw new Error('Text output type requires Google provider (model not initialized)');
-          }
+          // Text output (Phase 1, 2)
           const { generateText: genText } = await import('ai');
           const response = await genText({
             model,
             prompt,
-            // Standard parameters (Google + OpenAI)
             ...(args.temperature !== undefined && { temperature: args.temperature }),
             ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
-            // OpenAI reasoning parameters (ignored by Google models)
-            ...(args.reasoningEffort && { reasoning_effort: args.reasoningEffort }),
-            ...(args.verbosity && { verbosity: args.verbosity }),
-            ...(args.maxCompletionTokens && { max_completion_tokens: args.maxCompletionTokens }),
+            providerOptions: {
+              google: {
+                thinkingLevel: 'high',
+              },
+            },
           });
 
           const output = response.text;
@@ -206,33 +194,20 @@ export const executeConfig = action({
             'Text phase completed'
           );
         } else if (outputType === 'questions') {
-          // Questions output (Phase 3, 5)
-          let response;
-
-          if (provider === 'openai' && openaiClient) {
-            // Use native Responses API for OpenAI
-            response = await generateObjectWithResponsesApi({
-              client: openaiClient,
-              model: args.model,
-              input: prompt,
-              schema: questionsSchema,
-              schemaName: 'questions',
-              verbosity: args.verbosity,
-              reasoningEffort: args.reasoningEffort,
-            });
-          } else if (provider === 'google' && model) {
-            // Use Vercel AI SDK for Google
-            response = await generateObject({
-              model,
-              schema: questionsSchema,
-              prompt,
-              ...(args.temperature !== undefined && { temperature: args.temperature }),
-              ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
-              ...(args.topP !== undefined && { topP: args.topP }),
-            });
-          } else {
-            throw new Error('Provider not initialized correctly');
-          }
+          // Questions output (final phase)
+          const response = await generateObject({
+            model,
+            schema: questionsSchema,
+            prompt,
+            ...(args.temperature !== undefined && { temperature: args.temperature }),
+            ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
+            ...(args.topP !== undefined && { topP: args.topP }),
+            providerOptions: {
+              google: {
+                thinkingLevel: 'high',
+              },
+            },
+          });
 
           totalTokens += response.usage?.totalTokens || 0;
 
@@ -246,24 +221,12 @@ export const executeConfig = action({
             finalOutput = response.object;
           }
 
-          // Log reasoning token usage if available (OpenAI)
-          const reasoningTokens =
-            (response.usage as { completion_tokens_details?: { reasoning_tokens?: number } })
-              ?.completion_tokens_details?.reasoning_tokens || 0;
-
           logger.info(
             {
               configId: args.configId,
               phase: i + 1,
               questionCount: response.object.questions.length,
               tokensUsed: response.usage?.totalTokens || 0,
-              reasoningTokens,
-              ...(reasoningTokens > 0 &&
-                response.usage?.totalTokens && {
-                  reasoningPercentage: Math.round(
-                    (reasoningTokens / response.usage.totalTokens) * 100
-                  ),
-                }),
             },
             'Questions phase completed'
           );

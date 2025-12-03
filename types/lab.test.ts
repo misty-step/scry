@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-
 import {
   hasExecutionErrors,
   isProdConfig,
@@ -36,11 +35,10 @@ describe('Lab Type Guards', () => {
         id: '2',
         name: 'Draft',
         isProd: false,
-        provider: 'openai',
-        model: 'gpt-5-mini',
+        provider: 'google',
+        model: 'gemini-3-pro-preview',
         temperature: 0.7,
-        reasoningEffort: 'high', // OpenAI-specific parameter
-        maxCompletionTokens: 4096, // OpenAI uses maxCompletionTokens, not maxTokens
+        maxTokens: 4096,
         phases: [{ name: 'Test', template: 'Test prompt' }],
         createdAt: Date.now(),
         updatedAt: Date.now(),

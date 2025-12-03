@@ -19,11 +19,8 @@ import { query } from '../_generated/server';
 export const getProductionConfig = query({
   handler: async () => {
     return {
-      provider: (process.env.AI_PROVIDER || 'openai') as 'openai' | 'google',
-      model: process.env.AI_MODEL || 'gpt-5-mini',
-      reasoningEffort:
-        (process.env.AI_REASONING_EFFORT as 'minimal' | 'low' | 'medium' | 'high') || 'high',
-      verbosity: (process.env.AI_VERBOSITY as 'low' | 'medium' | 'high') || 'medium',
+      provider: 'google' as const,
+      model: process.env.AI_MODEL || 'gemini-3-pro-preview',
     };
   },
 });

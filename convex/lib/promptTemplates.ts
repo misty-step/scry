@@ -160,8 +160,5 @@ User input: "${userInput}"`;
  * To view current production config:
  * - Genesis Lab: Loads dynamically from getProductionConfig()
  * - Convex Dashboard: Settings → Environment Variables
- *   - AI_PROVIDER (openai/google)
- *   - AI_MODEL (gpt-5/gpt-5-mini/gemini-2.0-flash-exp)
- *   - AI_REASONING_EFFORT (minimal/low/medium/high)
- *   - AI_VERBOSITY (low/medium/high)
+ *   - AI_MODEL (gemini-3-pro-preview)
  */

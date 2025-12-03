@@ -11,50 +11,33 @@ import Link from 'next/link';
 import { useQuery } from 'convex/react';
 import { ArrowLeftIcon, CopyIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { PageContainer } from '@/components/page-container';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/convex/_generated/api';
 import { buildLearningSciencePrompt } from '@/convex/lib/promptTemplates';
 import { loadConfigs, saveConfigs } from '@/lib/lab-storage';
 import {
   isValidConfig,
-  type AIProvider,
   type GoogleInfraConfig,
   type InfraConfig,
-  type OpenAIInfraConfig,
   type PromptPhase,
 } from '@/types/lab';
 
 /**
  * Create PROD config dynamically from runtime environment variables
  */
-function createProdConfig(runtimeConfig: {
-  provider: 'openai' | 'google';
-  model: string;
-  reasoningEffort: 'minimal' | 'low' | 'medium' | 'high';
-  verbosity: 'low' | 'medium' | 'high';
-}): InfraConfig {
+function createProdConfig(runtimeConfig: { provider: 'google'; model: string }): GoogleInfraConfig {
   const now = Date.now();
   return {
     id: 'prod-baseline',
     name: 'PRODUCTION (Learning Science)',
-    description: `Current production config: ${runtimeConfig.model} (${runtimeConfig.reasoningEffort} reasoning, ${runtimeConfig.verbosity} verbosity)`,
-    provider: runtimeConfig.provider,
+    description: `Current production config: ${runtimeConfig.model} (Gemini with thinking)`,
+    provider: 'google',
     model: runtimeConfig.model,
-    reasoningEffort: runtimeConfig.reasoningEffort,
-    verbosity: runtimeConfig.verbosity,
     phases: [
       {
         name: 'Learning Science Question Generation',
@@ -121,7 +104,7 @@ export function ConfigManagerPage() {
       counter++;
     }
 
-    const cloned: InfraConfig = {
+    const cloned: GoogleInfraConfig = {
       ...config,
       id: Date.now().toString(),
       name: cloneName,
@@ -153,12 +136,12 @@ export function ConfigManagerPage() {
   };
 
   const handleNew = () => {
-    const newConfig: InfraConfig = {
+    const newConfig: GoogleInfraConfig = {
       id: Date.now().toString(),
       name: 'New Configuration',
       description: undefined,
       provider: 'google',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       temperature: undefined,
       maxTokens: undefined,
       phases: [
@@ -278,13 +261,10 @@ interface ConfigEditorProps {
 function ConfigEditor({ config, onSave, disabled = false }: ConfigEditorProps) {
   const [name, setName] = useState(config.name);
   const [description, setDescription] = useState(config.description || '');
-  const [provider, setProvider] = useState<AIProvider>(config.provider);
   const [model, setModel] = useState(config.model);
   const [temperature, setTemperature] = useState(config.temperature?.toString() || '');
   const [maxTokens, setMaxTokens] = useState(
-    config.provider === 'google' && config.maxTokens !== undefined
-      ? config.maxTokens.toString()
-      : ''
+    config.maxTokens !== undefined ? config.maxTokens.toString() : ''
   );
   const [phases, setPhases] = useState<PromptPhase[]>(config.phases);
 
@@ -292,14 +272,9 @@ function ConfigEditor({ config, onSave, disabled = false }: ConfigEditorProps) {
   useEffect(() => {
     setName(config.name);
     setDescription(config.description || '');
-    setProvider(config.provider);
     setModel(config.model);
     setTemperature(config.temperature?.toString() || '');
-    setMaxTokens(
-      config.provider === 'google' && config.maxTokens !== undefined
-        ? config.maxTokens.toString()
-        : ''
-    );
+    setMaxTokens(config.maxTokens !== undefined ? config.maxTokens.toString() : '');
     setPhases(config.phases);
   }, [config]);
 
@@ -312,38 +287,18 @@ function ConfigEditor({ config, onSave, disabled = false }: ConfigEditorProps) {
     const tempNum = temperature ? parseFloat(temperature) : undefined;
     const tokensNum = maxTokens ? parseInt(maxTokens, 10) : undefined;
 
-    // Build provider-specific config based on provider selection
-    let updated: InfraConfig;
-    if (provider === 'google') {
-      const googleConfig: GoogleInfraConfig = {
-        ...config,
-        provider: 'google',
-        name: name.trim(),
-        description: description.trim() || undefined,
-        model: model.trim(),
-        temperature: tempNum,
-        maxTokens: tokensNum,
-        topP: config.provider === 'google' ? config.topP : undefined,
-        phases,
-        updatedAt: Date.now(),
-      };
-      updated = googleConfig;
-    } else {
-      const openaiConfig: OpenAIInfraConfig = {
-        ...config,
-        provider: 'openai',
-        name: name.trim(),
-        description: description.trim() || undefined,
-        model: model.trim(),
-        temperature: tempNum,
-        reasoningEffort: config.provider === 'openai' ? config.reasoningEffort : undefined,
-        verbosity: config.provider === 'openai' ? config.verbosity : undefined,
-        maxCompletionTokens: config.provider === 'openai' ? config.maxCompletionTokens : undefined,
-        phases,
-        updatedAt: Date.now(),
-      };
-      updated = openaiConfig;
-    }
+    const updated: GoogleInfraConfig = {
+      ...config,
+      provider: 'google',
+      name: name.trim(),
+      description: description.trim() || undefined,
+      model: model.trim(),
+      temperature: tempNum,
+      maxTokens: tokensNum,
+      topP: config.topP,
+      phases,
+      updatedAt: Date.now(),
+    };
 
     if (!isValidConfig(updated)) {
       toast.error('Invalid configuration');
@@ -384,34 +339,16 @@ function ConfigEditor({ config, onSave, disabled = false }: ConfigEditorProps) {
 
       {/* Model Configuration */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Model Configuration</h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
-            <Select
-              value={provider}
-              onValueChange={(v) => setProvider(v as AIProvider)}
-              disabled={disabled}
-            >
-              <SelectTrigger id="provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="openai">OpenAI</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Input
-              id="model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gemini-2.5-flash"
-              disabled={disabled}
-            />
-          </div>
+        <h3 className="text-sm font-medium">Model Configuration (Google Gemini)</h3>
+        <div className="space-y-2">
+          <Label htmlFor="model">Model</Label>
+          <Input
+            id="model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="gemini-3-pro-preview"
+            disabled={disabled}
+          />
         </div>
       </div>
 

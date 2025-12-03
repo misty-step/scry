@@ -158,8 +158,6 @@ export function ConfigManager({
               {/* Metadata */}
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{config.provider}</span>
-                  <span>•</span>
                   <span>{isMultiModelConfig(config) ? 'mixed models' : config.model}</span>
                   <span>•</span>
                   <span>{config.phases.length}-phase</span>
@@ -183,37 +181,16 @@ export function ConfigManager({
                   <div className="text-xs space-y-1">
                     <div className="grid grid-cols-2 gap-2">
                       {/* Google-specific parameters */}
-                      {config.provider === 'google' && (
-                        <>
-                          {config.maxTokens !== undefined && (
-                            <div>
-                              <span className="text-muted-foreground">Max Tokens:</span>{' '}
-                              {config.maxTokens}
-                            </div>
-                          )}
-                          {config.topP !== undefined && (
-                            <div>
-                              <span className="text-muted-foreground">Top P:</span> {config.topP}
-                            </div>
-                          )}
-                        </>
+                      {config.maxTokens !== undefined && (
+                        <div>
+                          <span className="text-muted-foreground">Max Tokens:</span>{' '}
+                          {config.maxTokens}
+                        </div>
                       )}
-                      {/* OpenAI-specific parameters */}
-                      {config.provider === 'openai' && (
-                        <>
-                          {config.reasoningEffort && (
-                            <div>
-                              <span className="text-muted-foreground">Reasoning:</span>{' '}
-                              {config.reasoningEffort}
-                            </div>
-                          )}
-                          {config.verbosity && (
-                            <div>
-                              <span className="text-muted-foreground">Verbosity:</span>{' '}
-                              {config.verbosity}
-                            </div>
-                          )}
-                        </>
+                      {config.topP !== undefined && (
+                        <div>
+                          <span className="text-muted-foreground">Top P:</span> {config.topP}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -224,20 +201,10 @@ export function ConfigManager({
                       // Get model for this phase (multi-model configs use different models per phase)
                       const phaseModel =
                         isMultiModelConfig(config) && phase.name.includes('Phase 2')
-                          ? 'gpt-5'
+                          ? 'gemini-3-pro'
                           : config.model;
                       const isDifferentModel =
                         isMultiModelConfig(config) && phaseModel !== config.model;
-
-                      // Get reasoning effort for this phase if OpenAI
-                      const reasoning =
-                        config.provider === 'openai' && config.reasoningEffort
-                          ? phase.name.includes('Phase 2') ||
-                            phase.name.includes('Phase 3') ||
-                            phase.name.includes('Phase 5')
-                            ? 'high'
-                            : 'medium'
-                          : null;
 
                       return (
                         <div
@@ -280,21 +247,6 @@ export function ConfigManager({
                             >
                               → {phaseModel}
                             </span>
-                            {reasoning && (
-                              <>
-                                <span>•</span>
-                                <span
-                                  className={cn(
-                                    'px-1 rounded text-[10px]',
-                                    reasoning === 'high'
-                                      ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300'
-                                      : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                                  )}
-                                >
-                                  {reasoning}
-                                </span>
-                              </>
-                            )}
                             {phase.outputTo && (
                               <>
                                 <span>•</span>

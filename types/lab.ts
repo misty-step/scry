@@ -6,10 +6,10 @@
  */
 
 /**
- * AI provider literal types
- * Only includes actively supported providers (google, openai)
+ * AI provider literal type
+ * Consolidated on Google Gemini 3 Pro
  */
-export type AIProvider = 'google' | 'openai';
+export type AIProvider = 'google';
 
 /**
  * Individual test input
@@ -58,21 +58,9 @@ export interface GoogleInfraConfig extends BaseInfraConfig {
 }
 
 /**
- * OpenAI provider configuration (with reasoning support)
+ * Infrastructure configuration (Google Gemini only)
  */
-export interface OpenAIInfraConfig extends BaseInfraConfig {
-  provider: 'openai';
-  model: string; // e.g., 'gpt-5', 'gpt-5-mini', 'gpt-5-nano'
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'; // Reasoning token budget
-  verbosity?: 'low' | 'medium' | 'high'; // Output conciseness
-  maxCompletionTokens?: number; // Max tokens including reasoning (1-128000)
-  temperature?: number; // Optional: for non-reasoning models
-}
-
-/**
- * Infrastructure configuration union (type-safe provider configs)
- */
-export type InfraConfig = GoogleInfraConfig | OpenAIInfraConfig;
+export type InfraConfig = GoogleInfraConfig;
 
 /**
  * Execution result for a config + input combination
@@ -121,38 +109,22 @@ export function isValidPhase(phase: PromptPhase): boolean {
  * Type guard to check if a config is valid
  */
 export function isValidConfig(config: InfraConfig): boolean {
-  // Base validation (common to all providers)
+  // Base validation
   const baseValid =
     config.name.trim().length > 0 && config.phases.length > 0 && config.phases.every(isValidPhase);
 
   if (!baseValid) return false;
 
-  // Provider-specific validation
-  if (config.provider === 'google') {
-    return (
-      // Temperature is optional, but if set must be in range
-      (config.temperature === undefined || (config.temperature >= 0 && config.temperature <= 2)) &&
-      // MaxTokens is optional, but if set must be in range
-      (config.maxTokens === undefined || (config.maxTokens >= 1 && config.maxTokens <= 65536)) &&
-      // TopP is optional, but if set must be in range
-      (config.topP === undefined || (config.topP >= 0 && config.topP <= 1))
-    );
-  } else if (config.provider === 'openai') {
-    return (
-      // maxCompletionTokens is optional, but if set must be in range
-      (config.maxCompletionTokens === undefined ||
-        (config.maxCompletionTokens >= 1 && config.maxCompletionTokens <= 128000)) &&
-      // Temperature is optional, but if set must be in range
-      (config.temperature === undefined || (config.temperature >= 0 && config.temperature <= 2)) &&
-      // reasoningEffort must be one of the valid values if set
-      (config.reasoningEffort === undefined ||
-        ['minimal', 'low', 'medium', 'high'].includes(config.reasoningEffort)) &&
-      // verbosity must be one of the valid values if set
-      (config.verbosity === undefined || ['low', 'medium', 'high'].includes(config.verbosity))
-    );
-  }
-
-  return false;
+  // Google-specific validation
+  return (
+    config.provider === 'google' &&
+    // Temperature is optional, but if set must be in range
+    (config.temperature === undefined || (config.temperature >= 0 && config.temperature <= 2)) &&
+    // MaxTokens is optional, but if set must be in range
+    (config.maxTokens === undefined || (config.maxTokens >= 1 && config.maxTokens <= 65536)) &&
+    // TopP is optional, but if set must be in range
+    (config.topP === undefined || (config.topP >= 0 && config.topP <= 1))
+  );
 }
 
 /**

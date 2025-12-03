@@ -39,7 +39,7 @@ Operational guidance for Claude Code in scry repository.
 
 | Location | Variables |
 |----------|-----------|
-| Convex backend | `OPENAI_API_KEY`, `AI_PROVIDER`, `AI_MODEL`, `AI_REASONING_EFFORT` |
+| Convex backend | `GOOGLE_AI_API_KEY`, `AI_MODEL` |
 | Vercel | `CONVEX_DEPLOY_KEY` (different per env), `CLERK_*` |
 
 **Build Commands:**
@@ -60,17 +60,14 @@ Full deployment docs: `docs/operations/`, `docs/runbooks/`
 
 ## AI Provider Configuration
 
-**Production:** OpenAI GPT-5-mini with `reasoning_effort: high`
-**Fallback:** Google Gemini (instant rollback via env var)
+**Production:** Google Gemini 3 Pro with `thinkingLevel: 'high'`
 
-**Provider abstraction:** `convex/lib/aiProviders.ts` — single `initializeProvider()` for both providers
+**Provider:** `convex/lib/aiProviders.ts` — `initializeGoogleProvider()` for centralized initialization
 
-**Rollback:**
+**Model change:**
 ```bash
-npx convex env set AI_PROVIDER "google" --prod
+npx convex env set AI_MODEL "gemini-3-pro-preview" --prod
 ```
-
-Full config: See Convex dashboard env vars, `docs/ai-provider-config.md`
 
 ## Bandwidth Optimization (Convex Starter = 1GB/mo)
 

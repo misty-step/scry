@@ -1,18 +1,15 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateObject, type LanguageModel } from 'ai';
 import { v } from 'convex/values';
-import OpenAI from 'openai';
 import { z } from 'zod';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { ActionCtx, internalAction, internalMutation, mutation, query } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
+import { initializeGoogleProvider } from './lib/aiProviders';
 import { chunkArray } from './lib/chunkArray';
 import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
-import { getSecretDiagnostics } from './lib/envDiagnostics';
 import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
 import { createConceptsLogger, generateCorrelationId, logConceptEvent } from './lib/logger';
-import { generateObjectWithResponsesApi } from './lib/responsesApi';
 import type { StatDeltas } from './lib/userStatsHelpers';
 import { updateStatsCounters } from './lib/userStatsHelpers';
 
@@ -140,28 +137,23 @@ export const scanAndPropose = internalAction({
 
     const users = Array.from(conceptsByUser.entries()).slice(0, maxUsers);
 
-    const provider = process.env.AI_PROVIDER || 'openai';
-    const modelName = process.env.AI_MODEL || 'gpt-5-mini';
-    const reasoningEffort = process.env.AI_REASONING_EFFORT || 'medium';
-    const verbosity = process.env.AI_VERBOSITY || 'low';
+    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
 
     let model: LanguageModel | undefined;
-    let openaiClient: OpenAI | undefined;
     let keyDiagnostics = { present: false, length: 0, fingerprint: null as string | null };
 
-    if (provider === 'google') {
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
-      keyDiagnostics = getSecretDiagnostics(apiKey);
-      if (apiKey) {
-        const google = createGoogleGenerativeAI({ apiKey });
-        model = google(modelName) as unknown as LanguageModel;
-      }
-    } else {
-      const apiKey = process.env.OPENAI_API_KEY;
-      keyDiagnostics = getSecretDiagnostics(apiKey);
-      if (apiKey) {
-        openaiClient = new OpenAI({ apiKey });
-      }
+    try {
+      const providerClient = initializeGoogleProvider(modelName, {
+        logContext: { correlationId, phase: 'iqc_scan' },
+      });
+      model = providerClient.model;
+      keyDiagnostics = providerClient.diagnostics;
+    } catch (error) {
+      logger.error('Failed to initialize Google provider for IQC scan', {
+        event: 'iqc.scan.provider.failure',
+        correlationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     let reachedCardLimit = false;
@@ -245,15 +237,12 @@ export const scanAndPropose = internalAction({
 
         let decision: MergeDecision | null = null;
         try {
-          decision = await adjudicateMergeCandidate({
-            candidate,
-            provider,
-            modelName,
-            reasoningEffort,
-            verbosity,
-            model,
-            openaiClient,
-          });
+          if (model) {
+            decision = await adjudicateMergeCandidate({
+              candidate,
+              model,
+            });
+          }
         } catch (error) {
           logger.warn('LLM adjudication failed, falling back to heuristic', {
             event: 'iqc.scan.llm.failure',
@@ -284,7 +273,7 @@ export const scanAndPropose = internalAction({
           candidate,
           decision,
           proposalKey,
-          provider,
+          'google',
           keyDiagnostics
         );
 
@@ -687,46 +676,24 @@ async function fetchNeighborConcepts(
 
 async function adjudicateMergeCandidate({
   candidate,
-  provider,
-  modelName,
-  reasoningEffort,
-  verbosity,
   model,
-  openaiClient,
 }: {
   candidate: MergeCandidate;
-  provider: string;
-  modelName: string;
-  reasoningEffort: string;
-  verbosity: string;
-  model?: LanguageModel;
-  openaiClient?: OpenAI;
-}): Promise<MergeDecision | null> {
+  model: LanguageModel;
+}): Promise<MergeDecision> {
   const prompt = buildMergePrompt(candidate);
 
-  if (provider === 'google' && model) {
-    const response = await generateObject({
-      model,
-      prompt,
-      schema: mergeDecisionSchema,
-    });
-    return response.object;
-  }
-
-  if (provider === 'openai' && openaiClient) {
-    const response = await generateObjectWithResponsesApi({
-      client: openaiClient,
-      model: modelName,
-      input: prompt,
-      schema: mergeDecisionSchema,
-      schemaName: 'iqc_merge_decision',
-      reasoningEffort: reasoningEffort as 'minimal' | 'low' | 'medium' | 'high',
-      verbosity: verbosity as 'low' | 'medium' | 'high',
-    });
-    return response.object;
-  }
-
-  return null;
+  const response = await generateObject({
+    model,
+    prompt,
+    schema: mergeDecisionSchema,
+    providerOptions: {
+      google: {
+        thinkingLevel: 'high',
+      },
+    },
+  });
+  return response.object;
 }
 
 export function buildMergePrompt(candidate: MergeCandidate): string {

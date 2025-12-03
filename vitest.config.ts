@@ -75,7 +75,6 @@ export default defineConfig({
         // Third-party integrations that require mocking external services
         'lib/sentry.ts',
         'lib/logger.ts', // Depends on Sentry
-        'convex/lib/responsesApi.ts', // OpenAI Responses API wrapper
         // Browser-only thin wrapper hooks around Convex/React APIs
         'hooks/use-simple-poll.ts', // Convex useQuery wrapper
         'hooks/use-undoable-action.tsx', // Toast notification integration
