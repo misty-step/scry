@@ -120,11 +120,13 @@ function isSentryEnabled(): boolean {
   return shouldEnableSentry(dsn);
 }
 
-function sanitizeString(value: string): string {
+export function sanitizeString(value: string): string {
   return value.replace(EMAIL_REDACTION_PATTERN, EMAIL_REDACTED);
 }
 
-function sanitizeUserMetadata(metadata: AnalyticsUserMetadata | undefined): AnalyticsUserMetadata {
+export function sanitizeUserMetadata(
+  metadata: AnalyticsUserMetadata | undefined
+): AnalyticsUserMetadata {
   if (!metadata) {
     return {};
   }
@@ -141,7 +143,7 @@ function sanitizeUserMetadata(metadata: AnalyticsUserMetadata | undefined): Anal
   return sanitized;
 }
 
-function sanitizeEventProperties(
+export function sanitizeEventProperties(
   properties: Record<string, unknown> | undefined
 ): Record<string, AnalyticsEventProperty> {
   const sanitized: Record<string, AnalyticsEventProperty> = {};
@@ -276,7 +278,7 @@ function loadSentry(): Promise<SentryModule | null> {
   return sentryPromise;
 }
 
-function sanitizeContextValue(value: unknown, seen: WeakSet<object>): unknown {
+export function sanitizeContextValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value === undefined) {
     return undefined;
   }
@@ -324,7 +326,7 @@ function sanitizeContextValue(value: unknown, seen: WeakSet<object>): unknown {
   return sanitizeString(String(value));
 }
 
-function sanitizeErrorContext(context: Record<string, unknown> | undefined) {
+export function sanitizeErrorContext(context: Record<string, unknown> | undefined) {
   if (!context) {
     return undefined;
   }

@@ -221,4 +221,78 @@ describe('useConceptActions', () => {
       conceptId,
     });
   });
+
+  describe('Error handling', () => {
+    it('handles editConcept error with Error instance', async () => {
+      mockUpdateConcept.mockRejectedValue(new Error('Update concept failed'));
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.editConcept({ title: 'New Title' });
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Update concept failed');
+    });
+
+    it('handles editConcept error with non-Error', async () => {
+      mockUpdateConcept.mockRejectedValue('string error');
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.editConcept({ title: 'New Title' });
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to update concept');
+    });
+
+    it('handles editPhrasing error with Error instance', async () => {
+      mockUpdatePhrasing.mockRejectedValue(new Error('Update phrasing failed'));
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.editPhrasing({
+            phrasingId: 'phrasing_1',
+            question: 'Q',
+            correctAnswer: 'A',
+          });
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Update phrasing failed');
+    });
+
+    it('handles editPhrasing error with non-Error', async () => {
+      mockUpdatePhrasing.mockRejectedValue('string error');
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.editPhrasing({
+            phrasingId: 'phrasing_1',
+            question: 'Q',
+            correctAnswer: 'A',
+          });
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to update phrasing');
+    });
+  });
 });
