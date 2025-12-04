@@ -34,6 +34,9 @@ interface ReviewModeState {
     state?: 'new' | 'learning' | 'review' | 'relearning';
     reps?: number;
   } | null;
+  // Skip feature: session-scoped, client-side only
+  skippedConceptIds: Set<Id<'concepts'>>;
+  lastAutoSkippedId: Id<'concepts'> | null;
 }
 
 // Action types for state machine
@@ -59,7 +62,11 @@ type ReviewAction =
       };
     }
   | { type: 'REVIEW_COMPLETE' }
-  | { type: 'IGNORE_UPDATE'; reason: string };
+  | { type: 'IGNORE_UPDATE'; reason: string }
+  // Skip feature actions
+  | { type: 'SKIP_CONCEPT'; payload: Id<'concepts'> }
+  | { type: 'AUTO_SKIP'; payload: { conceptId: Id<'concepts'>; reason: string } }
+  | { type: 'CLEAR_SKIPPED' };
 
 // Initial state
 const initialState: ReviewModeState = {
@@ -75,6 +82,8 @@ const initialState: ReviewModeState = {
   lockId: null,
   isTransitioning: false,
   conceptFsrs: null,
+  skippedConceptIds: new Set(),
+  lastAutoSkippedId: null,
 };
 
 // Reducer function to manage state transitions
@@ -99,6 +108,9 @@ export function reviewReducer(state: ReviewModeState, action: ReviewAction): Rev
         isTransitioning: false,
         errorMessage: undefined,
         conceptFsrs: null,
+        // Clear skip state on session end
+        skippedConceptIds: new Set(),
+        lastAutoSkippedId: null,
       };
 
     case 'LOAD_TIMEOUT':
@@ -124,6 +136,9 @@ export function reviewReducer(state: ReviewModeState, action: ReviewAction): Rev
         isTransitioning: false, // Clear transitioning state
         errorMessage: undefined,
         conceptFsrs: action.payload.conceptFsrs,
+        // Preserve skip set across questions; reset auto-skip tracker
+        skippedConceptIds: state.skippedConceptIds,
+        lastAutoSkippedId: null,
       };
 
     case 'REVIEW_COMPLETE':
@@ -140,6 +155,33 @@ export function reviewReducer(state: ReviewModeState, action: ReviewAction): Rev
     case 'IGNORE_UPDATE':
       // No state change
       return state;
+
+    // Skip feature: move concept to end of session queue
+    case 'SKIP_CONCEPT':
+      return {
+        ...state,
+        skippedConceptIds: new Set([...state.skippedConceptIds, action.payload]),
+        lockId: null, // Release lock to fetch next
+        isTransitioning: true,
+        // Don't reset lastAutoSkippedId—let AUTO_SKIP handle queue exhaustion detection
+      };
+
+    case 'AUTO_SKIP':
+      // Track auto-skipped concept for queue exhaustion detection
+      return {
+        ...state,
+        lastAutoSkippedId: action.payload.conceptId,
+        lockId: null,
+        isTransitioning: true,
+      };
+
+    case 'CLEAR_SKIPPED':
+      // Queue exhausted to only skipped concepts—clear and cycle through
+      return {
+        ...state,
+        skippedConceptIds: new Set(),
+        lastAutoSkippedId: null,
+      };
 
     default:
       return state;
@@ -288,7 +330,22 @@ export function useReviewFlow() {
       return;
     }
 
-    const conceptKey = `${nextReview.concept._id}:${nextReview.phrasing._id}`;
+    const conceptId = nextReview.concept._id;
+
+    // Skip filtering: check if this concept should be auto-skipped
+    if (state.skippedConceptIds.has(conceptId)) {
+      if (state.lastAutoSkippedId === conceptId && dataHasChanged) {
+        // Queue exhausted: NEW poll data still returns same skipped concept—clear and show
+        dispatch({ type: 'CLEAR_SKIPPED' });
+        // Fall through to display this concept
+      } else {
+        // Auto-skip and wait for new poll data
+        dispatch({ type: 'AUTO_SKIP', payload: { conceptId, reason: 'in_skip_set' } });
+        return;
+      }
+    }
+
+    const conceptKey = `${conceptId}:${nextReview.phrasing._id}`;
     const isNewQuestion = conceptKey !== lastCandidateKeyRef.current;
 
     const question: SimpleQuestion = {
@@ -350,7 +407,16 @@ export function useReviewFlow() {
         reason: 'Poll executed but data unchanged - same concept/phrasing combination',
       });
     }
-  }, [nextReview, state.lockId, state.phase, state.isTransitioning, dataHasChanged, startSession]);
+  }, [
+    nextReview,
+    state.lockId,
+    state.phase,
+    state.isTransitioning,
+    state.skippedConceptIds,
+    state.lastAutoSkippedId,
+    dataHasChanged,
+    startSession,
+  ]);
 
   // Memoized handler for review completion
   const handleReviewComplete = useCallback(async () => {
@@ -360,6 +426,13 @@ export function useReviewFlow() {
     // Intentional loading state provides visual feedback during transitions,
     // especially important for FSRS immediate re-review of incorrect answers
   }, []);
+
+  // Skip handler: move current concept to end of session queue
+  const handleSkipConcept = useCallback(() => {
+    if (!state.conceptId) return;
+    if (state.isTransitioning) return;
+    dispatch({ type: 'SKIP_CONCEPT', payload: state.conceptId });
+  }, [state.conceptId, state.isTransitioning]);
 
   useEffect(() => {
     if (state.phase === 'empty') {
@@ -389,8 +462,10 @@ export function useReviewFlow() {
     isTransitioning: state.isTransitioning,
     errorMessage: state.errorMessage,
     conceptFsrs: state.conceptFsrs,
+    skippedCount: state.skippedConceptIds.size,
     handlers: {
       onReviewComplete: handleReviewComplete,
+      onSkipConcept: handleSkipConcept,
     },
   };
 }

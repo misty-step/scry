@@ -5,6 +5,7 @@ import { ReviewActionsDropdown } from './review-actions-dropdown';
 
 const defaultHandlers = () => ({
   onEdit: vi.fn(),
+  onSkip: vi.fn(),
   onArchivePhrasing: vi.fn(),
   onArchiveConcept: vi.fn(),
 });
@@ -48,5 +49,35 @@ describe('ReviewActionsDropdown', () => {
 
     await user.click(screen.getByRole('button', { name: /review actions/i }));
     expect(screen.getByText('Archive Phrasing')).toBeInTheDocument();
+  });
+
+  describe('skip functionality', () => {
+    it('renders Skip for Now menu item', async () => {
+      const user = userEvent.setup();
+      render(<ReviewActionsDropdown totalPhrasings={2} {...defaultHandlers()} />);
+
+      await user.click(screen.getByRole('button', { name: /review actions/i }));
+      expect(screen.getByText('Skip for Now')).toBeInTheDocument();
+    });
+
+    it('triggers onSkip callback when clicked', async () => {
+      const user = userEvent.setup();
+      const handlers = defaultHandlers();
+      render(<ReviewActionsDropdown totalPhrasings={2} {...handlers} />);
+
+      await user.click(screen.getByRole('button', { name: /review actions/i }));
+      await user.click(screen.getByText('Skip for Now'));
+      expect(handlers.onSkip).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables skip when canSkip is false', async () => {
+      const user = userEvent.setup();
+      const handlers = defaultHandlers();
+      render(<ReviewActionsDropdown totalPhrasings={2} canSkip={false} {...handlers} />);
+
+      await user.click(screen.getByRole('button', { name: /review actions/i }));
+      const skipItem = screen.getByText('Skip for Now').closest('[role="menuitem"]');
+      expect(skipItem).toHaveAttribute('data-disabled');
+    });
   });
 });

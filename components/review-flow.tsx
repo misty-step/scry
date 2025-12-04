@@ -48,6 +48,7 @@ export function ReviewFlow() {
     interactions,
     isTransitioning,
     conceptFsrs,
+    skippedCount: _skippedCount, // For future "X skipped" indicator
     handlers,
   } = useReviewFlow();
 
@@ -65,6 +66,9 @@ export function ReviewFlow() {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Track previous phrasingId to detect same-phrasing re-reviews (FSRS immediate re-review)
+  const prevPhrasingRef = useRef<string | null>(null);
 
   // Local UI state for answer selection and feedback
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
@@ -269,14 +273,25 @@ export function ReviewFlow() {
   // This handles both normal question changes AND FSRS immediate re-review (same phrasing)
   useEffect(() => {
     if (phrasingId && !isTransitioning) {
+      // Track if this is the same phrasing returning (FSRS re-review)
+      const isSamePhrasing = prevPhrasingRef.current === phrasingId;
+      prevPhrasingRef.current = phrasingId;
+
+      // Always reset answer state after transition completes (even for same phrasing)
       setSelectedAnswer('');
-      setHasAnsweredCurrentQuestion(false); // Reset answer tracking for new question
+      setHasAnsweredCurrentQuestion(false);
       _clearFeedback();
       setFeedbackState({
         showFeedback: false,
         nextReviewInfo: null,
       });
       setQuestionStartTime(Date.now());
+
+      // Clear optimistic state only on phrasing change (not same-phrasing re-review)
+      if (!isSamePhrasing) {
+        setOptimisticConcept(null);
+        setOptimisticPhrasing(null);
+      }
     }
   }, [phrasingId, isTransitioning, _clearFeedback]);
 
@@ -375,6 +390,19 @@ export function ReviewFlow() {
     handlers.onReviewComplete();
   }, [conceptId, conceptActions, handlers]);
 
+  // Skip handler: move current concept to end of session queue
+  const [skipAnnouncement, setSkipAnnouncement] = useState('');
+  const handleSkip = useCallback(() => {
+    // Clear optimistic state since we're moving to a different concept
+    setOptimisticConcept(null);
+    setOptimisticPhrasing(null);
+    handlers.onSkipConcept();
+    toast("Skipped. You'll see this again shortly.", { duration: 2000 });
+    // Screen reader announcement
+    setSkipAnnouncement('Concept skipped. Will reappear shortly.');
+    setTimeout(() => setSkipAnnouncement(''), 3000);
+  }, [handlers]);
+
   // Shortcut-friendly archive that chooses phrasing when possible, else concept
   const handleArchiveViaShortcut = useCallback(() => {
     if (!feedbackState.showFeedback) return;
@@ -460,7 +488,8 @@ export function ReviewFlow() {
       <PageContainer className="py-6">
         {/* ARIA live region for screen reader feedback announcements */}
         <LiveRegion politeness="polite" atomic={true}>
-          {instantFeedback.visible ? (instantFeedback.isCorrect ? 'Correct' : 'Incorrect') : ''}
+          {skipAnnouncement ||
+            (instantFeedback.visible ? (instantFeedback.isCorrect ? 'Correct' : 'Incorrect') : '')}
         </LiveRegion>
 
         <div className="max-w-[760px]">
@@ -482,6 +511,8 @@ export function ReviewFlow() {
                     setFeedbackState((prev) => ({ ...prev, showFeedback: true }));
                     unifiedEdit.startEdit();
                   }}
+                  onSkip={handleSkip}
+                  canSkip={!isTransitioning}
                   onArchiveConcept={handleArchiveConcept}
                   onArchivePhrasing={handleArchivePhrasing}
                 />
