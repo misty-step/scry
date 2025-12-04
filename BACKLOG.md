@@ -9,19 +9,6 @@
 
 ## Now (<2 weeks, sprint-ready)
 
-### [PRODUCT] Learners should be able to regenerate concepts and phrasings from the review screen
-- Sometimes a concept or phrasing won't quite be right
-- Learner hits regenerate button, specifies phrasing vs whole concept, adds optional notes
-- Regeneration works even without notes (request = signal of low quality)
-- **Effort**: 2-3d | **Value**: User agency over AI-generated content
-
-### [PRODUCT] Concepts should be tied as prerequisites, impacting scheduling
-- Modify concept generation to capture prerequisite relationships
-- Daily cronjob to suggest relationship updates
-- Scheduling respects prereq thresholds before unlocking dependents
-- Clean, elegant visualization of concept graph
-- **Effort**: 5d | **Value**: Better learning sequencing
-
 ### [SECURITY][HIGH] Unvalidated Limit Parameters - DoS Vulnerability
 **Files**: convex/questionsLibrary.ts:136, :241
 **Perspectives**: security-sentinel, performance-pathfinder
