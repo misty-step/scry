@@ -33,6 +33,7 @@ export default defineSchema({
     userId: v.id('users'),
     conceptId: v.optional(v.id('concepts')),
     phrasingId: v.optional(v.id('phrasings')),
+    questionId: v.optional(v.any()), // DEPRECATED: Legacy field for dev database
     userAnswer: v.string(),
     isCorrect: v.boolean(),
     attemptedAt: v.number(),
@@ -120,9 +121,13 @@ export default defineSchema({
       v.literal('phrasing_generation'),
       v.literal('finalizing')
     ),
-    phrasingGenerated: v.number(), // Total AI generated
-    phrasingSaved: v.number(), // Successfully saved to DB
+    phrasingGenerated: v.optional(v.number()), // Total AI generated (optional for migration)
+    phrasingSaved: v.optional(v.number()), // Successfully saved to DB (optional for migration)
     estimatedTotal: v.optional(v.number()), // AI's estimate
+    // DEPRECATED: Legacy fields kept for dev database backward compat
+    questionIds: v.optional(v.array(v.any())),
+    questionsGenerated: v.optional(v.number()),
+    questionsSaved: v.optional(v.number()),
 
     // Results (flat fields)
     // Note: topic field kept here for generation metadata/grouping

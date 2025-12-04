@@ -11,7 +11,6 @@ import Link from 'next/link';
 import { useAction, useQuery } from 'convex/react';
 import { PlayIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { PageContainer } from '@/components/page-container';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,7 +28,7 @@ import { api } from '@/convex/_generated/api';
 import { buildLearningSciencePrompt } from '@/convex/lib/promptTemplates';
 import { loadConfigs, saveConfigs } from '@/lib/lab-storage';
 import { cn } from '@/lib/utils';
-import type { ExecutionResult, InfraConfig } from '@/types/lab';
+import type { ExecutionResult, GoogleInfraConfig, InfraConfig } from '@/types/lab';
 
 /**
  * Test run - represents one input + result pair(s)
@@ -56,21 +55,14 @@ interface TestRun {
  * This ensures Lab always tests with the exact same configuration
  * that production uses, preventing test/prod divergence.
  */
-function createProdConfig(runtimeConfig: {
-  provider: 'openai' | 'google';
-  model: string;
-  reasoningEffort: 'minimal' | 'low' | 'medium' | 'high';
-  verbosity: 'low' | 'medium' | 'high';
-}): InfraConfig {
+function createProdConfig(runtimeConfig: { provider: 'google'; model: string }): GoogleInfraConfig {
   const now = Date.now();
   return {
     id: 'prod-baseline',
     name: 'PRODUCTION (Learning Science)',
-    description: `Current production config: ${runtimeConfig.model} (${runtimeConfig.reasoningEffort} reasoning, ${runtimeConfig.verbosity} verbosity)`,
-    provider: runtimeConfig.provider,
+    description: `Current production config: ${runtimeConfig.model} (Gemini with thinking)`,
+    provider: 'google',
     model: runtimeConfig.model,
-    reasoningEffort: runtimeConfig.reasoningEffort,
-    verbosity: runtimeConfig.verbosity,
     phases: [
       {
         name: 'Learning Science Question Generation',
@@ -177,16 +169,8 @@ export function UnifiedLabClient() {
             provider: selectedConfig.provider,
             model: selectedConfig.model,
             temperature: selectedConfig.temperature,
-            // Conditionally spread provider-specific properties
-            ...(selectedConfig.provider === 'google' && {
-              maxTokens: selectedConfig.maxTokens,
-              topP: selectedConfig.topP,
-            }),
-            ...(selectedConfig.provider === 'openai' && {
-              reasoningEffort: selectedConfig.reasoningEffort,
-              verbosity: selectedConfig.verbosity,
-              maxCompletionTokens: selectedConfig.maxCompletionTokens,
-            }),
+            maxTokens: selectedConfig.maxTokens,
+            topP: selectedConfig.topP,
             phases: selectedConfig.phases,
             testInput: newRun.input,
           }),
@@ -196,16 +180,8 @@ export function UnifiedLabClient() {
             provider: comparisonConfig.provider,
             model: comparisonConfig.model,
             temperature: comparisonConfig.temperature,
-            // Conditionally spread provider-specific properties
-            ...(comparisonConfig.provider === 'google' && {
-              maxTokens: comparisonConfig.maxTokens,
-              topP: comparisonConfig.topP,
-            }),
-            ...(comparisonConfig.provider === 'openai' && {
-              reasoningEffort: comparisonConfig.reasoningEffort,
-              verbosity: comparisonConfig.verbosity,
-              maxCompletionTokens: comparisonConfig.maxCompletionTokens,
-            }),
+            maxTokens: comparisonConfig.maxTokens,
+            topP: comparisonConfig.topP,
             phases: comparisonConfig.phases,
             testInput: newRun.input,
           }),
@@ -257,16 +233,8 @@ export function UnifiedLabClient() {
           provider: selectedConfig.provider,
           model: selectedConfig.model,
           temperature: selectedConfig.temperature,
-          // Conditionally spread provider-specific properties
-          ...(selectedConfig.provider === 'google' && {
-            maxTokens: selectedConfig.maxTokens,
-            topP: selectedConfig.topP,
-          }),
-          ...(selectedConfig.provider === 'openai' && {
-            reasoningEffort: selectedConfig.reasoningEffort,
-            verbosity: selectedConfig.verbosity,
-            maxCompletionTokens: selectedConfig.maxCompletionTokens,
-          }),
+          maxTokens: selectedConfig.maxTokens,
+          topP: selectedConfig.topP,
           phases: selectedConfig.phases,
           testInput: newRun.input,
         });
@@ -384,7 +352,6 @@ export function UnifiedLabClient() {
 
                   {selectedConfig && (
                     <div className="flex gap-1.5 flex-wrap">
-                      <Badge variant="secondary">{selectedConfig.provider}</Badge>
                       <Badge variant="secondary">{selectedConfig.model}</Badge>
                       <Badge variant="secondary">{selectedConfig.phases.length}-phase</Badge>
                     </div>
@@ -425,7 +392,6 @@ export function UnifiedLabClient() {
                     </Select>
                     {selectedConfig && (
                       <div className="flex gap-1.5 flex-wrap">
-                        <Badge variant="secondary">{selectedConfig.provider}</Badge>
                         <Badge variant="secondary">{selectedConfig.model}</Badge>
                         <Badge variant="secondary">{selectedConfig.phases.length}-phase</Badge>
                       </div>
@@ -458,9 +424,6 @@ export function UnifiedLabClient() {
                     </Select>
                     {configs.find((c) => c.id === comparisonConfigId) && (
                       <div className="flex gap-1.5 flex-wrap">
-                        <Badge variant="secondary">
-                          {configs.find((c) => c.id === comparisonConfigId)!.provider}
-                        </Badge>
                         <Badge variant="secondary">
                           {configs.find((c) => c.id === comparisonConfigId)!.model}
                         </Badge>

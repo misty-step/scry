@@ -9,26 +9,16 @@
 import { useState } from 'react';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   isValidConfig,
-  type AIProvider,
   type GoogleInfraConfig,
   type InfraConfig,
-  type OpenAIInfraConfig,
   type PromptPhase,
 } from '@/types/lab';
 
@@ -44,19 +34,14 @@ export function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
   // Form state
   const [name, setName] = useState(config?.name || '');
   const [description, setDescription] = useState(config?.description || '');
-  const [provider, setProvider] = useState<AIProvider>(config?.provider || 'google');
-  const [model, setModel] = useState(config?.model || 'gemini-2.5-flash');
+  const [model, setModel] = useState(config?.model || 'gemini-3-pro-preview');
   const [temperature, setTemperature] = useState(
     config?.temperature !== undefined ? config.temperature.toString() : ''
   );
   const [maxTokens, setMaxTokens] = useState(
-    config?.provider === 'google' && config.maxTokens !== undefined
-      ? config.maxTokens.toString()
-      : ''
+    config?.maxTokens !== undefined ? config.maxTokens.toString() : ''
   );
-  const [topP, setTopP] = useState(
-    config?.provider === 'google' && config.topP !== undefined ? config.topP.toString() : ''
-  );
+  const [topP, setTopP] = useState(config?.topP !== undefined ? config.topP.toString() : '');
   const [phases, setPhases] = useState<PromptPhase[]>(
     config?.phases || [
       {
@@ -112,47 +97,25 @@ export function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
       }
     }
 
-    // Build provider-specific config based on provider selection
-    const baseFields = {
+    // Build Google config
+    const newConfig: GoogleInfraConfig = {
       id: config?.id || Date.now().toString(),
       name: name.trim(),
       description: description.trim() || undefined,
       isProd: config?.isProd || false,
+      provider: 'google',
       model: model.trim(),
       phases: phases.map((p) => ({
         name: p.name.trim(),
         template: p.template.trim(),
         outputTo: p.outputTo?.trim() || undefined,
       })),
+      temperature: tempNum,
+      maxTokens: tokensNum,
+      topP: topPNum,
       createdAt: config?.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
-
-    let newConfig: InfraConfig;
-    if (provider === 'google') {
-      const googleConfig: GoogleInfraConfig = {
-        ...baseFields,
-        provider: 'google',
-        temperature: tempNum,
-        maxTokens: tokensNum,
-        topP: topPNum,
-      };
-      newConfig = googleConfig;
-    } else {
-      // OpenAI config - preserve existing OpenAI-specific parameters
-      const openaiConfig: OpenAIInfraConfig = {
-        ...baseFields,
-        provider: 'openai',
-        temperature: tempNum,
-        // Preserve OpenAI-specific fields not shown in editor (only when editing OpenAI config)
-        ...(config?.provider === 'openai' && {
-          maxCompletionTokens: config.maxCompletionTokens,
-          reasoningEffort: config.reasoningEffort,
-          verbosity: config.verbosity,
-        }),
-      };
-      newConfig = openaiConfig;
-    }
 
     if (!isValidConfig(newConfig)) {
       toast.error('Invalid configuration');
@@ -202,36 +165,17 @@ export function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
 
       {/* Model Configuration */}
       <div className="space-y-3 pt-2 border-t">
-        <h4 className="text-sm font-medium">Model Configuration</h4>
+        <h4 className="text-sm font-medium">Model Configuration (Google Gemini)</h4>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="config-provider">Provider *</Label>
-            <Select
-              value={provider}
-              onValueChange={(value) => setProvider(value as AIProvider)}
-              disabled={config?.isProd}
-            >
-              <SelectTrigger id="config-provider" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="openai">OpenAI</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="config-model">Model *</Label>
-            <Input
-              id="config-model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g., gemini-2.5-flash"
-              disabled={config?.isProd}
-            />
-          </div>
+        <div>
+          <Label htmlFor="config-model">Model *</Label>
+          <Input
+            id="config-model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="e.g., gemini-3-pro-preview"
+            disabled={config?.isProd}
+          />
         </div>
 
         <div className="grid grid-cols-3 gap-3">

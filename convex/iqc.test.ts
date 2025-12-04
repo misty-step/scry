@@ -293,7 +293,7 @@ describe('IQC helpers', () => {
     it('sets canonical to target when decision prefers TARGET', () => {
       const candidate = makeCandidate();
       const decision = makeDecision('TARGET');
-      const payload = buildMergePayload(candidate, decision, 'key1', 'openai', keyDiagnostics);
+      const payload = buildMergePayload(candidate, decision, 'key1', 'google', keyDiagnostics);
 
       expect(payload.canonicalConceptId).toBe('target1');
       expect(payload.mergeConceptId).toBe('source1');
@@ -302,7 +302,7 @@ describe('IQC helpers', () => {
     it('sets canonical to source when decision prefers SOURCE', () => {
       const candidate = makeCandidate();
       const decision = makeDecision('SOURCE');
-      const payload = buildMergePayload(candidate, decision, 'key2', 'openai', keyDiagnostics);
+      const payload = buildMergePayload(candidate, decision, 'key2', 'google', keyDiagnostics);
 
       expect(payload.canonicalConceptId).toBe('source1');
       expect(payload.mergeConceptId).toBe('target1');
@@ -311,7 +311,7 @@ describe('IQC helpers', () => {
     it('includes similarity scores', () => {
       const candidate = makeCandidate();
       const decision = makeDecision('TARGET');
-      const payload = buildMergePayload(candidate, decision, 'key', 'openai', keyDiagnostics);
+      const payload = buildMergePayload(candidate, decision, 'key', 'google', keyDiagnostics);
 
       expect(payload.similarity).toBe(0.95);
       expect(payload.titleSimilarity).toBe(0.85);
@@ -320,7 +320,7 @@ describe('IQC helpers', () => {
     it('includes concept snapshots for both concepts', () => {
       const candidate = makeCandidate();
       const decision = makeDecision('TARGET');
-      const payload = buildMergePayload(candidate, decision, 'key', 'openai', keyDiagnostics);
+      const payload = buildMergePayload(candidate, decision, 'key', 'google', keyDiagnostics);
 
       expect(payload.conceptSnapshots).toHaveLength(2);
       expect(payload.conceptSnapshots[0].title).toBe('Source Concept');
@@ -346,7 +346,7 @@ describe('IQC helpers', () => {
         candidate,
         decision,
         'unique-key-123',
-        'openai',
+        'google',
         keyDiagnostics
       );
 

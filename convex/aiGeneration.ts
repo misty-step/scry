@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
-import { initializeProvider, type ProviderClient } from './lib/aiProviders';
+import { initializeGoogleProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
@@ -39,7 +39,6 @@ import {
   buildIntentExtractionPrompt,
   buildPhrasingGenerationPrompt,
 } from './lib/promptTemplates';
-import { generateObjectWithResponsesApi } from './lib/responsesApi';
 
 // Logger for this module
 const conceptsLogger = createConceptsLogger({
@@ -305,11 +304,7 @@ export const processJob = internalAction({
     };
 
     // Initialize AI provider from environment configuration
-    // Defaults to OpenAI for production, but can be overridden via env vars
-    const requestedProvider = process.env.AI_PROVIDER || 'openai';
-    const modelName = process.env.AI_MODEL || 'gpt-5.1';
-    const reasoningEffort = process.env.AI_REASONING_EFFORT || 'high';
-    const verbosity = process.env.AI_VERBOSITY || 'medium';
+    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
 
     // Declare keyDiagnostics outside conditional blocks for error handler access
     let keyDiagnostics: ProviderClient['diagnostics'] = {
@@ -318,23 +313,18 @@ export const processJob = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
-    let openaiClient: ProviderClient['openaiClient'];
-    let provider: ProviderClient['provider'] = 'openai';
 
     try {
-      const providerClient = await initializeProvider(requestedProvider, modelName, {
+      const providerClient = initializeGoogleProvider(modelName, {
         logger,
         logContext: {
           ...stageAMetadata,
           jobId: args.jobId,
-          ...(requestedProvider.toLowerCase() === 'openai' && { reasoningEffort }),
         },
         deployment: process.env.CONVEX_CLOUD_URL ?? 'unknown',
       });
 
-      provider = providerClient.provider;
       model = providerClient.model;
-      openaiClient = providerClient.openaiClient;
       keyDiagnostics = providerClient.diagnostics;
     } catch (error) {
       const err = error as Error;
@@ -354,10 +344,8 @@ export const processJob = internalAction({
       logger.info(
         {
           ...stageAMetadata,
-          provider,
+          provider: 'google',
           model: modelName,
-          reasoningEffort,
-          verbosity,
         },
         'Starting Stage A job processing'
       );
@@ -399,26 +387,19 @@ export const processJob = internalAction({
       // Step 1: Intent extraction (clarify goal and content type)
       const intentPrompt = buildIntentExtractionPrompt(job.prompt);
 
-      let intentResponse;
-      if (provider === 'openai' && openaiClient) {
-        intentResponse = await generateObjectWithResponsesApi({
-          client: openaiClient,
-          model: modelName,
-          input: intentPrompt,
-          schema: intentSchema,
-          schemaName: 'intent',
-          verbosity: verbosity as 'low' | 'medium' | 'high',
-          reasoningEffort: reasoningEffort as 'minimal' | 'low' | 'medium' | 'high',
-        });
-      } else if (provider === 'google' && model) {
-        intentResponse = await generateObject({
-          model,
-          schema: intentSchema,
-          prompt: intentPrompt,
-        });
-      } else {
-        throw new Error('Provider not initialized correctly');
-      }
+      const intentResponse = await generateObject({
+        model,
+        schema: intentSchema,
+        prompt: intentPrompt,
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
+          },
+        },
+      });
 
       const intentObject = intentResponse.object;
       const intentJson = JSON.stringify(intentObject);
@@ -436,16 +417,14 @@ export const processJob = internalAction({
         ...stageAMetadata,
         event: 'start',
         userId: job.userId,
-        provider,
+        provider: 'google',
         model: modelName,
-        reasoningEffort,
-        verbosity,
       });
 
       trackEvent('Quiz Generation Started', {
         jobId: args.jobId,
         userId: String(job.userId),
-        provider,
+        provider: 'google',
       });
 
       await ctx.runMutation(internal.generationJobs.updateProgress, {
@@ -455,26 +434,19 @@ export const processJob = internalAction({
 
       const conceptPrompt = buildConceptSynthesisPrompt(intentJson);
 
-      let finalResponse;
-      if (provider === 'openai' && openaiClient) {
-        finalResponse = await generateObjectWithResponsesApi({
-          client: openaiClient,
-          model: modelName,
-          input: conceptPrompt,
-          schema: conceptIdeasSchema,
-          schemaName: 'concepts',
-          verbosity: verbosity as 'low' | 'medium' | 'high',
-          reasoningEffort: reasoningEffort as 'minimal' | 'low' | 'medium' | 'high',
-        });
-      } else if (provider === 'google' && model) {
-        finalResponse = await generateObject({
-          model,
-          schema: conceptIdeasSchema,
-          prompt: conceptPrompt,
-        });
-      } else {
-        throw new Error('Provider not initialized correctly');
-      }
+      const finalResponse = await generateObject({
+        model,
+        schema: conceptIdeasSchema,
+        prompt: conceptPrompt,
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
+          },
+        },
+      });
 
       const { object } = finalResponse;
 
@@ -633,7 +605,7 @@ export const processJob = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider,
+        provider: 'google',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
@@ -652,10 +624,7 @@ export const generatePhrasingsForConcept = internalAction({
   },
   handler: async (ctx, args) => {
     const startTime = Date.now();
-    const requestedProvider = process.env.AI_PROVIDER || 'openai';
-    const modelName = process.env.AI_MODEL || 'gpt-5.1';
-    const reasoningEffort = process.env.AI_REASONING_EFFORT || 'high';
-    const verbosity = process.env.AI_VERBOSITY || 'medium';
+    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
     const stageBCorrelationId = generateCorrelationId('stage-b');
     const stageBMetadata = {
       phase: 'stage_b' as const,
@@ -671,8 +640,6 @@ export const generatePhrasingsForConcept = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
-    let openaiClient: ProviderClient['openaiClient'];
-    let provider: ProviderClient['provider'] = 'openai';
 
     try {
       job = await ctx.runQuery(internal.generationJobs.getJobByIdInternal, {
@@ -729,20 +696,17 @@ export const generatePhrasingsForConcept = internalAction({
       }
 
       try {
-        const providerClient = await initializeProvider(requestedProvider, modelName, {
+        const providerClient = initializeGoogleProvider(modelName, {
           logger,
           logContext: {
             ...stageBMetadata,
             jobId: args.jobId,
             conceptId: args.conceptId.toString(),
-            ...(requestedProvider.toLowerCase() === 'openai' && { reasoningEffort }),
           },
           deployment: process.env.CONVEX_CLOUD_URL ?? 'unknown',
         });
 
-        provider = providerClient.provider;
         model = providerClient.model;
-        openaiClient = providerClient.openaiClient;
         keyDiagnostics = providerClient.diagnostics;
       } catch (error) {
         const err = error as Error;
@@ -762,10 +726,8 @@ export const generatePhrasingsForConcept = internalAction({
         ...stageBMetadata,
         event: 'start',
         userId: job.userId,
-        provider,
+        provider: 'google',
         model: modelName,
-        reasoningEffort,
-        verbosity,
       });
 
       const existingPhrasings: Doc<'phrasings'>[] = await ctx.runQuery(
@@ -789,26 +751,19 @@ export const generatePhrasingsForConcept = internalAction({
         existingQuestions,
       });
 
-      let finalResponse;
-      if (provider === 'openai' && openaiClient) {
-        finalResponse = await generateObjectWithResponsesApi({
-          client: openaiClient,
-          model: modelName,
-          input: prompt,
-          schema: phrasingBatchSchema,
-          schemaName: 'phrasings',
-          verbosity: verbosity as 'low' | 'medium' | 'high',
-          reasoningEffort: reasoningEffort as 'minimal' | 'low' | 'medium' | 'high',
-        });
-      } else if (provider === 'google' && model) {
-        finalResponse = await generateObject({
-          model,
-          schema: phrasingBatchSchema,
-          prompt,
-        });
-      } else {
-        throw new Error('Provider not initialized correctly');
-      }
+      const finalResponse = await generateObject({
+        model,
+        schema: phrasingBatchSchema,
+        prompt,
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
+          },
+        },
+      });
 
       const normalizedPhrasings = prepareGeneratedPhrasings(
         finalResponse.object.phrasings,
@@ -917,7 +872,7 @@ export const generatePhrasingsForConcept = internalAction({
         trackEvent('Quiz Generation Completed', {
           jobId: job._id,
           userId: String(job.userId),
-          provider,
+          provider: 'google',
           phrasingCount: progress.phrasingSaved,
           durationMs,
         });
@@ -960,7 +915,7 @@ export const generatePhrasingsForConcept = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider,
+        provider: 'google',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,

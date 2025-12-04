@@ -8,7 +8,6 @@
 import { useState } from 'react';
 import { CopyIcon, Edit2Icon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -20,22 +19,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   isValidConfig,
-  type AIProvider,
   type GoogleInfraConfig,
   type InfraConfig,
-  type OpenAIInfraConfig,
   type PromptPhase,
 } from '@/types/lab';
 
@@ -64,7 +54,7 @@ export function ConfigManagementDialog({
       counter++;
     }
 
-    const cloned: InfraConfig = {
+    const cloned: GoogleInfraConfig = {
       ...config,
       id: Date.now().toString(),
       name: cloneName,
@@ -78,12 +68,12 @@ export function ConfigManagementDialog({
   };
 
   const handleCreateNew = () => {
-    const newConfig: InfraConfig = {
+    const newConfig: GoogleInfraConfig = {
       id: Date.now().toString(),
       name: 'New Configuration',
       description: undefined,
       provider: 'google',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       temperature: undefined,
       maxTokens: undefined,
       phases: [
@@ -176,8 +166,6 @@ export function ConfigManagementDialog({
                           <p className="text-xs text-muted-foreground">{config.description}</p>
                         )}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{config.provider}</span>
-                          <span>•</span>
                           <span>{config.model}</span>
                           <span>•</span>
                           <span>{config.phases.length}-phase</span>
@@ -265,13 +253,10 @@ interface ConfigEditorProps {
 function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
   const [name, setName] = useState(config.name);
   const [description, setDescription] = useState(config.description || '');
-  const [provider, setProvider] = useState<AIProvider>(config.provider);
   const [model, setModel] = useState(config.model);
   const [temperature, setTemperature] = useState(config.temperature?.toString() || '');
   const [maxTokens, setMaxTokens] = useState(
-    config.provider === 'google' && config.maxTokens !== undefined
-      ? config.maxTokens.toString()
-      : ''
+    config.maxTokens !== undefined ? config.maxTokens.toString() : ''
   );
   const [phases, setPhases] = useState<PromptPhase[]>(config.phases);
 
@@ -284,38 +269,18 @@ function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
     const tempNum = temperature ? parseFloat(temperature) : undefined;
     const tokensNum = maxTokens ? parseInt(maxTokens, 10) : undefined;
 
-    // Build provider-specific config based on provider selection
-    let updated: InfraConfig;
-    if (provider === 'google') {
-      const googleConfig: GoogleInfraConfig = {
-        ...config,
-        provider: 'google',
-        name: name.trim(),
-        description: description.trim() || undefined,
-        model: model.trim(),
-        temperature: tempNum,
-        maxTokens: tokensNum,
-        topP: config.provider === 'google' ? config.topP : undefined,
-        phases,
-        updatedAt: Date.now(),
-      };
-      updated = googleConfig;
-    } else {
-      const openaiConfig: OpenAIInfraConfig = {
-        ...config,
-        provider: 'openai',
-        name: name.trim(),
-        description: description.trim() || undefined,
-        model: model.trim(),
-        temperature: tempNum,
-        reasoningEffort: config.provider === 'openai' ? config.reasoningEffort : undefined,
-        verbosity: config.provider === 'openai' ? config.verbosity : undefined,
-        maxCompletionTokens: config.provider === 'openai' ? config.maxCompletionTokens : undefined,
-        phases,
-        updatedAt: Date.now(),
-      };
-      updated = openaiConfig;
-    }
+    const updated: GoogleInfraConfig = {
+      ...config,
+      provider: 'google',
+      name: name.trim(),
+      description: description.trim() || undefined,
+      model: model.trim(),
+      temperature: tempNum,
+      maxTokens: tokensNum,
+      topP: config.topP,
+      phases,
+      updatedAt: Date.now(),
+    };
 
     if (!isValidConfig(updated)) {
       toast.error('Invalid configuration');
@@ -354,29 +319,15 @@ function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
 
       {/* Model Configuration */}
       <div className="space-y-4">
-        <h3 className="text-sm font-medium">Model Configuration</h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
-            <Select value={provider} onValueChange={(v) => setProvider(v as AIProvider)}>
-              <SelectTrigger id="provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="openai">OpenAI</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
-            <Input
-              id="model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gemini-2.5-flash"
-            />
-          </div>
+        <h3 className="text-sm font-medium">Model Configuration (Google Gemini)</h3>
+        <div className="space-y-2">
+          <Label htmlFor="model">Model</Label>
+          <Input
+            id="model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="gemini-3-pro-preview"
+          />
         </div>
       </div>
 

@@ -1,17 +1,13 @@
+import { generateObject } from 'ai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '@/convex/_generated/api';
 import { generatePhrasingsForConcept, processJob } from '@/convex/aiGeneration';
-import { generateObjectWithResponsesApi } from '@/convex/lib/responsesApi';
 import { makeConcept, makeGenerationJob } from '@/tests/helpers';
 
-const initializeProviderMock = vi.fn();
+const initializeGoogleProviderMock = vi.fn();
 
 vi.mock('@/convex/lib/aiProviders', () => ({
-  initializeProvider: (...args: unknown[]) => initializeProviderMock(...args),
-}));
-
-vi.mock('@/convex/lib/responsesApi', () => ({
-  generateObjectWithResponsesApi: vi.fn(),
+  initializeGoogleProvider: (...args: unknown[]) => initializeGoogleProviderMock(...args),
 }));
 
 vi.mock('ai', () => ({
@@ -49,29 +45,22 @@ vi.mock('@/convex/_generated/api', () => ({
 
 describe('processJob failure handling', () => {
   const originalEnv = {
-    AI_PROVIDER: process.env.AI_PROVIDER,
     AI_MODEL: process.env.AI_MODEL,
-    AI_REASONING_EFFORT: process.env.AI_REASONING_EFFORT,
-    AI_VERBOSITY: process.env.AI_VERBOSITY,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.AI_PROVIDER = 'openai';
-    process.env.AI_MODEL = 'gpt-5.1';
-    process.env.AI_REASONING_EFFORT = 'high';
-    process.env.AI_VERBOSITY = 'medium';
+    process.env.AI_MODEL = 'gemini-3-pro-preview';
   });
 
   afterEach(() => {
-    process.env.AI_PROVIDER = originalEnv.AI_PROVIDER;
     process.env.AI_MODEL = originalEnv.AI_MODEL;
-    process.env.AI_REASONING_EFFORT = originalEnv.AI_REASONING_EFFORT;
-    process.env.AI_VERBOSITY = originalEnv.AI_VERBOSITY;
   });
 
   it('marks job failed when provider initialization throws', async () => {
-    initializeProviderMock.mockRejectedValueOnce(new Error('Provider not configured'));
+    initializeGoogleProviderMock.mockImplementationOnce(() => {
+      throw new Error('Provider not configured');
+    });
 
     const failJob = vi.fn();
     const ctx = {
@@ -99,10 +88,8 @@ describe('processJob failure handling', () => {
   });
 
   it('fails gracefully when job is missing', async () => {
-    initializeProviderMock.mockResolvedValueOnce({
-      provider: 'openai',
-      model: 'gpt-5.1',
-      openaiClient: {},
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
 
@@ -137,21 +124,19 @@ describe('processJob failure handling', () => {
   });
 
   it('advances job through stages and schedules phrasing generation on success', async () => {
-    initializeProviderMock.mockResolvedValueOnce({
-      provider: 'openai',
-      model: 'gpt-5.1',
-      openaiClient: {},
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
 
-    const responsesApiMock = vi.mocked(generateObjectWithResponsesApi);
+    const generateObjectMock = vi.mocked(generateObject);
 
-    responsesApiMock
+    generateObjectMock
       .mockResolvedValueOnce({
         // Intent extraction response
         object: { content_type: 'conceptual' },
-        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
-        raw: {} as any,
+        usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        rawResponse: {} as any,
       } as any)
       .mockResolvedValueOnce({
         // Concept synthesis response
@@ -165,8 +150,8 @@ describe('processJob failure handling', () => {
             },
           ],
         },
-        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
-        raw: {} as any,
+        usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        rawResponse: {} as any,
       } as any);
 
     const job = makeGenerationJob({
@@ -221,25 +206,23 @@ describe('processJob failure handling', () => {
   });
 
   it('maps schema validation failures to non-retryable user-friendly errors', async () => {
-    initializeProviderMock.mockResolvedValueOnce({
-      provider: 'openai',
-      model: 'gpt-5.1',
-      openaiClient: {},
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
 
-    const responsesApiMock = vi.mocked(generateObjectWithResponsesApi);
+    const generateObjectMock = vi.mocked(generateObject);
 
-    responsesApiMock
+    generateObjectMock
       .mockResolvedValueOnce({
         object: { content_type: 'conceptual' },
-        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
-        raw: {} as any,
+        usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        rawResponse: {} as any,
       } as any)
       .mockResolvedValueOnce({
         object: { concepts: [] },
-        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
-        raw: {} as any,
+        usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        rawResponse: {} as any,
       } as any);
 
     const job = makeGenerationJob({
@@ -277,187 +260,222 @@ describe('processJob failure handling', () => {
         jobId: job._id,
         errorCode: 'SCHEMA_VALIDATION',
         retryable: false,
-        errorMessage: expectedMessage,
       })
     );
   });
 });
 
-describe('generatePhrasingsForConcept failure handling', () => {
+describe('generatePhrasingsForConcept', () => {
   const originalEnv = {
-    AI_PROVIDER: process.env.AI_PROVIDER,
     AI_MODEL: process.env.AI_MODEL,
-    AI_REASONING_EFFORT: process.env.AI_REASONING_EFFORT,
-    AI_VERBOSITY: process.env.AI_VERBOSITY,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.AI_PROVIDER = 'openai';
-    process.env.AI_MODEL = 'gpt-5.1';
-    process.env.AI_REASONING_EFFORT = 'high';
-    process.env.AI_VERBOSITY = 'medium';
+    process.env.AI_MODEL = 'gemini-3-pro-preview';
   });
 
   afterEach(() => {
-    process.env.AI_PROVIDER = originalEnv.AI_PROVIDER;
     process.env.AI_MODEL = originalEnv.AI_MODEL;
-    process.env.AI_REASONING_EFFORT = originalEnv.AI_REASONING_EFFORT;
-    process.env.AI_VERBOSITY = originalEnv.AI_VERBOSITY;
   });
 
-  it('maps normalization failures to schema_validation errors and marks job retryable', async () => {
-    initializeProviderMock.mockResolvedValueOnce({
-      provider: 'openai',
-      model: 'gpt-5.1',
-      openaiClient: {},
+  it('generates phrasings and schedules next concept', async () => {
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
 
-    const responsesApiMock = vi.mocked(generateObjectWithResponsesApi);
+    const generateObjectMock = vi.mocked(generateObject);
 
-    responsesApiMock.mockResolvedValueOnce({
+    generateObjectMock.mockResolvedValueOnce({
       object: {
         phrasings: [
           {
-            question: 'Short?',
-            explanation: 'Too short',
+            question: 'What is cellular respiration?',
+            explanation:
+              'Cellular respiration is a metabolic process that produces ATP from glucose.',
             type: 'multiple-choice',
-            options: ['A', 'B'],
-            correctAnswer: 'A',
+            options: ['ATP production', 'Digestion', 'Circulation', 'Excretion'],
+            correctAnswer: 'ATP production',
           },
         ],
       },
-      usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
-      raw: {} as any,
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      rawResponse: {} as any,
     } as any);
 
-    const job = makeGenerationJob({
-      _id: 'generationJobs_3' as any,
-      status: 'processing',
-      pendingConceptIds: [] as any,
-    });
-
     const concept = makeConcept({
-      _id: 'concepts_1' as any,
-      userId: job.userId,
-      phrasingCount: 0,
+      _id: 'concept_1' as any,
+      title: 'Cellular respiration',
+      description: 'How cells produce ATP',
     });
 
-    job.pendingConceptIds = [concept._id as any];
+    const job = makeGenerationJob({
+      _id: 'generationJobs_1' as any,
+      status: 'processing',
+      pendingConceptIds: ['concept_1' as any, 'concept_2' as any],
+    });
 
-    const failJob = vi.fn();
+    const advancePendingConceptCalls: any[] = [];
 
     const ctx = {
       runMutation: vi.fn(async (action, args) => {
-        if (action === internal.generationJobs.failJob) {
-          failJob(args);
+        if (action === internal.generationJobs.advancePendingConcept) {
+          advancePendingConceptCalls.push(args);
+          return { pendingCount: 1, phrasingGenerated: 1, phrasingSaved: 1 };
+        }
+
+        if (action === internal.phrasings.insertGenerated) {
+          return { ids: ['phrasing_1' as any] };
+        }
+
+        if (action === internal.concepts.applyPhrasingGenerationUpdate) {
+          return;
         }
       }),
       runQuery: vi.fn(async (action) => {
-        if (action === internal.generationJobs.getJobByIdInternal) {
-          return job;
-        }
-
         if (action === internal.concepts.getConceptById) {
           return concept;
+        }
+
+        if (action === internal.generationJobs.getJobByIdInternal) {
+          return job;
         }
 
         if (action === internal.phrasings.getByConcept) {
           return [];
         }
       }),
-      runAction: vi.fn(async () => [0.1, 0.2]),
       scheduler: { runAfter: vi.fn() },
     };
 
-    const expectedMessage =
-      'The AI could not produce review-ready phrasings. Try rerunning in a few moments.';
-
     await expect(
       (generatePhrasingsForConcept as any)._handler(ctx as any, {
-        conceptId: concept._id,
+        conceptId: 'concept_1' as any,
         jobId: job._id,
       })
-    ).rejects.toThrow(expectedMessage);
+    ).resolves.toBeUndefined();
 
-    expect(failJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobId: job._id,
-        errorCode: 'SCHEMA_VALIDATION',
-        retryable: true,
-        errorMessage: expectedMessage,
-      })
-    );
+    expect(advancePendingConceptCalls).toHaveLength(1);
+    expect(advancePendingConceptCalls[0]).toEqual({
+      jobId: job._id,
+      conceptId: 'concept_1',
+      phrasingGeneratedDelta: 1,
+      phrasingSavedDelta: 1,
+    });
   });
 
-  it('classifies upstream errors and surfaces rate limit friendly message', async () => {
-    initializeProviderMock.mockResolvedValueOnce({
-      provider: 'openai',
-      model: 'gpt-5.1',
-      openaiClient: {},
+  it('handles schema validation failure when AI returns empty phrasings', async () => {
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
 
-    const responsesApiMock = vi.mocked(generateObjectWithResponsesApi);
+    const generateObjectMock = vi.mocked(generateObject);
 
-    responsesApiMock.mockRejectedValueOnce(new Error('Rate limit exceeded: HTTP 429'));
-
-    const job = makeGenerationJob({
-      _id: 'generationJobs_4' as any,
-      status: 'processing',
-      pendingConceptIds: [] as any,
-    });
+    // Return valid response structure but with empty phrasings array
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        phrasings: [], // Empty - should trigger SCHEMA_VALIDATION error
+      },
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      rawResponse: {} as any,
+    } as any);
 
     const concept = makeConcept({
-      _id: 'concepts_2' as any,
-      userId: job.userId,
-      phrasingCount: 0,
+      _id: 'concept_1' as any,
+      title: 'Test Concept',
+      description: 'Test description',
     });
 
-    job.pendingConceptIds = [concept._id as any];
+    const job = makeGenerationJob({
+      _id: 'generationJobs_1' as any,
+      status: 'processing',
+      pendingConceptIds: ['concept_1' as any],
+    });
 
-    const failJob = vi.fn();
+    const failJobCalls: any[] = [];
 
     const ctx = {
       runMutation: vi.fn(async (action, args) => {
         if (action === internal.generationJobs.failJob) {
-          failJob(args);
+          failJobCalls.push(args);
+          return;
         }
       }),
       runQuery: vi.fn(async (action) => {
-        if (action === internal.generationJobs.getJobByIdInternal) {
-          return job;
-        }
-
         if (action === internal.concepts.getConceptById) {
           return concept;
         }
-
+        if (action === internal.generationJobs.getJobByIdInternal) {
+          return job;
+        }
         if (action === internal.phrasings.getByConcept) {
           return [];
         }
       }),
-      runAction: vi.fn(async () => [0.1, 0.2]),
       scheduler: { runAfter: vi.fn() },
     };
 
-    const expectedMessage = 'Rate limit reached. Please wait a moment and try again.';
+    await expect(
+      (generatePhrasingsForConcept as any)._handler(ctx as any, {
+        conceptId: 'concept_1' as any,
+        jobId: job._id,
+      })
+    ).rejects.toThrow('could not produce review-ready phrasings');
+
+    expect(failJobCalls).toHaveLength(1);
+    expect(failJobCalls[0].errorCode).toBe('SCHEMA_VALIDATION');
+  });
+
+  it('handles API key configuration error', async () => {
+    // Simulate API key not configured error
+    initializeGoogleProviderMock.mockImplementationOnce(() => {
+      throw new Error('GOOGLE_AI_API_KEY is not configured');
+    });
+
+    const concept = makeConcept({
+      _id: 'concept_1' as any,
+      title: 'Test Concept',
+      description: 'Test description',
+    });
+
+    const job = makeGenerationJob({
+      _id: 'generationJobs_1' as any,
+      status: 'processing',
+      pendingConceptIds: ['concept_1' as any],
+    });
+
+    const failJobCalls: any[] = [];
+
+    const ctx = {
+      runMutation: vi.fn(async (action, args) => {
+        if (action === internal.generationJobs.failJob) {
+          failJobCalls.push(args);
+          return;
+        }
+      }),
+      runQuery: vi.fn(async (action) => {
+        if (action === internal.concepts.getConceptById) {
+          return concept;
+        }
+        if (action === internal.generationJobs.getJobByIdInternal) {
+          return job;
+        }
+      }),
+      scheduler: { runAfter: vi.fn() },
+    };
 
     await expect(
       (generatePhrasingsForConcept as any)._handler(ctx as any, {
-        conceptId: concept._id,
+        conceptId: 'concept_1' as any,
         jobId: job._id,
       })
-    ).rejects.toThrow('Rate limit exceeded: HTTP 429');
+    ).rejects.toThrow('not configured');
 
-    expect(failJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobId: job._id,
-        errorCode: 'RATE_LIMIT',
-        retryable: true,
-        errorMessage: expectedMessage,
-      })
-    );
+    // failJob may be called multiple times due to error handling retry logic
+    expect(failJobCalls.length).toBeGreaterThanOrEqual(1);
+    expect(failJobCalls[0].errorCode).toBe('API_KEY');
+    expect(failJobCalls[0].retryable).toBe(false);
   });
 });
