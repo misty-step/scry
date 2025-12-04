@@ -115,9 +115,8 @@ export function isValidConfig(config: InfraConfig): boolean {
 
   if (!baseValid) return false;
 
-  // Google-specific validation
+  // Google-specific validation (provider is always 'google' since InfraConfig = GoogleInfraConfig)
   return (
-    config.provider === 'google' &&
     // Temperature is optional, but if set must be in range
     (config.temperature === undefined || (config.temperature >= 0 && config.temperature <= 2)) &&
     // MaxTokens is optional, but if set must be in range

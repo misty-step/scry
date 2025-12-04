@@ -36,7 +36,10 @@ export const run = action({
           prompt,
           providerOptions: {
             google: {
-              thinkingLevel: 'high',
+              thinkingConfig: {
+                thinkingBudget: 8192,
+                includeThoughts: true,
+              },
             },
           },
         });

@@ -689,7 +689,10 @@ async function adjudicateMergeCandidate({
     schema: mergeDecisionSchema,
     providerOptions: {
       google: {
-        thinkingLevel: 'high',
+        thinkingConfig: {
+          thinkingBudget: 8192,
+          includeThoughts: true,
+        },
       },
     },
   });

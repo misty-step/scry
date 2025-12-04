@@ -3,7 +3,7 @@
 ## Context
 - Architecture: Atomic Provider Removal (see DESIGN.md)
 - Pattern: Replace `provider === 'openai'` branching with direct `generateObject()` + `providerOptions`
-- Critical: Every `generateObject` call needs `providerOptions: { google: { thinkingLevel: 'high' } }`
+- Critical: Every `generateObject` call needs `providerOptions: { google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } } }`
 
 ## Implementation Tasks
 
@@ -53,14 +53,14 @@ These tasks can largely be done in parallel. The only hard dependency is Task 1 
       * Call `initializeGoogleProvider(modelName, ...)` instead of `initializeProvider(...)`
       * Replace intent extraction branching (~line 403-421) with direct call
       * Replace concept synthesis branching (~line 459-477) with direct call
-      * Add `providerOptions: { google: { thinkingLevel: 'high' } }` to each
+      * Add `providerOptions: { google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } } }` to each
     - In `generatePhrasingsForConcept()`:
       * Same pattern: remove branching, add providerOptions
       * Replace phrasing generation branching (~line 793-811)
   Pseudocode: DESIGN.md "Module: aiGeneration.ts (Core Generation)"
   Success:
     - Zero `provider === 'openai'` conditionals
-    - All 3 generateObject calls have `providerOptions.google.thinkingLevel: 'high'`
+    - All 3 generateObject calls have `providerOptions.google.thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`
     - No import from responsesApi
   Test: `pnpm test tests/convex/aiGeneration.process.test.ts`
   Dependencies: Task 1 (responsesApi deleted)
@@ -80,7 +80,7 @@ These tasks can largely be done in parallel. The only hard dependency is Task 1 
     - Simplify `adjudicateMergeCandidate()` (~line 688-730):
       * Remove all parameters except `candidate` and `model`
       * Remove provider branching
-      * Single `generateObject()` call with `providerOptions.google.thinkingLevel: 'high'`
+      * Single `generateObject()` call with `providerOptions.google.thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`
   Pseudocode: DESIGN.md "Module: iqc.ts (Merge Adjudication)"
   Success:
     - No `from 'openai'` import
@@ -106,7 +106,7 @@ These tasks can largely be done in parallel. The only hard dependency is Task 1 
       * Remove `openaiClient` destructure
       * Replace questions output branching (~line 212-235):
         - Remove OpenAI path
-        - Keep Google path, add `providerOptions.google.thinkingLevel: 'high'`
+        - Keep Google path, add `providerOptions.google.thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`
       * Remove reasoning token extraction (OpenAI-specific, ~line 250-265)
   Pseudocode: DESIGN.md "Module: lab.ts (Genesis Lab)"
   Success:

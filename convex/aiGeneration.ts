@@ -393,7 +393,10 @@ export const processJob = internalAction({
         prompt: intentPrompt,
         providerOptions: {
           google: {
-            thinkingLevel: 'high',
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
           },
         },
       });
@@ -437,7 +440,10 @@ export const processJob = internalAction({
         prompt: conceptPrompt,
         providerOptions: {
           google: {
-            thinkingLevel: 'high',
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
           },
         },
       });
@@ -751,7 +757,10 @@ export const generatePhrasingsForConcept = internalAction({
         prompt,
         providerOptions: {
           google: {
-            thinkingLevel: 'high',
+            thinkingConfig: {
+              thinkingBudget: 8192,
+              includeThoughts: true,
+            },
           },
         },
       });

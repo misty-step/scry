@@ -60,7 +60,7 @@ Full deployment docs: `docs/operations/`, `docs/runbooks/`
 
 ## AI Provider Configuration
 
-**Production:** Google Gemini 3 Pro with `thinkingLevel: 'high'`
+**Production:** Google Gemini 3 Pro with `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`
 
 **Provider:** `convex/lib/aiProviders.ts` — `initializeGoogleProvider()` for centralized initialization
 

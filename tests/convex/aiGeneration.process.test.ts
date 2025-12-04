@@ -350,7 +350,6 @@ describe('generatePhrasingsForConcept', () => {
     };
 
     await expect(
-       
       (generatePhrasingsForConcept as any)._handler(ctx as any, {
         conceptId: 'concept_1' as any,
         jobId: job._id,
@@ -364,5 +363,119 @@ describe('generatePhrasingsForConcept', () => {
       phrasingGeneratedDelta: 1,
       phrasingSavedDelta: 1,
     });
+  });
+
+  it('handles schema validation failure when AI returns empty phrasings', async () => {
+    initializeGoogleProviderMock.mockReturnValueOnce({
+      model: {},
+      diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
+    });
+
+    const generateObjectMock = vi.mocked(generateObject);
+
+    // Return valid response structure but with empty phrasings array
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        phrasings: [], // Empty - should trigger SCHEMA_VALIDATION error
+      },
+      usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+      rawResponse: {} as any,
+    } as any);
+
+    const concept = makeConcept({
+      _id: 'concept_1' as any,
+      title: 'Test Concept',
+      description: 'Test description',
+    });
+
+    const job = makeGenerationJob({
+      _id: 'generationJobs_1' as any,
+      status: 'processing',
+      pendingConceptIds: ['concept_1' as any],
+    });
+
+    const failJobCalls: any[] = [];
+
+    const ctx = {
+      runMutation: vi.fn(async (action, args) => {
+        if (action === internal.generationJobs.failJob) {
+          failJobCalls.push(args);
+          return;
+        }
+      }),
+      runQuery: vi.fn(async (action) => {
+        if (action === internal.concepts.getConceptById) {
+          return concept;
+        }
+        if (action === internal.generationJobs.getJobByIdInternal) {
+          return job;
+        }
+        if (action === internal.phrasings.getByConcept) {
+          return [];
+        }
+      }),
+      scheduler: { runAfter: vi.fn() },
+    };
+
+    await expect(
+      (generatePhrasingsForConcept as any)._handler(ctx as any, {
+        conceptId: 'concept_1' as any,
+        jobId: job._id,
+      })
+    ).rejects.toThrow('could not produce review-ready phrasings');
+
+    expect(failJobCalls).toHaveLength(1);
+    expect(failJobCalls[0].errorCode).toBe('SCHEMA_VALIDATION');
+  });
+
+  it('handles API key configuration error', async () => {
+    // Simulate API key not configured error
+    initializeGoogleProviderMock.mockImplementationOnce(() => {
+      throw new Error('GOOGLE_AI_API_KEY is not configured');
+    });
+
+    const concept = makeConcept({
+      _id: 'concept_1' as any,
+      title: 'Test Concept',
+      description: 'Test description',
+    });
+
+    const job = makeGenerationJob({
+      _id: 'generationJobs_1' as any,
+      status: 'processing',
+      pendingConceptIds: ['concept_1' as any],
+    });
+
+    const failJobCalls: any[] = [];
+
+    const ctx = {
+      runMutation: vi.fn(async (action, args) => {
+        if (action === internal.generationJobs.failJob) {
+          failJobCalls.push(args);
+          return;
+        }
+      }),
+      runQuery: vi.fn(async (action) => {
+        if (action === internal.concepts.getConceptById) {
+          return concept;
+        }
+        if (action === internal.generationJobs.getJobByIdInternal) {
+          return job;
+        }
+      }),
+      scheduler: { runAfter: vi.fn() },
+    };
+
+    await expect(
+      (generatePhrasingsForConcept as any)._handler(ctx as any, {
+        conceptId: 'concept_1' as any,
+        jobId: job._id,
+      })
+    ).rejects.toThrow('not configured');
+
+    // failJob may be called multiple times due to error handling retry logic
+    expect(failJobCalls.length).toBeGreaterThanOrEqual(1);
+    expect(failJobCalls[0].errorCode).toBe('API_KEY');
+    expect(failJobCalls[0].retryable).toBe(false);
   });
 });

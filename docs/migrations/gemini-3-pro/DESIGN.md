@@ -12,10 +12,10 @@
 - `iqc.ts`: Merge adjudication using direct `generateObject`
 - `lab.ts`: Genesis Lab execution using direct `generateObject`
 
-**Data Flow**: User → Prompt → `initializeGoogleProvider()` → `generateObject()` with `providerOptions.google.thinkingLevel: 'high'` → Zod validation → Response
+**Data Flow**: User → Prompt → `initializeGoogleProvider()` → `generateObject()` with `providerOptions.google.thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }` → Zod validation → Response
 
 **Key Design Decisions**:
-1. **Hardcode `thinkingLevel: 'high'`**: Educational content always needs maximum reasoning. YAGNI on env var.
+1. **Hardcode `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`**: Educational content always needs maximum reasoning. YAGNI on env var.
 2. **Keep minimal abstraction**: 30 lines for centralized error handling beats shotgun surgery later.
 3. **Remove provider branching entirely**: No dead code paths, no type union complexity.
 
@@ -124,7 +124,7 @@ const response = await generateObject({
   prompt,
   providerOptions: {
     google: {
-      thinkingLevel: 'high',
+      thinkingConfig: { thinkingBudget: 8192, includeThoughts: true },
     },
   },
 });
@@ -176,7 +176,7 @@ function processJob(jobId):
        model,
        schema: intentSchema,
        prompt: intentPrompt,
-       providerOptions: { google: { thinkingLevel: 'high' } }
+       providerOptions: { google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } } }
      })
 
   5. Generate concepts:
@@ -184,7 +184,7 @@ function processJob(jobId):
        model,
        schema: conceptIdeasSchema,
        prompt: conceptPrompt,
-       providerOptions: { google: { thinkingLevel: 'high' } }
+       providerOptions: { google: { thinkingConfig: { thinkingBudget: 8192, includeThoughts: true } } }
      })
 
   6. Process concepts, schedule phrasing generation
@@ -237,7 +237,7 @@ async function adjudicateMergeCandidate({
     schema: mergeDecisionSchema,
     providerOptions: {
       google: {
-        thinkingLevel: 'high',
+        thinkingConfig: { thinkingBudget: 8192, includeThoughts: true },
       },
     },
   });
@@ -313,7 +313,7 @@ const response = await generateObject({
   ...(args.topP !== undefined && { topP: args.topP }),
   providerOptions: {
     google: {
-      thinkingLevel: 'high',
+      thinkingConfig: { thinkingBudget: 8192, includeThoughts: true },
     },
   },
 });
@@ -365,7 +365,7 @@ const response = await generateObject({
   prompt,
   providerOptions: {
     google: {
-      thinkingLevel: 'high',
+      thinkingConfig: { thinkingBudget: 8192, includeThoughts: true },
     },
   },
 });

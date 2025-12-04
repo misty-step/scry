@@ -166,7 +166,10 @@ export const executeConfig = action({
             ...(args.topP !== undefined && { topP: args.topP }),
             providerOptions: {
               google: {
-                thinkingLevel: 'high',
+                thinkingConfig: {
+                  thinkingBudget: 8192,
+                  includeThoughts: true,
+                },
               },
             },
           });
@@ -204,7 +207,10 @@ export const executeConfig = action({
             ...(args.topP !== undefined && { topP: args.topP }),
             providerOptions: {
               google: {
-                thinkingLevel: 'high',
+                thinkingConfig: {
+                  thinkingBudget: 8192,
+                  includeThoughts: true,
+                },
               },
             },
           });

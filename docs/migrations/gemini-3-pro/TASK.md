@@ -4,7 +4,7 @@
 
 **Problem:** Currently using OpenAI GPT-5 for content generation, need to migrate entirely to Google Gemini 3 Pro Preview.
 
-**Solution:** Single atomic commit removing all OpenAI code paths, simplifying to Google-only with `gemini-3-pro-preview` and `thinkingLevel: 'high'`.
+**Solution:** Single atomic commit removing all OpenAI code paths, simplifying to Google-only with `gemini-3-pro-preview` and `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`.
 
 **User Value:** Consolidate on single AI provider, reduce codebase complexity (~1000 lines removed), leverage Gemini 3's superior reasoning for educational content.
 
@@ -64,7 +64,7 @@ One commit removing all OpenAI code. Keep minimal provider abstraction (one func
 
 ### Critical Implementation Detail: providerOptions
 
-**BLOCKER from architecture review:** Must pass `thinkingLevel` to Gemini model:
+**BLOCKER from architecture review:** Must pass `thinkingConfig` to Gemini model:
 
 ```typescript
 // In generateObject() calls - add providerOptions
@@ -74,7 +74,7 @@ const response = await generateObject({
   prompt: intentPrompt,
   providerOptions: {
     google: {
-      thinkingLevel: 'high',  // Required for Gemini 3 reasoning
+      thinkingConfig: { thinkingBudget: 8192, includeThoughts: true },  // Required for Gemini 3 reasoning
     },
   },
 });
@@ -108,7 +108,7 @@ convex/embeddings.ts (unchanged)
 
 **Removed:** `AI_PROVIDER`, `AI_REASONING_EFFORT`, `AI_VERBOSITY`, `AI_THINKING_LEVEL`, `OPENAI_API_KEY`
 
-**Why no `AI_THINKING_LEVEL`?** Hardcode `thinkingLevel: 'high'` in code. YAGNI - if tuning needed later, add env var then.
+**Why no `AI_THINKING_LEVEL`?** Hardcode `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }` in code. YAGNI - if tuning needed later, add env var then.
 
 ---
 
@@ -121,9 +121,9 @@ convex/embeddings.ts (unchanged)
 
 ### Assumptions
 1. User accepts Gemini 3 Pro Preview limitations (no SLA, possible instability)
-2. User accepts 60-140% cost increase over GPT-5-mini
+2. User accepts higher API costs (Gemini 3 Pro: $2.00/1M input, $12.00/1M output vs GPT-5-mini: $0.25/1M input, $2.00/1M output — approximately 6-8x more expensive)
 3. Existing Zod schemas work with Gemini's structured output
-4. `thinkingLevel: 'high'` provides equivalent quality to `reasoning_effort: 'high'`
+4. `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }` provides equivalent quality to `reasoning_effort: 'high'`
 
 ### Integration Requirements
 - Convex backend env vars must be updated before deployment
@@ -228,9 +228,9 @@ if (code === 'SCHEMA_VALIDATION') {
 
 **Tradeoffs:** 30 extra lines vs shotgun surgery if provider changes needed.
 
-### 2. Hardcode thinkingLevel (YAGNI)
+### 2. Hardcode thinkingConfig (YAGNI)
 
-**Decision:** Hardcode `thinkingLevel: 'high'` in code, no env var.
+**Decision:** Hardcode `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }` in code, no env var.
 
 **Alternatives:** `AI_THINKING_LEVEL` env var for tuning
 
@@ -246,7 +246,7 @@ if (code === 'SCHEMA_VALIDATION') {
 
 ### 4. providerOptions Required (Architecture blocker)
 
-**Decision:** All `generateObject` calls must include `providerOptions.google.thinkingLevel`.
+**Decision:** All `generateObject` calls must include `providerOptions.google.thinkingConfig`.
 
 **Rationale:** Without this, Gemini 3 Pro uses default thinking level. This is the **entire reason** for migrating to Gemini 3 Pro. Missing this defeats the purpose.
 
@@ -255,7 +255,7 @@ if (code === 'SCHEMA_VALIDATION') {
 ## Test Scenarios
 
 ### Happy Path
-- [ ] Generate concepts with `gemini-3-pro-preview` and `thinkingLevel: high`
+- [ ] Generate concepts with `gemini-3-pro-preview` and `thinkingConfig: { thinkingBudget: 8192 }`
 - [ ] Generate phrasings for concept batch
 - [ ] Lab experiment with Gemini 3 config
 - [ ] IQC merge operation with Gemini
