@@ -219,8 +219,10 @@ export function useReviewFlow() {
   // Query - use simple polling for time-sensitive review queries
   const { data: nextReview } = useSimplePoll(api.concepts.getDue, {}, POLLING_INTERVAL_MS);
 
-  // Check if data has actually changed to prevent unnecessary renders
-  const { hasChanged: dataHasChanged } = useDataHash(nextReview);
+  // Track concept changes for queue exhaustion detection
+  // IMPORTANT: Hash only conceptId, NOT entire response (serverTime changes every poll)
+  const conceptIdForHash = nextReview?.concept?._id ?? null;
+  const { hasChanged: dataHasChanged } = useDataHash(conceptIdForHash);
 
   const resetSessionMetrics = useCallback(() => {
     sessionIdRef.current = null;

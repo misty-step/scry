@@ -135,6 +135,35 @@
 **Acceptance**: Files deleted; no compile errors; git history preserves code
 **Effort**: 5m | **Impact**: -573 lines of unused abstraction
 
+### [TEST][LOW] Skip Feature Test Improvements (PR #100 CodeRabbit)
+**Source**: PR #100 review comments
+**Items**:
+- `hooks/use-active-jobs.test.ts`: Use real `isActiveJob` instead of mocking internal logic
+- `hooks/use-active-jobs.test.ts`: Align string quotes with project convention (double quotes)
+- `components/review-actions-dropdown.test.tsx`: Add assertion that `onSkip` not called when disabled
+- `hooks/use-simple-poll.test.ts`: Strengthen refetch assertion with specific timestamp
+- `convex/spacedRepetition.test.ts`: Extract duplicate handler logic to pure function for testing
+- `convex/spacedRepetition.test.ts`: Local createMockCtx shadows test helper
+**Acceptance**: Tests improved; no false positives; clean mocking patterns
+**Effort**: 2-3h total
+
+### [UX][LOW] Skip Feature UX Improvements (PR #100 CodeRabbit)
+**Source**: PR #100 review comments
+**Items**:
+- `components/review-actions-dropdown.tsx:` Guard onSkip handler when disabled
+- `components/review-flow.tsx:393-404`: Memory leak - setTimeout without cleanup
+**Acceptance**: Skip button correctly guarded; no memory leaks in review flow
+**Effort**: 1h total
+
+### [DOCS][LOW] Update TASK.md Checklists (PR #100 CodeRabbit)
+**Source**: PR #100 review comments
+**Items**:
+- `TASK.md:106-124`: Update test scenario checkboxes to reflect completion
+- `TASK.md:156-159`: Update checklist items that are implemented
+- `vitest.config.ts`: Plan to remove exclusions after refactors complete
+**Acceptance**: Task tracking reflects actual implementation state
+**Effort**: 15m
+
 ### [TEST][HIGH] Embed helpers coverage
 **File**: convex/lib/embeddingHelpers.ts
 **Perspectives**: maintainability-maven, security-sentinel
