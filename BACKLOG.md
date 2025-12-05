@@ -149,6 +149,31 @@
 **Acceptance**: Restore 3 removed tests; all pass in suite and isolation
 **Effort**: 4-6h
 
+### [TEST][HIGH] Refactor use-review-flow.ts Hook for Testability
+**File**: hooks/use-review-flow.ts (471 LOC)
+**Added**: 2024-12 during coverage expansion
+**Problem**: Hook has complex timer/effect interactions causing memory issues in unit tests
+- Reducer (lines 1-189) is testable and tested directly
+- Hook wrapper (lines 205-471) has useEffect with timeouts and polling that OOM in tests
+**Fix**:
+- Export `generateSessionId()` for direct testing
+- Extract `useSkipFeature()` hook for skip state management
+- Extract `useSessionTracking()` hook for session metrics
+**Acceptance**: Hook unit tests pass without OOM; functions coverage ≥70%
+**Effort**: 4h | **Impact**: Enables 70% function threshold
+
+### [TEST][MEDIUM] Improve Convex Backend Test Coverage
+**Files**: convex/concepts.ts (38.67%), convex/iqc.ts (19.48%), convex/clerk.ts (26.56%)
+**Added**: 2024-12 during coverage expansion
+**Problem**: Complex Convex modules have low unit test coverage; require integration testing patterns
+**Current**: Branch coverage limited to 67% due to these modules
+**Fix**:
+- Add convex-test or similar integration testing framework
+- Write contract tests for mutation/query behavior
+- Test helper functions in isolation where possible
+**Acceptance**: Branch coverage ≥70%
+**Effort**: 8-12h | **Impact**: Honest coverage thresholds
+
 ---
 
 ## Next (<6 weeks)

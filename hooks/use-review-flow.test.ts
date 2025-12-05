@@ -317,4 +317,21 @@ describe('reviewReducer', () => {
       expect(next.lastAutoSkippedId).toBeNull();
     });
   });
+
+  it('handles default case by returning state unchanged', () => {
+    // Test with an unknown action type to cover the default branch
+    const unknownAction = { type: 'UNKNOWN_ACTION' } as any;
+    const next = reviewReducer(baseState, unknownAction);
+    expect(next).toBe(baseState);
+  });
 });
+
+// Note: useReviewFlow hook tests are intentionally minimal due to complex timer interactions.
+// The reducer (which contains the core logic) is thoroughly tested above.
+// Hook integration is covered by E2E tests.
+//
+// The hook's complexity comes from:
+// - useSimplePoll with intervals
+// - useEffect with timeouts
+// - Session tracking refs
+// These are better tested via E2E than isolated unit tests.

@@ -223,6 +223,102 @@ describe('useConceptActions', () => {
   });
 
   describe('Error handling', () => {
+    it('handles setCanonical error with Error instance', async () => {
+      mockSetCanonical.mockRejectedValue(new Error('Set canonical failed'));
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.setCanonical('phrasing_1');
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Set canonical failed');
+    });
+
+    it('handles setCanonical error with non-Error', async () => {
+      mockSetCanonical.mockRejectedValue('string error');
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.setCanonical('phrasing_1');
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to update canonical phrasing');
+    });
+
+    it('handles archivePhrasing error with Error instance', async () => {
+      mockArchive.mockRejectedValue(new Error('Archive failed'));
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.archivePhrasing('phrasing_1');
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Archive failed');
+    });
+
+    it('handles archivePhrasing error with non-Error', async () => {
+      mockArchive.mockRejectedValue('string error');
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.archivePhrasing('phrasing_1');
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to archive phrasing');
+    });
+
+    it('handles requestMorePhrasings error with Error instance', async () => {
+      mockGenerate.mockRejectedValue(new Error('Generation failed'));
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.requestMorePhrasings();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Generation failed');
+    });
+
+    it('handles requestMorePhrasings error with non-Error', async () => {
+      mockGenerate.mockRejectedValue('string error');
+
+      const { result } = renderHook(() => useConceptActions({ conceptId }));
+
+      await act(async () => {
+        try {
+          await result.current.requestMorePhrasings();
+        } catch {
+          // Expected
+        }
+      });
+
+      expect(toast.error).toHaveBeenCalledWith('Failed to start generation');
+    });
+
     it('handles editConcept error with Error instance', async () => {
       mockUpdateConcept.mockRejectedValue(new Error('Update concept failed'));
 
