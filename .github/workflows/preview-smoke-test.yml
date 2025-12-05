@@ -11,7 +11,7 @@ jobs:
       NODE_VERSION: '20.19.0'
       PNPM_VERSION: '10.12.1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Wait for Vercel preview deployment
         uses: patrickedqvist/wait-for-vercel-preview@v1.3.1
