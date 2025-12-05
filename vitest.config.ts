@@ -30,10 +30,11 @@ export default defineConfig({
       reporter: ['text', 'json', 'json-summary', 'html'],
       reportOnFailure: true,
       thresholds: {
-        // Final targets for coverage gate
+        // Raised from 70/65/55/70 - represents significant coverage improvement
+        // Branches lower due to complex Convex backend code requiring integration tests
         lines: 70,
-        functions: 65,
-        branches: 55,
+        functions: 69, // Pending refactoring of use-review-flow hook for testability
+        branches: 67, // Limited by Convex integration code (clerk, concepts, iqc)
         statements: 70,
       },
       include: ['lib/**', 'convex/**', 'hooks/**'],
@@ -75,12 +76,7 @@ export default defineConfig({
         // Third-party integrations that require mocking external services
         'lib/sentry.ts',
         'lib/logger.ts', // Depends on Sentry
-        // Browser-only thin wrapper hooks around Convex/React APIs
-        'hooks/use-simple-poll.ts', // Convex useQuery wrapper
-        'hooks/use-undoable-action.tsx', // Toast notification integration
-        'hooks/use-concepts-query.ts', // Convex useQuery wrapper
-        'hooks/use-active-jobs.ts', // Convex useQuery wrapper
-        'hooks/use-shuffled-options.ts', // Thin Fisher-Yates wrapper
+        // Note: Thin wrapper hooks now included in coverage (tests written)
         // Environment detection utilities (runtime-only)
         'lib/env.ts',
         'lib/posthog-client.ts',
@@ -90,11 +86,11 @@ export default defineConfig({
         'hooks/use-clerk-appearance.ts',
         // Convex config queries (environment variable readers)
         'convex/lib/productionConfig.ts',
-        // Complex React hooks with deep Convex integration (tested via E2E)
-        'hooks/use-review-flow.ts', // 380 lines of deep Convex/React integration
+        // use-review-flow.ts: reducer is tested directly, hook has complex timer effects tested via E2E
+        'hooks/use-review-flow.ts',
         // Browser-only environment detection
         'lib/environment-client.ts',
-        // Compatibility layer queries (thin wrappers over userStats)
+        // spacedRepetition.ts: thin wrapper, logic tested via simulation, contracts tested in api-contract.test.ts
         'convex/spacedRepetition.ts',
         // Internal Convex mutations/queries (pure database operations)
         'convex/phrasings.ts', // Internal mutations/queries for phrasings table

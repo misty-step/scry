@@ -201,4 +201,56 @@ describe('useDataHash', () => {
 
     expect(result.current.hasChanged).toBe(false);
   });
+
+  describe('skip filtering regression (P1 bug fix)', () => {
+    it('correctly detects no change when only serverTime differs', () => {
+      // REGRESSION TEST: Fix for P1 bug where serverTime caused false-positive changes
+      // The fix: hash only conceptId, not entire response
+
+      // Simulate hashing conceptId (the fix)
+      const conceptId = 'concept_123';
+
+      const { result, rerender } = renderHook(({ data }) => useDataHash(data), {
+        initialProps: { data: conceptId },
+      });
+
+      expect(result.current.hasChanged).toBe(true);
+
+      // Poll returns same concept with different serverTime
+      // But we're hashing conceptId, not the full response
+      rerender({ data: conceptId });
+
+      // Should NOT show as changed
+      expect(result.current.hasChanged).toBe(false);
+    });
+
+    it('correctly detects change when conceptId changes', () => {
+      const { result, rerender } = renderHook(({ data }) => useDataHash(data), {
+        initialProps: { data: 'concept_1' as string | null },
+      });
+
+      expect(result.current.hasChanged).toBe(true);
+
+      // Different concept returned
+      rerender({ data: 'concept_2' });
+
+      // Should show as changed
+      expect(result.current.hasChanged).toBe(true);
+    });
+
+    it('correctly detects change from concept to null (queue empty)', () => {
+      const { result, rerender } = renderHook(({ data }) => useDataHash(data), {
+        initialProps: { data: 'concept_1' as string | null },
+      });
+
+      expect(result.current.hasChanged).toBe(true);
+
+      // Queue becomes empty
+      rerender({ data: null });
+
+      // Should show as changed
+      expect(result.current.hasChanged).toBe(true);
+      expect(result.current.currentHash).toBeNull();
+    });
+  });
 });
