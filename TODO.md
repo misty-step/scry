@@ -64,11 +64,20 @@
 
 These tasks are DEFERRED until Phase 1 learnings prove need:
 
-- [ ] Fix Asimov false positive with domain-specific assertion
+- [x] Fix Asimov false positive with domain-specific assertion
   ```
   Files: evals/promptfoo.yaml
   Trigger: PROVEN - first eval showed wrong domain (thermodynamics vs robotics)
   Approach: Add "contains: robot" or "contains: Asimov" assertion
+
+  Work Log:
+  - Root cause: vague atomic_units ("First Law") without domain context
+  - Fix 1: Made atomic_units explicit ("First Law of Robotics")
+  - Fix 2: Added synthesis_op "Asimov science fiction" for context
+  - Fix 3: Added `icontains: robot` assertion as domain check
+  - Result: 3/3 pass, output now correctly about robotics not thermodynamics
+
+  Learning: Input clarity > output assertions. Better prompts beat more tests.
   ```
 
 - [ ] Add LLM-as-judge quality assertion (IF string matching proves insufficient)
