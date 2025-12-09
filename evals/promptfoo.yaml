@@ -1,0 +1,46 @@
+# Scry LLM Evaluation - Minimal Config
+# Grug says: run one eval first, learn, then add complexity
+
+description: "Scry Concept Synthesis Evaluation"
+
+prompts:
+  - file://prompts/concept-synthesis.txt
+
+providers:
+  - id: google:gemini-2.5-pro
+    config:
+      temperature: 0.7
+
+# Test cases inline for simplicity (can extract to file later)
+# Helper to extract JSON from markdown code blocks
+defaultTest:
+  options:
+    transform: |
+      // Strip markdown code blocks if present
+      const cleaned = output.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
+      return cleaned;
+
+tests:
+  - description: "NATO Phonetic Alphabet - should generate 26 concepts"
+    vars:
+      intentJson: '{"content_type":"enumerable","goal":"memorize","atomic_units":["Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet","Kilo","Lima","Mike","November","Oscar","Papa","Quebec","Romeo","Sierra","Tango","Uniform","Victor","Whiskey","X-ray","Yankee","Zulu"],"synthesis_ops":[],"confidence":0.95}'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "JSON.parse(output).concepts && JSON.parse(output).concepts.length >= 26"
+
+  - description: "Solar System planets - should generate 8 concepts"
+    vars:
+      intentJson: '{"content_type":"enumerable","goal":"memorize","atomic_units":["Mercury","Venus","Earth","Mars","Jupiter","Saturn","Uranus","Neptune"],"synthesis_ops":["order from sun","gas vs rocky"],"confidence":0.9}'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "JSON.parse(output).concepts && JSON.parse(output).concepts.length >= 8"
+
+  - description: "Asimov Three Laws - should generate 3 concepts"
+    vars:
+      intentJson: '{"content_type":"enumerable","goal":"understand","atomic_units":["First Law","Second Law","Third Law"],"synthesis_ops":["hierarchy/priority"],"confidence":0.95}'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "JSON.parse(output).concepts && JSON.parse(output).concepts.length >= 3"

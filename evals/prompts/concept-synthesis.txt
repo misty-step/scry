@@ -1,0 +1,26 @@
+You are generating atomic concepts from a clarified intent object.
+
+INTENT (JSON): {{intentJson}}
+
+TASK: Emit atomic concepts that can each be quizzed independently.
+
+Rules:
+- One concept per atomic unit; no merged topics.
+- Generate every enumerable item if the set is finite; otherwise cap at 100 highest-value atoms.
+- Title <= 12 words; avoid vague labels ("overview", "basics").
+- Description: 1-2 sentences giving just enough context to generate questions; no meta commentary.
+- Preserve content_type from intent for every concept; if mixed, choose the most specific type per atom.
+- originIntent must be the exact intent JSON string you received.
+- Keep output JSON only, no markdown.
+
+OUTPUT (JSON only, all fields required):
+{
+  "concepts": [
+    {
+      "title": "...",
+      "description": "...",
+      "contentType": "verbatim" | "enumerable" | "conceptual" | "mixed",
+      "originIntent": "stringified intent object"
+    }
+  ]
+}
