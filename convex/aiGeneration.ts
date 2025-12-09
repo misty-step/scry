@@ -28,6 +28,7 @@ import {
   type ContentType,
   type GeneratedPhrasing,
 } from './lib/generationContracts';
+import { flushLangfuse, getLangfuse, isLangfuseConfigured } from './lib/langfuse';
 import {
   createConceptsLogger,
   generateCorrelationId,
@@ -384,8 +385,35 @@ export const processJob = internalAction({
         'Job details fetched'
       );
 
+      // Initialize Langfuse trace if configured
+      const trace = isLangfuseConfigured()
+        ? getLangfuse().trace({
+            name: 'quiz-generation',
+            userId: job.userId,
+            metadata: {
+              jobId: args.jobId,
+              correlationId: stageACorrelationId,
+              provider: 'google',
+              model: modelName,
+            },
+            input: { prompt: job.prompt },
+            tags: ['scry', 'generation', 'stage-a'],
+          })
+        : null;
+
       // Step 1: Intent extraction (clarify goal and content type)
       const intentPrompt = buildIntentExtractionPrompt(job.prompt);
+
+      const intentSpan = trace?.span({
+        name: 'intent-extraction',
+        input: { userPrompt: job.prompt },
+      });
+      const intentGen = intentSpan?.generation({
+        name: 'extract-intent',
+        model: modelName,
+        input: intentPrompt,
+        modelParameters: { thinkingBudget: 8192 },
+      });
 
       const intentResponse = await generateObject({
         model,
@@ -404,6 +432,15 @@ export const processJob = internalAction({
       const intentObject = intentResponse.object;
       const intentJson = JSON.stringify(intentObject);
       const defaultContentType = intentObject.content_type as ContentType;
+
+      // Complete intent tracing
+      intentGen?.end({
+        output: intentObject,
+        usage: {
+          totalTokens: intentResponse.usage?.totalTokens ?? 0,
+        },
+      });
+      intentSpan?.end({ output: intentObject });
 
       logger.info(
         {
@@ -434,6 +471,17 @@ export const processJob = internalAction({
 
       const conceptPrompt = buildConceptSynthesisPrompt(intentJson);
 
+      const conceptSpan = trace?.span({
+        name: 'concept-synthesis',
+        input: { intentJson },
+      });
+      const conceptGen = conceptSpan?.generation({
+        name: 'synthesize-concepts',
+        model: modelName,
+        input: conceptPrompt,
+        modelParameters: { thinkingBudget: 8192 },
+      });
+
       const finalResponse = await generateObject({
         model,
         schema: conceptIdeasSchema,
@@ -449,6 +497,17 @@ export const processJob = internalAction({
       });
 
       const { object } = finalResponse;
+
+      // Complete concept synthesis tracing
+      conceptGen?.end({
+        output: object,
+        usage: {
+          totalTokens: finalResponse.usage?.totalTokens ?? 0,
+        },
+      });
+      conceptSpan?.end({
+        output: { conceptCount: object.concepts.length },
+      });
 
       // Diagnostic logging for production debugging
       logger.info(
@@ -551,6 +610,17 @@ export const processJob = internalAction({
         conceptCount: conceptIds.length,
         pendingConceptIds: conceptIds.length,
       });
+
+      // Complete trace with success output
+      trace?.update({
+        output: {
+          conceptCount: conceptIds.length,
+          status: 'concepts_created',
+        },
+      });
+
+      // Flush Langfuse (critical for serverless)
+      await flushLangfuse();
     } catch (error) {
       const err = error as Error;
       let code: GenerationErrorCode;
@@ -610,6 +680,9 @@ export const processJob = internalAction({
         errorType: code,
         durationMs,
       });
+
+      // Flush Langfuse on error (captures partial traces)
+      await flushLangfuse();
 
       // Re-throw to signal failure
       throw error;
@@ -730,6 +803,23 @@ export const generatePhrasingsForConcept = internalAction({
         model: modelName,
       });
 
+      // Initialize Langfuse trace for Stage B (phrasing generation)
+      const trace = isLangfuseConfigured()
+        ? getLangfuse().trace({
+            name: 'phrasing-generation',
+            userId: job.userId,
+            metadata: {
+              jobId: args.jobId,
+              conceptId: args.conceptId,
+              correlationId: stageBCorrelationId,
+              provider: 'google',
+              model: modelName,
+            },
+            input: { conceptTitle: concept.title, conceptId: args.conceptId },
+            tags: ['scry', 'generation', 'stage-b'],
+          })
+        : null;
+
       const existingPhrasings: Doc<'phrasings'>[] = await ctx.runQuery(
         internal.phrasings.getByConcept,
         {
@@ -751,6 +841,22 @@ export const generatePhrasingsForConcept = internalAction({
         existingQuestions,
       });
 
+      // Start Langfuse span and generation for LLM call
+      const phrasingSpan = trace?.span({
+        name: 'generate-phrasings',
+        input: {
+          conceptTitle: concept.title,
+          existingCount: existingQuestions.length,
+          targetCount: TARGET_PHRASINGS_PER_CONCEPT,
+        },
+      });
+      const phrasingGen = phrasingSpan?.generation({
+        name: 'phrasing-llm-call',
+        model: modelName,
+        input: prompt,
+        modelParameters: { thinkingBudget: 8192 },
+      });
+
       const finalResponse = await generateObject({
         model,
         schema: phrasingBatchSchema,
@@ -763,6 +869,17 @@ export const generatePhrasingsForConcept = internalAction({
             },
           },
         },
+      });
+
+      // Complete generation tracking
+      phrasingGen?.end({
+        output: finalResponse.object,
+        usage: {
+          totalTokens: finalResponse.usage?.totalTokens ?? 0,
+        },
+      });
+      phrasingSpan?.end({
+        output: { phrasingsGenerated: finalResponse.object.phrasings.length },
       });
 
       const normalizedPhrasings = prepareGeneratedPhrasings(
@@ -885,6 +1002,18 @@ export const generatePhrasingsForConcept = internalAction({
         phrasingsCreated: insertedIds.length,
         remainingConcepts: progress.pendingCount,
       });
+
+      // Complete trace with success output
+      trace?.update({
+        output: {
+          phrasingsCreated: insertedIds.length,
+          remainingConcepts: progress.pendingCount,
+          status: progress.pendingCount === 0 ? 'job_complete' : 'concept_complete',
+        },
+      });
+
+      // Flush Langfuse (critical for serverless)
+      await flushLangfuse();
     } catch (error) {
       const err = error as Error;
       const { code, retryable } =
@@ -932,6 +1061,9 @@ export const generatePhrasingsForConcept = internalAction({
         keyDiagnostics,
         userId: job ? job.userId : undefined,
       });
+
+      // Flush Langfuse on error (captures partial traces)
+      await flushLangfuse();
 
       throw error;
     }
