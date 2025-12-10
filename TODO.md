@@ -26,12 +26,13 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
 
 ## Phase 2: Prompt Iteration (~2 hours)
 
-### 2a. Langfuse Prompt Management
+### 2a. Langfuse Prompt Management ✅
 
-- [ ] Create prompts in Langfuse dashboard:
+- [x] Create prompts in Langfuse:
   - `scry-intent-extraction` with `{{userInput}}`
   - `scry-concept-synthesis` with `{{intentJson}}`
   - `scry-phrasing-generation` with `{{conceptTitle}}`, `{{contentType}}`, etc.
+- [x] Project-local skill: `.claude/skills/langfuse-prompts/`
 
 - [x] Wire `prompts.ts` to `aiGeneration.ts` (3 call sites: ~409, ~476, ~861)
   ```typescript
