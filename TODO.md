@@ -62,9 +62,11 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
   - `iqc.ts` (1 site)
   - `evals/runner.ts` (1 site)
 
-### Remaining (Operational)
+### Environment Configuration ✅
 
-- [ ] Add `OPENROUTER_API_KEY` to Convex dashboard (dev + prod)
+- [x] `OPENROUTER_API_KEY` set in dev and prod
+- [x] `AI_MODEL` updated to OpenRouter format (`google/gemini-3-pro-preview`)
+- [x] Removed obsolete `AI_PROVIDER` and `AI_REASONING_EFFORT` from prod
 
 ---
 
