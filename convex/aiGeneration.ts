@@ -35,11 +35,8 @@ import {
   logConceptEvent,
   type LogContext,
 } from './lib/logger';
-import {
-  buildConceptSynthesisPrompt,
-  buildIntentExtractionPrompt,
-  buildPhrasingGenerationPrompt,
-} from './lib/promptTemplates';
+import { getPrompt } from './lib/prompts';
+import { evaluatePhrasingQuality, isScoringEnabled } from './lib/scoring';
 
 // Logger for this module
 const conceptsLogger = createConceptsLogger({
@@ -314,6 +311,9 @@ export const processJob = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
+    // Declare trace outside try block so it's accessible in catch for error logging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let trace: any = null;
 
     try {
       const providerClient = initializeGoogleProvider(modelName, {
@@ -386,7 +386,7 @@ export const processJob = internalAction({
       );
 
       // Initialize Langfuse trace if configured
-      const trace = isLangfuseConfigured()
+      trace = isLangfuseConfigured()
         ? getLangfuse().trace({
             name: 'quiz-generation',
             userId: job.userId,
@@ -402,23 +402,29 @@ export const processJob = internalAction({
         : null;
 
       // Step 1: Intent extraction (clarify goal and content type)
-      const intentPrompt = buildIntentExtractionPrompt(job.prompt);
+      const intentPromptResult = await getPrompt('scry-intent-extraction', {
+        userInput: job.prompt,
+      });
 
       const intentSpan = trace?.span({
         name: 'intent-extraction',
         input: { userPrompt: job.prompt },
+        metadata: {
+          promptSource: intentPromptResult.source,
+          promptVersion: intentPromptResult.version,
+        },
       });
       const intentGen = intentSpan?.generation({
         name: 'extract-intent',
         model: modelName,
-        input: intentPrompt,
+        input: intentPromptResult.text,
         modelParameters: { thinkingBudget: 8192 },
       });
 
       const intentResponse = await generateObject({
         model,
         schema: intentSchema,
-        prompt: intentPrompt,
+        prompt: intentPromptResult.text,
         providerOptions: {
           google: {
             thinkingConfig: {
@@ -469,23 +475,29 @@ export const processJob = internalAction({
         phase: 'concept_synthesis',
       });
 
-      const conceptPrompt = buildConceptSynthesisPrompt(intentJson);
+      const conceptPromptResult = await getPrompt('scry-concept-synthesis', {
+        intentJson,
+      });
 
       const conceptSpan = trace?.span({
         name: 'concept-synthesis',
         input: { intentJson },
+        metadata: {
+          promptSource: conceptPromptResult.source,
+          promptVersion: conceptPromptResult.version,
+        },
       });
       const conceptGen = conceptSpan?.generation({
         name: 'synthesize-concepts',
         model: modelName,
-        input: conceptPrompt,
+        input: conceptPromptResult.text,
         modelParameters: { thinkingBudget: 8192 },
       });
 
       const finalResponse = await generateObject({
         model,
         schema: conceptIdeasSchema,
-        prompt: conceptPrompt,
+        prompt: conceptPromptResult.text,
         providerOptions: {
           google: {
             thinkingConfig: {
@@ -593,11 +605,18 @@ export const processJob = internalAction({
         estimatedTotal: conceptIds.length * TARGET_PHRASINGS_PER_CONCEPT,
       });
 
-      for (const conceptId of conceptIds) {
-        await ctx.scheduler.runAfter(0, internal.aiGeneration.generatePhrasingsForConcept, {
-          conceptId,
-          jobId: args.jobId,
-        });
+      // Stagger Stage B actions by 2s each to avoid rate limits and mutation conflicts
+      // With 9 concepts: t=0, t=2s, t=4s, ... t=16s spread
+      const STAGE_B_STAGGER_MS = 2000;
+      for (let i = 0; i < conceptIds.length; i++) {
+        await ctx.scheduler.runAfter(
+          i * STAGE_B_STAGGER_MS,
+          internal.aiGeneration.generatePhrasingsForConcept,
+          {
+            conceptId: conceptIds[i],
+            jobId: args.jobId,
+          }
+        );
       }
 
       const conceptIdStrings = conceptIds.map((id: Id<'concepts'>) => id.toString());
@@ -681,6 +700,17 @@ export const processJob = internalAction({
         durationMs,
       });
 
+      // Update trace with error info before flushing (critical for debugging)
+      trace?.update({
+        output: {
+          error: err.message,
+          errorCode: code,
+          errorName: err.name,
+          stack: err.stack?.split('\n').slice(0, 5).join('\n'),
+          status: 'failed',
+        },
+      });
+
       // Flush Langfuse on error (captures partial traces)
       await flushLangfuse();
 
@@ -713,6 +743,9 @@ export const generatePhrasingsForConcept = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
+    // Declare trace outside try block so it's accessible in catch for error logging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let trace: any = null;
 
     try {
       job = await ctx.runQuery(internal.generationJobs.getJobByIdInternal, {
@@ -804,7 +837,7 @@ export const generatePhrasingsForConcept = internalAction({
       });
 
       // Initialize Langfuse trace for Stage B (phrasing generation)
-      const trace = isLangfuseConfigured()
+      trace = isLangfuseConfigured()
         ? getLangfuse().trace({
             name: 'phrasing-generation',
             userId: job.userId,
@@ -833,9 +866,14 @@ export const generatePhrasingsForConcept = internalAction({
         (phrasing: Doc<'phrasings'>) => phrasing.question
       );
 
-      const prompt = buildPhrasingGenerationPrompt({
+      const phrasingPromptResult = await getPrompt('scry-phrasing-generation', {
         conceptTitle: concept.title,
-        contentType: concept.contentType as ContentType | undefined,
+        contentType: concept.contentType as
+          | 'verbatim'
+          | 'enumerable'
+          | 'conceptual'
+          | 'mixed'
+          | undefined,
         originIntent: concept.originIntent,
         targetCount: TARGET_PHRASINGS_PER_CONCEPT,
         existingQuestions,
@@ -849,18 +887,22 @@ export const generatePhrasingsForConcept = internalAction({
           existingCount: existingQuestions.length,
           targetCount: TARGET_PHRASINGS_PER_CONCEPT,
         },
+        metadata: {
+          promptSource: phrasingPromptResult.source,
+          promptVersion: phrasingPromptResult.version,
+        },
       });
       const phrasingGen = phrasingSpan?.generation({
         name: 'phrasing-llm-call',
         model: modelName,
-        input: prompt,
+        input: phrasingPromptResult.text,
         modelParameters: { thinkingBudget: 8192 },
       });
 
       const finalResponse = await generateObject({
         model,
         schema: phrasingBatchSchema,
-        prompt,
+        prompt: phrasingPromptResult.text,
         providerOptions: {
           google: {
             thinkingConfig: {
@@ -896,6 +938,37 @@ export const generatePhrasingsForConcept = internalAction({
         );
       }
 
+      // LLM-as-judge scoring (optional, controlled via SKIP_SCORING env var)
+      let scoringResult: Awaited<ReturnType<typeof evaluatePhrasingQuality>> | null = null;
+      if (isScoringEnabled() && isLangfuseConfigured()) {
+        try {
+          logger.info(
+            { ...stageBMetadata, event: 'stage-b.scoring.start' },
+            'Evaluating phrasing quality with LLM-as-judge'
+          );
+          scoringResult = await evaluatePhrasingQuality(normalizedPhrasings, concept.title, model);
+          logger.info(
+            {
+              ...stageBMetadata,
+              event: 'stage-b.scoring.complete',
+              overallScore: scoringResult.overall,
+              issues: scoringResult.issues,
+            },
+            `Phrasing quality score: ${scoringResult.overall}/5`
+          );
+        } catch (scoringError) {
+          // Don't fail generation if scoring fails
+          logger.warn(
+            {
+              ...stageBMetadata,
+              event: 'stage-b.scoring.error',
+              error: scoringError instanceof Error ? scoringError.message : String(scoringError),
+            },
+            'LLM-as-judge scoring failed (non-fatal)'
+          );
+        }
+      }
+
       const preparedDocs: Array<
         PreparedPhrasing & {
           embedding?: number[];
@@ -905,8 +978,17 @@ export const generatePhrasingsForConcept = internalAction({
         ...phrasing,
       }));
 
+      // Skip embeddings if env var set (for debugging generation issues)
+      const skipEmbeddings = process.env.SKIP_EMBEDDINGS === 'true';
+      if (skipEmbeddings) {
+        logger.info(
+          { ...stageBMetadata, event: 'stage-b.embeddings.skipped' },
+          'Skipping embedding generation (SKIP_EMBEDDINGS=true)'
+        );
+      }
+
       const EMBEDDING_BATCH_SIZE = 5;
-      for (let i = 0; i < preparedDocs.length; i += EMBEDDING_BATCH_SIZE) {
+      for (let i = 0; i < preparedDocs.length && !skipEmbeddings; i += EMBEDDING_BATCH_SIZE) {
         const batch = preparedDocs.slice(i, i + EMBEDDING_BATCH_SIZE);
         const embeddingResults = await Promise.allSettled(
           batch.map(async (phrasing) => {
@@ -1003,12 +1085,26 @@ export const generatePhrasingsForConcept = internalAction({
         remainingConcepts: progress.pendingCount,
       });
 
+      // Attach LLM-as-judge scores to trace (if scoring succeeded)
+      if (scoringResult && scoringResult.overall >= 0) {
+        trace?.score({ name: 'phrasing-quality', value: scoringResult.overall });
+        trace?.score({ name: 'standalone-clarity', value: scoringResult.standalone });
+        trace?.score({ name: 'distractor-quality', value: scoringResult.distractors });
+        trace?.score({ name: 'explanation-quality', value: scoringResult.explanation });
+        trace?.score({ name: 'difficulty-appropriateness', value: scoringResult.difficulty });
+      }
+
       // Complete trace with success output
       trace?.update({
         output: {
           phrasingsCreated: insertedIds.length,
           remainingConcepts: progress.pendingCount,
           status: progress.pendingCount === 0 ? 'job_complete' : 'concept_complete',
+          ...(scoringResult && {
+            qualityScore: scoringResult.overall,
+            qualityReasoning: scoringResult.reasoning,
+            qualityIssues: scoringResult.issues,
+          }),
         },
       });
 
@@ -1060,6 +1156,17 @@ export const generatePhrasingsForConcept = internalAction({
         stack: err.stack,
         keyDiagnostics,
         userId: job ? job.userId : undefined,
+      });
+
+      // Update trace with error info before flushing (critical for debugging)
+      trace?.update({
+        output: {
+          error: err.message,
+          errorCode: code,
+          errorName: err.name,
+          stack: err.stack?.split('\n').slice(0, 5).join('\n'), // First 5 lines of stack
+          status: 'failed',
+        },
       });
 
       // Flush Langfuse on error (captures partial traces)
