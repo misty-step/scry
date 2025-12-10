@@ -85,3 +85,26 @@ export function initializeOpenRouterProvider(
 
   return { model, diagnostics };
 }
+
+/**
+ * Initialize AI provider based on AI_PROVIDER env var
+ *
+ * Routes to Google (default) or OpenRouter based on configuration.
+ * Allows switching providers without code changes.
+ *
+ * @param modelId - Model identifier (e.g., 'gemini-3-pro-preview' for Google, 'google/gemini-2.5-pro' for OpenRouter)
+ * @param options - Provider initialization options (logger, context, deployment)
+ * @returns ProviderClient with model and diagnostics
+ */
+export function initializeProvider(
+  modelId: string,
+  options: InitializeProviderOptions = {}
+): ProviderClient {
+  const provider = process.env.AI_PROVIDER || 'google';
+
+  if (provider === 'openrouter') {
+    return initializeOpenRouterProvider(modelId, options);
+  }
+
+  return initializeGoogleProvider(modelId, options);
+}
