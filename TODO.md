@@ -7,8 +7,8 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
 **Key Files:**
 - `convex/lib/langfuse.ts` - Observability singleton
 - `convex/lib/scoring.ts` - LLM-as-judge evaluation
-- `convex/lib/prompts.ts` - Langfuse prompt fetching (ready, not wired)
-- `convex/lib/aiProviders.ts` - Google + OpenRouter providers
+- `convex/lib/prompts.ts` - Langfuse prompt fetching (wired to aiGeneration)
+- `convex/lib/aiProviders.ts` - OpenRouter provider (supports all models)
 - `convex/aiGeneration.ts` - Generation pipeline
 - `~/.claude/skills/langfuse-observability/` - Claude Code skill
 
@@ -51,29 +51,20 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
 
 ---
 
-## Phase 3: Multi-Provider (~2 hours)
+## Phase 3: Multi-Provider ✅
 
 ### OpenRouter Activation
 
-- [ ] Add provider factory to `aiProviders.ts`:
-  ```typescript
-  export function initializeProvider(modelId: string, options?: ProviderOptions) {
-    const provider = process.env.AI_PROVIDER || 'google';
-    return provider === 'openrouter'
-      ? initializeOpenRouterProvider(modelId, options)
-      : initializeGoogleProvider(modelId, options);
-  }
-  ```
-
-- [ ] Update 6 call sites to use factory:
+- [x] Simplified to single OpenRouter provider (supports all models including Google)
+- [x] Migrated all 5 call sites to `initializeProvider(modelId)`:
   - `aiGeneration.ts` (2 sites)
   - `lab.ts` (1 site)
   - `iqc.ts` (1 site)
   - `evals/runner.ts` (1 site)
 
-- [ ] Add env vars:
-  - `OPENROUTER_API_KEY` to Convex
-  - `AI_PROVIDER` for routing (default: `google`)
+### Remaining (Operational)
+
+- [ ] Add `OPENROUTER_API_KEY` to Convex dashboard (dev + prod)
 
 ---
 
