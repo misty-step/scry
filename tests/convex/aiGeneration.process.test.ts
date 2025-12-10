@@ -4,10 +4,10 @@ import { internal } from '@/convex/_generated/api';
 import { generatePhrasingsForConcept, processJob } from '@/convex/aiGeneration';
 import { makeConcept, makeGenerationJob } from '@/tests/helpers';
 
-const initializeGoogleProviderMock = vi.fn();
+const initializeProviderMock = vi.fn();
 
 vi.mock('@/convex/lib/aiProviders', () => ({
-  initializeGoogleProvider: (...args: unknown[]) => initializeGoogleProviderMock(...args),
+  initializeProvider: (...args: unknown[]) => initializeProviderMock(...args),
 }));
 
 vi.mock('ai', () => ({
@@ -58,7 +58,7 @@ describe('processJob failure handling', () => {
   });
 
   it('marks job failed when provider initialization throws', async () => {
-    initializeGoogleProviderMock.mockImplementationOnce(() => {
+    initializeProviderMock.mockImplementationOnce(() => {
       throw new Error('Provider not configured');
     });
 
@@ -88,7 +88,7 @@ describe('processJob failure handling', () => {
   });
 
   it('fails gracefully when job is missing', async () => {
-    initializeGoogleProviderMock.mockReturnValueOnce({
+    initializeProviderMock.mockReturnValueOnce({
       model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
@@ -124,7 +124,7 @@ describe('processJob failure handling', () => {
   });
 
   it('advances job through stages and schedules phrasing generation on success', async () => {
-    initializeGoogleProviderMock.mockReturnValueOnce({
+    initializeProviderMock.mockReturnValueOnce({
       model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
@@ -206,7 +206,7 @@ describe('processJob failure handling', () => {
   });
 
   it('maps schema validation failures to non-retryable user-friendly errors', async () => {
-    initializeGoogleProviderMock.mockReturnValueOnce({
+    initializeProviderMock.mockReturnValueOnce({
       model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
@@ -280,7 +280,7 @@ describe('generatePhrasingsForConcept', () => {
   });
 
   it('generates phrasings and schedules next concept', async () => {
-    initializeGoogleProviderMock.mockReturnValueOnce({
+    initializeProviderMock.mockReturnValueOnce({
       model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
@@ -366,7 +366,7 @@ describe('generatePhrasingsForConcept', () => {
   });
 
   it('handles schema validation failure when AI returns empty phrasings', async () => {
-    initializeGoogleProviderMock.mockReturnValueOnce({
+    initializeProviderMock.mockReturnValueOnce({
       model: {},
       diagnostics: { present: true, length: 10, fingerprint: 'abcd1234' },
     });
@@ -430,7 +430,7 @@ describe('generatePhrasingsForConcept', () => {
 
   it('handles API key configuration error', async () => {
     // Simulate API key not configured error
-    initializeGoogleProviderMock.mockImplementationOnce(() => {
+    initializeProviderMock.mockImplementationOnce(() => {
       throw new Error('GOOGLE_AI_API_KEY is not configured');
     });
 
