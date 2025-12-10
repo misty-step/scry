@@ -19,8 +19,8 @@ import { query } from '../_generated/server';
 export const getProductionConfig = query({
   handler: async () => {
     return {
-      provider: 'google' as const,
-      model: process.env.AI_MODEL || 'gemini-3-pro-preview',
+      provider: 'openrouter' as const,
+      model: process.env.AI_MODEL || 'google/gemini-3-pro-preview',
     };
   },
 });

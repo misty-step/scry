@@ -12,16 +12,15 @@ export const run = action({
     const results = [];
 
     // Configuration
-    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-pro-preview';
 
     // Initialize provider once
     const { model } = initializeProvider(modelName, {
       logContext: { source: 'evals' },
     });
 
-    const provider = process.env.AI_PROVIDER || 'google';
     // eslint-disable-next-line no-console
-    console.log(`Starting Eval Run with ${provider} / ${modelName}...`);
+    console.log(`Starting Eval Run with OpenRouter / ${modelName}...`);
 
     for (const testCase of EVAL_CASES) {
       // eslint-disable-next-line no-console
@@ -76,7 +75,7 @@ export const run = action({
 
     return {
       timestamp: new Date().toISOString(),
-      configuration: { provider, model: modelName },
+      configuration: { provider: 'openrouter', model: modelName },
       summary: {
         total: results.length,
         passed: results.filter((r) => r.passed).length,
