@@ -45,9 +45,9 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
 
 ### 2b. Analytics Dimensions (quick win)
 
-- [ ] Add to trace metadata:
-  - `contentType` - verbatim/enumerable/conceptual
-  - `inputLength` - User input character count
+- [x] Add to trace metadata:
+  - `contentType` - verbatim/enumerable/conceptual (Stage B)
+  - `inputLength` - User input character count (Stage A)
 
 ---
 
