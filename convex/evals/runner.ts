@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { action } from '../_generated/server';
 import { prepareConceptIdeas } from '../aiGeneration';
-import { initializeGoogleProvider } from '../lib/aiProviders';
+import { initializeProvider } from '../lib/aiProviders';
 import { conceptIdeasSchema } from '../lib/generationContracts';
 import { buildConceptSynthesisPrompt } from '../lib/promptTemplates';
 import { EVAL_CASES } from './cases';
@@ -11,16 +11,17 @@ export const run = action({
   handler: async (_ctx) => {
     const results = [];
 
-    // Configuration - always use Google Gemini 3 Pro
+    // Configuration
     const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
 
     // Initialize provider once
-    const { model } = initializeGoogleProvider(modelName, {
+    const { model } = initializeProvider(modelName, {
       logContext: { source: 'evals' },
     });
 
+    const provider = process.env.AI_PROVIDER || 'google';
     // eslint-disable-next-line no-console
-    console.log(`Starting Eval Run with Google / ${modelName}...`);
+    console.log(`Starting Eval Run with ${provider} / ${modelName}...`);
 
     for (const testCase of EVAL_CASES) {
       // eslint-disable-next-line no-console
@@ -75,7 +76,7 @@ export const run = action({
 
     return {
       timestamp: new Date().toISOString(),
-      configuration: { provider: 'google', model: modelName },
+      configuration: { provider, model: modelName },
       summary: {
         total: results.length,
         passed: results.filter((r) => r.passed).length,

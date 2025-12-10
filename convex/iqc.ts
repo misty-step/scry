@@ -5,7 +5,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { ActionCtx, internalAction, internalMutation, mutation, query } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
-import { initializeGoogleProvider } from './lib/aiProviders';
+import { initializeProvider } from './lib/aiProviders';
 import { chunkArray } from './lib/chunkArray';
 import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
 import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
@@ -143,13 +143,13 @@ export const scanAndPropose = internalAction({
     let keyDiagnostics = { present: false, length: 0, fingerprint: null as string | null };
 
     try {
-      const providerClient = initializeGoogleProvider(modelName, {
+      const providerClient = initializeProvider(modelName, {
         logContext: { correlationId, phase: 'iqc_scan' },
       });
       model = providerClient.model;
       keyDiagnostics = providerClient.diagnostics;
     } catch (error) {
-      logger.error('Failed to initialize Google provider for IQC scan', {
+      logger.error('Failed to initialize AI provider for IQC scan', {
         event: 'iqc.scan.provider.failure',
         correlationId,
         error: error instanceof Error ? error.message : String(error),

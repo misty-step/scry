@@ -14,7 +14,7 @@ import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
 import { action } from './_generated/server';
-import { initializeGoogleProvider } from './lib/aiProviders';
+import { initializeProvider } from './lib/aiProviders';
 
 // Logger for this module
 const logger = pino({ name: 'lab' });
@@ -115,8 +115,8 @@ export const executeConfig = action({
         'Starting config execution'
       );
 
-      // Initialize Google provider
-      const providerClient = initializeGoogleProvider(args.model, {
+      // Initialize AI provider
+      const providerClient = initializeProvider(args.model, {
         logger,
         logContext: {
           configId: args.configId,

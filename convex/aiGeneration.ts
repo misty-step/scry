@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
-import { initializeGoogleProvider, type ProviderClient } from './lib/aiProviders';
+import { initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
@@ -316,7 +316,7 @@ export const processJob = internalAction({
     let trace: any = null;
 
     try {
-      const providerClient = initializeGoogleProvider(modelName, {
+      const providerClient = initializeProvider(modelName, {
         logger,
         logContext: {
           ...stageAMetadata,
@@ -803,7 +803,7 @@ export const generatePhrasingsForConcept = internalAction({
       }
 
       try {
-        const providerClient = initializeGoogleProvider(modelName, {
+        const providerClient = initializeProvider(modelName, {
           logger,
           logContext: {
             ...stageBMetadata,
