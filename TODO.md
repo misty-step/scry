@@ -71,21 +71,13 @@ Infrastructure for observability, iterability, and experimentation in the AI gen
 
 ---
 
-## Phase 4: User Feedback Loop (~4 hours)
+## Phase 4: User Feedback Loop ✅
 
-- [ ] Extend `interactions` schema:
-  ```typescript
-  feedback?: {
-    type: 'helpful' | 'unhelpful' | 'unclear' | 'incorrect'
-    givenAt: number
-  }
-  ```
+- [x] Extend `interactions` schema with feedback field
+- [x] Add `recordFeedback` mutation to `concepts.ts`
+- [x] Add feedback UI to `ReviewFlow` (thumbs up/down after answer reveal)
 
-- [ ] Add `recordFeedback` mutation to `concepts.ts`
-
-- [ ] Add feedback UI to `ReviewFlow`:
-  - Thumbs up/down after answer reveal
-  - Wire to Langfuse trace via correlationId
+Note: Langfuse trace correlation deferred - feedback stored in DB and queryable via interaction ID.
 
 ---
 

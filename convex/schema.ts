@@ -55,6 +55,18 @@ export default defineSchema({
         ),
       })
     ),
+    // User feedback on question quality (for LLM observability)
+    feedback: v.optional(
+      v.object({
+        type: v.union(
+          v.literal('helpful'),
+          v.literal('unhelpful'),
+          v.literal('unclear'),
+          v.literal('incorrect')
+        ),
+        givenAt: v.number(),
+      })
+    ),
   })
     .index('by_user', ['userId', 'attemptedAt'])
     .index('by_user_session', ['userId', 'sessionId', 'attemptedAt'])
