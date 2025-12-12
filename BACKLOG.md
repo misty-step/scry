@@ -151,6 +151,30 @@
 **Acceptance**: Task tracking reflects actual implementation state
 **Effort**: 15m
 
+### [PROMPTS][LOW] Align Field Naming Across Langfuse Prompts (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**Files**: .claude/skills/langfuse-prompts/prompts/concept-synthesis.txt
+**Problem**: Field naming inconsistency - `content_type` in prompt text vs `contentType` in schema
+**Fix**: Update prompt text to match schema field name consistently
+**Acceptance**: All prompt templates use consistent field naming
+**Effort**: 15m | **Risk**: LOW
+
+### [PROMPTS][LOW] Standardize Concept Cap Between Prod and Eval (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**Files**: .claude/skills/langfuse-prompts/prompts/concept-synthesis.txt, evals/prompts/concept-synthesis.txt
+**Problem**: Production caps at 50 concepts, eval caps at 100 - potential drift
+**Fix**: Document intentional divergence or standardize to single value
+**Acceptance**: Cap values documented or unified
+**Effort**: 10m | **Risk**: LOW
+
+### [PROMPTS][LOW] Clarify Phrasing Prompt Output Instructions (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**Files**: .claude/skills/langfuse-prompts/prompts/phrasing-generation.txt
+**Problem**: "Generate rationale first" conflicts with "return only JSON"
+**Fix**: Clarify that rationale is internal reasoning, output is JSON only
+**Acceptance**: Prompt instructions are unambiguous
+**Effort**: 10m | **Risk**: LOW
+
 ### [TEST][HIGH] Embed helpers coverage
 **File**: convex/lib/embeddingHelpers.ts
 **Perspectives**: maintainability-maven, security-sentinel
