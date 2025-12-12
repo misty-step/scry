@@ -35,10 +35,9 @@ export const run = action({
           schema: conceptIdeasSchema,
           prompt,
           providerOptions: {
-            google: {
-              thinkingConfig: {
-                thinkingBudget: 8192,
-                includeThoughts: true,
+            openrouter: {
+              reasoning: {
+                max_tokens: 8192,
               },
             },
           },

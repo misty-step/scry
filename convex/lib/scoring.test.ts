@@ -154,9 +154,9 @@ describe('scoring module', () => {
       expect(mockGenerateObject).toHaveBeenCalledWith(
         expect.objectContaining({
           providerOptions: {
-            google: {
-              thinkingConfig: {
-                thinkingBudget: 1024,
+            openrouter: {
+              reasoning: {
+                max_tokens: 1024,
               },
             },
           },

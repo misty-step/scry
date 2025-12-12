@@ -104,9 +104,9 @@ export async function evaluatePhrasingQuality(
       prompt,
       // Lower token budget for evaluation (faster, cheaper)
       providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: 1024,
+        openrouter: {
+          reasoning: {
+            max_tokens: 1024,
           },
         },
       },

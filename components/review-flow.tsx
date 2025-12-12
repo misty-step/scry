@@ -364,9 +364,12 @@ export function ReviewFlow() {
       .catch((error) => {
         // Phase 1: Log error and notify user, Phase 2 will add retry logic
         console.error('Failed to track answer:', error);
-        toast.error('Failed to save your answer', {
-          description: "Your progress wasn't saved. Please try again.",
-        });
+        // Only show toast if component is still mounted
+        if (isMountedRef.current) {
+          toast.error('Failed to save your answer', {
+            description: "Your progress wasn't saved. Please try again.",
+          });
+        }
       });
   }, [
     selectedAnswer,
@@ -457,8 +460,11 @@ export function ReviewFlow() {
         });
       } catch (error) {
         console.error('Failed to record feedback:', error);
-        setUserFeedback(null); // Reset on error
-        toast.error('Failed to save feedback');
+        // Only update state if component is still mounted
+        if (isMountedRef.current) {
+          setUserFeedback(null); // Reset on error
+          toast.error('Failed to save feedback');
+        }
       }
     },
     [currentInteractionId, userFeedback, recordFeedbackMutation]

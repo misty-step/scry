@@ -108,7 +108,7 @@ export const executeConfig = action({
         {
           configId: args.configId,
           configName: args.configName,
-          provider: 'google',
+          provider: 'openrouter',
           model: args.model,
           phasesCount: args.phases.length,
         },
@@ -165,10 +165,9 @@ export const executeConfig = action({
             ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
             providerOptions: {
-              google: {
-                thinkingConfig: {
-                  thinkingBudget: 8192,
-                  includeThoughts: true,
+              openrouter: {
+                reasoning: {
+                  max_tokens: 8192,
                 },
               },
             },
@@ -206,10 +205,9 @@ export const executeConfig = action({
             ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
             providerOptions: {
-              google: {
-                thinkingConfig: {
-                  thinkingBudget: 8192,
-                  includeThoughts: true,
+              openrouter: {
+                reasoning: {
+                  max_tokens: 8192,
                 },
               },
             },

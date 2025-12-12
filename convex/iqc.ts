@@ -273,7 +273,7 @@ export const scanAndPropose = internalAction({
           candidate,
           decision,
           proposalKey,
-          'google',
+          modelName.split('/')[0],
           keyDiagnostics
         );
 
@@ -688,10 +688,9 @@ async function adjudicateMergeCandidate({
     prompt,
     schema: mergeDecisionSchema,
     providerOptions: {
-      google: {
-        thinkingConfig: {
-          thinkingBudget: 8192,
-          includeThoughts: true,
+      openrouter: {
+        reasoning: {
+          max_tokens: 8192,
         },
       },
     },

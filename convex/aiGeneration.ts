@@ -312,8 +312,7 @@ export const processJob = internalAction({
     };
     let model: ProviderClient['model'];
     // Declare trace outside try block so it's accessible in catch for error logging
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let trace: any = null;
+    let trace: import('langfuse').LangfuseTraceClient | null = null;
 
     try {
       const providerClient = initializeProvider(modelName, {
@@ -427,10 +426,9 @@ export const processJob = internalAction({
         schema: intentSchema,
         prompt: intentPromptResult.text,
         providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
+          openrouter: {
+            reasoning: {
+              max_tokens: 8192,
             },
           },
         },
@@ -500,10 +498,9 @@ export const processJob = internalAction({
         schema: conceptIdeasSchema,
         prompt: conceptPromptResult.text,
         providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
+          openrouter: {
+            reasoning: {
+              max_tokens: 8192,
             },
           },
         },
@@ -745,8 +742,7 @@ export const generatePhrasingsForConcept = internalAction({
     };
     let model: ProviderClient['model'];
     // Declare trace outside try block so it's accessible in catch for error logging
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let trace: any = null;
+    let trace: import('langfuse').LangfuseTraceClient | null = null;
 
     try {
       job = await ctx.runQuery(internal.generationJobs.getJobByIdInternal, {
@@ -906,10 +902,9 @@ export const generatePhrasingsForConcept = internalAction({
         schema: phrasingBatchSchema,
         prompt: phrasingPromptResult.text,
         providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
+          openrouter: {
+            reasoning: {
+              max_tokens: 8192,
             },
           },
         },
