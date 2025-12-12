@@ -48,6 +48,7 @@ describe('useQuizInteractions', () => {
   describe('trackAnswer', () => {
     it('should record interaction with all parameters', async () => {
       const mockResult = {
+        interactionId: 'interaction-1',
         nextReview: new Date('2025-01-20T12:00:00Z'),
         scheduledDays: 5,
         newState: 'review',
@@ -79,6 +80,7 @@ describe('useQuizInteractions', () => {
       });
 
       expect(response).toEqual({
+        interactionId: mockResult.interactionId,
         nextReview: mockResult.nextReview,
         scheduledDays: mockResult.scheduledDays,
         newState: mockResult.newState,
@@ -87,6 +89,7 @@ describe('useQuizInteractions', () => {
 
     it('should record interaction with minimal parameters', async () => {
       const mockResult = {
+        interactionId: 'interaction-2',
         nextReview: null,
         scheduledDays: null,
         newState: null,
@@ -116,6 +119,7 @@ describe('useQuizInteractions', () => {
       });
 
       expect(response).toEqual({
+        interactionId: mockResult.interactionId,
         nextReview: null,
         scheduledDays: null,
         newState: null,
@@ -227,8 +231,8 @@ describe('useQuizInteractions', () => {
         nextReview: new Date('2025-01-25T10:30:00Z'),
         scheduledDays: 10,
         newState: 'learning',
-        // Extra fields that might be returned but not used
         interactionId: 'interaction-123',
+        // Extra fields that might be returned but not used
         attemptCount: 5,
       };
 
@@ -247,15 +251,15 @@ describe('useQuizInteractions', () => {
         );
       });
 
-      // Should only return the spaced repetition fields
+      // Should return spaced repetition fields plus interactionId (for feedback UI)
       expect(response).toEqual({
+        interactionId: mockResult.interactionId,
         nextReview: mockResult.nextReview,
         scheduledDays: mockResult.scheduledDays,
         newState: mockResult.newState,
       });
 
-      // Should not include extra fields
-      expect(response).not.toHaveProperty('interactionId');
+      // Should not include other extra fields
       expect(response).not.toHaveProperty('attemptCount');
     });
 
@@ -264,6 +268,7 @@ describe('useQuizInteractions', () => {
       const { result, rerender } = renderHook(() => useQuizInteractions());
 
       mockRecordInteraction.mockResolvedValue({
+        interactionId: 'interaction-6',
         nextReview: new Date(),
         scheduledDays: 1,
         newState: 'new',
