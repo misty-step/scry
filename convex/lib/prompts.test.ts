@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-// Import after mocking
 import { isLangfuseConfigured } from './langfuse';
 import { getPrompt, getPrompts } from './prompts';
 

@@ -323,6 +323,8 @@ export function ReviewFlow() {
   const handleSubmit = useCallback(() => {
     if (!selectedAnswer || !question || !conceptId || !phrasingId) return;
 
+    // Capture phrasingId at submit time to guard against stale resolution
+    const submittedPhrasingId = phrasingId;
     const isCorrect = selectedAnswer === question.correctAnswer;
 
     // Mark that user has answered this question (before any async operations)
@@ -341,11 +343,12 @@ export function ReviewFlow() {
     // 3. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
     // Calculate time spent from question load to submission (milliseconds)
     const timeSpent = Date.now() - questionStartTime;
-    trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
+    trackAnswer(conceptId, submittedPhrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
       .then((reviewInfo) => {
         // 4. PROGRESSIVE: Show scheduling details when backend responds
-        // Only update state if component is still mounted (race condition protection)
-        if (isMountedRef.current) {
+        // Only update state if component is still mounted AND phrasing hasn't changed
+        // (guards against late resolution on wrong question after fast navigation)
+        if (isMountedRef.current && submittedPhrasingId === phrasingId) {
           setFeedbackState({
             showFeedback: true,
             nextReviewInfo: reviewInfo

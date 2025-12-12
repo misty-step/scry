@@ -3,7 +3,7 @@
  *
  * Handles execution of infrastructure configurations for testing.
  * Supports both single-phase (recommended) and multi-phase prompt chains.
- * Uses Google Gemini 3 Pro provider.
+ * Uses OpenRouter provider (supports 150+ models via single API).
  *
  * RECOMMENDED: 1-phase learning science architecture (see PROD_CONFIG_METADATA)
  * LEGACY: Multi-phase chains with template interpolation (for experimentation)

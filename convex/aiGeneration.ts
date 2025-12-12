@@ -344,7 +344,7 @@ export const processJob = internalAction({
       logger.info(
         {
           ...stageAMetadata,
-          provider: 'google',
+          provider: 'openrouter',
           model: modelName,
         },
         'Starting Stage A job processing'
@@ -384,22 +384,30 @@ export const processJob = internalAction({
         'Job details fetched'
       );
 
-      // Initialize Langfuse trace if configured
-      trace = isLangfuseConfigured()
-        ? getLangfuse().trace({
+      // Initialize Langfuse trace if configured (wrapped to prevent telemetry failures from breaking generation)
+      if (isLangfuseConfigured()) {
+        try {
+          trace = getLangfuse().trace({
             name: 'quiz-generation',
             userId: job.userId,
             metadata: {
               jobId: args.jobId,
               correlationId: stageACorrelationId,
-              provider: 'google',
+              provider: 'openrouter',
               model: modelName,
               inputLength: job.prompt.length,
             },
             input: { prompt: job.prompt },
             tags: ['scry', 'generation', 'stage-a'],
-          })
-        : null;
+          });
+        } catch (traceError) {
+          logger.warn(
+            { ...stageAMetadata, error: String(traceError) },
+            'Langfuse trace initialization failed, continuing without telemetry'
+          );
+          trace = null;
+        }
+      }
 
       // Step 1: Intent extraction (clarify goal and content type)
       const intentPromptResult = await getPrompt('scry-intent-extraction', {
@@ -459,14 +467,14 @@ export const processJob = internalAction({
         ...stageAMetadata,
         event: 'start',
         userId: job.userId,
-        provider: 'google',
+        provider: 'openrouter',
         model: modelName,
       });
 
       trackEvent('Quiz Generation Started', {
         jobId: args.jobId,
         userId: String(job.userId),
-        provider: 'google',
+        provider: 'openrouter',
       });
 
       await ctx.runMutation(internal.generationJobs.updateProgress, {
@@ -692,7 +700,7 @@ export const processJob = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider: 'google',
+        provider: 'openrouter',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
@@ -829,27 +837,35 @@ export const generatePhrasingsForConcept = internalAction({
         ...stageBMetadata,
         event: 'start',
         userId: job.userId,
-        provider: 'google',
+        provider: 'openrouter',
         model: modelName,
       });
 
-      // Initialize Langfuse trace for Stage B (phrasing generation)
-      trace = isLangfuseConfigured()
-        ? getLangfuse().trace({
+      // Initialize Langfuse trace for Stage B (wrapped to prevent telemetry failures from breaking generation)
+      if (isLangfuseConfigured()) {
+        try {
+          trace = getLangfuse().trace({
             name: 'phrasing-generation',
             userId: job.userId,
             metadata: {
               jobId: args.jobId,
               conceptId: args.conceptId,
               correlationId: stageBCorrelationId,
-              provider: 'google',
+              provider: 'openrouter',
               model: modelName,
               contentType: concept.contentType,
             },
             input: { conceptTitle: concept.title, conceptId: args.conceptId },
             tags: ['scry', 'generation', 'stage-b'],
-          })
-        : null;
+          });
+        } catch (traceError) {
+          logger.warn(
+            { ...stageBMetadata, error: String(traceError) },
+            'Langfuse trace initialization failed, continuing without telemetry'
+          );
+          trace = null;
+        }
+      }
 
       const existingPhrasings: Doc<'phrasings'>[] = await ctx.runQuery(
         internal.phrasings.getByConcept,
@@ -1068,7 +1084,7 @@ export const generatePhrasingsForConcept = internalAction({
         trackEvent('Quiz Generation Completed', {
           jobId: job._id,
           userId: String(job.userId),
-          provider: 'google',
+          provider: 'openrouter',
           phrasingCount: progress.phrasingSaved,
           durationMs,
         });
@@ -1137,7 +1153,7 @@ export const generatePhrasingsForConcept = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider: 'google',
+        provider: 'openrouter',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,

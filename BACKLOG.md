@@ -175,6 +175,30 @@
 **Acceptance**: Prompt instructions are unambiguous
 **Effort**: 10m | **Risk**: LOW
 
+### [EVALS][LOW] Align Eval Provider with Production (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**File**: evals/promptfoo.yaml:12
+**Problem**: Uses `google:gemini-2.5-pro` vs production `openrouter:google/gemini-3-pro-preview`
+**Fix**: Change to `openrouter:google/gemini-3-pro-preview` to match production
+**Acceptance**: Evals use same provider and model as production
+**Effort**: 10m | **Risk**: LOW
+
+### [NODE][LOW] Fix create-prompt.ts Node Compatibility (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**File**: .claude/skills/langfuse-prompts/scripts/create-prompt.ts:31
+**Problem**: Uses `import.meta.dirname` (Node >=20.11.0) but engines specifies >=20.9.0
+**Fix**: Use `fileURLToPath(import.meta.url)` + `path.dirname()` for compatibility
+**Acceptance**: Script works on Node 20.9.0+
+**Effort**: 10m | **Risk**: LOW
+
+### [SCHEMA][LOW] Add Feedback Index for Analytics (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**File**: convex/schema.ts:58-69
+**Problem**: No index on feedback field - analytics queries will full-scan
+**Fix**: Add `by_user_feedback` compound index when feedback analytics needed
+**Acceptance**: Index added if analytics queries exist; performance verified
+**Effort**: 15m | **Risk**: LOW
+
 ### [TEST][HIGH] Embed helpers coverage
 **File**: convex/lib/embeddingHelpers.ts
 **Perspectives**: maintainability-maven, security-sentinel

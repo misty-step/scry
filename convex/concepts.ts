@@ -308,6 +308,9 @@ export const recordInteraction = mutation({
 /**
  * Record user feedback on question quality.
  * Used for LLM observability - helps identify questions that need improvement.
+ *
+ * Note: This intentionally overwrites any existing feedback on the interaction.
+ * Users may change their mind after seeing the explanation or thinking more.
  */
 export const recordFeedback = mutation({
   args: {

@@ -54,10 +54,21 @@ export function getLangfuse(): Langfuse {
  *
  * In serverless, the runtime may terminate before batched events are sent.
  * This ensures all traces/spans/generations are persisted.
+ *
+ * This function is designed to be non-throwing - telemetry failures should
+ * never break the primary job. Errors are logged but not propagated.
  */
 export async function flushLangfuse(): Promise<void> {
   if (langfuseInstance) {
-    await langfuseInstance.flushAsync();
+    try {
+      await langfuseInstance.flushAsync();
+    } catch (error) {
+      // Log but don't propagate - telemetry should never break the job
+      console.warn(
+        'Langfuse flush failed:',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
   }
 }
 
