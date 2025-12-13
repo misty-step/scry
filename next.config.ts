@@ -26,9 +26,6 @@ const sentryNextConfigOptions = {
 };
 
 const nextConfig: NextConfig = {
-  // Exclude test files from build (Pino 10 compatibility)
-  serverExternalPackages: ['pino', 'pino-pretty'],
-
   // Enable static asset optimization
   experimental: {
     // Optimize static imports and assets for better tree-shaking

@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/nextjs';
-import { conceptsLogger } from './lib/logger';
 
 type ConceptTelemetryMetadata = {
   event?: string;
@@ -41,7 +40,8 @@ export function captureConceptsTelemetryFailure(
     errorMessage: normalizedError.message,
   };
 
-  conceptsLogger.error(logPayload, 'Concept observability failure reported');
+  // Use console directly - instrumentation.ts runs in Edge context where pino isn't available
+  console.error('[concepts.failure]', logPayload);
 
   Sentry.captureException(normalizedError, {
     tags: {

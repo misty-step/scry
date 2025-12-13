@@ -27,7 +27,7 @@ export type PromptId =
   | 'scry-concept-synthesis'
   | 'scry-phrasing-generation';
 
-export type PromptLabel = 'production' | 'staging' | 'dev';
+export type PromptLabel = 'latest' | 'staging' | 'dev';
 
 export interface PromptResult {
   text: string;
@@ -96,7 +96,7 @@ function buildFallbackPrompt<T extends PromptId>(
 export async function getPrompt<T extends PromptId>(
   promptId: T,
   variables: PromptVariables<T>,
-  label: PromptLabel = 'production'
+  label: PromptLabel = 'latest'
 ): Promise<PromptResult> {
   // Fast path: if Langfuse not configured, use fallback immediately
   if (!isLangfuseConfigured()) {
@@ -127,7 +127,7 @@ export async function getPrompt<T extends PromptId>(
     };
   } catch (error) {
     // Log warning but don't throw - use fallback
-     
+
     console.warn(`Langfuse prompt fetch failed for ${promptId}, using fallback:`, error);
 
     return {
@@ -144,7 +144,7 @@ export async function getPrompt<T extends PromptId>(
  */
 export async function getPrompts<T extends PromptId>(
   requests: Array<{ promptId: T; variables: PromptVariables<T> }>,
-  label: PromptLabel = 'production'
+  label: PromptLabel = 'latest'
 ): Promise<PromptResult[]> {
   return Promise.all(requests.map((req) => getPrompt(req.promptId, req.variables, label)));
 }

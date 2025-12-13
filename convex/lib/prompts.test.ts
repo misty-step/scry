@@ -78,7 +78,7 @@ describe('prompts module', () => {
       const result = await getPrompt('scry-intent-extraction', { userInput: 'test' });
 
       expect(mockGetPrompt).toHaveBeenCalledWith('scry-intent-extraction', undefined, {
-        label: 'production',
+        label: 'latest',
       });
       expect(result.source).toBe('langfuse');
       expect(result.text).toBe('compiled prompt text');
