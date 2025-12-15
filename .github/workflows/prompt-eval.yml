@@ -1,0 +1,145 @@
+name: Prompt Evaluation
+
+on:
+  push:
+    paths:
+      - 'convex/lib/promptTemplates.ts'
+      - 'evals/**'
+      - '.claude/skills/langfuse-prompts/**'
+    branches:
+      - master
+      - 'feature/**'
+  pull_request:
+    paths:
+      - 'convex/lib/promptTemplates.ts'
+      - 'evals/**'
+      - '.claude/skills/langfuse-prompts/**'
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: 'Filter tests by description (regex)'
+        required: false
+        default: ''
+
+jobs:
+  evaluate:
+    name: Run Prompt Evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Promptfoo evaluation
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          FILTER_ARG=""
+          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
+            FILTER_ARG="--filter '${{ github.event.inputs.test_filter }}'"
+          fi
+          npx promptfoo eval -c evals/promptfoo.yaml -o eval-results.json $FILTER_ARG
+
+      - name: Check for failures
+        run: |
+          # Parse results and check for failures
+          FAILURES=$(jq '[.results.results[] | select(.success == false)] | length' eval-results.json)
+          TOTAL=$(jq '.results.results | length' eval-results.json)
+          PASSED=$((TOTAL - FAILURES))
+
+          echo "## Prompt Evaluation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Tests | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.results.results[] | select(.success == false) | "- **\(.vars.intentJson | fromjson | .atomic_units[0] // "Unknown")**: \(.error // "Assertion failed")"' eval-results.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ $FAILURES test(s) failed"
+            exit 1
+          else
+            echo "✅ All $TOTAL tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All tests passed"
+          fi
+
+      - name: Upload evaluation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptfoo-results
+          path: eval-results.json
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('eval-results.json', 'utf8'));
+
+            const total = results.results.results.length;
+            const failures = results.results.results.filter(r => !r.success).length;
+            const passed = total - failures;
+            const status = failures > 0 ? '❌' : '✅';
+
+            let body = `## ${status} Prompt Evaluation Results\n\n`;
+            body += `| Metric | Value |\n`;
+            body += `|--------|-------|\n`;
+            body += `| Total Tests | ${total} |\n`;
+            body += `| Passed | ${passed} |\n`;
+            body += `| Failed | ${failures} |\n\n`;
+
+            if (failures > 0) {
+              body += `### Failed Tests\n\n`;
+              results.results.results
+                .filter(r => !r.success)
+                .forEach(r => {
+                  const intent = JSON.parse(r.vars.intentJson);
+                  body += `- **${intent.atomic_units?.[0] || 'Unknown'}**: Assertion failed\n`;
+                });
+            }
+
+            body += `\n<details><summary>View full results</summary>\n\n`;
+            body += `\`\`\`json\n${JSON.stringify(results.results.stats, null, 2)}\n\`\`\`\n`;
+            body += `</details>`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

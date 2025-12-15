@@ -43,7 +43,9 @@
     "test:integration": "vitest --run tests/**/*.{test,spec}.ts",
     "test:e2e:full": "playwright test",
     "eval": "promptfoo eval -c evals/promptfoo.yaml",
-    "eval:view": "promptfoo view"
+    "eval:view": "promptfoo view",
+    "cost:report": "npx tsx scripts/langfuse-cost-report.ts",
+    "quality:report": "npx tsx scripts/langfuse-quality-report.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.40",
