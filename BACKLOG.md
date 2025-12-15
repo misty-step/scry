@@ -9,6 +9,9 @@
 
 ## Now (<2 weeks, sprint-ready)
 
+### [PRODUCT] Browser extension
+- i want to click a scry browser extension and use the current page as input to generate study material / quiz questions/concepts/phrasings from
+
 ### [SECURITY][HIGH] Unvalidated Limit Parameters - DoS Vulnerability
 **Files**: convex/questionsLibrary.ts:136, :241
 **Perspectives**: security-sentinel, performance-pathfinder
