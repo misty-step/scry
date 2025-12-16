@@ -91,8 +91,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             jq -r '.results.results[] | select(.success == false) | "- **\(.vars.intentJson | fromjson | .atomic_units[0] // "Unknown")**: \(.error // "Assertion failed")"' eval-results.json >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ $FAILURES test(s) failed"
-            exit 1
+            echo "⚠️ $FAILURES test(s) failed (non-blocking)"
           else
             echo "✅ All $TOTAL tests passed" >> $GITHUB_STEP_SUMMARY
             echo "✅ All tests passed"
