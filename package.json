@@ -45,7 +45,8 @@
     "eval": "promptfoo eval -c evals/promptfoo.yaml",
     "eval:view": "promptfoo view",
     "cost:report": "npx tsx scripts/langfuse-cost-report.ts",
-    "quality:report": "npx tsx scripts/langfuse-quality-report.ts"
+    "quality:report": "npx tsx scripts/langfuse-quality-report.ts",
+    "capture:failures": "npx tsx scripts/capture-failures.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.40",

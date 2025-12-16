@@ -1099,12 +1099,38 @@ export const generatePhrasingsForConcept = internalAction({
       });
 
       // Attach LLM-as-judge scores to trace (if scoring succeeded)
+      // Include prompt label metadata for A/B testing analysis
       if (scoringResult && scoringResult.overall >= 0) {
-        trace?.score({ name: 'phrasing-quality', value: scoringResult.overall });
-        trace?.score({ name: 'standalone-clarity', value: scoringResult.standalone });
-        trace?.score({ name: 'distractor-quality', value: scoringResult.distractors });
-        trace?.score({ name: 'explanation-quality', value: scoringResult.explanation });
-        trace?.score({ name: 'difficulty-appropriateness', value: scoringResult.difficulty });
+        const scoreMetadata = {
+          promptLabel: phrasingPromptResult.label,
+          promptVersion: phrasingPromptResult.version,
+          promptSource: phrasingPromptResult.source,
+        };
+        trace?.score({
+          name: 'phrasing-quality',
+          value: scoringResult.overall,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'standalone-clarity',
+          value: scoringResult.standalone,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'distractor-quality',
+          value: scoringResult.distractors,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'explanation-quality',
+          value: scoringResult.explanation,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'difficulty-appropriateness',
+          value: scoringResult.difficulty,
+          metadata: scoreMetadata,
+        });
       }
 
       // Complete trace with success output

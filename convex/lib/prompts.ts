@@ -27,13 +27,79 @@ export type PromptId =
   | 'scry-concept-synthesis'
   | 'scry-phrasing-generation';
 
-export type PromptLabel = 'latest' | 'staging' | 'dev';
+export type PromptLabel = 'latest' | 'staging' | 'dev' | 'production';
 
 export interface PromptResult {
   text: string;
   source: 'langfuse' | 'fallback';
   version?: string;
   promptId: PromptId;
+  /** The label that was actually used (may differ from requested if A/B testing) */
+  label: PromptLabel;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A/B Testing Infrastructure
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ExperimentConfig {
+  /** Human-readable experiment name for logging/analysis */
+  name: string;
+  /** Percentage of traffic to route to staging (0-100) */
+  stagingPercent: number;
+  /** Whether this experiment is active */
+  enabled: boolean;
+}
+
+/**
+ * A/B test configurations per prompt.
+ *
+ * When enabled, a percentage of requests will use the 'staging' label,
+ * allowing you to test new prompt versions with real traffic.
+ *
+ * To start an experiment:
+ * 1. Push new prompt to Langfuse with 'staging' label
+ * 2. Set enabled: true and stagingPercent (e.g., 10 for 10%)
+ * 3. Monitor quality scores in Langfuse filtered by promptLabel metadata
+ * 4. If staging performs better, promote to 'production' label
+ * 5. Set enabled: false when done
+ */
+const EXPERIMENTS: Partial<Record<PromptId, ExperimentConfig>> = {
+  // Example: uncomment to run A/B test on phrasing generation
+  // 'scry-phrasing-generation': {
+  //   name: 'phrasing-v2-experiment',
+  //   stagingPercent: 10,
+  //   enabled: false,
+  // },
+};
+
+/**
+ * Select prompt label based on A/B test configuration.
+ *
+ * @param promptId - The prompt to check for experiments
+ * @param requestedLabel - The label requested by the caller
+ * @returns The label to actually use (may be 'staging' if in experiment)
+ */
+function selectPromptLabel(promptId: PromptId, requestedLabel: PromptLabel): PromptLabel {
+  const experiment = EXPERIMENTS[promptId];
+
+  // If no experiment or disabled, use requested label
+  if (!experiment?.enabled) {
+    return requestedLabel;
+  }
+
+  // Roll the dice for A/B testing
+  const roll = Math.random() * 100;
+  if (roll < experiment.stagingPercent) {
+    // Log A/B test routing for analysis
+    // eslint-disable-next-line no-console
+    console.log(
+      `[prompt-ab] ${promptId}: routing to staging (experiment: ${experiment.name}, roll: ${roll.toFixed(1)})`
+    );
+    return 'staging';
+  }
+
+  return requestedLabel;
 }
 
 interface IntentExtractionVars {
@@ -88,22 +154,29 @@ function buildFallbackPrompt<T extends PromptId>(
 /**
  * Get a prompt by ID, with Langfuse lookup and fallback.
  *
+ * Supports A/B testing: if an experiment is enabled for this prompt,
+ * a percentage of requests will be routed to the 'staging' label.
+ *
  * @param promptId - The prompt identifier
  * @param variables - Variables to compile into the prompt template
- * @param label - Environment label (production/staging/dev), defaults to production
- * @returns Compiled prompt text with source metadata
+ * @param requestedLabel - Environment label (production/staging/dev), defaults to production
+ * @returns Compiled prompt text with source metadata and actual label used
  */
 export async function getPrompt<T extends PromptId>(
   promptId: T,
   variables: PromptVariables<T>,
-  label: PromptLabel = 'latest'
+  requestedLabel: PromptLabel = 'latest'
 ): Promise<PromptResult> {
+  // Apply A/B testing logic to potentially override the label
+  const label = selectPromptLabel(promptId, requestedLabel);
+
   // Fast path: if Langfuse not configured, use fallback immediately
   if (!isLangfuseConfigured()) {
     return {
       text: buildFallbackPrompt(promptId, variables),
       source: 'fallback',
       promptId,
+      label,
     };
   }
 
@@ -124,6 +197,7 @@ export async function getPrompt<T extends PromptId>(
       source: 'langfuse',
       version: prompt.version?.toString(),
       promptId,
+      label,
     };
   } catch (error) {
     // Log warning but don't throw - use fallback
@@ -134,6 +208,7 @@ export async function getPrompt<T extends PromptId>(
       text: buildFallbackPrompt(promptId, variables),
       source: 'fallback',
       promptId,
+      label,
     };
   }
 }
