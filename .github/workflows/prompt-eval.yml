@@ -21,6 +21,10 @@ on:
         required: false
         default: ''
 
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
   evaluate:
     name: Run Prompt Evaluation
