@@ -26,6 +26,9 @@ const sentryNextConfigOptions = {
 };
 
 const nextConfig: NextConfig = {
+  // Exclude Node.js-only packages from bundling (pino's thread-stream includes test files)
+  serverExternalPackages: ['pino', 'thread-stream', 'pino-pretty'],
+
   // Enable static asset optimization
   experimental: {
     // Optimize static imports and assets for better tree-shaking
