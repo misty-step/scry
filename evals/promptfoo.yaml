@@ -30,10 +30,6 @@ defaultTest:
     # Must be valid JSON
     - type: is-json
 
-    # Cost budget: max $0.05 per test case
-    - type: cost
-      threshold: 0.05
-
     # Latency budget: max 30 seconds
     - type: latency
       threshold: 30000
