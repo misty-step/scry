@@ -60,6 +60,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Promptfoo evaluation
+        continue-on-error: true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |

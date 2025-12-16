@@ -20,10 +20,10 @@ providers:
 # Global test configuration
 defaultTest:
   options:
-    # Strip markdown code blocks if present
+    # Strip thinking content and markdown, extract JSON object
     transform: |
-      const cleaned = output.replace(/^```(?:json)?\n?|\n?```$/g, '').trim();
-      return cleaned;
+      const jsonMatch = output.match(/\{[\s\S]*\}/);
+      return jsonMatch ? jsonMatch[0].trim() : output.trim();
 
   # Default assertions for ALL tests
   assert:
