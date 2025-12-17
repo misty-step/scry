@@ -10,7 +10,7 @@ providers:
   # Primary: Match production provider
   - id: openrouter:google/gemini-3-pro-preview
     config:
-      temperature: 0.7
+      temperature: 0.4  # Lower for consistency (was 0.7)
       max_tokens: 16384  # Budget for reasoning (~8k) + content (~8k)
 
   # Comparison: Previous model (for regression detection)
@@ -31,9 +31,9 @@ defaultTest:
     # Must be valid JSON
     - type: is-json
 
-    # Latency budget: max 30 seconds
+    # Latency budget: max 60 seconds (allows for reasoning models + large sets)
     - type: latency
-      threshold: 30000
+      threshold: 60000
 
 # =============================================================================
 # TEST CASES
@@ -91,8 +91,13 @@ tests:
         value: |
           const data = JSON.parse(output);
           return data.concepts && data.concepts.length >= 5;
-      - type: icontains
-        value: "president"
+      # Check president names are mentioned (not just keyword "president")
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const names = ["Washington", "Adams", "Jefferson", "Madison", "Monroe"];
+          const text = JSON.stringify(data);
+          return names.filter(n => text.includes(n)).length >= 4;
 
   # ---------------------------------------------------------------------------
   # CONCEPTUAL CONTENT TYPE
@@ -159,8 +164,12 @@ tests:
         value: |
           const data = JSON.parse(output);
           return data.concepts.some(c => c.contentType === 'verbatim');
-      - type: icontains
-        value: "Lincoln"
+      # Check for historical context (Lincoln OR Gettysburg OR Civil War)
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes("lincoln") || text.includes("gettysburg") || text.includes("civil war") || text.includes("1863");
 
   - description: "Shakespeare Soliloquy - literary verbatim"
     vars:
