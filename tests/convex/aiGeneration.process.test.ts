@@ -5,9 +5,11 @@ import { generatePhrasingsForConcept, processJob } from '@/convex/aiGeneration';
 import { makeConcept, makeGenerationJob } from '@/tests/helpers';
 
 const initializeProviderMock = vi.fn();
+const getReasoningOptionsMock = vi.fn();
 
 vi.mock('@/convex/lib/aiProviders', () => ({
   initializeProvider: (...args: unknown[]) => initializeProviderMock(...args),
+  getReasoningOptions: (...args: unknown[]) => getReasoningOptionsMock(...args),
 }));
 
 vi.mock('ai', () => ({
@@ -51,6 +53,18 @@ describe('processJob failure handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_MODEL = 'gemini-3-pro-preview';
+
+    // Default mock for getReasoningOptions
+    getReasoningOptionsMock.mockReturnValue({
+      maxOutputTokens: 16384,
+      providerOptions: {
+        openrouter: {
+          reasoning: {
+            max_tokens: 8192,
+          },
+        },
+      },
+    });
   });
 
   afterEach(() => {
@@ -273,6 +287,18 @@ describe('generatePhrasingsForConcept', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_MODEL = 'gemini-3-pro-preview';
+
+    // Default mock for getReasoningOptions
+    getReasoningOptionsMock.mockReturnValue({
+      maxOutputTokens: 16384,
+      providerOptions: {
+        openrouter: {
+          reasoning: {
+            max_tokens: 8192,
+          },
+        },
+      },
+    });
   });
 
   afterEach(() => {
