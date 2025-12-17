@@ -18,6 +18,11 @@ providers:
   #   config:
   #     temperature: 0.7
 
+# Default CLI options (avoid rate limits on CI runners)
+commandLineOptions:
+  maxConcurrency: 2
+  delay: 1000  # 1s between API calls
+
 # Global test configuration
 defaultTest:
   options:

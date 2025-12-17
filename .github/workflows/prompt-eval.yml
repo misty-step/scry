@@ -63,12 +63,14 @@ jobs:
         continue-on-error: true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PROMPTFOO_REQUEST_TIMEOUT: 120000  # 2 min timeout per request
         run: |
           FILTER_ARG=""
           if [ -n "${{ github.event.inputs.test_filter }}" ]; then
             FILTER_ARG="--filter '${{ github.event.inputs.test_filter }}'"
           fi
-          npx promptfoo eval -c evals/promptfoo.yaml -o eval-results.json $FILTER_ARG
+          # Use lower concurrency (-j 2) to avoid rate limits on shared CI runners
+          npx promptfoo eval -c evals/promptfoo.yaml -o eval-results.json -j 2 $FILTER_ARG
 
       - name: Check for failures
         run: |
