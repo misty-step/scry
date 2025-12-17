@@ -162,13 +162,10 @@
 **Acceptance**: All prompt templates use consistent field naming
 **Effort**: 15m | **Risk**: LOW
 
-### [PROMPTS][LOW] Standardize Concept Cap Between Prod and Eval (PR #107 CodeRabbit)
+### ~~[PROMPTS][LOW] Standardize Concept Cap Between Prod and Eval (PR #107 CodeRabbit)~~ ✅ FIXED
 **Source**: PR #107 review comments
-**Files**: .claude/skills/langfuse-prompts/prompts/concept-synthesis.txt, evals/prompts/concept-synthesis.txt
-**Problem**: Production caps at 50 concepts, eval caps at 100 - potential drift
-**Fix**: Document intentional divergence or standardize to single value
-**Acceptance**: Cap values documented or unified
-**Effort**: 10m | **Risk**: LOW
+**Files**: evals/prompts/concept-synthesis.txt
+**Resolution**: Standardized to 50 (matching production) in PR #107 response
 
 ### [PROMPTS][LOW] Clarify Phrasing Prompt Output Instructions (PR #107 CodeRabbit)
 **Source**: PR #107 review comments
@@ -193,6 +190,22 @@
 **Fix**: Use `fileURLToPath(import.meta.url)` + `path.dirname()` for compatibility
 **Acceptance**: Script works on Node 20.9.0+
 **Effort**: 10m | **Risk**: LOW
+
+### [LOGGING][LOW] Provider Logging Consistency (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**Files**: convex/lab.ts:111, convex/iqc.ts:272-278
+**Problem**: Logs `provider: 'google'` but uses OpenRouter - creates misleading telemetry
+**Fix**: Log `provider: 'openrouter'` or extract from modelName prefix
+**Acceptance**: Logging matches actual provider in use
+**Effort**: 15m | **Risk**: LOW
+
+### [DOCS][LOW] DESIGN.md Markdownlint Compliance (PR #107 CodeRabbit)
+**Source**: PR #107 review comments
+**File**: DESIGN.md
+**Problem**: Fenced code blocks missing language specifiers (MD040 violations)
+**Fix**: Add language identifiers (bash, typescript, yaml) to all fenced blocks
+**Acceptance**: `npx markdownlint DESIGN.md` passes
+**Effort**: 15m | **Risk**: LOW
 
 ### [SCHEMA][LOW] Add Feedback Index for Analytics (PR #107 CodeRabbit)
 **Source**: PR #107 review comments
