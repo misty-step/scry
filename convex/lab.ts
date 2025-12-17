@@ -14,7 +14,7 @@ import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
 import { action } from './_generated/server';
-import { initializeProvider } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from './lib/aiProviders';
 
 // Logger for this module
 const logger = pino({ name: 'lab' });
@@ -155,6 +155,9 @@ export const executeConfig = action({
           phase.outputType || (i === args.phases.length - 1 ? 'questions' : 'text');
 
         // Execute phase based on output type
+        // Use centralized reasoning config, but allow maxOutputTokens override
+        const reasoningOpts = getReasoningOptions('full');
+
         if (outputType === 'text') {
           // Text output (Phase 1, 2)
           const { generateText: genText } = await import('ai');
@@ -162,15 +165,9 @@ export const executeConfig = action({
             model,
             prompt,
             ...(args.temperature !== undefined && { temperature: args.temperature }),
-            ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
-            providerOptions: {
-              openrouter: {
-                reasoning: {
-                  max_tokens: 8192,
-                },
-              },
-            },
+            ...reasoningOpts,
+            ...(args.maxTokens !== undefined && { maxOutputTokens: args.maxTokens }),
           });
 
           const output = response.text;
@@ -202,15 +199,9 @@ export const executeConfig = action({
             schema: questionsSchema,
             prompt,
             ...(args.temperature !== undefined && { temperature: args.temperature }),
-            ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
-            providerOptions: {
-              openrouter: {
-                reasoning: {
-                  max_tokens: 8192,
-                },
-              },
-            },
+            ...reasoningOpts,
+            ...(args.maxTokens !== undefined && { maxOutputTokens: args.maxTokens }),
           });
 
           totalTokens += response.usage?.totalTokens || 0;

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareConceptIdeas, prepareGeneratedPhrasings } from '../../convex/aiGeneration';
+import { getReasoningOptions, REASONING_BUDGET } from '../../convex/lib/aiProviders';
 import { MAX_CONCEPTS_PER_GENERATION } from '../../convex/lib/constants';
 import { logConceptEvent, type ConceptsLogger } from '../../convex/lib/logger';
 
@@ -10,14 +11,18 @@ import { logConceptEvent, type ConceptsLogger } from '../../convex/lib/logger';
 
 /**
  * Simulate the error classification logic from aiGeneration.ts
+ * NOTE: Keep this in sync with classifyError in convex/aiGeneration.ts
  */
 function classifyError(error: Error): { code: string; retryable: boolean } {
   const message = error.message.toLowerCase();
   const errorName = error.name || '';
 
-  // Schema validation errors - AI generated invalid format
+  // Schema validation / empty response errors - AI SDK couldn't parse valid JSON
+  // NoObjectGeneratedError: Model returned empty content or non-JSON (often due to token exhaustion)
   if (
-    errorName.includes('AI_NoObjectGeneratedError') ||
+    errorName.includes('NoObjectGeneratedError') ||
+    message.includes('no object generated') ||
+    message.includes('empty response') ||
     message.includes('schema') ||
     message.includes('validation') ||
     message.includes('does not match validator')
@@ -594,5 +599,101 @@ describe('Stage B Phrasing Preparation', () => {
     );
 
     expect(phrasings[0].correctAnswer).toBe('Matthew');
+  });
+});
+
+/**
+ * Contract tests for AI provider configuration
+ * Ensures token budget invariants are maintained
+ */
+describe('AI Provider Configuration Contracts', () => {
+  describe('REASONING_BUDGET invariant', () => {
+    it('full preset: maxOutputTokens > reasoningTokens (prevents token exhaustion)', () => {
+      expect(REASONING_BUDGET.full.maxOutputTokens).toBeGreaterThan(
+        REASONING_BUDGET.full.reasoningTokens
+      );
+    });
+
+    it('light preset: maxOutputTokens > reasoningTokens (prevents token exhaustion)', () => {
+      expect(REASONING_BUDGET.light.maxOutputTokens).toBeGreaterThan(
+        REASONING_BUDGET.light.reasoningTokens
+      );
+    });
+
+    it('full preset leaves room for content generation', () => {
+      const contentBudget =
+        REASONING_BUDGET.full.maxOutputTokens - REASONING_BUDGET.full.reasoningTokens;
+      // At least 4k tokens for JSON content output
+      expect(contentBudget).toBeGreaterThanOrEqual(4096);
+    });
+
+    it('light preset leaves room for content generation', () => {
+      const contentBudget =
+        REASONING_BUDGET.light.maxOutputTokens - REASONING_BUDGET.light.reasoningTokens;
+      // At least 2k tokens for simple evaluations
+      expect(contentBudget).toBeGreaterThanOrEqual(2048);
+    });
+  });
+
+  describe('getReasoningOptions() structure', () => {
+    it('returns maxOutputTokens at top level', () => {
+      const opts = getReasoningOptions('full');
+      expect(opts).toHaveProperty('maxOutputTokens');
+      expect(typeof opts.maxOutputTokens).toBe('number');
+    });
+
+    it('returns nested providerOptions.openrouter.reasoning structure', () => {
+      const opts = getReasoningOptions('full');
+      expect(opts).toHaveProperty('providerOptions');
+      expect(opts.providerOptions).toHaveProperty('openrouter');
+      expect(opts.providerOptions.openrouter).toHaveProperty('reasoning');
+      expect(opts.providerOptions.openrouter.reasoning).toHaveProperty('max_tokens');
+    });
+
+    it('full preset values match REASONING_BUDGET.full', () => {
+      const opts = getReasoningOptions('full');
+      expect(opts.maxOutputTokens).toBe(REASONING_BUDGET.full.maxOutputTokens);
+      expect(opts.providerOptions.openrouter.reasoning.max_tokens).toBe(
+        REASONING_BUDGET.full.reasoningTokens
+      );
+    });
+
+    it('light preset values match REASONING_BUDGET.light', () => {
+      const opts = getReasoningOptions('light');
+      expect(opts.maxOutputTokens).toBe(REASONING_BUDGET.light.maxOutputTokens);
+      expect(opts.providerOptions.openrouter.reasoning.max_tokens).toBe(
+        REASONING_BUDGET.light.reasoningTokens
+      );
+    });
+
+    it('defaults to full preset when called without args', () => {
+      const defaultOpts = getReasoningOptions();
+      const fullOpts = getReasoningOptions('full');
+      expect(defaultOpts).toEqual(fullOpts);
+    });
+  });
+});
+
+describe('NoObjectGeneratedError Classification', () => {
+  it('classifies AI_NoObjectGeneratedError by error name', () => {
+    const error = new Error('No object generated');
+    error.name = 'AI_NoObjectGeneratedError';
+    const result = classifyError(error);
+    expect(result.code).toBe('SCHEMA_VALIDATION');
+    expect(result.retryable).toBe(true);
+  });
+
+  it('classifies "no object generated" message', () => {
+    const error = new Error('AI SDK: no object generated from response');
+    const result = classifyError(error);
+    expect(result.code).toBe('SCHEMA_VALIDATION');
+    expect(result.retryable).toBe(true);
+  });
+
+  it('classifies empty response error', () => {
+    const error = new Error('Empty response received from model');
+    const result = classifyError(error);
+    expect(result.code).toBe('SCHEMA_VALIDATION');
+    expect(result.retryable).toBe(true);
   });
 });

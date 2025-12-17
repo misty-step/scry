@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { action } from '../_generated/server';
 import { prepareConceptIdeas } from '../aiGeneration';
-import { initializeProvider } from '../lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from '../lib/aiProviders';
 import { conceptIdeasSchema } from '../lib/generationContracts';
 import { buildConceptSynthesisPrompt } from '../lib/promptTemplates';
 import { EVAL_CASES } from './cases';
@@ -34,13 +34,7 @@ export const run = action({
           model,
           schema: conceptIdeasSchema,
           prompt,
-          providerOptions: {
-            openrouter: {
-              reasoning: {
-                max_tokens: 8192,
-              },
-            },
-          },
+          ...getReasoningOptions('full'),
         });
 
         const prepared = prepareConceptIdeas(

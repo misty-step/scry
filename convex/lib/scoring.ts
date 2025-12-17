@@ -9,7 +9,7 @@
 
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import type { ProviderClient } from './aiProviders';
+import { getReasoningOptions, type ProviderClient } from './aiProviders';
 import type { GeneratedPhrasing } from './generationContracts';
 
 /**
@@ -102,14 +102,8 @@ export async function evaluatePhrasingQuality(
       model,
       schema: scoringResultSchema,
       prompt,
-      // Lower token budget for evaluation (faster, cheaper)
-      providerOptions: {
-        openrouter: {
-          reasoning: {
-            max_tokens: 1024,
-          },
-        },
-      },
+      // Use light preset for evaluation (faster, cheaper)
+      ...getReasoningOptions('light'),
     });
 
     return result.object;

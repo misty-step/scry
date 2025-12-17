@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
-import { initializeProvider, type ProviderClient } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
@@ -245,9 +245,12 @@ function classifyError(error: Error): { code: GenerationErrorCode; retryable: bo
   const message = error.message.toLowerCase();
   const errorName = error.name || '';
 
-  // Schema validation errors - AI generated invalid format
+  // Schema validation / empty response errors - AI SDK couldn't parse valid JSON
+  // NoObjectGeneratedError: Model returned empty content or non-JSON (often due to token exhaustion)
   if (
-    errorName.includes('AI_NoObjectGeneratedError') ||
+    errorName.includes('NoObjectGeneratedError') ||
+    message.includes('no object generated') ||
+    message.includes('empty response') ||
     message.includes('schema') ||
     message.includes('validation') ||
     message.includes('does not match validator')
@@ -433,13 +436,7 @@ export const processJob = internalAction({
         model,
         schema: intentSchema,
         prompt: intentPromptResult.text,
-        providerOptions: {
-          openrouter: {
-            reasoning: {
-              max_tokens: 8192,
-            },
-          },
-        },
+        ...getReasoningOptions('full'),
       });
 
       const intentObject = intentResponse.object;
@@ -505,13 +502,7 @@ export const processJob = internalAction({
         model,
         schema: conceptIdeasSchema,
         prompt: conceptPromptResult.text,
-        providerOptions: {
-          openrouter: {
-            reasoning: {
-              max_tokens: 8192,
-            },
-          },
-        },
+        ...getReasoningOptions('full'),
       });
 
       const { object } = finalResponse;
@@ -917,13 +908,7 @@ export const generatePhrasingsForConcept = internalAction({
         model,
         schema: phrasingBatchSchema,
         prompt: phrasingPromptResult.text,
-        providerOptions: {
-          openrouter: {
-            reasoning: {
-              max_tokens: 8192,
-            },
-          },
-        },
+        ...getReasoningOptions('full'),
       });
 
       // Complete generation tracking

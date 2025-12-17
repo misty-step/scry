@@ -5,7 +5,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { ActionCtx, internalAction, internalMutation, mutation, query } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
-import { initializeProvider } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from './lib/aiProviders';
 import { chunkArray } from './lib/chunkArray';
 import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
 import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
@@ -687,13 +687,7 @@ async function adjudicateMergeCandidate({
     model,
     prompt,
     schema: mergeDecisionSchema,
-    providerOptions: {
-      openrouter: {
-        reasoning: {
-          max_tokens: 8192,
-        },
-      },
-    },
+    ...getReasoningOptions('full'),
   });
   return response.object;
 }
