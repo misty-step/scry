@@ -287,3 +287,6 @@ Examples:
 }
 
 generateQualityReport(days, minThreshold);
+
+// Make this file an ES module to avoid TypeScript global scope collisions
+export {};

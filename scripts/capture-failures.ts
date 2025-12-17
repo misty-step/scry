@@ -297,3 +297,6 @@ Examples:
 }
 
 captureFailures(days, minScore);
+
+// Make this file an ES module to avoid TypeScript global scope collisions
+export {};
