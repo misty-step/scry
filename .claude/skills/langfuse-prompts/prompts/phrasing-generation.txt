@@ -17,17 +17,18 @@ Generate {{targetCount}} quiz-ready phrasings that test this concept.
 - Each question must be standalone and identify its source/topic explicitly; never rely on surrounding context.
 - MC: 3-4 options, one correct. Distractors must be semantically adjacent (common confusions), not punctuation/format variants.
 - TF: exactly two options ("True","False").
-- Generate rationale first (why correct, why others are wrong) to focus the item, then write the final question/options. Return only the final question payload.
+- Think through rationale internally (why correct, why others wrong) before composing the question. Do NOT include rationale in output—only the final question payload.
 - Keep stems concise (<200 chars). No answer leakage in the stem.
 - Do not repeat existing phrasing wording. Vary cognitive skill (recall, recognition, application, misconception).
 
 # Output Format (JSON)
+Return only valid JSON matching this schema:
 {
   "phrasings": [
     {
       "question": "Question text",
       "explanation": "Why the correct answer is right.",
-      "type": "multiple-choice" | "true-false",
+      "type": "multiple-choice",  // or "true-false"
       "options": ["A", "B", "C", "D"],
       "correctAnswer": "One of the options"
     }

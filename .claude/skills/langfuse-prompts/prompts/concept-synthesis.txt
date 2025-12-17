@@ -9,7 +9,7 @@ Rules:
 - Generate every enumerable item if the set is finite; otherwise cap at 50 highest-value atoms.
 - Title <= 12 words; avoid vague labels ("overview", "basics").
 - Description: 1-2 sentences giving just enough context to generate questions; no meta commentary.
-- Preserve content_type from intent for every concept; if mixed, choose the most specific type per atom.
+- Preserve contentType from intent for every concept; if mixed, choose the most specific type per atom.
 - originIntent must be the exact intent JSON string you received.
 - Keep output JSON only, no markdown.
 

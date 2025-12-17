@@ -10,6 +10,12 @@
 
 import * as fs from "fs/promises";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const FETCH_TIMEOUT_MS = 30_000;
 
 const PROMPTS = [
   { name: "scry-intent-extraction", file: "intent-extraction.txt" },
@@ -20,7 +26,7 @@ const PROMPTS = [
 function getCredentials(): { secretKey: string; publicKey: string; baseUrl: string } {
   const secretKey = process.env.LANGFUSE_SECRET_KEY;
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
-  const baseUrl = process.env.LANGFUSE_HOST || "https://cloud.langfuse.com";
+  const baseUrl = (process.env.LANGFUSE_HOST || "https://cloud.langfuse.com").replace(/\/+$/, "");
 
   if (!secretKey || !publicKey) {
     console.error("Error: LANGFUSE_SECRET_KEY and LANGFUSE_PUBLIC_KEY must be set");
@@ -66,6 +72,9 @@ async function createPrompt(
     config: {},
   };
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
@@ -73,7 +82,8 @@ async function createPrompt(
       Authorization: `Basic ${authHeader}`,
     },
     body: JSON.stringify(body),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -87,7 +97,7 @@ async function createPrompt(
 async function main() {
   const { all, name, label } = parseArgs();
   const labels = label ? [label] : [];
-  const promptsDir = path.join(import.meta.dirname, "../prompts");
+  const promptsDir = path.join(__dirname, "../prompts");
 
   if (!all && !name) {
     console.error("Error: --all or --name is required");
