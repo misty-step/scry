@@ -141,7 +141,7 @@ export function ConfigManagerPage() {
       name: 'New Configuration',
       description: undefined,
       provider: 'google',
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       temperature: undefined,
       maxTokens: undefined,
       phases: [
@@ -346,7 +346,7 @@ function ConfigEditor({ config, onSave, disabled = false }: ConfigEditorProps) {
             id="model"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="gemini-3-pro-preview"
+            placeholder="gemini-3-flash-preview"
             disabled={disabled}
           />
         </div>

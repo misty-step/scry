@@ -8,7 +8,7 @@ prompts:
 
 providers:
   # Primary: Match production provider
-  - id: openrouter:google/gemini-3-pro-preview
+  - id: openrouter:google/gemini-3-flash-preview
     config:
       temperature: 0.4  # Lower for consistency (was 0.7)
       max_tokens: 16384  # Budget for reasoning (~8k) + content (~8k)
@@ -18,10 +18,10 @@ providers:
   #   config:
   #     temperature: 0.7
 
-# Default CLI options (avoid rate limits on CI runners)
+# Default CLI options
 commandLineOptions:
-  maxConcurrency: 2
-  delay: 1000  # 1s between API calls
+  maxConcurrency: 4  # OpenRouter handles higher throughput
+  delay: 500  # 500ms between API calls
 
 # Global test configuration
 defaultTest:

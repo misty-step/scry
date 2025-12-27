@@ -234,7 +234,7 @@ prompts:
   - file://prompts/concept-synthesis.txt
 
 providers:
-  - id: openrouter:google/gemini-3-pro-preview
+  - id: openrouter:google/gemini-3-flash-preview
     config:
       temperature: 0.7
 

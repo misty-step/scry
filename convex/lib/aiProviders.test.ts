@@ -28,11 +28,11 @@ describe('initializeProvider', () => {
 
   it('initializes OpenRouter provider with diagnostics and logging context', () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-key';
-    const mockModel = { id: 'google/gemini-3-pro-preview' } as any;
+    const mockModel = { id: 'google/gemini-3-flash-preview' } as any;
     mockCreateOpenRouter.mockReturnValue((() => mockModel) as any);
     const logger = createLogger();
 
-    const result = initializeProvider('google/gemini-3-pro-preview', {
+    const result = initializeProvider('google/gemini-3-flash-preview', {
       logger,
       logContext: { configId: 'cfg-123' },
       deployment: 'https://custom.convex',
@@ -46,7 +46,7 @@ describe('initializeProvider', () => {
       expect.objectContaining({
         configId: 'cfg-123',
         provider: 'openrouter',
-        model: 'google/gemini-3-pro-preview',
+        model: 'google/gemini-3-flash-preview',
         keyDiagnostics: getSecretDiagnostics('openrouter-key'),
         deployment: 'https://custom.convex',
       }),
@@ -58,7 +58,7 @@ describe('initializeProvider', () => {
     const logger = createLogger();
 
     expect(() =>
-      initializeProvider('google/gemini-3-pro-preview', {
+      initializeProvider('google/gemini-3-flash-preview', {
         logger,
       })
     ).toThrow('OPENROUTER_API_KEY not configured in Convex environment');
@@ -72,11 +72,11 @@ describe('initializeProvider', () => {
 
   it('uses default deployment from CONVEX_CLOUD_URL when not provided', () => {
     process.env.OPENROUTER_API_KEY = 'openrouter-key';
-    const mockModel = { id: 'google/gemini-3-pro-preview' } as any;
+    const mockModel = { id: 'google/gemini-3-flash-preview' } as any;
     mockCreateOpenRouter.mockReturnValue((() => mockModel) as any);
     const logger = createLogger();
 
-    initializeProvider('google/gemini-3-pro-preview', { logger });
+    initializeProvider('google/gemini-3-flash-preview', { logger });
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({

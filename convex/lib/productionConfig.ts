@@ -20,7 +20,7 @@ export const getProductionConfig = query({
   handler: async () => {
     return {
       provider: 'openrouter' as const,
-      model: process.env.AI_MODEL || 'google/gemini-3-pro-preview',
+      model: process.env.AI_MODEL || 'google/gemini-3-flash-preview',
     };
   },
 });

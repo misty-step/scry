@@ -160,5 +160,5 @@ User input: "${userInput}"`;
  * To view current production config:
  * - Genesis Lab: Loads dynamically from getProductionConfig()
  * - Convex Dashboard: Settings → Environment Variables
- *   - AI_MODEL (gemini-3-pro-preview)
+ *   - AI_MODEL (gemini-3-flash-preview)
  */

@@ -19,6 +19,7 @@ import { Langfuse } from 'langfuse';
 
 // Model pricing (per 1M tokens) - Update as needed
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'google/gemini-3-flash-preview': { input: 0.1, output: 0.4 },
   'google/gemini-3-pro-preview': { input: 1.25, output: 5.0 },
   'google/gemini-2.5-pro': { input: 1.25, output: 5.0 },
   'google/gemini-2.5-flash': { input: 0.075, output: 0.3 },

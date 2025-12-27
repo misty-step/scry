@@ -137,7 +137,7 @@ export const scanAndPropose = internalAction({
 
     const users = Array.from(conceptsByUser.entries()).slice(0, maxUsers);
 
-    const modelName = process.env.AI_MODEL || 'google/gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
 
     let model: LanguageModel | undefined;
     let keyDiagnostics = { present: false, length: 0, fingerprint: null as string | null };

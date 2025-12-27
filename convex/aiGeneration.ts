@@ -305,7 +305,7 @@ export const processJob = internalAction({
     };
 
     // Initialize AI provider from environment configuration
-    const modelName = process.env.AI_MODEL || 'google/gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
 
     // Declare keyDiagnostics outside conditional blocks for error handler access
     let keyDiagnostics: ProviderClient['diagnostics'] = {
@@ -724,7 +724,7 @@ export const generatePhrasingsForConcept = internalAction({
   },
   handler: async (ctx, args) => {
     const startTime = Date.now();
-    const modelName = process.env.AI_MODEL || 'google/gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
     const stageBCorrelationId = generateCorrelationId('stage-b');
     const stageBMetadata = {
       phase: 'stage_b' as const,

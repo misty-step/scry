@@ -12,7 +12,7 @@ export const run = action({
     const results = [];
 
     // Configuration
-    const modelName = process.env.AI_MODEL || 'google/gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
 
     // Initialize provider once
     const { model } = initializeProvider(modelName, {

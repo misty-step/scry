@@ -52,7 +52,7 @@ describe('processJob failure handling', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.AI_MODEL = 'gemini-3-pro-preview';
+    process.env.AI_MODEL = 'gemini-3-flash-preview';
 
     // Default mock for getReasoningOptions
     getReasoningOptionsMock.mockReturnValue({
@@ -286,7 +286,7 @@ describe('generatePhrasingsForConcept', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.AI_MODEL = 'gemini-3-pro-preview';
+    process.env.AI_MODEL = 'gemini-3-flash-preview';
 
     // Default mock for getReasoningOptions
     getReasoningOptionsMock.mockReturnValue({
