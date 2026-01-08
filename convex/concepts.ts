@@ -134,6 +134,8 @@ export const getDue = query({
     const now = new Date();
     const nowMs = now.getTime();
 
+    // Filter out concepts without phrasings at DB level to avoid N+1 queries
+    // in the loop below (each selectActivePhrasing call was a wasted query)
     const dueConcepts = await ctx.db
       .query('concepts')
       .withIndex('by_user_next_review', (q) =>
@@ -143,6 +145,7 @@ export const getDue = query({
           .eq('archivedAt', undefined)
           .lte('fsrs.nextReview', nowMs)
       )
+      .filter((q) => q.gt(q.field('phrasingCount'), 0))
       .take(MAX_CONCEPT_CANDIDATES);
 
     let candidates = dueConcepts;
@@ -153,7 +156,7 @@ export const getDue = query({
         .withIndex('by_user_next_review', (q) =>
           q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
         )
-        .filter((q) => q.eq(q.field('fsrs.state'), 'new'))
+        .filter((q) => q.and(q.eq(q.field('fsrs.state'), 'new'), q.gt(q.field('phrasingCount'), 0)))
         .take(MAX_CONCEPT_CANDIDATES);
 
       if (newConcepts.length === 0) {
