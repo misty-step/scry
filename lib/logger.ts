@@ -134,8 +134,8 @@ const createBaseLogger = () => {
     },
 
     // Base metadata for all logs
+    // Note: process.pid is not available in Edge Runtime, so we omit it
     base: {
-      pid: typeof process !== 'undefined' && 'pid' in process ? process.pid : undefined,
       hostname: 'scry-server',
       app: 'scry',
       env: process.env.NODE_ENV || 'development',
