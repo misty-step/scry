@@ -23,6 +23,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build application
+        if: ${{ secrets.NEXT_PUBLIC_CONVEX_URL != '' }}
         run: pnpm build
         env:
           NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
@@ -30,6 +31,7 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Run Lighthouse CI
+        if: ${{ secrets.NEXT_PUBLIC_CONVEX_URL != '' }}
         uses: treosh/lighthouse-ci-action@12.6.1
         continue-on-error: true
         with:
@@ -40,9 +42,15 @@ jobs:
           uploadArtifacts: true
           temporaryPublicStorage: true
 
-      - name: Report Lighthouse status
-        if: failure()
+      - name: Skip notice (secrets unavailable)
+        if: ${{ secrets.NEXT_PUBLIC_CONVEX_URL == '' }}
         run: |
-          echo "⚠️ Lighthouse CI encountered an error"
+          echo "Skipping Lighthouse CI - secrets not available (likely a Dependabot PR)"
+          echo "This is expected behavior - Lighthouse tests will run on non-Dependabot PRs"
+
+      - name: Report Lighthouse status
+        if: ${{ failure() && secrets.NEXT_PUBLIC_CONVEX_URL != '' }}
+        run: |
+          echo "Lighthouse CI encountered an error"
           echo "This is typically due to runtime environment variable requirements"
           echo "Performance testing is informational - does not block PR merge"
