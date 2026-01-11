@@ -1,7 +1,7 @@
 'use client';
 
 import { SignIn } from '@clerk/nextjs';
-import { ArrowDown, Brain, Clock, Keyboard, Sparkles, Zap } from 'lucide-react';
+import { Brain, Clock, Keyboard, Sparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -26,9 +26,9 @@ export function SignInLanding() {
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* Left: Branding + Value Prop */}
             <div className="space-y-8">
-              <div>
-                <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-foreground">
-                  Scry<span className="opacity-70">.</span>
+              <div className="animate-fadeIn">
+                <h1 className="font-mono text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-foreground">
+                  Scry<span className="text-primary">.</span>
                 </h1>
                 <p className="text-2xl md:text-3xl text-muted-foreground mt-4">
                   Remember everything.
@@ -42,12 +42,8 @@ export function SignInLanding() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" onClick={scrollToAuth} className="text-base">
-                  Get Started Free
-                  <ArrowDown className="ml-2 h-4 w-4" />
-                </Button>
-                <Button size="lg" variant="outline" onClick={scrollToAuth} className="text-base">
-                  Sign In
+                <Button size="lg" onClick={scrollToAuth}>
+                  Start Learning
                 </Button>
               </div>
             </div>
@@ -89,9 +85,6 @@ export function SignInLanding() {
                     </div>
                   </div>
                 </div>
-                {/* Decorative elements */}
-                <div className="absolute -top-4 -right-4 w-24 h-24 bg-primary/10 rounded-full blur-2xl" />
-                <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
               </div>
             </div>
           </div>
@@ -201,7 +194,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="bg-card border rounded-xl p-6 space-y-3">
+    <div className="bg-card border rounded-xl p-6 space-y-3 transition-all duration-300 ease-[cubic-bezier(0.19,1,0.22,1)] hover:-translate-y-1 hover:shadow-md hover:border-primary/30">
       <div className="text-primary">{icon}</div>
       <h3 className="font-semibold text-lg">{title}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
