@@ -1,17 +1,85 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
+
+export type ParticleSettings = {
+  particleCount: number;
+  connectionDistance: number;
+  velocity: number;
+  particleAlphaMin: number;
+  particleAlphaMax: number;
+  particleSizeMin: number;
+  particleSizeMax: number;
+  connectionAlpha: number;
+};
+
+export type TypographySettings = {
+  titleTracking: number;
+  titleSizeVw: number;
+  titleLineHeight: number;
+  taglineSize: number;
+  taglineTracking: number;
+};
+
+export type SpacingSettings = {
+  titleTaglineGap: number;
+  taglineCtaGap: number;
+};
+
+export type LandingConfig = {
+  particle: ParticleSettings;
+  typography: TypographySettings;
+  spacing: SpacingSettings;
+};
+
+export const defaultLandingConfig: LandingConfig = {
+  particle: {
+    particleCount: 60,
+    connectionDistance: 150,
+    velocity: 0.3,
+    particleAlphaMin: 0.1,
+    particleAlphaMax: 0.4,
+    particleSizeMin: 1,
+    particleSizeMax: 3,
+    connectionAlpha: 0.15,
+  },
+  typography: {
+    titleTracking: -0.04,
+    titleSizeVw: 18,
+    titleLineHeight: 0.85,
+    taglineSize: 1.5,
+    taglineTracking: 0,
+  },
+  spacing: {
+    titleTaglineGap: 2.5,
+    taglineCtaGap: 1,
+  },
+};
 
 /**
  * Particle field animation for the landing page background.
  *
  * Deep module: encapsulates all particle physics, canvas rendering,
- * and animation frame management. Caller just provides a canvas ref.
+ * and animation frame management. Caller just provides a canvas ref + config.
  */
-function useParticleField(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
+function useParticleField(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  settings: ParticleSettings
+) {
+  const {
+    particleCount,
+    connectionDistance,
+    velocity,
+    particleAlphaMin,
+    particleAlphaMax,
+    particleSizeMin,
+    particleSizeMax,
+    connectionAlpha,
+  } = settings;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -31,12 +99,14 @@ function useParticleField(canvasRef: React.RefObject<HTMLCanvasElement | null>) 
     }
 
     const particles: Particle[] = [];
-    const particleCount = 180;
-    const connectionDistance = 175;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // Use parent container dimensions, not canvas rect (which is 0 when absolutely positioned)
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth;
+        canvas.height = parent.clientHeight;
+      }
     };
 
     const initParticles = () => {
@@ -45,10 +115,10 @@ function useParticleField(canvasRef: React.RefObject<HTMLCanvasElement | null>) 
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: (Math.random() - 0.5) * 0.3,
-          radius: Math.random() * 2 + 1,
-          alpha: Math.random() * 0.3 + 0.1,
+          vx: (Math.random() - 0.5) * velocity,
+          vy: (Math.random() - 0.5) * velocity,
+          radius: Math.random() * (particleSizeMax - particleSizeMin) + particleSizeMin,
+          alpha: Math.random() * (particleAlphaMax - particleAlphaMin) + particleAlphaMin,
         });
       }
     };
@@ -85,7 +155,7 @@ function useParticleField(canvasRef: React.RefObject<HTMLCanvasElement | null>) 
           const dist = Math.sqrt(dx * dx + dy * dy);
 
           if (dist < connectionDistance) {
-            const alpha = (1 - dist / connectionDistance) * 0.15;
+            const alpha = (1 - dist / connectionDistance) * connectionAlpha;
             ctx.strokeStyle = `rgba(${particleColor.join(',')}, ${alpha})`;
             ctx.lineWidth = 0.5;
             ctx.beginPath();
@@ -113,46 +183,61 @@ function useParticleField(canvasRef: React.RefObject<HTMLCanvasElement | null>) 
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationId);
     };
-  }, [canvasRef]);
+  }, [
+    canvasRef,
+    particleCount,
+    connectionDistance,
+    velocity,
+    particleAlphaMin,
+    particleAlphaMax,
+    particleSizeMin,
+    particleSizeMax,
+    connectionAlpha,
+  ]);
 }
 
 /**
- * Landing page for unauthenticated users.
- *
- * Features a particle field animation representing loose concepts
- * and the connections between them - a visual metaphor for memory.
+ * Landing page preview with parameterized typography, spacing, and particles.
  */
-export function SignInLanding() {
+export function LandingPreview({ config }: { config: LandingConfig }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  useParticleField(canvasRef);
+  useParticleField(canvasRef, config.particle);
 
   return (
-    <div className="min-h-screen relative bg-background">
+    <div className="relative h-full min-h-screen bg-background">
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
 
-      {/* Theme toggle - top right, subtle */}
       <div className="absolute top-6 right-6 z-20">
         <ThemeToggle />
       </div>
 
       <div className="relative z-10 min-h-screen flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-5xl">
-          <div>
+          <div className="flex flex-col">
             <h1
-              className="text-[clamp(5rem,25vw,14rem)] font-bold tracking-[-0.04em] leading-[0.7] text-foreground"
-              style={{ fontFeatureSettings: '"ss01"' }}
+              className="font-bold text-foreground"
+              style={{
+                fontFeatureSettings: '"ss01"',
+                fontSize: `clamp(5rem, ${config.typography.titleSizeVw}vw, 14rem)`,
+                letterSpacing: `${config.typography.titleTracking}em`,
+                lineHeight: config.typography.titleLineHeight,
+              }}
             >
               Scry
             </h1>
 
             <p
               className="text-muted-foreground font-light"
-              style={{ fontSize: '1.75rem', letterSpacing: '0.02em', marginTop: '1rem' }}
+              style={{
+                marginTop: `${config.spacing.titleTaglineGap}rem`,
+                fontSize: `${config.typography.taglineSize}rem`,
+                letterSpacing: `${config.typography.taglineTracking}em`,
+              }}
             >
               Remember everything.
             </p>
 
-            <div style={{ marginTop: '3rem' }}>
+            <div style={{ marginTop: `${config.spacing.taglineCtaGap}rem` }}>
               <Button asChild size="lg" className="text-base px-8">
                 <Link href="/sign-in">Get Started</Link>
               </Button>
