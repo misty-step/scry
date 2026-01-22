@@ -87,7 +87,7 @@ async function runGoogleApiKeyTest(): Promise<GoogleApiKeyTestResult> {
   try {
     const google = createGoogleGenerativeAI({ apiKey });
     await generateText({
-      model: google('gemini-2.0-flash-exp'),
+      model: google('gemini-3-flash'),
       prompt: 'hi',
       // AI SDK 5: maxTokens parameter removed, model uses defaults
     });

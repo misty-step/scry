@@ -5,11 +5,11 @@
  * Used by both production generation (aiGeneration.ts) and Genesis Laboratory.
  *
  * ARCHITECTURE: 1-Phase Learning Science Approach
- * - Leverages GPT-5 with high reasoning effort
+ * - Leverages Gemini 3 Pro with thinking enabled (thinkingBudget: 8192)
  * - Principle-based guidance, not procedural prescription
  * - Trusts model intelligence to determine optimal strategy per content type
  *
- * NOTE: Reasoning models (GPT-5/O1/O3) perform best with:
+ * NOTE: Reasoning models (Gemini 3 Pro, Claude, GPT-5) perform best with:
  * - Simple, direct task descriptions
  * - Clear principles and objectives
  * - NO chain-of-thought prompts ("think step by step")
@@ -160,5 +160,5 @@ User input: "${userInput}"`;
  * To view current production config:
  * - Genesis Lab: Loads dynamically from getProductionConfig()
  * - Convex Dashboard: Settings → Environment Variables
- *   - AI_MODEL (gemini-3-flash-preview)
+ *   - AI_MODEL (gemini-3-pro-preview)
  */
