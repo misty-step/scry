@@ -84,6 +84,8 @@ export default defineConfig({
         'lib/error-handlers.ts', // Browser error boundary integration
         // Clerk/theme integration hooks (browser-only)
         'hooks/use-clerk-appearance.ts',
+        // Canvas animation hook (visual, best tested via E2E/visual regression)
+        'hooks/use-particle-field.ts',
         // Convex config queries (environment variable readers)
         'convex/lib/productionConfig.ts',
         // use-review-flow.ts: reducer is tested directly, hook has complex timer effects tested via E2E

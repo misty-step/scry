@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { Github } from 'lucide-react';
-
 import { KeyboardIndicator } from '@/components/keyboard-indicator';
 import { KeyboardShortcutsHelp } from '@/components/keyboard-shortcuts-help';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 export function Footer() {
@@ -15,19 +14,28 @@ export function Footer() {
 
   return (
     <>
-      <footer className="mt-auto bg-background border-t border-border">
+      <footer className="mt-auto bg-background/80 backdrop-blur-sm">
         <div className="w-full px-4 md:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <a
-              href="https://github.com/phrazzld/scry"
+              href="https://mistystep.io"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center size-10 rounded-lg hover:bg-accent border-b-0 transition-none text-foreground hover:text-foreground"
+              className="text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors"
             >
-              <Github size={20} />
+              a misty step project
             </a>
 
-            {isSignedIn && <KeyboardIndicator onClick={() => setShowHelp(true)} />}
+            <div className="flex items-center gap-3">
+              <a
+                href="mailto:hello@mistystep.io"
+                className="text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+              >
+                Feedback
+              </a>
+              <ThemeToggle />
+              {isSignedIn && <KeyboardIndicator onClick={() => setShowHelp(true)} />}
+            </div>
           </div>
         </div>
       </footer>
