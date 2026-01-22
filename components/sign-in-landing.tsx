@@ -2,7 +2,6 @@
 
 import { useRef } from 'react';
 import Link from 'next/link';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useParticleField, type ParticleSettings } from '@/hooks/use-particle-field';
 
@@ -31,11 +30,6 @@ export function SignInLanding() {
   return (
     <div className="min-h-screen relative bg-background">
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
-
-      {/* Theme toggle - top right, subtle */}
-      <div className="absolute top-6 right-6 z-20">
-        <ThemeToggle />
-      </div>
 
       <div className="relative z-10 min-h-screen flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-5xl">

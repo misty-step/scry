@@ -12,9 +12,10 @@ function Slider({
   max = 100,
   ...props
 }: React.ComponentProps<typeof SliderPrimitive.Root>) {
+  // Default to single-thumb at min for typical slider behavior
   const _values = React.useMemo(
-    () => (Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min, max]),
-    [value, defaultValue, min, max]
+    () => (Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min]),
+    [value, defaultValue, min]
   );
 
   return (

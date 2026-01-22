@@ -50,6 +50,9 @@ export function useParticleField(
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Respect prefers-reduced-motion for accessibility
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     let animationId: number;
 
     interface Particle {
@@ -101,8 +104,11 @@ export function useParticleField(
 
       // Update positions and draw particles
       for (const p of particles) {
-        p.x += p.vx;
-        p.y += p.vy;
+        // Skip movement for users who prefer reduced motion
+        if (!prefersReducedMotion) {
+          p.x += p.vx;
+          p.y += p.vy;
+        }
 
         // Wrap around edges
         if (p.x < 0) p.x = width;
@@ -137,7 +143,10 @@ export function useParticleField(
         }
       }
 
-      animationId = requestAnimationFrame(draw);
+      // Static render for reduced motion, animate otherwise
+      if (!prefersReducedMotion) {
+        animationId = requestAnimationFrame(draw);
+      }
     };
 
     const handleResize = () => {
