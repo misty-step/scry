@@ -1,6 +1,14 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
-export default clerkMiddleware();
+const isDesignLabRoute = createRouteMatcher(['/design-lab(.*)']);
+
+export default clerkMiddleware(async (auth, req) => {
+  // Block design-lab route in production (dev-only tool)
+  if (isDesignLabRoute(req) && process.env.NODE_ENV === 'production') {
+    return new NextResponse(null, { status: 404 });
+  }
+});
 
 export const config = {
   matcher: [

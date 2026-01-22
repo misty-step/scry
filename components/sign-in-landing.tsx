@@ -1,51 +1,54 @@
 'use client';
 
-import { SignIn } from '@clerk/nextjs';
+import { useRef } from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { useParticleField, type ParticleSettings } from '@/hooks/use-particle-field';
+
+/** Full-screen landing page particle config */
+const LANDING_PARTICLE_SETTINGS: ParticleSettings = {
+  particleCount: 180,
+  connectionDistance: 175,
+  velocity: 0.3,
+  particleAlphaMin: 0.1,
+  particleAlphaMax: 0.4,
+  particleSizeMin: 1,
+  particleSizeMax: 3,
+  connectionAlpha: 0.15,
+};
 
 /**
- * Landing page for unauthenticated users
- * Displays the Scry branding and Clerk sign-in component
- * Recreated after Clerk migration to restore the original UX
+ * Landing page for unauthenticated users.
+ *
+ * Features a particle field animation representing loose concepts
+ * and the connections between them - a visual metaphor for memory.
  */
 export function SignInLanding() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useParticleField(canvasRef, { settings: LANDING_PARTICLE_SETTINGS, sizingMode: 'window' });
+
   return (
-    <div className="h-[90vh] flex items-center justify-center px-6">
-      <div className="w-full max-w-7xl">
-        {/* Two-column layout on desktop, stacked on mobile */}
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-          {/* Left: Branding */}
+    <div className="min-h-screen relative bg-background">
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+
+      <div className="relative z-10 min-h-screen flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-5xl">
           <div>
-            <h1 className="text-7xl md:text-8xl font-bold tracking-tight text-foreground">
-              Scry<span className="opacity-70">.</span>
+            <h1
+              className="text-[clamp(5rem,25vw,14rem)] font-bold tracking-[-0.04em] leading-[0.7] text-foreground"
+              style={{ fontFeatureSettings: '"ss01"' }}
+            >
+              Scry
             </h1>
 
-            {/* Larger tagline - now reads as subheading */}
-            <p className="text-2xl md:text-3xl text-muted-foreground mt-4">Remember everything.</p>
-          </div>
+            <p className="mt-4 text-[1.75rem] font-light tracking-[0.02em] text-muted-foreground">
+              Remember everything.
+            </p>
 
-          {/* Right: Authentication */}
-          <div className="flex justify-center lg:justify-end">
-            <div className="w-full max-w-md">
-              <SignIn
-                routing="hash"
-                appearance={{
-                  elements: {
-                    rootBox: 'mx-0',
-                    card: 'shadow-none border p-0 bg-transparent',
-                    headerTitle: 'hidden',
-                    headerSubtitle: 'hidden',
-                    socialButtonsBlockButton: 'border-border',
-                    dividerRow: 'hidden',
-                    formButtonPrimary: 'bg-primary hover:bg-primary/90',
-                    footerActionLink: 'text-primary hover:text-primary/80',
-                    identityPreviewEditButtonIcon: 'text-muted-foreground',
-                    formFieldInput: 'border-border',
-                    formFieldLabel: 'text-foreground',
-                    identityPreviewText: 'text-foreground',
-                    identityPreviewSecondaryText: 'text-muted-foreground',
-                  },
-                }}
-              />
+            <div className="mt-12">
+              <Button asChild size="lg" className="text-base px-8">
+                <Link href="/sign-in">Get Started</Link>
+              </Button>
             </div>
           </div>
         </div>
