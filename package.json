@@ -132,9 +132,10 @@
     "vitest": "^4.0.13"
   },
   "lint-staged": {
-    "!(convex/_generated)/**/*.{js,jsx,ts,tsx}": [
+    "**/*.{js,jsx,ts,tsx}": [
       "prettier --write",
       "eslint --fix"
-    ]
+    ],
+    "convex/_generated/**": []
   }
 }
