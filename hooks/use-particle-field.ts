@@ -53,6 +53,11 @@ export function useParticleField(
     // Respect prefers-reduced-motion for accessibility
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // Reduce particles on mobile for performance (O(n²) connection check)
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const effectiveParticleCount = isMobile ? Math.floor(particleCount * 0.5) : particleCount;
+    const effectiveConnectionDistance = isMobile ? connectionDistance * 0.8 : connectionDistance;
+
     let animationId: number;
 
     interface Particle {
@@ -66,7 +71,7 @@ export function useParticleField(
 
     const particles: Particle[] = [];
     // Pre-compute squared distance for O(n^2) connection loop optimization
-    const connectionDistanceSq = connectionDistance * connectionDistance;
+    const connectionDistanceSq = effectiveConnectionDistance * effectiveConnectionDistance;
 
     const resize = () => {
       if (sizingMode === 'window') {
@@ -83,7 +88,7 @@ export function useParticleField(
 
     const initParticles = () => {
       particles.length = 0;
-      for (let i = 0; i < particleCount; i++) {
+      for (let i = 0; i < effectiveParticleCount; i++) {
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
@@ -132,7 +137,7 @@ export function useParticleField(
 
           if (distSq < connectionDistanceSq) {
             const dist = Math.sqrt(distSq);
-            const alpha = (1 - dist / connectionDistance) * connectionAlpha;
+            const alpha = (1 - dist / effectiveConnectionDistance) * connectionAlpha;
             ctx.strokeStyle = `rgba(${particleColor.join(',')}, ${alpha})`;
             ctx.lineWidth = 0.5;
             ctx.beginPath();
@@ -159,9 +164,25 @@ export function useParticleField(
     window.addEventListener('resize', handleResize);
     draw();
 
+    // Watch for theme changes to update particle colors
+    // Critical for reduced-motion mode where animation stops
+    const themeObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'class') {
+          // Re-render with new theme colors
+          if (prefersReducedMotion) {
+            draw();
+          }
+          // For animated mode, draw() runs every frame and picks up changes automatically
+        }
+      }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true });
+
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationId);
+      themeObserver.disconnect();
     };
   }, [
     canvasRef,
