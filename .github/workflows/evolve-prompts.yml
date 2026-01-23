@@ -19,6 +19,23 @@ on:
         required: false
         default: '10'
         type: string
+      mode:
+        description: 'Evolution mode'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - single-variable
+      variable:
+        description: 'Variable to mutate (if single-variable mode)'
+        required: false
+        default: 'prompt'
+        type: choice
+        options:
+          - prompt
+          - model
+          - temperature
 
 jobs:
   evolve:
@@ -40,48 +57,103 @@ jobs:
 
       - name: Run evolutionary optimization
         run: |
-          npx tsx scripts/evolve-prompts.ts \
-            --prompt ${{ github.event.inputs.prompt || 'concept-synthesis' }} \
-            --generations ${{ github.event.inputs.generations || '10' }}
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+          PROMPT="${{ github.event.inputs.prompt || 'concept-synthesis' }}"
+          GENERATIONS="${{ github.event.inputs.generations || '10' }}"
+          VARIABLE="${{ github.event.inputs.variable || 'prompt' }}"
+
+          if [ "$MODE" = "single-variable" ]; then
+            echo "🔬 Running single-variable comparison (scientific mode)"
+            npx tsx scripts/compare-prompts.ts \
+              --target "$PROMPT" \
+              --variable "$VARIABLE" \
+              --format both
+
+            # Save comparison result for PR
+            if [ -f /tmp/comparison-result.md ]; then
+              mkdir -p artifacts/comparisons
+              cp /tmp/comparison-result.md "artifacts/comparisons/${PROMPT}-${VARIABLE}-$(date +%Y%m%d).md"
+            fi
+          else
+            echo "🧬 Running full evolutionary optimization"
+            npx tsx scripts/evolve-prompts.ts \
+              --prompt "$PROMPT" \
+              --generations "$GENERATIONS"
+          fi
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
       - name: Check for improvements
         id: check
         run: |
-          if ls artifacts/optimized-prompts/*.txt 1> /dev/null 2>&1; then
-            echo "has_improvements=true" >> $GITHUB_OUTPUT
-            echo "Found optimized prompts"
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+
+          if [ "$MODE" = "single-variable" ]; then
+            # For single-variable mode, check if comparison showed variant winning
+            if [ -f /tmp/comparison-result.md ] && grep -q "Winner: variant" /tmp/comparison-result.md; then
+              echo "has_improvements=true" >> $GITHUB_OUTPUT
+              echo "mode=single-variable" >> $GITHUB_OUTPUT
+              echo "Variant outperformed baseline"
+            else
+              echo "has_improvements=false" >> $GITHUB_OUTPUT
+              echo "Baseline performed better or tie"
+            fi
           else
-            echo "has_improvements=false" >> $GITHUB_OUTPUT
-            echo "No optimized prompts generated"
+            # For full evolution, check for optimized prompts
+            if ls artifacts/optimized-prompts/*.txt 1> /dev/null 2>&1; then
+              echo "has_improvements=true" >> $GITHUB_OUTPUT
+              echo "mode=full" >> $GITHUB_OUTPUT
+              echo "Found optimized prompts"
+            else
+              echo "has_improvements=false" >> $GITHUB_OUTPUT
+              echo "No optimized prompts generated"
+            fi
           fi
+
+      - name: Upload comparison artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: experiment-results
+          path: |
+            artifacts/optimized-prompts/
+            artifacts/comparisons/
+            experiments/log.jsonl
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Create Pull Request
         if: steps.check.outputs.has_improvements == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: evolved prompts ${{ github.run_id }}'
-          title: '🧬 Evolved prompts - ${{ github.event.inputs.prompt || "concept-synthesis" }}'
+          commit-message: 'chore: prompt experiment ${{ github.run_id }}'
+          title: '🔬 Prompt Experiment - ${{ github.event.inputs.prompt || "concept-synthesis" }} (${{ github.event.inputs.mode || "full" }})'
           body: |
-            ## Automated Prompt Evolution
+            ## Automated Prompt Experiment
 
-            This PR contains optimized prompts discovered by the evolutionary optimizer.
+            This PR contains results from automated prompt experimentation.
 
             **Configuration:**
             - Prompt: `${{ github.event.inputs.prompt || 'concept-synthesis' }}`
+            - Mode: `${{ github.event.inputs.mode || 'full' }}`
+            - Variable: `${{ github.event.inputs.variable || 'prompt' }}`
             - Max generations: `${{ github.event.inputs.generations || '10' }}`
 
+            **Results:**
+            See the comparison results in the attached artifacts.
+
             **Review checklist:**
-            - [ ] Review the optimized prompt for quality
-            - [ ] Compare with current production prompt
+            - [ ] Review the experiment results
+            - [ ] Compare metrics (pass rate, LLM score)
+            - [ ] Decide whether to adopt the variant
             - [ ] Run manual tests if needed
 
             ---
             *Generated by [evolve-prompts.yml](/.github/workflows/evolve-prompts.yml)*
-          branch: prompt-evolution/${{ github.run_id }}
+          branch: prompt-experiment/${{ github.run_id }}
           delete-branch: true
           labels: |
             llm-ops
             automated
+            experiment

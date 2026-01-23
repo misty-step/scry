@@ -3,6 +3,7 @@ name: LLM Ops Monitor
 on:
   schedule:
     - cron: '0 7 * * *' # Daily 7am UTC (midnight PST)
+    - cron: '0 7 * * 0' # Weekly Sunday 7am UTC (for capture-failures)
   workflow_dispatch:
     inputs:
       days:
@@ -169,8 +170,8 @@ View full report: ${{ github.server_url }}/${{ github.repository }}/actions/runs
     name: Capture Failed Test Cases (Weekly)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Only run on Sundays
-    if: github.event.schedule == '0 7 * * 0' || github.event_name == 'workflow_dispatch'
+    # Run on Sunday schedule trigger or manual dispatch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 7 * * 0')
 
     steps:
       - name: Checkout code

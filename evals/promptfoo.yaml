@@ -278,7 +278,7 @@ tests:
       - type: javascript
         value: |
           const data = JSON.parse(output);
-          const inputIntent = JSON.parse('{"content_type":"enumerable","goal":"memorize","atomic_units":["red","blue","green"],"synthesis_ops":[],"confidence":0.95}');
+          const inputIntent = JSON.parse(vars.intentJson);
           // Check that originIntent contains the key fields
           return data.concepts.every(c => {
             try {

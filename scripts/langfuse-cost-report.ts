@@ -169,7 +169,8 @@ async function generateCostReport(days: number, alertThreshold: number): Promise
   console.log('───────────────────────────────────────────────────────────────');
   const sortedModels = Object.entries(breakdown.byModel).sort((a, b) => b[1].cost - a[1].cost);
   for (const [model, data] of sortedModels) {
-    const pct = ((data.cost / breakdown.totalCost) * 100).toFixed(1);
+    const pct =
+      breakdown.totalCost > 0 ? ((data.cost / breakdown.totalCost) * 100).toFixed(1) : '0.0';
     console.log(`  ${model.padEnd(35)} $${data.cost.toFixed(4).padStart(8)} (${pct}%)`);
     console.log(`    └─ ${data.calls} calls, ${data.tokens.toLocaleString()} tokens`);
   }
@@ -180,7 +181,8 @@ async function generateCostReport(days: number, alertThreshold: number): Promise
   console.log('───────────────────────────────────────────────────────────────');
   const sortedPhases = Object.entries(breakdown.byPhase).sort((a, b) => b[1].cost - a[1].cost);
   for (const [phase, data] of sortedPhases) {
-    const pct = ((data.cost / breakdown.totalCost) * 100).toFixed(1);
+    const pct =
+      breakdown.totalCost > 0 ? ((data.cost / breakdown.totalCost) * 100).toFixed(1) : '0.0';
     console.log(
       `  ${phase.padEnd(20)} $${data.cost.toFixed(4).padStart(8)} (${pct}%) - ${data.calls} calls`
     );
@@ -192,7 +194,8 @@ async function generateCostReport(days: number, alertThreshold: number): Promise
   console.log('───────────────────────────────────────────────────────────────');
   const sortedDays = Object.entries(breakdown.byDay).sort((a, b) => a[0].localeCompare(b[0]));
   for (const [day, cost] of sortedDays) {
-    const bar = '█'.repeat(Math.ceil((cost / breakdown.totalCost) * 30));
+    const barLength = breakdown.totalCost > 0 ? Math.ceil((cost / breakdown.totalCost) * 30) : 0;
+    const bar = '█'.repeat(barLength);
     console.log(`  ${day}  $${cost.toFixed(4).padStart(8)}  ${bar}`);
   }
   console.log('');
