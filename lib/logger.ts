@@ -135,7 +135,7 @@ const createBaseLogger = () => {
 
     // Base metadata for all logs
     base: {
-      pid: typeof process !== 'undefined' && 'pid' in process ? process.pid : undefined,
+      pid: typeof process !== 'undefined' && process.version ? process.pid : undefined,
       hostname: 'scry-server',
       app: 'scry',
       env: process.env.NODE_ENV || 'development',

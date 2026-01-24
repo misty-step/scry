@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { action } from '../_generated/server';
 import { prepareConceptIdeas } from '../aiGeneration';
-import { initializeGoogleProvider } from '../lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from '../lib/aiProviders';
 import { conceptIdeasSchema } from '../lib/generationContracts';
 import { buildConceptSynthesisPrompt } from '../lib/promptTemplates';
 import { EVAL_CASES } from './cases';
@@ -11,16 +11,16 @@ export const run = action({
   handler: async (_ctx) => {
     const results = [];
 
-    // Configuration - always use Google Gemini 3 Pro
-    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
+    // Configuration
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
 
     // Initialize provider once
-    const { model } = initializeGoogleProvider(modelName, {
+    const { model } = initializeProvider(modelName, {
       logContext: { source: 'evals' },
     });
 
     // eslint-disable-next-line no-console
-    console.log(`Starting Eval Run with Google / ${modelName}...`);
+    console.log(`Starting Eval Run with OpenRouter / ${modelName}...`);
 
     for (const testCase of EVAL_CASES) {
       // eslint-disable-next-line no-console
@@ -34,14 +34,7 @@ export const run = action({
           model,
           schema: conceptIdeasSchema,
           prompt,
-          providerOptions: {
-            google: {
-              thinkingConfig: {
-                thinkingBudget: 8192,
-                includeThoughts: true,
-              },
-            },
-          },
+          ...getReasoningOptions('full'),
         });
 
         const prepared = prepareConceptIdeas(
@@ -75,7 +68,7 @@ export const run = action({
 
     return {
       timestamp: new Date().toISOString(),
-      configuration: { provider: 'google', model: modelName },
+      configuration: { provider: 'openrouter', model: modelName },
       summary: {
         total: results.length,
         passed: results.filter((r) => r.passed).length,

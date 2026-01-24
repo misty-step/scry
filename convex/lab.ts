@@ -3,7 +3,7 @@
  *
  * Handles execution of infrastructure configurations for testing.
  * Supports both single-phase (recommended) and multi-phase prompt chains.
- * Uses Google Gemini 3 Pro provider.
+ * Uses OpenRouter provider (supports 150+ models via single API).
  *
  * RECOMMENDED: 1-phase learning science architecture (see PROD_CONFIG_METADATA)
  * LEGACY: Multi-phase chains with template interpolation (for experimentation)
@@ -14,7 +14,7 @@ import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
 import { action } from './_generated/server';
-import { initializeGoogleProvider } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from './lib/aiProviders';
 
 // Logger for this module
 const logger = pino({ name: 'lab' });
@@ -108,15 +108,15 @@ export const executeConfig = action({
         {
           configId: args.configId,
           configName: args.configName,
-          provider: 'google',
+          provider: 'openrouter',
           model: args.model,
           phasesCount: args.phases.length,
         },
         'Starting config execution'
       );
 
-      // Initialize Google provider
-      const providerClient = initializeGoogleProvider(args.model, {
+      // Initialize AI provider
+      const providerClient = initializeProvider(args.model, {
         logger,
         logContext: {
           configId: args.configId,
@@ -155,6 +155,9 @@ export const executeConfig = action({
           phase.outputType || (i === args.phases.length - 1 ? 'questions' : 'text');
 
         // Execute phase based on output type
+        // Use centralized reasoning config, but allow maxOutputTokens override
+        const reasoningOpts = getReasoningOptions('full');
+
         if (outputType === 'text') {
           // Text output (Phase 1, 2)
           const { generateText: genText } = await import('ai');
@@ -162,16 +165,9 @@ export const executeConfig = action({
             model,
             prompt,
             ...(args.temperature !== undefined && { temperature: args.temperature }),
-            ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
-            providerOptions: {
-              google: {
-                thinkingConfig: {
-                  thinkingBudget: 8192,
-                  includeThoughts: true,
-                },
-              },
-            },
+            ...reasoningOpts,
+            ...(args.maxTokens !== undefined && { maxOutputTokens: args.maxTokens }),
           });
 
           const output = response.text;
@@ -203,16 +199,9 @@ export const executeConfig = action({
             schema: questionsSchema,
             prompt,
             ...(args.temperature !== undefined && { temperature: args.temperature }),
-            ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
             ...(args.topP !== undefined && { topP: args.topP }),
-            providerOptions: {
-              google: {
-                thinkingConfig: {
-                  thinkingBudget: 8192,
-                  includeThoughts: true,
-                },
-              },
-            },
+            ...reasoningOpts,
+            ...(args.maxTokens !== undefined && { maxOutputTokens: args.maxTokens }),
           });
 
           totalTokens += response.usage?.totalTokens || 0;

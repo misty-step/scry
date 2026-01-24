@@ -1,0 +1,36 @@
+# Concept
+Title: {{conceptTitle}}
+Content Type: {{contentType}}
+Origin Intent: {{originIntent}}
+
+# Existing Phrasings
+{{existingQuestions}}
+
+# Task
+Generate {{targetCount}} quiz-ready phrasings that test this concept.
+
+# Requirements
+- Select template family by content type:
+  - Verbatim/Enumerable: sequential recall ("In [source], after '[span]', what comes next?"), first/last line, key line recognition. NO punctuation/capitalization trivia.
+  - Conceptual: definition, application, misconception check, comparison.
+- Alternate multiple-choice and true/false when reasonable.
+- Each question must be standalone and identify its source/topic explicitly; never rely on surrounding context.
+- MC: 3-4 options, one correct. Distractors must be semantically adjacent (common confusions), not punctuation/format variants.
+- TF: exactly two options ("True","False").
+- Think through rationale internally (why correct, why others wrong) before composing the question. Do NOT include rationale in output—only the final question payload.
+- Keep stems concise (<200 chars). No answer leakage in the stem.
+- Do not repeat existing phrasing wording. Vary cognitive skill (recall, recognition, application, misconception).
+
+# Output Format (JSON)
+Return only valid JSON matching this schema:
+{
+  "phrasings": [
+    {
+      "question": "Question text",
+      "explanation": "Why the correct answer is right.",
+      "type": "multiple-choice",  // or "true-false"
+      "options": ["A", "B", "C", "D"],
+      "correctAnswer": "One of the options"
+    }
+  ]
+}

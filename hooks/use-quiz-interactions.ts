@@ -32,6 +32,7 @@ export function useQuizInteractions() {
         });
 
         return {
+          interactionId: result.interactionId,
           nextReview: result.nextReview,
           scheduledDays: result.scheduledDays,
           newState: result.newState,

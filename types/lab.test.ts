@@ -36,7 +36,7 @@ describe('Lab Type Guards', () => {
         name: 'Draft',
         isProd: false,
         provider: 'google',
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         temperature: 0.7,
         maxTokens: 4096,
         phases: [{ name: 'Test', template: 'Test prompt' }],

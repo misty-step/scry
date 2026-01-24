@@ -34,7 +34,7 @@ export function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
   // Form state
   const [name, setName] = useState(config?.name || '');
   const [description, setDescription] = useState(config?.description || '');
-  const [model, setModel] = useState(config?.model || 'gemini-3-pro-preview');
+  const [model, setModel] = useState(config?.model || 'gemini-3-flash-preview');
   const [temperature, setTemperature] = useState(
     config?.temperature !== undefined ? config.temperature.toString() : ''
   );
@@ -173,7 +173,7 @@ export function ConfigEditor({ config, onSave, onCancel }: ConfigEditorProps) {
             id="config-model"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="e.g., gemini-3-pro-preview"
+            placeholder="e.g., gemini-3-flash-preview"
             disabled={config?.isProd}
           />
         </div>

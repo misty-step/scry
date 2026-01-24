@@ -1,0 +1,199 @@
+name: Prompt Evaluation
+
+on:
+  push:
+    paths:
+      - 'convex/lib/promptTemplates.ts'
+      - 'evals/**'
+      - '.claude/skills/langfuse-prompts/**'
+    branches:
+      - master
+      - 'feature/**'
+  pull_request:
+    paths:
+      - 'convex/lib/promptTemplates.ts'
+      - 'evals/**'
+      - '.claude/skills/langfuse-prompts/**'
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: 'Filter tests by description (regex)'
+        required: false
+        default: ''
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  evaluate:
+    name: Run Prompt Evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Promptfoo evaluation
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PROMPTFOO_REQUEST_TIMEOUT: 120000  # 2 min timeout per request
+          TEST_FILTER: ${{ github.event.inputs.test_filter }}
+        run: |
+          FILTER_ARG=""
+          if [ -n "$TEST_FILTER" ]; then
+            FILTER_ARG="--filter '$TEST_FILTER'"
+          fi
+          # Use lower concurrency (-j 2) to avoid rate limits on shared CI runners
+          npx promptfoo eval -c evals/promptfoo.yaml -o eval-results.json -j 2 $FILTER_ARG
+
+      - name: Run baseline comparison
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          # Run comparative eval for each changed prompt
+          for prompt in concept-synthesis intent-extraction phrasing-generation; do
+            if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "prompts/${prompt}.txt\|promptTemplates.ts"; then
+              echo "Running comparison for $prompt..."
+              npx tsx scripts/compare-prompts.ts --target $prompt --format markdown --no-log || true
+              if [ -f /tmp/comparison-result.md ]; then
+                cat /tmp/comparison-result.md >> comparison-results.md
+                echo -e "\n---\n" >> comparison-results.md
+              fi
+            fi
+          done
+
+      - name: Check for failures
+        run: |
+          # Parse results and check for failures
+          FAILURES=$(jq '[.results.results[] | select(.success == false)] | length' eval-results.json)
+          TOTAL=$(jq '.results.results | length' eval-results.json)
+          PASSED=$((TOTAL - FAILURES))
+
+          echo "## Prompt Evaluation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Tests | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.results.results[] | select(.success == false) | "- **\(.vars.intentJson | fromjson | .atomic_units[0] // "Unknown")**: \(.error // "Assertion failed")"' eval-results.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ $FAILURES test(s) failed (non-blocking)"
+          else
+            echo "✅ All $TOTAL tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All tests passed"
+          fi
+
+      - name: Upload evaluation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promptfoo-results
+          path: eval-results.json
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('eval-results.json', 'utf8'));
+
+            const total = results.results.results.length;
+            const failures = results.results.results.filter(r => !r.success).length;
+            const passed = total - failures;
+            const passRate = ((passed / total) * 100).toFixed(1);
+            const status = failures > 0 ? '⚠️' : '✅';
+
+            // Calculate LLM scores
+            const llmScores = [];
+            for (const r of results.results.results) {
+              const components = r.gradingResult?.componentResults || [];
+              for (const c of components) {
+                if (c.assertion?.type === 'llm-rubric' && c.score !== undefined) {
+                  llmScores.push(c.score);
+                }
+              }
+            }
+            const avgLlmScore = llmScores.length > 0
+              ? (llmScores.reduce((a, b) => a + b, 0) / llmScores.length).toFixed(2)
+              : 'N/A';
+
+            let body = `## ${status} Prompt Evaluation Results\n\n`;
+            body += `| Metric | Value |\n`;
+            body += `|--------|-------|\n`;
+            body += `| Pass Rate | ${passRate}% (${passed}/${total}) |\n`;
+            body += `| LLM Score | ${avgLlmScore}/5 |\n`;
+            body += `| Failed | ${failures} |\n\n`;
+
+            // Add comparison results if available
+            if (fs.existsSync('comparison-results.md')) {
+              const comparison = fs.readFileSync('comparison-results.md', 'utf8');
+              body += `---\n\n`;
+              body += comparison;
+            }
+
+            if (failures > 0) {
+              body += `### Failed Tests\n\n`;
+              results.results.results
+                .filter(r => !r.success)
+                .slice(0, 5) // Limit to first 5 failures
+                .forEach(r => {
+                  try {
+                    const intent = JSON.parse(r.vars.intentJson);
+                    body += `- **${intent.atomic_units?.[0] || 'Unknown'}**: Assertion failed\n`;
+                  } catch {
+                    body += `- **Unknown**: Assertion failed\n`;
+                  }
+                });
+              if (failures > 5) {
+                body += `\n... and ${failures - 5} more failures\n`;
+              }
+            }
+
+            body += `\n<details><summary>View full results</summary>\n\n`;
+            body += `\`\`\`json\n${JSON.stringify(results.results.stats, null, 2)}\n\`\`\`\n`;
+            body += `</details>\n\n`;
+            body += `---\n*Generated by prompt-eval.yml | [View artifacts](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

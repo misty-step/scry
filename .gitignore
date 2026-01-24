@@ -81,6 +81,10 @@ test-results-summary.md
 # Evaluation results
 eval_results.json
 
+# Prompt evolution artifacts (keep .gitkeep)
+/artifacts/**
+!/artifacts/optimized-prompts/.gitkeep
+
 # Sentry Config File
 .env.sentry-build-plugin
 

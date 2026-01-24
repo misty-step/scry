@@ -16,7 +16,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
-import { initializeGoogleProvider, type ProviderClient } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider, type ProviderClient } from './lib/aiProviders';
 import { trackEvent } from './lib/analytics';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
 import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
@@ -28,17 +28,15 @@ import {
   type ContentType,
   type GeneratedPhrasing,
 } from './lib/generationContracts';
+import { flushLangfuse, getLangfuse, isLangfuseConfigured } from './lib/langfuse';
 import {
   createConceptsLogger,
   generateCorrelationId,
   logConceptEvent,
   type LogContext,
 } from './lib/logger';
-import {
-  buildConceptSynthesisPrompt,
-  buildIntentExtractionPrompt,
-  buildPhrasingGenerationPrompt,
-} from './lib/promptTemplates';
+import { getPrompt } from './lib/prompts';
+import { evaluatePhrasingQuality, isScoringEnabled } from './lib/scoring';
 
 // Logger for this module
 const conceptsLogger = createConceptsLogger({
@@ -247,9 +245,12 @@ function classifyError(error: Error): { code: GenerationErrorCode; retryable: bo
   const message = error.message.toLowerCase();
   const errorName = error.name || '';
 
-  // Schema validation errors - AI generated invalid format
+  // Schema validation / empty response errors - AI SDK couldn't parse valid JSON
+  // NoObjectGeneratedError: Model returned empty content or non-JSON (often due to token exhaustion)
   if (
-    errorName.includes('AI_NoObjectGeneratedError') ||
+    errorName.includes('NoObjectGeneratedError') ||
+    message.includes('no object generated') ||
+    message.includes('empty response') ||
     message.includes('schema') ||
     message.includes('validation') ||
     message.includes('does not match validator')
@@ -304,7 +305,7 @@ export const processJob = internalAction({
     };
 
     // Initialize AI provider from environment configuration
-    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
 
     // Declare keyDiagnostics outside conditional blocks for error handler access
     let keyDiagnostics: ProviderClient['diagnostics'] = {
@@ -313,9 +314,11 @@ export const processJob = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
+    // Declare trace outside try block so it's accessible in catch for error logging
+    let trace: import('langfuse').LangfuseTraceClient | null = null;
 
     try {
-      const providerClient = initializeGoogleProvider(modelName, {
+      const providerClient = initializeProvider(modelName, {
         logger,
         logContext: {
           ...stageAMetadata,
@@ -344,7 +347,7 @@ export const processJob = internalAction({
       logger.info(
         {
           ...stageAMetadata,
-          provider: 'google',
+          provider: 'openrouter',
           model: modelName,
         },
         'Starting Stage A job processing'
@@ -384,26 +387,70 @@ export const processJob = internalAction({
         'Job details fetched'
       );
 
+      // Initialize Langfuse trace if configured (wrapped to prevent telemetry failures from breaking generation)
+      if (isLangfuseConfigured()) {
+        try {
+          trace = getLangfuse().trace({
+            name: 'quiz-generation',
+            userId: job.userId,
+            metadata: {
+              jobId: args.jobId,
+              correlationId: stageACorrelationId,
+              provider: 'openrouter',
+              model: modelName,
+              inputLength: job.prompt.length,
+            },
+            input: { prompt: job.prompt },
+            tags: ['scry', 'generation', 'stage-a'],
+          });
+        } catch (traceError) {
+          logger.warn(
+            { ...stageAMetadata, error: String(traceError) },
+            'Langfuse trace initialization failed, continuing without telemetry'
+          );
+          trace = null;
+        }
+      }
+
       // Step 1: Intent extraction (clarify goal and content type)
-      const intentPrompt = buildIntentExtractionPrompt(job.prompt);
+      const intentPromptResult = await getPrompt('scry-intent-extraction', {
+        userInput: job.prompt,
+      });
+
+      const intentSpan = trace?.span({
+        name: 'intent-extraction',
+        input: { userPrompt: job.prompt },
+        metadata: {
+          promptSource: intentPromptResult.source,
+          promptVersion: intentPromptResult.version,
+        },
+      });
+      const intentGen = intentSpan?.generation({
+        name: 'extract-intent',
+        model: modelName,
+        input: intentPromptResult.text,
+        modelParameters: { thinkingBudget: 8192 },
+      });
 
       const intentResponse = await generateObject({
         model,
         schema: intentSchema,
-        prompt: intentPrompt,
-        providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
-            },
-          },
-        },
+        prompt: intentPromptResult.text,
+        ...getReasoningOptions('full'),
       });
 
       const intentObject = intentResponse.object;
       const intentJson = JSON.stringify(intentObject);
       const defaultContentType = intentObject.content_type as ContentType;
+
+      // Complete intent tracing
+      intentGen?.end({
+        output: intentObject,
+        usage: {
+          totalTokens: intentResponse.usage?.totalTokens ?? 0,
+        },
+      });
+      intentSpan?.end({ output: intentObject });
 
       logger.info(
         {
@@ -417,14 +464,14 @@ export const processJob = internalAction({
         ...stageAMetadata,
         event: 'start',
         userId: job.userId,
-        provider: 'google',
+        provider: 'openrouter',
         model: modelName,
       });
 
       trackEvent('Quiz Generation Started', {
         jobId: args.jobId,
         userId: String(job.userId),
-        provider: 'google',
+        provider: 'openrouter',
       });
 
       await ctx.runMutation(internal.generationJobs.updateProgress, {
@@ -432,23 +479,44 @@ export const processJob = internalAction({
         phase: 'concept_synthesis',
       });
 
-      const conceptPrompt = buildConceptSynthesisPrompt(intentJson);
+      const conceptPromptResult = await getPrompt('scry-concept-synthesis', {
+        intentJson,
+      });
+
+      const conceptSpan = trace?.span({
+        name: 'concept-synthesis',
+        input: { intentJson },
+        metadata: {
+          promptSource: conceptPromptResult.source,
+          promptVersion: conceptPromptResult.version,
+        },
+      });
+      const conceptGen = conceptSpan?.generation({
+        name: 'synthesize-concepts',
+        model: modelName,
+        input: conceptPromptResult.text,
+        modelParameters: { thinkingBudget: 8192 },
+      });
 
       const finalResponse = await generateObject({
         model,
         schema: conceptIdeasSchema,
-        prompt: conceptPrompt,
-        providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
-            },
-          },
-        },
+        prompt: conceptPromptResult.text,
+        ...getReasoningOptions('full'),
       });
 
       const { object } = finalResponse;
+
+      // Complete concept synthesis tracing
+      conceptGen?.end({
+        output: object,
+        usage: {
+          totalTokens: finalResponse.usage?.totalTokens ?? 0,
+        },
+      });
+      conceptSpan?.end({
+        output: { conceptCount: object.concepts.length },
+      });
 
       // Diagnostic logging for production debugging
       logger.info(
@@ -534,11 +602,18 @@ export const processJob = internalAction({
         estimatedTotal: conceptIds.length * TARGET_PHRASINGS_PER_CONCEPT,
       });
 
-      for (const conceptId of conceptIds) {
-        await ctx.scheduler.runAfter(0, internal.aiGeneration.generatePhrasingsForConcept, {
-          conceptId,
-          jobId: args.jobId,
-        });
+      // Stagger Stage B actions by 2s each to avoid rate limits and mutation conflicts
+      // With 9 concepts: t=0, t=2s, t=4s, ... t=16s spread
+      const STAGE_B_STAGGER_MS = 2000;
+      for (let i = 0; i < conceptIds.length; i++) {
+        await ctx.scheduler.runAfter(
+          i * STAGE_B_STAGGER_MS,
+          internal.aiGeneration.generatePhrasingsForConcept,
+          {
+            conceptId: conceptIds[i],
+            jobId: args.jobId,
+          }
+        );
       }
 
       const conceptIdStrings = conceptIds.map((id: Id<'concepts'>) => id.toString());
@@ -551,6 +626,17 @@ export const processJob = internalAction({
         conceptCount: conceptIds.length,
         pendingConceptIds: conceptIds.length,
       });
+
+      // Complete trace with success output
+      trace?.update({
+        output: {
+          conceptCount: conceptIds.length,
+          status: 'concepts_created',
+        },
+      });
+
+      // Flush Langfuse (critical for serverless)
+      await flushLangfuse();
     } catch (error) {
       const err = error as Error;
       let code: GenerationErrorCode;
@@ -605,11 +691,25 @@ export const processJob = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider: 'google',
+        provider: 'openrouter',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
       });
+
+      // Update trace with error info before flushing (critical for debugging)
+      trace?.update({
+        output: {
+          error: err.message,
+          errorCode: code,
+          errorName: err.name,
+          stack: err.stack?.split('\n').slice(0, 5).join('\n'),
+          status: 'failed',
+        },
+      });
+
+      // Flush Langfuse on error (captures partial traces)
+      await flushLangfuse();
 
       // Re-throw to signal failure
       throw error;
@@ -624,7 +724,7 @@ export const generatePhrasingsForConcept = internalAction({
   },
   handler: async (ctx, args) => {
     const startTime = Date.now();
-    const modelName = process.env.AI_MODEL || 'gemini-3-pro-preview';
+    const modelName = process.env.AI_MODEL || 'google/gemini-3-flash-preview';
     const stageBCorrelationId = generateCorrelationId('stage-b');
     const stageBMetadata = {
       phase: 'stage_b' as const,
@@ -640,6 +740,8 @@ export const generatePhrasingsForConcept = internalAction({
       fingerprint: null,
     };
     let model: ProviderClient['model'];
+    // Declare trace outside try block so it's accessible in catch for error logging
+    let trace: import('langfuse').LangfuseTraceClient | null = null;
 
     try {
       job = await ctx.runQuery(internal.generationJobs.getJobByIdInternal, {
@@ -696,7 +798,7 @@ export const generatePhrasingsForConcept = internalAction({
       }
 
       try {
-        const providerClient = initializeGoogleProvider(modelName, {
+        const providerClient = initializeProvider(modelName, {
           logger,
           logContext: {
             ...stageBMetadata,
@@ -726,9 +828,35 @@ export const generatePhrasingsForConcept = internalAction({
         ...stageBMetadata,
         event: 'start',
         userId: job.userId,
-        provider: 'google',
+        provider: 'openrouter',
         model: modelName,
       });
+
+      // Initialize Langfuse trace for Stage B (wrapped to prevent telemetry failures from breaking generation)
+      if (isLangfuseConfigured()) {
+        try {
+          trace = getLangfuse().trace({
+            name: 'phrasing-generation',
+            userId: job.userId,
+            metadata: {
+              jobId: args.jobId,
+              conceptId: args.conceptId,
+              correlationId: stageBCorrelationId,
+              provider: 'openrouter',
+              model: modelName,
+              contentType: concept.contentType,
+            },
+            input: { conceptTitle: concept.title, conceptId: args.conceptId },
+            tags: ['scry', 'generation', 'stage-b'],
+          });
+        } catch (traceError) {
+          logger.warn(
+            { ...stageBMetadata, error: String(traceError) },
+            'Langfuse trace initialization failed, continuing without telemetry'
+          );
+          trace = null;
+        }
+      }
 
       const existingPhrasings: Doc<'phrasings'>[] = await ctx.runQuery(
         internal.phrasings.getByConcept,
@@ -743,26 +871,55 @@ export const generatePhrasingsForConcept = internalAction({
         (phrasing: Doc<'phrasings'>) => phrasing.question
       );
 
-      const prompt = buildPhrasingGenerationPrompt({
+      const phrasingPromptResult = await getPrompt('scry-phrasing-generation', {
         conceptTitle: concept.title,
-        contentType: concept.contentType as ContentType | undefined,
+        contentType: concept.contentType as
+          | 'verbatim'
+          | 'enumerable'
+          | 'conceptual'
+          | 'mixed'
+          | undefined,
         originIntent: concept.originIntent,
         targetCount: TARGET_PHRASINGS_PER_CONCEPT,
         existingQuestions,
       });
 
+      // Start Langfuse span and generation for LLM call
+      const phrasingSpan = trace?.span({
+        name: 'generate-phrasings',
+        input: {
+          conceptTitle: concept.title,
+          existingCount: existingQuestions.length,
+          targetCount: TARGET_PHRASINGS_PER_CONCEPT,
+        },
+        metadata: {
+          promptSource: phrasingPromptResult.source,
+          promptVersion: phrasingPromptResult.version,
+        },
+      });
+      const phrasingGen = phrasingSpan?.generation({
+        name: 'phrasing-llm-call',
+        model: modelName,
+        input: phrasingPromptResult.text,
+        modelParameters: { thinkingBudget: 8192 },
+      });
+
       const finalResponse = await generateObject({
         model,
         schema: phrasingBatchSchema,
-        prompt,
-        providerOptions: {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: 8192,
-              includeThoughts: true,
-            },
-          },
+        prompt: phrasingPromptResult.text,
+        ...getReasoningOptions('full'),
+      });
+
+      // Complete generation tracking
+      phrasingGen?.end({
+        output: finalResponse.object,
+        usage: {
+          totalTokens: finalResponse.usage?.totalTokens ?? 0,
         },
+      });
+      phrasingSpan?.end({
+        output: { phrasingsGenerated: finalResponse.object.phrasings.length },
       });
 
       const normalizedPhrasings = prepareGeneratedPhrasings(
@@ -779,6 +936,37 @@ export const generatePhrasingsForConcept = internalAction({
         );
       }
 
+      // LLM-as-judge scoring (optional, controlled via SKIP_SCORING env var)
+      let scoringResult: Awaited<ReturnType<typeof evaluatePhrasingQuality>> | null = null;
+      if (isScoringEnabled() && isLangfuseConfigured()) {
+        try {
+          logger.info(
+            { ...stageBMetadata, event: 'stage-b.scoring.start' },
+            'Evaluating phrasing quality with LLM-as-judge'
+          );
+          scoringResult = await evaluatePhrasingQuality(normalizedPhrasings, concept.title, model);
+          logger.info(
+            {
+              ...stageBMetadata,
+              event: 'stage-b.scoring.complete',
+              overallScore: scoringResult.overall,
+              issues: scoringResult.issues,
+            },
+            `Phrasing quality score: ${scoringResult.overall}/5`
+          );
+        } catch (scoringError) {
+          // Don't fail generation if scoring fails
+          logger.warn(
+            {
+              ...stageBMetadata,
+              event: 'stage-b.scoring.error',
+              error: scoringError instanceof Error ? scoringError.message : String(scoringError),
+            },
+            'LLM-as-judge scoring failed (non-fatal)'
+          );
+        }
+      }
+
       const preparedDocs: Array<
         PreparedPhrasing & {
           embedding?: number[];
@@ -788,8 +976,17 @@ export const generatePhrasingsForConcept = internalAction({
         ...phrasing,
       }));
 
+      // Skip embeddings if env var set (for debugging generation issues)
+      const skipEmbeddings = process.env.SKIP_EMBEDDINGS === 'true';
+      if (skipEmbeddings) {
+        logger.info(
+          { ...stageBMetadata, event: 'stage-b.embeddings.skipped' },
+          'Skipping embedding generation (SKIP_EMBEDDINGS=true)'
+        );
+      }
+
       const EMBEDDING_BATCH_SIZE = 5;
-      for (let i = 0; i < preparedDocs.length; i += EMBEDDING_BATCH_SIZE) {
+      for (let i = 0; i < preparedDocs.length && !skipEmbeddings; i += EMBEDDING_BATCH_SIZE) {
         const batch = preparedDocs.slice(i, i + EMBEDDING_BATCH_SIZE);
         const embeddingResults = await Promise.allSettled(
           batch.map(async (phrasing) => {
@@ -872,7 +1069,7 @@ export const generatePhrasingsForConcept = internalAction({
         trackEvent('Quiz Generation Completed', {
           jobId: job._id,
           userId: String(job.userId),
-          provider: 'google',
+          provider: 'openrouter',
           phrasingCount: progress.phrasingSaved,
           durationMs,
         });
@@ -885,6 +1082,58 @@ export const generatePhrasingsForConcept = internalAction({
         phrasingsCreated: insertedIds.length,
         remainingConcepts: progress.pendingCount,
       });
+
+      // Attach LLM-as-judge scores to trace (if scoring succeeded)
+      // Include prompt label metadata for A/B testing analysis
+      if (scoringResult && scoringResult.overall >= 0) {
+        const scoreMetadata = {
+          promptLabel: phrasingPromptResult.label,
+          promptVersion: phrasingPromptResult.version,
+          promptSource: phrasingPromptResult.source,
+        };
+        trace?.score({
+          name: 'phrasing-quality',
+          value: scoringResult.overall,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'standalone-clarity',
+          value: scoringResult.standalone,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'distractor-quality',
+          value: scoringResult.distractors,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'explanation-quality',
+          value: scoringResult.explanation,
+          metadata: scoreMetadata,
+        });
+        trace?.score({
+          name: 'difficulty-appropriateness',
+          value: scoringResult.difficulty,
+          metadata: scoreMetadata,
+        });
+      }
+
+      // Complete trace with success output
+      trace?.update({
+        output: {
+          phrasingsCreated: insertedIds.length,
+          remainingConcepts: progress.pendingCount,
+          status: progress.pendingCount === 0 ? 'job_complete' : 'concept_complete',
+          ...(scoringResult && {
+            qualityScore: scoringResult.overall,
+            qualityReasoning: scoringResult.reasoning,
+            qualityIssues: scoringResult.issues,
+          }),
+        },
+      });
+
+      // Flush Langfuse (critical for serverless)
+      await flushLangfuse();
     } catch (error) {
       const err = error as Error;
       const { code, retryable } =
@@ -915,7 +1164,7 @@ export const generatePhrasingsForConcept = internalAction({
       trackEvent('Quiz Generation Failed', {
         jobId: args.jobId,
         userId: job ? String(job.userId) : 'unknown',
-        provider: 'google',
+        provider: 'openrouter',
         phrasingCount: job ? (job.phrasingSaved ?? 0) : 0,
         errorType: code,
         durationMs,
@@ -932,6 +1181,20 @@ export const generatePhrasingsForConcept = internalAction({
         keyDiagnostics,
         userId: job ? job.userId : undefined,
       });
+
+      // Update trace with error info before flushing (critical for debugging)
+      trace?.update({
+        output: {
+          error: err.message,
+          errorCode: code,
+          errorName: err.name,
+          stack: err.stack?.split('\n').slice(0, 5).join('\n'), // First 5 lines of stack
+          status: 'failed',
+        },
+      });
+
+      // Flush Langfuse on error (captures partial traces)
+      await flushLangfuse();
 
       throw error;
     }

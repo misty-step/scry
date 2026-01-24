@@ -2,8 +2,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from 'convex/react';
-import { ArrowRight, Brain, Calendar, Clock, Info, Loader2 } from 'lucide-react';
+import { useMutation, useQuery } from 'convex/react';
+import {
+  ArrowRight,
+  Brain,
+  Calendar,
+  Clock,
+  Info,
+  Loader2,
+  ThumbsDown,
+  ThumbsUp,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/page-container';
 import { ReviewPhrasingDisplay } from '@/components/review-phrasing-display';
@@ -20,6 +29,7 @@ import { QuizFlowSkeleton } from '@/components/ui/loading-skeletons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
 import { useConceptActions } from '@/hooks/use-concept-actions';
 import { useInstantFeedback } from '@/hooks/use-instant-feedback';
 import { useReviewShortcuts } from '@/hooks/use-keyboard-shortcuts';
@@ -91,8 +101,13 @@ export function ReviewFlow() {
   const [hasAnsweredCurrentQuestion, setHasAnsweredCurrentQuestion] = useState(false);
 
   const { trackAnswer } = useQuizInteractions();
+  const recordFeedbackMutation = useMutation(api.concepts.recordFeedback);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [questionStartTime, setQuestionStartTime] = useState(() => Date.now());
+
+  // User feedback state (thumbs up/down on question quality)
+  const [currentInteractionId, setCurrentInteractionId] = useState<Id<'interactions'> | null>(null);
+  const [userFeedback, setUserFeedback] = useState<'helpful' | 'unhelpful' | null>(null);
   const selectionReasonDescriptions: Record<string, string> = {
     canonical: 'Your preferred phrasing',
     'least-seen': 'Least practiced',
@@ -286,6 +301,8 @@ export function ReviewFlow() {
         nextReviewInfo: null,
       });
       setQuestionStartTime(Date.now());
+      setCurrentInteractionId(null);
+      setUserFeedback(null);
 
       // Clear optimistic state only on phrasing change (not same-phrasing re-review)
       if (!isSamePhrasing) {
@@ -306,6 +323,8 @@ export function ReviewFlow() {
   const handleSubmit = useCallback(() => {
     if (!selectedAnswer || !question || !conceptId || !phrasingId) return;
 
+    // Capture phrasingId at submit time to guard against stale resolution
+    const submittedPhrasingId = phrasingId;
     const isCorrect = selectedAnswer === question.correctAnswer;
 
     // Mark that user has answered this question (before any async operations)
@@ -324,11 +343,12 @@ export function ReviewFlow() {
     // 3. BACKGROUND: Track with FSRS (fire-and-forget for Phase 1 MVP)
     // Calculate time spent from question load to submission (milliseconds)
     const timeSpent = Date.now() - questionStartTime;
-    trackAnswer(conceptId, phrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
+    trackAnswer(conceptId, submittedPhrasingId, selectedAnswer, isCorrect, timeSpent, sessionId)
       .then((reviewInfo) => {
         // 4. PROGRESSIVE: Show scheduling details when backend responds
-        // Only update state if component is still mounted (race condition protection)
-        if (isMountedRef.current) {
+        // Only update state if component is still mounted AND phrasing hasn't changed
+        // (guards against late resolution on wrong question after fast navigation)
+        if (isMountedRef.current && submittedPhrasingId === phrasingId) {
           setFeedbackState({
             showFeedback: true,
             nextReviewInfo: reviewInfo
@@ -338,14 +358,21 @@ export function ReviewFlow() {
                 }
               : null,
           });
+          // Store interaction ID for user feedback
+          if (reviewInfo?.interactionId) {
+            setCurrentInteractionId(reviewInfo.interactionId);
+          }
         }
       })
       .catch((error) => {
         // Phase 1: Log error and notify user, Phase 2 will add retry logic
         console.error('Failed to track answer:', error);
-        toast.error('Failed to save your answer', {
-          description: "Your progress wasn't saved. Please try again.",
-        });
+        // Only show toast if component is still mounted
+        if (isMountedRef.current) {
+          toast.error('Failed to save your answer', {
+            description: "Your progress wasn't saved. Please try again.",
+          });
+        }
       });
   }, [
     selectedAnswer,
@@ -421,6 +448,30 @@ export function ReviewFlow() {
     handleArchivePhrasing,
     handleArchiveConcept,
   ]);
+
+  // Handler for user feedback (thumbs up/down on question quality)
+  const handleUserFeedback = useCallback(
+    async (feedbackType: 'helpful' | 'unhelpful') => {
+      if (!currentInteractionId || userFeedback) return;
+
+      setUserFeedback(feedbackType);
+
+      try {
+        await recordFeedbackMutation({
+          interactionId: currentInteractionId,
+          feedbackType,
+        });
+      } catch (error) {
+        console.error('Failed to record feedback:', error);
+        // Only update state if component is still mounted
+        if (isMountedRef.current) {
+          setUserFeedback(null); // Reset on error
+          toast.error('Failed to save feedback');
+        }
+      }
+    },
+    [currentInteractionId, userFeedback, recordFeedbackMutation]
+  );
 
   // Handler for starting unified edit mode (E key)
   const handleStartInlineEdit = useCallback(() => {
@@ -709,6 +760,51 @@ export function ReviewFlow() {
                         </span>
                       </div>
                     )}
+
+                  {/* User feedback on question quality (hidden when editing) */}
+                  {!unifiedEdit.isEditing && currentInteractionId && (
+                    <div className="flex items-center justify-between pt-2 border-t border-border/30 mt-3">
+                      <span className="text-sm text-muted-foreground">
+                        Was this question helpful?
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUserFeedback('helpful')}
+                          disabled={userFeedback !== null}
+                          className={cn(
+                            'p-2 rounded-md transition-colors',
+                            userFeedback === 'helpful'
+                              ? 'text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-950'
+                              : userFeedback === null
+                                ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                : 'text-muted-foreground/50'
+                          )}
+                          aria-label="Helpful"
+                          aria-pressed={userFeedback === 'helpful'}
+                        >
+                          <ThumbsUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUserFeedback('unhelpful')}
+                          disabled={userFeedback !== null}
+                          className={cn(
+                            'p-2 rounded-md transition-colors',
+                            userFeedback === 'unhelpful'
+                              ? 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-950'
+                              : userFeedback === null
+                                ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                : 'text-muted-foreground/50'
+                          )}
+                          aria-label="Not helpful"
+                          aria-pressed={userFeedback === 'unhelpful'}
+                        >
+                          <ThumbsDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

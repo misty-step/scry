@@ -263,7 +263,7 @@ export const recordInteraction = mutation({
       fsrsState: scheduleResult.state,
     });
 
-    await ctx.db.insert('interactions', {
+    const interactionId = await ctx.db.insert('interactions', {
       userId,
       conceptId: concept._id,
       phrasingId: phrasing._id,
@@ -300,10 +300,47 @@ export const recordInteraction = mutation({
     return {
       conceptId: concept._id,
       phrasingId: phrasing._id,
+      interactionId,
       nextReview: scheduleResult.nextReview,
       scheduledDays: scheduleResult.scheduledDays,
       newState: scheduleResult.state,
     };
+  },
+});
+
+/**
+ * Record user feedback on question quality.
+ * Used for LLM observability - helps identify questions that need improvement.
+ *
+ * Note: This intentionally overwrites any existing feedback on the interaction.
+ * Users may change their mind after seeing the explanation or thinking more.
+ */
+export const recordFeedback = mutation({
+  args: {
+    interactionId: v.id('interactions'),
+    feedbackType: v.union(
+      v.literal('helpful'),
+      v.literal('unhelpful'),
+      v.literal('unclear'),
+      v.literal('incorrect')
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUserFromClerk(ctx);
+
+    const interaction = await ctx.db.get(args.interactionId);
+    if (!interaction || interaction.userId !== user._id) {
+      throw new Error('Interaction not found or unauthorized');
+    }
+
+    await ctx.db.patch(args.interactionId, {
+      feedback: {
+        type: args.feedbackType,
+        givenAt: Date.now(),
+      },
+    });
+
+    return { success: true };
   },
 });
 
