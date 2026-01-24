@@ -122,6 +122,12 @@ jobs:
           retention-days: 90
           if-no-files-found: ignore
 
+      - name: Cleanup temp files
+        if: always()
+        run: |
+          rm -f /tmp/variant-config.yaml /tmp/comparison-result.md
+          echo "Cleaned up temporary files"
+
       - name: Create Pull Request
         if: steps.check.outputs.has_improvements == 'true'
         uses: peter-evans/create-pull-request@v6

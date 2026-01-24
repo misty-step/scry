@@ -8,6 +8,13 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText } from 'ai';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const MUTATION_META_PROMPT = `You are an expert prompt engineer. Given a prompt template, generate {{count}} variations that might perform better for the task.
 
 ORIGINAL PROMPT:
@@ -69,11 +76,34 @@ export async function mutatePrompt(
     String(count)
   );
 
-  const { text } = await generateText({
-    model: openrouter(model),
-    prompt,
-    temperature,
-  });
+  // Retry loop for API failures
+  let text: string;
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const result = await generateText({
+        model: openrouter(model),
+        prompt,
+        temperature,
+      });
+      text = result.text;
+      break;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`Mutation API attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
+
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY_MS * attempt; // Exponential backoff
+        console.log(`Retrying in ${delay}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  if (!text!) {
+    throw new Error(`Mutation API failed after ${MAX_RETRIES} attempts: ${lastError?.message}`);
+  }
 
   // Parse JSON response - handle potential markdown code blocks
   let jsonText = text.trim();

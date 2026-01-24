@@ -12,6 +12,7 @@
  */
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { EvalResult, evaluatePrompt } from './lib/evaluate';
 import { logExperiment } from './lib/experiment-log';
@@ -166,7 +167,7 @@ async function runComparison(config: ComparisonConfig): Promise<ComparisonResult
         config.value || MODEL_ALTERNATIVES[Math.floor(Math.random() * MODEL_ALTERNATIVES.length)];
       console.log(`🤖 Testing model variant: ${newModel}`);
       const variantConfig = createVariantConfig(config.evalConfig, 'model', newModel);
-      variantConfigPath = '/tmp/variant-config.yaml';
+      variantConfigPath = join(tmpdir(), 'variant-config.yaml');
       writeFileSync(variantConfigPath, variantConfig);
       variantDescription = `model: ${newModel}`;
       break;
@@ -179,7 +180,7 @@ async function runComparison(config: ComparisonConfig): Promise<ComparisonResult
       const newTemp = Math.max(0, Math.min(1, currentTemp + delta));
       console.log(`🌡️ Testing temperature variant: ${newTemp}`);
       const variantConfig = createVariantConfig(config.evalConfig, 'temperature', String(newTemp));
-      variantConfigPath = '/tmp/variant-config.yaml';
+      variantConfigPath = join(tmpdir(), 'variant-config.yaml');
       writeFileSync(variantConfigPath, variantConfig);
       variantDescription = `temperature: ${newTemp}`;
       break;
@@ -434,8 +435,9 @@ async function main() {
     }
 
     // Write markdown to file for CI use
-    writeFileSync('/tmp/comparison-result.md', formatAsMarkdown(result));
-    console.log('\n✅ Markdown saved to /tmp/comparison-result.md');
+    const resultPath = join(tmpdir(), 'comparison-result.md');
+    writeFileSync(resultPath, formatAsMarkdown(result));
+    console.log(`\n✅ Markdown saved to ${resultPath}`);
   } catch (error) {
     console.error('\n❌ Comparison failed:', error);
     process.exit(1);
