@@ -1,0 +1,60 @@
+name: Sentry Issue Triage
+
+on:
+  repository_dispatch:
+    types: [sentry-issue]
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "bug" --repo ${{ github.repository }} --color "d73a4a" --description "Something is not working" 2>/dev/null || true
+          gh label create "sentry" --repo ${{ github.repository }} --color "362d59" --description "From Sentry error tracking" 2>/dev/null || true
+          gh label create "needs-triage" --repo ${{ github.repository }} --color "fbca04" --description "Needs human review" 2>/dev/null || true
+
+      - name: Create GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ github.event.client_payload.title }}
+          ISSUE_ID: ${{ github.event.client_payload.issue_id }}
+          ISSUE_LEVEL: ${{ github.event.client_payload.level }}
+          ISSUE_CULPRIT: ${{ github.event.client_payload.culprit }}
+          ISSUE_COUNT: ${{ github.event.client_payload.count }}
+          ISSUE_USER_COUNT: ${{ github.event.client_payload.user_count }}
+          ISSUE_URL: ${{ github.event.client_payload.issue_url }}
+          ISSUE_FIRST_SEEN: ${{ github.event.client_payload.first_seen }}
+          ISSUE_LAST_SEEN: ${{ github.event.client_payload.last_seen }}
+          ISSUE_PROJECT: ${{ github.event.client_payload.project }}
+        run: |
+          # Write body to temp file to avoid shell injection
+          cat > /tmp/issue_body.md << EOFBODY
+          ## Sentry Issue
+
+          **Issue ID:** ${ISSUE_ID}
+          **Level:** ${ISSUE_LEVEL}
+          **Culprit:** \`${ISSUE_CULPRIT}\`
+          **Event Count:** ${ISSUE_COUNT}
+          **Affected Users:** ${ISSUE_USER_COUNT}
+
+          **Sentry URL:** ${ISSUE_URL}
+
+          ---
+
+          **First Seen:** ${ISSUE_FIRST_SEEN}
+          **Last Seen:** ${ISSUE_LAST_SEEN}
+          **Project:** ${ISSUE_PROJECT}
+          EOFBODY
+
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "[Sentry] ${ISSUE_TITLE}" \
+            --label "bug,sentry,needs-triage" \
+            --body-file /tmp/issue_body.md
+
