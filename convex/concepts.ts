@@ -1,7 +1,8 @@
+import type { Expression, FilterBuilder } from 'convex/server';
 import { v } from 'convex/values';
 import type { ConceptBulkAction } from '../types/concepts';
 import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
+import type { DataModel, Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
@@ -25,6 +26,7 @@ import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userSt
 
 type ConceptDoc = Doc<'concepts'>;
 type PhrasingDoc = Doc<'phrasings'>;
+type PhrasingFilter = (q: FilterBuilder<DataModel['phrasings']>) => Expression<boolean>;
 
 type SelectionResult = {
   concept: ConceptDoc;
@@ -36,12 +38,45 @@ type SelectionResult = {
 
 const MAX_CONCEPT_CANDIDATES = 25;
 const MAX_PHRASINGS = 50;
+const MAX_PHRASINGS_PER_BATCH = 50; // Batch size for paginated phrasing updates (issue #121)
 const MAX_INTERACTIONS = 10;
 const MAX_EXISTING_TITLES = 250;
 const DEFAULT_LIBRARY_PAGE_SIZE = 25;
 const MAX_LIBRARY_PAGE_SIZE = 100;
 const MIN_LIBRARY_PAGE_SIZE = 10;
 type ConceptLibrarySort = 'recent' | 'nextReview';
+
+/**
+ * Paginate through all phrasings for a concept and apply an update.
+ * Prevents unbounded queries while ensuring ALL phrasings are processed.
+ */
+async function updatePhrasingsBatched(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  conceptId: Id<'concepts'>,
+  filter: PhrasingFilter,
+  patch: Record<string, unknown>
+): Promise<number> {
+  let processed = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const batch = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', conceptId))
+      .filter(filter)
+      .take(MAX_PHRASINGS_PER_BATCH);
+
+    for (const phrasing of batch) {
+      await ctx.db.patch(phrasing._id, patch);
+      processed++;
+    }
+
+    hasMore = batch.length === MAX_PHRASINGS_PER_BATCH;
+  }
+
+  return processed;
+}
 
 export const createMany = internalMutation({
   args: {
@@ -1055,19 +1090,14 @@ async function archiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
     updatedAt: now,
   });
 
-  // Limit phrasings to prevent unbounded queries (issue #121)
-  const phrasings = await ctx.db
-    .query('phrasings')
-    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
-    .filter((q) => q.eq(q.field('archivedAt'), undefined))
-    .take(MAX_PHRASINGS);
-
-  for (const phrasing of phrasings) {
-    await ctx.db.patch(phrasing._id, {
-      archivedAt: now,
-      updatedAt: now,
-    });
-  }
+  // Process all phrasings in batches to prevent unbounded queries (issue #121)
+  await updatePhrasingsBatched(
+    ctx,
+    userId,
+    concept._id,
+    (q) => q.eq(q.field('archivedAt'), undefined),
+    { archivedAt: now, updatedAt: now }
+  );
 
   const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
   await updateStatsCounters(ctx, userId, {
@@ -1086,16 +1116,14 @@ async function unarchiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concep
   const now = Date.now();
   await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
 
-  // Limit phrasings to prevent unbounded queries (issue #121)
-  const phrasings = await ctx.db
-    .query('phrasings')
-    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
-    .filter((q) => q.neq(q.field('archivedAt'), undefined))
-    .take(MAX_PHRASINGS);
-
-  for (const phrasing of phrasings) {
-    await ctx.db.patch(phrasing._id, { archivedAt: undefined, updatedAt: now });
-  }
+  // Process all phrasings in batches to prevent unbounded queries (issue #121)
+  await updatePhrasingsBatched(
+    ctx,
+    userId,
+    concept._id,
+    (q) => q.neq(q.field('archivedAt'), undefined),
+    { archivedAt: undefined, updatedAt: now }
+  );
 
   const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
   await updateStatsCounters(ctx, userId, {
@@ -1118,19 +1146,14 @@ async function softDeleteConceptDoc(ctx: MutationCtx, userId: Id<'users'>, conce
     updatedAt: now,
   });
 
-  // Limit phrasings to prevent unbounded queries (issue #121)
-  const phrasings = await ctx.db
-    .query('phrasings')
-    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
-    .filter((q) => q.eq(q.field('deletedAt'), undefined))
-    .take(MAX_PHRASINGS);
-
-  for (const phrasing of phrasings) {
-    await ctx.db.patch(phrasing._id, {
-      deletedAt: now,
-      updatedAt: now,
-    });
-  }
+  // Process all phrasings in batches to prevent unbounded queries (issue #121)
+  await updatePhrasingsBatched(
+    ctx,
+    userId,
+    concept._id,
+    (q) => q.eq(q.field('deletedAt'), undefined),
+    { deletedAt: now, updatedAt: now }
+  );
 
   const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
   await updateStatsCounters(ctx, userId, {
@@ -1149,16 +1172,14 @@ async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   const now = Date.now();
   await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
 
-  // Limit phrasings to prevent unbounded queries (issue #121)
-  const phrasings = await ctx.db
-    .query('phrasings')
-    .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
-    .filter((q) => q.neq(q.field('deletedAt'), undefined))
-    .take(MAX_PHRASINGS);
-
-  for (const phrasing of phrasings) {
-    await ctx.db.patch(phrasing._id, { deletedAt: undefined, updatedAt: now });
-  }
+  // Process all phrasings in batches to prevent unbounded queries (issue #121)
+  await updatePhrasingsBatched(
+    ctx,
+    userId,
+    concept._id,
+    (q) => q.neq(q.field('deletedAt'), undefined),
+    { deletedAt: undefined, updatedAt: now }
+  );
 
   const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
   await updateStatsCounters(ctx, userId, {
