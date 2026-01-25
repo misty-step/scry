@@ -76,6 +76,12 @@ function verifySignature(body: string, signature: string | null, secret: string)
   hmac.update(body, 'utf8');
   const digest = hmac.digest('hex');
 
+  // Length check before timing-safe comparison to prevent length oracle attacks
+  // timingSafeEqual throws if lengths differ, which could leak length info
+  if (digest.length !== signature.length) {
+    return false;
+  }
+
   // Timing-safe comparison to prevent timing attacks
   try {
     return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
