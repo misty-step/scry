@@ -1055,11 +1055,12 @@ async function archiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
     updatedAt: now,
   });
 
+  // Limit phrasings to prevent unbounded queries (issue #121)
   const phrasings = await ctx.db
     .query('phrasings')
     .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
     .filter((q) => q.eq(q.field('archivedAt'), undefined))
-    .collect();
+    .take(MAX_PHRASINGS);
 
   for (const phrasing of phrasings) {
     await ctx.db.patch(phrasing._id, {
@@ -1085,11 +1086,12 @@ async function unarchiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concep
   const now = Date.now();
   await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
 
+  // Limit phrasings to prevent unbounded queries (issue #121)
   const phrasings = await ctx.db
     .query('phrasings')
     .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
     .filter((q) => q.neq(q.field('archivedAt'), undefined))
-    .collect();
+    .take(MAX_PHRASINGS);
 
   for (const phrasing of phrasings) {
     await ctx.db.patch(phrasing._id, { archivedAt: undefined, updatedAt: now });
@@ -1116,11 +1118,12 @@ async function softDeleteConceptDoc(ctx: MutationCtx, userId: Id<'users'>, conce
     updatedAt: now,
   });
 
+  // Limit phrasings to prevent unbounded queries (issue #121)
   const phrasings = await ctx.db
     .query('phrasings')
     .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
     .filter((q) => q.eq(q.field('deletedAt'), undefined))
-    .collect();
+    .take(MAX_PHRASINGS);
 
   for (const phrasing of phrasings) {
     await ctx.db.patch(phrasing._id, {
@@ -1146,11 +1149,12 @@ async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   const now = Date.now();
   await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
 
+  // Limit phrasings to prevent unbounded queries (issue #121)
   const phrasings = await ctx.db
     .query('phrasings')
     .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', concept._id))
     .filter((q) => q.neq(q.field('deletedAt'), undefined))
-    .collect();
+    .take(MAX_PHRASINGS);
 
   for (const phrasing of phrasings) {
     await ctx.db.patch(phrasing._id, { deletedAt: undefined, updatedAt: now });
