@@ -39,6 +39,7 @@ type SelectionResult = {
 const MAX_CONCEPT_CANDIDATES = 25;
 const MAX_PHRASINGS = 50;
 const MAX_PHRASINGS_PER_BATCH = 50; // Batch size for paginated phrasing updates (issue #121)
+const MAX_BATCH_ITERATIONS = 100; // Safety limit: 100 * 50 = 5000 phrasings max
 const MAX_INTERACTIONS = 10;
 const MAX_EXISTING_TITLES = 250;
 const DEFAULT_LIBRARY_PAGE_SIZE = 25;
@@ -58,21 +59,28 @@ async function updatePhrasingsBatched(
   patch: Record<string, unknown>
 ): Promise<number> {
   let processed = 0;
-  let hasMore = true;
+  let iterations = 0;
 
-  while (hasMore) {
+  while (iterations < MAX_BATCH_ITERATIONS) {
+    iterations++;
     const batch = await ctx.db
       .query('phrasings')
       .withIndex('by_user_concept', (q) => q.eq('userId', userId).eq('conceptId', conceptId))
       .filter(filter)
       .take(MAX_PHRASINGS_PER_BATCH);
 
+    if (batch.length === 0) {
+      break;
+    }
+
     for (const phrasing of batch) {
       await ctx.db.patch(phrasing._id, patch);
       processed++;
     }
+  }
 
-    hasMore = batch.length === MAX_PHRASINGS_PER_BATCH;
+  if (iterations >= MAX_BATCH_ITERATIONS) {
+    console.error(`updatePhrasingsBatched: Hit MAX_BATCH_ITERATIONS for concept ${conceptId}`);
   }
 
   return processed;
