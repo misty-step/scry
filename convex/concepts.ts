@@ -50,6 +50,15 @@ type ConceptLibrarySort = 'recent' | 'nextReview';
 /**
  * Paginate through all phrasings for a concept and apply an update.
  * Prevents unbounded queries while ensuring ALL phrasings are processed.
+ *
+ * PAGINATION PATTERN: Each iteration patches matching phrasings, which changes
+ * their state (e.g., isArchived: false → true). Since the filter excludes
+ * already-patched documents, the next query returns the NEXT batch of unpatched
+ * phrasings. This is "filter-based pagination" - no cursor needed because the
+ * filter condition itself advances through the dataset.
+ *
+ * Safety cap (MAX_BATCH_ITERATIONS) prevents infinite loops if filter doesn't
+ * properly exclude patched documents.
  */
 async function updatePhrasingsBatched(
   ctx: MutationCtx,
