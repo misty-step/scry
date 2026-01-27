@@ -92,7 +92,7 @@ const nextConfig: NextConfig = {
               "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: https://img.clerk.com",
               "font-src 'self' data: https://fonts.gstatic.com",
-              `connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://vercel.live https://cdn.vercel-insights.com https://va.vercel-scripts.com https://*.convex.cloud wss://*.convex.cloud ${clerkDomains} https://clerk-telemetry.com`,
+              `connect-src 'self' https://api.anthropic.com https://generativelanguage.googleapis.com https://vercel.live https://cdn.vercel-insights.com https://va.vercel-scripts.com https://*.convex.cloud wss://*.convex.cloud ${clerkDomains} https://clerk-telemetry.com https://us.i.posthog.com https://us-assets.i.posthog.com`,
               `frame-src ${process.env.VERCEL_ENV === 'production' ? 'https://challenges.cloudflare.com' : "'self' https://vercel.live https://challenges.cloudflare.com"}`,
               "worker-src 'self' blob:",
               "object-src 'none'",
@@ -152,6 +152,14 @@ const nextConfig: NextConfig = {
   // Configure rewrites for potential CDN integration
   async rewrites() {
     return [
+      {
+        source: '/ingest/static/:path*',
+        destination: 'https://us-assets.i.posthog.com/static/:path*',
+      },
+      {
+        source: '/ingest/:path*',
+        destination: 'https://us.i.posthog.com/:path*',
+      },
       // Allow for future CDN integration
       {
         source: '/cdn/quiz-assets/:path*',
