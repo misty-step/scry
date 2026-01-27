@@ -7,6 +7,7 @@ import { ConditionalNavbar } from '@/components/conditional-navbar';
 import { ConvexErrorBoundary } from '@/components/convex-error-boundary';
 import { DeploymentVersionGuard } from '@/components/deployment-version-guard';
 import { Footer } from '@/components/footer';
+import { PostHogProvider } from '@/components/providers/PostHogProvider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -52,19 +53,21 @@ export default function RootLayout({
           <TooltipProvider delayDuration={300}>
             <ConfirmationProvider>
               <ClerkConvexProvider>
-                <ConvexErrorBoundary>
-                  <DeploymentVersionGuard>
-                    <div className={getLayoutClassName()}>
-                      <ConditionalNavbar />
-                      {needsNavbarSpacer() && <div className="h-16" />}
-                      <main>{children}</main>
-                      <Footer />
-                    </div>
-                    <Toaster />
-                    <AnalyticsWrapper />
-                    <SpeedInsights />
-                  </DeploymentVersionGuard>
-                </ConvexErrorBoundary>
+                <PostHogProvider>
+                  <ConvexErrorBoundary>
+                    <DeploymentVersionGuard>
+                      <div className={getLayoutClassName()}>
+                        <ConditionalNavbar />
+                        {needsNavbarSpacer() && <div className="h-16" />}
+                        <main>{children}</main>
+                        <Footer />
+                      </div>
+                      <Toaster />
+                      <AnalyticsWrapper />
+                      <SpeedInsights />
+                    </DeploymentVersionGuard>
+                  </ConvexErrorBoundary>
+                </PostHogProvider>
               </ClerkConvexProvider>
             </ConfirmationProvider>
           </TooltipProvider>
