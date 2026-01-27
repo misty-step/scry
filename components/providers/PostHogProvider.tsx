@@ -1,36 +1,39 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, type ReactNode } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import posthog from 'posthog-js';
-import { PostHogProvider as PHProvider, usePostHog } from 'posthog-js/react';
+import { PostHogProvider as PostHogReactProvider, usePostHog } from 'posthog-js/react';
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || '/ingest';
+const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? '/ingest';
+const POSTHOG_ENABLED = Boolean(POSTHOG_KEY);
+type SearchParams = ReturnType<typeof useSearchParams>;
 
-function PostHogPageView() {
+function buildCurrentUrl(pathname: string, searchParams: SearchParams): string {
+  const query = searchParams?.toString();
+  const suffix = query ? `?${query}` : '';
+  return `${window.location.origin}${pathname}${suffix}`;
+}
+
+function CapturePostHogPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const ph = usePostHog();
+  const posthogClient = usePostHog();
 
   useEffect(() => {
-    if (pathname && ph) {
-      let url = window.origin + pathname;
-      if (searchParams?.toString()) {
-        url = url + '?' + searchParams.toString();
-      }
-      ph.capture('$pageview', { $current_url: url });
-    }
-  }, [pathname, searchParams, ph]);
+    if (!pathname || !posthogClient) return;
+    posthogClient.capture('$pageview', {
+      $current_url: buildCurrentUrl(pathname, searchParams),
+    });
+  }, [pathname, searchParams, posthogClient]);
 
   return null;
 }
 
-export function PostHogProvider({ children }: { children: React.ReactNode }) {
+export function PostHogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    if (!POSTHOG_KEY || typeof window === 'undefined') {
-      return;
-    }
+    if (!POSTHOG_KEY || typeof window === 'undefined') return;
 
     posthog.init(POSTHOG_KEY, {
       api_host: POSTHOG_HOST,
@@ -44,16 +47,14 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  if (!POSTHOG_KEY) {
-    return <>{children}</>;
-  }
+  if (!POSTHOG_ENABLED) return <>{children}</>;
 
   return (
-    <PHProvider client={posthog}>
+    <PostHogReactProvider client={posthog}>
       <Suspense fallback={null}>
-        <PostHogPageView />
+        <CapturePostHogPageView />
       </Suspense>
       {children}
-    </PHProvider>
+    </PostHogReactProvider>
   );
 }
