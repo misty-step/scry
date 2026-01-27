@@ -10,7 +10,7 @@ An AI-powered quiz generation and learning application built with Next.js 15 and
 - **Interaction Analytics**: Each answer attempt is recorded with timing and accuracy data
 - **Optimistic UI**: Immediate feedback for all operations with automatic error rollback
 - **Pure FSRS Spaced Repetition**: Unmodified FSRS algorithm without comfort features or daily limits
-- **Magic Link Authentication**: Secure, passwordless authentication with Convex Auth
+- **Clerk Authentication**: Secure, passwordless authentication with Clerk
 - **Real-time Updates**: Built on Convex for instant data synchronization
 - **Responsive Design**: Modern UI with Tailwind CSS and shadcn/ui components
 - **Keyboard Shortcuts**: Power user shortcuts for efficient navigation and review
@@ -34,7 +34,6 @@ Every "enhancement" that makes spaced repetition more comfortable makes it less 
 - pnpm 10.0.0 or higher
 - Convex account (free tier available)
 - Google AI API key (for quiz generation)
-- Resend API key for email
 
 ## Quick Start
 
@@ -117,12 +116,14 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 | `GOOGLE_AI_API_KEY` | Google AI API key for quiz generation and embeddings | `AIzaSy...` |
 | `NEXT_PUBLIC_CONVEX_URL` | Convex deployment URL | `https://...convex.cloud` |
 | `CONVEX_DEPLOY_KEY` | Convex deploy key (for Vercel deployments) | `prod:...` |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key | `pk_live_...` |
+| `CLERK_SECRET_KEY` | Clerk secret key | `sk_live_...` |
 
 ### Optional Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_APP_URL` | Application base URL for magic links | Auto-detected |
+| `NEXT_PUBLIC_APP_URL` | Application base URL for auth redirects | Auto-detected |
 
 For detailed setup instructions, see [docs/environment-setup.md](docs/environment-setup.md).
 
@@ -427,20 +428,25 @@ npx convex logs
 
 ## Production URLs
 
-- **Current Production**: https://scry-o08qcl16e-moomooskycow.vercel.app
-- **Health Check**: https://scry-o08qcl16e-moomooskycow.vercel.app/api/health
+- **Production**: https://scry.study
+- **Health Check**: https://scry.study/api/health
 
 <!-- Deployment test: verifying atomic Convex+Vercel deployment (retry with fixed deploy key) -->
 
 ## Architecture
 
 - **Framework**: Next.js 15 with App Router
-- **Backend**: Convex for database, authentication, and real-time features
+- **Backend**: Convex for database and real-time features
 - **Database Model**: Individual question persistence with separate interactions tracking
 - **AI Integration**: Google Gemini via Vercel AI SDK
-- **Authentication**: Magic link email authentication with Convex Auth
+- **Authentication**: Clerk Authentication
 - **Styling**: Tailwind CSS v4 with shadcn/ui components
-- **Email**: Resend for magic link delivery
+
+## Observability
+
+- **Sentry**: Error tracking with PII scrubbing
+- **PostHog**: Product analytics and feature flags
+- **Vercel Analytics**: Web vitals
 
 ## Key Features
 
@@ -453,8 +459,7 @@ npx convex logs
 - API endpoint: `/api/generate-questions`
 
 ### Authentication System
-- Magic link authentication via email
-- Session management with Convex Auth
+- Clerk authentication and session management
 - Protected routes and API endpoints
 - Comprehensive error handling and logging
 
@@ -678,7 +683,7 @@ The debug panel provides real-time performance monitoring during development:
 - Verify Clerk configuration in dashboard and environment variables
 - Check `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are set
 - Ensure `NEXT_PUBLIC_APP_URL` is set correctly in production
-- Verify Convex auth mutations are deployed
+- Ensure Clerk authentication integration is configured correctly
 
 **Convex connection issues**:
 - Verify `NEXT_PUBLIC_CONVEX_URL` is correct from your Convex dashboard
