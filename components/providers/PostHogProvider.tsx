@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, type ReactNode } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { useUser } from '@clerk/nextjs';
 import posthog from 'posthog-js';
 import { PostHogProvider as PostHogReactProvider, usePostHog } from 'posthog-js/react';
 
@@ -32,6 +33,8 @@ function CapturePostHogPageView() {
 }
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
+  const { user, isLoaded } = useUser();
+
   useEffect(() => {
     if (!POSTHOG_KEY || typeof window === 'undefined') return;
 
@@ -40,12 +43,27 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       person_profiles: 'identified_only',
       capture_pageview: false, // We capture manually for SPA navigation
       capture_pageleave: true,
+      mask_all_text: true, // Prevent autocapture from sending text content
       autocapture: {
         dom_event_allowlist: ['click', 'submit'],
         element_allowlist: ['button', 'a', 'input', 'form'],
       },
+      session_recording: {
+        maskAllInputs: true, // Mask all input values in session recordings
+      },
     });
   }, []);
+
+  // Identify logged-in users to PostHog (user.id only, no PII)
+  useEffect(() => {
+    if (!POSTHOG_ENABLED || !isLoaded) return;
+
+    if (user) {
+      posthog.identify(user.id);
+    } else {
+      posthog.reset();
+    }
+  }, [user, isLoaded]);
 
   if (!POSTHOG_ENABLED) return <>{children}</>;
 
