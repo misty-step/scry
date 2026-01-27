@@ -45,6 +45,8 @@ graph TB
     end
 
     Pages --> Hooks --> Backend
+    Client --> ClerkAPI
+    ClerkAPI --> Backend
     Backend --> Data
     Backend --> GoogleAI
     Client --> Sentry
@@ -53,7 +55,7 @@ graph TB
 
 ## Directory Structure
 
-```
+```text
 scry/
 ├── app/                    # Next.js App Router
 │   ├── (authenticated)/    # Protected routes
