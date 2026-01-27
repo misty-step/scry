@@ -2,8 +2,8 @@
 
 This guide helps you configure environment variables for the Scry application across different environments.
 
-**Last Updated**: July 2025  
-**Tech Stack**: Next.js 15, Convex (backend + auth), Google Gemini AI, Resend (email)
+**Last Updated**: January 2026
+**Tech Stack**: Next.js 15, Convex (backend), Clerk (auth), Google Gemini AI
 
 ## Quick Start
 
@@ -29,15 +29,13 @@ This guide helps you configure environment variables for the Scry application ac
 | `NEXT_PUBLIC_CONVEX_URL` | Convex deployment URL | `https://excited-penguin-123.convex.cloud` | ✅ |
 | `CONVEX_DEPLOY_KEY` | Convex deployment key (for builds) | `prod:abc123...` | ✅ (Vercel only) |
 
-### Email Configuration (Convex Environment)
-
-These are set in Convex dashboard, not `.env.local`:
+### Clerk Authentication
 
 | Variable | Description | Example | Required |
 |----------|-------------|---------|----------|
-| `RESEND_API_KEY` | Resend API key for magic link emails | `re_...` | ✅ |
-| `EMAIL_FROM` | From address for auth emails | `Scry <noreply@yourdomain.com>` | ✅ |
-| `NEXT_PUBLIC_APP_URL` | Application URL for magic links | `https://scry.vercel.app` | Optional |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key | `pk_test_...` | ✅ |
+| `CLERK_SECRET_KEY` | Clerk secret key | `sk_test_...` | ✅ |
+| `CLERK_WEBHOOK_SECRET` | Webhook signing secret | `whsec_...` | ✅ (prod) |
 
 ## Setting Environment Variables
 
@@ -58,9 +56,8 @@ Set these in Convex dashboard (not in `.env.local`):
 
 ```bash
 # Set production environment variables
-npx convex env set RESEND_API_KEY "your-resend-api-key" --prod
-npx convex env set EMAIL_FROM "Scry <noreply@yourdomain.com>" --prod
-npx convex env set NEXT_PUBLIC_APP_URL "https://yourdomain.com" --prod
+npx convex env set GOOGLE_AI_API_KEY "your-google-ai-key" --prod
+npx convex env set AI_MODEL "google/gemini-3-flash-preview" --prod
 
 # Verify they're set
 npx convex env list --prod
@@ -128,12 +125,13 @@ Add these in Vercel dashboard → Settings → Environment Variables:
 3. **Get deployment URL**: Shown in terminal or Convex dashboard
 4. **Generate deploy key**: Dashboard → Settings → Deploy Keys
 
-### Resend API Key
+### Clerk Configuration
 
-1. **Create account**: https://resend.com
-2. **Get API key**: Dashboard → API Keys
-3. **Create key**: Name it "Scry Production"
-4. **Set in Convex**: `npx convex env set RESEND_API_KEY "re_..." --prod`
+1. **Create account**: https://clerk.com
+2. **Create application**: Dashboard → Applications → Create application
+3. **Get API keys**: Dashboard → API Keys
+4. **Copy keys**: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
+5. **Configure webhook**: Dashboard → Webhooks (set `CLERK_WEBHOOK_SECRET`)
 
 ## Troubleshooting
 
@@ -142,10 +140,10 @@ Add these in Vercel dashboard → Settings → Environment Variables:
 - Check the URL format: `https://[deployment].convex.cloud`
 - Restart your dev server after adding
 
-### "Failed to send magic link email"
-- Verify RESEND_API_KEY is set in Convex: `npx convex env list --prod`
-- Check EMAIL_FROM format: `Name <email@domain.com>`
-- Ensure Resend account is verified
+### "Authentication not working"
+- Verify Clerk keys are set correctly in `.env.local`
+- Check that `CLERK_WEBHOOK_SECRET` matches Clerk dashboard
+- Ensure Clerk application is configured for your domain
 
 ### "Convex functions not updating"
 - Make sure `npx convex dev` is running
@@ -220,11 +218,12 @@ pnpm deploy:check
 2. Create a new API key
 3. Copy the key starting with `AIzaSy...`
 
-### Resend API Key
+### Clerk API Keys
 
-1. Visit [Resend API Keys](https://resend.com/api-keys)
-2. Create a new API key
-3. Copy the key starting with `re_...`
+1. Visit [Clerk Dashboard](https://dashboard.clerk.com)
+2. Select your application
+3. Go to API Keys section
+4. Copy `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
 
 ### Vercel KV (Optional)
 
@@ -252,10 +251,10 @@ pnpm deploy:check
 - Check network connectivity
 - Ensure database is running and accessible
 
-**Email sending fails**:
-- Verify Resend API key is valid
-- Check email format in `EMAIL_FROM`
-- Ensure SMTP settings are correct
+**Authentication fails**:
+- Verify Clerk API keys are valid
+- Check that webhook secret matches
+- Ensure Clerk application is properly configured
 
 ### Getting Help
 
