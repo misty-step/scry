@@ -293,7 +293,6 @@ export const recordInteraction = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     const userId = user._id;
-    await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
 
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== userId) {
@@ -304,6 +303,8 @@ export const recordInteraction = mutation({
     if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
       throw new Error('Phrasing not found or unauthorized');
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
 
     const nowMs = Date.now();
     const now = new Date(nowMs);
@@ -381,12 +382,13 @@ export const recordFeedback = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
-    await enforceRateLimit(ctx, user._id.toString(), 'recordFeedback', false);
 
     const interaction = await ctx.db.get(args.interactionId);
     if (!interaction || interaction.userId !== user._id) {
       throw new Error('Interaction not found or unauthorized');
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'recordFeedback', false);
 
     await ctx.db.patch(args.interactionId, {
       feedback: {
@@ -791,7 +793,6 @@ export const requestPhrasingGeneration = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
-    await enforceRateLimit(ctx, user._id.toString(), 'requestPhrasingGeneration', false);
 
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== user._id) {
@@ -802,6 +803,8 @@ export const requestPhrasingGeneration = mutation({
     if (existingJob) {
       throw new Error('Generation already in progress for this concept');
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'requestPhrasingGeneration', false);
 
     const now = Date.now();
     const jobId = await ctx.db.insert('generationJobs', {
@@ -1056,6 +1059,8 @@ export const runBulkAction = mutation({
     if (args.conceptIds.length === 0) {
       return { processed: 0, skipped: 0 };
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'bulkAction', false);
 
     const uniqueIds = new Set<Id<'concepts'>>(args.conceptIds);
     let processed = 0;

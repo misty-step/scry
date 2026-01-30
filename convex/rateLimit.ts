@@ -4,7 +4,7 @@ import type { Doc } from './_generated/dataModel';
 import { DataModel } from './_generated/dataModel';
 import { internalMutation, mutation, query } from './_generated/server';
 
-const MAX_RATE_LIMIT_READS = 1000; // Hard cap per query to avoid unbounded bandwidth
+const MAX_RATE_LIMIT_READS = 1001; // Hard cap per query; keep >= maxAttempts + 1
 const CLEANUP_DELETE_BATCH_SIZE = 100;
 
 type DbContext = { db: GenericDatabaseReader<DataModel> };
@@ -35,6 +35,11 @@ export const RATE_LIMITS = {
     windowMs: 3600000, // 1 hour
     errorMessage: 'Too many feedback submissions. Please try again later.',
   },
+  bulkAction: {
+    maxAttempts: 100,
+    windowMs: 3600000, // 1 hour
+    errorMessage: 'Too many bulk operations. Please try again later.',
+  },
   requestPhrasingGeneration: {
     maxAttempts: 50,
     windowMs: 3600000, // 1 hour
@@ -61,7 +66,13 @@ export async function checkEmailRateLimit(
   const limit = RATE_LIMITS[limitType];
   const windowStart = Date.now() - limit.windowMs;
 
-  const recentAttempts = await loadRecentAttempts(ctx, email, windowStart, limit.maxAttempts);
+  const recentAttempts = await loadRecentAttempts(
+    ctx,
+    email,
+    limitType,
+    windowStart,
+    limit.maxAttempts
+  );
 
   if (recentAttempts.length >= limit.maxAttempts) {
     const oldestInWindow = recentAttempts[recentAttempts.length - 1];
@@ -88,7 +99,13 @@ export async function checkIpRateLimit(
   const limit = RATE_LIMITS[limitType];
   const windowStart = Date.now() - limit.windowMs;
 
-  const recentAttempts = await loadRecentAttempts(ctx, ipAddress, windowStart, limit.maxAttempts);
+  const recentAttempts = await loadRecentAttempts(
+    ctx,
+    ipAddress,
+    limitType,
+    windowStart,
+    limit.maxAttempts
+  );
 
   if (recentAttempts.length >= limit.maxAttempts) {
     const oldestInWindow = recentAttempts[recentAttempts.length - 1];
@@ -134,25 +151,35 @@ export async function enforceRateLimit(
   ctx: GenericMutationCtx<DataModel>,
   identifier: string,
   limitType: RateLimitType,
-  isEmail: boolean = false
+  _isEmail: boolean = false
 ): Promise<void> {
-  const checkResult = isEmail
-    ? await checkEmailRateLimit(ctx, identifier, limitType)
-    : await checkIpRateLimit(ctx, identifier, limitType);
+  const limit = RATE_LIMITS[limitType];
+  const windowStart = Date.now() - limit.windowMs;
 
-  if (!checkResult.allowed) {
-    const limit = RATE_LIMITS[limitType];
+  // Record this attempt first to prevent race condition bypass
+  await recordRateLimitAttempt(ctx, identifier, limitType);
+
+  const recentAttempts = await loadRecentAttempts(
+    ctx,
+    identifier,
+    limitType,
+    windowStart,
+    limit.maxAttempts + 1
+  );
+
+  if (recentAttempts.length > limit.maxAttempts) {
     const error = new Error(limit.errorMessage) as Error & {
       code: string;
       retryAfter: number;
     };
     error.code = 'RATE_LIMIT_EXCEEDED';
-    error.retryAfter = checkResult.retryAfter || 60;
+    const oldestInWindow = recentAttempts[recentAttempts.length - 1];
+    error.retryAfter = Math.max(
+      0,
+      Math.ceil((oldestInWindow.timestamp + limit.windowMs - Date.now()) / 1000)
+    );
     throw error;
   }
-
-  // Record this attempt
-  await recordRateLimitAttempt(ctx, identifier, limitType);
 }
 
 /**
@@ -171,6 +198,7 @@ export const getRateLimitStatus = query({
     const recentAttempts = await loadRecentAttempts(
       ctx,
       args.identifier,
+      args.limitType,
       windowStart,
       limit.maxAttempts
     );
@@ -225,6 +253,7 @@ export const checkApiRateLimit = mutation({
     const recentAttempts = await loadRecentAttempts(
       ctx,
       args.ipAddress,
+      args.operation,
       windowStart,
       limit.maxAttempts
     );
@@ -259,6 +288,7 @@ export const checkApiRateLimit = mutation({
 async function loadRecentAttempts(
   ctx: DbContext,
   identifier: string,
+  operation: string,
   windowStart: number,
   maxAttempts: number
 ): Promise<Array<RateLimitDoc>> {
@@ -266,6 +296,7 @@ async function loadRecentAttempts(
   return await ctx.db
     .query('rateLimits')
     .withIndex('by_identifier', (q) => q.eq('identifier', identifier).gt('timestamp', windowStart))
+    .filter((q) => q.eq(q.field('operation'), operation))
     .order('desc')
     .take(readLimit);
 }
