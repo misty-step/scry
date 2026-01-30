@@ -428,6 +428,69 @@ describe('Rate limit behavior', () => {
     );
   });
 
+  it('blocks recordInteraction when limit reached', async () => {
+    const limit = RATE_LIMITS.recordInteraction;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-interaction',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-interaction', 'recordInteraction', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-interaction').length).toBe(
+      limit.maxAttempts
+    );
+  });
+
+  it('blocks recordFeedback when limit reached', async () => {
+    const limit = RATE_LIMITS.recordFeedback;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-feedback',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-feedback', 'recordFeedback', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-feedback').length).toBe(
+      limit.maxAttempts
+    );
+  });
+
+  it('blocks requestPhrasingGeneration when limit reached', async () => {
+    const limit = RATE_LIMITS.requestPhrasingGeneration;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-phrasing',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-phrasing', 'requestPhrasingGeneration', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-phrasing').length).toBe(
+      limit.maxAttempts
+    );
+  });
+
   it('reports current status with attempts remaining', async () => {
     const limit = RATE_LIMITS.magicLink;
     const attempts = createRateLimitEntries({

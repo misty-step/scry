@@ -23,6 +23,7 @@ import {
 } from './lib/conceptHelpers';
 import { buildInteractionContext } from './lib/interactionContext';
 import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
+import { enforceRateLimit } from './rateLimit';
 
 type ConceptDoc = Doc<'concepts'>;
 type PhrasingDoc = Doc<'phrasings'>;
@@ -292,6 +293,7 @@ export const recordInteraction = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     const userId = user._id;
+    await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
 
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== userId) {
@@ -379,6 +381,7 @@ export const recordFeedback = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
+    await enforceRateLimit(ctx, user._id.toString(), 'recordFeedback', false);
 
     const interaction = await ctx.db.get(args.interactionId);
     if (!interaction || interaction.userId !== user._id) {
@@ -788,6 +791,8 @@ export const requestPhrasingGeneration = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
+    await enforceRateLimit(ctx, user._id.toString(), 'requestPhrasingGeneration', false);
+
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');

@@ -4,7 +4,7 @@ import type { Doc } from './_generated/dataModel';
 import { DataModel } from './_generated/dataModel';
 import { internalMutation, mutation, query } from './_generated/server';
 
-const MAX_RATE_LIMIT_READS = 100; // Hard cap per query to avoid unbounded bandwidth
+const MAX_RATE_LIMIT_READS = 1000; // Hard cap per query to avoid unbounded bandwidth
 const CLEANUP_DELETE_BATCH_SIZE = 100;
 
 type DbContext = { db: GenericDatabaseReader<DataModel> };
@@ -24,6 +24,21 @@ export const RATE_LIMITS = {
     maxAttempts: 100,
     windowMs: 3600000, // 1 hour per IP
     errorMessage: 'Too many question generation requests. Please try again later.',
+  },
+  recordInteraction: {
+    maxAttempts: 1000,
+    windowMs: 3600000, // 1 hour
+    errorMessage: 'Too many review interactions. Please try again later.',
+  },
+  recordFeedback: {
+    maxAttempts: 100,
+    windowMs: 3600000, // 1 hour
+    errorMessage: 'Too many feedback submissions. Please try again later.',
+  },
+  requestPhrasingGeneration: {
+    maxAttempts: 50,
+    windowMs: 3600000, // 1 hour
+    errorMessage: 'Too many phrasing generation requests. Please try again later.',
   },
   default: {
     maxAttempts: 100,
