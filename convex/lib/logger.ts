@@ -5,15 +5,11 @@
  * this provides a simple structured logging utility that works within Convex's runtime.
  */
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import type { LogLevel, LogContext as SharedLogContext } from '../../types/logger';
 
-export interface LogContext {
-  event?: string;
-  context?: string;
-  correlationId?: string;
+export interface LogContext extends SharedLogContext {
   domains?: string[];
   deployment?: string;
-  [key: string]: unknown;
 }
 
 const DEFAULT_DEPLOYMENT = process.env.CONVEX_CLOUD_URL ?? 'unknown';

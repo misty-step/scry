@@ -1,4 +1,5 @@
 import pino from 'pino';
+import type { ILogger, LogContext } from '@/types/logger';
 
 // Utility to generate UUID that works in both Node.js and browser
 const generateUUID = (): string => {
@@ -15,8 +16,8 @@ const generateUUID = (): string => {
   });
 };
 
-// Define application-specific log contexts
-export type LogContext =
+// Define application-specific log domains
+export type LogDomain =
   | 'auth'
   | 'api'
   | 'database'
@@ -29,11 +30,8 @@ export type LogContext =
   | 'system'
   | 'concepts';
 
-// Enhanced log levels for application-specific events
-export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
-
 // Standard log metadata interface
-export interface LogMetadata {
+export interface LogMetadata extends LogContext {
   userId?: string;
   sessionId?: string;
   requestId?: string;
@@ -150,7 +148,7 @@ const baseLogger = createBaseLogger();
 export { baseLogger as logger };
 
 // Context-specific logger factory
-export function createContextLogger(context: LogContext, metadata: Partial<LogMetadata> = {}) {
+export function createContextLogger(context: LogDomain, metadata: Partial<LogMetadata> = {}) {
   return baseLogger.child({
     context,
     ...metadata,
@@ -159,7 +157,7 @@ export function createContextLogger(context: LogContext, metadata: Partial<LogMe
 
 // Request-scoped logger with correlation ID
 export function createRequestLogger(
-  context: LogContext,
+  context: LogDomain,
   req?: {
     method?: string;
     url?: string;
@@ -205,7 +203,7 @@ export const conceptsLogger = createContextLogger('concepts', {
 // Utility functions for common logging patterns
 export const loggers = {
   // Performance timing utilities
-  time: (label: string, context: LogContext = 'performance') => {
+  time: (label: string, context: LogDomain = 'performance') => {
     const logger = createContextLogger(context);
     const start = performance.now();
 
@@ -228,7 +226,7 @@ export const loggers = {
   },
 
   // Error logging with automatic categorization
-  error: (error: Error, context: LogContext, metadata?: Partial<LogMetadata>, message?: string) => {
+  error: (error: Error, context: LogDomain, metadata?: Partial<LogMetadata>, message?: string) => {
     const logger = createContextLogger(context);
     const errorType = error.name?.includes('Email')
       ? 'EMAIL_ERROR'
@@ -325,8 +323,7 @@ export const getLoggerConfig = () => ({
 });
 
 // Export types for external use
-export type {
-  LogContext as LogContextType,
-  LogLevel as LogLevelType,
-  LogMetadata as LogMetadataType,
-};
+export type { LogDomain as LogDomainType, LogMetadata as LogMetadataType };
+
+export { generateCorrelationId } from '@/types/logger';
+export type { ILogger };
