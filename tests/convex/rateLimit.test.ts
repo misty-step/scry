@@ -328,6 +328,7 @@ describe('Rate limit bandwidth guards', () => {
       count: 1_200,
       startTimestamp: NOW - 5000,
       intervalMs: 1,
+      operation: 'magicLink',
     });
 
     const ctx = createRateLimitCtx(attempts);
@@ -397,6 +398,7 @@ describe('Rate limit behavior', () => {
         identifier: 'ip-allow',
         count: 2,
         startTimestamp: NOW - 1000,
+        operation: 'magicLink',
       })
     );
 
@@ -413,6 +415,7 @@ describe('Rate limit behavior', () => {
         identifier: 'ip-block',
         count: limit.maxAttempts,
         startTimestamp: NOW - 1000,
+        operation: 'magicLink',
       })
     );
 
@@ -422,9 +425,136 @@ describe('Rate limit behavior', () => {
       retryAfter: expect.any(Number),
       message: limit.errorMessage,
     });
-    // No extra insert when blocked
     expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'ip-block').length).toBe(
-      limit.maxAttempts
+      limit.maxAttempts + 1
+    );
+  });
+
+  it('blocks recordInteraction when limit reached', async () => {
+    const limit = RATE_LIMITS.recordInteraction;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-interaction',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'recordInteraction',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-interaction', 'recordInteraction', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-interaction').length).toBe(
+      limit.maxAttempts + 1
+    );
+  });
+
+  it('blocks recordFeedback when limit reached', async () => {
+    const limit = RATE_LIMITS.recordFeedback;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-feedback',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'recordFeedback',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-feedback', 'recordFeedback', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-feedback').length).toBe(
+      limit.maxAttempts + 1
+    );
+  });
+
+  it('blocks requestPhrasingGeneration when limit reached', async () => {
+    const limit = RATE_LIMITS.requestPhrasingGeneration;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-phrasing',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'requestPhrasingGeneration',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-phrasing', 'requestPhrasingGeneration', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'user-phrasing').length).toBe(
+      limit.maxAttempts + 1
+    );
+  });
+
+  it('isolates rate limits by operation type', async () => {
+    const feedbackLimit = RATE_LIMITS.recordFeedback;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'user-isolation',
+        count: feedbackLimit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'recordFeedback',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-isolation', 'recordFeedback', false)
+    ).rejects.toMatchObject({ code: 'RATE_LIMIT_EXCEEDED' });
+
+    await expect(
+      enforceRateLimit(ctx as any, 'user-isolation', 'recordInteraction', false)
+    ).resolves.not.toThrow();
+  });
+
+  it('records attempt before checking to prevent race condition bypass', async () => {
+    const limit = RATE_LIMITS.recordFeedback;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'race-test',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'recordFeedback',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'race-test', 'recordFeedback', false)
+    ).rejects.toMatchObject({ code: 'RATE_LIMIT_EXCEEDED' });
+
+    const entries = ctx.db.tables.rateLimits.filter((row) => row.identifier === 'race-test');
+    expect(entries.length).toBe(limit.maxAttempts + 1);
+  });
+
+  it('blocks bulkAction when limit reached', async () => {
+    const limit = RATE_LIMITS.bulkAction;
+    const ctx = createRateLimitCtx(
+      createRateLimitEntries({
+        identifier: 'bulk-user',
+        count: limit.maxAttempts,
+        startTimestamp: NOW - 1000,
+        operation: 'bulkAction',
+      })
+    );
+
+    await expect(
+      enforceRateLimit(ctx as any, 'bulk-user', 'bulkAction', false)
+    ).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: limit.errorMessage,
+    });
+
+    expect(ctx.db.tables.rateLimits.filter((r) => r.identifier === 'bulk-user').length).toBe(
+      limit.maxAttempts + 1
     );
   });
 
@@ -434,6 +564,7 @@ describe('Rate limit behavior', () => {
       identifier: 'status@example.com',
       count: 3,
       startTimestamp: NOW - 5000,
+      operation: 'magicLink',
     });
     const ctx = createRateLimitCtx(attempts);
 
@@ -457,6 +588,7 @@ describe('Rate limit behavior', () => {
       identifier: '10.0.0.1',
       count: limit.maxAttempts,
       startTimestamp: NOW - 2000,
+      operation: 'magicLink',
     });
     const ctx = createRateLimitCtx(attempts);
 
@@ -477,6 +609,7 @@ describe('Rate limit behavior', () => {
       identifier: '10.0.0.2',
       count: 2,
       startTimestamp: NOW - 2000,
+      operation: 'magicLink',
     });
     const ctx = createRateLimitCtx(attempts);
 
@@ -539,15 +672,16 @@ function createRateLimitEntries(params: {
   count: number;
   startTimestamp: number;
   intervalMs?: number;
+  operation?: string;
 }): RateLimitRow[] {
-  const { identifier, count, startTimestamp, intervalMs = 5 } = params;
+  const { identifier, count, startTimestamp, intervalMs = 5, operation = 'default' } = params;
   return Array.from({ length: count }, (_, i) => {
     const timestamp = startTimestamp + i * intervalMs;
     return {
       _id: `${identifier}_${i}`,
       _creationTime: timestamp,
       identifier,
-      operation: 'default',
+      operation,
       timestamp,
     } satisfies RateLimitRow;
   });

@@ -23,6 +23,7 @@ import {
 } from './lib/conceptHelpers';
 import { buildInteractionContext } from './lib/interactionContext';
 import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
+import { enforceRateLimit } from './rateLimit';
 
 type ConceptDoc = Doc<'concepts'>;
 type PhrasingDoc = Doc<'phrasings'>;
@@ -303,6 +304,8 @@ export const recordInteraction = mutation({
       throw new Error('Phrasing not found or unauthorized');
     }
 
+    await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
+
     const nowMs = Date.now();
     const now = new Date(nowMs);
 
@@ -384,6 +387,8 @@ export const recordFeedback = mutation({
     if (!interaction || interaction.userId !== user._id) {
       throw new Error('Interaction not found or unauthorized');
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'recordFeedback', false);
 
     await ctx.db.patch(args.interactionId, {
       feedback: {
@@ -788,6 +793,7 @@ export const requestPhrasingGeneration = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
+
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== user._id) {
       throw new Error('Concept not found or unauthorized');
@@ -797,6 +803,8 @@ export const requestPhrasingGeneration = mutation({
     if (existingJob) {
       throw new Error('Generation already in progress for this concept');
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'requestPhrasingGeneration', false);
 
     const now = Date.now();
     const jobId = await ctx.db.insert('generationJobs', {
@@ -1051,6 +1059,8 @@ export const runBulkAction = mutation({
     if (args.conceptIds.length === 0) {
       return { processed: 0, skipped: 0 };
     }
+
+    await enforceRateLimit(ctx, user._id.toString(), 'bulkAction', false);
 
     const uniqueIds = new Set<Id<'concepts'>>(args.conceptIds);
     let processed = 0;

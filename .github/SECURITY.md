@@ -72,9 +72,18 @@ This project implements multiple layers of automated security scanning:
    - Session tokens with 30-day expiry
 
 2. **Rate Limiting**
-   - API endpoint protection (100 requests/hour per IP)
-   - Magic link rate limiting (5 requests/hour per email)
-   - Database-backed tracking for distributed systems
+   - Operation-scoped per-user limits (isolation between operation types)
+   - Insert-then-check pattern prevents race condition bypass
+   - Rate limit enforcement after input validation (prevents quota burning on invalid requests)
+
+   | Operation | Limit | Window | Purpose |
+   |-----------|-------|--------|---------|
+   | Magic link | 5/hour | per email | Auth abuse prevention |
+   | Question generation | 100/hour | per IP | API protection |
+   | Review interaction | 1000/hour | per user | FSRS state protection |
+   | Feedback submission | 100/hour | per user | Spam prevention |
+   | Phrasing generation | 50/hour | per user | AI cost protection |
+   | Bulk actions | 100/hour | per user | Database protection |
 
 3. **Input Sanitization**
    - AI prompt injection prevention
