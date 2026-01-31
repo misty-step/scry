@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { safeStorage } from './storage';
 
 // Mock window and localStorage
@@ -111,5 +110,25 @@ describe('safeStorage', () => {
       // Should not throw
       expect(() => safeStorage.removeItem('test-key')).not.toThrow();
     });
+  });
+});
+
+describe('safeStorage without window', () => {
+  it('returns false from setItem when window is unavailable', async () => {
+    // Temporarily remove window to test the else branch
+    const originalWindow = globalThis.window;
+    // @ts-expect-error - intentionally removing window
+    delete globalThis.window;
+
+    try {
+      // Need fresh import to re-evaluate typeof window
+      vi.resetModules();
+      const { safeStorage: freshStorage } = await import('./storage');
+
+      const result = freshStorage.setItem('key', 'value');
+      expect(result).toBe(false);
+    } finally {
+      globalThis.window = originalWindow;
+    }
   });
 });
