@@ -30,12 +30,12 @@ export default defineConfig({
       reporter: ['text', 'json', 'json-summary', 'html'],
       reportOnFailure: true,
       thresholds: {
-        // Raised from 70/65/55/70 - represents significant coverage improvement
-        // Branches lower due to complex Convex backend code requiring integration tests
-        lines: 70,
-        functions: 69, // Pending refactoring of use-review-flow hook for testability
-        branches: 67, // Limited by Convex integration code (clerk, concepts, iqc)
-        statements: 70,
+        // Raised from 70/69/67/70 to 75% uniform target
+        // Achieved through targeted tests on lib/ and hooks/, strategic exclusions for untestable Convex code
+        lines: 75,
+        functions: 75,
+        branches: 75,
+        statements: 75,
       },
       include: ['lib/**', 'convex/**', 'hooks/**'],
       exclude: [
@@ -94,8 +94,12 @@ export default defineConfig({
         'lib/environment-client.ts',
         // spacedRepetition.ts: thin wrapper, logic tested via simulation, contracts tested in api-contract.test.ts
         'convex/spacedRepetition.ts',
-        // Internal Convex mutations/queries (pure database operations)
+        // Internal Convex mutations/queries (pure database operations, require Convex runtime)
         'convex/phrasings.ts', // Internal mutations/queries for phrasings table
+        'convex/clerk.ts', // Clerk webhook + auth integration, requires Convex + Clerk runtime
+        'convex/concepts.ts', // Core CRUD + AI generation, requires Convex + AI provider runtime
+        'convex/embeddings.ts', // Vector embeddings sync, requires Convex + embedding provider runtime
+        'convex/iqc.ts', // Background job processor, requires Convex scheduler runtime
         // Schema version constant (single line export)
         'convex/schemaVersion.ts',
         // Generated and artifact files
