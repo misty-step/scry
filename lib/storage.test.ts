@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { safeStorage } from './storage';
 
 // Mock window and localStorage
@@ -114,21 +114,34 @@ describe('safeStorage', () => {
 });
 
 describe('safeStorage without window', () => {
-  it('returns false from setItem when window is unavailable', async () => {
-    // Temporarily remove window to test the else branch
-    const originalWindow = globalThis.window;
+  let originalWindow: typeof globalThis.window;
+
+  beforeAll(() => {
+    originalWindow = globalThis.window;
     // @ts-expect-error - intentionally removing window
     delete globalThis.window;
+    vi.resetModules();
+  });
 
-    try {
-      // Need fresh import to re-evaluate typeof window
-      vi.resetModules();
-      const { safeStorage: freshStorage } = await import('./storage');
+  afterAll(() => {
+    globalThis.window = originalWindow;
+    vi.resetModules();
+  });
 
-      const result = freshStorage.setItem('key', 'value');
-      expect(result).toBe(false);
-    } finally {
-      globalThis.window = originalWindow;
-    }
+  it('returns false from setItem when window is unavailable', async () => {
+    const { safeStorage: freshStorage } = await import('./storage');
+    const result = freshStorage.setItem('key', 'value');
+    expect(result).toBe(false);
+  });
+
+  it('returns null from getItem when window is unavailable', async () => {
+    const { safeStorage: freshStorage } = await import('./storage');
+    const result = freshStorage.getItem('key');
+    expect(result).toBeNull();
+  });
+
+  it('does not throw from removeItem when window is unavailable', async () => {
+    const { safeStorage: freshStorage } = await import('./storage');
+    expect(() => freshStorage.removeItem('key')).not.toThrow();
   });
 });
