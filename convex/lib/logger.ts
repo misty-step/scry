@@ -5,15 +5,11 @@
  * this provides a simple structured logging utility that works within Convex's runtime.
  */
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import type { LogLevel, LogContext as SharedLogContext } from '../../types/logger';
 
-export interface LogContext {
-  event?: string;
-  context?: string;
-  correlationId?: string;
+export interface LogContext extends SharedLogContext {
   domains?: string[];
   deployment?: string;
-  [key: string]: unknown;
 }
 
 const DEFAULT_DEPLOYMENT = process.env.CONVEX_CLOUD_URL ?? 'unknown';
@@ -159,7 +155,4 @@ export function logConceptEvent(
   });
 }
 
-export function generateCorrelationId(prefix = 'concepts'): string {
-  const randomSegment = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${Date.now().toString(36)}-${randomSegment}`;
-}
+export { generateCorrelationId } from '../../types/logger';

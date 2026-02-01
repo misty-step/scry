@@ -1,22 +1,9 @@
 import pino from 'pino';
+import type { LogContext } from '@/types/logger';
+import { generateCorrelationId } from '@/types/logger';
 
-// Utility to generate UUID that works in both Node.js and browser
-const generateUUID = (): string => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    // Browser or Node.js with Web Crypto API
-    return crypto.randomUUID();
-  }
-  // Legacy fallback - should never execute in modern Next.js (Node 16+/modern browsers)
-  // Uses Math.random() which is not cryptographically secure; correlation ID collisions are more likely
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-};
-
-// Define application-specific log contexts
-export type LogContext =
+// Define application-specific log domains
+export type LogDomain =
   | 'auth'
   | 'api'
   | 'database'
@@ -29,11 +16,8 @@ export type LogContext =
   | 'system'
   | 'concepts';
 
-// Enhanced log levels for application-specific events
-export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
-
 // Standard log metadata interface
-export interface LogMetadata {
+export interface LogMetadata extends LogContext {
   userId?: string;
   sessionId?: string;
   requestId?: string;
@@ -150,7 +134,7 @@ const baseLogger = createBaseLogger();
 export { baseLogger as logger };
 
 // Context-specific logger factory
-export function createContextLogger(context: LogContext, metadata: Partial<LogMetadata> = {}) {
+export function createContextLogger(context: LogDomain, metadata: Partial<LogMetadata> = {}) {
   return baseLogger.child({
     context,
     ...metadata,
@@ -159,7 +143,7 @@ export function createContextLogger(context: LogContext, metadata: Partial<LogMe
 
 // Request-scoped logger with correlation ID
 export function createRequestLogger(
-  context: LogContext,
+  context: LogDomain,
   req?: {
     method?: string;
     url?: string;
@@ -169,7 +153,7 @@ export function createRequestLogger(
   },
   additionalMetadata: Partial<LogMetadata> = {}
 ) {
-  const requestId = generateUUID();
+  const requestId = generateCorrelationId('req');
   const metadata: LogMetadata = {
     requestId,
     method: req?.method,
@@ -205,7 +189,7 @@ export const conceptsLogger = createContextLogger('concepts', {
 // Utility functions for common logging patterns
 export const loggers = {
   // Performance timing utilities
-  time: (label: string, context: LogContext = 'performance') => {
+  time: (label: string, context: LogDomain = 'performance') => {
     const logger = createContextLogger(context);
     const start = performance.now();
 
@@ -228,7 +212,7 @@ export const loggers = {
   },
 
   // Error logging with automatic categorization
-  error: (error: Error, context: LogContext, metadata?: Partial<LogMetadata>, message?: string) => {
+  error: (error: Error, context: LogDomain, metadata?: Partial<LogMetadata>, message?: string) => {
     const logger = createContextLogger(context);
     const errorType = error.name?.includes('Email')
       ? 'EMAIL_ERROR'
@@ -325,8 +309,4 @@ export const getLoggerConfig = () => ({
 });
 
 // Export types for external use
-export type {
-  LogContext as LogContextType,
-  LogLevel as LogLevelType,
-  LogMetadata as LogMetadataType,
-};
+export type { LogDomain as LogDomainType, LogMetadata as LogMetadataType };
