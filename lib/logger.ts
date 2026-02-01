@@ -1,20 +1,6 @@
 import pino from 'pino';
-import type { ILogger, LogContext } from '@/types/logger';
-
-// Utility to generate UUID that works in both Node.js and browser
-const generateUUID = (): string => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    // Browser or Node.js with Web Crypto API
-    return crypto.randomUUID();
-  }
-  // Legacy fallback - should never execute in modern Next.js (Node 16+/modern browsers)
-  // Uses Math.random() which is not cryptographically secure; correlation ID collisions are more likely
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-};
+import type { LogContext } from '@/types/logger';
+import { generateCorrelationId } from '@/types/logger';
 
 // Define application-specific log domains
 export type LogDomain =
@@ -167,7 +153,7 @@ export function createRequestLogger(
   },
   additionalMetadata: Partial<LogMetadata> = {}
 ) {
-  const requestId = generateUUID();
+  const requestId = generateCorrelationId('req');
   const metadata: LogMetadata = {
     requestId,
     method: req?.method,
@@ -324,6 +310,3 @@ export const getLoggerConfig = () => ({
 
 // Export types for external use
 export type { LogDomain as LogDomainType, LogMetadata as LogMetadataType };
-
-export { generateCorrelationId } from '@/types/logger';
-export type { ILogger };

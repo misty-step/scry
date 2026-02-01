@@ -155,7 +155,4 @@ export function logConceptEvent(
   });
 }
 
-export function generateCorrelationId(prefix = 'concepts'): string {
-  const randomSegment = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${Date.now().toString(36)}-${randomSegment}`;
-}
+export { generateCorrelationId } from '../../types/logger';

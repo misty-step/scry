@@ -15,6 +15,18 @@ export interface ILogger {
 }
 
 export function generateCorrelationId(prefix = 'log'): string {
-  const randomSegment = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${Date.now().toString(36)}-${randomSegment}`;
+  let uuid: string;
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    // Browser or Node.js with Web Crypto API
+    uuid = crypto.randomUUID();
+  } else {
+    // Legacy fallback - should never execute in modern Next.js (Node 16+/modern browsers)
+    // Uses Math.random() which is not cryptographically secure; correlation ID collisions are more likely
+    uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  return `${prefix}-${uuid}`;
 }
