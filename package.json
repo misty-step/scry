@@ -33,7 +33,7 @@
     "format:check": "prettier --check .",
     "assets:generate": "node scripts/generate-static-assets.js",
     "convex:deploy": "convex deploy",
-    "prepare": "lefthook install",
+    "prepare": "lefthook install || true",
     "size": "size-limit",
     "changeset": "changeset",
     "version-packages": "changeset version",
