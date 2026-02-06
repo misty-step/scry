@@ -318,4 +318,46 @@ export default defineSchema({
     resolvedAt: v.optional(v.number()), // When user accepted/rejected
     resolution: v.optional(v.union(v.literal('accepted'), v.literal('rejected'))),
   }).index('by_user_open', ['userId', 'resolvedAt', 'createdAt']),
+
+  // Stripe subscription state (synced from webhooks)
+  subscriptions: defineTable({
+    userId: v.id('users'),
+    clerkUserId: v.string(),
+
+    // Stripe identifiers
+    stripeCustomerId: v.string(),
+    stripeSubscriptionId: v.string(),
+    stripePriceId: v.string(),
+
+    // Subscription state
+    status: v.union(
+      v.literal('trialing'),
+      v.literal('active'),
+      v.literal('past_due'),
+      v.literal('canceled'),
+      v.literal('unpaid'),
+      v.literal('incomplete'),
+      v.literal('incomplete_expired')
+    ),
+
+    // Trial tracking
+    trialStart: v.optional(v.number()),
+    trialEnd: v.optional(v.number()),
+
+    // Period tracking
+    currentPeriodStart: v.number(),
+    currentPeriodEnd: v.number(),
+
+    // Cancellation tracking
+    cancelAtPeriodEnd: v.boolean(),
+    canceledAt: v.optional(v.number()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_clerk_user', ['clerkUserId'])
+    .index('by_stripe_customer', ['stripeCustomerId'])
+    .index('by_stripe_subscription', ['stripeSubscriptionId']),
 });
