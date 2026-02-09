@@ -52,7 +52,7 @@
     "capture:failures": "npx tsx scripts/capture-failures.ts"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.40",
+    "@ai-sdk/google": "^3.0.22",
     "@clerk/clerk-react": "^5.60.0",
     "@clerk/nextjs": "^6.37.3",
     "@clerk/themes": "^2.4.51",
