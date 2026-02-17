@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { UIMessage } from '@convex-dev/agent/react';
 import { useUIMessages } from '@convex-dev/agent/react';
 import { useAction, useMutation } from 'convex/react';
 import { Send } from 'lucide-react';
@@ -9,14 +10,6 @@ import { api } from '@/convex/_generated/api';
 import { FeedbackCard } from './feedback-card';
 import { MessageBubble } from './message-bubble';
 import { QuestionCard } from './question-card';
-
-type ContentPart = {
-  type: string;
-  text?: string;
-  toolName?: string;
-  result?: unknown;
-  state?: string;
-};
 
 export function ReviewChat() {
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -92,25 +85,21 @@ export function ReviewChat() {
     <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-2xl flex-col">
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
-        {messageList.map((message) => (
-          <div key={message.id}>
+        {messageList.map((message: UIMessage) => (
+          <div key={message.key}>
             {message.role === 'user' ? (
               <div className="flex justify-end">
                 <div className="bg-primary text-primary-foreground max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2">
-                  {(message.content as ContentPart[])
-                    .filter((p: ContentPart) => p.type === 'text' && p.text)
-                    .map((p: ContentPart, i: number) => (
-                      <p key={i}>{p.text}</p>
-                    ))}
+                  <p>{message.text}</p>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                {(message.content as ContentPart[]).map((part: ContentPart, i: number) => {
-                  if (part.type === 'text' && part.text) {
+                {message.parts.map((part, i) => {
+                  if (part.type === 'text' && 'text' in part && part.text) {
                     return <MessageBubble key={i} text={part.text} />;
                   }
-                  if (part.type === 'tool-invocation') {
+                  if (part.type === 'tool-invocation' && 'state' in part) {
                     return renderToolResult(part, i);
                   }
                   return null;
@@ -145,7 +134,10 @@ export function ReviewChat() {
   );
 }
 
-function renderToolResult(part: ContentPart, key: number) {
+function renderToolResult(
+  part: { type: string; toolName?: string; state?: string; result?: unknown },
+  key: number
+) {
   if (part.state !== 'result') return null;
 
   if (part.toolName === 'fetchDueConcept' && part.result) {
