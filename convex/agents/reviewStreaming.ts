@@ -2,21 +2,24 @@ import { createThread, listUIMessages, syncStreams, vStreamArgs } from '@convex-
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { components, internal } from '../_generated/api';
-import { action, internalAction, mutation, query } from '../_generated/server';
+import { internalAction, mutation, query } from '../_generated/server';
 import { requireUserFromClerk } from '../clerk';
 import { reviewAgent } from './reviewAgent';
 
-// Create a new review thread
+// Create a new review thread and auto-start the session
 export const createReviewThread = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireUserFromClerk(ctx);
-    const threadId = await createThread(ctx, components.agent);
+    const user = await requireUserFromClerk(ctx);
+    const threadId = await createThread(ctx, components.agent, { userId: user._id });
+    await ctx.scheduler.runAfter(0, internal.agents.reviewStreaming.startReviewSession, {
+      threadId,
+    });
     return { threadId };
   },
 });
 
-// Send a message and trigger async streaming response (recommended pattern)
+// Send a message and trigger async streaming response
 export const sendMessage = mutation({
   args: {
     threadId: v.string(),
@@ -34,6 +37,20 @@ export const sendMessage = mutation({
       promptMessageId: messageId,
     });
     return { messageId };
+  },
+});
+
+// Auto-start: agent fetches first concept without a visible user message
+export const startReviewSession = internalAction({
+  args: { threadId: v.string() },
+  handler: async (ctx, { threadId }) => {
+    const result = await reviewAgent.streamText(
+      ctx,
+      { threadId },
+      { prompt: 'Start my review session. Fetch the first concept and present it.' },
+      { saveStreamDeltas: { chunking: 'word', throttleMs: 100 } }
+    );
+    await result.consumeStream();
   },
 });
 
@@ -69,18 +86,5 @@ export const listMessages = query({
     });
     const paginated = await listUIMessages(ctx, components.agent, args);
     return { ...paginated, streams };
-  },
-});
-
-// One-shot action for starting a session (simpler, no optimistic updates)
-export const startSession = action({
-  args: { threadId: v.string() },
-  handler: async (ctx, { threadId }) => {
-    await reviewAgent.streamText(
-      ctx,
-      { threadId },
-      { prompt: 'Start my review session. Fetch the first concept and present it.' },
-      { saveStreamDeltas: true }
-    );
   },
 });
