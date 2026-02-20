@@ -42,7 +42,8 @@ function formatNextDate(days?: number): string {
 }
 
 export function FeedbackCard({ data, questionText }: FeedbackCardProps) {
-  const fb = data as unknown as FeedbackData;
+  if (typeof data !== 'object' || data === null) return null;
+  const fb = data as FeedbackData;
 
   return (
     <div className="max-w-3xl">

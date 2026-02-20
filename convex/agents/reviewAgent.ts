@@ -12,7 +12,7 @@ const getModel = (): LanguageModel => {
   }
   const modelId = process.env.AI_MODEL ?? 'google/gemini-3-flash-preview';
   const openrouter = createOpenRouter({ apiKey });
-  return openrouter(modelId) as unknown as LanguageModel;
+  return openrouter(modelId) as LanguageModel;
 };
 
 // --- Tools ---

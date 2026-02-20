@@ -25,7 +25,7 @@ interface QuestionCardProps {
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: QuestionCardProps) {
-  const q = data as unknown as QuestionData;
+  const q = (typeof data === 'object' && data !== null ? data : {}) as QuestionData;
   const [selected, setSelected] = useState<string | null>(null);
 
   if (!q.question) return null;
