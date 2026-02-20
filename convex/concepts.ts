@@ -177,109 +177,239 @@ export const createMany = internalMutation({
   },
 });
 
+async function getDueHandler(ctx: QueryCtx, userId: Id<'users'>) {
+  const now = new Date();
+  const nowMs = now.getTime();
+
+  // Filter out concepts without phrasings at DB level to avoid N+1 queries
+  // in the loop below (each selectActivePhrasing call was a wasted query)
+  const dueConcepts = await ctx.db
+    .query('concepts')
+    .withIndex('by_user_next_review', (q) =>
+      q
+        .eq('userId', userId)
+        .eq('deletedAt', undefined)
+        .eq('archivedAt', undefined)
+        .lte('fsrs.nextReview', nowMs)
+    )
+    .filter((q) => q.gt(q.field('phrasingCount'), 0))
+    .take(MAX_CONCEPT_CANDIDATES);
+
+  let candidates = dueConcepts;
+
+  if (candidates.length === 0) {
+    const newConcepts = await ctx.db
+      .query('concepts')
+      .withIndex('by_user_next_review', (q) =>
+        q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
+      )
+      .filter((q) => q.and(q.eq(q.field('fsrs.state'), 'new'), q.gt(q.field('phrasingCount'), 0)))
+      .take(MAX_CONCEPT_CANDIDATES);
+
+    if (newConcepts.length === 0) {
+      // Never return future-scheduled concepts—breaks FSRS intervals.
+      return null;
+    }
+
+    candidates = newConcepts;
+  }
+
+  const prioritized = prioritizeConcepts(candidates, now, (fsrs, date) =>
+    conceptEngine.getRetrievability(fsrs, date)
+  );
+  for (const candidate of prioritized) {
+    const phrasingSelection = await selectActivePhrasing(ctx, candidate.concept, userId);
+    if (!phrasingSelection) {
+      continue;
+    }
+
+    const interactions = await ctx.db
+      .query('interactions')
+      .withIndex('by_user_phrasing', (q) =>
+        q.eq('userId', userId).eq('phrasingId', phrasingSelection.phrasing._id)
+      )
+      .order('desc')
+      .take(MAX_INTERACTIONS);
+
+    return {
+      concept: candidate.concept,
+      phrasing: phrasingSelection.phrasing,
+      selectionReason: phrasingSelection.selectionReason,
+      phrasingStats: {
+        total: phrasingSelection.totalPhrasings,
+        index: phrasingSelection.phrasingIndex,
+      },
+      retrievability: candidate.retrievability,
+      interactions,
+      serverTime: nowMs,
+    };
+  }
+
+  return null;
+}
+
 export const getDue = query({
   args: {
     _refreshTimestamp: v.optional(v.number()),
   },
   handler: async (ctx) => {
     const user = await requireUserFromClerk(ctx);
-    const userId = user._id;
-    const now = new Date();
-    const nowMs = now.getTime();
-
-    // Filter out concepts without phrasings at DB level to avoid N+1 queries
-    // in the loop below (each selectActivePhrasing call was a wasted query)
-    const dueConcepts = await ctx.db
-      .query('concepts')
-      .withIndex('by_user_next_review', (q) =>
-        q
-          .eq('userId', userId)
-          .eq('deletedAt', undefined)
-          .eq('archivedAt', undefined)
-          .lte('fsrs.nextReview', nowMs)
-      )
-      .filter((q) => q.gt(q.field('phrasingCount'), 0))
-      .take(MAX_CONCEPT_CANDIDATES);
-
-    let candidates = dueConcepts;
-
-    if (candidates.length === 0) {
-      const newConcepts = await ctx.db
-        .query('concepts')
-        .withIndex('by_user_next_review', (q) =>
-          q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
-        )
-        .filter((q) => q.and(q.eq(q.field('fsrs.state'), 'new'), q.gt(q.field('phrasingCount'), 0)))
-        .take(MAX_CONCEPT_CANDIDATES);
-
-      if (newConcepts.length === 0) {
-        // Never return future-scheduled concepts—breaks FSRS intervals.
-        return null;
-      }
-
-      candidates = newConcepts;
-    }
-
-    const prioritized = prioritizeConcepts(candidates, now, (fsrs, date) =>
-      conceptEngine.getRetrievability(fsrs, date)
-    );
-    for (const candidate of prioritized) {
-      const phrasingSelection = await selectActivePhrasing(ctx, candidate.concept, userId);
-      if (!phrasingSelection) {
-        continue;
-      }
-
-      const interactions = await ctx.db
-        .query('interactions')
-        .withIndex('by_user_phrasing', (q) =>
-          q.eq('userId', userId).eq('phrasingId', phrasingSelection.phrasing._id)
-        )
-        .order('desc')
-        .take(MAX_INTERACTIONS);
-
-      return {
-        concept: candidate.concept,
-        phrasing: phrasingSelection.phrasing,
-        selectionReason: phrasingSelection.selectionReason,
-        phrasingStats: {
-          total: phrasingSelection.totalPhrasings,
-          index: phrasingSelection.phrasingIndex,
-        },
-        retrievability: candidate.retrievability,
-        interactions,
-        serverTime: nowMs,
-      };
-    }
-
-    return null;
+    return getDueHandler(ctx, user._id);
   },
 });
+
+export const getDueInternal = internalQuery({
+  args: { userId: v.id('users') },
+  handler: async (ctx, args) => {
+    return getDueHandler(ctx, args.userId);
+  },
+});
+
+async function getConceptsDueCountHandler(ctx: QueryCtx, userId: Id<'users'>) {
+  const nowMs = Date.now();
+
+  // Count due concepts with phrasings (DB-level filtering)
+  const dueConcepts = await ctx.db
+    .query('concepts')
+    .withIndex('by_user_next_review', (q) =>
+      q
+        .eq('userId', userId)
+        .eq('deletedAt', undefined)
+        .eq('archivedAt', undefined)
+        .lte('fsrs.nextReview', nowMs)
+    )
+    .filter((q) => q.gt(q.field('phrasingCount'), 0))
+    .take(1000); // Safety limit for large collections
+
+  return { conceptsDue: dueConcepts.length };
+}
 
 export const getConceptsDueCount = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireUserFromClerk(ctx);
-    const userId = user._id;
-    const nowMs = Date.now();
+    return getConceptsDueCountHandler(ctx, user._id);
+  },
+});
 
-    // Count due concepts with phrasings (DB-level filtering)
-    const dueConcepts = await ctx.db
-      .query('concepts')
-      .withIndex('by_user_next_review', (q) =>
-        q
-          .eq('userId', userId)
-          .eq('deletedAt', undefined)
-          .eq('archivedAt', undefined)
-          .lte('fsrs.nextReview', nowMs)
+export const getConceptsDueCountInternal = internalQuery({
+  args: { userId: v.id('users') },
+  handler: async (ctx, args) => {
+    return getConceptsDueCountHandler(ctx, args.userId);
+  },
+});
+
+/** Stats for the review start screen (5D design) */
+export const getReviewDashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUserFromClerk(ctx);
+    const userId = user._id;
+
+    // O(1) from cached userStats
+    const stats = await ctx.db
+      .query('userStats')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .first();
+
+    const totalConcepts = stats?.totalCards ?? 0;
+    const matureCount = stats?.matureCount ?? 0;
+    const masteryPercent = totalConcepts > 0 ? Math.round((matureCount / totalConcepts) * 100) : 0;
+
+    // Count active phrasings (server-side, only returns number to client)
+    const phrasings = await ctx.db
+      .query('phrasings')
+      .withIndex('by_user_active', (q) =>
+        q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
       )
-      .filter((q) => q.gt(q.field('phrasingCount'), 0))
-      .take(1000); // Safety limit for large collections
+      .collect();
 
     return {
-      conceptsDue: dueConcepts.length,
+      totalConcepts,
+      totalPhrasings: phrasings.length,
+      masteryPercent,
+      streak: user.currentStreak ?? 0,
     };
   },
 });
+
+async function recordInteractionHandler(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  args: {
+    conceptId: Id<'concepts'>;
+    phrasingId: Id<'phrasings'>;
+    userAnswer: string;
+    isCorrect: boolean;
+    timeSpent?: number;
+    sessionId?: string;
+  }
+) {
+  const concept = await ctx.db.get(args.conceptId);
+  if (!concept || concept.userId !== userId) {
+    throw new Error('Concept not found or unauthorized');
+  }
+
+  const phrasing = await ctx.db.get(args.phrasingId);
+  if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
+    throw new Error('Phrasing not found or unauthorized');
+  }
+
+  const nowMs = Date.now();
+  const now = new Date(nowMs);
+
+  const scheduleResult = scheduleConceptReview(concept, args.isCorrect, { now });
+
+  const interactionContext = buildInteractionContext({
+    sessionId: args.sessionId,
+    scheduledDays: scheduleResult.scheduledDays,
+    nextReview: scheduleResult.nextReview,
+    fsrsState: scheduleResult.state,
+  });
+
+  const interactionId = await ctx.db.insert('interactions', {
+    userId,
+    conceptId: concept._id,
+    phrasingId: phrasing._id,
+    userAnswer: args.userAnswer,
+    isCorrect: args.isCorrect,
+    attemptedAt: nowMs,
+    timeSpent: args.timeSpent,
+    context: interactionContext,
+  });
+
+  await ctx.db.patch(phrasing._id, {
+    attemptCount: (phrasing.attemptCount ?? 0) + 1,
+    correctCount: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
+    lastAttemptedAt: nowMs,
+  });
+
+  await ctx.db.patch(concept._id, {
+    fsrs: scheduleResult.fsrs,
+    updatedAt: nowMs,
+  });
+
+  const statsDelta = calculateConceptStatsDelta({
+    oldState: concept.fsrs.state ?? 'new',
+    newState: scheduleResult.state,
+    oldNextReview: concept.fsrs.nextReview,
+    newNextReview: scheduleResult.nextReview,
+    nowMs,
+  });
+
+  if (statsDelta) {
+    await updateStatsCounters(ctx, userId, statsDelta);
+  }
+
+  return {
+    conceptId: concept._id,
+    phrasingId: phrasing._id,
+    interactionId,
+    nextReview: scheduleResult.nextReview,
+    scheduledDays: scheduleResult.scheduledDays,
+    newState: scheduleResult.state,
+  };
+}
 
 export const recordInteraction = mutation({
   args: {
@@ -292,74 +422,21 @@ export const recordInteraction = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
-    const userId = user._id;
-
-    const concept = await ctx.db.get(args.conceptId);
-    if (!concept || concept.userId !== userId) {
-      throw new Error('Concept not found or unauthorized');
-    }
-
-    const phrasing = await ctx.db.get(args.phrasingId);
-    if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
-      throw new Error('Phrasing not found or unauthorized');
-    }
-
     await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
+    return recordInteractionHandler(ctx, user._id, args);
+  },
+});
 
-    const nowMs = Date.now();
-    const now = new Date(nowMs);
-
-    const scheduleResult = scheduleConceptReview(concept, args.isCorrect, { now });
-
-    const interactionContext = buildInteractionContext({
-      sessionId: args.sessionId,
-      scheduledDays: scheduleResult.scheduledDays,
-      nextReview: scheduleResult.nextReview,
-      fsrsState: scheduleResult.state,
-    });
-
-    const interactionId = await ctx.db.insert('interactions', {
-      userId,
-      conceptId: concept._id,
-      phrasingId: phrasing._id,
-      userAnswer: args.userAnswer,
-      isCorrect: args.isCorrect,
-      attemptedAt: nowMs,
-      timeSpent: args.timeSpent,
-      context: interactionContext,
-    });
-
-    await ctx.db.patch(phrasing._id, {
-      attemptCount: (phrasing.attemptCount ?? 0) + 1,
-      correctCount: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
-      lastAttemptedAt: nowMs,
-    });
-
-    await ctx.db.patch(concept._id, {
-      fsrs: scheduleResult.fsrs,
-      updatedAt: nowMs,
-    });
-
-    const statsDelta = calculateConceptStatsDelta({
-      oldState: concept.fsrs.state ?? 'new',
-      newState: scheduleResult.state,
-      oldNextReview: concept.fsrs.nextReview,
-      newNextReview: scheduleResult.nextReview,
-      nowMs,
-    });
-
-    if (statsDelta) {
-      await updateStatsCounters(ctx, userId, statsDelta);
-    }
-
-    return {
-      conceptId: concept._id,
-      phrasingId: phrasing._id,
-      interactionId,
-      nextReview: scheduleResult.nextReview,
-      scheduledDays: scheduleResult.scheduledDays,
-      newState: scheduleResult.state,
-    };
+export const recordInteractionInternal = internalMutation({
+  args: {
+    userId: v.id('users'),
+    conceptId: v.id('concepts'),
+    phrasingId: v.id('phrasings'),
+    userAnswer: v.string(),
+    isCorrect: v.boolean(),
+  },
+  handler: async (ctx, { userId, ...args }) => {
+    return recordInteractionHandler(ctx, userId, args);
   },
 });
 

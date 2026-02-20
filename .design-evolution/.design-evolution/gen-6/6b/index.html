@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" 
+content="width=device-width, initial-scale=1.0">
+<title>Scry — Spaced
+Repetition Review</title>
+<script 
+src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" 
+href="https://fonts.googleapis.com">
+<link rel="preconnect" 
+href="https://fonts.gstatic.com" crossorigin>
+<link 
+href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family
+=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+theme: {
+extend: {
+colors: {
+brand: {
+DEFAULT: \'hsl(221.2, 83.2%, 53.3%)\',
+dark: \'hsl(221.2,
+83.2%, 45%)\',
+light: \'hsl(221.2, 83.2%, 95%)\',
+},
+success: {
+DEFAULT: \'hsl(142, 76%, 36%)\',
+light: \'hsl(142, 76%, 
+95%)\',
+},
+error: {
+DEFAULT: \'hsl(0, 84%, 60%)\',
+light: \'hsl(0, 84%, 
+97%)\',
+},
+surface: {
+DEFAULT: \'hsl(0, 0%, 100%)\',
+subtle: \'hsl(210, 20%, 
+98%)\',
+muted: \'hsl(210, 15%, 96%)\',
+},
+ink: {
+DEFAULT: \'hsl(222.2, 84%,
+4.9%)\',
+secondary: \'hsl(215, 16%, 47%)\',
+muted: \'hsl(215, 14%, 64%)\',
+},
+border: \'hsl(214, 20%, 90%)\',
+},
+fontFamily: {
+sans: [\'system-ui\', \'-apple-system\', 
+\'BlinkMacSystemFont\', \'Segoe UI\', \'Roboto\', \'sans-serif\'],
+serif: [\'Lora\', \'Georgia\', \'serif\'],
+mono: [\'IBM 
+Plex Mono\', \'Menlo\', \'Monaco\', \'monospace\'],
+},
+fontSize: {
+\'display\': [\'3rem\', { 
+lineHeight: \'1.1\', letterSpacing: \'-0.02em\' }],
+\'display-sm\': [\'2.25rem\', { lineHeight: \'1.15\', letterSpacing: \'-0.02em\'
+}],
+\'lead\': [\'1.25rem\', { lineHeight: \'1.6\' }],
+},
+},
+},
+}
+</script>
+<style>
+/* No motion - static elegance only 
+*/
+* {
+transition: none !important;
+animation: none !important;
+}
+
+/* Custom 
+scrollbar */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: transparent;
+}
+::-webkit-scrollbar-thumb {
+background: hsl(214, 20%, 85%);
+border-radius: 3px;
+}
+
+/* 
+Selection */
+::selection {
+background: hsl(221.2, 
+83.2%, 90%);
+color: hsl(221.2, 83.2%, 30%);
+}
+</style>
+</head>
+<body class="bg-surface-subtle text-ink
+font-sans min-h-screen">
+
+<!-- Main Container -->
+<div class="min-h-screen flex flex-col">
+
+<!-- Header 
+-->
+<header class="bg-surface border-b border-border">
+<div class="flex items-center justify-between px-6 py-4">
+<div 
+class="flex items-center gap-4">
+<div class="w-9 h-9 bg-brand
+rounded-lg flex items-center justify-center">
+<i 
+data-lucide="layers" class="w-5 h-5 text-white"></i>
+</div>
+<div>
+<h1 class="font-semibold 
+text-lg tracking-tight">Scry</h1>
+<p class="text-xs 
+text-ink-muted font-mono">REVIEW SESSION</p>
+</div>
+</div>
+
+<!-- Due Count - Clean Alignment -->
+<div class="flex items-center gap-6">
+<div 
+class="flex items-center gap-3">
+<div class="text-right">
+<p class="text-2xl font-semibold tabular-nums 
+leading-none">24</p>
+<p class="text-xs text-ink-muted 
+font-mono uppercase tracking-wide mt-1">Due now</p>
+</div>
+<div class="w-px h-10 bg-border"></div>
+<div class="text-right">
+<p class="text-2xl font-semibold
+tabular-nums leading-none text-ink-muted">156</p>
+<p 
+class="text-xs text-ink-muted font-mono uppercase tracking-wide 
+mt-1">Total</p>
+</div>
+</div>
+
+<div class="w-px h-10 bg-border"></div>
+
+<button class="flex items-center gap-2 px-4 py-2.5 
+bg-surface-muted hover:bg-border rounded-lg text-sm font-medium">
+<i data-lucide="settings" class="w-4 h-4"></i>
+<span>Settings</span>
+</button>
+</div>
+</div>
+</header>
+
+<!-- Main 
+Content - Asymmetric Split -->
+<main class="flex-1 flex">
+
+<!-- LEFT: Review Content (~60-65%) -->
+<div 
+class="flex-1 min-w-0 p-8 overflow-auto">
+
+<!-- STATE 1: Session Entry (Hero) -->
+<div id="start-screen" 
+class="max-w-2xl mx-auto pt-16">
+<div class="text-center 
+mb-12">
+<div class="inline-flex items-center gap-2 px-3 
+py-1.5 bg-brand-light rounded-full text-brand text-xs font-medium font-mono 
+uppercase tracking-wider mb-6">
+<span class="w-1.5 h-1.5 
+bg-brand rounded-full"></span>
+Ready to begin
+</div>
+<h2 class="font-serif text-display mb-4">Today\'s 
+Review</h2>
+<p class="text-lead text-ink-secondary max-w-md
+mx-auto">
+24 cards await your attention. The Scry AI will
+guide you through, adapting to your performance in real-time.
+</p>
+</div>
+
+<!-- Stats
+Grid - Items Share Rows -->
+<div class="grid grid-cols-3 
+gap-4 mb-10">
+<div class="bg-surface p-5 rounded-xl border 
+border-border">
+<div class="flex items-center gap-2 
+text-ink-muted mb-3">
+<i data-lucide="brain" class="w-4
+h-4"></i>
+<span class="text-xs font-mono uppercase 
+tracking-wide">Retention</span>
+</div>
+<p class="text-3xl font-semibold tabular-nums">87%</p>
+<p
+class="text-xs text-ink-muted mt-1">Last 30 days</p>
+</div>
+<div class="bg-surface p-5 rounded-xl border 
+border-border">
+<div class="flex items-center gap-2 
+text-ink-muted mb-3">
+<i data-lucide="clock" class="w-4
+h-4"></i>
+<span class="text-xs font-mono uppercase 
+tracking-wide">Avg Time</span>
+</div>
+<p class="text-3xl font-semibold tabular-nums">4.2<span class="text-lg 
+text-ink-muted">s</span></p>
+<p class="text-xs 
+text-ink-muted mt-1">Per card</p>
+</div>
+<div class="bg-surface p-5 rounded-xl border border-border">
+<div class="flex items-center gap-2 text-ink-muted mb-3">
+<i data-lucide="trending-up" class="w-4 h-4"></i>
+<span
+class="text-xs font-mono uppercase tracking-wide">Streak</span>
+</div>
+<p class="text-3xl font-semibold 
+tabular-nums">12</p>
+<p class="text-xs text-ink-muted 
+mt-1">Days</p>
+</div>
+</div>
+
+<!-- Single CTA -->
+<div class="flex 
+justify-center">
+<button onclick="showQuiz()" class="group 
+flex items-center gap-3 px-8 py-4 bg-brand hover:bg-brand-dark rounded-xl 
+text-white font-medium text-lg">
+<span>Begin Review 
+Session</span>
+<i data-lucide="arrow-right" class="w-5 
+h-5 group-hover:translate-x-1"></i>
+</button>
+</div>
+</div>
+
+<!-- STATE 2: Quiz 
+Card (BIG) -->
+<div id="quiz-card" class="hidden max-w-3xl 
+mx-auto">
+<!-- Card Header -->
+<div 
+class="flex items-center justify-between mb-4">
+<div 
+class="flex items-center gap-3">
+<span class="px-2.5 py-1
+bg-surface-muted rounded-md text-xs font-mono text-ink-secondary">Card 1 of 
+24</span>
+<span class="px-2.5 py-1 bg-brand-light 
+rounded-md text-xs font-mono text-brand">Due: Today</span>
+</div>
+<div class="flex items-center gap-2 
+text-ink-muted">
+<i data-lucide="zap" class="w-4 
+h-4"></i>
+<span class="text-xs font-mono">Interval: 3d → 
+7d</span>
+</div>
+</div>
+
+<!-- Big Quiz Card -->
+<div 
+class="bg-surface rounded-2xl border border-border shadow-sm">
+<!-- Question -->
+<div class="p-10 border-b 
+border-border">
+<p class="text-xs font-mono uppercase 
+tracking-wider text-ink-muted mb-4">Question</p>
+<h3 
+class="font-serif text-display-sm text-ink">
+What is 
+the primary mechanism by which spaced repetition enhances long-term retention?
+</h3>
+<p class="text-sm text-ink-muted
+mt-4 italic">Select the best explanation from the options below.</p>
+</div>
+
+<!-- Options - Clickable -->
+<div class="p-6 space-y-3">
+<button 
+onclick="showFeedback(\'incorrect\')" class="w-full text-left p-5 rounded-xl 
+border border-border hover:border-brand hover:bg-brand-light group">
+<div class="flex items-start gap-4">
+<span 
+class="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-muted group-hover:bg-white 
+flex items-center justify-center font-mono text-sm font-medium 
+text-ink-secondary group-hover:text-brand">A</span>
+<div class="flex-1">
+<p class="text-ink 
+font-medium">Continuous exposure to information</p>
+<p class="text-sm text-ink-muted mt-1">Reviewing material constantly without 
+breaks</p>
+</div>
+</div>
+</button>
+
+<button onclick="showFeedback(\'correct\')" class="w-full text-left p-5 
+rounded-xl border border-border hover:border-brand hover:bg-brand-light 
+group">
+<div class="flex items-start gap-4">
+<span class="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-muted 
+group-hover:bg-white flex items-center justify-center font-mono text-sm 
+font-medium text-ink-secondary group-hover:text-brand">B</span>
+<div class="flex-1">
+<p class="text-ink 
+font-medium">The spacing effect and active recall</p>
+<p class="text-sm text-ink-muted mt-1">Reviewing at increasing intervals with 
+effortful retrieval</p>
+</div>
+</div>
+</button>
+
+<button onclick="showFeedback(\'incorrect\')" class="w-full text-left p-5 
+rounded-xl border border-border hover:border-brand hover:bg-brand-light 
+group">
+<div class="flex items-start gap-4">
+<span class="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-muted 
+group-hover:bg-white flex items-center justify-center font-mono text-sm 
+font-medium text-ink-secondary group-hover:text-brand">C</span>
+<div class="flex-1">
+<p class="text-ink 
+font-medium">Passive reading and highlighting</p>
+<p class="text-sm text-ink-muted mt-1">Re-reading and marking important 
+sections</p>
+</div>
+</div>
+</button>
+
+<button onclick="showFeedback(\'incorrect\')" class="w-full text-left p-5 
+rounded-xl border border-border hover:border-brand hover:bg-brand-light 
+group">
+<div class="flex items-start gap-4">
+<span class="flex-shrink-0 w-8 h-8 rounded-lg bg-surface-muted 
+group-hover:bg-white flex items-center justify-center font-mono text-sm 
+font-medium text-ink-secondary group-hover:text-brand">D</span>
+<div class="flex-1">
+<p class="text-ink 
+font-medium">Massed practice and cramming</p>
+<p 
+class="text-sm text-ink-muted mt-1">Intensive study sessions before exams</p>
+</div>
+</div>
+</button>
+</div>
+</div>
+
+<!-- Ask About This Content -->
+<div 
+class="mt-4 flex items-center justify-center">
+<button 
+onclick="focusChat()" class="flex items-center gap-2 text-sm text-ink-muted 
+hover:text-brand">
+<i data-lucide="message-circle" 
+class="w-4 h-4"></i>
+<span>Ask a question about this 
+content</span>
+</button>
+</div>
+</div>
+
+<!-- STATE 3: Feedback Card 
+(Correct) -->
+<div id="feedback-card-correct" class="hidden 
+max-w-3xl mx-auto">
+<!-- Feedback Header -->
+<div class="flex items-center gap-3 mb-4">
+<div class="flex
+items-center gap-2 px-3 py-1.5 bg-success-light rounded-full">
+<i data-lucide="check-circle" class="w-4 h-4 text-success"></i>
+<span class="text-sm font-medium text-success">Correct</span>
+</div>
+<span class="text-sm text-ink-muted">You selected 
+option B</span>
+</div>
+
+<!-- Big Feedback Card -->
+<div class="bg-surface rounded-2xl
+border border-border shadow-sm overflow-hidden">
+<!-- 
+Correct Answer Highlight -->
+<div 
+class="bg-success-light/50 p-8 border-b border-border">
+<p class="text-xs font-mono uppercase tracking-wider text-success mb-3">Correct 
+Answer</p>
+<h3 class="font-serif text-2xl text-ink">
+The spacing effect and active recall
+</h3>
+<p class="text-ink-secondary mt-2">Reviewing at 
+increasing intervals with effortful retrieval</p>
+</div>
+
+<!-- Explanation -->
+<div class="p-8 border-b border-border">
+<p 
+class="text-xs font-mono uppercase tracking-wider text-ink-muted 
+mb-4">Explanation</p>
+<div class="prose prose-sm 
+max-w-none text-ink-secondary">
+<p class="text-base 
+leading-relaxed">
+Spaced repetition leverages two 
+well-established cognitive phenomena: <strong class="text-ink">the spacing 
+effect</strong> and <strong class="text-ink">active recall</strong>. The spacing
+effect demonstrates that information is better retained when study sessions are 
+distributed over time rather than massed together. Active recall requires 
+actively stimulating memory during learning—retrieving information strengthens 
+neural pathways more effectively than passive review.
+</p>
+<p class="text-base leading-relaxed mt-4">
+By combining these principles, spaced repetition systems 
+like Scry optimize the timing of each review to occur just as you\'re about to 
+forget, maximizing efficiency and long-term retention.
+</p>
+</div>
+</div>
+
+<!-- Metadata Display - Confident -->
+<div class="p-6 bg-surface-muted">
+<p class="text-xs 
+font-mono uppercase tracking-wider text-ink-muted mb-4">Review Schedule 
+Updated</p>
+<div class="grid grid-cols-4 gap-4">
+<div>
+<p class="text-xs 
+text-ink-muted font-mono mb-1">Previous</p>
+<p 
+class="text-lg font-semibold tabular-nums">3d</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">New Interval</p>
+<p class="text-lg font-semibold tabular-nums text-success">7d</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">Ease Factor</p>
+<p class="text-lg font-semibold tabular-nums">2.5</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">Next Review</p>
+<p class="text-lg font-semibold tabular-nums">Feb 24</p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Actions -->
+<div class="mt-6 flex items-center justify-between">
+<button onclick="focusChat()" class="flex items-center gap-2 text-sm 
+text-ink-muted hover:text-brand">
+<i 
+data-lucide="message-circle" class="w-4 h-4"></i>
+<span>Ask for clarification</span>
+</button>
+<button onclick="showQuiz()" class="flex items-center gap-2 px-6 py-3 bg-brand 
+hover:bg-brand-dark rounded-xl text-white font-medium">
+<span>Next Question</span>
+<i data-lucide="arrow-right" 
+class="w-4 h-4"></i>
+</button>
+</div>
+</div>
+
+<!-- STATE 3b: Feedback Card 
+(Incorrect) -->
+<div id="feedback-card-incorrect" class="hidden
+max-w-3xl mx-auto">
+<!-- Feedback Header -->
+<div class="flex items-center gap-3 mb-4">
+<div class="flex
+items-center gap-2 px-3 py-1.5 bg-error-light rounded-full">
+<i data-lucide="x-circle" class="w-4 h-4 text-error"></i>
+<span class="text-sm font-medium text-error">Incorrect</span>
+</div>
+<span class="text-sm text-ink-muted">You selected 
+option A</span>
+</div>
+
+<div class="bg-surface rounded-2xl border border-border shadow-sm 
+overflow-hidden">
+<!-- Your Answer -->
+<div class="bg-error-light/50 p-8 border-b border-border">
+<p class="text-xs font-mono uppercase tracking-wider text-error mb-3">Your 
+Answer</p>
+<h3 class="font-serif text-2xl text-ink 
+line-through opacity-60">
+Continuous exposure to 
+information
+</h3>
+</div>
+
+<!-- Correct Answer -->
+<div 
+class="p-8 border-b border-border bg-success-light/30">
+<p class="text-xs font-mono uppercase tracking-wider text-success mb-3">Correct 
+Answer</p>
+<h3 class="font-serif text-xl text-ink">
+The spacing effect and active recall
+</h3>
+<p class="text-ink-secondary mt-1">Reviewing at 
+increasing intervals with effortful retrieval</p>
+</div>
+
+<!-- Explanation -->
+<div class="p-8 border-b border-border">
+<p 
+class="text-xs font-mono uppercase tracking-wider text-ink-muted mb-4">Why This 
+Matters</p>
+<div class="prose prose-sm max-w-none 
+text-ink-secondary">
+<p class="text-base 
+leading-relaxed">
+Continuous exposure (massed 
+practice) actually produces <strong class="text-ink">worse</strong> long-term 
+retention compared to spaced repetition. While it may feel easier and create a 
+sense of familiarity, the learning is more fragile. The "fluency illusion" makes
+you think you know the material, but without the effort of retrieval after a 
+delay, memories don\'t consolidate properly.
+</p>
+</div>
+</div>
+
+<!-- Metadata -->
+<div class="p-6 
+bg-surface-muted">
+<p class="text-xs font-mono uppercase 
+tracking-wider text-ink-muted mb-4">Review Schedule Adjusted</p>
+<div class="grid grid-cols-4 gap-4">
+<div>
+<p class="text-xs text-ink-muted font-mono mb-1">Previous</p>
+<p class="text-lg font-semibold tabular-nums">3d</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">New Interval</p>
+<p class="text-lg font-semibold tabular-nums text-error">1d</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">Ease Factor</p>
+<p class="text-lg font-semibold tabular-nums">2.3</p>
+</div>
+<div>
+<p 
+class="text-xs text-ink-muted font-mono mb-1">Next Review</p>
+<p class="text-lg font-semibold tabular-nums">Tomorrow</p>
+</div>
+</div>
+</div>
+</div>
+
+<div class="mt-6 flex items-center
+justify-between">
+<button onclick="focusChat()" class="flex
+items-center gap-2 text-sm text-ink-muted hover:text-brand">
+<i data-lucide="message-circle" class="w-4 h-4"></i>
+<span>Discuss this topic</span>
+</button>
+<button onclick="showQuiz()" class="flex items-center gap-2 px-6 py-3 bg-brand 
+hover:bg-brand-dark rounded-xl text-white font-medium">
+<span>Next Question</span>
+<i data-lucide="arrow-right" 
+class="w-4 h-4"></i>
+</button>
+</div>
+</div>
+
+</div>
+
+<!-- RIGHT: Chat Panel (~35-40%) -->
+<div class="w-[420px] 
+border-l border-border bg-surface flex flex-col">
+
+<!-- Chat Header -->
+<div class="px-5 py-4 border-b 
+border-border flex items-center justify-between">
+<div 
+class="flex items-center gap-3">
+<div class="w-8 h-8 
+bg-brand rounded-lg flex items-center justify-center">
+<i
+data-lucide="bot" class="w-4 h-4 text-white"></i>
+</div>
+<div>
+<h3 class="font-medium 
+text-sm">Scry AI</h3>
+<p class="text-xs text-ink-muted 
+font-mono">Online</p>
+</div>
+</div>
+<button class="p-2 hover:bg-surface-muted rounded-lg 
+text-ink-muted">
+<i data-lucide="more-vertical" class="w-4 
+h-4"></i>
+</button>
+</div>
+
+<!-- Chat Messages -->
+<div id="chat-messages" 
+class="flex-1 overflow-auto p-5 space-y-5">
+<!-- Agent 
+Message -->
+<div class="flex gap-3">
+<div class="w-7 h-7 bg-brand rounded-md flex-shrink-0 flex items-center 
+justify-center">
+<i data-lucide="layers" class="w-3.5 
+h-3.5 text-white"></i>
+</div>
+<div 
+class="flex-1">
+<div class="bg-surface-muted rounded-2xl 
+rounded-tl-md px-4 py-3">
+<p class="text-sm text-ink 
+leading-relaxed">
+Ready to begin your review session?
+I\'ll guide you through 24 cards today. Feel free to ask me anything about the 
+content—we can explore topics in depth or I can adjust the schedule based on 
+your performance.
+</p>
+</div>
+<p class="text-xs text-ink-muted mt-1.5 ml-1">Just now</p>
+</div>
+</div>
+
+<!-- Agent Message with Stats -->
+<div class="flex gap-3">
+<div class="w-7 h-7 bg-brand rounded-md flex-shrink-0 flex 
+items-center justify-center">
+<i data-lucide="layers" 
+class="w-3.5 h-3.5 text-white"></i>
+</div>
+<div class="flex-1">
+<div class="bg-surface-muted 
+rounded-2xl rounded-tl-md px-4 py-3">
+<p class="text-sm
+text-ink leading-relaxed mb-3">
+Here\'s how you\'ve 
+been doing:
+</p>
+<div 
+class="space-y-2">
+<div class="flex items-center 
+justify-between text-sm">
+<span 
+class="text-ink-secondary">Accuracy (7 days)</span>
+<span class="font-medium font-mono">87%</span>
+</div>
+<div class="flex items-center justify-between 
+text-sm">
+<span class="text-ink-secondary">Cards 
+mastered</span>
+<span class="font-medium 
+font-mono">42</span>
+</div>
+<div class="flex items-center justify-between text-sm">
+<span class="text-ink-secondary">Study streak</span>
+<span class="font-medium font-mono">12 days</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-ink-muted mt-1.5 ml-1">2 minutes ago</p>
+</div>
+</div>
+</div>
+
+<!-- Suggestion Chips -->
+<div class="px-5 py-3 border-t 
+border-border bg-surface-subtle">
+<p class="text-xs 
+text-ink-muted font-mono uppercase tracking-wide mb-3">Agent can help you:</p>
+<div class="flex flex-wrap gap-2">
+<button 
+onclick="addMessage(\'Explain the spacing effect\')" class="px-3 py-1.5 
+bg-surface border border-border hover:border-brand rounded-full text-xs 
+text-ink-secondary hover:text-brand">
+Explain the spacing
+effect
+</button>
+<button 
+onclick="addMessage(\'Create a new card\')" class="px-3 py-1.5 bg-surface border
+border-border hover:border-brand rounded-full text-xs text-ink-secondary 
+hover:text-brand">
+Create a new card
+</button>
+<button onclick="addMessage(\'Reschedule this 
+deck\')" class="px-3 py-1.5 bg-surface border border-border hover:border-brand 
+rounded-full text-xs text-ink-secondary hover:text-brand">
+Reschedule this deck
+</button>
+<button
+onclick="addMessage(\'Show my weak areas\')" class="px-3 py-1.5 bg-surface 
+border border-border hover:border-brand rounded-full text-xs text-ink-secondary 
+hover:text-brand">
+Show my weak areas
+</button>
+</div>
+</div>
+
+<!-- Chat Input -->
+<div class="p-4 border-t border-border">
+<div class="relative">
+<input 
+type="text" 
+id="chat-input"
+placeholder="Ask anything..."
+class="w-full pl-4 pr-12 
+py-3 bg-surface-muted border border-border rounded-xl text-sm focus:outline-none
+focus:border-brand"
+>
+<button 
+class="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-brand 
+hover:bg-brand-dark rounded-lg text-white">
+<i 
+data-lucide="send" class="w-4 h-4"></i>
+</button>
+</div>
+</div>
+
+<!-- Persistent Next 
+Question Button -->
+<div class="p-4 border-t border-border 
+bg-surface-subtle">
+<button onclick="showQuiz()" 
+class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-ink 
+hover:bg-ink-secondary rounded-xl text-white font-medium text-sm">
+<span>Next Question</span>
+<i data-lucide="arrow-right" 
+class="w-4 h-4"></i>
+</button>
+</div>
+</div>
+
+</main>
+</div>
+
+<script>
+// Initialize Lucide icons
+lucide.createIcons();
+
+// State management
+function showQuiz() {
+document.getElementById(\'start-screen\').classList.add(\'hidden\');
+document.getElementById(\'feedback-card-correct\').classList.add(\'hidden\');
+document.getElementById(\'feedback-card-incorrect\').classList.add(\'hidden\');\
+n   529	      
+document.getElementById(\'quiz-card\').classList.remove(\'hidden\');
+lucide.createIcons();
+}
+
+function 
+showFeedback(type) {
+document.getElementById(\'quiz-card\').classList.add(\'hidden\');
+if (type === \'correct\') {
+document.getElementById(\'feedback-card-correct\').classList.remove(\'hidden\');
+
+} else {
+document.getElementById(\'feedback-card-incorrect\').classList.remove(\'hidden\'
+);
+}
+lucide.createIcons();
+}
+
+function focusChat() {
+document.getElementById(\'chat-input\').focus();
+}
+
+function addMessage(text) {
+const container = 
+document.getElementById(\'chat-messages\');
+
+// 
+Add user message
+const userMsg = 
+document.createElement(\'div\');
+userMsg.className = \'flex gap-3
+justify-end\';
+userMsg.innerHTML = `
+<div 
+class="flex-1 flex justify-end">
+<div class="bg-brand 
+rounded-2xl rounded-tr-md px-4 py-3 max-w-[85%]">
+<p 
+class="text-sm text-white leading-relaxed">${text}</p>
+</div>
+</div>
+`;
+container.appendChild(userMsg);
+
+// Add agent 
+response
+setTimeout(() => {
+const agentMsg = 
+document.createElement(\'div\');
+agentMsg.className = \'flex 
+gap-3\';
+agentMsg.innerHTML = `
+<div 
+class="w-7 h-7 bg-brand rounded-md flex-shrink-0 flex items-center 
+justify-center">
+<i data-lucide="layers" class="w-3.5 
+h-3.5 text-white"></i>
+</div>
+<div 
+class="flex-1">
+<div class="bg-surface-muted rounded-2xl 
+rounded-tl-md px-4 py-3">
+<p class="text-sm text-ink 
+leading-relaxed">
+I\'ll help you with that. Let me 
+analyze your request and provide a detailed response.
+</p>
+</div>
+<p class="text-xs 
+text-ink-muted mt-1.5 ml-1">Just now</p>
+</div>
+`;
+container.appendChild(agentMsg);
+lucide.createIcons();
+container.scrollTop = 
+container.scrollHeight;
+}, 500);
+
+container.scrollTop = container.scrollHeight;
+}
+
+// Chat input handler
+document.getElementById(\'chat-input\').addEventListener(\'keypress\', 
+function(e) {
+if (e.key === \'Enter\' && this.value.trim()) {
+addMessage(this.value.trim());
+this.value = 
+\'\';
+}
+});
+</script>
+
+</body>
+</html>

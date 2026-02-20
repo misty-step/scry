@@ -1,0 +1,678 @@
+<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta 
+charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" 
+content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>Scry — Spaced 
+Repetition Review</title>\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link 
+href=\\"https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&fami
+ly=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap\\" 
+rel=\\"stylesheet\\">\\n  <style>\\n    :root {\\n      --primary: hsl(221.2, 
+83.2%, 53.3%);\\n      --primary-dim: hsl(221.2, 83.2%, 45%);\\n      
+--primary-light: hsl(221.2, 83.2%, 96%);\\n      --success: hsl(142, 76%, 
+36%);\\n      --success-light: hsl(142, 76%, 96%);\\n      --error: hsl(0, 84%, 
+60%);\\n      --error-light: hsl(0, 84%, 97%);\\n      --text-primary: hsl(220, 
+20%, 10%);\\n      --text-secondary: hsl(220, 10%, 40%);\\n      
+--text-tertiary: hsl(220, 8%, 55%);\\n      --bg-white: hsl(0, 0%, 100%);\\n    
+--bg-gray-50: hsl(220, 14%, 97%);\\n      --bg-gray-100: hsl(220, 12%, 94%);\\n 
+--bg-gray-150: hsl(220, 10%, 91%);\\n      --border-light: hsl(220, 10%, 
+88%);\\n      --border-medium: hsl(220, 10%, 82%);\\n      \\n      --font-sans:
+system-ui, -apple-system, BlinkMacSystemFont, \\"Segoe UI\\", sans-serif;\\n    
+--font-serif: \\"Lora\\", Georgia, serif;\\n      --font-mono: \\"IBM Plex 
+Mono\\", monospace;\\n      \\n      --ease-smooth: cubic-bezier(0.4, 0, 0.2, 
+1);\\n      --ease-gentle: cubic-bezier(0.25, 0.1, 0.25, 1);\\n    }\\n    \\n  
+* {\\n      margin: 0;\\n      padding: 0;\\n      box-sizing: border-box;\\n   
+}\\n    \\n    html, body {\\n      height: 100%;\\n      font-family: 
+var(--font-sans);\\n      color: var(--text-primary);\\n      background: 
+var(--bg-white);\\n      overflow: hidden;\\n    }\\n    \\n    /* Main Layout 
+*/\\n    .app {\\n      display: flex;\\n      height: 100vh;\\n    }\\n    \\n 
+/* Left Panel - Review Content (62%) */\\n    .review-panel {\\n      width: 
+62%;\\n      height: 100%;\\n      overflow-y: auto;\\n      background: 
+var(--bg-white);\\n      position: relative;\\n    }\\n    \\n    
+.review-panel::-webkit-scrollbar {\\n      width: 6px;\\n    }\\n    \\n    
+.review-panel::-webkit-scrollbar-track {\\n      background: transparent;\\n    
+}\\n    \\n    .review-panel::-webkit-scrollbar-thumb {\\n      background: 
+var(--border-medium);\\n      border-radius: 3px;\\n    }\\n    \\n    /* Right 
+Panel - Chat (38%) */\\n    .chat-panel {\\n      width: 38%;\\n      height: 
+100%;\\n      background: var(--bg-gray-50);\\n      border-left: 1px solid 
+var(--border-light);\\n      display: flex;\\n      flex-direction: column;\\n  
+position: relative;\\n    }\\n    \\n    /* Header */\\n    .header {\\n      
+display: flex;\\n      align-items: center;\\n      justify-content: 
+space-between;\\n      padding: 20px 32px;\\n      border-bottom: 1px solid 
+var(--border-light);\\n      background: var(--bg-white);\\n      position: 
+sticky;\\n      top: 0;\\n      z-index: 10;\\n    }\\n    \\n    .logo {\\n    
+display: flex;\\n      align-items: center;\\n      gap: 10px;\\n      
+font-weight: 600;\\n      font-size: 18px;\\n      color: 
+var(--text-primary);\\n    }\\n    \\n    .logo-icon {\\n      width: 28px;\\n  
+height: 28px;\\n      background: var(--primary);\\n      border-radius: 7px;\\n
+display: flex;\\n      align-items: center;\\n      justify-content: center;\\n 
+}\\n    \\n    .logo-icon svg {\\n      width: 16px;\\n      height: 16px;\\n   
+color: white;\\n    }\\n    \\n    .header-stats {\\n      display: flex;\\n    
+align-items: center;\\n      gap: 24px;\\n    }\\n    \\n    .header-stat {\\n  
+display: flex;\\n      align-items: center;\\n      gap: 6px;\\n      font-size:
+13px;\\n      color: var(--text-secondary);\\n    }\\n    \\n    .header-stat 
+strong {\\n      color: var(--text-primary);\\n      font-weight: 600;\\n    
+}\\n    \\n    .header-stat svg {\\n      width: 14px;\\n      height: 14px;\\n 
+color: var(--text-tertiary);\\n    }\\n    \\n    /* View Container */\\n    
+.view {\\n      min-height: calc(100vh - 70px);\\n      opacity: 0;\\n      
+transform: translateY(12px);\\n      animation: fadeSlideUp 0.5s 
+var(--ease-gentle) forwards;\\n    }\\n    \\n    @keyframes fadeSlideUp {\\n   
+to {\\n        opacity: 1;\\n        transform: translateY(0);\\n      }\\n    
+}\\n    \\n    .view.hidden {\\n      display: none;\\n    }\\n    \\n    /* ===
+HERO VIEW === */\\n    .hero-view {\\n      padding: 48px 32px 64px;\\n      
+max-width: 680px;\\n      margin: 0 auto;\\n    }\\n    \\n    .hero-greeting 
+{\\n      font-size: 14px;\\n      font-weight: 500;\\n      color: 
+var(--text-tertiary);\\n      text-transform: uppercase;\\n      letter-spacing:
+0.08em;\\n      margin-bottom: 12px;\\n    }\\n    \\n    .hero-title {\\n      
+font-size: 40px;\\n      font-weight: 600;\\n      color: 
+var(--text-primary);\\n      line-height: 1.2;\\n      margin-bottom: 48px;\\n  
+letter-spacing: -0.02em;\\n    }\\n    \\n    /* Stats Grid */\\n    .hero-stats
+{\\n      display: grid;\\n      grid-template-columns: repeat(2, 1fr);\\n      
+gap: 16px;\\n      margin-bottom: 48px;\\n    }\\n    \\n    .stat-card {\\n    
+background: var(--bg-white);\\n      border: 1px solid var(--border-light);\\n  
+border-radius: 16px;\\n      padding: 28px 24px;\\n      transition: all 0.3s 
+var(--ease-smooth);\\n    }\\n    \\n    .stat-card:hover {\\n      
+border-color: var(--border-medium);\\n      background: var(--bg-gray-50);\\n   
+}\\n    \\n    .stat-card.primary {\\n      background: var(--primary);\\n      
+border-color: var(--primary);\\n      color: white;\\n    }\\n    \\n    
+.stat-card.primary:hover {\\n      background: var(--primary-dim);\\n      
+border-color: var(--primary-dim);\\n    }\\n    \\n    .stat-card.primary 
+.stat-label {\\n      color: rgba(255, 255, 255, 0.7);\\n    }\\n    \\n    
+.stat-card.primary .stat-value {\\n      color: white;\\n    }\\n    \\n    
+.stat-card.wide {\\n      grid-column: span 2;\\n    }\\n    \\n    .stat-label 
+{\\n      font-size: 12px;\\n      font-weight: 500;\\n      color: 
+var(--text-tertiary);\\n      text-transform: uppercase;\\n      letter-spacing:
+0.06em;\\n      margin-bottom: 8px;\\n    }\\n    \\n    .stat-value {\\n      
+font-size: 42px;\\n      font-weight: 600;\\n      color: 
+var(--text-primary);\\n      line-height: 1;\\n      letter-spacing: -0.03em;\\n
+}\\n    \\n    .stat-value.small {\\n      font-size: 28px;\\n    }\\n    \\n   
+.stat-meta {\\n      display: flex;\\n      align-items: center;\\n      gap: 
+16px;\\n      margin-top: 12px;\\n      font-size: 14px;\\n      color: 
+var(--text-secondary);\\n    }\\n    \\n    .stat-meta-item {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: 4px;\\n    }\\n    \\n    
+.stat-meta-item svg {\\n      width: 14px;\\n      height: 14px;\\n    }\\n    
+\\n    .accuracy-badge {\\n      display: inline-flex;\\n      align-items: 
+center;\\n      gap: 6px;\\n      padding: 4px 10px;\\n      background: 
+var(--success-light);\\n      color: var(--success);\\n      font-size: 13px;\\n
+font-weight: 500;\\n      border-radius: 20px;\\n    }\\n    \\n    
+.accuracy-badge svg {\\n      width: 12px;\\n      height: 12px;\\n    }\\n    
+\\n    /* CTA Section */\\n    .hero-cta {\\n      text-align: center;\\n      
+padding: 32px;\\n      background: var(--bg-gray-50);\\n      border-radius: 
+16px;\\n      border: 1px solid var(--border-light);\\n    }\\n    \\n    
+.hero-cta-text {\\n      font-size: 16px;\\n      color: 
+var(--text-secondary);\\n      margin-bottom: 20px;\\n      line-height: 1.6;\\n
+}\\n    \\n    .btn-primary {\\n      display: inline-flex;\\n      align-items:
+center;\\n      gap: 8px;\\n      padding: 16px 32px;\\n      background: 
+var(--primary);\\n      color: white;\\n      font-size: 15px;\\n      
+font-weight: 600;\\n      border: none;\\n      border-radius: 12px;\\n      
+cursor: pointer;\\n      transition: all 0.2s var(--ease-smooth);\\n      
+font-family: var(--font-sans);\\n    }\\n    \\n    .btn-primary:hover {\\n     
+background: var(--primary-dim);\\n      transform: translateY(-1px);\\n    }\\n 
+\\n    .btn-primary:active {\\n      transform: translateY(0);\\n    }\\n    \\n
+.btn-primary svg {\\n      width: 18px;\\n      height: 18px;\\n      
+transition: transform 0.2s var(--ease-smooth);\\n    }\\n    \\n    
+.btn-primary:hover svg {\\n      transform: translateX(3px);\\n    }\\n    \\n  
+/* === QUIZ VIEW === */\\n    .quiz-view {\\n      padding: 40px 32px 64px;\\n  
+max-width: 720px;\\n      margin: 0 auto;\\n    }\\n    \\n    .quiz-header {\\n
+display: flex;\\n      align-items: center;\\n      justify-content: 
+space-between;\\n      margin-bottom: 32px;\\n    }\\n    \\n    .quiz-progress 
+{\\n      display: flex;\\n      align-items: center;\\n      gap: 12px;\\n     
+font-size: 13px;\\n      color: var(--text-secondary);\\n    }\\n    \\n    
+.progress-bar {\\n      width: 120px;\\n      height: 4px;\\n      background: 
+var(--bg-gray-150);\\n      border-radius: 2px;\\n      overflow: hidden;\\n    
+}\\n    \\n    .progress-fill {\\n      height: 100%;\\n      background: 
+var(--primary);\\n      border-radius: 2px;\\n      transition: width 0.4s 
+var(--ease-smooth);\\n    }\\n    \\n    .quiz-deck-badge {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: 8px;\\n      padding: 8px 
+14px;\\n      background: var(--bg-gray-50);\\n      border: 1px solid 
+var(--border-light);\\n      border-radius: 8px;\\n      font-size: 13px;\\n    
+color: var(--text-secondary);\\n    }\\n    \\n    .quiz-deck-badge svg {\\n    
+width: 14px;\\n      height: 14px;\\n      color: var(--primary);\\n    }\\n    
+\\n    /* Question Card */\\n    .question-card {\\n      background: 
+var(--bg-white);\\n      border: 1px solid var(--border-light);\\n      
+border-radius: 20px;\\n      padding: 40px;\\n      margin-bottom: 24px;\\n     
+box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);\\n    }\\n    \\n    .question-meta 
+{\\n      display: flex;\\n      align-items: center;\\n      gap: 12px;\\n     
+margin-bottom: 24px;\\n    }\\n    \\n    .difficulty-badge {\\n      padding: 
+4px 10px;\\n      font-size: 11px;\\n      font-weight: 600;\\n      
+text-transform: uppercase;\\n      letter-spacing: 0.05em;\\n      
+border-radius: 6px;\\n    }\\n    \\n    .difficulty-badge.medium {\\n      
+background: hsl(35, 92%, 95%);\\n      color: hsl(35, 90%, 40%);\\n    }\\n    
+\\n    .interval-info {\\n      font-size: 13px;\\n      color: 
+var(--text-tertiary);\\n      font-family: var(--font-mono);\\n    }\\n    \\n  
+.question-text {\\n      font-family: var(--font-serif);\\n      font-size: 
+26px;\\n      line-height: 1.5;\\n      color: var(--text-primary);\\n      
+margin-bottom: 16px;\\n    }\\n    \\n    .question-context {\\n      font-size:
+14px;\\n      color: var(--text-secondary);\\n      line-height: 1.6;\\n      
+padding: 16px 20px;\\n      background: var(--bg-gray-50);\\n      
+border-radius: 10px;\\n      border-left: 3px solid var(--primary);\\n    }\\n  
+\\n    /* Options */\\n    .options-list {\\n      display: flex;\\n      
+flex-direction: column;\\n      gap: 12px;\\n    }\\n    \\n    .option-btn {\\n
+display: flex;\\n      align-items: flex-start;\\n      gap: 16px;\\n      
+width: 100%;\\n      padding: 20px 24px;\\n      background: var(--bg-white);\\n
+border: 1px solid var(--border-light);\\n      border-radius: 12px;\\n      
+cursor: pointer;\\n      text-align: left;\\n      transition: all 0.2s 
+var(--ease-smooth);\\n      font-family: var(--font-sans);\\n      font-size: 
+15px;\\n      line-height: 1.5;\\n      color: var(--text-primary);\\n    }\\n  
+\\n    .option-btn:hover {\\n      border-color: var(--primary);\\n      
+transform: translateX(6px);\\n      background: var(--primary-light);\\n    }\\n
+\\n    .option-marker {\\n      flex-shrink: 0;\\n      width: 28px;\\n      
+height: 28px;\\n      display: flex;\\n      align-items: center;\\n      
+justify-content: center;\\n      background: var(--bg-gray-100);\\n      
+border-radius: 6px;\\n      font-size: 13px;\\n      font-weight: 600;\\n      
+color: var(--text-secondary);\\n      font-family: var(--font-mono);\\n      
+transition: all 0.2s var(--ease-smooth);\\n    }\\n    \\n    .option-btn:hover 
+.option-marker {\\n      background: var(--primary);\\n      color: white;\\n   
+}\\n    \\n    .option-text {\\n      flex: 1;\\n      padding-top: 3px;\\n    
+}\\n    \\n    /* === FEEDBACK VIEW === */\\n    .feedback-view {\\n      
+padding: 40px 32px 64px;\\n      max-width: 720px;\\n      margin: 0 auto;\\n   
+}\\n    \\n    .feedback-header {\\n      display: flex;\\n      align-items: 
+center;\\n      gap: 12px;\\n      margin-bottom: 28px;\\n    }\\n    \\n    
+.feedback-badge {\\n      display: flex;\\n      align-items: center;\\n      
+gap: 8px;\\n      padding: 10px 18px;\\n      border-radius: 10px;\\n      
+font-size: 15px;\\n      font-weight: 600;\\n    }\\n    \\n    
+.feedback-badge.correct {\\n      background: var(--success-light);\\n      
+color: var(--success);\\n    }\\n    \\n    .feedback-badge.incorrect {\\n      
+background: var(--error-light);\\n      color: var(--error);\\n    }\\n    \\n  
+.feedback-badge svg {\\n      width: 18px;\\n      height: 18px;\\n    }\\n    
+\\n    /* Answer Comparison */\\n    .answer-comparison {\\n      display: 
+grid;\\n      gap: 16px;\\n      margin-bottom: 28px;\\n    }\\n    \\n    
+.answer-box {\\n      padding: 20px 24px;\\n      border-radius: 12px;\\n      
+border: 1px solid;\\n    }\\n    \\n    .answer-box.yours {\\n      background: 
+var(--success-light);\\n      border-color: var(--success);\\n    }\\n    \\n   
+.answer-box.correct {\\n      background: var(--bg-white);\\n      border-color:
+var(--border-medium);\\n    }\\n    \\n    .answer-box.incorrect {\\n      
+background: var(--error-light);\\n      border-color: var(--error);\\n    }\\n  
+\\n    .answer-label {\\n      font-size: 11px;\\n      font-weight: 600;\\n    
+text-transform: uppercase;\\n      letter-spacing: 0.08em;\\n      
+margin-bottom: 8px;\\n      color: var(--text-tertiary);\\n    }\\n    \\n    
+.answer-box.yours .answer-label {\\n      color: var(--success);\\n    }\\n    
+\\n    .answer-box.incorrect .answer-label {\\n      color: var(--error);\\n    
+}\\n    \\n    .answer-value {\\n      font-size: 17px;\\n      color: 
+var(--text-primary);\\n      line-height: 1.5;\\n    }\\n    \\n    /* 
+Explanation */\\n    .explanation-card {\\n      background: var(--bg-white);\\n
+border: 1px solid var(--border-light);\\n      border-radius: 16px;\\n      
+padding: 28px;\\n      margin-bottom: 24px;\\n    }\\n    \\n    
+.explanation-title {\\n      font-size: 13px;\\n      font-weight: 600;\\n      
+text-transform: uppercase;\\n      letter-spacing: 0.06em;\\n      color: 
+var(--text-tertiary);\\n      margin-bottom: 16px;\\n    }\\n    \\n    
+.explanation-text {\\n      font-family: var(--font-serif);\\n      font-size: 
+17px;\\n      line-height: 1.7;\\n      color: var(--text-primary);\\n    }\\n  
+\\n    .explanation-text p {\\n      margin-bottom: 16px;\\n    }\\n    \\n    
+.explanation-text p:last-child {\\n      margin-bottom: 0;\\n    }\\n    \\n    
+/* Metadata Grid */\\n    .metadata-grid {\\n      display: grid;\\n      
+grid-template-columns: repeat(4, 1fr);\\n      gap: 12px;\\n      margin-bottom:
+28px;\\n    }\\n    \\n    .metadata-item {\\n      background: 
+var(--bg-gray-50);\\n      border: 1px solid var(--border-light);\\n      
+border-radius: 12px;\\n      padding: 20px 16px;\\n      text-align: center;\\n 
+transition: all 0.2s var(--ease-smooth);\\n    }\\n    \\n    
+.metadata-item:hover {\\n      background: var(--bg-white);\\n      
+border-color: var(--border-medium);\\n    }\\n    \\n    .metadata-label {\\n   
+font-size: 11px;\\n      font-weight: 500;\\n      color: 
+var(--text-tertiary);\\n      text-transform: uppercase;\\n      letter-spacing:
+0.05em;\\n      margin-bottom: 8px;\\n    }\\n    \\n    .metadata-value {\\n   
+font-size: 20px;\\n      font-weight: 600;\\n      color: 
+var(--text-primary);\\n      font-family: var(--font-mono);\\n    }\\n    \\n   
+.metadata-value.highlight {\\n      color: var(--primary);\\n    }\\n    \\n    
+.metadata-arrow {\\n      font-size: 14px;\\n      color: var(--success);\\n    
+margin-left: 4px;\\n    }\\n    \\n    /* Rating Buttons */\\n    
+.rating-section {\\n      background: var(--bg-gray-50);\\n      border: 1px 
+solid var(--border-light);\\n      border-radius: 16px;\\n      padding: 
+24px;\\n    }\\n    \\n    .rating-title {\\n      font-size: 13px;\\n      
+font-weight: 600;\\n      color: var(--text-secondary);\\n      margin-bottom: 
+16px;\\n      text-align: center;\\n    }\\n    \\n    .rating-buttons {\\n     
+display: flex;\\n      gap: 12px;\\n    }\\n    \\n    .rating-btn {\\n      
+flex: 1;\\n      padding: 16px 12px;\\n      background: var(--bg-white);\\n    
+border: 1px solid var(--border-light);\\n      border-radius: 12px;\\n      
+cursor: pointer;\\n      transition: all 0.2s var(--ease-smooth);\\n      
+font-family: var(--font-sans);\\n      text-align: center;\\n    }\\n    \\n    
+.rating-btn:hover {\\n      border-color: var(--primary);\\n      background: 
+var(--primary-light);\\n      transform: translateY(-2px);\\n    }\\n    \\n    
+.rating-label {\\n      display: block;\\n      font-size: 13px;\\n      
+font-weight: 600;\\n      color: var(--text-primary);\\n      margin-bottom: 
+4px;\\n    }\\n    \\n    .rating-interval {\\n      display: block;\\n      
+font-size: 11px;\\n      color: var(--text-tertiary);\\n      font-family: 
+var(--font-mono);\\n    }\\n    \\n    /* === CHAT PANEL === */\\n    
+.chat-header {\\n      padding: 20px 24px;\\n      border-bottom: 1px solid 
+var(--border-light);\\n      background: var(--bg-white);\\n    }\\n    \\n    
+.chat-title {\\n      display: flex;\\n      align-items: center;\\n      gap: 
+10px;\\n      font-size: 15px;\\n      font-weight: 600;\\n      color: 
+var(--text-primary);\\n      margin-bottom: 4px;\\n    }\\n    \\n    
+.chat-title svg {\\n      width: 18px;\\n      height: 18px;\\n      color: 
+var(--primary);\\n    }\\n    \\n    .chat-subtitle {\\n      font-size: 
+13px;\\n      color: var(--text-tertiary);\\n      padding-left: 28px;\\n    
+}\\n    \\n    .chat-messages {\\n      flex: 1;\\n      overflow-y: auto;\\n   
+padding: 20px 24px;\\n    }\\n    \\n    .chat-messages::-webkit-scrollbar {\\n 
+width: 6px;\\n    }\\n    \\n    .chat-messages::-webkit-scrollbar-thumb {\\n   
+background: var(--border-medium);\\n      border-radius: 3px;\\n    }\\n    \\n 
+.message {\\n      margin-bottom: 20px;\\n      opacity: 0;\\n      transform: 
+translateY(8px);\\n      animation: fadeSlideUp 0.3s var(--ease-gentle) 
+forwards;\\n    }\\n    \\n    .message-agent {\\n      display: flex;\\n      
+gap: 12px;\\n    }\\n    \\n    .agent-avatar {\\n      flex-shrink: 0;\\n      
+width: 32px;\\n      height: 32px;\\n      background: var(--primary-light);\\n 
+border-radius: 8px;\\n      display: flex;\\n      align-items: center;\\n      
+justify-content: center;\\n    }\\n    \\n    .agent-avatar svg {\\n      width:
+18px;\\n      height: 18px;\\n      color: var(--primary);\\n    }\\n    \\n    
+.message-content {\\n      flex: 1;\\n      background: var(--bg-white);\\n     
+border: 1px solid var(--border-light);\\n      border-radius: 16px;\\n      
+border-top-left-radius: 4px;\\n      padding: 14px 16px;\\n      font-size: 
+14px;\\n      line-height: 1.6;\\n      color: var(--text-primary);\\n    }\\n  
+\\n    .message-time {\\n      font-size: 11px;\\n      color: 
+var(--text-tertiary);\\n      margin-top: 6px;\\n      margin-left: 44px;\\n    
+}\\n    \\n    .message-user .message-content {\\n      background: 
+var(--primary);\\n      color: white;\\n      border-color: var(--primary);\\n  
+border-top-right-radius: 4px;\\n      border-top-left-radius: 16px;\\n    }\\n  
+\\n    /* Capability Chips */\\n    .capability-chips {\\n      display: 
+flex;\\n      flex-wrap: wrap;\\n      gap: 8px;\\n      margin: 16px 0;\\n     
+padding: 0 24px;\\n    }\\n    \\n    .chip {\\n      display: flex;\\n      
+align-items: center;\\n      gap: 6px;\\n      padding: 8px 14px;\\n      
+background: var(--bg-white);\\n      border: 1px solid var(--border-light);\\n  
+border-radius: 20px;\\n      font-size: 12px;\\n      font-weight: 500;\\n      
+color: var(--text-secondary);\\n      cursor: pointer;\\n      transition: all 
+0.2s var(--ease-smooth);\\n    }\\n    \\n    .chip:hover {\\n      
+border-color: var(--primary);\\n      color: var(--primary);\\n      background:
+var(--primary-light);\\n    }\\n    \\n    .chip svg {\\n      width: 14px;\\n  
+height: 14px;\\n    }\\n    \\n    /* Inline Analytics */\\n    
+.inline-analytics {\\n      margin: 16px 24px;\\n      padding: 16px 20px;\\n   
+background: var(--bg-white);\\n      border: 1px solid var(--border-light);\\n  
+border-radius: 12px;\\n    }\\n    \\n    .analytics-title {\\n      font-size: 
+12px;\\n      font-weight: 600;\\n      color: var(--text-tertiary);\\n      
+text-transform: uppercase;\\n      letter-spacing: 0.05em;\\n      
+margin-bottom: 12px;\\n    }\\n    \\n    .analytics-row {\\n      display: 
+flex;\\n      align-items: center;\\n      justify-content: space-between;\\n   
+padding: 8px 0;\\n      border-bottom: 1px solid var(--bg-gray-100);\\n    }\\n 
+\\n    .analytics-row:last-child {\\n      border-bottom: none;\\n    }\\n    
+\\n    .analytics-label {\\n      font-size: 13px;\\n      color: 
+var(--text-secondary);\\n    }\\n    \\n    .analytics-value {\\n      
+font-size: 13px;\\n      font-weight: 500;\\n      color: 
+var(--text-primary);\\n      font-family: var(--font-mono);\\n    }\\n    \\n   
+.analytics-value.positive {\\n      color: var(--success);\\n    }\\n    \\n    
+/* Next Question Button */\\n    .next-question-container {\\n      padding: 
+16px 24px;\\n      border-top: 1px solid var(--border-light);\\n      
+background: var(--bg-white);\\n    }\\n    \\n    .btn-next {\\n      display: 
+flex;\\n      align-items: center;\\n      justify-content: center;\\n      gap:
+8px;\\n      width: 100%;\\n      padding: 14px 20px;\\n      background: 
+var(--success);\\n      color: white;\\n      font-size: 14px;\\n      
+font-weight: 600;\\n      border: none;\\n      border-radius: 10px;\\n      
+cursor: pointer;\\n      transition: all 0.2s var(--ease-smooth);\\n      
+font-family: var(--font-sans);\\n    }\\n    \\n    .btn-next:hover {\\n      
+background: hsl(142, 76%, 30%);\\n      transform: translateY(-1px);\\n    }\\n 
+\\n    .btn-next svg {\\n      width: 16px;\\n      height: 16px;\\n    }\\n    
+\\n    /* Chat Input */\\n    .chat-input-container {\\n      padding: 16px 24px
+20px;\\n      border-top: 1px solid var(--border-light);\\n      background: 
+var(--bg-white);\\n    }\\n    \\n    .chat-input-wrapper {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: 12px;\\n      padding: 12px 
+16px;\\n      background: var(--bg-gray-50);\\n      border: 1px solid 
+var(--border-light);\\n      border-radius: 12px;\\n      transition: all 0.2s 
+var(--ease-smooth);\\n    }\\n    \\n    .chat-input-wrapper:focus-within {\\n  
+background: var(--bg-white);\\n      border-color: var(--primary);\\n    }\\n   
+\\n    .chat-input {\\n      flex: 1;\\n      border: none;\\n      background: 
+transparent;\\n      font-size: 14px;\\n      color: var(--text-primary);\\n    
+outline: none;\\n      font-family: var(--font-sans);\\n    }\\n    \\n    
+.chat-input::placeholder {\\n      color: var(--text-tertiary);\\n    }\\n    
+\\n    .chat-send-btn {\\n      display: flex;\\n      align-items: center;\\n  
+justify-content: center;\\n      width: 32px;\\n      height: 32px;\\n      
+background: var(--primary);\\n      border: none;\\n      border-radius: 8px;\\n
+cursor: pointer;\\n      transition: all 0.2s var(--ease-smooth);\\n    }\\n    
+\\n    .chat-send-btn:hover {\\n      background: var(--primary-dim);\\n    }\\n
+\\n    .chat-send-btn svg {\\n      width: 16px;\\n      height: 16px;\\n      
+color: white;\\n    }\\n    \\n    /* Divider */\\n    .section-divider {\\n    
+height: 1px;\\n      background: var(--border-light);\\n      margin: 0 24px;\\n
+}\\n  </style>\\n</head>\\n<body>\\n  <div class=\\"app\\">\\n    <!-- Left 
+Panel: Review Content -->\\n    <main class=\\"review-panel\\">\\n      <header 
+class=\\"header\\">\\n        <div class=\\"logo\\">\\n          <div 
+class=\\"logo-icon\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <path 
+d=\\"M2 12s4-8 10-8 10 8 10 8-4 8-10 8-10-8-10-8Z\\"/>\\n              <circle 
+cx=\\"12\\" cy=\\"12\\" r=\\"3\\"/>\\n            </svg>\\n          </div>\\n  
+Scry\\n        </div>\\n        <div class=\\"header-stats\\">\\n          <div 
+class=\\"header-stat\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <rect 
+x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n   
+<line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n              <line 
+x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n              <line x1=\\"3\\" 
+y1=\\"10\\" x2=\\"21\\" y2=\\"10\\"/>\\n            </svg>\\n            
+<strong>12</strong> due today\\n          </div>\\n          <div 
+class=\\"header-stat\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              
+<polyline points=\\"22 12 18 12 15 21 9 3 6 12 2 12\\"/>\\n            </svg>\\n
+<strong>47</strong> day streak\\n          </div>\\n        </div>\\n      
+</header>\\n      \\n      <!-- Hero View -->\\n      <div id=\\"hero-view\\" 
+class=\\"view hero-view\\">\\n        <div class=\\"hero-greeting\\">February 
+17, 2026</div>\\n        <h1 class=\\"hero-title\\">Ready to reinforce what 
+you\'ve learned?</h1>\\n        \\n        <div class=\\"hero-stats\\">\\n      
+<div class=\\"stat-card primary\\">\\n            <div 
+class=\\"stat-label\\">Cards Due</div>\\n            <div 
+class=\\"stat-value\\">12</div>\\n            <div class=\\"stat-meta\\">\\n    
+<div class=\\"stat-meta-item\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<circle cx=\\"12\\" cy=\\"12\\" r=\\"10\\"/>\\n                  <polyline 
+points=\\"12 6 12 12 16 14\\"/>\\n                </svg>\\n                ~8 
+min\\n              </div>\\n              <div class=\\"stat-meta-item\\">\\n  
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M12 20h9\\"/>\\n                  <path d=\\"M16.5 3.5a2.121 2.121 0 
+0 1 3 3L7 19l-4 1 1-4L16.5 3.5z\\"/>\\n                </svg>\\n                
+3 new\\n              </div>\\n            </div>\\n          </div>\\n         
+\\n          <div class=\\"stat-card\\">\\n            <div 
+class=\\"stat-label\\">Accuracy</div>\\n            <div class=\\"stat-value 
+small\\">87%</div>\\n            <div class=\\"stat-meta\\">\\n              
+<span class=\\"accuracy-badge\\">\\n                <svg viewBox=\\"0 0 24 24\\"
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<polyline points=\\"20 6 9 17 4 12\\"/>\\n                </svg>\\n             
++4% this week\\n              </span>\\n            </div>\\n          </div>\\n
+\\n          <div class=\\"stat-card wide\\">\\n            <div 
+class=\\"stat-label\\">Current Streak</div>\\n            <div 
+class=\\"stat-value small\\">47 days</div>\\n            <div 
+class=\\"stat-meta\\">\\n              <div class=\\"stat-meta-item\\">\\n      
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 
+2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 
+1-3a2.5 2.5 0 0 0 2.5 2.5z\\"/>\\n                </svg>\\n                Best:
+62 days\\n              </div>\\n              <div 
+class=\\"stat-meta-item\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<rect x=\\"3\\" y=\\"4\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" 
+ry=\\"2\\"/>\\n                  <line x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" 
+y2=\\"6\\"/>\\n                  <line x1=\\"8\\" y1=\\"2\\" x2=\\"8\\" 
+y2=\\"6\\"/>\\n                  <line x1=\\"3\\" y1=\\"10\\" x2=\\"21\\" 
+y2=\\"10\\"/>\\n                </svg>\\n                Last reviewed: 
+yesterday\\n              </div>\\n            </div>\\n          </div>\\n     
+</div>\\n        \\n        <div class=\\"hero-cta\\">\\n          <p 
+class=\\"hero-cta-text\\">Your reviews are scheduled for optimal 
+retention.<br>Completing them now will strengthen 847 memories.</p>\\n          
+<button class=\\"btn-primary\\" onclick=\\"startSession()\\">\\n            
+Start Review Session\\n            <svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n              <line x1=\\"5\\" y1=\\"12\\" 
+x2=\\"19\\" y2=\\"12\\"/>\\n              <polyline points=\\"12 5 19 12 12 
+19\\"/>\\n            </svg>\\n          </button>\\n        </div>\\n      
+</div>\\n      \\n      <!-- Quiz View -->\\n      <div id=\\"quiz-view\\" 
+class=\\"view quiz-view hidden\\">\\n        <div class=\\"quiz-header\\">\\n   
+<div class=\\"quiz-progress\\">\\n            <span>Card 3 of 12</span>\\n      
+<div class=\\"progress-bar\\">\\n              <div class=\\"progress-fill\\" 
+style=\\"width: 25%\\"></div>\\n            </div>\\n          </div>\\n        
+<div class=\\"quiz-deck-badge\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <path 
+d=\\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\\"/>\\n              <path 
+d=\\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\\"/>\\n            </svg>\\n    
+US History\\n          </div>\\n        </div>\\n        \\n        <div 
+class=\\"question-card\\">\\n          <div class=\\"question-meta\\">\\n       
+<span class=\\"difficulty-badge medium\\">Medium</span>\\n            <span 
+class=\\"interval-info\\">Interval: 3.2d → 7d</span>\\n          </div>\\n      
+<h2 class=\\"question-text\\">What was the primary cause of the Panic of 1837 in
+the United States?</h2>\\n          <div class=\\"question-context\\">Focus on 
+economic policies and their consequences during Andrew Jackson\'s presidency and
+beyond.</div>\\n        </div>\\n        \\n        <div 
+class=\\"options-list\\">\\n          <button class=\\"option-btn\\" 
+onclick=\\"submitAnswer(\'A\', true)\\">\\n            <span 
+class=\\"option-marker\\">A</span>\\n            <span 
+class=\\"option-text\\">The Specie Circular and the dismantling of the Second 
+Bank of the United States</span>\\n          </button>\\n          <button 
+class=\\"option-btn\\" onclick=\\"submitAnswer(\'B\', false)\\">\\n            
+<span class=\\"option-marker\\">B</span>\\n            <span 
+class=\\"option-text\\">The outbreak of the Mexican-American War</span>\\n      
+</button>\\n          <button class=\\"option-btn\\" 
+onclick=\\"submitAnswer(\'C\', false)\\">\\n            <span 
+class=\\"option-marker\\">C</span>\\n            <span 
+class=\\"option-text\\">The discovery of gold in California</span>\\n          
+</button>\\n          <button class=\\"option-btn\\" 
+onclick=\\"submitAnswer(\'D\', false)\\">\\n            <span 
+class=\\"option-marker\\">D</span>\\n            <span 
+class=\\"option-text\\">The passage of the Missouri Compromise</span>\\n        
+</button>\\n        </div>\\n      </div>\\n      \\n      <!-- Feedback View 
+-->\\n      <div id=\\"feedback-view\\" class=\\"view feedback-view 
+hidden\\">\\n        <div class=\\"feedback-header\\">\\n          <div 
+class=\\"feedback-badge correct\\" id=\\"feedback-badge\\">\\n            <svg 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n              <polyline points=\\"20 6 9 17 4 
+12\\"/>\\n            </svg>\\n            Correct\\n          </div>\\n        
+</div>\\n        \\n        <div class=\\"answer-comparison\\">\\n          <div
+class=\\"answer-box yours\\" id=\\"your-answer-box\\">\\n            <div 
+class=\\"answer-label\\">Your Answer</div>\\n            <div 
+class=\\"answer-value\\" id=\\"your-answer-text\\">A — The Specie Circular and 
+the dismantling of the Second Bank of the United States</div>\\n          
+</div>\\n          <div class=\\"answer-box correct\\" 
+id=\\"correct-answer-box\\" style=\\"display: none;\\">\\n            <div 
+class=\\"answer-label\\">Correct Answer</div>\\n            <div 
+class=\\"answer-value\\">A — The Specie Circular and the dismantling of the 
+Second Bank of the United States</div>\\n          </div>\\n        </div>\\n   
+\\n        <div class=\\"explanation-card\\">\\n          <div 
+class=\\"explanation-title\\">Explanation</div>\\n          <div 
+class=\\"explanation-text\\">\\n            <p>The Panic of 1837 was primarily 
+caused by Andrew Jackson\'s economic policies, particularly the dismantling of 
+the Second Bank of the United States and the Specie Circular (1836), which 
+required payment for government land in gold or silver rather than paper 
+money.</p>\\n            <p>Without the Second Bank to regulate state banks, 
+credit expansion spiraled out of control. When the Specie Circular was 
+implemented, it drained specie from eastern banks to western land offices, 
+causing banks to collapse and credit to contract. Martin Van Buren inherited 
+this economic disaster when he took office in March 1837.</p>\\n          
+</div>\\n        </div>\\n        \\n        <div class=\\"metadata-grid\\">\\n 
+<div class=\\"metadata-item\\">\\n            <div 
+class=\\"metadata-label\\">Previous</div>\\n            <div 
+class=\\"metadata-value\\">3.2d</div>\\n          </div>\\n          <div 
+class=\\"metadata-item\\">\\n            <div class=\\"metadata-label\\">New 
+Interval</div>\\n            <div class=\\"metadata-value highlight\\">7d<span 
+class=\\"metadata-arrow\\">↑</span></div>\\n          </div>\\n          <div 
+class=\\"metadata-item\\">\\n            <div class=\\"metadata-label\\">Ease 
+Factor</div>\\n            <div class=\\"metadata-value\\">2.5</div>\\n         
+</div>\\n          <div class=\\"metadata-item\\">\\n            <div 
+class=\\"metadata-label\\">Next Review</div>\\n            <div 
+class=\\"metadata-value\\">Feb 24</div>\\n          </div>\\n        </div>\\n  
+\\n        <div class=\\"rating-section\\">\\n          <div 
+class=\\"rating-title\\">How well did you know this?</div>\\n          <div 
+class=\\"rating-buttons\\">\\n            <button class=\\"rating-btn\\" 
+onclick=\\"nextQuestion()\\">\\n              <span 
+class=\\"rating-label\\">Again</span>\\n              <span 
+class=\\"rating-interval\\">&lt;1m</span>\\n            </button>\\n            
+<button class=\\"rating-btn\\" onclick=\\"nextQuestion()\\">\\n              
+<span class=\\"rating-label\\">Hard</span>\\n              <span 
+class=\\"rating-interval\\">3d</span>\\n            </button>\\n            
+<button class=\\"rating-btn\\" onclick=\\"nextQuestion()\\">\\n              
+<span class=\\"rating-label\\">Good</span>\\n              <span 
+class=\\"rating-interval\\">7d</span>\\n            </button>\\n            
+<button class=\\"rating-btn\\" onclick=\\"nextQuestion()\\">\\n              
+<span class=\\"rating-label\\">Easy</span>\\n              <span 
+class=\\"rating-interval\\">14d</span>\\n            </button>\\n          
+</div>\\n        </div>\\n      </div>\\n    </main>\\n    \\n    <!-- Right 
+Panel: Chat -->\\n    <aside class=\\"chat-panel\\">\\n      <div 
+class=\\"chat-header\\">\\n        <div class=\\"chat-title\\">\\n          <svg
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<rect x=\\"3\\" y=\\"3\\" width=\\"18\\" height=\\"18\\" rx=\\"2\\" 
+ry=\\"2\\"/>\\n            <line x1=\\"12\\" y1=\\"8\\" x2=\\"12\\" 
+y2=\\"16\\"/>\\n            <line x1=\\"8\\" y1=\\"12\\" x2=\\"16\\" 
+y2=\\"12\\"/>\\n          </svg>\\n          Study Agent\\n        </div>\\n    
+<div class=\\"chat-subtitle\\">Ask questions, get insights, create 
+cards</div>\\n      </div>\\n      \\n      <div class=\\"chat-messages\\" 
+id=\\"chat-messages\\">\\n        <div class=\\"message message-agent\\" 
+style=\\"animation-delay: 0.1s\\">\\n          <div class=\\"agent-avatar\\">\\n
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\\"/>\\n         
+<path d=\\"M19 10v2a7 7 0 0 1-14 0v-2\\"/>\\n              <line x1=\\"12\\" 
+y1=\\"19\\" x2=\\"12\\" y2=\\"23\\"/>\\n              <line x1=\\"8\\" 
+y1=\\"23\\" x2=\\"16\\" y2=\\"23\\"/>\\n            </svg>\\n          </div>\\n
+<div class=\\"message-content\\">\\n            Ready to review US History! I 
+can explain concepts, create new cards, or help you prioritize what to study 
+next.\\n          </div>\\n        </div>\\n        <div 
+class=\\"message-time\\">Just now</div>\\n        \\n        <div 
+class=\\"message message-agent\\" style=\\"animation-delay: 0.2s\\">\\n         
+<div class=\\"agent-avatar\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <path 
+d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\\"/>\\n              
+<path d=\\"M19 10v2a7 7 0 0 1-14 0v-2\\"/>\\n              <line x1=\\"12\\" 
+y1=\\"19\\" x2=\\"12\\" y2=\\"23\\"/>\\n              <line x1=\\"8\\" 
+y1=\\"23\\" x2=\\"16\\" y2=\\"23\\"/>\\n            </svg>\\n          </div>\\n
+<div class=\\"message-content\\">\\n            You\'ve been crushing the 
+Antebellum period cards. Want me to suggest some related topics to strengthen 
+your knowledge network?\\n          </div>\\n        </div>\\n        <div 
+class=\\"message-time\\">Just now</div>\\n      </div>\\n      \\n      <div 
+class=\\"capability-chips\\">\\n        <button class=\\"chip\\">\\n          
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<circle cx=\\"12\\" cy=\\"12\\" r=\\"10\\"/>\\n            <polyline 
+points=\\"12 6 12 12 16 14\\"/>\\n          </svg>\\n          Review\\n        
+</button>\\n        <button class=\\"chip\\">\\n          <svg viewBox=\\"0 0 24
+24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n            <path 
+d=\\"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\\"/>\\n         
+<path d=\\"M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z\\"/>\\n      
+</svg>\\n          Create\\n        </button>\\n        <button 
+class=\\"chip\\">\\n          <svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n            <rect x=\\"3\\" y=\\"4\\" 
+width=\\"18\\" height=\\"18\\" rx=\\"2\\" ry=\\"2\\"/>\\n            <line 
+x1=\\"16\\" y1=\\"2\\" x2=\\"16\\" y2=\\"6\\"/>\\n            <line x1=\\"8\\" 
+y1=\\"2\\" x2=\\"8\\" y2=\\"6\\"/>\\n            <line x1=\\"3\\" y1=\\"10\\" 
+x2=\\"21\\" y2=\\"10\\"/>\\n          </svg>\\n          Schedule\\n        
+</button>\\n        <button class=\\"chip\\">\\n          <svg viewBox=\\"0 0 24
+24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n            <polygon 
+points=\\"23 6 13.5 15.5 8.5 10.5 1 18\\"/>\\n            <polyline points=\\"17
+6 23 6 23 12\\"/>\\n          </svg>\\n          Prioritize\\n        
+</button>\\n        <button class=\\"chip\\">\\n          <svg viewBox=\\"0 0 24
+24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n            <path 
+d=\\"M21.21 15.89A10 10 0 1 1 8 2.83\\"/>\\n            <path d=\\"M22 12A10 10 
+0 0 0 12 2v10z\\"/>\\n          </svg>\\n          Insights\\n        
+</button>\\n      </div>\\n      \\n      <div class=\\"inline-analytics\\">\\n 
+<div class=\\"analytics-title\\">Session Progress</div>\\n        <div 
+class=\\"analytics-row\\">\\n          <span class=\\"analytics-label\\">Cards 
+Reviewed</span>\\n          <span class=\\"analytics-value\\">3 / 12</span>\\n  
+</div>\\n        <div class=\\"analytics-row\\">\\n          <span 
+class=\\"analytics-label\\">Accuracy</span>\\n          <span 
+class=\\"analytics-value positive\\">100%</span>\\n        </div>\\n        <div
+class=\\"analytics-row\\">\\n          <span class=\\"analytics-label\\">Avg. 
+Response Time</span>\\n          <span class=\\"analytics-value\\">14s</span>\\n
+</div>\\n        <div class=\\"analytics-row\\">\\n          <span 
+class=\\"analytics-label\\">Est. Time Remaining</span>\\n          <span 
+class=\\"analytics-value\\">~6 min</span>\\n        </div>\\n      </div>\\n    
+\\n      <div class=\\"next-question-container\\" 
+id=\\"next-question-container\\" style=\\"display: none;\\">\\n        <button 
+class=\\"btn-next\\" onclick=\\"nextQuestion()\\">\\n          Next Question\\n 
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n            <line x1=\\"5\\" y1=\\"12\\" 
+x2=\\"19\\" y2=\\"12\\"/>\\n            <polyline points=\\"12 5 19 12 12 
+19\\"/>\\n          </svg>\\n        </button>\\n      </div>\\n      \\n      
+<div class=\\"chat-input-container\\">\\n        <div 
+class=\\"chat-input-wrapper\\">\\n          <input type=\\"text\\" 
+class=\\"chat-input\\" placeholder=\\"Ask about this card...\\" 
+id=\\"chat-input\\">\\n          <button class=\\"chat-send-btn\\" 
+onclick=\\"sendMessage()\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <line 
+x1=\\"22\\" y1=\\"2\\" x2=\\"11\\" y2=\\"13\\"/>\\n              <polygon 
+points=\\"22 2 15 22 11 13 2 9 22 2\\"/>\\n            </svg>\\n          
+</button>\\n        </div>\\n      </div>\\n    </aside>\\n  </div>\\n  \\n  
+<script>\\n    // State\\n    let currentView = \'hero\';\\n    let lastAnswer =
+null;\\n    let lastAnswerCorrect = false;\\n    \\n    // View navigation\\n   
+function showView(viewName) {\\n      
+document.querySelectorAll(\'.view\').forEach(v => 
+v.classList.add(\'hidden\'));\\n      document.getElementById(viewName + 
+\'-view\').classList.remove(\'hidden\');\\n      currentView = viewName;\\n    
+}\\n    \\n    function startSession() {\\n      showView(\'quiz\');\\n      
+addAgentMessage(\\"Starting US History review. First card coming up!\\");\\n    
+}\\n    \\n    function submitAnswer(answer, isCorrect) {\\n      lastAnswer = 
+answer;\\n      lastAnswerCorrect = isCorrect;\\n      \\n      const messages =
+document.getElementById(\'chat-messages\');\\n      const feedbackHtml = 
+isCorrect \\n        ? `<div class=\\"message message-agent\\"><div 
+class=\\"agent-avatar\\"><svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><path d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3
+0 0 0-3-3Z\\"/><path d=\\"M19 10v2a7 7 0 0 1-14 0v-2\\"/><line x1=\\"12\\" 
+y1=\\"19\\" x2=\\"12\\" y2=\\"23\\"/><line x1=\\"8\\" y1=\\"23\\" x2=\\"16\\" 
+y2=\\"23\\"/></svg></div><div class=\\"message-content\\">Correct! You clearly 
+understand the relationship between Jackson\'s banking policies and the economic
+crisis. Want me to explain how this connects to the rise of the Whig 
+Party?</div></div><div class=\\"message-time\\">Just now</div>`\\n        : 
+`<div class=\\"message message-agent\\"><div class=\\"agent-avatar\\"><svg 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><path d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3
+0 0 0-3-3Z\\"/><path d=\\"M19 10v2a7 7 0 0 1-14 0v-2\\"/><line x1=\\"12\\" 
+y1=\\"19\\" x2=\\"12\\" y2=\\"23\\"/><line x1=\\"8\\" y1=\\"23\\" x2=\\"16\\" 
+y2=\\"23\\"/></svg></div><div class=\\"message-content\\">Not quite. The Specie 
+Circular was the key trigger, but remember it was Jackson\'s broader war against
+the Second Bank that set up the fragile banking system. Would you like a quick 
+refresher on the Bank War?</div></div><div class=\\"message-time\\">Just 
+now</div>`;\\n      \\n      messages.insertAdjacentHTML(\'beforeend\', 
+feedbackHtml);\\n      messages.scrollTop = messages.scrollHeight;\\n      \\n  
+// Update analytics\\n      
+document.querySelector(\'.analytics-value.positive\').textContent = isCorrect ? 
+\'100%\' : \'67%\';\\n      \\n      showFeedback(isCorrect);\\n    }\\n    \\n 
+function showFeedback(isCorrect) {\\n      const badge = 
+document.getElementById(\'feedback-badge\');\\n      const yourAnswerBox = 
+document.getElementById(\'your-answer-box\');\\n      const correctAnswerBox = 
+document.getElementById(\'correct-answer-box\');\\n      const nextBtnContainer 
+= document.getElementById(\'next-question-container\');\\n      \\n      if 
+(isCorrect) {\\n        badge.className = \'feedback-badge correct\';\\n        
+badge.innerHTML = `<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><polyline points=\\"20 6 9 17 4 
+12\\"/></svg>Correct`;\\n        yourAnswerBox.className = \'answer-box 
+yours\';\\n        correctAnswerBox.style.display = \'none\';\\n      } else 
+{\\n        badge.className = \'feedback-badge incorrect\';\\n        
+badge.innerHTML = `<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><line x1=\\"18\\" y1=\\"6\\" x2=\\"6\\" 
+y2=\\"18\\"/><line x1=\\"6\\" y1=\\"6\\" x2=\\"18\\" 
+y2=\\"18\\"/></svg>Incorrect`;\\n        yourAnswerBox.className = \'answer-box 
+incorrect\';\\n        correctAnswerBox.style.display = \'block\';\\n      }\\n 
+\\n      // Show next button in chat panel\\n      
+nextBtnContainer.style.display = \'block\';\\n      \\n      
+showView(\'feedback\');\\n    }\\n    \\n    function nextQuestion() {\\n      
+document.getElementById(\'next-question-container\').style.display = 
+\'none\';\\n      addAgentMessage(\\"Here\'s your next card. This one covers the
+Nullification Crisis.\\");\\n      showView(\'quiz\');\\n      \\n      // 
+Update progress\\n      document.querySelector(\'.quiz-progress 
+span\').textContent = \'Card 4 of 12\';\\n      
+document.querySelector(\'.progress-fill\').style.width = \'33%\';\\n    }\\n    
+\\n    function addAgentMessage(text) {\\n      const messages = 
+document.getElementById(\'chat-messages\');\\n      const html = `<div 
+class=\\"message message-agent\\"><div class=\\"agent-avatar\\"><svg 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><path d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3
+0 0 0-3-3Z\\"/><path d=\\"M19 10v2a7 7 0 0 1-14 0v-2\\"/><line x1=\\"12\\" 
+y1=\\"19\\" x2=\\"12\\" y2=\\"23\\"/><line x1=\\"8\\" y1=\\"23\\" x2=\\"16\\" 
+y2=\\"23\\"/></svg></div><div 
+class=\\"message-content\\">${text}</div></div><div 
+class=\\"message-time\\">Just now</div>`;\\n      
+messages.insertAdjacentHTML(\'beforeend\', html);\\n      messages.scrollTop = 
+messages.scrollHeight;\\n    }\\n    \\n    function sendMessage() {\\n      
+const input = document.getElementById(\'chat-input\');\\n      const text = 
+input.value.trim();\\n      if (!text) return;\\n      \\n      const messages =
+document.getElementById(\'chat-messages\');\\n      \\n      // Add user 
+message\\n      const userHtml = `<div class=\\"message message-user\\"><div 
+class=\\"message-content\\">${text}</div></div><div 
+class=\\"message-time\\">Just now</div>`;\\n      
+messages.insertAdjacentHTML(\'beforeend\', userHtml);\\n      \\n      
+input.value = \'\';\\n      messages.scrollTop = messages.scrollHeight;\\n      
+\\n      // Simulate agent response\\n      setTimeout(() => {\\n        const 
+responses = [\\n          \\"Great question! The Specie Circular was issued by 
+Jackson to curb land speculation, but it had the unintended consequence of 
+draining gold and silver from eastern banks.\\",\\n          \\"The Bank War is 
+a fascinating topic. Jackson vetoed the recharter of the Second Bank in 1832, 
+seeing it as a tool of Eastern elites. This led to the rise of \'pet banks\' and
+eventually the Specie Circular.\\",\\n          \\"The Panic had long-lasting 
+effects. It contributed to the rise of the Whig Party and influenced economic 
+debates for decades. Van Buren\'s \'independent treasury\' system was a direct 
+response.\\"\\n        ];\\n        const response = 
+responses[Math.floor(Math.random() * responses.length)];\\n        
+addAgentMessage(response);\\n      }, 600);\\n    }\\n    \\n    // Handle Enter
+key in chat input\\n    
+document.getElementById(\'chat-input\').addEventListener(\'keypress\', 
+function(e) {\\n      if (e.key === \'Enter\') sendMessage();\\n    });\\n  
+</script>\\n</body>\\n</html>

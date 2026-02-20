@@ -1,0 +1,577 @@
+<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta 
+charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" 
+content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>Scry — 5g 
+Grid-Breaking Design</title>\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link 
+href=\\"https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&fami
+ly=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap\\" 
+rel=\\"stylesheet\\">\\n  <style>\\n    /* === BRAND TOKENS === */\\n    :root 
+{\\n      --primary: hsl(221.2, 83.2%, 53.3%);\\n      --primary-dark: 
+hsl(221.2, 83.2%, 45%);\\n      --primary-light: hsl(221.2, 83.2%, 96%);\\n     
+--success: hsl(142, 76%, 36%);\\n      --success-light: hsl(142, 76%, 96%);\\n  
+--error: hsl(0, 84%, 60%);\\n      --error-light: hsl(0, 84%, 97%);\\n      \\n 
+--gray-50: #fafafa;\\n      --gray-100: #f5f5f5;\\n      --gray-200: #e5e5e5;\\n
+--gray-300: #d4d4d4;\\n      --gray-400: #a3a3a3;\\n      --gray-500: 
+#737373;\\n      --gray-600: #525252;\\n      --gray-700: #404040;\\n      
+--gray-800: #262626;\\n      --gray-900: #171717;\\n      \\n      --sans: 
+system-ui, -apple-system, BlinkMacSystemFont, \\"Segoe UI\\", sans-serif;\\n    
+--serif: \\"Lora\\", Georgia, serif;\\n      --mono: \\"IBM Plex Mono\\", 
+monospace;\\n      \\n      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);\\n      
+--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);\\n    }\\n\\n    /* === RESET 
+& BASE === */\\n    *, *::before, *::after {\\n      box-sizing: border-box;\\n 
+margin: 0;\\n      padding: 0;\\n    }\\n\\n    html {\\n      font-size: 
+16px;\\n      -webkit-font-smoothing: antialiased;\\n      
+-moz-osx-font-smoothing: grayscale;\\n    }\\n\\n    body {\\n      font-family:
+var(--sans);\\n      color: var(--gray-800);\\n      line-height: 1.6;\\n      
+background: var(--gray-50);\\n      min-height: 100vh;\\n      overflow-x: 
+hidden;\\n    }\\n\\n    /* === GRID PATTERN OVERLAY === */\\n    .grid-pattern 
+{\\n      position: fixed;\\n      inset: 0;\\n      pointer-events: none;\\n   
+z-index: 0;\\n      opacity: 0.4;\\n      background-image: \\n        
+radial-gradient(circle at 1px 1px, var(--gray-300) 1px, transparent 0);\\n      
+background-size: 32px 32px;\\n    }\\n\\n    /* === LAYOUT SHELL === */\\n    
+.app {\\n      position: relative;\\n      z-index: 1;\\n      min-height: 
+100vh;\\n      display: grid;\\n      grid-template-columns: 1fr 380px;\\n    
+}\\n\\n    @media (max-width: 1024px) {\\n      .app {\\n        
+grid-template-columns: 1fr;\\n      }\\n    }\\n\\n    /* === MAIN CONTENT === 
+*/\\n    .main {\\n      padding: 48px 64px;\\n      position: relative;\\n    
+}\\n\\n    @media (max-width: 768px) {\\n      .main {\\n        padding: 
+24px;\\n      }\\n    }\\n\\n    /* === VIEW STATES === */\\n    .view {\\n     
+display: none;\\n      animation: fadeInUp 0.6s var(--ease-out);\\n    }\\n\\n  
+.view.active {\\n      display: block;\\n    }\\n\\n    @keyframes fadeInUp {\\n
+from {\\n        opacity: 0;\\n        transform: translateY(20px);\\n      }\\n
+to {\\n        opacity: 1;\\n        transform: translateY(0);\\n      }\\n    
+}\\n\\n    /* === HERO VIEW === */\\n    .hero-container {\\n      max-width: 
+900px;\\n      margin-top: 80px;\\n    }\\n\\n    /* Brand mark */\\n    
+.brand-mark {\\n      display: inline-flex;\\n      align-items: center;\\n     
+gap: 12px;\\n      margin-bottom: 64px;\\n    }\\n\\n    .brand-icon {\\n      
+width: 40px;\\n      height: 40px;\\n      background: linear-gradient(135deg, 
+var(--primary) 0%, var(--primary-dark) 100%);\\n      border-radius: 10px;\\n   
+display: grid;\\n      place-items: center;\\n      box-shadow: 0 8px 24px -8px 
+hsla(221.2, 83.2%, 53.3%, 0.4);\\n    }\\n\\n    .brand-icon svg {\\n      
+width: 22px;\\n      height: 22px;\\n      color: white;\\n    }\\n\\n    
+.brand-text {\\n      font-family: var(--serif);\\n      font-size: 24px;\\n    
+font-weight: 600;\\n      color: var(--gray-900);\\n      letter-spacing: 
+-0.02em;\\n    }\\n\\n    /* Hero headline - TEXT FORWARD */\\n    
+.hero-headline {\\n      font-family: var(--serif);\\n      font-size: 
+clamp(48px, 8vw, 80px);\\n      font-weight: 500;\\n      line-height: 1.05;\\n 
+color: var(--gray-900);\\n      margin-bottom: 48px;\\n      letter-spacing: 
+-0.03em;\\n    }\\n\\n    .hero-headline em {\\n      font-style: italic;\\n    
+color: var(--primary);\\n    }\\n\\n    .hero-subtext {\\n      font-size: 
+20px;\\n      color: var(--gray-500);\\n      max-width: 480px;\\n      
+line-height: 1.6;\\n      margin-bottom: 80px;\\n    }\\n\\n    /* Stats grid - 
+GRID BREAKING */\\n    .stats-container {\\n      position: relative;\\n      
+margin-bottom: 64px;\\n    }\\n\\n    .stats-grid {\\n      display: grid;\\n   
+grid-template-columns: repeat(3, 1fr);\\n      gap: 0;\\n      position: 
+relative;\\n    }\\n\\n    .stat-card {\\n      background: white;\\n      
+padding: 40px 36px;\\n      position: relative;\\n      border: 1px solid 
+var(--gray-200);\\n      transition: all 0.4s var(--ease-out);\\n    }\\n\\n    
+/* Grid-breaking offsets */\\n    .stat-card:nth-child(1) {\\n      
+border-radius: 16px 0 0 16px;\\n      transform: translateY(-12px);\\n      
+z-index: 3;\\n      box-shadow: 0 20px 60px -20px rgba(0,0,0,0.08);\\n    
+}\\n\\n    .stat-card:nth-child(2) {\\n      z-index: 2;\\n      margin-left: 
+-1px;\\n      border-radius: 0;\\n      box-shadow: 0 16px 48px -16px 
+rgba(0,0,0,0.06);\\n    }\\n\\n    .stat-card:nth-child(3) {\\n      
+border-radius: 0 16px 16px 0;\\n      transform: translateY(8px);\\n      
+margin-left: -1px;\\n      z-index: 1;\\n      box-shadow: 0 12px 36px -12px 
+rgba(0,0,0,0.05);\\n    }\\n\\n    .stat-card:hover {\\n      z-index: 10;\\n   
+box-shadow: 0 24px 80px -20px rgba(0,0,0,0.12);\\n    }\\n\\n    .stat-label 
+{\\n      font-size: 13px;\\n      font-weight: 500;\\n      text-transform: 
+uppercase;\\n      letter-spacing: 0.08em;\\n      color: var(--gray-400);\\n   
+margin-bottom: 12px;\\n    }\\n\\n    .stat-value {\\n      font-family: 
+var(--serif);\\n      font-size: 56px;\\n      font-weight: 500;\\n      color: 
+var(--gray-900);\\n      line-height: 1;\\n      margin-bottom: 8px;\\n    
+}\\n\\n    .stat-card:nth-child(1) .stat-value {\\n      color: 
+var(--primary);\\n    }\\n\\n    .stat-unit {\\n      font-size: 15px;\\n      
+color: var(--gray-400);\\n      font-weight: 400;\\n    }\\n\\n    /* Accent 
+shape behind stats */\\n    .stats-accent {\\n      position: absolute;\\n      
+width: 200px;\\n      height: 200px;\\n      background: linear-gradient(135deg,
+hsla(221.2, 83.2%, 53.3%, 0.08) 0%, hsla(221.2, 83.2%, 53.3%, 0.02) 100%);\\n   
+border-radius: 50%;\\n      top: -40px;\\n      left: -60px;\\n      z-index: 
+-1;\\n    }\\n\\n    /* CTA - offset from grid */\\n    .hero-cta-wrapper {\\n  
+margin-top: 48px;\\n      padding-left: 24px;\\n    }\\n\\n    .btn-primary {\\n
+display: inline-flex;\\n      align-items: center;\\n      gap: 12px;\\n      
+background: var(--primary);\\n      color: white;\\n      border: none;\\n      
+padding: 20px 40px;\\n      font-size: 17px;\\n      font-weight: 500;\\n      
+font-family: var(--sans);\\n      border-radius: 12px;\\n      cursor: 
+pointer;\\n      transition: all 0.3s var(--ease-out);\\n      box-shadow: 0 
+12px 40px -12px hsla(221.2, 83.2%, 53.3%, 0.5);\\n    }\\n\\n    
+.btn-primary:hover {\\n      background: var(--primary-dark);\\n      transform:
+translateY(-2px);\\n      box-shadow: 0 16px 48px -12px hsla(221.2, 83.2%, 
+53.3%, 0.6);\\n    }\\n\\n    .btn-primary svg {\\n      width: 20px;\\n      
+height: 20px;\\n      transition: transform 0.3s var(--ease-out);\\n    }\\n\\n 
+.btn-primary:hover svg {\\n      transform: translateX(4px);\\n    }\\n\\n    /*
+=== QUIZ VIEW === */\\n    .quiz-container {\\n      max-width: 720px;\\n      
+margin-top: 48px;\\n    }\\n\\n    .quiz-header {\\n      display: flex;\\n     
+align-items: center;\\n      gap: 16px;\\n      margin-bottom: 48px;\\n    
+}\\n\\n    .back-btn {\\n      width: 44px;\\n      height: 44px;\\n      
+border: 1px solid var(--gray-200);\\n      background: white;\\n      
+border-radius: 10px;\\n      display: grid;\\n      place-items: center;\\n     
+cursor: pointer;\\n      transition: all 0.25s var(--ease-out);\\n      color: 
+var(--gray-500);\\n    }\\n\\n    .back-btn:hover {\\n      border-color: 
+var(--gray-300);\\n      color: var(--gray-700);\\n      transform: 
+translateX(-3px);\\n    }\\n\\n    .progress-indicator {\\n      font-family: 
+var(--mono);\\n      font-size: 14px;\\n      color: var(--gray-400);\\n      
+letter-spacing: 0.02em;\\n    }\\n\\n    .progress-indicator span {\\n      
+color: var(--gray-700);\\n    }\\n\\n    /* Quiz card - overlapping design */\\n
+.quiz-card-stack {\\n      position: relative;\\n      margin-bottom: 48px;\\n  
+}\\n\\n    .quiz-card-shadow {\\n      position: absolute;\\n      inset: 0;\\n 
+background: linear-gradient(135deg, var(--primary-light) 0%, white 100%);\\n    
+border-radius: 20px;\\n      transform: translate(16px, 16px) rotate(1deg);\\n  
+z-index: 0;\\n    }\\n\\n    .quiz-card {\\n      background: white;\\n      
+border: 1px solid var(--gray-200);\\n      border-radius: 20px;\\n      padding:
+56px;\\n      position: relative;\\n      z-index: 1;\\n      box-shadow: 0 24px
+80px -24px rgba(0,0,0,0.08);\\n    }\\n\\n    .question-meta {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: 12px;\\n      margin-bottom: 
+32px;\\n    }\\n\\n    .topic-tag {\\n      font-family: var(--mono);\\n      
+font-size: 12px;\\n      font-weight: 500;\\n      text-transform: uppercase;\\n
+letter-spacing: 0.06em;\\n      color: var(--primary);\\n      background: 
+var(--primary-light);\\n      padding: 6px 12px;\\n      border-radius: 6px;\\n 
+}\\n\\n    .difficulty-dots {\\n      display: flex;\\n      gap: 4px;\\n    
+}\\n\\n    .difficulty-dot {\\n      width: 6px;\\n      height: 6px;\\n      
+border-radius: 50%;\\n      background: var(--gray-200);\\n    }\\n\\n    
+.difficulty-dot.filled {\\n      background: var(--success);\\n    }\\n\\n    
+.question-text {\\n      font-family: var(--serif);\\n      font-size: 28px;\\n 
+line-height: 1.5;\\n      color: var(--gray-900);\\n      margin-bottom: 
+48px;\\n    }\\n\\n    /* Options */\\n    .options-list {\\n      display: 
+flex;\\n      flex-direction: column;\\n      gap: 12px;\\n    }\\n\\n    
+.option-btn {\\n      display: flex;\\n      align-items: center;\\n      gap: 
+20px;\\n      width: 100%;\\n      padding: 24px 28px;\\n      background: 
+white;\\n      border: 1.5px solid var(--gray-200);\\n      border-radius: 
+12px;\\n      cursor: pointer;\\n      text-align: left;\\n      transition: all
+0.25s var(--ease-out);\\n    }\\n\\n    .option-btn:hover {\\n      
+border-color: var(--primary);\\n      transform: translateX(6px);\\n    }\\n\\n 
+.option-letter {\\n      width: 36px;\\n      height: 36px;\\n      
+border-radius: 50%;\\n      background: var(--gray-100);\\n      display: 
+grid;\\n      place-items: center;\\n      font-family: var(--mono);\\n      
+font-size: 14px;\\n      font-weight: 500;\\n      color: var(--gray-600);\\n   
+flex-shrink: 0;\\n      transition: all 0.25s var(--ease-out);\\n    }\\n\\n    
+.option-btn:hover .option-letter {\\n      background: var(--primary);\\n      
+color: white;\\n    }\\n\\n    .option-text {\\n      font-size: 16px;\\n      
+color: var(--gray-700);\\n      line-height: 1.5;\\n    }\\n\\n    /* === 
+FEEDBACK VIEW === */\\n    .feedback-container {\\n      max-width: 720px;\\n   
+margin-top: 48px;\\n    }\\n\\n    .feedback-header {\\n      display: flex;\\n 
+align-items: center;\\n      gap: 16px;\\n      margin-bottom: 40px;\\n    
+}\\n\\n    .result-badge {\\n      display: flex;\\n      align-items: 
+center;\\n      gap: 10px;\\n      padding: 10px 18px;\\n      border-radius: 
+50px;\\n      font-size: 14px;\\n      font-weight: 500;\\n    }\\n\\n    
+.result-badge.correct {\\n      background: var(--success-light);\\n      color:
+var(--success);\\n    }\\n\\n    .result-badge.incorrect {\\n      background: 
+var(--error-light);\\n      color: var(--error);\\n    }\\n\\n    /* Feedback 
+cards - overlapping */\\n    .feedback-stack {\\n      display: flex;\\n      
+flex-direction: column;\\n      gap: 24px;\\n      margin-bottom: 40px;\\n    
+}\\n\\n    .feedback-card {\\n      background: white;\\n      border: 1px solid
+var(--gray-200);\\n      border-radius: 16px;\\n      padding: 32px;\\n      
+position: relative;\\n    }\\n\\n    .feedback-card.your-answer {\\n      
+border-left: 4px solid var(--success);\\n      transform: translateX(-24px);\\n 
+}\\n\\n    .feedback-card.correct-answer {\\n      border-left: 4px solid 
+var(--primary);\\n      transform: translateX(24px);\\n    }\\n\\n    
+.feedback-card.explanation {\\n      background: linear-gradient(135deg, 
+var(--gray-50) 0%, white 100%);\\n    }\\n\\n    .feedback-label {\\n      
+font-size: 12px;\\n      font-weight: 600;\\n      text-transform: uppercase;\\n
+letter-spacing: 0.08em;\\n      color: var(--gray-400);\\n      margin-bottom: 
+12px;\\n    }\\n\\n    .feedback-content {\\n      font-family: var(--serif);\\n
+font-size: 18px;\\n      line-height: 1.6;\\n      color: var(--gray-800);\\n   
+}\\n\\n    .feedback-content pre,\\n    .feedback-content code {\\n      
+font-family: var(--mono);\\n      font-size: 14px;\\n      background: 
+var(--gray-100);\\n      padding: 2px 6px;\\n      border-radius: 4px;\\n    
+}\\n\\n    /* Metadata grid */\\n    .metadata-section {\\n      background: 
+white;\\n      border: 1px solid var(--gray-200);\\n      border-radius: 
+16px;\\n      padding: 28px 32px;\\n      margin-bottom: 32px;\\n    }\\n\\n    
+.metadata-title {\\n      font-size: 12px;\\n      font-weight: 600;\\n      
+text-transform: uppercase;\\n      letter-spacing: 0.08em;\\n      color: 
+var(--gray-400);\\n      margin-bottom: 20px;\\n    }\\n\\n    .metadata-grid 
+{\\n      display: grid;\\n      grid-template-columns: repeat(4, 1fr);\\n      
+gap: 24px;\\n    }\\n\\n    @media (max-width: 640px) {\\n      .metadata-grid 
+{\\n        grid-template-columns: repeat(2, 1fr);\\n      }\\n    }\\n\\n    
+.metadata-item {\\n      display: flex;\\n      flex-direction: column;\\n      
+gap: 6px;\\n    }\\n\\n    .metadata-label {\\n      font-size: 12px;\\n      
+color: var(--gray-400);\\n    }\\n\\n    .metadata-value {\\n      font-family: 
+var(--mono);\\n      font-size: 15px;\\n      font-weight: 500;\\n      color: 
+var(--gray-700);\\n    }\\n\\n    .metadata-item.new .metadata-value {\\n      
+color: var(--primary);\\n      font-weight: 600;\\n    }\\n\\n    
+.metadata-item.ease .metadata-value {\\n      color: var(--success);\\n    
+}\\n\\n    /* Rating buttons */\\n    .rating-section {\\n      display: 
+flex;\\n      flex-direction: column;\\n      gap: 16px;\\n    }\\n\\n    
+.rating-label {\\n      font-size: 14px;\\n      color: var(--gray-500);\\n    
+}\\n\\n    .rating-buttons {\\n      display: flex;\\n      gap: 12px;\\n      
+flex-wrap: wrap;\\n    }\\n\\n    .rating-btn {\\n      padding: 16px 28px;\\n  
+border: 1.5px solid var(--gray-200);\\n      background: white;\\n      
+border-radius: 12px;\\n      font-size: 15px;\\n      font-weight: 500;\\n      
+color: var(--gray-700);\\n      cursor: pointer;\\n      transition: all 0.25s 
+var(--ease-out);\\n      display: flex;\\n      flex-direction: column;\\n      
+align-items: center;\\n      gap: 4px;\\n      min-width: 100px;\\n    }\\n\\n  
+.rating-btn .rating-time {\\n      font-size: 12px;\\n      color: 
+var(--gray-400);\\n      font-weight: 400;\\n    }\\n\\n    .rating-btn:hover 
+{\\n      border-color: var(--primary);\\n      color: var(--primary);\\n      
+transform: translateY(-2px);\\n    }\\n\\n    .rating-btn.again:hover {\\n      
+border-color: var(--error);\\n      color: var(--error);\\n    }\\n\\n    
+.rating-btn.hard:hover {\\n      border-color: #f59e0b;\\n      color: 
+#f59e0b;\\n    }\\n\\n    .rating-btn.good:hover {\\n      border-color: 
+var(--success);\\n      color: var(--success);\\n    }\\n\\n    
+.rating-btn.easy:hover {\\n      border-color: var(--primary);\\n      color: 
+var(--primary);\\n    }\\n\\n    /* === CHAT PANEL === */\\n    .chat-panel {\\n
+background: white;\\n      border-left: 1px solid var(--gray-200);\\n      
+display: flex;\\n      flex-direction: column;\\n      height: 100vh;\\n      
+position: sticky;\\n      top: 0;\\n    }\\n\\n    @media (max-width: 1024px) 
+{\\n      .chat-panel {\\n        position: fixed;\\n        right: 0;\\n       
+top: 0;\\n        bottom: 0;\\n        width: 380px;\\n        transform: 
+translateX(100%);\\n        transition: transform 0.4s var(--ease-out);\\n      
+box-shadow: -20px 0 80px -20px rgba(0,0,0,0.15);\\n        z-index: 100;\\n     
+}\\n\\n      .chat-panel.open {\\n        transform: translateX(0);\\n      
+}\\n\\n      .chat-toggle {\\n        display: flex !important;\\n      }\\n    
+}\\n\\n    .chat-toggle {\\n      display: none;\\n      position: fixed;\\n    
+bottom: 24px;\\n      right: 24px;\\n      width: 56px;\\n      height: 56px;\\n
+background: var(--primary);\\n      border: none;\\n      border-radius: 50%;\\n
+cursor: pointer;\\n      z-index: 101;\\n      box-shadow: 0 8px 32px -8px 
+hsla(221.2, 83.2%, 53.3%, 0.5);\\n      transition: all 0.3s var(--ease-out);\\n
+}\\n\\n    .chat-toggle:hover {\\n      transform: scale(1.05);\\n    }\\n\\n   
+.chat-toggle svg {\\n      width: 24px;\\n      height: 24px;\\n      color: 
+white;\\n    }\\n\\n    /* Chat header */\\n    .chat-header {\\n      padding: 
+24px;\\n      border-bottom: 1px solid var(--gray-100);\\n    }\\n\\n    
+.chat-title {\\n      font-size: 15px;\\n      font-weight: 600;\\n      color: 
+var(--gray-800);\\n      display: flex;\\n      align-items: center;\\n      
+gap: 10px;\\n    }\\n\\n    .chat-status {\\n      width: 8px;\\n      height: 
+8px;\\n      background: var(--success);\\n      border-radius: 50%;\\n      
+box-shadow: 0 0 0 3px var(--success-light);\\n    }\\n\\n    /* Capabilities 
+*/\\n    .capabilities {\\n      padding: 20px 24px;\\n      border-bottom: 1px 
+solid var(--gray-100);\\n      display: flex;\\n      flex-wrap: wrap;\\n      
+gap: 8px;\\n    }\\n\\n    .capability-chip {\\n      font-size: 12px;\\n      
+padding: 6px 12px;\\n      background: var(--gray-50);\\n      border: 1px solid
+var(--gray-200);\\n      border-radius: 50px;\\n      color: var(--gray-600);\\n
+cursor: pointer;\\n      transition: all 0.2s var(--ease-out);\\n    }\\n\\n    
+.capability-chip:hover {\\n      background: var(--primary-light);\\n      
+border-color: var(--primary);\\n      color: var(--primary);\\n    }\\n\\n    /*
+Chat messages */\\n    .chat-messages {\\n      flex: 1;\\n      overflow-y: 
+auto;\\n      padding: 24px;\\n      display: flex;\\n      flex-direction: 
+column;\\n      gap: 20px;\\n    }\\n\\n    .chat-message {\\n      display: 
+flex;\\n      gap: 12px;\\n      animation: messageIn 0.3s var(--ease-out);\\n  
+}\\n\\n    @keyframes messageIn {\\n      from {\\n        opacity: 0;\\n       
+transform: translateY(10px);\\n      }\\n      to {\\n        opacity: 1;\\n    
+transform: translateY(0);\\n      }\\n    }\\n\\n    .chat-message.user {\\n    
+flex-direction: row-reverse;\\n    }\\n\\n    .agent-avatar {\\n      width: 
+36px;\\n      height: 36px;\\n      background: linear-gradient(135deg, 
+var(--primary) 0%, var(--primary-dark) 100%);\\n      border-radius: 10px;\\n   
+display: grid;\\n      place-items: center;\\n      flex-shrink: 0;\\n    
+}\\n\\n    .agent-avatar svg {\\n      width: 20px;\\n      height: 20px;\\n    
+color: white;\\n    }\\n\\n    .user-avatar {\\n      width: 36px;\\n      
+height: 36px;\\n      background: var(--gray-200);\\n      border-radius: 
+10px;\\n      display: grid;\\n      place-items: center;\\n      flex-shrink: 
+0;\\n      font-size: 14px;\\n      font-weight: 600;\\n      color: 
+var(--gray-600);\\n    }\\n\\n    .message-bubble {\\n      background: 
+var(--gray-50);\\n      padding: 16px 20px;\\n      border-radius: 16px;\\n     
+border-bottom-left-radius: 4px;\\n      font-size: 14px;\\n      line-height: 
+1.6;\\n      color: var(--gray-700);\\n      max-width: calc(100% - 60px);\\n   
+}\\n\\n    .chat-message.user .message-bubble {\\n      background: 
+var(--primary);\\n      color: white;\\n      border-bottom-left-radius: 
+16px;\\n      border-bottom-right-radius: 4px;\\n    }\\n\\n    .message-time 
+{\\n      font-size: 11px;\\n      color: var(--gray-400);\\n      margin-top: 
+6px;\\n    }\\n\\n    .chat-message.user .message-time {\\n      text-align: 
+right;\\n    }\\n\\n    /* Chat input */\\n    .chat-input-area {\\n      
+padding: 20px 24px;\\n      border-top: 1px solid var(--gray-100);\\n    }\\n\\n
+.chat-input-wrapper {\\n      display: flex;\\n      gap: 12px;\\n      
+align-items: flex-end;\\n    }\\n\\n    .chat-input {\\n      flex: 1;\\n      
+border: 1.5px solid var(--gray-200);\\n      border-radius: 12px;\\n      
+padding: 14px 18px;\\n      font-size: 15px;\\n      font-family: 
+var(--sans);\\n      resize: none;\\n      outline: none;\\n      transition: 
+border-color 0.2s;\\n      min-height: 48px;\\n      max-height: 120px;\\n    
+}\\n\\n    .chat-input:focus {\\n      border-color: var(--primary);\\n    
+}\\n\\n    .chat-send {\\n      width: 48px;\\n      height: 48px;\\n      
+background: var(--primary);\\n      border: none;\\n      border-radius: 
+12px;\\n      cursor: pointer;\\n      display: grid;\\n      place-items: 
+center;\\n      transition: all 0.2s var(--ease-out);\\n      flex-shrink: 0;\\n
+}\\n\\n    .chat-send:hover {\\n      background: var(--primary-dark);\\n    
+}\\n\\n    .chat-send svg {\\n      width: 20px;\\n      height: 20px;\\n      
+color: white;\\n    }\\n\\n    /* Mobile overlay */\\n    .chat-overlay {\\n    
+display: none;\\n      position: fixed;\\n      inset: 0;\\n      background: 
+rgba(0,0,0,0.3);\\n      z-index: 99;\\n      opacity: 0;\\n      transition: 
+opacity 0.3s;\\n    }\\n\\n    .chat-overlay.visible {\\n      display: 
+block;\\n      opacity: 1;\\n    }\\n\\n    @media (min-width: 1025px) {\\n     
+.chat-overlay {\\n        display: none !important;\\n      }\\n    }\\n\\n    
+/* === UTILITY === */\\n    .hidden {\\n      display: none !important;\\n    
+}\\n\\n    /* Footer note */\\n    .footer-note {\\n      margin-top: 80px;\\n  
+padding-top: 32px;\\n      border-top: 1px solid var(--gray-200);\\n      
+font-size: 13px;\\n      color: var(--gray-400);\\n    }\\n\\n    /* Decorative 
+elements */\\n    .deco-line {\\n      position: absolute;\\n      width: 
+1px;\\n      height: 200px;\\n      background: linear-gradient(180deg, 
+transparent, var(--gray-300), transparent);\\n      right: 420px;\\n      top: 
+20%;\\n      opacity: 0.5;\\n    }\\n\\n    @media (max-width: 1024px) {\\n     
+.deco-line {\\n        display: none;\\n      }\\n    }\\n  
+</style>\\n</head>\\n<body>\\n  <!-- Grid pattern overlay -->\\n  <div 
+class=\\"grid-pattern\\"></div>\\n\\n  <!-- Mobile chat toggle -->\\n  <button 
+class=\\"chat-toggle\\" onclick=\\"toggleChat()\\" aria-label=\\"Open 
+chat\\">\\n    <svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\">\\n      <path d=\\"M21 11.5a8.38
+8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38
+8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 
+1 8 8v.5z\\"/>\\n    </svg>\\n  </button>\\n\\n  <!-- Mobile overlay -->\\n  
+<div class=\\"chat-overlay\\" onclick=\\"toggleChat()\\"></div>\\n\\n  <div 
+class=\\"app\\">\\n    <!-- Main Content -->\\n    <main class=\\"main\\">\\n   
+<div class=\\"deco-line\\"></div>\\n\\n      <!-- HERO VIEW -->\\n      <div 
+id=\\"view-hero\\" class=\\"view active\\">\\n        <div 
+class=\\"hero-container\\">\\n          <div class=\\"brand-mark\\">\\n         
+<div class=\\"brand-icon\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\">\\n            
+<circle cx=\\"12\\" cy=\\"12\\" r=\\"3\\"/>\\n                <path d=\\"M12 
+2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 
+19.07l2.83-2.83M16.24 7.76l2.83-2.83\\"/>\\n              </svg>\\n            
+</div>\\n            <span class=\\"brand-text\\">Scry</span>\\n          
+</div>\\n\\n          <h1 class=\\"hero-headline\\">\\n            Ready for 
+your<br><em>daily review?</em>\\n          </h1>\\n\\n          <p 
+class=\\"hero-subtext\\">\\n            Your memory is a garden. Consistent 
+tending yields lasting knowledge. \\n            Today is the perfect day to 
+strengthen what you\'ve learned.\\n          </p>\\n\\n          <div 
+class=\\"stats-container\\">\\n            <div 
+class=\\"stats-accent\\"></div>\\n            <div class=\\"stats-grid\\">\\n   
+<div class=\\"stat-card\\">\\n                <div class=\\"stat-label\\">Cards 
+Due</div>\\n                <div class=\\"stat-value\\">24</div>\\n             
+<div class=\\"stat-unit\\">awaiting review</div>\\n              </div>\\n      
+<div class=\\"stat-card\\">\\n                <div class=\\"stat-label\\">Est. 
+Time</div>\\n                <div class=\\"stat-value\\">12<span 
+class=\\"stat-unit\\">min</span></div>\\n                <div 
+class=\\"stat-unit\\">to complete</div>\\n              </div>\\n              
+<div class=\\"stat-card\\">\\n                <div 
+class=\\"stat-label\\">Streak</div>\\n                <div 
+class=\\"stat-value\\">18</div>\\n                <div 
+class=\\"stat-unit\\">days strong</div>\\n              </div>\\n            
+</div>\\n          </div>\\n\\n          <div class=\\"hero-cta-wrapper\\">\\n  
+<button class=\\"btn-primary\\" onclick=\\"startReview()\\">\\n              
+Start Review Session\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\">\\n              
+<path d=\\"M5 12h14M12 5l7 7-7 7\\"/>\\n              </svg>\\n            
+</button>\\n          </div>\\n\\n          <div class=\\"footer-note\\">\\n    
+Your accuracy this week: 87% — Keep up the excellent work!\\n          </div>\\n
+</div>\\n      </div>\\n\\n      <!-- QUIZ VIEW -->\\n      <div 
+id=\\"view-quiz\\" class=\\"view\\">\\n        <div 
+class=\\"quiz-container\\">\\n          <div class=\\"quiz-header\\">\\n        
+<button class=\\"back-btn\\" onclick=\\"showHero()\\">\\n              <svg 
+width=\\"20\\" height=\\"20\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\">\\n                <path d=\\"M19
+12H5M12 19l-7-7 7-7\\"/>\\n              </svg>\\n            </button>\\n      
+<div class=\\"progress-indicator\\">\\n              Card <span 
+id=\\"current-card\\">1</span> of <span id=\\"total-cards\\">24</span>\\n       
+</div>\\n          </div>\\n\\n          <div class=\\"quiz-card-stack\\">\\n   
+<div class=\\"quiz-card-shadow\\"></div>\\n            <div 
+class=\\"quiz-card\\">\\n              <div class=\\"question-meta\\">\\n       
+<span class=\\"topic-tag\\">Computer Science</span>\\n                <div 
+class=\\"difficulty-dots\\">\\n                  <div class=\\"difficulty-dot 
+filled\\"></div>\\n                  <div class=\\"difficulty-dot 
+filled\\"></div>\\n                  <div class=\\"difficulty-dot\\"></div>\\n  
+</div>\\n              </div>\\n\\n              <div 
+class=\\"question-text\\">\\n                What is the time complexity of 
+finding an element in a balanced binary search tree?\\n              
+</div>\\n\\n              <div class=\\"options-list\\">\\n                
+<button class=\\"option-btn\\" onclick=\\"submitAnswer(\'A\', true)\\">\\n      
+<span class=\\"option-letter\\">A</span>\\n                  <span 
+class=\\"option-text\\">O(log n)</span>\\n                </button>\\n          
+<button class=\\"option-btn\\" onclick=\\"submitAnswer(\'B\', false)\\">\\n     
+<span class=\\"option-letter\\">B</span>\\n                  <span 
+class=\\"option-text\\">O(n)</span>\\n                </button>\\n              
+<button class=\\"option-btn\\" onclick=\\"submitAnswer(\'C\', false)\\">\\n     
+<span class=\\"option-letter\\">C</span>\\n                  <span 
+class=\\"option-text\\">O(n log n)</span>\\n                </button>\\n        
+<button class=\\"option-btn\\" onclick=\\"submitAnswer(\'D\', false)\\">\\n     
+<span class=\\"option-letter\\">D</span>\\n                  <span 
+class=\\"option-text\\">O(1)</span>\\n                </button>\\n              
+</div>\\n            </div>\\n          </div>\\n        </div>\\n      
+</div>\\n\\n      <!-- FEEDBACK VIEW -->\\n      <div id=\\"view-feedback\\" 
+class=\\"view\\">\\n        <div class=\\"feedback-container\\">\\n          
+<div class=\\"feedback-header\\">\\n            <button class=\\"back-btn\\" 
+onclick=\\"showQuiz()\\">\\n              <svg width=\\"20\\" height=\\"20\\" 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\">\\n                <path d=\\"M19 12H5M12 19l-7-7 
+7-7\\"/>\\n              </svg>\\n            </button>\\n            <div 
+id=\\"result-badge\\" class=\\"result-badge correct\\">\\n              <svg 
+width=\\"16\\" height=\\"16\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"3\\">\\n                <polyline 
+points=\\"20 6 9 17 4 12\\"/>\\n              </svg>\\n              Correct\\n 
+</div>\\n          </div>\\n\\n          <div class=\\"feedback-stack\\">\\n    
+<div class=\\"feedback-card your-answer\\">\\n              <div 
+class=\\"feedback-label\\">Your Answer</div>\\n              <div 
+class=\\"feedback-content\\" id=\\"your-answer-text\\">O(log n)</div>\\n        
+</div>\\n\\n            <div class=\\"feedback-card correct-answer\\">\\n       
+<div class=\\"feedback-label\\">Correct Answer</div>\\n              <div 
+class=\\"feedback-content\\" id=\\"correct-answer-text\\">O(log n)</div>\\n     
+</div>\\n\\n            <div class=\\"feedback-card explanation\\">\\n          
+<div class=\\"feedback-label\\">Explanation</div>\\n              <div 
+class=\\"feedback-content\\">\\n                In a balanced binary search tree
+(like AVL or Red-Black tree), each comparison allows you to eliminate half of 
+the remaining nodes. This divide-and-conquer approach results in logarithmic 
+time complexity <code>O(log n)</code>, where <code>n</code> is the number of 
+nodes. This is significantly more efficient than linear search <code>O(n)</code>
+in an unsorted array.\\n              </div>\\n            </div>\\n          
+</div>\\n\\n          <div class=\\"metadata-section\\">\\n            <div 
+class=\\"metadata-title\\">Scheduling Update</div>\\n            <div 
+class=\\"metadata-grid\\">\\n              <div class=\\"metadata-item\\">\\n   
+<div class=\\"metadata-label\\">Previous Interval</div>\\n                <div 
+class=\\"metadata-value\\" id=\\"prev-interval\\">3 days</div>\\n              
+</div>\\n              <div class=\\"metadata-item new\\">\\n                
+<div class=\\"metadata-label\\">New Interval</div>\\n                <div 
+class=\\"metadata-value\\" id=\\"new-interval\\">8 days</div>\\n              
+</div>\\n              <div class=\\"metadata-item ease\\">\\n                
+<div class=\\"metadata-label\\">Ease Factor</div>\\n                <div 
+class=\\"metadata-value\\" id=\\"ease-factor\\">2.5 → 2.6</div>\\n              
+</div>\\n              <div class=\\"metadata-item\\">\\n                <div 
+class=\\"metadata-label\\">Next Review</div>\\n                <div 
+class=\\"metadata-value\\" id=\\"next-review\\">Feb 25</div>\\n              
+</div>\\n            </div>\\n          </div>\\n\\n          <div 
+class=\\"rating-section\\">\\n            <div class=\\"rating-label\\">How well
+did you know this?</div>\\n            <div class=\\"rating-buttons\\">\\n      
+<button class=\\"rating-btn again\\" onclick=\\"rateCard(\'again\')\\">\\n      
+Again\\n                <span class=\\"rating-time\\">&lt; 1 min</span>\\n      
+</button>\\n              <button class=\\"rating-btn hard\\" 
+onclick=\\"rateCard(\'hard\')\\">\\n                Hard\\n                <span
+class=\\"rating-time\\">3 days</span>\\n              </button>\\n              
+<button class=\\"rating-btn good\\" onclick=\\"rateCard(\'good\')\\">\\n        
+Good\\n                <span class=\\"rating-time\\">8 days</span>\\n           
+</button>\\n              <button class=\\"rating-btn easy\\" 
+onclick=\\"rateCard(\'easy\')\\">\\n                Easy\\n                <span
+class=\\"rating-time\\">14 days</span>\\n              </button>\\n            
+</div>\\n          </div>\\n        </div>\\n      </div>\\n    </main>\\n\\n   
+<!-- CHAT PANEL -->\\n    <aside class=\\"chat-panel\\" id=\\"chat-panel\\">\\n 
+<div class=\\"chat-header\\">\\n        <div class=\\"chat-title\\">\\n         
+<div class=\\"chat-status\\"></div>\\n          Study Assistant\\n        
+</div>\\n      </div>\\n\\n      <div class=\\"capabilities\\">\\n        
+<button class=\\"capability-chip\\" onclick=\\"sendCapability(\'Explain this 
+concept\')\\">Explain concept</button>\\n        <button 
+class=\\"capability-chip\\" onclick=\\"sendCapability(\'Give me a 
+mnemonic\')\\">Mnemonic</button>\\n        <button class=\\"capability-chip\\" 
+onclick=\\"sendCapability(\'Show me an example\')\\">Example</button>\\n        
+<button class=\\"capability-chip\\" onclick=\\"sendCapability(\'Create practice 
+question\')\\">Practice</button>\\n      </div>\\n\\n      <div 
+class=\\"chat-messages\\" id=\\"chat-messages\\">\\n        <div 
+class=\\"chat-message\\">\\n          <div class=\\"agent-avatar\\">\\n         
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\">\\n              <circle cx=\\"12\\" cy=\\"12\\" 
+r=\\"3\\"/>\\n              <path d=\\"M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24
+16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83\\"/>\\n
+</svg>\\n          </div>\\n          <div>\\n            <div 
+class=\\"message-bubble\\">\\n              Hello! I\'m your study assistant. I 
+can help explain concepts, create mnemonics, provide examples, or generate 
+additional practice questions. What would you like to explore?\\n            
+</div>\\n            <div class=\\"message-time\\">Just now</div>\\n          
+</div>\\n        </div>\\n      </div>\\n\\n      <div 
+class=\\"chat-input-area\\">\\n        <div class=\\"chat-input-wrapper\\">\\n  
+<textarea class=\\"chat-input\\" id=\\"chat-input\\" placeholder=\\"Ask 
+anything...\\" rows=\\"1\\" 
+onkeydown=\\"handleChatKeydown(event)\\"></textarea>\\n          <button 
+class=\\"chat-send\\" onclick=\\"sendMessage()\\">\\n            <svg 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\">\\n              <line x1=\\"22\\" y1=\\"2\\" x2=\\"11\\" 
+y2=\\"13\\"/>\\n              <polygon points=\\"22 2 15 22 11 13 2 9\\"/>\\n   
+</svg>\\n          </button>\\n        </div>\\n      </div>\\n    </aside>\\n  
+</div>\\n\\n  <script>\\n    // State\\n    let currentView = \'hero\';\\n    
+let currentCard = 1;\\n    const totalCards = 24;\\n\\n    // Navigation\\n    
+function showView(viewId) {\\n      
+document.querySelectorAll(\'.view\').forEach(v => 
+v.classList.remove(\'active\'));\\n      
+document.getElementById(viewId).classList.add(\'active\');\\n      currentView =
+viewId.replace(\'view-\', \'\');\\n    }\\n\\n    function showHero() {\\n      
+showView(\'view-hero\');\\n    }\\n\\n    function startReview() {\\n      
+showView(\'view-quiz\');\\n    }\\n\\n    function showQuiz() {\\n      
+showView(\'view-quiz\');\\n    }\\n\\n    function submitAnswer(option, 
+isCorrect) {\\n      // Update feedback view\\n      const yourAnswerEl = 
+document.getElementById(\'your-answer-text\');\\n      const correctAnswerEl = 
+document.getElementById(\'correct-answer-text\');\\n      const resultBadge = 
+document.getElementById(\'result-badge\');\\n\\n      const answerMap = {\\n    
+\'A\': \'O(log n)\',\\n        \'B\': \'O(n)\',\\n        \'C\': \'O(n log 
+n)\',\\n        \'D\': \'O(1)\'\\n      };\\n\\n      yourAnswerEl.textContent =
+answerMap[option];\\n      correctAnswerEl.textContent = \'O(log n)\';\\n\\n    
+if (isCorrect) {\\n        resultBadge.className = \'result-badge correct\';\\n 
+resultBadge.innerHTML = `\\n          <svg width=\\"16\\" height=\\"16\\" 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"3\\">\\n            <polyline points=\\"20 6 9 17 4 12\\"/>\\n  
+</svg>\\n          Correct\\n        `;\\n        
+document.querySelector(\'.feedback-card.your-answer\').style.borderLeftColor = 
+\'var(--success)\';\\n        \\n        // Update metadata for correct\\n      
+document.getElementById(\'prev-interval\').textContent = \'3 days\';\\n        
+document.getElementById(\'new-interval\').textContent = \'8 days\';\\n        
+document.getElementById(\'ease-factor\').textContent = \'2.5 → 2.6\';\\n        
+document.getElementById(\'next-review\').textContent = \'Feb 25\';\\n      } 
+else {\\n        resultBadge.className = \'result-badge incorrect\';\\n        
+resultBadge.innerHTML = `\\n          <svg width=\\"16\\" height=\\"16\\" 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"3\\">\\n            <line x1=\\"18\\" y1=\\"6\\" x2=\\"6\\" 
+y2=\\"18\\"/>\\n            <line x1=\\"6\\" y1=\\"6\\" x2=\\"18\\" 
+y2=\\"18\\"/>\\n          </svg>\\n          Incorrect\\n        `;\\n        
+document.querySelector(\'.feedback-card.your-answer\').style.borderLeftColor = 
+\'var(--error)\';\\n        \\n        // Update metadata for incorrect\\n      
+document.getElementById(\'prev-interval\').textContent = \'3 days\';\\n        
+document.getElementById(\'new-interval\').textContent = \'1 day\';\\n        
+document.getElementById(\'ease-factor\').textContent = \'2.5 → 2.3\';\\n        
+document.getElementById(\'next-review\').textContent = \'Feb 18\';\\n      
+}\\n\\n      showView(\'view-feedback\');\\n    }\\n\\n    function 
+rateCard(rating) {\\n      currentCard++;\\n      if (currentCard > totalCards) 
+{\\n        currentCard = 1;\\n        showHero();\\n      } else {\\n        
+document.getElementById(\'current-card\').textContent = currentCard;\\n        
+showQuiz();\\n      }\\n    }\\n\\n    // Chat functionality\\n    function 
+toggleChat() {\\n      const panel = document.getElementById(\'chat-panel\');\\n
+const overlay = document.querySelector(\'.chat-overlay\');\\n      
+panel.classList.toggle(\'open\');\\n      
+overlay.classList.toggle(\'visible\');\\n    }\\n\\n    function 
+sendCapability(text) {\\n      addUserMessage(text);\\n      \\n      // 
+Simulate response\\n      setTimeout(() => {\\n        let response = \'\';\\n  
+switch(text) {\\n          case \'Explain this concept\':\\n            response
+= \'Binary search trees organize data hierarchically. Each node has at most two 
+children: left (smaller values) and right (larger values). When balanced, this 
+structure enables efficient O(log n) lookups by halving the search space with 
+each comparison.\';\\n            break;\\n          case \'Give me a 
+mnemonic\':\\n            response = \'Remember \\"B-B-Tree\\": Balanced Binary 
+Trees Bring Better search Times Easily. The balance is key!\';\\n            
+break;\\n          case \'Show me an example\':\\n            response = 
+\'Imagine looking up \\"quartz\\" in a dictionary. You don\\\\\'t check every 
+page—you flip to the middle, then half of that section, and so on. That\\\\\'s 
+exactly how a BST search works!\';\\n            break;\\n          case 
+\'Create practice question\':\\n            response = \'Try this: In a BST with
+1,024 nodes, what is the maximum number of comparisons needed to find any 
+element? (Hint: think powers of 2!)\';\\n            break;\\n          
+default:\\n            response = \'I\\\\\'d be happy to help with that. Let me 
+think about the best way to explain it...\';\\n        }\\n        
+addAgentMessage(response);\\n      }, 800);\\n    }\\n\\n    function 
+sendMessage() {\\n      const input = 
+document.getElementById(\'chat-input\');\\n      const text = 
+input.value.trim();\\n      if (!text) return;\\n\\n      
+addUserMessage(text);\\n      input.value = \'\';\\n      input.style.height = 
+\'auto\';\\n\\n      // Simulate response\\n      setTimeout(() => {\\n        
+const responses = [\\n          \\"That\'s a great question! In a balanced BST, 
+the height is logarithmic, which gives us that efficient O(log n) lookup 
+time.\\",\\n          \\"Think of it like this: each comparison eliminates half 
+the remaining nodes. After k comparisons, you\'ve eliminated 2^k nodes.\\",\\n  
+\\"The key insight is the \'balanced\' part. An unbalanced tree degrades to 
+O(n), which is why self-balancing variants like AVL trees are important.\\",\\n 
+\\"Would you like me to draw a comparison with hash tables? They offer O(1) 
+lookup but don\'t maintain ordering like BSTs do.\\"\\n        ];\\n        
+const randomResponse = responses[Math.floor(Math.random() * 
+responses.length)];\\n        addAgentMessage(randomResponse);\\n      }, 
+1000);\\n    }\\n\\n    function addUserMessage(text) {\\n      const container 
+= document.getElementById(\'chat-messages\');\\n      const html = `\\n        
+<div class=\\"chat-message user\\">\\n          <div 
+class=\\"user-avatar\\">Y</div>\\n          <div>\\n            <div 
+class=\\"message-bubble\\">${escapeHtml(text)}</div>\\n            <div 
+class=\\"message-time\\">Just now</div>\\n          </div>\\n        </div>\\n  
+`;\\n      container.insertAdjacentHTML(\'beforeend\', html);\\n      
+container.scrollTop = container.scrollHeight;\\n    }\\n\\n    function 
+addAgentMessage(text) {\\n      const container = 
+document.getElementById(\'chat-messages\');\\n      const html = `\\n        
+<div class=\\"chat-message\\">\\n          <div class=\\"agent-avatar\\">\\n    
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\">\\n              <circle cx=\\"12\\" cy=\\"12\\" 
+r=\\"3\\"/>\\n              <path d=\\"M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24
+16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83\\"/>\\n
+</svg>\\n          </div>\\n          <div>\\n            <div 
+class=\\"message-bubble\\">${escapeHtml(text)}</div>\\n            <div 
+class=\\"message-time\\">Just now</div>\\n          </div>\\n        </div>\\n  
+`;\\n      container.insertAdjacentHTML(\'beforeend\', html);\\n      
+container.scrollTop = container.scrollHeight;\\n    }\\n\\n    function 
+handleChatKeydown(e) {\\n      if (e.key === \'Enter\' && !e.shiftKey) {\\n     
+e.preventDefault();\\n        sendMessage();\\n      }\\n      \\n      // 
+Auto-resize textarea\\n      const textarea = e.target;\\n      
+textarea.style.height = \'auto\';\\n      textarea.style.height = 
+Math.min(textarea.scrollHeight, 120) + \'px\';\\n    }\\n\\n    function 
+escapeHtml(text) {\\n      const div = document.createElement(\'div\');\\n      
+div.textContent = text;\\n      return div.innerHTML;\\n    }\\n\\n    // Close 
+chat on escape key\\n    document.addEventListener(\'keydown\', (e) => {\\n     
+if (e.key === \'Escape\') {\\n        const panel = 
+document.getElementById(\'chat-panel\');\\n        if 
+(panel.classList.contains(\'open\')) {\\n          toggleChat();\\n        }\\n 
+}\\n    });\\n  </script>\\n</body>\\n</html>

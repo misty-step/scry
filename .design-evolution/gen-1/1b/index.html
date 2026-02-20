@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1b — Editorial Display-Heavy</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:hsl(221.2,83.2%,53.3%);--fg:hsl(0,0%,3.9%);--muted:hsl(215.4,16.3%,46.9%);--border:hsl(214.3,31.8%,91.4%);--bg:#fff;--mono:'IBM Plex Mono',monospace;--serif:'Lora',Georgia,serif;--sans:system-ui,-apple-system,sans-serif}
+body{font-family:var(--sans);background:var(--bg);color:var(--fg);min-height:100dvh;display:flex;flex-direction:column}
+nav{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 2rem;gap:1rem}
+nav .logo{font-size:1.25rem;font-weight:600;letter-spacing:-0.025em}
+nav .breadcrumb{color:var(--muted);font-size:0.875rem}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;position:relative;overflow:hidden}
+main::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none}
+.label{font-family:var(--mono);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--primary);margin-bottom:1.5rem;position:relative}
+h1{font-family:var(--serif);font-size:clamp(3rem,8vw,6.5rem);line-height:0.95;letter-spacing:-0.03em;margin-bottom:1rem;text-wrap:balance;position:relative}
+h1 em{font-style:italic;color:var(--primary)}
+.copy{font-family:var(--serif);font-size:1.125rem;line-height:1.7;color:var(--muted);margin-bottom:3rem;position:relative}
+.stat-row{display:flex;align-items:baseline;gap:1rem;margin-bottom:3rem;position:relative}
+.stat-number{font-family:var(--sans);font-size:4rem;font-weight:700;color:var(--primary);line-height:1;font-variant-numeric:tabular-nums}
+.stat-label{font-family:var(--mono);font-size:0.625rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)}
+.cta{display:inline-flex;align-items:center;gap:0.75rem;background:var(--primary);color:#fff;padding:1.25rem 2.5rem;font-size:1.125rem;font-weight:500;border:none;cursor:pointer;font-family:var(--sans);position:relative}
+.cta:hover{opacity:0.9}
+.cta svg{width:20px;height:20px}
+.divider{width:4rem;height:1px;background:var(--border);margin:0 auto 2rem}
+</style>
+</head>
+<body>
+<nav><span class="logo">Scry.</span><span class="breadcrumb">/ Review</span></nav>
+<main>
+  <p class="label">Daily Briefing</p>
+  <h1>Today's<br><em>Review</em></h1>
+  <div class="divider"></div>
+  <p class="copy">Your cards are ready for review.</p>
+  <div class="stat-row">
+    <span class="stat-number">149</span>
+    <span class="stat-label">Cards<br>Due</span>
+  </div>
+  <button class="cta">Begin Review Session <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+</main>
+</body>
+</html>

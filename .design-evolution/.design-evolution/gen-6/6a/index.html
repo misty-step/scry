@@ -1,0 +1,1283 @@
+<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta 
+charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" 
+content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>Scry — Review 
+Session</title>\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link 
+href=\\"https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&
+family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap\\" 
+rel=\\"stylesheet\\">\\n  <style>\\n    /* 
+========================================\\n       CUSTOM PROPERTIES\\n       
+======================================== */\\n    :root {\\n      /* Colors 
+*/\\n      --primary: hsl(221.2, 83.2%, 53.3%);\\n      --primary-light: 
+hsl(221.2, 83.2%, 95%);\\n      --success: hsl(142, 76%, 36%);\\n      
+--success-light: hsl(142, 76%, 95%);\\n      --error: hsl(0, 84%, 60%);\\n      
+--error-light: hsl(0, 84%, 97%);\\n      --warning: hsl(38, 92%, 50%);\\n      
+\\n      /* Neutrals */\\n      --white: #fff;\\n      --gray-50: hsl(220, 14%, 
+97%);\\n      --gray-100: hsl(220, 14%, 94%);\\n      --gray-200: hsl(220, 14%, 
+88%);\\n      --gray-300: hsl(220, 14%, 75%);\\n      --gray-400: hsl(220, 14%, 
+60%);\\n      --gray-500: hsl(220, 14%, 45%);\\n      --gray-600: hsl(220, 14%, 
+35%);\\n      --gray-700: hsl(220, 14%, 25%);\\n      --gray-800: hsl(220, 14%, 
+15%);\\n      --gray-900: hsl(220, 14%, 10%);\\n      \\n      /* Spacing Scale 
+*/\\n      --space-1: 0.25rem;\\n      --space-2: 0.5rem;\\n      --space-3: 
+0.75rem;\\n      --space-4: 1rem;\\n      --space-5: 1.25rem;\\n      --space-6:
+1.5rem;\\n      --space-8: 2rem;\\n      --space-10: 2.5rem;\\n      --space-12:
+3rem;\\n      --space-16: 4rem;\\n      --space-20: 5rem;\\n      \\n      /* 
+Typography */\\n      --font-sans: system-ui, -apple-system, BlinkMacSystemFont,
+\\"Segoe UI\\", Roboto, sans-serif;\\n      --font-serif: \\"Lora\\", Georgia, 
+\\"Times New Roman\\", serif;\\n      --font-mono: \\"IBM Plex Mono\\", \\"SF 
+Mono\\", Monaco, monospace;\\n      \\n      /* Radii */\\n      --radius-sm: 
+4px;\\n      --radius-md: 8px;\\n      --radius-lg: 12px;\\n      --radius-xl: 
+16px;\\n      \\n      /* Shadows */\\n      --shadow-sm: 0 1px 2px hsla(220, 
+14%, 10%, 0.05);\\n      --shadow-md: 0 4px 12px hsla(220, 14%, 10%, 0.08);\\n  
+--shadow-lg: 0 8px 24px hsla(220, 14%, 10%, 0.12);\\n      \\n      /* 
+Transitions */\\n      --transition-fast: 150ms ease;\\n      --transition-base:
+250ms ease;\\n      \\n      /* Layout */\\n      --review-width: 62%;\\n      
+--chat-width: 38%;\\n      --header-height: 64px;\\n    }\\n\\n    /* 
+========================================\\n       RESET & BASE\\n       
+======================================== */\\n    *, *::before, *::after {\\n   
+box-sizing: border-box;\\n      margin: 0;\\n      padding: 0;\\n    }\\n\\n    
+html {\\n      font-size: 16px;\\n      -webkit-font-smoothing: antialiased;\\n 
+-moz-osx-font-smoothing: grayscale;\\n    }\\n\\n    body {\\n      font-family:
+var(--font-sans);\\n      color: var(--gray-800);\\n      background: 
+var(--gray-50);\\n      line-height: 1.5;\\n      min-height: 100vh;\\n      
+overflow-x: hidden;\\n    }\\n\\n    /* 
+========================================\\n       ANIMATIONS\\n       
+======================================== */\\n    @keyframes fadeIn {\\n      
+from { opacity: 0; }\\n      to { opacity: 1; }\\n    }\\n\\n    @keyframes 
+slideUp {\\n      from {\\n        opacity: 0;\\n        transform: 
+translateY(12px);\\n      }\\n      to {\\n        opacity: 1;\\n        
+transform: translateY(0);\\n      }\\n    }\\n\\n    @keyframes pulse {\\n      
+0%, 100% { opacity: 1; }\\n      50% { opacity: 0.6; }\\n    }\\n\\n    
+.animate-fade-in {\\n      animation: fadeIn 400ms ease forwards;\\n    }\\n\\n 
+.animate-slide-up {\\n      animation: slideUp 400ms ease forwards;\\n    
+}\\n\\n    /* ========================================\\n       HEADER\\n       
+======================================== */\\n    .app-header {\\n      
+position: fixed;\\n      top: 0;\\n      left: 0;\\n      right: 0;\\n      
+height: var(--header-height);\\n      background: var(--white);\\n      
+border-bottom: 1px solid var(--gray-200);\\n      z-index: 100;\\n      display:
+flex;\\n      align-items: center;\\n      justify-content: space-between;\\n   
+padding: 0 var(--space-6);\\n    }\\n\\n    .header-left {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: var(--space-8);\\n    }\\n\\n   
+.brand-wordmark {\\n      font-family: var(--font-serif);\\n      font-size: 
+1.25rem;\\n      font-weight: 600;\\n      color: var(--gray-900);\\n      
+text-decoration: none;\\n      letter-spacing: -0.01em;\\n    }\\n\\n    
+.session-label {\\n      font-family: var(--font-mono);\\n      font-size: 
+0.6875rem;\\n      text-transform: uppercase;\\n      letter-spacing: 0.12em;\\n
+color: var(--gray-400);\\n      font-weight: 500;\\n    }\\n\\n    .header-stats
+{\\n      display: flex;\\n      align-items: center;\\n      gap: 
+var(--space-6);\\n    }\\n\\n    .header-stat {\\n      display: flex;\\n      
+align-items: center;\\n      gap: var(--space-2);\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.75rem;\\n      color: var(--gray-500);\\n
+}\\n\\n    .header-stat-value {\\n      font-weight: 600;\\n      color: 
+var(--gray-700);\\n    }\\n\\n    /* ========================================\\n
+MAIN LAYOUT (62% / 38%)\\n       ======================================== */\\n 
+.app-container {\\n      display: flex;\\n      min-height: 100vh;\\n      
+padding-top: var(--header-height);\\n    }\\n\\n    .review-panel {\\n      
+width: var(--review-width);\\n      min-height: calc(100vh - 
+var(--header-height));\\n      position: relative;\\n    }\\n\\n    .chat-panel 
+{\\n      width: var(--chat-width);\\n      position: fixed;\\n      top: 
+var(--header-height);\\n      right: 0;\\n      bottom: 0;\\n      background: 
+var(--white);\\n      border-left: 1px solid var(--gray-200);\\n      display: 
+flex;\\n      flex-direction: column;\\n    }\\n\\n    /* 
+========================================\\n       VIEW SYSTEM\\n       
+======================================== */\\n    .view {\\n      display: 
+none;\\n      opacity: 0;\\n    }\\n\\n    .view.active {\\n      display: 
+block;\\n      opacity: 1;\\n      animation: fadeIn 300ms ease;\\n    }\\n\\n  
+/* ========================================\\n       HERO VIEW (Morning 
+Briefing)\\n       ======================================== */\\n    
+.hero-section {\\n      min-height: calc(100vh - var(--header-height));\\n      
+background: var(--gray-50);\\n      padding: var(--space-16) var(--space-10);\\n
+display: flex;\\n      flex-direction: column;\\n      justify-content: 
+center;\\n    }\\n\\n    .hero-masthead {\\n      display: flex;\\n      
+align-items: center;\\n      justify-content: space-between;\\n      
+margin-bottom: var(--space-10);\\n      padding-bottom: var(--space-4);\\n      
+border-bottom: 1px solid var(--gray-200);\\n    }\\n\\n    .hero-brand {\\n     
+font-family: var(--font-serif);\\n      font-size: 0.875rem;\\n      
+font-weight: 600;\\n      color: var(--gray-600);\\n      letter-spacing: 
+0.02em;\\n    }\\n\\n    .hero-date {\\n      font-family: var(--font-mono);\\n 
+font-size: 0.75rem;\\n      color: var(--gray-400);\\n      text-transform: 
+uppercase;\\n      letter-spacing: 0.08em;\\n    }\\n\\n    .hero-content {\\n  
+max-width: 680px;\\n    }\\n\\n    .hero-kicker {\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.6875rem;\\n      font-weight: 600;\\n    
+text-transform: uppercase;\\n      letter-spacing: 0.15em;\\n      color: 
+var(--primary);\\n      margin-bottom: var(--space-4);\\n    }\\n\\n    
+.hero-headline {\\n      font-family: var(--font-serif);\\n      font-size: 
+2.75rem;\\n      font-weight: 500;\\n      line-height: 1.2;\\n      color: 
+var(--gray-900);\\n      margin-bottom: var(--space-6);\\n      letter-spacing: 
+-0.02em;\\n    }\\n\\n    .hero-headline-accent {\\n      color: 
+var(--primary);\\n      font-weight: 600;\\n    }\\n\\n    .hero-lead {\\n      
+font-family: var(--font-serif);\\n      font-size: 1.125rem;\\n      font-style:
+italic;\\n      color: var(--gray-500);\\n      line-height: 1.6;\\n      
+margin-bottom: var(--space-10);\\n    }\\n\\n    .hero-stats {\\n      display: 
+grid;\\n      grid-template-columns: repeat(4, 1fr);\\n      gap: 
+var(--space-4);\\n      margin-bottom: var(--space-10);\\n    }\\n\\n    
+.hero-stat-card {\\n      background: var(--white);\\n      border: 1px solid 
+var(--gray-200);\\n      border-radius: var(--radius-lg);\\n      padding: 
+var(--space-5);\\n      text-align: center;\\n      transition: all 
+var(--transition-fast);\\n    }\\n\\n    .hero-stat-card:hover {\\n      
+border-color: var(--gray-300);\\n      transform: translateY(-2px);\\n      
+box-shadow: var(--shadow-md);\\n    }\\n\\n    .hero-stat-card.primary {\\n     
+border-color: var(--primary);\\n      background: var(--primary-light);\\n    
+}\\n\\n    .hero-stat-card.success {\\n      border-color: var(--success);\\n   
+background: var(--success-light);\\n    }\\n\\n    .hero-stat-value {\\n      
+font-family: var(--font-serif);\\n      font-size: 1.75rem;\\n      font-weight:
+600;\\n      color: var(--gray-900);\\n      margin-bottom: var(--space-1);\\n  
+}\\n\\n    .hero-stat-card.primary .hero-stat-value {\\n      color: 
+var(--primary);\\n    }\\n\\n    .hero-stat-card.success .hero-stat-value {\\n  
+color: var(--success);\\n    }\\n\\n    .hero-stat-label {\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.625rem;\\n      text-transform: 
+uppercase;\\n      letter-spacing: 0.1em;\\n      color: var(--gray-500);\\n    
+}\\n\\n    .hero-actions {\\n      display: flex;\\n      align-items: 
+center;\\n      gap: var(--space-6);\\n    }\\n\\n    .hero-cta {\\n      
+font-family: var(--font-sans);\\n      font-size: 0.9375rem;\\n      
+font-weight: 500;\\n      color: var(--white);\\n      background: 
+var(--primary);\\n      border: none;\\n      border-radius: 
+var(--radius-md);\\n      padding: var(--space-4) var(--space-8);\\n      
+cursor: pointer;\\n      transition: all var(--transition-fast);\\n    }\\n\\n  
+.hero-cta:hover {\\n      background: hsl(221.2, 83.2%, 48%);\\n      transform:
+translateY(-1px);\\n      box-shadow: var(--shadow-md);\\n    }\\n\\n    
+.hero-meta {\\n      font-family: var(--font-mono);\\n      font-size: 
+0.6875rem;\\n      color: var(--gray-400);\\n    }\\n\\n    /* 
+========================================\\n       QUIZ VIEW\\n       
+======================================== */\\n    .quiz-section {\\n      
+min-height: calc(100vh - var(--header-height));\\n      background: 
+var(--white);\\n      padding: var(--space-10) var(--space-10) 
+var(--space-16);\\n    }\\n\\n    .quiz-card {\\n      max-width: 680px;\\n     
+margin: 0 auto;\\n    }\\n\\n    .quiz-card-header {\\n      display: flex;\\n  
+align-items: flex-start;\\n      justify-content: space-between;\\n      
+margin-bottom: var(--space-8);\\n      padding-bottom: var(--space-6);\\n      
+border-bottom: 1px solid var(--gray-200);\\n    }\\n\\n    .quiz-card-meta {\\n 
+display: flex;\\n      flex-direction: column;\\n      gap: var(--space-2);\\n  
+}\\n\\n    .quiz-concept {\\n      font-family: var(--font-serif);\\n      
+font-size: 1rem;\\n      font-weight: 600;\\n      color: var(--gray-800);\\n   
+}\\n\\n    .quiz-badges {\\n      display: flex;\\n      gap: var(--space-2);\\n
+}\\n\\n    .quiz-badge {\\n      font-family: var(--font-mono);\\n      
+font-size: 0.625rem;\\n      font-weight: 500;\\n      text-transform: 
+uppercase;\\n      letter-spacing: 0.08em;\\n      padding: var(--space-1) 
+var(--space-2);\\n      border-radius: var(--radius-sm);\\n      background: 
+var(--gray-100);\\n      color: var(--gray-500);\\n    }\\n\\n    .quiz-progress
+{\\n      text-align: right;\\n    }\\n\\n    .quiz-progress-text {\\n      
+font-family: var(--font-mono);\\n      font-size: 0.75rem;\\n      color: 
+var(--gray-400);\\n      margin-bottom: var(--space-1);\\n    }\\n\\n    
+.quiz-progress-bar {\\n      width: 120px;\\n      height: 4px;\\n      
+background: var(--gray-200);\\n      border-radius: 2px;\\n      overflow: 
+hidden;\\n    }\\n\\n    .quiz-progress-fill {\\n      height: 100%;\\n      
+background: var(--primary);\\n      border-radius: 2px;\\n      transition: 
+width var(--transition-base);\\n    }\\n\\n    .quiz-question {\\n      
+font-family: var(--font-serif);\\n      font-size: 1.5rem;\\n      font-weight: 
+500;\\n      line-height: 1.5;\\n      color: var(--gray-900);\\n      
+margin-bottom: var(--space-8);\\n    }\\n\\n    .quiz-options {\\n      display:
+flex;\\n      flex-direction: column;\\n      gap: var(--space-3);\\n    }\\n\\n
+.quiz-option {\\n      display: flex;\\n      align-items: flex-start;\\n      
+gap: var(--space-4);\\n      padding: var(--space-5);\\n      background: 
+var(--white);\\n      border: 1px solid var(--gray-200);\\n      border-radius: 
+var(--radius-lg);\\n      cursor: pointer;\\n      transition: all 
+var(--transition-fast);\\n      text-align: left;\\n      width: 100%;\\n    
+}\\n\\n    .quiz-option:hover {\\n      border-color: var(--primary);\\n      
+transform: translateX(6px);\\n    }\\n\\n    .quiz-option:hover 
+.quiz-option-marker {\\n      background: var(--primary);\\n      color: 
+var(--white);\\n      border-color: var(--primary);\\n    }\\n\\n    
+.quiz-option-marker {\\n      flex-shrink: 0;\\n      width: 28px;\\n      
+height: 28px;\\n      display: flex;\\n      align-items: center;\\n      
+justify-content: center;\\n      font-family: var(--font-mono);\\n      
+font-size: 0.75rem;\\n      font-weight: 600;\\n      color: var(--gray-500);\\n
+background: var(--gray-50);\\n      border: 1px solid var(--gray-200);\\n      
+border-radius: var(--radius-md);\\n      transition: all 
+var(--transition-fast);\\n    }\\n\\n    .quiz-option-text {\\n      
+font-family: var(--font-sans);\\n      font-size: 0.9375rem;\\n      
+line-height: 1.6;\\n      color: var(--gray-700);\\n      padding-top: 
+var(--space-1);\\n    }\\n\\n    .quiz-option.selected {\\n      border-color: 
+var(--primary);\\n      background: var(--primary-light);\\n    }\\n\\n    
+.quiz-option.selected .quiz-option-marker {\\n      background: 
+var(--primary);\\n      color: var(--white);\\n      border-color: 
+var(--primary);\\n    }\\n\\n    /* ========================================\\n 
+FEEDBACK VIEW\\n       ======================================== */\\n    
+.feedback-section {\\n      min-height: calc(100vh - var(--header-height));\\n  
+background: var(--gray-50);\\n      padding: var(--space-10) var(--space-10) 
+var(--space-16);\\n    }\\n\\n    .feedback-card {\\n      max-width: 680px;\\n 
+margin: 0 auto;\\n    }\\n\\n    .feedback-card-header {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: var(--space-3);\\n      
+margin-bottom: var(--space-8);\\n    }\\n\\n    .feedback-status-badge {\\n     
+display: inline-flex;\\n      align-items: center;\\n      gap: 
+var(--space-2);\\n      font-family: var(--font-mono);\\n      font-size: 
+0.6875rem;\\n      font-weight: 600;\\n      text-transform: uppercase;\\n      
+letter-spacing: 0.1em;\\n      padding: var(--space-2) var(--space-3);\\n      
+border-radius: var(--radius-md);\\n    }\\n\\n    .feedback-status-badge.correct
+{\\n      background: var(--success-light);\\n      color: var(--success);\\n   
+}\\n\\n    .feedback-status-badge.incorrect {\\n      background: 
+var(--error-light);\\n      color: var(--error);\\n    }\\n\\n    
+.feedback-status-icon {\\n      width: 14px;\\n      height: 14px;\\n    }\\n\\n
+.feedback-question-context {\\n      background: var(--white);\\n      border: 
+1px solid var(--gray-200);\\n      border-radius: var(--radius-lg);\\n      
+padding: var(--space-5);\\n      margin-bottom: var(--space-6);\\n    }\\n\\n   
+.feedback-context-label {\\n      font-family: var(--font-mono);\\n      
+font-size: 0.625rem;\\n      font-weight: 600;\\n      text-transform: 
+uppercase;\\n      letter-spacing: 0.1em;\\n      color: var(--gray-400);\\n    
+margin-bottom: var(--space-3);\\n    }\\n\\n    .feedback-question-text {\\n    
+font-family: var(--font-serif);\\n      font-size: 1.125rem;\\n      
+font-weight: 500;\\n      line-height: 1.5;\\n      color: var(--gray-700);\\n  
+font-style: italic;\\n    }\\n\\n    .feedback-answers {\\n      display: 
+grid;\\n      grid-template-columns: 1fr 1fr;\\n      gap: var(--space-4);\\n   
+margin-bottom: var(--space-6);\\n    }\\n\\n    .feedback-answer-box {\\n      
+border-radius: var(--radius-lg);\\n      padding: var(--space-5);\\n      
+border: 1px solid;\\n    }\\n\\n    .feedback-answer-box.yours.incorrect {\\n   
+background: var(--error-light);\\n      border-color: var(--error);\\n    
+}\\n\\n    .feedback-answer-box.yours.correct {\\n      background: 
+var(--success-light);\\n      border-color: var(--success);\\n    }\\n\\n    
+.feedback-answer-box.correct {\\n      background: var(--success-light);\\n     
+border-color: var(--success);\\n    }\\n\\n    .feedback-answer-label {\\n      
+font-family: var(--font-mono);\\n      font-size: 0.625rem;\\n      font-weight:
+600;\\n      text-transform: uppercase;\\n      letter-spacing: 0.1em;\\n      
+margin-bottom: var(--space-2);\\n    }\\n\\n    
+.feedback-answer-box.yours.incorrect .feedback-answer-label {\\n      color: 
+var(--error);\\n    }\\n\\n    .feedback-answer-box.yours.correct 
+.feedback-answer-label,\\n    .feedback-answer-box.correct 
+.feedback-answer-label {\\n      color: var(--success);\\n    }\\n\\n    
+.feedback-answer-text {\\n      font-family: var(--font-sans);\\n      
+font-size: 0.9375rem;\\n      color: var(--gray-800);\\n      line-height: 
+1.5;\\n    }\\n\\n    .feedback-explanation {\\n      background: 
+var(--white);\\n      border: 1px solid var(--gray-200);\\n      border-radius: 
+var(--radius-lg);\\n      padding: var(--space-5);\\n      margin-bottom: 
+var(--space-6);\\n    }\\n\\n    .feedback-explanation-label {\\n      
+font-family: var(--font-mono);\\n      font-size: 0.625rem;\\n      font-weight:
+600;\\n      text-transform: uppercase;\\n      letter-spacing: 0.1em;\\n      
+color: var(--gray-400);\\n      margin-bottom: var(--space-3);\\n    }\\n\\n    
+.feedback-explanation-text {\\n      font-family: var(--font-serif);\\n      
+font-size: 1rem;\\n      line-height: 1.7;\\n      color: var(--gray-700);\\n   
+}\\n\\n    .feedback-schedule {\\n      background: var(--white);\\n      
+border: 1px solid var(--gray-200);\\n      border-radius: var(--radius-lg);\\n  
+padding: var(--space-5);\\n    }\\n\\n    .feedback-schedule-grid {\\n      
+display: grid;\\n      grid-template-columns: repeat(4, 1fr);\\n      gap: 
+var(--space-4);\\n    }\\n\\n    .feedback-schedule-item {\\n      text-align: 
+center;\\n    }\\n\\n    .feedback-schedule-label {\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.625rem;\\n      font-weight: 600;\\n     
+text-transform: uppercase;\\n      letter-spacing: 0.08em;\\n      color: 
+var(--gray-400);\\n      margin-bottom: var(--space-1);\\n    }\\n\\n    
+.feedback-schedule-value {\\n      font-family: var(--font-mono);\\n      
+font-size: 0.875rem;\\n      font-weight: 600;\\n      color: 
+var(--gray-800);\\n    }\\n\\n    /* ========================================\\n
+CHAT PANEL\\n       ======================================== */\\n    
+.chat-header {\\n      padding: var(--space-5) var(--space-5) var(--space-4);\\n
+border-bottom: 1px solid var(--gray-200);\\n    }\\n\\n    .chat-agent-info {\\n
+display: flex;\\n      align-items: center;\\n      gap: var(--space-3);\\n     
+margin-bottom: var(--space-4);\\n    }\\n\\n    .chat-agent-avatar {\\n      
+width: 40px;\\n      height: 40px;\\n      border-radius: 50%;\\n      
+background: linear-gradient(135deg, var(--primary) 0%, hsl(221.2, 83.2%, 65%) 
+100%);\\n      display: flex;\\n      align-items: center;\\n      
+justify-content: center;\\n      flex-shrink: 0;\\n    }\\n\\n    
+.chat-agent-avatar svg {\\n      width: 20px;\\n      height: 20px;\\n      
+color: var(--white);\\n    }\\n\\n    .chat-agent-meta {\\n      flex: 1;\\n    
+}\\n\\n    .chat-agent-name {\\n      font-family: var(--font-sans);\\n      
+font-size: 0.9375rem;\\n      font-weight: 600;\\n      color: 
+var(--gray-800);\\n      margin-bottom: var(--space-1);\\n    }\\n\\n    
+.chat-agent-status {\\n      display: flex;\\n      align-items: center;\\n     
+gap: var(--space-2);\\n      font-family: var(--font-mono);\\n      font-size: 
+0.6875rem;\\n      color: var(--success);\\n    }\\n\\n    .chat-status-dot {\\n
+width: 6px;\\n      height: 6px;\\n      background: var(--success);\\n      
+border-radius: 50%;\\n      animation: pulse 2s ease infinite;\\n    }\\n\\n    
+.chat-capabilities {\\n      display: flex;\\n      flex-wrap: wrap;\\n      
+gap: var(--space-2);\\n    }\\n\\n    .chat-capability {\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.625rem;\\n      font-weight: 500;\\n     
+color: var(--gray-500);\\n      background: var(--gray-100);\\n      padding: 
+var(--space-1) var(--space-2);\\n      border-radius: var(--radius-sm);\\n    
+}\\n\\n    .chat-messages {\\n      flex: 1;\\n      overflow-y: auto;\\n      
+padding: var(--space-4);\\n      display: flex;\\n      flex-direction: 
+column;\\n      gap: var(--space-4);\\n    }\\n\\n    .chat-message {\\n      
+max-width: 90%;\\n      animation: slideUp 300ms ease;\\n    }\\n\\n    
+.chat-message.user {\\n      align-self: flex-end;\\n    }\\n\\n    
+.chat-message.agent {\\n      align-self: flex-start;\\n    }\\n\\n    
+.chat-message-bubble {\\n      padding: var(--space-3) var(--space-4);\\n      
+border-radius: var(--radius-lg);\\n      font-size: 0.875rem;\\n      
+line-height: 1.6;\\n    }\\n\\n    .chat-message.user .chat-message-bubble {\\n 
+background: var(--primary);\\n      color: var(--white);\\n      
+border-bottom-right-radius: var(--space-1);\\n    }\\n\\n    .chat-message.agent
+.chat-message-bubble {\\n      background: var(--gray-100);\\n      color: 
+var(--gray-700);\\n      border-bottom-left-radius: var(--space-1);\\n    
+}\\n\\n    .chat-suggestions {\\n      display: flex;\\n      flex-wrap: 
+wrap;\\n      gap: var(--space-2);\\n      margin-top: var(--space-3);\\n    
+}\\n\\n    .chat-suggestion {\\n      font-family: var(--font-mono);\\n      
+font-size: 0.6875rem;\\n      color: var(--primary);\\n      background: 
+var(--primary-light);\\n      padding: var(--space-2) var(--space-3);\\n      
+border-radius: var(--radius-md);\\n      cursor: pointer;\\n      border: 
+none;\\n      transition: all var(--transition-fast);\\n    }\\n\\n    
+.chat-suggestion:hover {\\n      background: var(--primary);\\n      color: 
+var(--white);\\n    }\\n\\n    .chat-analytics {\\n      background: 
+var(--white);\\n      border: 1px solid var(--gray-200);\\n      border-radius: 
+var(--radius-lg);\\n      padding: var(--space-4);\\n      margin-top: 
+var(--space-2);\\n    }\\n\\n    .chat-analytics-header {\\n      font-family: 
+var(--font-mono);\\n      font-size: 0.625rem;\\n      font-weight: 600;\\n     
+text-transform: uppercase;\\n      letter-spacing: 0.1em;\\n      color: 
+var(--gray-400);\\n      margin-bottom: var(--space-3);\\n    }\\n\\n    
+.chat-analytics-table {\\n      width: 100%;\\n      font-size: 0.8125rem;\\n   
+}\\n\\n    .chat-analytics-row {\\n      display: flex;\\n      justify-content:
+space-between;\\n      padding: var(--space-2) 0;\\n      border-bottom: 1px 
+solid var(--gray-100);\\n    }\\n\\n    .chat-analytics-row:last-child {\\n     
+border-bottom: none;\\n    }\\n\\n    .chat-analytics-label {\\n      color: 
+var(--gray-500);\\n    }\\n\\n    .chat-analytics-value {\\n      font-family: 
+var(--font-mono);\\n      font-weight: 600;\\n      color: var(--gray-700);\\n  
+}\\n\\n    .chat-input-area {\\n      padding: var(--space-4);\\n      
+border-top: 1px solid var(--gray-200);\\n      background: var(--white);\\n    
+}\\n\\n    .chat-input-form {\\n      display: flex;\\n      gap: 
+var(--space-3);\\n    }\\n\\n    .chat-input {\\n      flex: 1;\\n      
+font-family: var(--font-sans);\\n      font-size: 0.875rem;\\n      padding: 
+var(--space-3) var(--space-4);\\n      border: 1px solid var(--gray-200);\\n    
+border-radius: var(--radius-lg);\\n      outline: none;\\n      transition: all 
+var(--transition-fast);\\n    }\\n\\n    .chat-input:focus {\\n      
+border-color: var(--primary);\\n      box-shadow: 0 0 0 3px hsla(221.2, 83.2%, 
+53.3%, 0.1);\\n    }\\n\\n    .chat-input::placeholder {\\n      color: 
+var(--gray-400);\\n    }\\n\\n    .chat-send-btn {\\n      display: flex;\\n    
+align-items: center;\\n      justify-content: center;\\n      width: 44px;\\n   
+height: 44px;\\n      background: var(--primary);\\n      border: none;\\n      
+border-radius: var(--radius-lg);\\n      cursor: pointer;\\n      transition: 
+all var(--transition-fast);\\n    }\\n\\n    .chat-send-btn:hover {\\n      
+background: hsl(221.2, 83.2%, 48%);\\n    }\\n\\n    .chat-send-btn svg {\\n    
+width: 18px;\\n      height: 18px;\\n      color: var(--white);\\n    }\\n\\n   
+.chat-next-bar {\\n      padding: var(--space-4);\\n      border-top: 1px solid 
+var(--gray-200);\\n      background: var(--gray-50);\\n    }\\n\\n    
+.chat-next-btn {\\n      width: 100%;\\n      font-family: var(--font-sans);\\n 
+font-size: 0.875rem;\\n      font-weight: 500;\\n      color: var(--white);\\n  
+background: var(--gray-800);\\n      border: none;\\n      border-radius: 
+var(--radius-md);\\n      padding: var(--space-3) var(--space-4);\\n      
+cursor: pointer;\\n      transition: all var(--transition-fast);\\n    }\\n\\n  
+.chat-next-btn:hover {\\n      background: var(--gray-900);\\n    }\\n\\n    /* 
+========================================\\n       UTILITY CLASSES\\n       
+======================================== */\\n    .hidden {\\n      display: 
+none !important;\\n    }\\n\\n    /* Scrollbar styling */\\n    
+::-webkit-scrollbar {\\n      width: 6px;\\n      height: 6px;\\n    }\\n\\n    
+::-webkit-scrollbar-track {\\n      background: transparent;\\n    }\\n\\n    
+::-webkit-scrollbar-thumb {\\n      background: var(--gray-300);\\n      
+border-radius: 3px;\\n    }\\n\\n    ::-webkit-scrollbar-thumb:hover {\\n      
+background: var(--gray-400);\\n    }\\n  </style>\\n</head>\\n<body>\\n  <!-- 
+========================================\\n       HEADER\\n       
+======================================== -->\\n  <header 
+class=\\"app-header\\">\\n    <div class=\\"header-left\\">\\n      <a 
+href=\\"#\\" class=\\"brand-wordmark\\">Scry</a>\\n      <span 
+class=\\"session-label\\">Review Session</span>\\n    </div>\\n    <div 
+class=\\"header-stats\\">\\n      <div class=\\"header-stat\\">\\n        
+<span>Cards</span>\\n        <span class=\\"header-stat-value\\" 
+id=\\"header-cards-remaining\\">23</span>\\n      </div>\\n      <div 
+class=\\"header-stat\\">\\n        <span>Accuracy</span>\\n        <span 
+class=\\"header-stat-value\\" id=\\"header-accuracy\\">87%</span>\\n      
+</div>\\n    </div>\\n  </header>\\n\\n  <!-- 
+========================================\\n       MAIN CONTAINER (62% / 38% 
+SPLIT)\\n       ======================================== -->\\n  <div 
+class=\\"app-container\\">\\n    <!-- REVIEW PANEL (62%) -->\\n    <main 
+class=\\"review-panel\\">\\n      <!-- HERO VIEW -->\\n      <section 
+class=\\"hero-section view active\\" id=\\"hero-view\\">\\n        <div 
+class=\\"hero-masthead\\">\\n          <span 
+class=\\"hero-brand\\">Scry</span>\\n          <span class=\\"hero-date\\" 
+id=\\"current-date\\">February 17, 2026</span>\\n        </div>\\n        <div 
+class=\\"hero-content\\">\\n          <div class=\\"hero-kicker\\">Daily 
+Briefing</div>\\n          <h1 class=\\"hero-headline\\">\\n            <span 
+class=\\"hero-headline-accent\\" id=\\"cards-count\\">23</span> cards await your
+review\\n          </h1>\\n          <p class=\\"hero-lead\\">\\n            
+Your personalized learning session is ready. Concepts from distributed systems, 
+\\n            algorithms, and language fundamentals are scheduled for optimal 
+retention.\\n          </p>\\n          <div class=\\"hero-stats\\">\\n         
+<div class=\\"hero-stat-card primary\\">\\n              <div 
+class=\\"hero-stat-value\\" id=\\"stat-due\\">23</div>\\n              <div 
+class=\\"hero-stat-label\\">Cards Due</div>\\n            </div>\\n            
+<div class=\\"hero-stat-card\\">\\n              <div 
+class=\\"hero-stat-value\\">18m</div>\\n              <div 
+class=\\"hero-stat-label\\">Est. Time</div>\\n            </div>\\n            
+<div class=\\"hero-stat-card success\\">\\n              <div 
+class=\\"hero-stat-value\\">87%</div>\\n              <div 
+class=\\"hero-stat-label\\">7-Day Acc</div>\\n            </div>\\n            
+<div class=\\"hero-stat-card\\">\\n              <div 
+class=\\"hero-stat-value\\">12</div>\\n              <div 
+class=\\"hero-stat-label\\">Day Streak</div>\\n            </div>\\n          
+</div>\\n          <div class=\\"hero-actions\\">\\n            <button 
+class=\\"hero-cta\\" id=\\"start-session-btn\\">Begin Review Session</button>\\n
+<span class=\\"hero-meta\\" id=\\"last-reviewed\\">Last reviewed 8 hours 
+ago</span>\\n          </div>\\n        </div>\\n      </section>\\n\\n      
+<!-- QUIZ VIEW -->\\n      <section class=\\"quiz-section view\\" 
+id=\\"quiz-view\\">\\n        <div class=\\"quiz-card\\">\\n          <div 
+class=\\"quiz-card-header\\">\\n            <div class=\\"quiz-card-meta\\">\\n 
+<div class=\\"quiz-concept\\">Distributed Systems</div>\\n              <div 
+class=\\"quiz-badges\\">\\n                <span class=\\"quiz-badge\\">System 
+Design</span>\\n                <span class=\\"quiz-badge\\">Hard</span>\\n     
+</div>\\n            </div>\\n            <div class=\\"quiz-progress\\">\\n    
+<div class=\\"quiz-progress-text\\">Question 1 of 23</div>\\n              <div 
+class=\\"quiz-progress-bar\\">\\n                <div 
+class=\\"quiz-progress-fill\\" style=\\"width: 4%\\"></div>\\n              
+</div>\\n            </div>\\n          </div>\\n          <div 
+class=\\"quiz-question\\">\\n            In a distributed system using the Raft 
+consensus algorithm, what happens \\n            when a leader election times 
+out due to a network partition?\\n          </div>\\n          <div 
+class=\\"quiz-options\\" id=\\"quiz-options\\">\\n            <button 
+class=\\"quiz-option\\" data-option=\\"A\\">\\n              <span 
+class=\\"quiz-option-marker\\">A</span>\\n              <span 
+class=\\"quiz-option-text\\">The cluster continues operating with the current 
+leader indefinitely until the partition heals.</span>\\n            </button>\\n
+<button class=\\"quiz-option\\" data-option=\\"B\\">\\n              <span 
+class=\\"quiz-option-marker\\">B</span>\\n              <span 
+class=\\"quiz-option-text\\">Nodes in the minority partition elect a new leader,
+potentially creating a split-brain scenario.</span>\\n            </button>\\n  
+<button class=\\"quiz-option\\" data-option=\\"C\\">\\n              <span 
+class=\\"quiz-option-marker\\">C</span>\\n              <span 
+class=\\"quiz-option-text\\">Nodes increment their term and transition to 
+candidate state, requesting votes from other nodes.</span>\\n            
+</button>\\n            <button class=\\"quiz-option\\" data-option=\\"D\\">\\n 
+<span class=\\"quiz-option-marker\\">D</span>\\n              <span 
+class=\\"quiz-option-text\\">The system immediately enters a read-only mode to 
+prevent data inconsistency.</span>\\n            </button>\\n          </div>\\n
+</div>\\n      </section>\\n\\n      <!-- FEEDBACK - CORRECT VIEW -->\\n      
+<section class=\\"feedback-section view\\" id=\\"feedback-correct-view\\">\\n   
+<div class=\\"feedback-card\\">\\n          <div 
+class=\\"feedback-card-header\\">\\n            <span 
+class=\\"feedback-status-badge correct\\">\\n              <svg 
+class=\\"feedback-status-icon\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\">\\n                <polyline 
+points=\\"20 6 9 17 4 12\\"></polyline>\\n              </svg>\\n              
+Correct\\n            </span>\\n          </div>\\n          <div 
+class=\\"feedback-question-context\\">\\n            <div 
+class=\\"feedback-context-label\\">Question</div>\\n            <div 
+class=\\"feedback-question-text\\">\\n              In a distributed system 
+using the Raft consensus algorithm, what happens \\n              when a leader 
+election times out due to a network partition?\\n            </div>\\n          
+</div>\\n          <div class=\\"feedback-answers\\">\\n            <div 
+class=\\"feedback-answer-box yours correct\\">\\n              <div 
+class=\\"feedback-answer-label\\">Your Answer</div>\\n              <div 
+class=\\"feedback-answer-text\\">Nodes increment their term and transition to 
+candidate state, requesting votes from other nodes.</div>\\n            
+</div>\\n            <div class=\\"feedback-answer-box correct\\">\\n           
+<div class=\\"feedback-answer-label\\">Correct Answer</div>\\n              <div
+class=\\"feedback-answer-text\\">Nodes increment their term and transition to 
+candidate state, requesting votes from other nodes.</div>\\n            
+</div>\\n          </div>\\n          <div class=\\"feedback-explanation\\">\\n 
+<div class=\\"feedback-explanation-label\\">Explanation</div>\\n            <div
+class=\\"feedback-explanation-text\\">\\n              When a leader election 
+times out in Raft, followers increment their current term, \\n              
+transition to the candidate state, and send RequestVote RPCs to other nodes. \\n
+This mechanism ensures that the cluster can recover from leader failures without
+\\n              external intervention. The candidate must receive votes from a 
+majority of nodes \\n              to become the new leader.\\n            
+</div>\\n          </div>\\n          <div class=\\"feedback-schedule\\">\\n    
+<div class=\\"feedback-schedule-grid\\">\\n              <div 
+class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Previous Interval</div>\\n                
+<div class=\\"feedback-schedule-value\\">1d</div>\\n              </div>\\n     
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">New Interval</div>\\n                <div 
+class=\\"feedback-schedule-value\\">2.5d</div>\\n              </div>\\n        
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Ease Factor</div>\\n                <div 
+class=\\"feedback-schedule-value\\">2.5</div>\\n              </div>\\n         
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Next Review</div>\\n                <div 
+class=\\"feedback-schedule-value\\">Feb 20</div>\\n              </div>\\n      
+</div>\\n          </div>\\n        </div>\\n      </section>\\n\\n      <!-- 
+FEEDBACK - INCORRECT VIEW -->\\n      <section class=\\"feedback-section view\\"
+id=\\"feedback-incorrect-view\\">\\n        <div class=\\"feedback-card\\">\\n  
+<div class=\\"feedback-card-header\\">\\n            <span 
+class=\\"feedback-status-badge incorrect\\">\\n              <svg 
+class=\\"feedback-status-icon\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\">\\n                <line 
+x1=\\"18\\" y1=\\"6\\" x2=\\"6\\" y2=\\"18\\"></line>\\n                <line 
+x1=\\"6\\" y1=\\"6\\" x2=\\"18\\" y2=\\"18\\"></line>\\n              </svg>\\n 
+Incorrect\\n            </span>\\n          </div>\\n          <div 
+class=\\"feedback-question-context\\">\\n            <div 
+class=\\"feedback-context-label\\">Question</div>\\n            <div 
+class=\\"feedback-question-text\\">\\n              In a distributed system 
+using the Raft consensus algorithm, what happens \\n              when a leader 
+election times out due to a network partition?\\n            </div>\\n          
+</div>\\n          <div class=\\"feedback-answers\\">\\n            <div 
+class=\\"feedback-answer-box yours incorrect\\">\\n              <div 
+class=\\"feedback-answer-label\\">Your Answer</div>\\n              <div 
+class=\\"feedback-answer-text\\">The cluster continues operating with the 
+current leader indefinitely until the partition heals.</div>\\n            
+</div>\\n            <div class=\\"feedback-answer-box correct\\">\\n           
+<div class=\\"feedback-answer-label\\">Correct Answer</div>\\n              <div
+class=\\"feedback-answer-text\\">Nodes increment their term and transition to 
+candidate state, requesting votes from other nodes.</div>\\n            
+</div>\\n          </div>\\n          <div class=\\"feedback-explanation\\">\\n 
+<div class=\\"feedback-explanation-label\\">Explanation</div>\\n            <div
+class=\\"feedback-explanation-text\\">\\n              When a leader election 
+times out in Raft, followers increment their current term, \\n              
+transition to the candidate state, and send RequestVote RPCs to other nodes. \\n
+This mechanism ensures that the cluster can recover from leader failures without
+\\n              external intervention. The candidate must receive votes from a 
+majority of nodes \\n              to become the new leader.\\n            
+</div>\\n          </div>\\n          <div class=\\"feedback-schedule\\">\\n    
+<div class=\\"feedback-schedule-grid\\">\\n              <div 
+class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Previous Interval</div>\\n                
+<div class=\\"feedback-schedule-value\\">1d</div>\\n              </div>\\n     
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">New Interval</div>\\n                <div 
+class=\\"feedback-schedule-value\\">10m</div>\\n              </div>\\n         
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Ease Factor</div>\\n                <div 
+class=\\"feedback-schedule-value\\">2.3</div>\\n              </div>\\n         
+<div class=\\"feedback-schedule-item\\">\\n                <div 
+class=\\"feedback-schedule-label\\">Next Review</div>\\n                <div 
+class=\\"feedback-schedule-value\\">Today</div>\\n              </div>\\n       
+</div>\\n          </div>\\n        </div>\\n      </section>\\n    
+</main>\\n\\n    <!-- CHAT PANEL (38%) -->\\n    <aside 
+class=\\"chat-panel\\">\\n      <div class=\\"chat-header\\">\\n        <div 
+class=\\"chat-agent-info\\">\\n          <div class=\\"chat-agent-avatar\\">\\n 
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\">\\n              <path d=\\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0
+6 0V5a3 3 0 0 0-3-3Z\\"/>\\n              <path d=\\"M19 10v2a7 7 0 0 1-14 
+0v-2\\"/>\\n              <line x1=\\"12\\" y1=\\"19\\" x2=\\"12\\" 
+y2=\\"22\\"/>\\n              <line x1=\\"8\\" y1=\\"22\\" x2=\\"16\\" 
+y2=\\"22\\"/>\\n            </svg>\\n          </div>\\n          <div 
+class=\\"chat-agent-meta\\">\\n            <div 
+class=\\"chat-agent-name\\">Study Assistant</div>\\n            <div 
+class=\\"chat-agent-status\\">\\n              <span 
+class=\\"chat-status-dot\\"></span>\\n              <span>Online</span>\\n      
+</div>\\n          </div>\\n        </div>\\n        <div 
+class=\\"chat-capabilities\\">\\n          <span 
+class=\\"chat-capability\\">Explain concepts</span>\\n          <span 
+class=\\"chat-capability\\">Memory tips</span>\\n          <span 
+class=\\"chat-capability\\">Track progress</span>\\n        </div>\\n      
+</div>\\n\\n      <div class=\\"chat-messages\\" id=\\"chat-messages\\">\\n     
+<div class=\\"chat-message agent\\">\\n          <div 
+class=\\"chat-message-bubble\\">\\n            Ready to dive into your review 
+session? I\'m here to explain concepts, \\n            provide memory 
+techniques, or discuss anything related to your cards.\\n          </div>\\n    
+<div class=\\"chat-suggestions\\">\\n            <button 
+class=\\"chat-suggestion\\" data-message=\\"Explain this concept\\">Explain this
+concept</button>\\n            <button class=\\"chat-suggestion\\" 
+data-message=\\"Memory tips\\">Memory tips</button>\\n            <button 
+class=\\"chat-suggestion\\" data-message=\\"Why is this important?\\">Why is 
+this important?</button>\\n          </div>\\n        </div>\\n      
+</div>\\n\\n      <div class=\\"chat-input-area\\">\\n        <form 
+class=\\"chat-input-form\\" id=\\"chat-form\\">\\n          <input \\n          
+type=\\"text\\" \\n            class=\\"chat-input\\" \\n            
+id=\\"chat-input\\" \\n            placeholder=\\"Ask about this card...\\"\\n  
+autocomplete=\\"off\\"\\n          >\\n          <button type=\\"submit\\" 
+class=\\"chat-send-btn\\">\\n            <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\">\\n            
+<line x1=\\"22\\" y1=\\"2\\" x2=\\"11\\" y2=\\"13\\"></line>\\n              
+<polygon points=\\"22 2 15 22 11 13 2 9 22 2\\"></polygon>\\n            
+</svg>\\n          </button>\\n        </form>\\n      </div>\\n\\n      <div 
+class=\\"chat-next-bar\\" id=\\"chat-next-bar\\" style=\\"display: none;\\">\\n 
+<button class=\\"chat-next-btn\\" id=\\"next-question-btn\\">Continue to Next 
+Question</button>\\n      </div>\\n    </aside>\\n  </div>\\n\\n  <!-- 
+========================================\\n       JAVASCRIPT\\n       
+======================================== -->\\n  <script>\\n    // 
+========================================\\n    // STATE\\n    // 
+========================================\\n    const state = {\\n      
+currentView: \'hero\',\\n      cardsRemaining: 23,\\n      accuracy: 87,\\n     
+currentQuestion: 1,\\n      totalQuestions: 23,\\n      correctAnswer: \'C\'\\n 
+};\\n\\n    // ========================================\\n    // DOM ELEMENTS\\n
+// ========================================\\n    const views = {\\n      hero: 
+document.getElementById(\'hero-view\'),\\n      quiz: 
+document.getElementById(\'quiz-view\'),\\n      feedbackCorrect: 
+document.getElementById(\'feedback-correct-view\'),\\n      feedbackIncorrect: 
+document.getElementById(\'feedback-incorrect-view\')\\n    };\\n\\n    const 
+startBtn = document.getElementById(\'start-session-btn\');\\n    const 
+quizOptions = document.querySelectorAll(\'.quiz-option\');\\n    const 
+chatMessages = document.getElementById(\'chat-messages\');\\n    const chatForm 
+= document.getElementById(\'chat-form\');\\n    const chatInput = 
+document.getElementById(\'chat-input\');\\n    const chatSuggestions = 
+document.querySelectorAll(\'.chat-suggestion\');\\n    const chatNextBar = 
+document.getElementById(\'chat-next-bar\');\\n    const nextQuestionBtn = 
+document.getElementById(\'next-question-btn\');\\n    const headerCardsRemaining
+= document.getElementById(\'header-cards-remaining\');\\n    const currentDateEl
+= document.getElementById(\'current-date\');\\n\\n    // 
+========================================\\n    // INITIALIZATION\\n    // 
+========================================\\n    function init() {\\n      // Set 
+current date\\n      const now = new Date();\\n      currentDateEl.textContent =
+now.toLocaleDateString(\'en-US\', {\\n        year: \'numeric\',\\n        
+month: \'long\',\\n        day: \'numeric\'\\n      });\\n\\n      // Event 
+listeners\\n      startBtn.addEventListener(\'click\', startSession);\\n      
+quizOptions.forEach(option => {\\n        option.addEventListener(\'click\', () 
+=> selectOption(option));\\n      });\\n      
+chatForm.addEventListener(\'submit\', sendMessage);\\n      
+chatSuggestions.forEach(chip => {\\n        chip.addEventListener(\'click\', () 
+=> sendSuggestion(chip.dataset.message));\\n      });\\n      
+nextQuestionBtn.addEventListener(\'click\', nextQuestion);\\n    }\\n\\n    // 
+========================================\\n    // VIEW MANAGEMENT\\n    // 
+========================================\\n    function showView(viewName) {\\n 
+// Hide all views\\n      Object.values(views).forEach(view => {\\n        
+view.classList.remove(\'active\');\\n      });\\n\\n      // Show target view\\n
+if (views[viewName]) {\\n        views[viewName].classList.add(\'active\');\\n  
+state.currentView = viewName;\\n      }\\n\\n      // Show/hide next button in 
+chat based on view\\n      if (viewName === \'feedbackCorrect\' || viewName === 
+\'feedbackIncorrect\') {\\n        chatNextBar.style.display = \'block\';\\n    
+} else {\\n        chatNextBar.style.display = \'none\';\\n      }\\n    }\\n\\n
+// ========================================\\n    // HERO → QUIZ\\n    // 
+========================================\\n    function startSession() {\\n     
+showView(\'quiz\');\\n    }\\n\\n    // 
+========================================\\n    // QUIZ → FEEDBACK\\n    // 
+========================================\\n    function selectOption(option) 
+{\\n      const selectedAnswer = option.dataset.option;\\n      \\n      // 
+Highlight selected option\\n      quizOptions.forEach(opt => 
+opt.classList.remove(\'selected\'));\\n      
+option.classList.add(\'selected\');\\n\\n      // After 400ms, show feedback\\n 
+setTimeout(() => {\\n        if (selectedAnswer === state.correctAnswer) {\\n   
+showView(\'feedbackCorrect\');\\n          addAgentMessage(\'Great job! You 
+correctly identified the leader election timeout behavior in Raft. This is a 
+fundamental concept for understanding distributed consensus.\');\\n        } 
+else {\\n          showView(\'feedbackIncorrect\');\\n          
+addAgentMessage(\'Not quite. In Raft, when a leader election times out, nodes 
+increment their term and become candidates. This is different from the Paxos 
+approach. Would you like me to explain the full leader election flow?\');\\n    
+}\\n\\n        // Update stats\\n        state.cardsRemaining--;\\n        
+headerCardsRemaining.textContent = state.cardsRemaining;\\n      }, 400);\\n    
+}\\n\\n    // ========================================\\n    // FEEDBACK → 
+QUIZ\\n    // ========================================\\n    function 
+nextQuestion() {\\n      // Reset quiz state\\n      quizOptions.forEach(opt => 
+opt.classList.remove(\'selected\'));\\n      \\n      // Update progress\\n     
+state.currentQuestion++;\\n      
+document.querySelector(\'.quiz-progress-text\').textContent = \\n        
+`Question ${state.currentQuestion} of ${state.totalQuestions}`;\\n      
+document.querySelector(\'.quiz-progress-fill\').style.width = \\n        
+`${(state.currentQuestion / state.totalQuestions) * 100}%`;\\n\\n      
+showView(\'quiz\');\\n    }\\n\\n    // 
+========================================\\n    // CHAT FUNCTIONS\\n    // 
+========================================\\n    function sendMessage(e) {\\n     
+e.preventDefault();\\n      const message = chatInput.value.trim();\\n      if 
+(!message) return;\\n\\n      // Add user message\\n      
+addUserMessage(message);\\n     
+... [truncated 10666 chars] ...
+ty: 0; }\n      to { opacity: 1; }\n    }\n\n    
+@keyframes slideUp {\n      from {\n        opacity: 0;\n        transform: 
+translateY(12px);\n      }\n      to {\n        opacity: 1;\n        transform: 
+translateY(0);\n      }\n    }\n\n    @keyframes pulse {\n      0%, 100% { 
+opacity: 1; }\n      50% { opacity: 0.6; }\n    }\n\n    .animate-fade-in {\n   
+animation: fadeIn 400ms ease forwards;\n    }\n\n    .animate-slide-up {\n      
+animation: slideUp 400ms ease forwards;\n    }\n\n    /* 
+========================================\n       HEADER\n       
+======================================== */\n    .app-header {\n      position: 
+fixed;\n      top: 0;\n      left: 0;\n      right: 0;\n      height: 
+var(--header-height);\n      background: var(--white);\n      border-bottom: 1px
+solid var(--gray-200);\n      z-index: 100;\n      display: flex;\n      
+align-items: center;\n      justify-content: space-between;\n      padding: 0 
+var(--space-6);\n    }\n\n    .header-left {\n      display: flex;\n      
+align-items: center;\n      gap: var(--space-8);\n    }\n\n    .brand-wordmark 
+{\n      font-family: var(--font-serif);\n      font-size: 1.25rem;\n      
+font-weight: 600;\n      color: var(--gray-900);\n      text-decoration: none;\n
+letter-spacing: -0.01em;\n    }\n\n    .session-label {\n      font-family: 
+var(--font-mono);\n      font-size: 0.6875rem;\n      text-transform: 
+uppercase;\n      letter-spacing: 0.12em;\n      color: var(--gray-400);\n      
+font-weight: 500;\n    }\n\n    .header-stats {\n      display: flex;\n      
+align-items: center;\n      gap: var(--space-6);\n    }\n\n    .header-stat {\n 
+display: flex;\n      align-items: center;\n      gap: var(--space-2);\n      
+font-family: var(--font-mono);\n      font-size: 0.75rem;\n      color: 
+var(--gray-500);\n    }\n\n    .header-stat-value {\n      font-weight: 600;\n  
+color: var(--gray-700);\n    }\n\n    /* 
+========================================\n       MAIN LAYOUT (62% / 38%)\n      
+======================================== */\n    .app-container {\n      
+display: flex;\n      min-height: 100vh;\n      padding-top: 
+var(--header-height);\n    }\n\n    .review-panel {\n      width: 
+var(--review-width);\n      min-height: calc(100vh - var(--header-height));\n   
+position: relative;\n    }\n\n    .chat-panel {\n      width: 
+var(--chat-width);\n      position: fixed;\n      top: var(--header-height);\n  
+right: 0;\n      bottom: 0;\n      background: var(--white);\n      border-left:
+1px solid var(--gray-200);\n      display: flex;\n      flex-direction: 
+column;\n    }\n\n    /* ========================================\n       VIEW 
+SYSTEM\n       ======================================== */\n    .view {\n      
+display: none;\n      opacity: 0;\n    }\n\n    .view.active {\n      display: 
+block;\n      opacity: 1;\n      animation: fadeIn 300ms ease;\n    }\n\n    /* 
+========================================\n       HERO VIEW (Morning Briefing)\n 
+======================================== */\n    .hero-section {\n      
+min-height: calc(100vh - var(--header-height));\n      background: 
+var(--gray-50);\n      padding: var(--space-16) var(--space-10);\n      display:
+flex;\n      flex-direction: column;\n      justify-content: center;\n    }\n\n 
+.hero-masthead {\n      display: flex;\n      align-items: center;\n      
+justify-content: space-between;\n      margin-bottom: var(--space-10);\n      
+padding-bottom: var(--space-4);\n      border-bottom: 1px solid 
+var(--gray-200);\n    }\n\n    .hero-brand {\n      font-family: 
+var(--font-serif);\n      font-size: 0.875rem;\n      font-weight: 600;\n      
+color: var(--gray-600);\n      letter-spacing: 0.02em;\n    }\n\n    .hero-date 
+{\n      font-family: var(--font-mono);\n      font-size: 0.75rem;\n      color:
+var(--gray-400);\n      text-transform: uppercase;\n      letter-spacing: 
+0.08em;\n    }\n\n    .hero-content {\n      max-width: 680px;\n    }\n\n    
+.hero-kicker {\n      font-family: var(--font-mono);\n      font-size: 
+0.6875rem;\n      font-weight: 600;\n      text-transform: uppercase;\n      
+letter-spacing: 0.15em;\n      color: var(--primary);\n      margin-bottom: 
+var(--space-4);\n    }\n\n    .hero-headline {\n      font-family: 
+var(--font-serif);\n      font-size: 2.75rem;\n      font-weight: 500;\n      
+line-height: 1.2;\n      color: var(--gray-900);\n      margin-bottom: 
+var(--space-6);\n      letter-spacing: -0.02em;\n    }\n\n    
+.hero-headline-accent {\n      color: var(--primary);\n      font-weight: 600;\n
+}\n\n    .hero-lead {\n      font-family: var(--font-serif);\n      font-size: 
+1.125rem;\n      font-style: italic;\n      color: var(--gray-500);\n      
+line-height: 1.6;\n      margin-bottom: var(--space-10);\n    }\n\n    
+.hero-stats {\n      display: grid;\n      grid-template-columns: repeat(4, 
+1fr);\n      gap: var(--space-4);\n      margin-bottom: var(--space-10);\n    
+}\n\n    .hero-stat-card {\n      background: var(--white);\n      border: 1px 
+solid var(--gray-200);\n      border-radius: var(--radius-lg);\n      padding: 
+var(--space-5);\n      text-align: center;\n      transition: all 
+var(--transition-fast);\n    }\n\n    .hero-stat-card:hover {\n      
+border-color: var(--gray-300);\n      transform: translateY(-2px);\n      
+box-shadow: var(--shadow-md);\n    }\n\n    .hero-stat-card.primary {\n      
+border-color: var(--primary);\n      background: var(--primary-light);\n    
+}\n\n    .hero-stat-card.success {\n      border-color: var(--success);\n      
+background: var(--success-light);\n    }\n\n    .hero-stat-value {\n      
+font-family: var(--font-serif);\n      font-size: 1.75rem;\n      font-weight: 
+600;\n      color: var(--gray-900);\n      margin-bottom: var(--space-1);\n    
+}\n\n    .hero-stat-card.primary .hero-stat-value {\n      color: 
+var(--primary);\n    }\n\n    .hero-stat-card.success .hero-stat-value {\n      
+color: var(--success);\n    }\n\n    .hero-stat-label {\n      font-family: 
+var(--font-mono);\n      font-size: 0.625rem;\n      text-transform: 
+uppercase;\n      letter-spacing: 0.1em;\n      color: var(--gray-500);\n    
+}\n\n    .hero-actions {\n      display: flex;\n      align-items: center;\n    
+gap: var(--space-6);\n    }\n\n    .hero-cta {\n      font-family: 
+var(--font-sans);\n      font-size: 0.9375rem;\n      font-weight: 500;\n      
+color: var(--white);\n      background: var(--primary);\n      border: none;\n  
+border-radius: var(--radius-md);\n      padding: var(--space-4) 
+var(--space-8);\n      cursor: pointer;\n      transition: all 
+var(--transition-fast);\n    }\n\n    .hero-cta:hover {\n      background: 
+hsl(221.2, 83.2%, 48%);\n      transform: translateY(-1px);\n      box-shadow: 
+var(--shadow-md);\n    }\n\n    .hero-meta {\n      font-family: 
+var(--font-mono);\n      font-size: 0.6875rem;\n      color: var(--gray-400);\n 
+}\n\n    /* ========================================\n       QUIZ VIEW\n       
+======================================== */\n    .quiz-section {\n      
+min-height: calc(100vh - var(--header-height));\n      background: 
+var(--white);\n      padding: var(--space-10) var(--space-10) var(--space-16);\n
+}\n\n    .quiz-card {\n      max-width: 680px;\n      margin: 0 auto;\n    }\n\n
+.quiz-card-header {\n      display: flex;\n      align-items: flex-start;\n     
+justify-content: space-between;\n      margin-bottom: var(--space-8);\n      
+padding-bottom: var(--space-6);\n      border-bottom: 1px solid 
+var(--gray-200);\n    }\n\n    .quiz-card-meta {\n      display: flex;\n      
+flex-direction: column;\n      gap: var(--space-2);\n    }\n\n    .quiz-concept 
+{\n      font-family: var(--font-serif);\n      font-size: 1rem;\n      
+font-weight: 600;\n      color: var(--gray-800);\n    }\n\n    .quiz-badges {\n 
+display: flex;\n      gap: var(--space-2);\n    }\n\n    .quiz-badge {\n      
+font-family: var(--font-mono);\n      font-size: 0.625rem;\n      font-weight: 
+500;\n      text-transform: uppercase;\n      letter-spacing: 0.08em;\n      
+padding: var(--space-1) var(--space-2);\n      border-radius: 
+var(--radius-sm);\n      background: var(--gray-100);\n      color: 
+var(--gray-500);\n    }\n\n    .quiz-progress {\n      text-align: right;\n    
+}\n\n    .quiz-progress-text {\n      font-family: var(--font-mono);\n      
+font-size: 0.75rem;\n      color: var(--gray-400);\n      margin-bottom: 
+var(--space-1);\n    }\n\n    .quiz-progress-bar {\n      width: 120px;\n      
+height: 4px;\n      background: var(--gray-200);\n      border-radius: 2px;\n   
+overflow: hidden;\n    }\n\n    .quiz-progress-fill {\n      height: 100%;\n    
+background: var(--primary);\n      border-radius: 2px;\n      transition: width 
+var(--transition-base);\n    }\n\n    .quiz-question {\n      font-family: 
+var(--font-serif);\n      font-size: 1.5rem;\n      font-weight: 500;\n      
+line-height: 1.5;\n      color: var(--gray-900);\n      margin-bottom: 
+var(--space-8);\n    }\n\n    .quiz-options {\n      display: flex;\n      
+flex-direction: column;\n      gap: var(--space-3);\n    }\n\n    .quiz-option 
+{\n      display: flex;\n      align-items: flex-start;\n      gap: 
+var(--space-4);\n      padding: var(--space-5);\n      background: 
+var(--white);\n      border: 1px solid var(--gray-200);\n      border-radius: 
+var(--radius-lg);\n      cursor: pointer;\n      transition: all 
+var(--transition-fast);\n      text-align: left;\n      width: 100%;\n    }\n\n 
+.quiz-option:hover {\n      border-color: var(--primary);\n      transform: 
+translateX(6px);\n    }\n\n    .quiz-option:hover .quiz-option-marker {\n      
+background: var(--primary);\n      color: var(--white);\n      border-color: 
+var(--primary);\n    }\n\n    .quiz-option-marker {\n      flex-shrink: 0;\n    
+width: 28px;\n      height: 28px;\n      display: flex;\n      align-items: 
+center;\n      justify-content: center;\n      font-family: var(--font-mono);\n 
+font-size: 0.75rem;\n      font-weight: 600;\n      color: var(--gray-500);\n   
+background: var(--gray-50);\n      border: 1px solid var(--gray-200);\n      
+border-radius: var(--radius-md);\n      transition: all 
+var(--transition-fast);\n    }\n\n    .quiz-option-text {\n      font-family: 
+var(--font-sans);\n      font-size: 0.9375rem;\n      line-height: 1.6;\n      
+color: var(--gray-700);\n      padding-top: var(--space-1);\n    }\n\n    
+.quiz-option.selected {\n      border-color: var(--primary);\n      background: 
+var(--primary-light);\n    }\n\n    .quiz-option.selected .quiz-option-marker 
+{\n      background: var(--primary);\n      color: var(--white);\n      
+border-color: var(--primary);\n    }\n\n    /* 
+========================================\n       FEEDBACK VIEW\n       
+======================================== */\n    .feedback-section {\n      
+min-height: calc(100vh - var(--header-height));\n      background: 
+var(--gray-50);\n      padding: var(--space-10) var(--space-10) 
+var(--space-16);\n    }\n\n    .feedback-card {\n      max-width: 680px;\n      
+margin: 0 auto;\n    }\n\n    .feedback-card-header {\n      display: flex;\n   
+align-items: center;\n      gap: var(--space-3);\n      margin-bottom: 
+var(--space-8);\n    }\n\n    .feedback-status-badge {\n      display: 
+inline-flex;\n      align-items: center;\n      gap: var(--space-2);\n      
+font-family: var(--font-mono);\n      font-size: 0.6875rem;\n      font-weight: 
+600;\n      text-transform: uppercase;\n      letter-spacing: 0.1em;\n      
+padding: var(--space-2) var(--space-3);\n      border-radius: 
+var(--radius-md);\n    }\n\n    .feedback-status-badge.correct {\n      
+background: var(--success-light);\n      color: var(--success);\n    }\n\n    
+.feedback-status-badge.incorrect {\n      background: var(--error-light);\n     
+color: var(--error);\n    }\n\n    .feedback-status-icon {\n      width: 14px;\n
+height: 14px;\n    }\n\n    .feedback-question-context {\n      background: 
+var(--white);\n      border: 1px solid var(--gray-200);\n      border-radius: 
+var(--radius-lg);\n      padding: var(--space-5);\n      margin-bottom: 
+var(--space-6);\n    }\n\n    .feedback-context-label {\n      font-family: 
+var(--font-mono);\n      font-size: 0.625rem;\n      font-weight: 600;\n      
+text-transform: uppercase;\n      letter-spacing: 0.1em;\n      color: 
+var(--gray-400);\n      margin-bottom: var(--space-3);\n    }\n\n    
+.feedback-question-text {\n      font-family: var(--font-serif);\n      
+font-size: 1.125rem;\n      font-weight: 500;\n      line-height: 1.5;\n      
+color: var(--gray-700);\n      font-style: italic;\n    }\n\n    
+.feedback-answers {\n      display: grid;\n      grid-template-columns: 1fr 
+1fr;\n      gap: var(--space-4);\n      margin-bottom: var(--space-6);\n    
+}\n\n    .feedback-answer-box {\n      border-radius: var(--radius-lg);\n      
+padding: var(--space-5);\n      border: 1px solid;\n    }\n\n    
+.feedback-answer-box.yours.incorrect {\n      background: var(--error-light);\n 
+border-color: var(--error);\n    }\n\n    .feedback-answer-box.yours.correct {\n
+background: var(--success-light);\n      border-color: var(--success);\n    
+}\n\n    .feedback-answer-box.correct {\n      background: 
+var(--success-light);\n      border-color: var(--success);\n    }\n\n    
+.feedback-answer-label {\n      font-family: var(--font-mono);\n      font-size:
+0.625rem;\n      font-weight: 600;\n      text-transform: uppercase;\n      
+letter-spacing: 0.1em;\n      margin-bottom: var(--space-2);\n    }\n\n    
+.feedback-answer-box.yours.incorrect .feedback-answer-label {\n      color: 
+var(--error);\n    }\n\n    .feedback-answer-box.yours.correct 
+.feedback-answer-label,\n    .feedback-answer-box.correct .feedback-answer-label
+{\n      color: var(--success);\n    }\n\n    .feedback-answer-text {\n      
+font-family: var(--font-sans);\n      font-size: 0.9375rem;\n      color: 
+var(--gray-800);\n      line-height: 1.5;\n    }\n\n    .feedback-explanation 
+{\n      background: var(--white);\n      border: 1px solid var(--gray-200);\n  
+border-radius: var(--radius-lg);\n      padding: var(--space-5);\n      
+margin-bottom: var(--space-6);\n    }\n\n    .feedback-explanation-label {\n    
+font-family: var(--font-mono);\n      font-size: 0.625rem;\n      font-weight: 
+600;\n      text-transform: uppercase;\n      letter-spacing: 0.1em;\n      
+color: var(--gray-400);\n      margin-bottom: var(--space-3);\n    }\n\n    
+.feedback-explanation-text {\n      font-family: var(--font-serif);\n      
+font-size: 1rem;\n      line-height: 1.7;\n      color: var(--gray-700);\n    
+}\n\n    .feedback-schedule {\n      background: var(--white);\n      border: 
+1px solid var(--gray-200);\n      border-radius: var(--radius-lg);\n      
+padding: var(--space-5);\n    }\n\n    .feedback-schedule-grid {\n      display:
+grid;\n      grid-template-columns: repeat(4, 1fr);\n      gap: 
+var(--space-4);\n    }\n\n    .feedback-schedule-item {\n      text-align: 
+center;\n    }\n\n    .feedback-schedule-label {\n      font-family: 
+var(--font-mono);\n      font-size: 0.625rem;\n      font-weight: 600;\n      
+text-transform: uppercase;\n      letter-spacing: 0.08em;\n      color: 
+var(--gray-400);\n      margin-bottom: var(--space-1);\n    }\n\n    
+.feedback-schedule-value {\n      font-family: var(--font-mono);\n      
+font-size: 0.875rem;\n      font-weight: 600;\n      color: var(--gray-800);\n  
+}\n\n    /* ========================================\n       CHAT PANEL\n       
+======================================== */\n    .chat-header {\n      padding: 
+var(--space-5) var(--space-5) var(--space-4);\n      border-bottom: 1px solid 
+var(--gray-200);\n    }\n\n    .chat-agent-info {\n      display: flex;\n      
+align-items: center;\n      gap: var(--space-3);\n      margin-bottom: 
+var(--space-4);\n    }\n\n    .chat-agent-avatar {\n      width: 40px;\n      
+height: 40px;\n      border-radius: 50%;\n      background: 
+linear-gradient(135deg, var(--primary) 0%, hsl(221.2, 83.2%, 65%) 100%);\n      
+display: flex;\n      align-items: center;\n      justify-content: center;\n    
+flex-shrink: 0;\n    }\n\n    .chat-agent-avatar svg {\n      width: 20px;\n    
+height: 20px;\n      color: var(--white);\n    }\n\n    .chat-agent-meta {\n    
+flex: 1;\n    }\n\n    .chat-agent-name {\n      font-family: 
+var(--font-sans);\n      font-size: 0.9375rem;\n      font-weight: 600;\n      
+color: var(--gray-800);\n      margin-bottom: var(--space-1);\n    }\n\n    
+.chat-agent-status {\n      display: flex;\n      align-items: center;\n      
+gap: var(--space-2);\n      font-family: var(--font-mono);\n      font-size: 
+0.6875rem;\n      color: var(--success);\n    }\n\n    .chat-status-dot {\n     
+width: 6px;\n      height: 6px;\n      background: var(--success);\n      
+border-radius: 50%;\n      animation: pulse 2s ease infinite;\n    }\n\n    
+.chat-capabilities {\n      display: flex;\n      flex-wrap: wrap;\n      gap: 
+var(--space-2);\n    }\n\n    .chat-capability {\n      font-family: 
+var(--font-mono);\n      font-size: 0.625rem;\n      font-weight: 500;\n      
+color: var(--gray-500);\n      background: var(--gray-100);\n      padding: 
+var(--space-1) var(--space-2);\n      border-radius: var(--radius-sm);\n    
+}\n\n    .chat-messages {\n      flex: 1;\n      overflow-y: auto;\n      
+padding: var(--space-4);\n      display: flex;\n      flex-direction: column;\n 
+gap: var(--space-4);\n    }\n\n    .chat-message {\n      max-width: 90%;\n     
+animation: slideUp 300ms ease;\n    }\n\n    .chat-message.user {\n      
+align-self: flex-end;\n    }\n\n    .chat-message.agent {\n      align-self: 
+flex-start;\n    }\n\n    .chat-message-bubble {\n      padding: var(--space-3) 
+var(--space-4);\n      border-radius: var(--radius-lg);\n      font-size: 
+0.875rem;\n      line-height: 1.6;\n    }\n\n    .chat-message.user 
+.chat-message-bubble {\n      background: var(--primary);\n      color: 
+var(--white);\n      border-bottom-right-radius: var(--space-1);\n    }\n\n    
+.chat-message.agent .chat-message-bubble {\n      background: var(--gray-100);\n
+color: var(--gray-700);\n      border-bottom-left-radius: var(--space-1);\n    
+}\n\n    .chat-suggestions {\n      display: flex;\n      flex-wrap: wrap;\n    
+gap: var(--space-2);\n      margin-top: var(--space-3);\n    }\n\n    
+.chat-suggestion {\n      font-family: var(--font-mono);\n      font-size: 
+0.6875rem;\n      color: var(--primary);\n      background: 
+var(--primary-light);\n      padding: var(--space-2) var(--space-3);\n      
+border-radius: var(--radius-md);\n      cursor: pointer;\n      border: none;\n 
+transition: all var(--transition-fast);\n    }\n\n    .chat-suggestion:hover {\n
+background: var(--primary);\n      color: var(--white);\n    }\n\n    
+.chat-analytics {\n      background: var(--white);\n      border: 1px solid 
+var(--gray-200);\n      border-radius: var(--radius-lg);\n      padding: 
+var(--space-4);\n      margin-top: var(--space-2);\n    }\n\n    
+.chat-analytics-header {\n      font-family: var(--font-mono);\n      font-size:
+0.625rem;\n      font-weight: 600;\n      text-transform: uppercase;\n      
+letter-spacing: 0.1em;\n      color: var(--gray-400);\n      margin-bottom: 
+var(--space-3);\n    }\n\n    .chat-analytics-table {\n      width: 100%;\n     
+font-size: 0.8125rem;\n    }\n\n    .chat-analytics-row {\n      display: 
+flex;\n      justify-content: space-between;\n      padding: var(--space-2) 0;\n
+border-bottom: 1px solid var(--gray-100);\n    }\n\n    
+.chat-analytics-row:last-child {\n      border-bottom: none;\n    }\n\n    
+.chat-analytics-label {\n      color: var(--gray-500);\n    }\n\n    
+.chat-analytics-value {\n      font-family: var(--font-mono);\n      
+font-weight: 600;\n      color: var(--gray-700);\n    }\n\n    .chat-input-area 
+{\n      padding: var(--space-4);\n      border-top: 1px solid 
+var(--gray-200);\n      background: var(--white);\n    }\n\n    .chat-input-form
+{\n      display: flex;\n      gap: var(--space-3);\n    }\n\n    .chat-input 
+{\n      flex: 1;\n      font-family: var(--font-sans);\n      font-size: 
+0.875rem;\n      padding: var(--space-3) var(--space-4);\n      border: 1px 
+solid var(--gray-200);\n      border-radius: var(--radius-lg);\n      outline: 
+none;\n      transition: all var(--transition-fast);\n    }\n\n    
+.chat-input:focus {\n      border-color: var(--primary);\n      box-shadow: 0 0 
+0 3px hsla(221.2, 83.2%, 53.3%, 0.1);\n    }\n\n    .chat-input::placeholder {\n
+color: var(--gray-400);\n    }\n\n    .chat-send-btn {\n      display: flex;\n  
+align-items: center;\n      justify-content: center;\n      width: 44px;\n      
+height: 44px;\n      background: var(--primary);\n      border: none;\n      
+border-radius: var(--radius-lg);\n      cursor: pointer;\n      transition: all 
+var(--transition-fast);\n    }\n\n    .chat-send-btn:hover {\n      background: 
+hsl(221.2, 83.2%, 48%);\n    }\n\n    .chat-send-btn svg {\n      width: 18px;\n
+height: 18px;\n      color: var(--white);\n    }\n\n    .chat-next-bar {\n      
+padding: var(--space-4);\n      border-top: 1px solid var(--gray-200);\n      
+background: var(--gray-50);\n    }\n\n    .chat-next-btn {\n      width: 100%;\n
+font-family: var(--font-sans);\n      font-size: 0.875rem;\n      font-weight: 
+500;\n      color: var(--white);\n      background: var(--gray-800);\n      
+border: none;\n      border-radius: var(--radius-md);\n      padding: 
+var(--space-3) var(--space-4);\n      cursor: pointer;\n      transition: all 
+var(--transition-fast);\n    }\n\n    .chat-next-btn:hover {\n      background: 
+var(--gray-900);\n    }\n\n    /* ========================================\n    
+UTILITY CLASSES\n       ======================================== */\n    .hidden
+{\n      display: none !important;\n    }\n\n    /* Scrollbar styling */\n    
+::-webkit-scrollbar {\n      width: 6px;\n      height: 6px;\n    }\n\n    
+::-webkit-scrollbar-track {\n      background: transparent;\n    }\n\n    
+::-webkit-scrollbar-thumb {\n      background: var(--gray-300);\n      
+border-radius: 3px;\n    }\n\n    ::-webkit-scrollbar-thumb:hover {\n      
+background: var(--gray-400);\n    }\n  </style>\n</head>\n<body>\n  <!-- 
+========================================\n       HEADER\n       
+======================================== -->\n  <header class="app-header">\n   
+<div class="header-left">\n      <a href="#" class="brand-wordmark">Scry</a>\n  
+<span class="session-label">Review Session</span>\n    </div>\n    <div 
+class="header-stats">\n      <div class="header-stat">\n        
+<span>Cards</span>\n        <span class="header-stat-value" 
+id="header-cards-remaining">23</span>\n      </div>\n      <div 
+class="header-stat">\n        <span>Accuracy</span>\n        <span 
+class="header-stat-value" id="header-accuracy">87%</span>\n      </div>\n    
+</div>\n  </header>\n\n  <!-- ========================================\n       
+MAIN CONTAINER (62% / 38% SPLIT)\n       
+======================================== -->\n  <div class="app-container">\n   
+<!-- REVIEW PANEL (62%) -->\n    <main class="review-panel">\n      <!-- HERO 
+VIEW -->\n      <section class="hero-section view active" id="hero-view">\n     
+<div class="hero-masthead">\n          <span class="hero-brand">Scry</span>\n   
+<span class="hero-date" id="current-date">February 17, 2026</span>\n        
+</div>\n        <div class="hero-content">\n          <div 
+class="hero-kicker">Daily Briefing</div>\n          <h1 class="hero-headline">\n
+<span class="hero-headline-accent" id="cards-count">23</span> cards await your 
+review\n          </h1>\n          <p class="hero-lead">\n            Your 
+personalized learning session is ready. Concepts from distributed systems, \n   
+algorithms, and language fundamentals are scheduled for optimal retention.\n    
+</p>\n          <div class="hero-stats">\n            <div class="hero-stat-card
+primary">\n              <div class="hero-stat-value" id="stat-due">23</div>\n  
+<div class="hero-stat-label">Cards Due</div>\n            </div>\n            
+<div class="hero-stat-card">\n              <div 
+class="hero-stat-value">18m</div>\n              <div 
+class="hero-stat-label">Est. Time</div>\n            </div>\n            <div 
+class="hero-stat-card success">\n              <div 
+class="hero-stat-value">87%</div>\n              <div 
+class="hero-stat-label">7-Day Acc</div>\n            </div>\n            <div 
+class="hero-stat-card">\n              <div class="hero-stat-value">12</div>\n  
+<div class="hero-stat-label">Day Streak</div>\n            </div>\n          
+</div>\n          <div class="hero-actions">\n            <button 
+class="hero-cta" id="start-session-btn">Begin Review Session</button>\n         
+<span class="hero-meta" id="last-reviewed">Last reviewed 8 hours ago</span>\n   
+</div>\n        </div>\n      </section>\n\n      <!-- QUIZ VIEW -->\n      
+<section class="quiz-section view" id="quiz-view">\n        <div 
+class="quiz-card">\n          <div class="quiz-card-header">\n            <div 
+class="quiz-card-meta">\n              <div class="quiz-concept">Distributed 
+Systems</div>\n              <div class="quiz-badges">\n                <span 
+class="quiz-badge">System Design</span>\n                <span 
+class="quiz-badge">Hard</span>\n              </div>\n            </div>\n      
+<div class="quiz-progress">\n              <div 
+class="quiz-progress-text">Question 1 of 23</div>\n              <div 
+class="quiz-progress-bar">\n                <div class="quiz-progress-fill" 
+style="width: 4%"></div>\n              </div>\n            </div>\n          
+</div>\n          <div class="quiz-question">\n            In a distributed 
+system using the Raft consensus algorithm, what happens \n            when a 
+leader election times out due to a network partition?\n          </div>\n       
+<div class="quiz-options" id="quiz-options">\n            <button 
+class="quiz-option" data-option="A">\n              <span 
+class="quiz-option-marker">A</span>\n              <span 
+class="quiz-option-text">The cluster continues operating with the current leader
+indefinitely until the partition heals.</span>\n            </button>\n         
+<button class="quiz-option" data-option="B">\n              <span 
+class="quiz-option-marker">B</span>\n              <span 
+class="quiz-option-text">Nodes in the minority partition elect a new leader, 
+potentially creating a split-brain scenario.</span>\n            </button>\n    
+<button class="quiz-option" data-option="C">\n              <span 
+class="quiz-option-marker">C</span>\n              <span 
+class="quiz-option-text">Nodes increment their term and transition to candidate 
+state, requesting votes from other nodes.</span>\n            </button>\n       
+<button class="quiz-option" data-option="D">\n              <span 
+class="quiz-option-marker">D</span>\n              <span 
+class="quiz-option-text">The system immediately enters a read-only mode to 
+prevent data inconsistency.</span>\n            </button>\n          </div>\n   
+</div>\n      </section>\n\n      <!-- FEEDBACK - CORRECT VIEW -->\n      
+<section class="feedback-section view" id="feedback-correct-view">\n        <div
+class="feedback-card">\n          <div class="feedback-card-header">\n          
+<span class="feedback-status-badge correct">\n              <svg 
+class="feedback-status-icon" viewBox="0 0 24 24" fill="none" 
+stroke="currentColor" stroke-width="2.5">\n                <polyline points="20 
+6 9 17 4 12"></polyline>\n              </svg>\n              Correct\n         
+</span>\n          </div>\n          <div class="feedback-question-context">\n  
+<div class="feedback-context-label">Question</div>\n            <div 
+class="feedback-question-text">\n              In a distributed system using the
+Raft consensus algorithm, what happens \n              when a leader election 
+times out due to a network partition?\n            </div>\n          </div>\n   
+<div class="feedback-answers">\n            <div class="feedback-answer-box 
+yours correct">\n              <div class="feedback-answer-label">Your 
+Answer</div>\n              <div class="feedback-answer-text">Nodes increment 
+their term and transition to candidate state, requesting votes from other 
+nodes.</div>\n            </div>\n            <div class="feedback-answer-box 
+correct">\n              <div class="feedback-answer-label">Correct 
+Answer</div>\n              <div class="feedback-answer-text">Nodes increment 
+their term and transition to candidate state, requesting votes from other 
+nodes.</div>\n            </div>\n          </div>\n          <div 
+class="feedback-explanation">\n            <div 
+class="feedback-explanation-label">Explanation</div>\n            <div 
+class="feedback-explanation-text">\n              When a leader election times 
+out in Raft, followers increment their current term, \n              transition 
+to the candidate state, and send RequestVote RPCs to other nodes. \n            
+This mechanism ensures that the cluster can recover from leader failures without
+\n              external intervention. The candidate must receive votes from a 
+majority of nodes \n              to become the new leader.\n            
+</div>\n          </div>\n          <div class="feedback-schedule">\n           
+<div class="feedback-schedule-grid">\n              <div 
+class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Previous Interval</div>\n                <div 
+class="feedback-schedule-value">1d</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">New Interval</div>\n                <div 
+class="feedback-schedule-value">2.5d</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Ease Factor</div>\n                <div 
+class="feedback-schedule-value">2.5</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Next Review</div>\n                <div 
+class="feedback-schedule-value">Feb 20</div>\n              </div>\n            
+</div>\n          </div>\n        </div>\n      </section>\n\n      <!-- 
+FEEDBACK - INCORRECT VIEW -->\n      <section class="feedback-section view" 
+id="feedback-incorrect-view">\n        <div class="feedback-card">\n          
+<div class="feedback-card-header">\n            <span 
+class="feedback-status-badge incorrect">\n              <svg 
+class="feedback-status-icon" viewBox="0 0 24 24" fill="none" 
+stroke="currentColor" stroke-width="2.5">\n                <line x1="18" y1="6" 
+x2="6" y2="18"></line>\n                <line x1="6" y1="6" x2="18" 
+y2="18"></line>\n              </svg>\n              Incorrect\n            
+</span>\n          </div>\n          <div class="feedback-question-context">\n  
+<div class="feedback-context-label">Question</div>\n            <div 
+class="feedback-question-text">\n              In a distributed system using the
+Raft consensus algorithm, what happens \n              when a leader election 
+times out due to a network partition?\n            </div>\n          </div>\n   
+<div class="feedback-answers">\n            <div class="feedback-answer-box 
+yours incorrect">\n              <div class="feedback-answer-label">Your 
+Answer</div>\n              <div class="feedback-answer-text">The cluster 
+continues operating with the current leader indefinitely until the partition 
+heals.</div>\n            </div>\n            <div class="feedback-answer-box 
+correct">\n              <div class="feedback-answer-label">Correct 
+Answer</div>\n              <div class="feedback-answer-text">Nodes increment 
+their term and transition to candidate state, requesting votes from other 
+nodes.</div>\n            </div>\n          </div>\n          <div 
+class="feedback-explanation">\n            <div 
+class="feedback-explanation-label">Explanation</div>\n            <div 
+class="feedback-explanation-text">\n              When a leader election times 
+out in Raft, followers increment their current term, \n              transition 
+to the candidate state, and send RequestVote RPCs to other nodes. \n            
+This mechanism ensures that the cluster can recover from leader failures without
+\n              external intervention. The candidate must receive votes from a 
+majority of nodes \n              to become the new leader.\n            
+</div>\n          </div>\n          <div class="feedback-schedule">\n           
+<div class="feedback-schedule-grid">\n              <div 
+class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Previous Interval</div>\n                <div 
+class="feedback-schedule-value">1d</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">New Interval</div>\n                <div 
+class="feedback-schedule-value">10m</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Ease Factor</div>\n                <div 
+class="feedback-schedule-value">2.3</div>\n              </div>\n              
+<div class="feedback-schedule-item">\n                <div 
+class="feedback-schedule-label">Next Review</div>\n                <div 
+class="feedback-schedule-value">Today</div>\n              </div>\n            
+</div>\n          </div>\n        </div>\n      </section>\n    </main>\n\n    
+<!-- CHAT PANEL (38%) -->\n    <aside class="chat-panel">\n      <div 
+class="chat-header">\n        <div class="chat-agent-info">\n          <div 
+class="chat-agent-avatar">\n            <svg viewBox="0 0 24 24" fill="none" 
+stroke="currentColor" stroke-width="2">\n              <path d="M12 2a3 3 0 0 
+0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>\n              <path d="M19 10v2a7 7 0
+0 1-14 0v-2"/>\n              <line x1="12" y1="19" x2="12" y2="22"/>\n         
+<line x1="8" y1="22" x2="16" y2="22"/>\n            </svg>\n          </div>\n  
+<div class="chat-agent-meta">\n            <div class="chat-agent-name">Study 
+Assistant</div>\n            <div class="chat-agent-status">\n              
+<span class="chat-status-dot"></span>\n              <span>Online</span>\n      
+</div>\n          </div>\n        </div>\n        <div 
+class="chat-capabilities">\n          <span class="chat-capability">Explain 
+concepts</span>\n          <span class="chat-capability">Memory tips</span>\n   
+<span class="chat-capability">Track progress</span>\n        </div>\n      
+</div>\n\n      <div class="chat-messages" id="chat-messages">\n        <div 
+class="chat-message agent">\n          <div class="chat-message-bubble">\n      
+Ready to dive into your review session? I\'m here to explain concepts, \n       
+provide memory techniques, or discuss anything related to your cards.\n         
+</div>\n          <div class="chat-suggestions">\n            <button 
+class="chat-suggestion" data-message="Explain this concept">Explain this 
+concept</button>\n            <button class="chat-suggestion" 
+data-message="Memory tips">Memory tips</button>\n            <button 
+class="chat-suggestion" data-message="Why is this important?">Why is this 
+important?</button>\n          </div>\n        </div>\n      </div>\n\n      
+<div class="chat-input-area">\n        <form class="chat-input-form" 
+id="chat-form">\n          <input \n            type="text" \n            
+class="chat-input" \n            id="chat-input" \n            placeholder="Ask 
+about this card..."\n            autocomplete="off"\n          >\n          
+<button type="submit" class="chat-send-btn">\n            <svg viewBox="0 0 24 
+24" fill="none" stroke="currentColor" stroke-width="2.5">\n              <line 
+x1="22" y1="2" x2="11" y2="13"></line>\n              <polygon points="22 2 15 
+22 11 13 2 9 22 2"></polygon>\n            </svg>\n          </button>\n        
+</form>\n      </div>\n\n      <div class="chat-next-bar" id="chat-next-bar" 
+style="display: none;">\n        <button class="chat-next-btn" 
+id="next-question-btn">Continue to Next Question</button>\n      </div>\n    
+</aside>\n  </div>\n\n  <!-- ========================================\n       
+JAVASCRIPT\n       ======================================== -->\n  <script>\n   
+// ========================================\n    // STATE\n    // 
+========================================\n    const state = {\n      
+currentView: \'hero\',\n      cardsRemaining: 23,\n      accuracy: 87,\n      
+currentQuestion: 1,\n      totalQuestions: 23,\n      correctAnswer: \'C\'\n    
+};\n\n    // ========================================\n    // DOM ELEMENTS\n    
+// ========================================\n    const views = {\n      hero: 
+document.getElementById(\'hero-view\'),\n      quiz: 
+document.getElementById(\'quiz-view\'),\n      feedbackCorrect: 
+document.getElementById(\'feedback-correct-view\'),\n      feedbackIncorrect: 
+document.getElementById(\'feedback-incorrect-view\')\n    };\n\n    const 
+startBtn = document.getElementById(\'start-session-btn\');\n    const 
+quizOptions = document.querySelectorAll(\'.quiz-option\');\n    const 
+chatMessages = document.getElementById(\'chat-messages\');\n    const chatForm =
+document.getElementById(\'chat-form\');\n    const chatInput = 
+document.getElementById(\'chat-input\');\n    const chatSuggestions = 
+document.querySelectorAll(\'.chat-suggestion\');\n    const chatNextBar = 
+document.getElementById(\'chat-next-bar\');\n    const nextQuestionBtn = 
+document.getElementById(\'next-question-btn\');\n    const headerCardsRemaining 
+= document.getElementById(\'header-cards-remaining\');\n    const currentDateEl 
+= document.getElementById(\'current-date\');\n\n    // 
+========================================\n    // INITIALIZATION\n    // 
+========================================\n    function init() {\n      // Set 
+current date\n      const now = new Date();\n      currentDateEl.textContent = 
+now.toLocaleDateString(\'en-US\', {\n        year: \'numeric\',\n        month: 
+\'long\',\n        day: \'numeric\'\n      });\n\n      // Event listeners\n    
+startBtn.addEventListener(\'click\', startSession);\n      
+quizOptions.forEach(option => {\n        option.addEventListener(\'click\', () 
+=> selectOption(option));\n      });\n      
+chatForm.addEventListener(\'submit\', sendMessage);\n      
+chatSuggestions.forEach(chip => {\n        chip.addEventListener(\'click\', () 
+=> sendSuggestion(chip.dataset.message));\n      });\n      
+nextQuestionBtn.addEventListener(\'click\', nextQuestion);\n    }\n\n    // 
+========================================\n    // VIEW MANAGEMENT\n    // 
+========================================\n    function showView(viewName) {\n   
+// Hide all views\n      Object.values(views).forEach(view => {\n        
+view.classList.remove(\'active\');\n      });\n\n      // Show target view\n    
+if (views[viewName]) {\n        views[viewName].classList.add(\'active\');\n    
+state.currentView = viewName;\n      }\n\n      // Show/hide next button in chat
+based on view\n      if (viewName === \'feedbackCorrect\' || viewName === 
+\'feedbackIncorrect\') {\n        chatNextBar.style.display = \'block\';\n      
+} else {\n        chatNextBar.style.display = \'none\';\n      }\n    }\n\n    
+// ========================================\n    // HERO → QUIZ\n    // 
+========================================\n    function startSession() {\n      
+showView(\'quiz\');\n    }\n\n    // ========================================\n 
+// QUIZ → FEEDBACK\n    // ========================================\n    
+function selectOption(option) {\n      const selectedAnswer = 
+option.dataset.option;\n      \n      // Highlight selected option\n      
+quizOptions.forEach(opt => opt.classList.remove(\'selected\'));\n      
+option.classList.add(\'selected\');\n\n      // After 400ms, show feedback\n    
+setTimeout(() => {\n        if (selectedAnswer === state.correctAnswer) {\n     
+showView(\'feedbackCorrect\');\n          addAgentMessage(\'Great job! You 
+correctly identified the leader election timeout behavior in Raft. This is a 
+fundamental concept for understanding distributed consensus.\');\n        } else
+{\n          showView(\'feedbackIncorrect\');\n          addAgentMessage(\'Not 
+quite. In Raft, when a leader election times out, nodes increment their term and
+become candidates. This is different from the Paxos approach. Would you like me 
+to explain the full leader election flow?\');\n        }\n\n        // Update 
+stats\n        state.cardsRemaining--;\n        headerCardsRemaining.textContent
+= state.cardsRemaining;\n      }, 400);\n    }\n\n    // 
+========================================\n    // FEEDBACK → QUIZ\n    // 
+========================================\n    function nextQuestion() {\n      
+// Reset quiz state\n      quizOptions.forEach(opt => 
+opt.classList.remove(\'selected\'));\n      \n      // Update progress\n      
+state.currentQuestion++;\n      
+document.querySelector(\'.quiz-progress-text\').textContent = \n        
+`Question ${state.currentQuestion} of ${state.totalQuestions}`;\n      
+document.querySelector(\'.quiz-progress-fill\').style.width = \n        
+`${(state.currentQuestion / state.totalQuestions) * 100}%`;\n\n      
+showView(\'quiz\');\n    }\n\n    // ========================================\n 
+// CHAT FUNCTIONS\n    // ========================================\n    function
+sendMessage(e) {\n      e.preventDefault();\n      const message = 
+chatInput.value.trim();\n      if (!message) return;\n\n      // Add user 
+message\n      addUserMessage(message);\n      chatInput.value = \'\';\n\n      
+// Generate agent response\n      setTimeout(() => {\n        const response = 
+generateAgentResponse(message);\n        addAgentMessage(response);\n      }, 
+600);\n    }\n\n    function sendSuggestion(message) {\n      
+addUserMessage(message);\n      \n      setTimeout(() => {\n        const 
+response = generateAgentResponse(message);\n        addAgentMessage(response);\n
+}, 600);\n    }\n\n    function addUserMessage(text) {\n      const messageEl = 
+document.createElement(\'div\');\n      messageEl.className = \'chat-message 
+user\';\n      messageEl.innerHTML = `<div 
+class="chat-message-bubble">${escapeHtml(text)}</div>`;\n      
+chatMessages.appendChild(messageEl);\n      scrollToBottom();\n    }\n\n    
+function addAgentMessage(text, options = {}) {\n      const messageEl = 
+document.createElement(\'div\');\n      messageEl.className = \'chat-message 
+agent\';\n      \n      let html = `<div 
+class="chat-message-bubble">${escapeHtml(text)}</div>`;\n      \n      // Add 
+analytics if requested\n      if (options.analytics) {\n        html += `\n     
+<div class="chat-analytics">\n            <div 
+class="chat-analytics-header">Performance Summary</div>\n            <div 
+class="chat-analytics-table">\n              <div class="chat-analytics-row">\n 
+<span class="chat-analytics-label">Cards Reviewed</span>\n                <span 
+class="chat-analytics-value">${state.currentQuestion}</span>\n              
+</div>\n              <div class="chat-analytics-row">\n                <span 
+class="chat-analytics-label">Accuracy</span>\n                <span 
+class="chat-analytics-value">${state.accuracy}%</span>\n              </div>\n  
+<div class="chat-analytics-row">\n                <span 
+class="chat-analytics-label">Avg. Time</span>\n                <span 
+class="chat-analytics-value">24s</span>\n              </div>\n              
+<div class="chat-analytics-row">\n                <span 
+class="chat-analytics-label">Streak</span>\n                <span 
+class="chat-analytics-value">5</span>\n              </div>\n            
+</div>\n          </div>\n        `;\n      }\n\n      // Add suggestions if 
+provided\n      if (options.suggestions) {\n        html += `<div 
+class="chat-suggestions">`;\n        options.suggestions.forEach(suggestion => 
+{\n          html += `<button class="chat-suggestion" 
+data-message="${escapeHtml(suggestion)}">${escapeHtml(suggestion)}</button>`;\n 
+});\n        html += `</div>`;\n      }\n\n      messageEl.innerHTML = html;\n  
+chatMessages.appendChild(messageEl);\n\n      // Re-attach suggestion 
+listeners\n      messageEl.querySelectorAll(\'.chat-suggestion\').forEach(chip 
+=> {\n        chip.addEventListener(\'click\', () => 
+sendSuggestion(chip.dataset.message));\n      });\n\n      scrollToBottom();\n  
+}\n\n    function generateAgentResponse(message) {\n      const lowerMsg = 
+message.toLowerCase();\n      \n      if (lowerMsg.includes(\'explain\') || 
+lowerMsg.includes(\'concept\')) {\n        return \'Raft is a consensus 
+algorithm designed to be understandable. It separates the key elements of 
+consensus: leader election, log replication, and safety. The leader election 
+timeout mechanism ensures that if the leader fails or network partitions occur, 
+a new leader can be elected quickly.\';\n      }\n      \n      if 
+(lowerMsg.includes(\'memory\') || lowerMsg.includes(\'tip\')) {\n        return 
+\'Here is a memory trick: "Candidates Campaign for Votes." When a node becomes a
+candidate (C), it increments its term (T) and sends RequestVote RPCs (V). 
+Remember C-T-V: Candidate, Term, Votes.\';\n      }\n      \n      if 
+(lowerMsg.includes(\'why\') || lowerMsg.includes(\'important\')) {\n        
+return \'Understanding Raft leader election is crucial because it is the 
+foundation of many distributed systems you will encounter: etcd, Consul, and 
+Kafka all use Raft or similar consensus mechanisms. This pattern appears in 
+system design interviews and real-world architecture decisions.\';\n      }\n   
+\n      if (lowerMsg.includes(\'progress\') || lowerMsg.includes(\'stats\') || 
+lowerMsg.includes(\'performance\')) {\n        setTimeout(() => {\n          // 
+Analytics are added via the options parameter, but we need to trigger a second 
+message\n          const analyticsEl = document.createElement(\'div\');\n       
+analyticsEl.className = \'chat-message agent\';\n          analyticsEl.innerHTML
+= `\n            <div class="chat-analytics">\n              <div 
+class="chat-analytics-header">Performance Summary</div>\n              <div 
+class="chat-analytics-table">\n                <div 
+class="chat-analytics-row">\n                  <span 
+class="chat-analytics-label">Cards Reviewed</span>\n                  <span 
+class="chat-analytics-value">${state.currentQuestion}</span>\n                
+</div>\n                <div class="chat-analytics-row">\n                  
+<span class="chat-analytics-label">Accuracy</span>\n                  <span 
+class="chat-analytics-value">${state.accuracy}%</span>\n                </div>\n
+<div class="chat-analytics-row">\n                  <span 
+class="chat-analytics-label">Avg. Time</span>\n                  <span 
+class="chat-analytics-value">24s</span>\n                </div>\n               
+<div class="chat-analytics-row">\n                  <span 
+class="chat-analytics-label">Streak</span>\n                  <span 
+class="chat-analytics-value">5</span>\n                </div>\n              
+</div>\n            </div>\n          `;\n          
+chatMessages.appendChild(analyticsEl);\n          scrollToBottom();\n        }, 
+100);\n        return \'Here is your current session performance:\';\n      }\n 
+\n      return \'That is an interesting question. I can help explain Raft 
+consensus, provide memory techniques, or discuss why this concept matters in 
+distributed systems. What would be most helpful?\';\n    }\n\n    function 
+scrollToBottom() {\n      chatMessages.scrollTop = chatMessages.scrollHeight;\n 
+}\n\n    function escapeHtml(text) {\n      const div = 
+document.createElement(\'div\');\n      div.textContent = text;\n      return 
+div.innerHTML;\n    }\n\n    // ========================================\n    //
+START\n    // ========================================\n    init();\n  
+</script>\n</body>\n</html>
