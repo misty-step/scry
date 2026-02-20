@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      NODE_VERSION: '20.19.0'
+      NODE_VERSION: '20.20.0'
       PNPM_VERSION: '10.12.1'
     steps:
       - uses: actions/checkout@v4
