@@ -1,0 +1,747 @@
+<!DOCTYPE html>\\n<html lang=\\"en\\">\\n<head>\\n  <meta 
+charset=\\"UTF-8\\">\\n  <meta name=\\"viewport\\" 
+content=\\"width=device-width, initial-scale=1.0\\">\\n  <title>Scry — Spaced 
+Repetition Review</title>\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.googleapis.com\\">\\n  <link rel=\\"preconnect\\" 
+href=\\"https://fonts.gstatic.com\\" crossorigin>\\n  <link 
+href=\\"https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&
+family=Lora:wght@400;500;600;700&display=swap\\" rel=\\"stylesheet\\">\\n  
+<style>\\n    /* === CSS VARIABLES === */\\n    :root {\\n      --primary: 
+hsl(221.2, 83.2%, 53.3%);\\n      --primary-dim: hsl(221.2, 83.2%, 45%);\\n     
+--primary-light: hsl(221.2, 83.2%, 95%);\\n      --success: hsl(142, 76%, 
+36%);\\n      --success-dim: hsl(142, 76%, 28%);\\n      --success-light: 
+hsl(142, 76%, 95%);\\n      --error: hsl(0, 84%, 60%);\\n      --error-dim: 
+hsl(0, 84%, 45%);\\n      --error-light: hsl(0, 84%, 95%);\\n      \\n      
+--bg-base: hsl(220, 20%, 98%);\\n      --bg-elevated: hsl(0, 0%, 100%);\\n      
+--bg-subtle: hsl(220, 15%, 96%);\\n      \\n      --text-primary: hsl(220, 20%, 
+12%);\\n      --text-secondary: hsl(220, 12%, 40%);\\n      --text-muted: 
+hsl(220, 10%, 55%);\\n      \\n      --border: hsl(220, 15%, 90%);\\n      
+--border-strong: hsl(220, 15%, 80%);\\n      \\n      --radius-sm: 8px;\\n      
+--radius-md: 16px;\\n      --radius-lg: 24px;\\n      --radius-xl: 32px;\\n     
+\\n      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);\\n      --shadow-md: 0 
+4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);\\n      
+--shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 
+0.02);\\n      --shadow-float: 0 25px 50px -12px rgba(0, 0, 0, 0.12);\\n      
+\\n      --gap-xs: 8px;\\n      --gap-sm: 12px;\\n      --gap-md: 20px;\\n      
+--gap-lg: 32px;\\n      --gap-xl: 48px;\\n      \\n      --pad-sm: 16px;\\n     
+--pad-md: 24px;\\n      --pad-lg: 32px;\\n      --pad-xl: 48px;\\n    }\\n\\n   
+/* === BASE RESET === */\\n    *, *::before, *::after {\\n      box-sizing: 
+border-box;\\n      margin: 0;\\n      padding: 0;\\n    }\\n\\n    html {\\n   
+font-size: 16px;\\n      -webkit-font-smoothing: antialiased;\\n      
+-moz-osx-font-smoothing: grayscale;\\n    }\\n\\n    body {\\n      font-family:
+system-ui, -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif;\\n      
+background: var(--bg-base);\\n      color: var(--text-primary);\\n      
+line-height: 1.5;\\n      min-height: 100vh;\\n    }\\n\\n    /* === TYPOGRAPHY 
+=== */\\n    .font-serif {\\n      font-family: \'Lora\', Georgia, serif;\\n    
+}\\n\\n    .font-mono {\\n      font-family: \'IBM Plex Mono\', \'SF Mono\', 
+monospace;\\n    }\\n\\n    .text-display {\\n      font-size: clamp(2.5rem, 
+5vw, 4rem);\\n      font-weight: 600;\\n      letter-spacing: -0.03em;\\n      
+line-height: 1.1;\\n    }\\n\\n    .text-title {\\n      font-size: 
+clamp(1.5rem, 3vw, 2rem);\\n      font-weight: 600;\\n      letter-spacing: 
+-0.02em;\\n      line-height: 1.2;\\n    }\\n\\n    .text-subtitle {\\n      
+font-size: 1.125rem;\\n      font-weight: 500;\\n      letter-spacing: 
+-0.01em;\\n    }\\n\\n    .text-body {\\n      font-size: 1rem;\\n      
+line-height: 1.6;\\n    }\\n\\n    .text-small {\\n      font-size: 0.875rem;\\n
+line-height: 1.5;\\n    }\\n\\n    .text-caption {\\n      font-size: 
+0.75rem;\\n      font-weight: 500;\\n      letter-spacing: 0.05em;\\n      
+text-transform: uppercase;\\n    }\\n\\n    /* === LAYERED BACKGROUND === */\\n 
+.layered-bg {\\n      position: fixed;\\n      inset: 0;\\n      z-index: -1;\\n
+overflow: hidden;\\n      pointer-events: none;\\n    }\\n\\n    
+.layered-bg::before {\\n      content: \'\';\\n      position: absolute;\\n     
+inset: -50%;\\n      background: \\n        radial-gradient(ellipse 80% 50% at 
+20% 40%, rgba(255,255,255,0.8) 0%, transparent 50%),\\n        
+radial-gradient(ellipse 60% 40% at 80% 60%, var(--primary-light) 0%, transparent
+40%);\\n    }\\n\\n    .dot-grid {\\n      position: absolute;\\n      inset: 
+0;\\n      background-image: radial-gradient(circle at center, 
+var(--border-strong) 1px, transparent 1px);\\n      background-size: 24px 
+24px;\\n      opacity: 0.4;\\n    }\\n\\n    .blueprint-grid {\\n      position:
+absolute;\\n      inset: 0;\\n      background-image: \\n        
+linear-gradient(to right, var(--border-strong) 1px, transparent 1px),\\n        
+linear-gradient(to bottom, var(--border-strong) 1px, transparent 1px);\\n      
+background-size: 48px 48px;\\n      opacity: 0.08;\\n    }\\n\\n    
+.diagonal-accent {\\n      position: absolute;\\n      top: -20%;\\n      right:
+-10%;\\n      width: 800px;\\n      height: 800px;\\n      background: 
+linear-gradient(135deg, var(--primary-light) 0%, transparent 60%);\\n      
+transform: rotate(-15deg);\\n      opacity: 0.5;\\n      z-index: 1;\\n    
+}\\n\\n    /* === APP SHELL === */\\n    .app {\\n      max-width: 1400px;\\n   
+margin: 0 auto;\\n      padding: var(--gap-lg);\\n      min-height: 100vh;\\n   
+}\\n\\n    /* === NAVIGATION === */\\n    .nav {\\n      display: flex;\\n      
+align-items: center;\\n      justify-content: space-between;\\n      padding: 
+var(--pad-md) var(--pad-lg);\\n      margin-bottom: var(--gap-xl);\\n      
+background: var(--bg-elevated);\\n      border-radius: var(--radius-lg);\\n     
+box-shadow: var(--shadow-md);\\n      border: 1px solid var(--border);\\n    
+}\\n\\n    .logo {\\n      display: flex;\\n      align-items: center;\\n      
+gap: var(--gap-sm);\\n    }\\n\\n    .logo-mark {\\n      width: 36px;\\n      
+height: 36px;\\n      background: var(--primary);\\n      border-radius: 
+var(--radius-sm);\\n      display: grid;\\n      place-items: center;\\n    
+}\\n\\n    .logo-mark svg {\\n      width: 20px;\\n      height: 20px;\\n      
+color: white;\\n    }\\n\\n    .logo-text {\\n      font-size: 1.25rem;\\n      
+font-weight: 700;\\n      letter-spacing: -0.02em;\\n      color: 
+var(--text-primary);\\n    }\\n\\n    .nav-links {\\n      display: flex;\\n    
+gap: var(--gap-xs);\\n    }\\n\\n    .nav-link {\\n      padding: 8px 16px;\\n  
+font-size: 0.875rem;\\n      font-weight: 500;\\n      color: 
+var(--text-secondary);\\n      text-decoration: none;\\n      border-radius: 
+var(--radius-sm);\\n      cursor: pointer;\\n    }\\n\\n    .nav-link:hover {\\n
+background: var(--bg-subtle);\\n      color: var(--text-primary);\\n    }\\n\\n 
+.nav-link.active {\\n      background: var(--primary-light);\\n      color: 
+var(--primary);\\n    }\\n\\n    /* === BENTO CELL BASE === */\\n    .bento-cell
+{\\n      background: var(--bg-elevated);\\n      border-radius: 
+var(--radius-lg);\\n      padding: var(--pad-lg);\\n      box-shadow: 
+var(--shadow-md);\\n      border: 1px solid var(--border);\\n      display: 
+flex;\\n      flex-direction: column;\\n      position: relative;\\n      
+overflow: hidden;\\n    }\\n\\n    .bento-cell::before {\\n      content: 
+\'\';\\n      position: absolute;\\n      inset: 0;\\n      border-radius: 
+inherit;\\n      padding: 1px;\\n      background: linear-gradient(145deg, 
+rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 50%);\\n      mask: 
+linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);\\n      
+mask-composite: exclude;\\n      pointer-events: none;\\n    }\\n\\n    
+.cell-header {\\n      display: flex;\\n      align-items: center;\\n      gap: 
+var(--gap-sm);\\n      margin-bottom: var(--gap-sm);\\n    }\\n\\n    .cell-icon
+{\\n      width: 40px;\\n      height: 40px;\\n      border-radius: 
+var(--radius-sm);\\n      display: grid;\\n      place-items: center;\\n      
+background: var(--bg-subtle);\\n    }\\n\\n    .cell-icon svg {\\n      width: 
+20px;\\n      height: 20px;\\n      color: var(--primary);\\n    }\\n\\n    
+.cell-label {\\n      font-size: 0.75rem;\\n      font-weight: 600;\\n      
+letter-spacing: 0.08em;\\n      text-transform: uppercase;\\n      color: 
+var(--text-muted);\\n    }\\n\\n    .cell-value {\\n      font-size: 2.5rem;\\n 
+font-weight: 700;\\n      letter-spacing: -0.03em;\\n      color: 
+var(--text-primary);\\n      margin-top: auto;\\n    }\\n\\n    
+.cell-value.small {\\n      font-size: 1.75rem;\\n    }\\n\\n    /* === VIEW 
+CONTAINERS === */\\n    .view {\\n      display: none;\\n    }\\n\\n    
+.view.active {\\n      display: block;\\n    }\\n\\n    /* === HERO / SESSION 
+ENTRY === */\\n    .hero-grid {\\n      display: grid;\\n      
+grid-template-columns: repeat(4, 1fr);\\n      grid-template-rows: auto auto;\\n
+gap: var(--gap-md);\\n      margin-bottom: var(--gap-xl);\\n    }\\n\\n    
+.hero-cell-due {\\n      grid-column: span 2;\\n      grid-row: span 2;\\n      
+background: var(--primary);\\n      color: white;\\n      display: flex;\\n     
+flex-direction: column;\\n      justify-content: space-between;\\n      
+min-height: 280px;\\n    }\\n\\n    .hero-cell-due::before {\\n      display: 
+none;\\n    }\\n\\n    .hero-cell-due .cell-label {\\n      color: 
+rgba(255,255,255,0.7);\\n    }\\n\\n    .hero-cell-due .cell-value {\\n      
+color: white;\\n      font-size: 5rem;\\n    }\\n\\n    .hero-cell-due 
+.due-subtitle {\\n      font-size: 1rem;\\n      color: 
+rgba(255,255,255,0.8);\\n      margin-top: var(--gap-sm);\\n    }\\n\\n    
+.hero-cell-due .deck-tag {\\n      display: inline-flex;\\n      align-items: 
+center;\\n      gap: 6px;\\n      padding: 6px 12px;\\n      background: 
+rgba(255,255,255,0.15);\\n      border-radius: var(--radius-sm);\\n      
+font-size: 0.875rem;\\n      font-weight: 500;\\n      margin-top: 
+var(--gap-sm);\\n    }\\n\\n    .hero-cell-streak {\\n      background: 
+linear-gradient(135deg, var(--success-light) 0%, var(--bg-elevated) 100%);\\n   
+border-color: hsl(142, 50%, 85%);\\n    }\\n\\n    .hero-cell-streak .cell-icon 
+{\\n      background: var(--success);\\n    }\\n\\n    .hero-cell-streak 
+.cell-icon svg {\\n      color: white;\\n    }\\n\\n    .hero-cell-accuracy {\\n
+background: linear-gradient(135deg, var(--bg-subtle) 0%, var(--bg-elevated) 
+100%);\\n    }\\n\\n    .accuracy-bar {\\n      height: 8px;\\n      background:
+var(--border);\\n      border-radius: 4px;\\n      margin-top: var(--gap-md);\\n
+overflow: hidden;\\n    }\\n\\n    .accuracy-fill {\\n      height: 100%;\\n    
+width: 82%;\\n      background: var(--primary);\\n      border-radius: 4px;\\n  
+}\\n\\n    .hero-cell-time {\\n      background: linear-gradient(135deg, 
+var(--bg-subtle) 0%, var(--bg-elevated) 100%);\\n    }\\n\\n    .time-breakdown 
+{\\n      display: flex;\\n      gap: var(--gap-md);\\n      margin-top: 
+var(--gap-sm);\\n    }\\n\\n    .time-item {\\n      display: flex;\\n      
+flex-direction: column;\\n    }\\n\\n    .time-value {\\n      font-size: 
+1.25rem;\\n      font-weight: 600;\\n      color: var(--text-primary);\\n    
+}\\n\\n    .time-label {\\n      font-size: 0.75rem;\\n      color: 
+var(--text-muted);\\n    }\\n\\n    .hero-cell-cta {\\n      grid-column: span 
+2;\\n      padding: 0;\\n      overflow: visible;\\n      background: 
+transparent;\\n      border: none;\\n      box-shadow: none;\\n    }\\n\\n    
+.hero-cell-cta::before {\\n      display: none;\\n    }\\n\\n    .cta-button 
+{\\n      width: 100%;\\n      height: 100%;\\n      min-height: 80px;\\n      
+background: var(--text-primary);\\n      color: white;\\n      border: none;\\n 
+border-radius: var(--radius-lg);\\n      font-size: 1.125rem;\\n      
+font-weight: 600;\\n      cursor: pointer;\\n      display: flex;\\n      
+align-items: center;\\n      justify-content: center;\\n      gap: 
+var(--gap-sm);\\n      box-shadow: var(--shadow-lg);\\n      padding: 
+var(--pad-md);\\n    }\\n\\n    .cta-button:hover {\\n      background: hsl(220,
+20%, 8%);\\n    }\\n\\n    .cta-button svg {\\n      width: 20px;\\n      
+height: 20px;\\n    }\\n\\n    /* === QUIZ VIEW === */\\n    .quiz-layout {\\n  
+display: grid;\\n      grid-template-columns: 1fr 380px;\\n      gap: 
+var(--gap-lg);\\n    }\\n\\n    .quiz-main {\\n      display: flex;\\n      
+flex-direction: column;\\n      gap: var(--gap-md);\\n    }\\n\\n    .quiz-card 
+{\\n      background: var(--bg-elevated);\\n      border-radius: 
+var(--radius-xl);\\n      padding: var(--pad-xl);\\n      box-shadow: 
+var(--shadow-float);\\n      border: 1px solid var(--border);\\n      position: 
+relative;\\n    }\\n\\n    .quiz-card::before {\\n      content: \'\';\\n      
+position: absolute;\\n      inset: 0;\\n      border-radius: inherit;\\n      
+padding: 1px;\\n      background: linear-gradient(180deg, rgba(255,255,255,1) 
+0%, rgba(255,255,255,0) 50%);\\n      mask: linear-gradient(#fff 0 0) 
+content-box, linear-gradient(#fff 0 0);\\n      mask-composite: exclude;\\n     
+pointer-events: none;\\n    }\\n\\n    .quiz-progress {\\n      display: 
+flex;\\n      align-items: center;\\n      justify-content: space-between;\\n   
+margin-bottom: var(--gap-lg);\\n      padding-bottom: var(--gap-md);\\n      
+border-bottom: 1px solid var(--border);\\n    }\\n\\n    .progress-text {\\n    
+font-size: 0.875rem;\\n      font-weight: 500;\\n      color: 
+var(--text-muted);\\n    }\\n\\n    .progress-bar {\\n      flex: 1;\\n      
+height: 6px;\\n      background: var(--border);\\n      border-radius: 3px;\\n  
+margin: 0 var(--gap-md);\\n      overflow: hidden;\\n    }\\n\\n    
+.progress-fill {\\n      height: 100%;\\n      width: 35%;\\n      background: 
+var(--primary);\\n      border-radius: 3px;\\n    }\\n\\n    .question-number 
+{\\n      font-family: \'IBM Plex Mono\', monospace;\\n      font-size: 
+0.875rem;\\n      font-weight: 500;\\n      color: var(--text-muted);\\n    
+}\\n\\n    .question-content {\\n      font-family: \'Lora\', Georgia, serif;\\n
+font-size: clamp(1.5rem, 3vw, 2rem);\\n      font-weight: 500;\\n      
+line-height: 1.5;\\n      color: var(--text-primary);\\n      margin-bottom: 
+var(--gap-xl);\\n    }\\n\\n    .options-grid {\\n      display: grid;\\n      
+grid-template-columns: repeat(2, 1fr);\\n      gap: var(--gap-md);\\n    }\\n\\n
+.option-cell {\\n      background: var(--bg-elevated);\\n      border: 2px solid
+var(--border);\\n      border-radius: var(--radius-md);\\n      padding: 
+var(--pad-md);\\n      cursor: pointer;\\n      display: flex;\\n      
+align-items: flex-start;\\n      gap: var(--gap-md);\\n      text-align: 
+left;\\n    }\\n\\n    .option-cell:hover {\\n      border-color: 
+var(--primary);\\n      background: var(--primary-light);\\n    }\\n\\n    
+.option-marker {\\n      width: 32px;\\n      height: 32px;\\n      background: 
+var(--bg-subtle);\\n      border-radius: var(--radius-sm);\\n      display: 
+grid;\\n      place-items: center;\\n      font-family: \'IBM Plex Mono\', 
+monospace;\\n      font-size: 0.875rem;\\n      font-weight: 600;\\n      color:
+var(--text-secondary);\\n      flex-shrink: 0;\\n    }\\n\\n    
+.option-cell:hover .option-marker {\\n      background: var(--primary);\\n      
+color: white;\\n    }\\n\\n    .option-text {\\n      font-size: 1rem;\\n      
+font-weight: 500;\\n      color: var(--text-primary);\\n      line-height: 
+1.5;\\n      padding-top: 4px;\\n    }\\n\\n    .quiz-shortcuts {\\n      
+display: flex;\\n      justify-content: center;\\n      gap: var(--gap-lg);\\n  
+margin-top: var(--gap-md);\\n    }\\n\\n    .shortcut {\\n      display: 
+flex;\\n      align-items: center;\\n      gap: var(--gap-xs);\\n      
+font-size: 0.75rem;\\n      color: var(--text-muted);\\n    }\\n\\n    .shortcut
+kbd {\\n      padding: 2px 8px;\\n      background: var(--bg-subtle);\\n      
+border: 1px solid var(--border);\\n      border-radius: 4px;\\n      
+font-family: \'IBM Plex Mono\', monospace;\\n      font-size: 0.75rem;\\n    
+}\\n\\n    /* === FEEDBACK VIEW === */\\n    .feedback-layout {\\n      display:
+grid;\\n      grid-template-columns: 1fr 380px;\\n      gap: var(--gap-lg);\\n  
+}\\n\\n    .feedback-main {\\n      display: flex;\\n      flex-direction: 
+column;\\n      gap: var(--gap-md);\\n    }\\n\\n    .verdict-cell {\\n      
+display: flex;\\n      align-items: center;\\n      gap: var(--gap-md);\\n      
+padding: var(--pad-lg);\\n      border-radius: var(--radius-lg);\\n      border:
+2px solid;\\n    }\\n\\n    .verdict-cell.correct {\\n      background: 
+var(--success-light);\\n      border-color: var(--success);\\n    }\\n\\n    
+.verdict-cell.incorrect {\\n      background: var(--error-light);\\n      
+border-color: var(--error);\\n    }\\n\\n    .verdict-icon {\\n      width: 
+56px;\\n      height: 56px;\\n      border-radius: var(--radius-md);\\n      
+display: grid;\\n      place-items: center;\\n      flex-shrink: 0;\\n    
+}\\n\\n    .verdict-cell.correct .verdict-icon {\\n      background: 
+var(--success);\\n    }\\n\\n    .verdict-cell.incorrect .verdict-icon {\\n     
+background: var(--error);\\n    }\\n\\n    .verdict-icon svg {\\n      width: 
+28px;\\n      height: 28px;\\n      color: white;\\n    }\\n\\n    
+.verdict-content {\\n      flex: 1;\\n    }\\n\\n    .verdict-title {\\n      
+font-size: 1.25rem;\\n      font-weight: 600;\\n      margin-bottom: 4px;\\n    
+}\\n\\n    .verdict-cell.correct .verdict-title {\\n      color: 
+var(--success-dim);\\n    }\\n\\n    .verdict-cell.incorrect .verdict-title {\\n
+color: var(--error-dim);\\n    }\\n\\n    .verdict-subtitle {\\n      font-size:
+0.875rem;\\n      color: var(--text-secondary);\\n    }\\n\\n    .answers-row 
+{\\n      display: grid;\\n      grid-template-columns: 1fr 1fr;\\n      gap: 
+var(--gap-md);\\n    }\\n\\n    .answer-cell {\\n      padding: 
+var(--pad-md);\\n      border-radius: var(--radius-md);\\n      border: 1px 
+solid var(--border);\\n    }\\n\\n    .answer-cell.yours.incorrect {\\n      
+background: var(--error-light);\\n      border-color: var(--error);\\n    
+}\\n\\n    .answer-cell.correct {\\n      background: var(--success-light);\\n  
+border-color: var(--success);\\n    }\\n\\n    .answer-label {\\n      
+font-size: 0.75rem;\\n      font-weight: 600;\\n      letter-spacing: 0.08em;\\n
+text-transform: uppercase;\\n      color: var(--text-muted);\\n      
+margin-bottom: var(--gap-sm);\\n    }\\n\\n    .answer-value {\\n      
+font-size: 1rem;\\n      font-weight: 500;\\n      color: 
+var(--text-primary);\\n    }\\n\\n    .explanation-cell {\\n      background: 
+var(--bg-subtle);\\n      border-radius: var(--radius-lg);\\n      padding: 
+var(--pad-lg);\\n    }\\n\\n    .explanation-header {\\n      display: flex;\\n 
+align-items: center;\\n      gap: var(--gap-sm);\\n      margin-bottom: 
+var(--gap-md);\\n    }\\n\\n    .explanation-header svg {\\n      width: 
+20px;\\n      height: 20px;\\n      color: var(--primary);\\n    }\\n\\n    
+.explanation-title {\\n      font-size: 1rem;\\n      font-weight: 600;\\n      
+color: var(--text-primary);\\n    }\\n\\n    .explanation-text {\\n      
+font-size: 1rem;\\n      line-height: 1.7;\\n      color: 
+var(--text-secondary);\\n    }\\n\\n    .metadata-grid {\\n      display: 
+grid;\\n      grid-template-columns: repeat(3, 1fr);\\n      gap: 
+var(--gap-md);\\n    }\\n\\n    .meta-cell {\\n      background: 
+var(--bg-elevated);\\n      border: 1px solid var(--border);\\n      
+border-radius: var(--radius-md);\\n      padding: var(--pad-md);\\n      
+text-align: center;\\n    }\\n\\n    .meta-label {\\n      font-size: 
+0.75rem;\\n      font-weight: 600;\\n      letter-spacing: 0.05em;\\n      
+text-transform: uppercase;\\n      color: var(--text-muted);\\n      
+margin-bottom: var(--gap-xs);\\n    }\\n\\n    .meta-value {\\n      
+font-family: \'IBM Plex Mono\', monospace;\\n      font-size: 1.125rem;\\n      
+font-weight: 600;\\n      color: var(--text-primary);\\n    }\\n\\n    
+.meta-delta {\\n      font-size: 0.75rem;\\n      font-weight: 500;\\n      
+margin-top: 2px;\\n    }\\n\\n    .meta-delta.positive {\\n      color: 
+var(--success);\\n    }\\n\\n    .meta-delta.negative {\\n      color: 
+var(--error);\\n    }\\n\\n    .feedback-actions {\\n      display: flex;\\n    
+gap: var(--gap-md);\\n      margin-top: var(--gap-md);\\n    }\\n\\n    .btn 
+{\\n      flex: 1;\\n      padding: 16px 24px;\\n      border-radius: 
+var(--radius-md);\\n      font-size: 1rem;\\n      font-weight: 600;\\n      
+cursor: pointer;\\n      border: 2px solid transparent;\\n      display: 
+flex;\\n      align-items: center;\\n      justify-content: center;\\n      gap:
+var(--gap-sm);\\n    }\\n\\n    .btn-primary {\\n      background: 
+var(--primary);\\n      color: white;\\n    }\\n\\n    .btn-primary:hover {\\n  
+background: var(--primary-dim);\\n    }\\n\\n    .btn-secondary {\\n      
+background: var(--bg-elevated);\\n      color: var(--text-primary);\\n      
+border-color: var(--border);\\n    }\\n\\n    .btn-secondary:hover {\\n      
+background: var(--bg-subtle);\\n    }\\n\\n    /* === CHAT PANEL === */\\n    
+.chat-panel {\\n      background: var(--bg-elevated);\\n      border-radius: 
+var(--radius-xl);\\n      box-shadow: var(--shadow-float);\\n      border: 1px 
+solid var(--border);\\n      display: flex;\\n      flex-direction: column;\\n  
+height: 100%;\\n      min-height: 500px;\\n      max-height: 700px;\\n      
+position: sticky;\\n      top: var(--gap-lg);\\n    }\\n\\n    .chat-header {\\n
+display: flex;\\n      align-items: center;\\n      gap: var(--gap-sm);\\n      
+padding: var(--pad-md);\\n      border-bottom: 1px solid var(--border);\\n    
+}\\n\\n    .agent-avatar {\\n      width: 44px;\\n      height: 44px;\\n      
+background: var(--primary);\\n      border-radius: var(--radius-md);\\n      
+display: grid;\\n      place-items: center;\\n    }\\n\\n    .agent-avatar svg 
+{\\n      width: 24px;\\n      height: 24px;\\n      color: white;\\n    }\\n\\n
+.agent-info {\\n      flex: 1;\\n    }\\n\\n    .agent-name {\\n      font-size:
+1rem;\\n      font-weight: 600;\\n      color: var(--text-primary);\\n    
+}\\n\\n    .agent-status {\\n      font-size: 0.75rem;\\n      color: 
+var(--success);\\n      display: flex;\\n      align-items: center;\\n      gap:
+4px;\\n    }\\n\\n    .agent-status::before {\\n      content: \'\';\\n      
+width: 6px;\\n      height: 6px;\\n      background: var(--success);\\n      
+border-radius: 50%;\\n    }\\n\\n    .chat-messages {\\n      flex: 1;\\n      
+overflow-y: auto;\\n      padding: var(--pad-md);\\n      display: flex;\\n     
+flex-direction: column;\\n      gap: var(--gap-md);\\n    }\\n\\n    .message 
+{\\n      display: flex;\\n      gap: var(--gap-sm);\\n      max-width: 90%;\\n 
+}\\n\\n    .message.agent {\\n      align-self: flex-start;\\n    }\\n\\n    
+.message.user {\\n      align-self: flex-end;\\n      flex-direction: 
+row-reverse;\\n    }\\n\\n    .message-avatar {\\n      width: 32px;\\n      
+height: 32px;\\n      border-radius: var(--radius-sm);\\n      flex-shrink: 
+0;\\n      display: grid;\\n      place-items: center;\\n    }\\n\\n    
+.message.agent .message-avatar {\\n      background: var(--primary);\\n    
+}\\n\\n    .message.user .message-avatar {\\n      background: 
+var(--text-primary);\\n    }\\n\\n    .message-avatar svg {\\n      width: 
+16px;\\n      height: 16px;\\n      color: white;\\n    }\\n\\n    
+.message-bubble {\\n      padding: 12px 16px;\\n      border-radius: 
+var(--radius-md);\\n      font-size: 0.9375rem;\\n      line-height: 1.5;\\n    
+}\\n\\n    .message.agent .message-bubble {\\n      background: 
+var(--bg-subtle);\\n      color: var(--text-primary);\\n      
+border-bottom-left-radius: 4px;\\n    }\\n\\n    .message.user .message-bubble 
+{\\n      background: var(--primary);\\n      color: white;\\n      
+border-bottom-right-radius: 4px;\\n    }\\n\\n    .capability-chips {\\n      
+display: flex;\\n      flex-wrap: wrap;\\n      gap: var(--gap-xs);\\n      
+padding: 0 var(--pad-md) var(--gap-sm);\\n    }\\n\\n    .chip {\\n      
+padding: 6px 12px;\\n      background: var(--bg-subtle);\\n      border: 1px 
+solid var(--border);\\n      border-radius: 100px;\\n      font-size: 
+0.75rem;\\n      font-weight: 500;\\n      color: var(--text-secondary);\\n     
+cursor: pointer;\\n    }\\n\\n    .chip:hover {\\n      background: 
+var(--primary-light);\\n      border-color: var(--primary);\\n      color: 
+var(--primary);\\n    }\\n\\n    .chat-input-area {\\n      padding: 
+var(--pad-md);\\n      border-top: 1px solid var(--border);\\n    }\\n\\n    
+.chat-input {\\n      display: flex;\\n      gap: var(--gap-sm);\\n      
+align-items: center;\\n    }\\n\\n    .chat-input input {\\n      flex: 1;\\n   
+padding: 12px 16px;\\n      border: 2px solid var(--border);\\n      
+border-radius: var(--radius-md);\\n      font-size: 0.9375rem;\\n      
+font-family: inherit;\\n      background: var(--bg-elevated);\\n      color: 
+var(--text-primary);\\n    }\\n\\n    .chat-input input:focus {\\n      outline:
+none;\\n      border-color: var(--primary);\\n    }\\n\\n    .chat-input 
+input::placeholder {\\n      color: var(--text-muted);\\n    }\\n\\n    
+.chat-send {\\n      width: 44px;\\n      height: 44px;\\n      background: 
+var(--primary);\\n      border: none;\\n      border-radius: 
+var(--radius-md);\\n      cursor: pointer;\\n      display: grid;\\n      
+place-items: center;\\n    }\\n\\n    .chat-send:hover {\\n      background: 
+var(--primary-dim);\\n    }\\n\\n    .chat-send svg {\\n      width: 20px;\\n   
+height: 20px;\\n      color: white;\\n    }\\n\\n    /* === SECONDARY CONTENT 
+AREA === */\\n    .secondary-grid {\\n      display: grid;\\n      
+grid-template-columns: repeat(3, 1fr);\\n      gap: var(--gap-md);\\n      
+margin-top: var(--gap-xl);\\n    }\\n\\n    .stats-cell {\\n      background: 
+linear-gradient(145deg, var(--bg-elevated) 0%, var(--bg-subtle) 100%);\\n    
+}\\n\\n    .stats-header {\\n      display: flex;\\n      align-items: 
+center;\\n      justify-content: space-between;\\n      margin-bottom: 
+var(--gap-md);\\n    }\\n\\n    .stats-title {\\n      font-size: 0.875rem;\\n  
+font-weight: 600;\\n      color: var(--text-primary);\\n    }\\n\\n    
+.stats-trend {\\n      display: flex;\\n      align-items: center;\\n      gap: 
+4px;\\n      font-size: 0.75rem;\\n      font-weight: 600;\\n      color: 
+var(--success);\\n    }\\n\\n    .stats-trend svg {\\n      width: 14px;\\n     
+height: 14px;\\n    }\\n\\n    /* === SVG ICONS === */\\n    .icon-check { 
+display: none; }\\n    .icon-x { display: none; }\\n    .icon-flame { display: 
+none; }\\n    .icon-target { display: none; }\\n    .icon-clock { display: none;
+}\\n    .icon-arrow-right { display: none; }\\n    .icon-brain { display: none; 
+}\\n    .icon-message { display: none; }\\n    .icon-lightbulb { display: none; 
+}\\n    .icon-send { display: none; }\\n    .icon-user { display: none; }\\n    
+.icon-sparkles { display: none; }\\n    .icon-trending-up { display: none; 
+}\\n\\n    /* Responsive */\\n    @media (max-width: 1024px) {\\n      
+.quiz-layout,\\n      .feedback-layout {\\n        grid-template-columns: 
+1fr;\\n      }\\n      \\n      .chat-panel {\\n        max-height: 400px;\\n   
+position: static;\\n      }\\n      \\n      .hero-grid {\\n        
+grid-template-columns: repeat(2, 1fr);\\n      }\\n      \\n      .hero-cell-due
+{\\n        grid-column: span 2;\\n      }\\n      \\n      .hero-cell-cta {\\n 
+grid-column: span 2;\\n      }\\n      \\n      .options-grid {\\n        
+grid-template-columns: 1fr;\\n      }\\n      \\n      .secondary-grid {\\n     
+grid-template-columns: 1fr;\\n      }\\n    }\\n\\n    @media (max-width: 640px)
+{\\n      .app {\\n        padding: var(--gap-md);\\n      }\\n      \\n      
+.hero-grid {\\n        grid-template-columns: 1fr;\\n      }\\n      \\n      
+.hero-cell-due,\\n      .hero-cell-cta {\\n        grid-column: span 1;\\n      
+}\\n      \\n      .answers-row {\\n        grid-template-columns: 1fr;\\n      
+}\\n      \\n      .metadata-grid {\\n        grid-template-columns: 1fr;\\n    
+}\\n      \\n      .feedback-actions {\\n        flex-direction: column;\\n     
+}\\n    }\\n  </style>\\n</head>\\n<body>\\n  <!-- Layered Background -->\\n  
+<div class=\\"layered-bg\\">\\n    <div class=\\"diagonal-accent\\"></div>\\n   
+<div class=\\"blueprint-grid\\"></div>\\n    <div class=\\"dot-grid\\"></div>\\n
+</div>\\n\\n  <div class=\\"app\\">\\n    <!-- Navigation -->\\n    <nav 
+class=\\"nav\\">\\n      <div class=\\"logo\\">\\n        <div 
+class=\\"logo-mark\\">\\n          <svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2.5\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n            <path d=\\"M2 12s4-8 10-8 10 8 10 8-4
+8-10 8-10-8-10-8Z\\"/>\\n            <circle cx=\\"12\\" cy=\\"12\\" 
+r=\\"3\\"/>\\n          </svg>\\n        </div>\\n        <span 
+class=\\"logo-text\\">Scry</span>\\n      </div>\\n      <div 
+class=\\"nav-links\\">\\n        <a class=\\"nav-link active\\" 
+data-view=\\"hero\\">Dashboard</a>\\n        <a class=\\"nav-link\\" 
+data-view=\\"quiz\\">Quiz</a>\\n        <a class=\\"nav-link\\" 
+data-view=\\"feedback\\">Feedback</a>\\n      </div>\\n    </nav>\\n\\n    <!-- 
+HERO / SESSION ENTRY VIEW -->\\n    <div class=\\"view active\\" 
+id=\\"hero-view\\">\\n      <div class=\\"hero-grid\\">\\n        <!-- Due Count
+Cell -->\\n        <div class=\\"bento-cell hero-cell-due\\">\\n          
+<div>\\n            <div class=\\"cell-label\\">Due for Review</div>\\n         
+<div class=\\"cell-value\\">24</div>\\n            <div 
+class=\\"due-subtitle\\">cards across 3 decks</div>\\n            <div 
+class=\\"deck-tag\\">\\n              <svg width=\\"16\\" height=\\"16\\" 
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<rect x=\\"2\\" y=\\"7\\" width=\\"20\\" height=\\"14\\" rx=\\"2\\" 
+ry=\\"2\\"/>\\n                <path d=\\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 
+2v16\\"/>\\n              </svg>\\n              Primary Focus: Japanese N3\\n  
+</div>\\n          </div>\\n        </div>\\n\\n        <!-- Streak Cell -->\\n 
+<div class=\\"bento-cell hero-cell-streak\\">\\n          <div 
+class=\\"cell-header\\">\\n            <div class=\\"cell-icon\\">\\n           
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M8.5 14.5A2.5 2.5 0 0 0 11 
+12c0-1.38-.5-2-1-3-1.072-2.143-2.072-2.143-3-2.143-1.072 0-2.072 1-2.072 2.143 0
+1.143.5 2.143 1 2.143.5 0 1.5-.5 1.5-1.5\\"/>\\n                <path d=\\"M15.5
+14.5A2.5 2.5 0 0 0 18 12c0-1.38-.5-2-1-3-1.072-2.143-2.072-2.143-3-2.143-1.072 
+0-2.072 1-2.072 2.143 0 1.143.5 2.143 1 2.143.5 0 1.5-.5 1.5-1.5\\"/>\\n        
+<path d=\\"M12 15.5c-2.5 0-4.5-1.5-4.5-3.5s2-4 4.5-4 4.5 1.5 4.5 4-2 3.5-4.5 
+3.5z\\"/>\\n              </svg>\\n            </div>\\n            <div 
+class=\\"cell-label\\">Current Streak</div>\\n          </div>\\n          <div 
+class=\\"cell-value small\\">47 days</div>\\n        </div>\\n\\n        <!-- 
+Accuracy Cell -->\\n        <div class=\\"bento-cell hero-cell-accuracy\\">\\n  
+<div class=\\"cell-header\\">\\n            <div class=\\"cell-icon\\">\\n      
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<circle cx=\\"12\\" cy=\\"12\\" r=\\"10\\"/>\\n                <path d=\\"m9 12 
+2 2 4-4\\"/>\\n              </svg>\\n            </div>\\n            <div 
+class=\\"cell-label\\">Session Accuracy</div>\\n          </div>\\n          
+<div class=\\"cell-value small\\">82%</div>\\n          <div 
+class=\\"accuracy-bar\\">\\n            <div class=\\"accuracy-fill\\"></div>\\n
+</div>\\n        </div>\\n\\n        <!-- Time Estimate Cell -->\\n        <div 
+class=\\"bento-cell hero-cell-time\\">\\n          <div 
+class=\\"cell-header\\">\\n            <div class=\\"cell-icon\\">\\n           
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<circle cx=\\"12\\" cy=\\"12\\" r=\\"10\\"/>\\n                <polyline 
+points=\\"12 6 12 12 16 14\\"/>\\n              </svg>\\n            </div>\\n  
+<div class=\\"cell-label\\">Estimated Time</div>\\n          </div>\\n          
+<div class=\\"time-breakdown\\">\\n            <div class=\\"time-item\\">\\n   
+<div class=\\"time-value\\">18</div>\\n              <div 
+class=\\"time-label\\">min</div>\\n            </div>\\n            <div 
+class=\\"time-item\\">\\n              <div class=\\"time-value\\">45</div>\\n  
+<div class=\\"time-label\\">sec/card</div>\\n            </div>\\n          
+</div>\\n        </div>\\n\\n        <!-- CTA Cell -->\\n        <div 
+class=\\"bento-cell hero-cell-cta\\">\\n          <button class=\\"cta-button\\"
+onclick=\\"switchView(\'quiz\')\\">\\n            <span>Begin Review 
+Session</span>\\n            <svg width=\\"20\\" height=\\"20\\" viewBox=\\"0 0 
+24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2.5\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n              <path 
+d=\\"M5 12h14\\"/>\\n              <path d=\\"m12 5 7 7-7 7\\"/>\\n            
+</svg>\\n          </button>\\n        </div>\\n      </div>\\n\\n      <!-- 
+Secondary Stats -->\\n      <div class=\\"secondary-grid\\">\\n        <div 
+class=\\"bento-cell stats-cell\\">\\n          <div class=\\"stats-header\\">\\n
+<span class=\\"stats-title\\">Cards Learned</span>\\n            <span 
+class=\\"stats-trend\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                
+<polyline points=\\"23 6 13.5 15.5 8.5 10.5 1 18\\"/>\\n                
+<polyline points=\\"17 6 23 6 23 12\\"/>\\n              </svg>\\n              
++12%\\n            </span>\\n          </div>\\n          <div 
+class=\\"cell-value small\\">1,247</div>\\n        </div>\\n\\n        <div 
+class=\\"bento-cell stats-cell\\">\\n          <div class=\\"stats-header\\">\\n
+<span class=\\"stats-title\\">Retention Rate</span>\\n            <span 
+class=\\"stats-trend\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                
+<polyline points=\\"23 6 13.5 15.5 8.5 10.5 1 18\\"/>\\n                
+<polyline points=\\"17 6 23 6 23 12\\"/>\\n              </svg>\\n              
++5%\\n            </span>\\n          </div>\\n          <div 
+class=\\"cell-value small\\">94%</div>\\n        </div>\\n\\n        <div 
+class=\\"bento-cell stats-cell\\">\\n          <div class=\\"stats-header\\">\\n
+<span class=\\"stats-title\\">Study Time (7d)</span>\\n            <span 
+class=\\"stats-trend\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                
+<polyline points=\\"23 6 13.5 15.5 8.5 10.5 1 18\\"/>\\n                
+<polyline points=\\"17 6 23 6 23 12\\"/>\\n              </svg>\\n              
++2.3h\\n            </span>\\n          </div>\\n          <div 
+class=\\"cell-value small\\">8.5h</div>\\n        </div>\\n      </div>\\n    
+</div>\\n\\n    <!-- QUIZ VIEW -->\\n    <div class=\\"view\\" 
+id=\\"quiz-view\\">\\n      <div class=\\"quiz-layout\\">\\n        <div 
+class=\\"quiz-main\\">\\n          <div class=\\"quiz-card\\">\\n            
+<div class=\\"quiz-progress\\">\\n              <span 
+class=\\"progress-text\\">Session Progress</span>\\n              <div 
+class=\\"progress-bar\\">\\n                <div 
+class=\\"progress-fill\\"></div>\\n              </div>\\n              <span 
+class=\\"question-number\\">08 / 24</span>\\n            </div>\\n\\n           
+<div class=\\"question-content font-serif\\">\\n              Which Japanese 
+particle indicates the direct object of a verb?\\n            </div>\\n\\n      
+<div class=\\"options-grid\\">\\n              <button class=\\"option-cell\\" 
+onclick=\\"selectOption(this)\\">\\n                <div class=\\"option-marker 
+font-mono\\">A</div>\\n                <div class=\\"option-text\\">は 
+(wa)</div>\\n              </button>\\n              <button 
+class=\\"option-cell\\" onclick=\\"selectOption(this)\\">\\n                <div
+class=\\"option-marker font-mono\\">B</div>\\n                <div 
+class=\\"option-text\\">が (ga)</div>\\n              </button>\\n              
+<button class=\\"option-cell\\" onclick=\\"selectOption(this)\\">\\n            
+<div class=\\"option-marker font-mono\\">C</div>\\n                <div 
+class=\\"option-text\\">を (wo)</div>\\n              </button>\\n              
+<button class=\\"option-cell\\" onclick=\\"selectOption(this)\\">\\n            
+<div class=\\"option-marker font-mono\\">D</div>\\n                <div 
+class=\\"option-text\\">に (ni)</div>\\n              </button>\\n            
+</div>\\n          </div>\\n\\n          <div class=\\"quiz-shortcuts\\">\\n    
+<span class=\\"shortcut\\"><kbd>1-4</kbd> Select</span>\\n            <span 
+class=\\"shortcut\\"><kbd>Space</kbd> Reveal</span>\\n            <span 
+class=\\"shortcut\\"><kbd>→</kbd> Skip</span>\\n          </div>\\n        
+</div>\\n\\n        <!-- Chat Panel -->\\n        <div 
+class=\\"chat-panel\\">\\n          <div class=\\"chat-header\\">\\n            
+<div class=\\"agent-avatar\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                <path 
+d=\\"M12 8V4H8\\"/>\\n                <rect width=\\"16\\" height=\\"12\\" 
+x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                <path d=\\"M2 14h2\\"/>\\n   
+<path d=\\"M20 14h2\\"/>\\n                <path d=\\"M15 13v2\\"/>\\n          
+<path d=\\"M9 13v2\\"/>\\n              </svg>\\n            </div>\\n          
+<div class=\\"agent-info\\">\\n              <div class=\\"agent-name\\">Study 
+Assistant</div>\\n              <div class=\\"agent-status\\">Online</div>\\n   
+</div>\\n          </div>\\n\\n          <div class=\\"chat-messages\\" 
+id=\\"chat-messages\\">\\n            <div class=\\"message agent\\">\\n        
+<div class=\\"message-avatar\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<path d=\\"M12 8V4H8\\"/>\\n                  <rect width=\\"16\\" 
+height=\\"12\\" x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                  <path 
+d=\\"M2 14h2\\"/>\\n                  <path d=\\"M20 14h2\\"/>\\n               
+<path d=\\"M15 13v2\\"/>\\n                  <path d=\\"M9 13v2\\"/>\\n         
+</svg>\\n              </div>\\n              <div 
+class=\\"message-bubble\\">This question is testing your knowledge of Japanese 
+particles. The direct object particle is essential for basic sentence 
+structure.</div>\\n            </div>\\n            <div class=\\"message 
+user\\">\\n              <div class=\\"message-avatar\\">\\n                <svg
+viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\\"/>\\n                  
+<circle cx=\\"12\\" cy=\\"7\\" r=\\"4\\"/>\\n                </svg>\\n          
+</div>\\n              <div class=\\"message-bubble\\">I\'m not sure when to use
+を vs が</div>\\n            </div>\\n            <div class=\\"message 
+agent\\">\\n              <div class=\\"message-avatar\\">\\n                
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M12 8V4H8\\"/>\\n                  <rect width=\\"16\\" 
+height=\\"12\\" x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                  <path 
+d=\\"M2 14h2\\"/>\\n                  <path d=\\"M20 14h2\\"/>\\n               
+<path d=\\"M15 13v2\\"/>\\n                  <path d=\\"M9 13v2\\"/>\\n         
+</svg>\\n              </div>\\n              <div 
+class=\\"message-bubble\\">Think of を as marking what the verb acts upon. 
+With「本を読む」(read a book), を marks 本 as what\'s being read.</div>\\n      
+</div>\\n          </div>\\n\\n          <div class=\\"capability-chips\\">\\n  
+<button class=\\"chip\\">Explain answer</button>\\n            <button 
+class=\\"chip\\">Mnemonic hint</button>\\n            <button 
+class=\\"chip\\">Example sentence</button>\\n            <button 
+class=\\"chip\\">Related grammar</button>\\n          </div>\\n\\n          <div
+class=\\"chat-input-area\\">\\n            <div class=\\"chat-input\\">\\n      
+<input type=\\"text\\" placeholder=\\"Ask about this question...\\" 
+id=\\"chat-input-field\\">\\n              <button class=\\"chat-send\\" 
+onclick=\\"sendMessage()\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<path d=\\"m22 2-7 20-4-9-9-4 20-7z\\"/>\\n                  <path d=\\"M22 2 11
+13\\"/>\\n                </svg>\\n              </button>\\n            
+</div>\\n          </div>\\n        </div>\\n      </div>\\n    </div>\\n\\n    
+<!-- FEEDBACK VIEW -->\\n    <div class=\\"view\\" id=\\"feedback-view\\">\\n   
+<div class=\\"feedback-layout\\">\\n        <div class=\\"feedback-main\\">\\n  
+<!-- Verdict Cell -->\\n          <div class=\\"verdict-cell correct\\" 
+id=\\"verdict-cell\\">\\n            <div class=\\"verdict-icon\\">\\n          
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"3\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<polyline points=\\"20 6 9 17 4 12\\"/>\\n              </svg>\\n            
+</div>\\n            <div class=\\"verdict-content\\">\\n              <div 
+class=\\"verdict-title\\">Correct!</div>\\n              <div 
+class=\\"verdict-subtitle\\">Well done — this card will advance to the next 
+interval.</div>\\n            </div>\\n          </div>\\n\\n          <!-- 
+Answers Row -->\\n          <div class=\\"answers-row\\">\\n            <div 
+class=\\"answer-cell yours correct\\">\\n              <div 
+class=\\"answer-label\\">Your Answer</div>\\n              <div 
+class=\\"answer-value\\">を (wo) — Direct Object</div>\\n            </div>\\n  
+<div class=\\"answer-cell correct\\">\\n              <div 
+class=\\"answer-label\\">Correct Answer</div>\\n              <div 
+class=\\"answer-value\\">を (wo) — Direct Object</div>\\n            </div>\\n  
+</div>\\n\\n          <!-- Explanation Cell -->\\n          <div 
+class=\\"explanation-cell\\">\\n            <div 
+class=\\"explanation-header\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                <path 
+d=\\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 
+1.5 3.5.7.7 1.3 1.5 1.5 2.5\\"/>\\n                <path d=\\"M9 18h6\\"/>\\n   
+<path d=\\"M10 22h4\\"/>\\n              </svg>\\n              <span 
+class=\\"explanation-title\\">Explanation</span>\\n            </div>\\n        
+<p class=\\"explanation-text\\">\\n              The particle を (wo/o) marks 
+the direct object of a verb — the thing being acted upon. In「本を読む」(hon wo 
+yomu / read a book), を marks 本 as what is being read. Remember: は marks 
+topic, が marks subject, を marks object.\\n            </p>\\n          
+</div>\\n\\n          <!-- Metadata Grid -->\\n          <div 
+class=\\"metadata-grid\\">\\n            <div class=\\"meta-cell\\">\\n         
+<div class=\\"meta-label\\">Previous Interval</div>\\n              <div 
+class=\\"meta-value\\">3d</div>\\n            </div>\\n            <div 
+class=\\"meta-cell\\">\\n              <div class=\\"meta-label\\">New 
+Interval</div>\\n              <div class=\\"meta-value\\">8d</div>\\n          
+<div class=\\"meta-delta positive\\">+5d</div>\\n            </div>\\n          
+<div class=\\"meta-cell\\">\\n              <div class=\\"meta-label\\">Ease 
+Factor</div>\\n              <div class=\\"meta-value\\">2.5</div>\\n           
+<div class=\\"meta-delta positive\\">+0.1</div>\\n            </div>\\n         
+<div class=\\"meta-cell\\">\\n              <div 
+class=\\"meta-label\\">Repetitions</div>\\n              <div 
+class=\\"meta-value\\">5</div>\\n              <div class=\\"meta-delta 
+positive\\">+1</div>\\n            </div>\\n            <div 
+class=\\"meta-cell\\">\\n              <div class=\\"meta-label\\">Next 
+Review</div>\\n              <div class=\\"meta-value\\">Feb 25</div>\\n        
+</div>\\n            <div class=\\"meta-cell\\">\\n              <div 
+class=\\"meta-label\\">Lapses</div>\\n              <div 
+class=\\"meta-value\\">0</div>\\n            </div>\\n          </div>\\n\\n    
+<!-- Actions -->\\n          <div class=\\"feedback-actions\\">\\n            
+<button class=\\"btn btn-primary\\" onclick=\\"switchView(\'quiz\')\\">\\n      
+<svg width=\\"18\\" height=\\"18\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n                <path d=\\"M5 12h14\\"/>\\n      
+<path d=\\"m12 5 7 7-7 7\\"/>\\n              </svg>\\n              Continue\\n
+</button>\\n            <button class=\\"btn btn-secondary\\">\\n              
+<svg width=\\"18\\" height=\\"18\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" 
+stroke=\\"currentColor\\" stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\">\\n                <path d=\\"M3 12a9 9 0 1 0 9-9 
+9.75 9.75 0 0 0-6.74 2.74L3 8\\"/>\\n                <path d=\\"M3 3v5h5\\"/>\\n
+</svg>\\n              Review Again\\n            </button>\\n          
+</div>\\n        </div>\\n\\n        <!-- Chat Panel -->\\n        <div 
+class=\\"chat-panel\\">\\n          <div class=\\"chat-header\\">\\n            
+<div class=\\"agent-avatar\\">\\n              <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                <path 
+d=\\"M12 8V4H8\\"/>\\n                <rect width=\\"16\\" height=\\"12\\" 
+x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                <path d=\\"M2 14h2\\"/>\\n   
+<path d=\\"M20 14h2\\"/>\\n                <path d=\\"M15 13v2\\"/>\\n          
+<path d=\\"M9 13v2\\"/>\\n              </svg>\\n            </div>\\n          
+<div class=\\"agent-info\\">\\n              <div class=\\"agent-name\\">Study 
+Assistant</div>\\n              <div class=\\"agent-status\\">Online</div>\\n   
+</div>\\n          </div>\\n\\n          <div class=\\"chat-messages\\">\\n     
+<div class=\\"message agent\\">\\n              <div 
+class=\\"message-avatar\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<path d=\\"M12 8V4H8\\"/>\\n                  <rect width=\\"16\\" 
+height=\\"12\\" x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                  <path 
+d=\\"M2 14h2\\"/>\\n                  <path d=\\"M20 14h2\\"/>\\n               
+<path d=\\"M15 13v2\\"/>\\n                  <path d=\\"M9 13v2\\"/>\\n         
+</svg>\\n              </div>\\n              <div 
+class=\\"message-bubble\\">Great job! You got this one right. The particle を is
+indeed used for direct objects.</div>\\n            </div>\\n            <div 
+class=\\"message agent\\">\\n              <div class=\\"message-avatar\\">\\n  
+<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n 
+<path d=\\"M12 8V4H8\\"/>\\n                  <rect width=\\"16\\" 
+height=\\"12\\" x=\\"4\\" y=\\"8\\" rx=\\"2\\"/>\\n                  <path 
+d=\\"M2 14h2\\"/>\\n                  <path d=\\"M20 14h2\\"/>\\n               
+<path d=\\"M15 13v2\\"/>\\n                  <path d=\\"M9 13v2\\"/>\\n         
+</svg>\\n              </div>\\n              <div 
+class=\\"message-bubble\\">Your ease factor increased to 2.5, so you\'ll see 
+this card again in 8 days instead of 3.</div>\\n            </div>\\n          
+</div>\\n\\n          <div class=\\"capability-chips\\">\\n            <button 
+class=\\"chip\\">Explain more</button>\\n            <button 
+class=\\"chip\\">Show examples</button>\\n            <button 
+class=\\"chip\\">Related cards</button>\\n            <button 
+class=\\"chip\\">Edit card</button>\\n          </div>\\n\\n          <div 
+class=\\"chat-input-area\\">\\n            <div class=\\"chat-input\\">\\n      
+<input type=\\"text\\" placeholder=\\"Ask about this card...\\">\\n             
+<button class=\\"chat-send\\">\\n                <svg viewBox=\\"0 0 24 24\\" 
+fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" 
+stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\">\\n                  
+<path d=\\"m22 2-7 20-4-9-9-4 20-7z\\"/>\\n                  <path d=\\"M22 2 11
+13\\"/>\\n                </svg>\\n              </button>\\n            
+</div>\\n          </div>\\n        </div>\\n      </div>\\n    </div>\\n  
+</div>\\n\\n  <script>\\n    // View switching\\n    function 
+switchView(viewName) {\\n      // Hide all views\\n      
+document.querySelectorAll(\'.view\').forEach(view => {\\n        
+view.classList.remove(\'active\');\\n      });\\n      \\n      // Show target 
+view\\n      document.getElementById(viewName + 
+\'-view\').classList.add(\'active\');\\n      \\n      // Update nav\\n      
+document.querySelectorAll(\'.nav-link\').forEach(link => {\\n        
+link.classList.toggle(\'active\', link.dataset.view === viewName);\\n      
+});\\n    }\\n\\n    // Nav click handlers\\n    
+document.querySelectorAll(\'.nav-link\').forEach(link => {\\n      
+link.addEventListener(\'click\', () => {\\n        
+switchView(link.dataset.view);\\n      });\\n    });\\n\\n    // Quiz option 
+selection\\n    function selectOption(element) {\\n      // Remove selected 
+state from all options\\n      
+document.querySelectorAll(\'.option-cell\').forEach(opt => {\\n        
+opt.style.borderColor = \'\';\\n        opt.style.background = \'\';\\n        
+opt.querySelector(\'.option-marker\').style.background = \'\';\\n        
+opt.querySelector(\'.option-marker\').style.color = \'\';\\n      });\\n      
+\\n      // Add selected state\\n      element.style.borderColor = 
+\'var(--primary)\';\\n      element.style.background = 
+\'var(--primary-light)\';\\n      
+element.querySelector(\'.option-marker\').style.background = 
+\'var(--primary)\';\\n      
+element.querySelector(\'.option-marker\').style.color = \'white\';\\n      \\n  
+// Simulate feedback after delay (for demo)\\n      setTimeout(() => {\\n       
+// 50% chance of correct/incorrect for demo\\n        const isCorrect = 
+Math.random() > 0.5;\\n        showFeedback(isCorrect);\\n      }, 500);\\n    
+}\\n\\n    function showFeedback(isCorrect) {\\n      const verdictCell = 
+document.getElementById(\'verdict-cell\');\\n      const yourAnswerCell = 
+document.querySelector(\'.answer-cell.yours\');\\n      \\n      if (isCorrect) 
+{\\n        verdictCell.className = \'verdict-cell correct\';\\n        
+verdictCell.querySelector(\'.verdict-title\').textContent = \'Correct!\';\\n    
+verdictCell.querySelector(\'.verdict-subtitle\').textContent = \'Well done — 
+this card will advance to the next interval.\';\\n        
+yourAnswerCell.className = \'answer-cell yours correct\';\\n        \\n        
+// Update metadata for correct\\n        
+document.querySelector(\'.meta-delta\').textContent = \'+5d\';\\n        
+document.querySelector(\'.meta-delta\').className = \'meta-delta positive\';\\n 
+} else {\\n        verdictCell.className = \'verdict-cell incorrect\';\\n       
+verdictCell.querySelector(\'.verdict-title\').textContent = \'Incorrect\';\\n   
+verdictCell.querySelector(\'.verdict-subtitle\').textContent = \'Don\\\\\'t 
+worry — this card will come up again soon for review.\';\\n        
+yourAnswerCell.className = \'answer-cell yours incorrect\';\\n        
+yourAnswerCell.querySelector(\'.answer-value\').textContent = \'が (ga) — 
+Subject\';\\n        \\n        // 
+... [truncated 341 chars] ...
+nt.getElementById(\'chat-input-field\');\\n      const message = 
+input.value.trim();\\n      \\n      if (!message) return;\\n      \\n      // 
+Add user message\\n      addMessage(message, \'user\');\\n      input.value = 
+\'\';\\n      \\n      // Simulate agent response\\n      setTimeout(() => {\\n 
+const responses = [\\n          \\"That\'s a great question! Let me 
+explain...\\",\\n          \\"I can help with that. The key thing to remember 
+is...\\",\\n          \\"Here\'s a mnemonic that might help you remember 
+this...\\",\\n          \\"Think of it this way: the particle functions 
+as...\\"\\n        ];\\n        const randomResponse = 
+responses[Math.floor(Math.random() * responses.length)];\\n        
+addMessage(randomResponse, \'agent\');\\n      }, 800);\\n    }\\n\\n    
+function addMessage(text, sender) {\\n      const container = 
+document.getElementById(\'chat-messages\');\\n      const messageDiv = 
+document.createElement(\'div\');\\n      messageDiv.className = `message 
+${sender}`;\\n      \\n      const avatarSvg = sender === \'agent\' \\n        ?
+\'<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><path d=\\"M12 8V4H8\\"/><rect width=\\"16\\" 
+height=\\"12\\" x=\\"4\\" y=\\"8\\" rx=\\"2\\"/><path d=\\"M2 14h2\\"/><path 
+d=\\"M20 14h2\\"/><path d=\\"M15 13v2\\"/><path d=\\"M9 13v2\\"/></svg>\'\\n    
+: \'<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" 
+stroke-width=\\"2\\" stroke-linecap=\\"round\\" 
+stroke-linejoin=\\"round\\"><path d=\\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 
+4v2\\"/><circle cx=\\"12\\" cy=\\"7\\" r=\\"4\\"/></svg>\';\\n      \\n      
+messageDiv.innerHTML = `\\n        <div 
+class=\\"message-avatar\\">${avatarSvg}</div>\\n        <div 
+class=\\"message-bubble\\">${escapeHtml(text)}</div>\\n      `;\\n      \\n     
+container.appendChild(messageDiv);\\n      container.scrollTop = 
+container.scrollHeight;\\n    }\\n\\n    function escapeHtml(text) {\\n      
+const div = document.createElement(\'div\');\\n      div.textContent = text;\\n 
+return div.innerHTML;\\n    }\\n\\n    // Enter key for chat\\n    
+document.getElementById(\'chat-input-field\')?.addEventListener(\'keypress\', 
+(e) => {\\n      if (e.key === \'Enter\') sendMessage();\\n    });\\n\\n    // 
+Capability chips\\n    document.querySelectorAll(\'.chip\').forEach(chip => {\\n
+chip.addEventListener(\'click\', () => {\\n        const text = 
+chip.textContent;\\n        const input = document.querySelector(\'.chat-input 
+input\');\\n        if (input) {\\n          input.value = text;\\n          
+input.focus();\\n        }\\n      });\\n    });\\n\\n    // Keyboard 
+shortcuts\\n    document.addEventListener(\'keydown\', (e) => {\\n      if 
+(document.getElementById(\'quiz-view\').classList.contains(\'active\')) {\\n    
+const options = document.querySelectorAll(\'.option-cell\');\\n        if (e.key
+>= \'1\' && e.key <= \'4\') {\\n          const index = parseInt(e.key) - 1;\\n 
+if (options[index]) {\\n            selectOption(options[index]);\\n          
+}\\n        }\\n      }\\n    });\\n  </script>\\n</body>\\n</html>

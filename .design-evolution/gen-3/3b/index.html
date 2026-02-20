@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3b — Refined Heatmap (survivor from 2b)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:hsl(221.2,83.2%,53.3%);--fg:hsl(0,0%,3.9%);--muted:hsl(215.4,16.3%,46.9%);--border:hsl(214.3,31.8%,91.4%);--bg:#fff;--mono:'IBM Plex Mono',monospace;--serif:'Lora',Georgia,serif;--sans:system-ui,-apple-system,sans-serif}
+body{font-family:var(--sans);background:var(--bg);color:var(--fg);min-height:100dvh;display:flex;flex-direction:column}
+nav{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 2rem}
+nav .logo{font-size:1.25rem;font-weight:600;letter-spacing:-0.025em}
+main{flex:1;display:grid;grid-template-columns:2fr 1fr}
+.panel-content{display:flex;flex-direction:column;justify-content:center;padding:4rem 5rem}
+.top-rule{width:4rem;height:2px;background:var(--primary);margin-bottom:2rem}
+h1{font-family:var(--serif);font-size:3.25rem;line-height:1.05;letter-spacing:-0.025em;margin-bottom:1rem}
+.subtitle{font-family:var(--serif);font-size:1.0625rem;line-height:1.7;color:var(--muted);margin-bottom:2.5rem;max-width:32ch}
+.cta{display:inline-flex;align-items:center;gap:0.75rem;background:var(--primary);color:#fff;padding:0.875rem 2rem;font-size:0.9375rem;font-weight:500;border:none;cursor:pointer;font-family:var(--sans);width:fit-content}
+.cta:hover{opacity:0.9}
+.cta svg{width:18px;height:18px}
+.panel-stats{background:var(--primary);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:3rem 2.5rem;position:relative;overflow:hidden}
+.panel-stats::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,0.05) 1px,transparent 1px);background-size:14px 14px;pointer-events:none}
+.hero-row{display:flex;align-items:baseline;gap:0.625rem;margin-bottom:2rem;position:relative}
+.hero-number{font-size:5rem;font-weight:700;line-height:0.9;font-variant-numeric:tabular-nums}
+.hero-label{font-family:var(--mono);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.08em;opacity:0.7}
+.stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:0.5rem 0;border-top:1px solid rgba(255,255,255,0.12);position:relative}
+.stat-row .desc{font-family:var(--mono);font-size:0.5625rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.6}
+.stat-row .val{font-family:var(--mono);font-size:0.875rem;font-weight:500;font-variant-numeric:tabular-nums}
+.heatmap-section{position:relative;margin-top:1.25rem;padding-top:0.875rem;border-top:1px solid rgba(255,255,255,0.12)}
+.heatmap-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.5rem}
+.heatmap-label{font-family:var(--mono);font-size:0.5625rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.6}
+.heatmap-streak{font-family:var(--mono);font-size:0.6875rem;font-weight:500}
+.heatmap-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.hc{aspect-ratio:1;border-radius:1.5px;background:rgba(255,255,255,0.06);position:relative;cursor:default}
+.hc.a{background:rgba(255,255,255,0.14)}
+.hc.b{background:rgba(255,255,255,0.26)}
+.hc.c{background:rgba(255,255,255,0.42)}
+.hc.d{background:rgba(255,255,255,0.65)}
+.hc.now{background:#fff;box-shadow:0 0 4px rgba(255,255,255,0.3)}
+.hc[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:hsl(221.2,83.2%,33.3%);color:#fff;font-family:var(--mono);font-size:0.5rem;padding:2px 6px;border-radius:3px;white-space:nowrap;z-index:10;pointer-events:none}
+.heatmap-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:3px}
+.heatmap-days span{font-family:var(--mono);font-size:0.375rem;text-align:center;opacity:0.35;text-transform:uppercase}
+.heatmap-legend{display:flex;align-items:center;gap:0.375rem;margin-top:0.5rem;justify-content:flex-end}
+.heatmap-legend span{font-family:var(--mono);font-size:0.375rem;opacity:0.4}
+.legend-cell{width:8px;height:8px;border-radius:1.5px}
+</style>
+</head>
+<body>
+<nav><span class="logo">Scry.</span></nav>
+<main>
+  <div class="panel-content">
+    <div class="top-rule"></div>
+    <h1>Review</h1>
+    <p class="subtitle">Your deck has been building overnight. Pick up where you left off.</p>
+    <button class="cta">Begin Session <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+  </div>
+  <div class="panel-stats">
+    <div class="hero-row">
+      <span class="hero-number">149</span>
+      <span class="hero-label">Cards Due</span>
+    </div>
+    <div class="stat-row"><span class="desc">Active Concepts</span><span class="val">203</span></div>
+    <div class="stat-row"><span class="desc">Total Phrasings</span><span class="val">312</span></div>
+    <div class="stat-row"><span class="desc">Mastery Rate</span><span class="val">84%</span></div>
+    <div class="heatmap-section">
+      <div class="heatmap-header">
+        <span class="heatmap-label">Activity</span>
+        <span class="heatmap-streak">7d streak</span>
+      </div>
+      <div class="heatmap-grid">
+        <div class="hc a" data-tip="Mon · 8 cards"></div><div class="hc" data-tip="Tue · 0 cards"></div><div class="hc b" data-tip="Wed · 15 cards"></div><div class="hc a" data-tip="Thu · 6 cards"></div><div class="hc c" data-tip="Fri · 24 cards"></div><div class="hc" data-tip="Sat · 0 cards"></div><div class="hc" data-tip="Sun · 0 cards"></div>
+        <div class="hc b" data-tip="Mon · 18 cards"></div><div class="hc c" data-tip="Tue · 22 cards"></div><div class="hc a" data-tip="Wed · 5 cards"></div><div class="hc" data-tip="Thu · 0 cards"></div><div class="hc b" data-tip="Fri · 14 cards"></div><div class="hc d" data-tip="Sat · 38 cards"></div><div class="hc a" data-tip="Sun · 9 cards"></div>
+        <div class="hc" data-tip="Mon · 0 cards"></div><div class="hc c" data-tip="Tue · 28 cards"></div><div class="hc d" data-tip="Wed · 35 cards"></div><div class="hc c" data-tip="Thu · 26 cards"></div><div class="hc d" data-tip="Fri · 42 cards"></div><div class="hc b" data-tip="Sat · 16 cards"></div><div class="hc c" data-tip="Sun · 20 cards"></div>
+        <div class="hc c" data-tip="Mon · 22 cards"></div><div class="hc d" data-tip="Tue · 30 cards"></div><div class="hc d" data-tip="Wed · 34 cards"></div><div class="hc d" data-tip="Thu · 31 cards"></div><div class="hc c" data-tip="Fri · 25 cards"></div><div class="hc d" data-tip="Sat · 36 cards"></div><div class="hc now" data-tip="Today · 0 cards"></div>
+      </div>
+      <div class="heatmap-days"><span>m</span><span>t</span><span>w</span><span>t</span><span>f</span><span>s</span><span>s</span></div>
+      <div class="heatmap-legend">
+        <span>Less</span>
+        <div class="legend-cell" style="background:rgba(255,255,255,0.06)"></div>
+        <div class="legend-cell" style="background:rgba(255,255,255,0.14)"></div>
+        <div class="legend-cell" style="background:rgba(255,255,255,0.26)"></div>
+        <div class="legend-cell" style="background:rgba(255,255,255,0.42)"></div>
+        <div class="legend-cell" style="background:rgba(255,255,255,0.65)"></div>
+        <span>More</span>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

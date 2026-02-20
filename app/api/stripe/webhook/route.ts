@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { ConvexHttpClient } from 'convex/browser';
 import Stripe from 'stripe';
 import { api } from '@/convex/_generated/api';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   // FIRST: Verify signature (fail-fast)
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = getStripe().webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Webhook signature verification failed:', message);
@@ -110,7 +110,7 @@ async function handleCheckoutCompleted(
   }
 
   // Fetch full subscription details
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
   await syncSubscriptionToConvex(subscription, clerkUserId, convexWebhookSecret);
 }
 

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { KeyboardIndicator } from '@/components/keyboard-indicator';
 import { KeyboardShortcutsHelp } from '@/components/keyboard-shortcuts-help';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 export function Footer() {
@@ -33,7 +32,6 @@ export function Footer() {
               >
                 Feedback
               </a>
-              <ThemeToggle />
               {isSignedIn && <KeyboardIndicator onClick={() => setShowHelp(true)} />}
             </div>
           </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton, useUser } from '@clerk/nextjs';
-import { Inbox, Library, ListChecks, Plus } from 'lucide-react';
+import { Inbox, Library, ListChecks, Plus, Sparkles } from 'lucide-react';
 import { GenerationModal } from '@/components/generation-modal';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,11 @@ export function Navbar() {
           >
             Scry.
           </Link>
+          {pathname?.startsWith('/agent') && (
+            <span className="text-muted-foreground/60 text-sm font-normal tracking-normal">
+              / Review
+            </span>
+          )}
 
           <div className="flex items-center gap-4">
             {isSignedIn && (
@@ -98,6 +103,18 @@ export function Navbar() {
                   title="Action Inbox"
                 >
                   <Inbox className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/agent"
+                  className={`relative size-9 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${
+                    pathname?.startsWith('/agent')
+                      ? 'bg-accent text-foreground'
+                      : 'bg-accent/50 text-muted-foreground hover:bg-accent/70 hover:text-foreground'
+                  }`}
+                  aria-label="AI Review"
+                  title="AI Review"
+                >
+                  <Sparkles className="h-4 w-4" />
                 </Link>
                 <ThemeToggle />
                 <div

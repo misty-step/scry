@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20.19.0'
+  NODE_VERSION: '20.20.0'
   PNPM_VERSION: '10.12.1'
 
 jobs:

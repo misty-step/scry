@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1d — Layered Planes</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--primary:hsl(221.2,83.2%,53.3%);--fg:hsl(0,0%,3.9%);--muted:hsl(215.4,16.3%,46.9%);--border:hsl(214.3,31.8%,91.4%);--bg:#fff;--surface:hsl(210,40%,98%);--mono:'IBM Plex Mono',monospace;--serif:'Lora',Georgia,serif;--sans:system-ui,-apple-system,sans-serif}
+body{font-family:var(--sans);background:var(--surface);color:var(--fg);min-height:100dvh;display:flex;flex-direction:column}
+nav{height:64px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 2rem;gap:1rem;background:var(--bg)}
+nav .logo{font-size:1.25rem;font-weight:600;letter-spacing:-0.025em}
+nav .breadcrumb{color:var(--muted);font-size:0.875rem}
+main{flex:1;position:relative;display:flex;align-items:center;padding:4rem}
+.layer-accent{position:absolute;top:20%;right:10%;width:12rem;height:12rem;background:var(--primary);opacity:0.04;z-index:0}
+.layer-back{position:absolute;top:15%;right:8%;width:40vw;height:60%;background:var(--bg);border:1px solid var(--border);z-index:1}
+.floating-stat{position:absolute;right:14%;top:50%;transform:translateY(-50%);z-index:2}
+.floating-stat .big{font-size:8rem;font-weight:700;color:var(--primary);opacity:0.08;line-height:0.85;font-variant-numeric:tabular-nums;font-family:var(--sans)}
+.content{position:relative;z-index:3;max-width:36rem;padding-left:4rem}
+.label{font-family:var(--mono);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--primary);margin-bottom:2rem}
+h1{font-family:var(--serif);font-size:clamp(2.5rem,4.5vw,3.75rem);line-height:1.1;letter-spacing:-0.02em;margin-bottom:1.25rem;text-wrap:balance}
+.copy{font-family:var(--serif);font-size:1.0625rem;line-height:1.7;color:var(--muted);margin-bottom:2.5rem}
+.stat-inline{display:flex;align-items:baseline;gap:0.75rem;margin-bottom:2.5rem;padding-bottom:2rem;border-bottom:1px solid var(--border)}
+.stat-inline .number{font-size:3rem;font-weight:700;color:var(--primary);line-height:1;font-variant-numeric:tabular-nums}
+.stat-inline .text{font-family:var(--mono);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)}
+.cta{display:inline-flex;align-items:center;gap:0.75rem;background:var(--primary);color:#fff;padding:1rem 2rem;font-size:1rem;font-weight:500;border:none;cursor:pointer;font-family:var(--sans)}
+.cta:hover{opacity:0.9}
+.cta svg{width:20px;height:20px}
+</style>
+</head>
+<body>
+<nav><span class="logo">Scry.</span><span class="breadcrumb">/ Review</span></nav>
+<main>
+  <div class="layer-accent"></div>
+  <div class="layer-back"></div>
+  <div class="floating-stat"><span class="big">149</span></div>
+  <div class="content">
+    <p class="label">Daily Briefing</p>
+    <h1>Today's Review</h1>
+    <p class="copy">Your cards are ready for review.</p>
+    <div class="stat-inline">
+      <span class="number">149</span>
+      <span class="text">Cards Due</span>
+    </div>
+    <button class="cta">Begin Review Session <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+  </div>
+</main>
+</body>
+</html>
