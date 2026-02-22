@@ -43,6 +43,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       person_profiles: 'identified_only',
       capture_pageview: false, // We capture manually for SPA navigation
       capture_pageleave: true,
+      respect_dnt: true,
       mask_all_text: true, // Prevent autocapture from sending text content
       autocapture: {
         dom_event_allowlist: ['click', 'submit'],
