@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { ConvexHttpClient } from 'convex/browser';
 import Stripe from 'stripe';
 import { api } from '@/convex/_generated/api';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -30,6 +30,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Convex webhook secret not configured' }, { status: 500 });
   }
 
+  let stripe: Stripe;
+  try {
+    stripe = getStripe();
+  } catch (error) {
+    console.error('Stripe configuration error:', error);
+    return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
+  }
+
   // FIRST: Verify signature (fail-fast)
   let event: Stripe.Event;
   try {
@@ -45,7 +53,7 @@ export async function POST(req: Request) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(session, convexWebhookSecret);
+        await handleCheckoutCompleted(session, convexWebhookSecret, stripe);
         break;
       }
 
@@ -91,7 +99,8 @@ export async function POST(req: Request) {
 
 async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
-  convexWebhookSecret: string
+  convexWebhookSecret: string,
+  stripe: Stripe
 ) {
   if (session.mode !== 'subscription') {
     return;
