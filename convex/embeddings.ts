@@ -96,7 +96,19 @@ export const generateEmbedding = internalAction({
       throw new Error('GOOGLE_AI_API_KEY not configured');
     }
 
-    const google = createGoogleGenerativeAI({ apiKey });
+    const heliconeApiKey = process.env.HELICONE_API_KEY;
+    const google = createGoogleGenerativeAI({
+      apiKey,
+      ...(heliconeApiKey && {
+        baseURL: 'https://gateway.helicone.ai/v1beta',
+        headers: {
+          'Helicone-Auth': `Bearer ${heliconeApiKey}`,
+          'Helicone-Target-Url': 'https://generativelanguage.googleapis.com',
+          'Helicone-Property-Product': 'scry',
+          'Helicone-Property-Environment': process.env.NODE_ENV ?? 'development',
+        },
+      }),
+    });
 
     try {
       const { embedding } = await embed({

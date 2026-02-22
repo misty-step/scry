@@ -85,7 +85,19 @@ async function runGoogleApiKeyTest(): Promise<GoogleApiKeyTestResult> {
   }
 
   try {
-    const google = createGoogleGenerativeAI({ apiKey });
+    const heliconeApiKey = process.env.HELICONE_API_KEY;
+    const google = createGoogleGenerativeAI({
+      apiKey,
+      ...(heliconeApiKey && {
+        baseURL: 'https://gateway.helicone.ai/v1beta',
+        headers: {
+          'Helicone-Auth': `Bearer ${heliconeApiKey}`,
+          'Helicone-Target-Url': 'https://generativelanguage.googleapis.com',
+          'Helicone-Property-Product': 'scry',
+          'Helicone-Property-Environment': process.env.NODE_ENV ?? 'development',
+        },
+      }),
+    });
     await generateText({
       model: google('gemini-3-flash'),
       prompt: 'hi',
