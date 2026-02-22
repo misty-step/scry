@@ -47,3 +47,4 @@ jobs:
       - uses: misty-step/cerberus/verdict@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-key: ${{ secrets.OPENROUTER_API_KEY }}
