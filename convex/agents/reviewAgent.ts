@@ -42,7 +42,6 @@ const fetchDueConcept = createTool({
       question: result.phrasing.question,
       type: result.phrasing.type ?? 'multiple-choice',
       options: result.phrasing.options ?? [],
-      explanation: result.phrasing.explanation ?? '',
       recentAttempts: result.interactions.length,
       recentCorrect: result.interactions.filter((i: { isCorrect: boolean }) => i.isCorrect).length,
     };
