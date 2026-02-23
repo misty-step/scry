@@ -22,7 +22,7 @@ importers:
         version: 2.4.51(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@convex-dev/agent':
         specifier: ^0.3.2
-        version: 0.3.2(@ai-sdk/provider-utils@4.0.14(zod@4.3.6))(ai@5.0.98(zod@4.3.6))(convex-helpers@0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(hono@4.11.8)(react@19.2.4)(typescript@5.9.3)(zod@4.3.6))(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(react@19.2.4)
+        version: 0.3.2(@ai-sdk/provider-utils@4.0.14(zod@4.3.6))(ai@5.0.129(zod@4.3.6))(convex-helpers@0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(hono@4.11.8)(react@19.2.4)(typescript@5.9.3)(zod@4.3.6))(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(react@19.2.4)
       '@formkit/auto-animate':
         specifier: ^0.9.0
         version: 0.9.0
@@ -10411,10 +10411,10 @@ snapshots:
 
   '@colors/colors@1.6.0': {}
 
-  '@convex-dev/agent@0.3.2(@ai-sdk/provider-utils@4.0.14(zod@4.3.6))(ai@5.0.98(zod@4.3.6))(convex-helpers@0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(hono@4.11.8)(react@19.2.4)(typescript@5.9.3)(zod@4.3.6))(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(react@19.2.4)':
+  '@convex-dev/agent@0.3.2(@ai-sdk/provider-utils@4.0.14(zod@4.3.6))(ai@5.0.129(zod@4.3.6))(convex-helpers@0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(hono@4.11.8)(react@19.2.4)(typescript@5.9.3)(zod@4.3.6))(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@ai-sdk/provider-utils': 4.0.14(zod@4.3.6)
-      ai: 5.0.98(zod@4.3.6)
+      ai: 5.0.129(zod@4.3.6)
       convex: 1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
       convex-helpers: 0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))(hono@4.11.8)(react@19.2.4)(typescript@5.9.3)(zod@4.3.6)
     optionalDependencies:
