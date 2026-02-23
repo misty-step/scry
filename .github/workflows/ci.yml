@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 env:
-  NODE_VERSION: '20.19.0'
+  NODE_VERSION: '20.20.0'
   PNPM_VERSION: '10.12.1'
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Verify Node version
-        run: node -v | grep -q "v20.19" || exit 1
+        run: node -v | grep -q "v20.20" || exit 1
 
       - run: pnpm install --frozen-lockfile
 
@@ -65,6 +65,22 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm test:ci
+
+      - name: Verify coverage files exist
+        if: always()
+        run: |
+          if [ ! -f "./coverage/coverage-summary.json" ]; then
+            echo "Error: coverage-summary.json not found"
+            ls -la ./coverage/ 2>/dev/null || echo "Coverage directory does not exist"
+            exit 1
+          fi
+          if [ ! -f "./coverage/coverage-final.json" ]; then
+            echo "Error: coverage-final.json not found"
+            ls -la ./coverage/ 2>/dev/null || echo "Coverage directory does not exist"
+            exit 1
+          fi
+          echo "Coverage files verified:"
+          ls -la ./coverage/*.json
 
       - name: Coverage Report
         if: always() && github.event_name == 'pull_request'

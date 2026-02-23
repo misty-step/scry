@@ -17,6 +17,7 @@ concurrency:
 jobs:
   review:
     name: "${{ matrix.reviewer }}"
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,6 +30,9 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: '10.12.1'
       - uses: misty-step/cerberus@v1
         with:
           perspective: ${{ matrix.perspective }}
@@ -41,6 +45,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Skip verdict for Dependabot
+        if: github.actor == 'dependabot[bot]'
+        run: echo "Cerberus skipped for Dependabot — OPENROUTER_API_KEY unavailable"
       - uses: misty-step/cerberus/verdict@v1
+        if: github.actor != 'dependabot[bot]'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-key: ${{ secrets.OPENROUTER_API_KEY }}
