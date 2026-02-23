@@ -316,13 +316,13 @@ export const getReviewDashboard = query({
     const matureCount = stats?.matureCount ?? 0;
     const masteryPercent = totalConcepts > 0 ? Math.round((matureCount / totalConcepts) * 100) : 0;
 
-    // Count active phrasings (server-side, only returns number to client)
+    // Bounded count — avoids O(N) full scan per ADR-0001
     const phrasings = await ctx.db
       .query('phrasings')
       .withIndex('by_user_active', (q) =>
         q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
       )
-      .collect();
+      .take(10001);
 
     return {
       totalConcepts,

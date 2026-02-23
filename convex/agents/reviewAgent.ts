@@ -1,19 +1,12 @@
 import { Agent, createTool } from '@convex-dev/agent';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { LanguageModel } from 'ai';
 import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { initializeProvider } from '../lib/aiProviders';
 
-const getModel = (): LanguageModel => {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey?.trim()) {
-    throw new Error('OPENROUTER_API_KEY not configured');
-  }
-  const modelId = process.env.AI_MODEL ?? 'google/gemini-3-flash-preview';
-  const openrouter = createOpenRouter({ apiKey });
-  return openrouter(modelId) as LanguageModel;
-};
+const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+
+const { model } = initializeProvider(process.env.AI_MODEL ?? DEFAULT_MODEL);
 
 // --- Tools ---
 
@@ -40,7 +33,6 @@ const fetchDueConcept = createTool({
       question: result.phrasing.question,
       type: result.phrasing.type ?? 'multiple-choice',
       options: result.phrasing.options ?? [],
-      correctAnswer: result.phrasing.correctAnswer ?? '',
       explanation: result.phrasing.explanation ?? '',
       recentAttempts: result.interactions.length,
       recentCorrect: result.interactions.filter((i: { isCorrect: boolean }) => i.isCorrect).length,
@@ -55,8 +47,6 @@ const submitAnswer = createTool({
     conceptId: z.string().describe('The concept ID'),
     phrasingId: z.string().describe('The phrasing ID'),
     userAnswer: z.string().describe('The answer the user selected or typed'),
-    correctAnswer: z.string().describe('The correct answer from the phrasing'),
-    explanation: z.string().optional().describe('Explanation from the phrasing data'),
     conceptTitle: z.string().optional().describe('The concept title'),
     recentAttempts: z.number().optional().describe('Recent attempt count from fetchDueConcept'),
     recentCorrect: z.number().optional().describe('Recent correct count from fetchDueConcept'),
@@ -64,8 +54,14 @@ const submitAnswer = createTool({
     reps: z.number().optional().describe('Rep count from fetchDueConcept'),
   }),
   handler: async (ctx, args): Promise<Record<string, unknown>> => {
-    const isCorrect =
-      args.userAnswer.trim().toLowerCase() === args.correctAnswer.trim().toLowerCase();
+    // Fetch correct answer server-side — never trust client-supplied value
+    const phrasing = await ctx.runQuery(internal.phrasings.getPhrasingInternal, {
+      phrasingId: args.phrasingId as Id<'phrasings'>,
+    });
+    if (!phrasing) throw new Error('Phrasing not found');
+
+    const correctAnswer = phrasing.correctAnswer ?? '';
+    const isCorrect = args.userAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
 
     const result = await ctx.runMutation(internal.concepts.recordInteractionInternal, {
       userId: ctx.userId as Id<'users'>,
@@ -78,8 +74,8 @@ const submitAnswer = createTool({
     return {
       isCorrect,
       userAnswer: args.userAnswer,
-      correctAnswer: args.correctAnswer,
-      explanation: args.explanation ?? '',
+      correctAnswer,
+      explanation: phrasing.explanation ?? '',
       conceptTitle: args.conceptTitle ?? '',
       nextReview: result.nextReview,
       scheduledDays: result.scheduledDays,
@@ -107,14 +103,14 @@ const getSessionStats = createTool({
 
 export const reviewAgent = new Agent(components.agent, {
   name: 'Review Tutor',
-  languageModel: getModel(),
+  languageModel: model,
   instructions: `You are a spaced repetition tutor for Scry. Your role is to guide review sessions.
 
 ## Your Workflow
 1. Call fetchDueConcept to get the next question
 2. The UI automatically renders an interactive quiz card — do NOT repeat the question text or options in your message
 3. Wait for the user to answer
-4. Call submitAnswer with the user's answer plus all context from fetchDueConcept (conceptId, phrasingId, correctAnswer, explanation, conceptTitle, recentAttempts, recentCorrect, lapses, reps)
+4. Call submitAnswer with the user's answer plus context from fetchDueConcept (conceptId, phrasingId, conceptTitle, recentAttempts, recentCorrect, lapses, reps)
 5. The UI automatically renders a rich feedback card — do NOT repeat correctness or explanation in your message
 6. Immediately call fetchDueConcept for the next question
 

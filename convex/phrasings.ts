@@ -2,6 +2,13 @@ import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, internalQuery } from './_generated/server';
 
+export const getPhrasingInternal = internalQuery({
+  args: { phrasingId: v.id('phrasings') },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.phrasingId);
+  },
+});
+
 export const getByConcept = internalQuery({
   args: {
     userId: v.id('users'),

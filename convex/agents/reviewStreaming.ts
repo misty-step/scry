@@ -1,4 +1,10 @@
-import { createThread, listUIMessages, syncStreams, vStreamArgs } from '@convex-dev/agent';
+import {
+  createThread,
+  getThreadMetadata,
+  listUIMessages,
+  syncStreams,
+  vStreamArgs,
+} from '@convex-dev/agent';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { components, internal } from '../_generated/api';
@@ -26,7 +32,9 @@ export const sendMessage = mutation({
     prompt: v.string(),
   },
   handler: async (ctx, { threadId, prompt }) => {
-    await requireUserFromClerk(ctx);
+    const user = await requireUserFromClerk(ctx);
+    const thread = await getThreadMetadata(ctx, components.agent, { threadId });
+    if (thread.userId !== user._id) throw new Error('Unauthorized');
     const { messageId } = await reviewAgent.saveMessage(ctx, {
       threadId,
       prompt,
@@ -79,7 +87,9 @@ export const listMessages = query({
     streamArgs: vStreamArgs,
   },
   handler: async (ctx, args) => {
-    await requireUserFromClerk(ctx);
+    const user = await requireUserFromClerk(ctx);
+    const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
+    if (thread.userId !== user._id) throw new Error('Unauthorized');
     const streams = await syncStreams(ctx, components.agent, {
       threadId: args.threadId,
       streamArgs: args.streamArgs,
