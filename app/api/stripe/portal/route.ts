@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 export async function POST() {
   try {
@@ -9,6 +9,7 @@ export async function POST() {
     if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+    const stripe = getStripe();
 
     // Search for customer in Stripe by metadata
     const customers = await stripe.customers.search({
