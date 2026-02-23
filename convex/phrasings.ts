@@ -3,9 +3,11 @@ import type { Id } from './_generated/dataModel';
 import { internalMutation, internalQuery } from './_generated/server';
 
 export const getPhrasingInternal = internalQuery({
-  args: { phrasingId: v.id('phrasings') },
+  args: { userId: v.id('users'), phrasingId: v.id('phrasings') },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.phrasingId);
+    const phrasing = await ctx.db.get(args.phrasingId);
+    if (!phrasing || phrasing.userId !== args.userId) return null;
+    return phrasing;
   },
 });
 

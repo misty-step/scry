@@ -44,9 +44,12 @@ updates:
       day: 'monday'
       time: '04:00'
       timezone: 'UTC'
+    open-pull-requests-limit: 5
     commit-message:
       prefix: 'ci'
       include: 'scope'
     labels:
       - 'ci'
       - 'dependencies'
+    assignees:
+      - 'phaedrus'

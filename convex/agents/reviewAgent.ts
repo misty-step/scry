@@ -65,6 +65,7 @@ const submitAnswer = createTool({
   handler: async (ctx, args): Promise<Record<string, unknown>> => {
     // Fetch correct answer server-side — never trust client-supplied value
     const phrasing = await ctx.runQuery(internal.phrasings.getPhrasingInternal, {
+      userId: ctx.userId as Id<'users'>,
       phrasingId: args.phrasingId as Id<'phrasings'>,
     });
     if (!phrasing) throw new Error('Phrasing not found');
