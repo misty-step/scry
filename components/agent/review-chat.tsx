@@ -95,10 +95,6 @@ export function ReviewChat() {
     [handleSend, input]
   );
 
-  const focusChat = useCallback(() => {
-    chatInputRef.current?.focus();
-  }, []);
-
   // ---- PRE-SESSION: Start Screen (5D locked design) ----
   if (!threadId) {
     const count = dueCount?.conceptsDue ?? 0;
@@ -155,7 +151,6 @@ export function ReviewChat() {
       handleSend={handleSend}
       handleAnswer={handleAnswer}
       handleKeyDown={handleKeyDown}
-      focusChat={focusChat}
     />
   );
 }
@@ -172,7 +167,6 @@ function ActiveSession({
   handleSend,
   handleAnswer,
   handleKeyDown,
-  focusChat,
 }: {
   messages: ReturnType<typeof useUIMessages>;
   user: ReturnType<typeof useUser>['user'];
@@ -184,10 +178,15 @@ function ActiveSession({
   handleSend: (text: string) => Promise<void>;
   handleAnswer: (text: string) => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent) => void;
-  focusChat: () => void;
 }) {
   const [showChat, setShowChat] = useState(false);
   const messageList = messages?.results ?? [];
+  const focusChat = useCallback(() => {
+    setShowChat(true);
+    requestAnimationFrame(() => {
+      chatInputRef.current?.focus();
+    });
+  }, [chatInputRef]);
 
   // Extract tool results for left panel
   const { latestQuestion, latestFeedback } = useMemo(
