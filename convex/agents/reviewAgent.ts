@@ -1,4 +1,5 @@
 import { Agent, createTool } from '@convex-dev/agent';
+import type { LanguageModel } from 'ai';
 import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -6,7 +7,15 @@ import { initializeProvider } from '../lib/aiProviders';
 
 const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
 
-const { model } = initializeProvider(process.env.AI_MODEL ?? DEFAULT_MODEL);
+// Convex module analysis runs at deploy time WITHOUT env vars — initializeProvider()
+// would throw. Proxy defers initialization to first runtime call when env vars are set.
+let _model: LanguageModel | undefined;
+const model = new Proxy({} as Record<string | symbol, unknown>, {
+  get(_, prop) {
+    _model ??= initializeProvider(process.env.AI_MODEL ?? DEFAULT_MODEL).model;
+    return (_model as unknown as Record<string | symbol, unknown>)[prop];
+  },
+}) as unknown as LanguageModel;
 
 // --- Tools ---
 
