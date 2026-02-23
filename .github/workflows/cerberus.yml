@@ -17,6 +17,9 @@ concurrency:
 jobs:
   review:
     name: "${{ matrix.reviewer }}"
+    # Dependabot PRs cannot access org secrets (OPENROUTER_API_KEY is empty).
+    # Skip review jobs; verdict below exits 0 so the required check passes.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,6 +44,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Skip verdict for Dependabot
+        if: github.actor == 'dependabot[bot]'
+        run: echo "Cerberus skipped for Dependabot — no API key available"
       - uses: misty-step/cerberus/verdict@v1
+        if: github.actor != 'dependabot[bot]'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
