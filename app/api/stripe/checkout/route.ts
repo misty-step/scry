@@ -24,7 +24,6 @@ export async function POST() {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
     const session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       customer_email: email,

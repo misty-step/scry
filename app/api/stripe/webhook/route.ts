@@ -30,6 +30,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Convex webhook secret not configured' }, { status: 500 });
   }
 
+  try {
+    getStripe();
+  } catch (error) {
+    console.error('Stripe configuration error:', error);
+    return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
+  }
+
   // FIRST: Verify signature (fail-fast)
   let event: Stripe.Event;
   try {

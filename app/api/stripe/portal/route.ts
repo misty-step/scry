@@ -9,7 +9,6 @@ export async function POST() {
     if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
     // Search for customer in Stripe by metadata
     const customers = await getStripe().customers.search({
       query: `metadata['clerkUserId']:'${userId}'`,
