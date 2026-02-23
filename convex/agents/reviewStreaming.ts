@@ -10,6 +10,7 @@ import { v } from 'convex/values';
 import { components, internal } from '../_generated/api';
 import { internalAction, mutation, query } from '../_generated/server';
 import { requireUserFromClerk } from '../clerk';
+import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
 
 // Create a new review thread and auto-start the session
@@ -17,6 +18,7 @@ export const createReviewThread = mutation({
   args: {},
   handler: async (ctx) => {
     const user = await requireUserFromClerk(ctx);
+    await enforceRateLimit(ctx, user._id.toString(), 'default', false);
     const threadId = await createThread(ctx, components.agent, { userId: user._id });
     await ctx.scheduler.runAfter(0, internal.agents.reviewStreaming.startReviewSession, {
       threadId,
@@ -33,6 +35,7 @@ export const sendMessage = mutation({
   },
   handler: async (ctx, { threadId, prompt }) => {
     const user = await requireUserFromClerk(ctx);
+    await enforceRateLimit(ctx, user._id.toString(), 'default', false);
     const thread = await getThreadMetadata(ctx, components.agent, { threadId });
     if (thread.userId !== user._id) throw new Error('Unauthorized');
     const { messageId } = await reviewAgent.saveMessage(ctx, {

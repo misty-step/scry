@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { FeedbackCard } from './feedback-card';
 import { MessageBubble } from './message-bubble';
 import { QuestionCard } from './question-card';
+import { extractLatestToolResults } from './tool-results';
 
 const START_PROMPT = 'Start my review session. Fetch the first concept and present it.';
 
@@ -30,40 +31,6 @@ const SUGGESTION_CHIPS = [
   { label: 'Weak areas', text: 'Show my weak areas' },
   { label: 'Reschedule', text: 'Reschedule this deck' },
 ];
-
-// Extract latest tool result and question text from message stream
-interface ToolResult {
-  toolName: string;
-  data: Record<string, unknown>;
-}
-
-function extractLatestToolResults(messages: UIMessage[]): {
-  latest: ToolResult | null;
-  lastQuestion: string | null;
-} {
-  let latest: ToolResult | null = null;
-  let lastQuestion: string | null = null;
-
-  for (const msg of messages) {
-    if (msg.role !== 'assistant') continue;
-    for (const part of msg.parts) {
-      if (typeof part.type === 'string' && part.type.startsWith('tool-') && 'state' in part) {
-        const toolName = part.type.slice(5);
-        const typedPart = part as { type: string; state: string; output?: unknown };
-        if (typedPart.state === 'output-available' && typedPart.output != null) {
-          latest = { toolName, data: typedPart.output as Record<string, unknown> };
-
-          // Track question text from fetchDueConcept for feedback display
-          if (toolName === 'fetchDueConcept') {
-            lastQuestion =
-              ((typedPart.output as Record<string, unknown>).question as string) ?? null;
-          }
-        }
-      }
-    }
-  }
-  return { latest, lastQuestion };
-}
 
 export function ReviewChat() {
   const { user } = useUser();
@@ -223,7 +190,7 @@ function ActiveSession({
   const messageList = messages?.results ?? [];
 
   // Extract tool results for left panel
-  const { latest, lastQuestion } = useMemo(
+  const { latestQuestion, latestFeedback } = useMemo(
     () => extractLatestToolResults(messageList),
     [messageList]
   );
@@ -270,26 +237,20 @@ function ActiveSession({
           )}
         >
           {/* Loading state */}
-          {!latest && (
+          {!latestQuestion && !latestFeedback && (
             <div className="flex items-center gap-2 pt-4 md:pt-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Finding next concept...
             </div>
           )}
 
-          {/* Quiz card */}
-          {latest?.toolName === 'fetchDueConcept' && (
-            <QuestionCard
-              key={(latest.data.conceptId as string) ?? ''}
-              data={latest.data}
-              onAnswer={handleAnswer}
-            />
-          )}
-
           {/* Feedback card */}
-          {latest?.toolName === 'submitAnswer' && (
+          {latestFeedback && (
             <>
-              <FeedbackCard data={latest.data} questionText={lastQuestion ?? undefined} />
+              <FeedbackCard
+                data={latestFeedback.data}
+                questionText={latestFeedback.questionText ?? undefined}
+              />
               <div className="mt-6 flex items-center justify-between max-w-3xl">
                 <button
                   onClick={focusChat}
@@ -302,8 +263,17 @@ function ActiveSession({
             </>
           )}
 
+          {/* Quiz card */}
+          {latestQuestion?.toolName === 'fetchDueConcept' && (
+            <QuestionCard
+              key={(latestQuestion.data.conceptId as string) ?? ''}
+              data={latestQuestion.data}
+              onAnswer={handleAnswer}
+            />
+          )}
+
           {/* Tool execution indicator */}
-          {isToolRunning && latest?.toolName === 'submitAnswer' && (
+          {isToolRunning && latestFeedback && !latestQuestion && (
             <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading next question...
