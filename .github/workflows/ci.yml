@@ -24,7 +24,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Verify Node version
-        run: node -v | grep -q "v20.19" || exit 1
+        run: node -v | grep -q "v20.20" || exit 1
 
       - run: pnpm install --frozen-lockfile
 
