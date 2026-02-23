@@ -38,6 +38,7 @@ jobs:
           perspective: ${{ matrix.perspective }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          model: openrouter/google/gemini-3-flash-preview
 
   verdict:
     name: "Council Verdict"
