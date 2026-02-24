@@ -30,6 +30,7 @@ test.describe('Agent Review Route', () => {
     expect(combinedErrors).not.toMatch(/Invalid src prop/i);
     expect(combinedErrors).not.toMatch(/next-image-unconfigured-host/i);
     expect(combinedErrors).not.toMatch(/Unhandled application error/i);
+    expect(combinedErrors).not.toMatch(/Failed to resolve module specifier '@sentry\/nextjs'/i);
   });
 
   test('does not show / Review navbar breadcrumb @smoke', async ({ page }) => {

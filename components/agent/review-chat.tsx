@@ -21,9 +21,6 @@ import { cn } from '@/lib/utils';
 import { FeedbackCard } from './feedback-card';
 import { MessageBubble } from './message-bubble';
 import { QuestionCard } from './question-card';
-import { extractLatestToolResults } from './tool-results';
-
-const START_PROMPT = 'Start my review session. Fetch the first concept and present it.';
 
 const SUGGESTION_CHIPS = [
   { label: 'Explain this concept', text: 'Explain this concept in more detail' },
@@ -31,16 +28,29 @@ const SUGGESTION_CHIPS = [
   { label: 'Reschedule', text: 'Reschedule this deck' },
 ];
 
+interface ReviewFeedbackState {
+  data: Record<string, unknown>;
+  questionText: string | null;
+}
+
 export function ReviewChat() {
   const { user } = useUser();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isStarting, setIsStarting] = useState(false);
-  const submittedAnswers = useRef(new Set<string>());
+  const [activeQuestion, setActiveQuestion] = useState<Record<string, unknown> | null>(null);
+  const [latestFeedback, setLatestFeedback] = useState<ReviewFeedbackState | null>(null);
+  const [isFetchingQuestion, setIsFetchingQuestion] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+  const [reviewComplete, setReviewComplete] = useState(false);
+  const [isChatSendPending, setIsChatSendPending] = useState(false);
+  const pendingChatBaselineRef = useRef<number | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
   const createThread = useMutation(api.agents.reviewStreaming.createReviewThread);
+  const fetchNextQuestion = useMutation(api.agents.reviewStreaming.fetchNextQuestion);
+  const submitAnswerDirect = useMutation(api.agents.reviewStreaming.submitAnswerDirect);
   const sendMessage = useMutation(api.agents.reviewStreaming.sendMessage);
   const dueCount = useQuery(api.concepts.getConceptsDueCount);
 
@@ -57,41 +67,132 @@ export function ReviewChat() {
     }
   }, [messages?.results]);
 
+  const messageList = useMemo(() => messages?.results ?? [], [messages?.results]);
+  const assistantStreaming = messageList.some(
+    (message: UIMessage) => message.role === 'assistant' && message.status === 'streaming'
+  );
+
+  useEffect(() => {
+    if (!isChatSendPending || assistantStreaming) return;
+    const baseline = pendingChatBaselineRef.current ?? 0;
+    const assistantCount = messageList.filter(
+      (message: UIMessage) => message.role === 'assistant'
+    ).length;
+    if (assistantCount > baseline) {
+      setIsChatSendPending(false);
+      pendingChatBaselineRef.current = null;
+    }
+  }, [assistantStreaming, isChatSendPending, messageList]);
+
+  const loadNextQuestion = useCallback(
+    async (targetThreadId: string) => {
+      setIsFetchingQuestion(true);
+      setReviewComplete(false);
+      try {
+        const next = await fetchNextQuestion({ threadId: targetThreadId });
+        if (next) {
+          setActiveQuestion(next);
+          return;
+        }
+        setActiveQuestion(null);
+        setReviewComplete(true);
+      } finally {
+        setIsFetchingQuestion(false);
+      }
+    },
+    [fetchNextQuestion]
+  );
+
   const handleStart = useCallback(async () => {
     setIsStarting(true);
     try {
       const { threadId: newThreadId } = await createThread();
       setThreadId(newThreadId);
+      await loadNextQuestion(newThreadId);
     } finally {
       setIsStarting(false);
     }
-  }, [createThread]);
+  }, [createThread, loadNextQuestion]);
 
-  const handleSend = useCallback(
+  const handleSendChat = useCallback(
     async (text: string) => {
       if (!threadId || !text.trim()) return;
       setInput('');
-      await sendMessage({ threadId, prompt: text.trim() });
+      pendingChatBaselineRef.current = messageList.filter(
+        (message: UIMessage) => message.role === 'assistant'
+      ).length;
+      setIsChatSendPending(true);
+      try {
+        await sendMessage({ threadId, prompt: text.trim() });
+      } catch {
+        setIsChatSendPending(false);
+        pendingChatBaselineRef.current = null;
+      }
     },
-    [threadId, sendMessage]
+    [threadId, sendMessage, messageList]
   );
 
   const handleAnswer = useCallback(
     async (text: string) => {
-      submittedAnswers.current.add(text);
-      return handleSend(text);
+      if (!threadId || !activeQuestion) return;
+      setIsSubmittingAnswer(true);
+      try {
+        const result = await submitAnswerDirect({
+          threadId,
+          conceptId: activeQuestion.conceptId as never,
+          phrasingId: activeQuestion.phrasingId as never,
+          userAnswer: text,
+          conceptTitle: (activeQuestion.conceptTitle as string) ?? '',
+          recentAttempts: (activeQuestion.recentAttempts as number) ?? 0,
+          recentCorrect: (activeQuestion.recentCorrect as number) ?? 0,
+          lapses: (activeQuestion.lapses as number) ?? 0,
+          reps: (activeQuestion.reps as number) ?? 0,
+        });
+        setLatestFeedback({
+          data: result as Record<string, unknown>,
+          questionText: (activeQuestion.question as string) ?? null,
+        });
+        setActiveQuestion(null);
+        setReviewComplete(false);
+      } finally {
+        setIsSubmittingAnswer(false);
+      }
     },
-    [handleSend]
+    [threadId, activeQuestion, submitAnswerDirect]
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        handleSend(input);
+        void handleSendChat(input);
       }
     },
-    [handleSend, input]
+    [handleSendChat, input]
+  );
+
+  const buildSuggestionPrompt = useCallback(
+    (text: string) => {
+      const conceptTitle =
+        (activeQuestion?.conceptTitle as string | undefined) ??
+        (latestFeedback?.data.conceptTitle as string | undefined);
+      const questionText =
+        (activeQuestion?.question as string | undefined) ??
+        latestFeedback?.questionText ??
+        undefined;
+      const correctAnswer = latestFeedback?.data.correctAnswer as string | undefined;
+
+      if (!conceptTitle && !questionText) return text;
+
+      const contextLines = [
+        conceptTitle ? `Concept: ${conceptTitle}` : null,
+        questionText ? `Question: ${questionText}` : null,
+        correctAnswer ? `Correct answer: ${correctAnswer}` : null,
+      ].filter(Boolean);
+
+      return `${text}\n\nContext:\n${contextLines.map((line) => `- ${line}`).join('\n')}`;
+    },
+    [activeQuestion, latestFeedback]
   );
 
   // ---- PRE-SESSION: Start Screen (5D locked design) ----
@@ -146,9 +247,20 @@ export function ReviewChat() {
       setInput={setInput}
       chatScrollRef={chatScrollRef}
       chatInputRef={chatInputRef}
-      submittedAnswers={submittedAnswers}
-      handleSend={handleSend}
+      activeQuestion={activeQuestion}
+      latestFeedback={latestFeedback}
+      isFetchingQuestion={isFetchingQuestion}
+      isSubmittingAnswer={isSubmittingAnswer}
+      reviewComplete={reviewComplete}
+      isChatThinking={isChatSendPending || assistantStreaming}
+      handleSend={handleSendChat}
+      buildSuggestionPrompt={buildSuggestionPrompt}
       handleAnswer={handleAnswer}
+      handleNextQuestion={async () => {
+        if (!threadId) return;
+        setLatestFeedback(null);
+        await loadNextQuestion(threadId);
+      }}
       handleKeyDown={handleKeyDown}
     />
   );
@@ -162,9 +274,16 @@ function ActiveSession({
   setInput,
   chatScrollRef,
   chatInputRef,
-  submittedAnswers,
+  activeQuestion,
+  latestFeedback,
+  isFetchingQuestion,
+  isSubmittingAnswer,
+  reviewComplete,
+  isChatThinking,
   handleSend,
+  buildSuggestionPrompt,
   handleAnswer,
+  handleNextQuestion,
   handleKeyDown,
 }: {
   messages: ReturnType<typeof useUIMessages>;
@@ -173,13 +292,19 @@ function ActiveSession({
   setInput: (v: string) => void;
   chatScrollRef: React.RefObject<HTMLDivElement | null>;
   chatInputRef: React.RefObject<HTMLInputElement | null>;
-  submittedAnswers: React.MutableRefObject<Set<string>>;
+  activeQuestion: Record<string, unknown> | null;
+  latestFeedback: ReviewFeedbackState | null;
+  isFetchingQuestion: boolean;
+  isSubmittingAnswer: boolean;
+  reviewComplete: boolean;
+  isChatThinking: boolean;
   handleSend: (text: string) => Promise<void>;
+  buildSuggestionPrompt: (text: string) => string;
   handleAnswer: (text: string) => Promise<void>;
+  handleNextQuestion: () => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const [showChat, setShowChat] = useState(false);
-  const [dismissedFeedbackToken, setDismissedFeedbackToken] = useState<string | null>(null);
   const messageList = useMemo(() => messages?.results ?? [], [messages?.results]);
   const focusChat = useCallback(() => {
     setShowChat(true);
@@ -187,25 +312,7 @@ function ActiveSession({
       chatInputRef.current?.focus();
     });
   }, [chatInputRef]);
-
-  // Extract tool results for left panel
-  const { latestQuestion, latestFeedback } = useMemo(
-    () => extractLatestToolResults(messageList),
-    [messageList]
-  );
-  const showFeedbackPanel = !!latestFeedback && latestFeedback.token !== dismissedFeedbackToken;
-
-  // Filter chat-only messages (text from assistant, user messages minus auto-prompts/answers)
-  const chatMessages = useMemo(() => {
-    return messageList.filter((m: UIMessage) => {
-      if (m.role === 'user') {
-        if (m.text === START_PROMPT) return false;
-        if (submittedAnswers.current.has(m.text)) return false;
-        return true;
-      }
-      return true;
-    });
-  }, [messageList, submittedAnswers]);
+  const chatMessages = useMemo(() => messageList, [messageList]);
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col">
@@ -219,7 +326,7 @@ function ActiveSession({
           )}
         >
           {/* Loading state */}
-          {!latestQuestion && !latestFeedback && (
+          {isFetchingQuestion && (
             <div className="flex items-center gap-2 pt-4 md:pt-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Finding next concept...
@@ -227,7 +334,7 @@ function ActiveSession({
           )}
 
           {/* Feedback card */}
-          {latestFeedback && showFeedbackPanel && (
+          {latestFeedback && (
             <>
               <FeedbackCard
                 data={latestFeedback.data}
@@ -237,8 +344,7 @@ function ActiveSession({
                 <div className="flex items-center gap-4">
                   <button
                     onClick={async () => {
-                      setDismissedFeedbackToken(latestFeedback.token);
-                      await handleSend('Next question');
+                      await handleNextQuestion();
                     }}
                     className="inline-flex items-center gap-2 border border-border px-3 py-1.5 text-sm text-foreground hover:border-primary hover:text-primary"
                   >
@@ -258,12 +364,29 @@ function ActiveSession({
           )}
 
           {/* Quiz card */}
-          {latestQuestion?.toolName === 'fetchDueConcept' && !showFeedbackPanel && (
+          {activeQuestion && (
             <QuestionCard
-              key={`${String(latestQuestion.data.conceptId ?? '')}:${String(latestQuestion.data.phrasingId ?? '')}:${String(latestQuestion.data.question ?? '')}`}
-              data={latestQuestion.data}
+              key={`${String(activeQuestion.conceptId ?? '')}:${String(activeQuestion.phrasingId ?? '')}:${String(activeQuestion.question ?? '')}`}
+              data={activeQuestion}
               onAnswer={handleAnswer}
+              disabled={isSubmittingAnswer}
             />
+          )}
+
+          {isSubmittingAnswer && (
+            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking answer...
+            </div>
+          )}
+
+          {!isFetchingQuestion && !activeQuestion && !latestFeedback && reviewComplete && (
+            <div className="max-w-3xl border border-border bg-background p-6 md:p-8 shadow-sm">
+              <h3 className="font-serif text-2xl text-foreground">All done for now</h3>
+              <p className="mt-3 text-muted-foreground">
+                You have no additional due cards in this session.
+              </p>
+            </div>
           )}
         </div>
 
@@ -294,7 +417,9 @@ function ActiveSession({
               </div>
               <div>
                 <h3 className="text-sm font-medium">Scry Agent</h3>
-                <p className="font-mono text-xs text-muted-foreground">Online</p>
+                <p className="font-mono text-xs text-muted-foreground">
+                  {isChatThinking ? 'Thinking...' : 'Online'}
+                </p>
               </div>
             </div>
           </div>
@@ -311,7 +436,13 @@ function ActiveSession({
               <ChatMessage key={message.key} message={message} userAvatarUrl={user?.imageUrl} />
             ))}
 
-            {/* Keep chat pane stable: no implicit "thinking" indicator for auto review actions */}
+            {isChatThinking && (
+              <div className="flex items-center gap-1 px-1 py-2">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
+              </div>
+            )}
           </div>
 
           {/* Suggestion chips */}
@@ -320,7 +451,7 @@ function ActiveSession({
               {SUGGESTION_CHIPS.map((chip) => (
                 <button
                   key={chip.label}
-                  onClick={() => handleSend(chip.text)}
+                  onClick={() => handleSend(buildSuggestionPrompt(chip.text))}
                   className="border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
                 >
                   {chip.label}

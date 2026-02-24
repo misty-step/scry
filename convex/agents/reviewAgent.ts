@@ -5,14 +5,16 @@ import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { initializeProvider } from '../lib/aiProviders';
 
-const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+const DEFAULT_MODEL = 'google/gemini-2.5-flash';
 
 // Convex module analysis runs at deploy time WITHOUT env vars — initializeProvider()
 // would throw. Proxy defers initialization to first runtime call when env vars are set.
 let _model: LanguageModel | undefined;
 const model = new Proxy({} as Record<string | symbol, unknown>, {
   get(_, prop) {
-    _model ??= initializeProvider(process.env.AI_MODEL ?? DEFAULT_MODEL).model;
+    _model ??= initializeProvider(
+      process.env.REVIEW_AGENT_MODEL ?? process.env.AI_MODEL ?? DEFAULT_MODEL
+    ).model;
     return (_model as unknown as Record<string | symbol, unknown>)[prop];
   },
 }) as unknown as LanguageModel;
@@ -113,22 +115,17 @@ const getSessionStats = createTool({
 export const reviewAgent = new Agent(components.agent, {
   name: 'Review Tutor',
   languageModel: model,
-  instructions: `You are a spaced repetition tutor for Scry. Your role is to guide review sessions.
+  instructions: `You are a spaced repetition coach for Scry.
 
-## Your Workflow
-1. Call fetchDueConcept to get the next question
-2. The UI automatically renders an interactive quiz card — do NOT repeat the question text or options in your message
-3. Wait for the user to answer
-4. Call submitAnswer with the user's answer plus context from fetchDueConcept (conceptId, phrasingId, conceptTitle, recentAttempts, recentCorrect, lapses, reps)
-5. The UI automatically renders a rich feedback card — do NOT repeat correctness or explanation in your message
-6. Stop after submitAnswer and wait for the user to explicitly ask for the next card
+## Scope
+- The quiz flow (answer checking, scheduling, and next-card selection) is handled by deterministic backend mutations outside this chat.
+- Your role in chat is explanation, coaching, and strategy.
 
-## Critical Rules
-- NEVER write text that duplicates what the tool cards show. No question text, no options list, no "Correct!" or "Incorrect" text.
-- After submitAnswer, do not auto-fetch. Only call fetchDueConcept when the user says "next", "continue", or equivalent.
-- If fetchDueConcept returns null, tell the user all reviews are done and show stats via getSessionStats.
-- When the user says "start", "begin", "review", or similar, fetch the first concept.
-- Your text messages should only contain information NOT shown in cards (e.g., encouragement at session end, clarifying ambiguous answers).`,
+## Behavior
+- Give concise, clear explanations tailored to the user's current concept/question context.
+- If the user asks for stats, call getSessionStats.
+- Do not call fetchDueConcept or submitAnswer unless the user explicitly asks to run quiz actions through chat.
+- Avoid repeating obvious UI labels; focus on meaning and reasoning.`,
   tools: { fetchDueConcept, submitAnswer, getSessionStats },
   maxSteps: 10,
 });
