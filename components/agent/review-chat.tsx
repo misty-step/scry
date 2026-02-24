@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
 import { useUser } from '@clerk/nextjs';
 import type { UIMessage } from '@convex-dev/agent/react';
 import { useUIMessages } from '@convex-dev/agent/react';
@@ -180,7 +179,8 @@ function ActiveSession({
   handleKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const [showChat, setShowChat] = useState(false);
-  const messageList = messages?.results ?? [];
+  const [dismissedFeedbackToken, setDismissedFeedbackToken] = useState<string | null>(null);
+  const messageList = useMemo(() => messages?.results ?? [], [messages?.results]);
   const focusChat = useCallback(() => {
     setShowChat(true);
     requestAnimationFrame(() => {
@@ -193,6 +193,7 @@ function ActiveSession({
     () => extractLatestToolResults(messageList),
     [messageList]
   );
+  const showFeedbackPanel = !!latestFeedback && latestFeedback.token !== dismissedFeedbackToken;
 
   // Filter chat-only messages (text from assistant, user messages minus auto-prompts/answers)
   const chatMessages = useMemo(() => {
@@ -205,24 +206,6 @@ function ActiveSession({
       return true;
     });
   }, [messageList, submittedAnswers]);
-
-  const isStreaming = messageList.some(
-    (m: UIMessage) => m.role === 'assistant' && m.status === 'streaming'
-  );
-
-  // Check if agent is currently executing a tool
-  const isToolRunning = messageList.some(
-    (m: UIMessage) =>
-      m.role === 'assistant' &&
-      m.parts.some(
-        (part) =>
-          typeof part.type === 'string' &&
-          part.type.startsWith('tool-') &&
-          'state' in part &&
-          ((part as { state: string }).state === 'input-streaming' ||
-            (part as { state: string }).state === 'input-available')
-      )
-  );
 
   return (
     <div className="flex h-[calc(100dvh-4rem)] flex-col">
@@ -244,39 +227,43 @@ function ActiveSession({
           )}
 
           {/* Feedback card */}
-          {latestFeedback && (
+          {latestFeedback && showFeedbackPanel && (
             <>
               <FeedbackCard
                 data={latestFeedback.data}
                 questionText={latestFeedback.questionText ?? undefined}
               />
               <div className="mt-6 flex items-center justify-between max-w-3xl">
-                <button
-                  onClick={focusChat}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>Discuss this topic</span>
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={async () => {
+                      setDismissedFeedbackToken(latestFeedback.token);
+                      await handleSend('Next question');
+                    }}
+                    className="inline-flex items-center gap-2 border border-border px-3 py-1.5 text-sm text-foreground hover:border-primary hover:text-primary"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                    <span>Next question</span>
+                  </button>
+                  <button
+                    onClick={focusChat}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>Discuss this topic</span>
+                  </button>
+                </div>
               </div>
             </>
           )}
 
           {/* Quiz card */}
-          {latestQuestion?.toolName === 'fetchDueConcept' && (
+          {latestQuestion?.toolName === 'fetchDueConcept' && !showFeedbackPanel && (
             <QuestionCard
-              key={(latestQuestion.data.conceptId as string) ?? ''}
+              key={`${String(latestQuestion.data.conceptId ?? '')}:${String(latestQuestion.data.phrasingId ?? '')}:${String(latestQuestion.data.question ?? '')}`}
               data={latestQuestion.data}
               onAnswer={handleAnswer}
             />
-          )}
-
-          {/* Tool execution indicator */}
-          {isToolRunning && latestFeedback && !latestQuestion && (
-            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading next question...
-            </div>
           )}
         </div>
 
@@ -307,9 +294,7 @@ function ActiveSession({
               </div>
               <div>
                 <h3 className="text-sm font-medium">Scry Agent</h3>
-                <p className="font-mono text-xs text-muted-foreground">
-                  {isStreaming ? 'Thinking...' : 'Online'}
-                </p>
+                <p className="font-mono text-xs text-muted-foreground">Online</p>
               </div>
             </div>
           </div>
@@ -326,14 +311,7 @@ function ActiveSession({
               <ChatMessage key={message.key} message={message} userAvatarUrl={user?.imageUrl} />
             ))}
 
-            {/* Streaming dots */}
-            {isStreaming && (
-              <div className="flex items-center gap-1 px-1 py-2">
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
-              </div>
-            )}
+            {/* Keep chat pane stable: no implicit "thinking" indicator for auto review actions */}
           </div>
 
           {/* Suggestion chips */}
@@ -400,13 +378,8 @@ function ChatMessage({ message, userAvatarUrl }: { message: UIMessage; userAvata
           </div>
         </div>
         {userAvatarUrl ? (
-          <Image
-            src={userAvatarUrl}
-            alt=""
-            width={28}
-            height={28}
-            className="mt-0.5 h-7 w-7 shrink-0 rounded-full"
-          />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={userAvatarUrl} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded-full" />
         ) : (
           <div className="mt-0.5 h-7 w-7 shrink-0 rounded-full bg-muted" />
         )}
@@ -420,17 +393,7 @@ function ChatMessage({ message, userAvatarUrl }: { message: UIMessage; userAvata
       part.type === 'text' && 'text' in part && !!(part as { text: string }).text?.trim()
   );
 
-  // Tool loading states shown inline in chat
-  const toolLoadingParts = message.parts.filter(
-    (part) =>
-      typeof part.type === 'string' &&
-      part.type.startsWith('tool-') &&
-      'state' in part &&
-      ((part as { state: string }).state === 'input-streaming' ||
-        (part as { state: string }).state === 'input-available')
-  );
-
-  if (textParts.length === 0 && toolLoadingParts.length === 0) return null;
+  if (textParts.length === 0) return null;
 
   return (
     <div className="flex gap-3">
@@ -441,20 +404,6 @@ function ChatMessage({ message, userAvatarUrl }: { message: UIMessage; userAvata
         {textParts.map((part, i) => (
           <MessageBubble key={i} text={part.text} />
         ))}
-        {toolLoadingParts.map((part, i) => {
-          const toolName = (part.type as string).slice(5);
-          return (
-            <div
-              key={`tool-${i}`}
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {toolName === 'fetchDueConcept' && 'Finding next concept...'}
-              {toolName === 'submitAnswer' && 'Checking answer...'}
-              {toolName === 'getSessionStats' && 'Getting stats...'}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

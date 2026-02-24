@@ -41,6 +41,66 @@ function formatNextDate(days?: number): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function renderInlineMarkdown(text: string) {
+  const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return tokens.map((token, i) => {
+    if (token.startsWith('`') && token.endsWith('`')) {
+      return (
+        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
+          {token.slice(1, -1)}
+        </code>
+      );
+    }
+    if (token.startsWith('**') && token.endsWith('**')) {
+      return <strong key={i}>{token.slice(2, -2)}</strong>;
+    }
+    if (token.startsWith('*') && token.endsWith('*')) {
+      return <em key={i}>{token.slice(1, -1)}</em>;
+    }
+    return token;
+  });
+}
+
+function renderExplanation(text: string) {
+  const sections = text
+    .trim()
+    .split(/\n\s*\n/g)
+    .map((section) => section.trim())
+    .filter(Boolean);
+
+  return sections.map((section, i) => {
+    const lines = section.split('\n').map((line) => line.trim());
+    const bulletLines = lines.filter((line) => /^[-*]\s+/.test(line));
+    const orderedLines = lines.filter((line) => /^\d+\.\s+/.test(line));
+
+    if (bulletLines.length === lines.length) {
+      return (
+        <ul key={i} className="ml-6 list-disc space-y-2">
+          {bulletLines.map((line, idx) => (
+            <li key={idx}>{renderInlineMarkdown(line.replace(/^[-*]\s+/, ''))}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (orderedLines.length === lines.length) {
+      return (
+        <ol key={i} className="ml-6 list-decimal space-y-2">
+          {orderedLines.map((line, idx) => (
+            <li key={idx}>{renderInlineMarkdown(line.replace(/^\d+\.\s+/, ''))}</li>
+          ))}
+        </ol>
+      );
+    }
+
+    return (
+      <p key={i} className="whitespace-pre-wrap">
+        {renderInlineMarkdown(section)}
+      </p>
+    );
+  });
+}
+
 export function FeedbackCard({ data, questionText }: FeedbackCardProps) {
   if (typeof data !== 'object' || data === null) return null;
   const fb = data as FeedbackData;
@@ -112,9 +172,9 @@ export function FeedbackCard({ data, questionText }: FeedbackCardProps) {
             <p className="mb-4 font-mono text-xs uppercase tracking-wider text-muted-foreground">
               Why This Matters
             </p>
-            <p className="max-w-none font-serif text-lg leading-relaxed text-muted-foreground">
-              {fb.explanation}
-            </p>
+            <div className="max-w-none space-y-4 font-serif text-lg leading-relaxed text-muted-foreground">
+              {renderExplanation(fb.explanation)}
+            </div>
           </div>
         )}
 

@@ -259,11 +259,16 @@ function loadSentry(): Promise<SentryModule | null> {
 
   if (!sentryPromise) {
     // In test mode, use literal import for vitest mocking
-    // In production, use string concatenation to hide from Convex bundler
+    // On the browser, let Next bundle @sentry/nextjs normally.
+    // Using webpackIgnore in browser causes runtime "Failed to resolve module specifier".
+    // On server runtimes outside tests, keep string concatenation to avoid Convex bundling issues.
     const isTest = process.env.NODE_ENV === 'test';
+    const isBrowser = typeof window !== 'undefined';
     const importPromise = isTest
       ? import('@sentry/nextjs')
-      : import(/* webpackIgnore: true */ ('@sentry' + '/' + 'nextjs') as '@sentry/nextjs');
+      : isBrowser
+        ? import('@sentry/nextjs')
+        : import(/* webpackIgnore: true */ ('@sentry' + '/' + 'nextjs') as '@sentry/nextjs');
 
     sentryPromise = importPromise
       .then((module) => module)

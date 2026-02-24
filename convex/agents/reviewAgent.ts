@@ -121,11 +121,11 @@ export const reviewAgent = new Agent(components.agent, {
 3. Wait for the user to answer
 4. Call submitAnswer with the user's answer plus context from fetchDueConcept (conceptId, phrasingId, conceptTitle, recentAttempts, recentCorrect, lapses, reps)
 5. The UI automatically renders a rich feedback card — do NOT repeat correctness or explanation in your message
-6. Immediately call fetchDueConcept for the next question
+6. Stop after submitAnswer and wait for the user to explicitly ask for the next card
 
 ## Critical Rules
 - NEVER write text that duplicates what the tool cards show. No question text, no options list, no "Correct!" or "Incorrect" text.
-- After submitAnswer, go directly to fetchDueConcept. Do not add commentary between questions.
+- After submitAnswer, do not auto-fetch. Only call fetchDueConcept when the user says "next", "continue", or equivalent.
 - If fetchDueConcept returns null, tell the user all reviews are done and show stats via getSessionStats.
 - When the user says "start", "begin", "review", or similar, fetch the first concept.
 - Your text messages should only contain information NOT shown in cards (e.g., encouragement at session end, clarifying ambiguous answers).`,

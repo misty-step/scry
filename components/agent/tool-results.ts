@@ -7,18 +7,26 @@ export interface ToolResult {
 
 export interface ExtractedToolResults {
   latestQuestion: ToolResult | null;
-  latestFeedback: { data: Record<string, unknown>; questionText: string | null } | null;
+  latestFeedback: {
+    data: Record<string, unknown>;
+    questionText: string | null;
+    token: string;
+  } | null;
 }
 
 export function extractLatestToolResults(messages: UIMessage[]): ExtractedToolResults {
   let latestQuestionBeforeFeedback: ToolResult | null = null;
   let latestQuestionAfterFeedback: ToolResult | null = null;
-  let latestFeedback: { data: Record<string, unknown>; questionText: string | null } | null = null;
+  let latestFeedback: {
+    data: Record<string, unknown>;
+    questionText: string | null;
+    token: string;
+  } | null = null;
   let currentQuestionText: string | null = null;
 
   for (const msg of messages) {
     if (msg.role !== 'assistant') continue;
-    for (const part of msg.parts) {
+    for (const [partIndex, part] of msg.parts.entries()) {
       if (typeof part.type !== 'string' || !part.type.startsWith('tool-') || !('state' in part)) {
         continue;
       }
@@ -41,7 +49,11 @@ export function extractLatestToolResults(messages: UIMessage[]): ExtractedToolRe
       }
 
       if (toolName === 'submitAnswer') {
-        latestFeedback = { data: output, questionText: currentQuestionText };
+        latestFeedback = {
+          data: output,
+          questionText: currentQuestionText,
+          token: `${msg.key}:${partIndex}`,
+        };
         latestQuestionAfterFeedback = null;
       }
     }

@@ -44,11 +44,6 @@ export function Navbar() {
           >
             Scry.
           </Link>
-          {pathname?.startsWith('/agent') && (
-            <span className="text-muted-foreground/60 text-sm font-normal tracking-normal">
-              / Review
-            </span>
-          )}
 
           <div className="flex items-center gap-4">
             {isSignedIn && (
