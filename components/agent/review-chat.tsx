@@ -169,7 +169,7 @@ export function ReviewChat() {
   const messages = useUIMessages(
     api.agents.reviewStreaming.listMessages,
     threadId ? { threadId } : 'skip',
-    { initialNumItems: 50, stream: true }
+    { initialNumItems: 25, stream: true }
   );
 
   // Auto-scroll chat panel
