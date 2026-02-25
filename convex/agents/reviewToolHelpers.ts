@@ -5,6 +5,7 @@ function normalizeAnswer(value: string) {
 }
 
 export function gradeAnswer(userAnswer: string, correctAnswer: string) {
+  // Exact-match grading is intentional for deterministic multiple-choice flows.
   return normalizeAnswer(userAnswer) === normalizeAnswer(correctAnswer);
 }
 

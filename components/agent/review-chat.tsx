@@ -332,9 +332,13 @@ export function ReviewChat() {
           data: feedbackEntry,
         });
         setPendingFeedback(null);
-      } catch {
+      } catch (error) {
         setActiveQuestion(questionSnapshot);
         setPendingFeedback(null);
+        setActionReply({
+          title: 'Answer not submitted',
+          body: error instanceof Error ? error.message : 'Try again in a moment.',
+        });
       } finally {
         setIsSubmittingAnswer(false);
       }
