@@ -25,6 +25,12 @@ const CHAT_INTENT_VALIDATOR = v.union(
   v.literal('stats')
 );
 
+function resolveIntent(intent?: string): ChatIntent {
+  return CHAT_INTENT_VALUES.includes((intent ?? 'general') as ChatIntent)
+    ? ((intent ?? 'general') as ChatIntent)
+    : 'general';
+}
+
 function getStatePriority(state?: string) {
   if (state === 'relearning') return 4;
   if (state === 'learning') return 3;
@@ -249,9 +255,7 @@ export const sendMessage = mutation({
     await ctx.scheduler.runAfter(0, internal.agents.reviewStreaming.streamResponse, {
       threadId,
       promptMessageId: messageId,
-      intent: CHAT_INTENT_VALUES.includes((intent ?? 'general') as ChatIntent)
-        ? (intent ?? 'general')
-        : 'general',
+      intent: resolveIntent(intent),
     });
     return { messageId };
   },
@@ -265,11 +269,7 @@ export const streamResponse = internalAction({
     intent: v.optional(CHAT_INTENT_VALIDATOR),
   },
   handler: async (ctx, { threadId, promptMessageId, intent }) => {
-    const resolvedIntent: ChatIntent = CHAT_INTENT_VALUES.includes(
-      (intent ?? 'general') as ChatIntent
-    )
-      ? (intent ?? 'general')
-      : 'general';
+    const resolvedIntent = resolveIntent(intent);
     const toolChoice = resolvedIntent === 'explain' ? 'none' : 'auto';
     const result = await reviewAgent.streamText(
       ctx,

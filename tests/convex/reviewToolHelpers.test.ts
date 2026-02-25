@@ -13,6 +13,13 @@ describe('reviewToolHelpers', () => {
       expect(gradeAnswer('PARIS', ' paris  ')).toBe(true);
       expect(gradeAnswer('Lyon', 'Paris')).toBe(false);
     });
+
+    it('handles blank and partial-answer edge cases deterministically', () => {
+      expect(gradeAnswer('', '')).toBe(true);
+      expect(gradeAnswer('   ', '')).toBe(true);
+      expect(gradeAnswer('Paris, France', 'Paris')).toBe(false);
+      expect(gradeAnswer('Naïve', 'naive')).toBe(false);
+    });
   });
 
   describe('formatDueResult', () => {
