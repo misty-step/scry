@@ -15,7 +15,12 @@ import { calculateConceptStatsDelta } from '../lib/conceptFsrsHelpers';
 import { updateStatsCounters } from '../lib/userStatsHelpers';
 import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
-import { buildSubmitAnswerPayload, formatDueResult, gradeAnswer } from './reviewToolHelpers';
+import {
+  assertUserAnswerLength,
+  buildSubmitAnswerPayload,
+  formatDueResult,
+  gradeAnswer,
+} from './reviewToolHelpers';
 
 const CHAT_INTENT_VALUES = ['general', 'explain', 'stats'] as const;
 type ChatIntent = (typeof CHAT_INTENT_VALUES)[number];
@@ -79,6 +84,7 @@ export const submitAnswerDirect = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
+    assertUserAnswerLength(args.userAnswer);
 
     const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
     if (thread.userId !== user._id) throw new Error('Unauthorized');

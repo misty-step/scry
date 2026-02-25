@@ -1,7 +1,15 @@
 import type { Id } from '../_generated/dataModel';
 
+export const MAX_USER_ANSWER_LENGTH = 500;
+
 function normalizeAnswer(value: string) {
   return value.trim().toLowerCase();
+}
+
+export function assertUserAnswerLength(userAnswer: string) {
+  if (userAnswer.length > MAX_USER_ANSWER_LENGTH) {
+    throw new Error(`Answer too long (max ${MAX_USER_ANSWER_LENGTH} characters)`);
+  }
 }
 
 export function gradeAnswer(userAnswer: string, correctAnswer: string) {

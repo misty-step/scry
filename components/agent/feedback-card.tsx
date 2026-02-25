@@ -1,6 +1,7 @@
 'use client';
 
 import { CalendarClock, CheckCircle2, Gauge, XCircle } from 'lucide-react';
+import { formatReviewStageLabel } from '@/lib/review-stage';
 
 interface FeedbackData {
   isCorrect?: boolean;
@@ -41,15 +42,6 @@ function formatRelativeNextReview(nextReview?: number, scheduledDays?: number): 
   if (days < 14) return `in ${days}d`;
   const weeks = Math.round(days / 7);
   return `in ${weeks}w`;
-}
-
-function formatStage(state?: string) {
-  if (!state) return '—';
-  if (state === 'relearning') return 'Relearning';
-  if (state === 'learning') return 'Learning';
-  if (state === 'review') return 'Review';
-  if (state === 'new') return 'New';
-  return state;
 }
 
 function getStageProgress(state?: string): { index: number; total: number } {
@@ -245,8 +237,8 @@ export function FeedbackCard({ data, questionText, compact = false }: FeedbackCa
                 Stage
               </p>
               <p className={compact ? 'text-sm font-semibold' : statValueClass}>
-                {formatStage(fb.newState)} {getStageProgress(fb.newState).index}/
-                {getStageProgress(fb.newState).total}
+                {formatReviewStageLabel(fb.newState, { fallback: '—' })}{' '}
+                {getStageProgress(fb.newState).index}/{getStageProgress(fb.newState).total}
               </p>
               <div className="mt-1 flex items-center gap-1">
                 {[1, 2, 3].map((step) => (

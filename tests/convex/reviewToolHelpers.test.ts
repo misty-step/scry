@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type { Id } from '@/convex/_generated/dataModel';
 import {
+  assertUserAnswerLength,
   buildSubmitAnswerPayload,
   formatDueResult,
   gradeAnswer,
+  MAX_USER_ANSWER_LENGTH,
 } from '@/convex/agents/reviewToolHelpers';
 
 describe('reviewToolHelpers', () => {
+  describe('assertUserAnswerLength', () => {
+    it('accepts answers at the max length boundary', () => {
+      expect(() => assertUserAnswerLength('a'.repeat(MAX_USER_ANSWER_LENGTH))).not.toThrow();
+    });
+
+    it('rejects answers above the max length', () => {
+      expect(() => assertUserAnswerLength('a'.repeat(MAX_USER_ANSWER_LENGTH + 1))).toThrow(
+        `Answer too long (max ${MAX_USER_ANSWER_LENGTH} characters)`
+      );
+    });
+  });
+
   describe('gradeAnswer', () => {
     it('matches answers case-insensitively with trimmed whitespace', () => {
       expect(gradeAnswer('  Paris ', 'paris')).toBe(true);

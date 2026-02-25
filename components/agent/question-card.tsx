@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Zap } from 'lucide-react';
+import { formatReviewStageLabel } from '@/lib/review-stage';
 import { cn } from '@/lib/utils';
 
 interface QuestionData {
@@ -44,14 +45,7 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
       : `Stability ~${Math.round(q.stability)} day${Math.round(q.stability) === 1 ? '' : 's'} (90% recall)`
     : null;
 
-  const stageLabel =
-    q.fsrsState === 'relearning'
-      ? 'Relearning'
-      : q.fsrsState === 'learning'
-        ? 'Learning'
-        : q.fsrsState === 'review'
-          ? 'Review'
-          : 'New';
+  const stageLabel = formatReviewStageLabel(q.fsrsState);
 
   return (
     <div className="max-w-4xl">

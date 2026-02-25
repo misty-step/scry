@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
+import { formatReviewStageLabel } from '@/lib/review-stage';
 import { cn } from '@/lib/utils';
 import { FeedbackCard } from './feedback-card';
 import { MessageBubble } from './message-bubble';
@@ -57,8 +58,20 @@ const SUGGESTION_CHIPS: SuggestionChip[] = [
   { id: 'reschedule', label: 'Reschedule', intent: 'action', needsConceptContext: true },
 ];
 
+interface ReviewFeedbackData extends Record<string, unknown> {
+  conceptId?: Id<'concepts'>;
+  conceptTitle?: string;
+  isCorrect?: boolean;
+  correctAnswer?: string;
+  userAnswer?: string;
+  nextReview?: number;
+  scheduledDays?: number;
+  lapses?: number;
+  reps?: number;
+}
+
 interface ReviewFeedbackState {
-  data: Record<string, unknown>;
+  data: ReviewFeedbackData;
   questionText: string | null;
 }
 
@@ -113,6 +126,25 @@ interface RescheduleTarget {
 interface ActionReplyState {
   title: string;
   body: string;
+}
+
+interface RescheduleMutationResult {
+  conceptId?: Id<'concepts'>;
+  conceptTitle?: string;
+  nextReview?: number;
+  scheduledDays?: number;
+}
+
+interface WeakAreasMutationResult {
+  generatedAt?: number;
+  itemCount?: number;
+  items?: Array<{
+    title?: string;
+    state?: string;
+    lapses?: number;
+    reps?: number;
+    dueNow?: boolean;
+  }>;
 }
 
 type ArtifactEntry =
@@ -257,13 +289,9 @@ export function ReviewChat() {
       const allowRescheduleIntent = options?.allowRescheduleIntent ?? true;
       const intent = options?.intent ?? 'general';
       const requestedDays = allowRescheduleIntent ? parseRescheduleIntent(trimmed) : null;
-      const currentConceptId =
-        (activeQuestion?.conceptId as Id<'concepts'> | undefined) ??
-        (latestFeedback?.data.conceptId as Id<'concepts'> | undefined);
+      const currentConceptId = activeQuestion?.conceptId ?? latestFeedback?.data.conceptId;
       const currentConceptTitle =
-        (activeQuestion?.conceptTitle as string | undefined) ??
-        (latestFeedback?.data.conceptTitle as string | undefined) ??
-        'this concept';
+        activeQuestion?.conceptTitle ?? latestFeedback?.data.conceptTitle ?? 'this concept';
 
       if (requestedDays && currentConceptId) {
         setInput('');
@@ -308,7 +336,7 @@ export function ReviewChat() {
       setRescheduleTarget(null);
       setIsSubmittingAnswer(true);
       try {
-        const result = await submitAnswerDirect({
+        const result: ReviewFeedbackData = await submitAnswerDirect({
           threadId,
           conceptId: questionSnapshot.conceptId,
           phrasingId: questionSnapshot.phrasingId,
@@ -321,12 +349,12 @@ export function ReviewChat() {
           reps: questionSnapshot.reps ?? 0,
         });
         const feedbackEntry: ReviewFeedbackState = {
-          data: result as Record<string, unknown>,
+          data: result,
           questionText: questionSnapshot.question ?? null,
         };
         setLatestFeedback(feedbackEntry);
         appendArtifact({
-          id: `feedback:${String(questionSnapshot.conceptId ?? '')}:${String((result as Record<string, unknown>).reps ?? '')}:${Date.now()}`,
+          id: `feedback:${String(questionSnapshot.conceptId ?? '')}:${String(result.reps ?? '')}:${Date.now()}`,
           createdAt: Date.now(),
           type: 'feedback',
           data: feedbackEntry,
@@ -353,45 +381,46 @@ export function ReviewChat() {
       const normalizedDays = Math.max(1, Math.min(30, Math.round(days)));
       setActiveChipAction('reschedule');
       try {
-        const result = await rescheduleConceptDirect({
+        const result: RescheduleMutationResult = await rescheduleConceptDirect({
           threadId,
           conceptId: target.conceptId,
           days: normalizedDays,
         });
+        const nextReview = result.nextReview ?? Date.now();
+        const scheduledDays = result.scheduledDays ?? normalizedDays;
+        const conceptTitle = result.conceptTitle ?? target.conceptTitle;
+
         appendArtifact({
-          id: `action:rescheduled:${String(result.conceptId ?? target.conceptId)}:${String(result.nextReview ?? Date.now())}`,
+          id: `action:rescheduled:${String(result.conceptId ?? target.conceptId)}:${String(nextReview)}`,
           createdAt: Date.now(),
           type: 'action',
           data: {
             type: 'rescheduled',
-            conceptTitle: (result.conceptTitle as string) ?? target.conceptTitle,
-            nextReview: (result.nextReview as number) ?? Date.now(),
-            scheduledDays: (result.scheduledDays as number) ?? normalizedDays,
+            conceptTitle,
+            nextReview,
+            scheduledDays,
           },
         });
         setActionReply({
           title: 'Rescheduled',
-          body: `${(result.conceptTitle as string) ?? target.conceptTitle} moved by ${(result.scheduledDays as number) ?? normalizedDays} day${((result.scheduledDays as number) ?? normalizedDays) === 1 ? '' : 's'}.`,
+          body: `${conceptTitle} moved by ${scheduledDays} day${scheduledDays === 1 ? '' : 's'}.`,
         });
         setLatestFeedback((prev) => {
           if (!prev) return prev;
-          if ((prev.data.conceptId as string | undefined) !== (target.conceptId as string)) {
+          if (String(prev.data.conceptId ?? '') !== String(target.conceptId)) {
             return prev;
           }
           return {
             ...prev,
             data: {
               ...prev.data,
-              scheduledDays: (result.scheduledDays as number) ?? prev.data.scheduledDays,
-              nextReview: (result.nextReview as number) ?? prev.data.nextReview,
+              scheduledDays: scheduledDays ?? prev.data.scheduledDays,
+              nextReview: nextReview ?? prev.data.nextReview,
             },
           };
         });
         setRescheduleTarget(null);
-        if (
-          activeQuestion &&
-          (activeQuestion.conceptId as string | undefined) === (target.conceptId as string)
-        ) {
+        if (activeQuestion && String(activeQuestion.conceptId) === String(target.conceptId)) {
           await loadNextQuestion(threadId);
         }
       } catch (error) {
@@ -425,18 +454,12 @@ export function ReviewChat() {
 
   const buildSuggestionPrompt = useCallback(
     (text: string) => {
-      const conceptTitle =
-        (activeQuestion?.conceptTitle as string | undefined) ??
-        (latestFeedback?.data.conceptTitle as string | undefined);
-      const correctAnswer = latestFeedback?.data.correctAnswer as string | undefined;
-      const userAnswer = latestFeedback?.data.userAnswer as string | undefined;
-      const isCorrect = latestFeedback?.data.isCorrect as boolean | undefined;
-      const reps =
-        (activeQuestion?.reps as number | undefined) ??
-        (latestFeedback?.data.reps as number | undefined);
-      const lapses =
-        (activeQuestion?.lapses as number | undefined) ??
-        (latestFeedback?.data.lapses as number | undefined);
+      const conceptTitle = activeQuestion?.conceptTitle ?? latestFeedback?.data.conceptTitle;
+      const correctAnswer = latestFeedback?.data.correctAnswer;
+      const userAnswer = latestFeedback?.data.userAnswer;
+      const isCorrect = latestFeedback?.data.isCorrect;
+      const reps = activeQuestion?.reps ?? latestFeedback?.data.reps;
+      const lapses = activeQuestion?.lapses ?? latestFeedback?.data.lapses;
       const contextBits = [
         conceptTitle ? `concept=${conceptTitle}` : null,
         userAnswer ? `my_answer=${userAnswer}` : null,
@@ -471,33 +494,33 @@ export function ReviewChat() {
       if (chip.id === 'weak-areas') {
         setActiveChipAction(chip.id);
         try {
-          const result = await getWeakAreasDirect({ threadId, limit: 5 });
+          const result: WeakAreasMutationResult = await getWeakAreasDirect({ threadId, limit: 5 });
+          const generatedAt = result.generatedAt ?? Date.now();
+          const itemCount = result.itemCount ?? 0;
+          const items = (result.items ?? []).map((item) => ({
+            title: item.title ?? 'Untitled',
+            state: item.state ?? 'new',
+            lapses: item.lapses ?? 0,
+            reps: item.reps ?? 0,
+            dueNow: Boolean(item.dueNow),
+          }));
+
           appendArtifact({
-            id: `action:weak-areas:${String((result.generatedAt as number) ?? Date.now())}`,
+            id: `action:weak-areas:${String(generatedAt)}`,
             createdAt: Date.now(),
             type: 'action',
             data: {
               type: 'weak-areas',
-              generatedAt: (result.generatedAt as number) ?? Date.now(),
-              itemCount: (result.itemCount as number) ?? 0,
-              items:
-                ((result.items as Array<Record<string, unknown>> | undefined) ?? []).map(
-                  (item) => ({
-                    title: (item.title as string) ?? 'Untitled',
-                    state: (item.state as string) ?? 'new',
-                    lapses: (item.lapses as number) ?? 0,
-                    reps: (item.reps as number) ?? 0,
-                    dueNow: Boolean(item.dueNow),
-                  })
-                ) ?? [],
+              generatedAt,
+              itemCount,
+              items,
             },
           });
-          const count = (result.itemCount as number) ?? 0;
           setActionReply({
             title: 'Weak areas ready',
             body:
-              count > 0
-                ? `I ranked ${count} concepts by lapses and difficulty.`
+              itemCount > 0
+                ? `I ranked ${itemCount} concepts by lapses and difficulty.`
                 : 'No major weak areas right now. You are in good shape.',
           });
         } catch (error) {
@@ -512,13 +535,9 @@ export function ReviewChat() {
       }
 
       if (chip.id === 'reschedule') {
-        const conceptId =
-          (activeQuestion?.conceptId as Id<'concepts'> | undefined) ??
-          (latestFeedback?.data.conceptId as Id<'concepts'> | undefined);
+        const conceptId = activeQuestion?.conceptId ?? latestFeedback?.data.conceptId;
         const conceptTitle =
-          (activeQuestion?.conceptTitle as string | undefined) ??
-          (latestFeedback?.data.conceptTitle as string | undefined) ??
-          'this concept';
+          activeQuestion?.conceptTitle ?? latestFeedback?.data.conceptTitle ?? 'this concept';
 
         if (!conceptId) {
           appendArtifact({
@@ -998,13 +1017,6 @@ function formatActionDate(value: number) {
   });
 }
 
-function formatStageLabel(state: string) {
-  if (state === 'relearning') return 'Relearning';
-  if (state === 'learning') return 'Learning';
-  if (state === 'review') return 'Review';
-  return 'New';
-}
-
 function ActionPanelCard({ data, className }: { data: ActionPanelState; className?: string }) {
   if (data.type === 'notice') {
     return (
@@ -1069,7 +1081,7 @@ function ActionPanelCard({ data, className }: { data: ActionPanelState; classNam
             <div>
               <p className="text-sm font-medium">{item.title}</p>
               <p className="text-xs text-muted-foreground">
-                {formatStageLabel(item.state)} · {item.lapses} lapses · {item.reps} reviews
+                {formatReviewStageLabel(item.state)} · {item.lapses} lapses · {item.reps} reviews
               </p>
             </div>
             {item.dueNow && (

@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { initializeProvider } from '../lib/aiProviders';
-import { buildSubmitAnswerPayload, formatDueResult, gradeAnswer } from './reviewToolHelpers';
+import {
+  assertUserAnswerLength,
+  buildSubmitAnswerPayload,
+  formatDueResult,
+  gradeAnswer,
+} from './reviewToolHelpers';
 
 const DEFAULT_MODEL = 'google/gemini-3-flash';
 
@@ -48,6 +53,8 @@ const submitAnswer = createTool({
     reps: z.number().optional().describe('Rep count from fetchDueConcept'),
   }),
   handler: async (ctx, args): Promise<Record<string, unknown>> => {
+    assertUserAnswerLength(args.userAnswer);
+
     // Fetch correct answer server-side — never trust client-supplied value
     const phrasing = await ctx.runQuery(internal.phrasings.getPhrasingInternal, {
       userId: ctx.userId as Id<'users'>,
@@ -120,5 +127,5 @@ export const reviewAgent = new Agent(components.agent, {
 - Do not call fetchDueConcept or submitAnswer unless the user explicitly asks to run quiz actions through chat.
 - Avoid repeating obvious UI labels; focus on meaning and memory cues.`,
   tools: { fetchDueConcept, submitAnswer, getSessionStats },
-  maxSteps: 30,
+  maxSteps: 15,
 });
