@@ -43,8 +43,8 @@ describe('reviewToolHelpers', () => {
     });
 
     it('handles blank and partial-answer edge cases deterministically', () => {
-      expect(gradeAnswer('', '')).toBe(true);
-      expect(gradeAnswer('   ', '')).toBe(true);
+      expect(gradeAnswer('', '')).toBe(false);
+      expect(gradeAnswer('   ', '')).toBe(false);
       expect(gradeAnswer('Paris, France', 'Paris')).toBe(false);
       expect(gradeAnswer('Naïve', 'naive')).toBe(false);
     });

@@ -21,7 +21,10 @@ export function assertChatPromptLength(prompt: string) {
 
 export function gradeAnswer(userAnswer: string, correctAnswer: string) {
   // Exact-match grading is intentional for deterministic multiple-choice flows.
-  return normalizeAnswer(userAnswer) === normalizeAnswer(correctAnswer);
+  // Empty/malformed correct answers are always treated as incorrect for safety.
+  const normalizedCorrect = normalizeAnswer(correctAnswer);
+  if (!normalizedCorrect) return false;
+  return normalizeAnswer(userAnswer) === normalizedCorrect;
 }
 
 export function formatDueResult(
