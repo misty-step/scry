@@ -15,6 +15,7 @@ import { calculateConceptStatsDelta } from '../lib/conceptFsrsHelpers';
 import { updateStatsCounters } from '../lib/userStatsHelpers';
 import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
+import { buildSubmitAnswerPayload, formatDueResult } from './reviewToolHelpers';
 
 const CHAT_INTENT_VALUES = ['general', 'explain', 'stats'] as const;
 type ChatIntent = (typeof CHAT_INTENT_VALUES)[number];
@@ -23,50 +24,6 @@ const CHAT_INTENT_VALIDATOR = v.union(
   v.literal('explain'),
   v.literal('stats')
 );
-
-function formatDueResult(result: Record<string, unknown> | null): Record<string, unknown> | null {
-  if (!result) return null;
-  const typed = result as {
-    concept: {
-      _id: Id<'concepts'>;
-      title: string;
-      description?: string;
-      fsrs: {
-        state?: string;
-        stability?: number;
-        difficulty?: number;
-        lapses?: number;
-        reps?: number;
-      };
-    };
-    phrasing: {
-      _id: Id<'phrasings'>;
-      question: string;
-      type?: string;
-      options?: string[];
-    };
-    retrievability?: number;
-    interactions: Array<{ isCorrect: boolean }>;
-  };
-
-  return {
-    conceptId: typed.concept._id,
-    conceptTitle: typed.concept.title,
-    conceptDescription: typed.concept.description ?? '',
-    fsrsState: typed.concept.fsrs.state ?? 'new',
-    stability: typed.concept.fsrs.stability,
-    difficulty: typed.concept.fsrs.difficulty,
-    lapses: typed.concept.fsrs.lapses ?? 0,
-    reps: typed.concept.fsrs.reps ?? 0,
-    retrievability: typed.retrievability,
-    phrasingId: typed.phrasing._id,
-    question: typed.phrasing.question,
-    type: typed.phrasing.type ?? 'multiple-choice',
-    options: typed.phrasing.options ?? [],
-    recentAttempts: typed.interactions.length,
-    recentCorrect: typed.interactions.filter((i) => i.isCorrect).length,
-  };
-}
 
 function getStatePriority(state?: string) {
   if (state === 'relearning') return 4;
@@ -135,22 +92,24 @@ export const submitAnswerDirect = mutation({
       isCorrect,
     });
 
-    return {
-      conceptId: args.conceptId,
-      isCorrect,
+    return buildSubmitAnswerPayload({
+      result: result as {
+        conceptId?: Id<'concepts'>;
+        nextReview: number;
+        scheduledDays: number;
+        newState: string;
+        totalAttempts: number;
+        totalCorrect: number;
+        lapses: number;
+        reps: number;
+      },
       userAnswer: args.userAnswer,
       correctAnswer,
+      isCorrect,
       explanation: phrasing.explanation ?? '',
-      conceptTitle: args.conceptTitle ?? '',
-      conceptDescription: args.conceptDescription ?? '',
-      nextReview: result.nextReview,
-      scheduledDays: result.scheduledDays,
-      newState: result.newState,
-      totalAttempts: (args.recentAttempts ?? 0) + 1,
-      totalCorrect: (args.recentCorrect ?? 0) + (isCorrect ? 1 : 0),
-      lapses: args.lapses ?? 0,
-      reps: (args.reps ?? 0) + 1,
-    };
+      conceptTitle: args.conceptTitle,
+      conceptDescription: args.conceptDescription,
+    });
   },
 });
 

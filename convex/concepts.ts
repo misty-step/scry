@@ -266,22 +266,12 @@ export const getDueInternal = internalQuery({
 });
 
 async function getConceptsDueCountHandler(ctx: QueryCtx, userId: Id<'users'>) {
-  const nowMs = Date.now();
+  const stats = await ctx.db
+    .query('userStats')
+    .withIndex('by_user', (q) => q.eq('userId', userId))
+    .first();
 
-  // Count due concepts with phrasings (DB-level filtering)
-  const dueConcepts = await ctx.db
-    .query('concepts')
-    .withIndex('by_user_next_review', (q) =>
-      q
-        .eq('userId', userId)
-        .eq('deletedAt', undefined)
-        .eq('archivedAt', undefined)
-        .lte('fsrs.nextReview', nowMs)
-    )
-    .filter((q) => q.gt(q.field('phrasingCount'), 0))
-    .take(1000); // Safety limit for large collections
-
-  return { conceptsDue: dueConcepts.length };
+  return { conceptsDue: stats?.dueNowCount ?? 0 };
 }
 
 export const getConceptsDueCount = query({
@@ -408,6 +398,10 @@ async function recordInteractionHandler(
     nextReview: scheduleResult.nextReview,
     scheduledDays: scheduleResult.scheduledDays,
     newState: scheduleResult.state,
+    totalAttempts: (phrasing.attemptCount ?? 0) + 1,
+    totalCorrect: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
+    lapses: scheduleResult.fsrs.lapses ?? 0,
+    reps: scheduleResult.fsrs.reps ?? 0,
   };
 }
 

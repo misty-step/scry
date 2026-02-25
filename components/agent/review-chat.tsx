@@ -1257,37 +1257,20 @@ const HEATMAP_LEVELS = [
 function generateHeatmapCells() {
   const WEEKS = 28;
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  let seed = 42;
-  const rand = () => {
-    seed = (seed * 16807) % 2147483647;
-    return seed / 2147483647;
-  };
+  const jsDay = new Date().getDay();
+  const todayIndex = jsDay === 0 ? 6 : jsDay - 1; // Convert Sunday-first to Monday-first index
 
   const cells: { level: number; isToday: boolean; tip: string }[] = [];
   for (let w = 0; w < WEEKS; w++) {
     for (let d = 0; d < 7; d++) {
-      const progress = w / WEEKS;
-      const isWeekend = d >= 5;
-      const r = rand();
-      let lvl = 0;
-      const threshold = progress * (isWeekend ? 0.6 : 1);
-      if (r < threshold * 0.7) lvl = 1;
-      if (r < threshold * 0.5) lvl = 2;
-      if (r < threshold * 0.3) lvl = 3;
-      if (r < threshold * 0.15) lvl = 4;
-
-      if (w === WEEKS - 1 && d === 3) {
-        cells.push({ level: 0, isToday: true, tip: 'Today' });
-      } else {
-        const counts = [0, 6, 16, 30, 42];
-        const jitter = Math.round((rand() - 0.5) * 6);
-        const count = Math.max(0, counts[lvl] + jitter);
-        cells.push({
-          level: lvl,
-          isToday: false,
-          tip: `${dayNames[d]} · ${count} ${count === 1 ? 'card' : 'cards'}`,
-        });
-      }
+      const isToday = w === WEEKS - 1 && d === todayIndex;
+      cells.push({
+        level: 0,
+        isToday,
+        tip: isToday
+          ? 'Today · Activity history coming soon'
+          : `${dayNames[d]} · Activity history coming soon`,
+      });
     }
   }
   return cells;
@@ -1350,7 +1333,7 @@ function ReviewStatsPanel({ count }: { count: number }) {
       <div className="relative border-t border-white/[0.12] pt-3">
         <div className="mb-2 flex items-baseline justify-between">
           <span className="font-mono text-[0.5625rem] uppercase tracking-[0.06em] opacity-60">
-            Activity
+            Activity (preview)
           </span>
           <span className="font-mono text-[0.6875rem] font-medium">{streak}d streak</span>
         </div>
@@ -1383,16 +1366,11 @@ function ReviewStatsPanel({ count }: { count: number }) {
           </div>
         </div>
 
-        {/* Footer: weeks label + legend */}
         <div className="mt-1.5 flex items-center justify-between">
           <span className="font-mono text-[0.5rem] opacity-[0.35]">28 weeks</span>
-          <div className="flex items-center gap-1">
-            <span className="font-mono text-[0.5625rem] opacity-[0.45]">Less</span>
-            {HEATMAP_LEVELS.map((bg, i) => (
-              <div key={i} className={cn('h-[11px] w-[11px] rounded-sm', bg)} />
-            ))}
-            <span className="font-mono text-[0.5625rem] opacity-[0.45]">More</span>
-          </div>
+          <span className="font-mono text-[0.5rem] opacity-[0.45]">
+            Daily activity integration pending
+          </span>
         </div>
       </div>
     </div>

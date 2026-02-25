@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { initializeProvider } from '../lib/aiProviders';
+import { buildSubmitAnswerPayload, formatDueResult } from './reviewToolHelpers';
 
 const DEFAULT_MODEL = 'google/gemini-3-flash';
 
@@ -29,24 +30,7 @@ const fetchDueConcept = createTool({
     const result = await ctx.runQuery(internal.concepts.getDueInternal, {
       userId: ctx.userId as Id<'users'>,
     });
-    if (!result) return null;
-    return {
-      conceptId: result.concept._id,
-      conceptTitle: result.concept.title,
-      conceptDescription: result.concept.description ?? '',
-      fsrsState: result.concept.fsrs.state ?? 'new',
-      stability: result.concept.fsrs.stability,
-      difficulty: result.concept.fsrs.difficulty,
-      lapses: result.concept.fsrs.lapses ?? 0,
-      reps: result.concept.fsrs.reps ?? 0,
-      retrievability: result.retrievability,
-      phrasingId: result.phrasing._id,
-      question: result.phrasing.question,
-      type: result.phrasing.type ?? 'multiple-choice',
-      options: result.phrasing.options ?? [],
-      recentAttempts: result.interactions.length,
-      recentCorrect: result.interactions.filter((i: { isCorrect: boolean }) => i.isCorrect).length,
-    };
+    return formatDueResult(result as unknown as Record<string, unknown> | null);
   },
 });
 
@@ -82,20 +66,23 @@ const submitAnswer = createTool({
       isCorrect,
     });
 
-    return {
-      isCorrect,
+    return buildSubmitAnswerPayload({
+      result: result as {
+        conceptId?: Id<'concepts'>;
+        nextReview: number;
+        scheduledDays: number;
+        newState: string;
+        totalAttempts: number;
+        totalCorrect: number;
+        lapses: number;
+        reps: number;
+      },
       userAnswer: args.userAnswer,
       correctAnswer,
+      isCorrect,
       explanation: phrasing.explanation ?? '',
-      conceptTitle: args.conceptTitle ?? '',
-      nextReview: result.nextReview,
-      scheduledDays: result.scheduledDays,
-      newState: result.newState,
-      totalAttempts: (args.recentAttempts ?? 0) + 1,
-      totalCorrect: (args.recentCorrect ?? 0) + (isCorrect ? 1 : 0),
-      lapses: args.lapses ?? 0,
-      reps: (args.reps ?? 0) + 1,
-    };
+      conceptTitle: args.conceptTitle,
+    });
   },
 });
 
