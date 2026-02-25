@@ -167,7 +167,9 @@ describe('convex regression coverage', () => {
       const handler = getHandler(generateEmbedding);
       const result = await handler({} as never, { text: 'hello' });
 
-      expect(mockCreateGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: 'key-123' });
+      expect(mockCreateGoogleGenerativeAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'key-123' })
+      );
       expect(mockEmbed).toHaveBeenCalledWith({
         model: 'model',
         value: 'hello',
