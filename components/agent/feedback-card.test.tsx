@@ -23,7 +23,7 @@ describe('FeedbackCard', () => {
     expect(screen.getByText('Answer Breakdown')).toBeInTheDocument();
     expect(screen.getByRole('list')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    expect(screen.getByText('Learning stage')).toBeInTheDocument();
+    expect(screen.getByText('Stage')).toBeInTheDocument();
     expect(screen.getByText('Reviews')).toBeInTheDocument();
     const strongText = screen.getByText('Mars', { selector: 'strong' });
     const codeText = screen.getByText('mnemonic', { selector: 'code' });
