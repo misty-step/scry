@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { KeyboardIndicator } from '@/components/keyboard-indicator';
 import { KeyboardShortcutsHelp } from '@/components/keyboard-shortcuts-help';
@@ -8,13 +9,16 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 export function Footer() {
   const { isSignedIn } = useUser();
+  const pathname = usePathname();
   const [showHelp, setShowHelp] = useState(false);
   const { shortcuts } = useKeyboardShortcuts([], true);
+
+  if (pathname.startsWith('/agent')) return null;
 
   return (
     <>
       <footer className="mt-auto bg-background/80 backdrop-blur-sm">
-        <div className="w-full px-4 md:px-8 py-4">
+        <div className="mx-auto w-full max-w-7xl px-4 py-4 md:px-8">
           <div className="flex items-center justify-between gap-4">
             <a
               href="https://mistystep.io"

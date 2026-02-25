@@ -29,6 +29,11 @@ const nextConfig: NextConfig = {
   // Exclude Node.js-only packages from bundling (pino's thread-stream includes test files)
   serverExternalPackages: ['pino', 'thread-stream', 'pino-pretty'],
 
+  // Clerk user avatars are served from img.clerk.com.
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: 'img.clerk.com' }],
+  },
+
   // Enable static asset optimization
   experimental: {
     // Optimize static imports and assets for better tree-shaking

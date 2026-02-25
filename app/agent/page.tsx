@@ -7,7 +7,9 @@ export default function AgentPage() {
   return (
     <>
       <Authenticated>
-        <ReviewChat />
+        <div className="h-[calc(100dvh-var(--navbar-height))] overflow-hidden">
+          <ReviewChat />
+        </div>
       </Authenticated>
       <Unauthenticated>
         <div className="flex min-h-[60vh] items-center justify-center">

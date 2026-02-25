@@ -40,4 +40,42 @@ test.describe('Agent Review Route', () => {
     const breadcrumb = page.getByText('/ Review');
     await expect(breadcrumb).toHaveCount(0);
   });
+
+  test('agent chips use deterministic actions and removed legacy labels @smoke', async ({
+    page,
+  }) => {
+    await page.goto('/agent');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Discuss this topic')).toHaveCount(0);
+    await expect(page.getByText('Scry Agent')).toHaveCount(0);
+    await expect(page.getByText('Online')).toHaveCount(0);
+
+    const beginSessionButton = page.getByRole('button', { name: /Begin Session/i });
+    const canStart =
+      (await beginSessionButton.isVisible({ timeout: 1500 }).catch(() => false)) &&
+      (await beginSessionButton.isEnabled().catch(() => false));
+
+    if (!canStart) return;
+
+    await beginSessionButton.click();
+    await page.waitForTimeout(1200);
+
+    const rescheduleChip = page.getByRole('button', { name: 'Reschedule' });
+    if (!(await rescheduleChip.isVisible({ timeout: 1500 }).catch(() => false))) return;
+
+    await rescheduleChip.click();
+    await page.waitForTimeout(1200);
+
+    const chooseInterval = page.getByText('Choose a new interval');
+    const plusSevenDays = page.getByRole('button', { name: '+7 days' });
+    const scheduleUpdated = page.getByText('Schedule updated');
+    const noConceptSelected = page.getByText('No concept selected');
+    const hasChooser = await chooseInterval.isVisible({ timeout: 1200 }).catch(() => false);
+    const hasPlusSevenDays = await plusSevenDays.isVisible({ timeout: 1200 }).catch(() => false);
+    const hasScheduleCard = await scheduleUpdated.isVisible({ timeout: 1200 }).catch(() => false);
+    const hasNotice = await noConceptSelected.isVisible({ timeout: 1200 }).catch(() => false);
+
+    expect(hasChooser || hasPlusSevenDays || hasScheduleCard || hasNotice).toBeTruthy();
+  });
 });

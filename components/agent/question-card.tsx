@@ -40,17 +40,26 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
 
   const intervalText = q.stability
     ? q.stability < 1
-      ? '<1d'
-      : `${Math.round(q.stability)}d`
+      ? 'Due later today'
+      : `Due in ${Math.round(q.stability)} day${Math.round(q.stability) === 1 ? '' : 's'}`
     : null;
 
+  const stageLabel =
+    q.fsrsState === 'relearning'
+      ? 'Relearning'
+      : q.fsrsState === 'learning'
+        ? 'Learning'
+        : q.fsrsState === 'review'
+          ? 'Review'
+          : 'New';
+
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       {/* Progress / meta row */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="bg-muted px-2.5 py-1 font-mono text-xs text-muted-foreground">
-            {q.fsrsState ?? 'new'}
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+            {stageLabel}
           </span>
           {q.conceptTitle && (
             <span className="text-sm text-muted-foreground">{q.conceptTitle}</span>
@@ -59,33 +68,28 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
         {intervalText && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Zap className="h-4 w-4" />
-            <span className="font-mono text-xs">Interval: {intervalText}</span>
+            <span className="text-xs">{intervalText}</span>
           </div>
         )}
       </div>
 
       {/* Question card */}
-      <div className="border border-border bg-background shadow-sm">
-        <div className="border-b border-border p-4 md:p-10">
-          <p className="mb-4 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            Question
-          </p>
+      <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+        <div className="border-b border-border p-4 md:p-8">
+          <p className="mb-4 text-xs font-medium text-muted-foreground">Question</p>
           <h3 className="font-serif text-xl md:text-4xl leading-[1.15] tracking-tight text-foreground">
             {q.question}
           </h3>
-          <p className="mt-4 text-sm italic text-muted-foreground">
-            Select the best answer from the options below.
-          </p>
         </div>
 
-        <div className="space-y-3 p-4 md:p-6">
+        <div className="space-y-2 bg-secondary/35 p-3 md:space-y-2.5 md:p-4">
           {q.options?.map((opt, i) => (
             <button
               key={i}
               onClick={() => handleClick(opt)}
               disabled={isDisabled}
               className={cn(
-                'group w-full border p-3 md:p-5 text-left',
+                'group w-full rounded-xl border bg-background p-2.5 text-left md:p-3.5',
                 !isDisabled && 'border-border hover:border-primary hover:bg-primary/5',
                 selected === opt && 'border-primary bg-primary/10 font-medium',
                 isDisabled && selected !== opt && 'border-muted text-muted-foreground opacity-60'
@@ -94,7 +98,7 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
               <div className="flex items-start gap-4">
                 <span
                   className={cn(
-                    'flex h-8 w-8 shrink-0 items-center justify-center font-mono text-sm font-medium',
+                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold',
                     !isDisabled &&
                       'bg-muted text-muted-foreground group-hover:bg-background group-hover:text-primary',
                     selected === opt && 'bg-primary text-primary-foreground',
@@ -103,7 +107,7 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
                 >
                   {LETTERS[i] ?? i + 1}
                 </span>
-                <p className="flex-1 text-foreground">{opt}</p>
+                <p className="flex-1 pt-0.5 text-foreground">{opt}</p>
               </div>
             </button>
           ))}
