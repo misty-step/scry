@@ -455,7 +455,6 @@ export function ReviewChat() {
   const buildSuggestionPrompt = useCallback(
     (text: string) => {
       const conceptTitle = activeQuestion?.conceptTitle ?? latestFeedback?.data.conceptTitle;
-      const correctAnswer = latestFeedback?.data.correctAnswer;
       const userAnswer = latestFeedback?.data.userAnswer;
       const isCorrect = latestFeedback?.data.isCorrect;
       const reps = activeQuestion?.reps ?? latestFeedback?.data.reps;
@@ -463,7 +462,6 @@ export function ReviewChat() {
       const contextBits = [
         conceptTitle ? `concept=${conceptTitle}` : null,
         userAnswer ? `my_answer=${userAnswer}` : null,
-        correctAnswer ? `correct_answer=${correctAnswer}` : null,
         typeof isCorrect === 'boolean' ? `result=${isCorrect ? 'correct' : 'incorrect'}` : null,
         typeof reps === 'number' ? `reviews=${reps}` : null,
         typeof lapses === 'number' ? `lapses=${lapses}` : null,

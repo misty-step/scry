@@ -1,6 +1,7 @@
 import type { Id } from '../_generated/dataModel';
 
 export const MAX_USER_ANSWER_LENGTH = 500;
+export const MAX_CHAT_PROMPT_LENGTH = 2000;
 
 function normalizeAnswer(value: string) {
   return value.trim().toLowerCase();
@@ -9,6 +10,12 @@ function normalizeAnswer(value: string) {
 export function assertUserAnswerLength(userAnswer: string) {
   if (userAnswer.length > MAX_USER_ANSWER_LENGTH) {
     throw new Error(`Answer too long (max ${MAX_USER_ANSWER_LENGTH} characters)`);
+  }
+}
+
+export function assertChatPromptLength(prompt: string) {
+  if (prompt.length > MAX_CHAT_PROMPT_LENGTH) {
+    throw new Error(`Message too long (max ${MAX_CHAT_PROMPT_LENGTH} characters)`);
   }
 }
 

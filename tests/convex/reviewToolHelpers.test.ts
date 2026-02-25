@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Id } from '@/convex/_generated/dataModel';
 import {
+  assertChatPromptLength,
   assertUserAnswerLength,
   buildSubmitAnswerPayload,
   formatDueResult,
   gradeAnswer,
+  MAX_CHAT_PROMPT_LENGTH,
   MAX_USER_ANSWER_LENGTH,
 } from '@/convex/agents/reviewToolHelpers';
 
@@ -17,6 +19,18 @@ describe('reviewToolHelpers', () => {
     it('rejects answers above the max length', () => {
       expect(() => assertUserAnswerLength('a'.repeat(MAX_USER_ANSWER_LENGTH + 1))).toThrow(
         `Answer too long (max ${MAX_USER_ANSWER_LENGTH} characters)`
+      );
+    });
+  });
+
+  describe('assertChatPromptLength', () => {
+    it('accepts prompts at the max length boundary', () => {
+      expect(() => assertChatPromptLength('a'.repeat(MAX_CHAT_PROMPT_LENGTH))).not.toThrow();
+    });
+
+    it('rejects prompts above the max length', () => {
+      expect(() => assertChatPromptLength('a'.repeat(MAX_CHAT_PROMPT_LENGTH + 1))).toThrow(
+        `Message too long (max ${MAX_CHAT_PROMPT_LENGTH} characters)`
       );
     });
   });

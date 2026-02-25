@@ -16,6 +16,7 @@ import { updateStatsCounters } from '../lib/userStatsHelpers';
 import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
 import {
+  assertChatPromptLength,
   assertUserAnswerLength,
   buildSubmitAnswerPayload,
   formatDueResult,
@@ -149,7 +150,9 @@ export const getWeakAreasDirect = mutation({
       .withIndex('by_user_next_review', (q) =>
         q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
       )
-      .take(200); // Bounded candidate set for in-memory weak-area ranking
+      // Intentional due-first snapshot: bounded sample for low-latency ranking UI
+      // (not a full global weak-area scan across all concepts).
+      .take(200);
 
     const ranked = concepts
       .filter((concept) => concept.phrasingCount > 0)
@@ -159,6 +162,8 @@ export const getWeakAreasDirect = mutation({
         const state = concept.fsrs.state ?? 'new';
         const lapseRate = reps > 0 ? lapses / reps : 0;
         const dueSoonWeight = concept.fsrs.nextReview <= now ? 1.25 : 0;
+        // UI-only weak-area heuristic (ranking hints only). This does NOT change FSRS
+        // scheduling/interval calculations, which remain exclusively in recordInteractionInternal.
         const priority =
           lapses * 2.5 +
           lapseRate * 3 +
@@ -255,6 +260,7 @@ export const sendMessage = mutation({
   handler: async (ctx, { threadId, prompt, intent }) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
+    assertChatPromptLength(prompt);
     const thread = await getThreadMetadata(ctx, components.agent, { threadId });
     if (thread.userId !== user._id) throw new Error('Unauthorized');
     const { messageId } = await reviewAgent.saveMessage(ctx, {
