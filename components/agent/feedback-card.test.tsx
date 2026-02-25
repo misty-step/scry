@@ -31,6 +31,47 @@ describe('FeedbackCard', () => {
     expect(codeText.tagName).toBe('CODE');
   });
 
+  it('renders mixed paragraphs and lists from one explanation block', () => {
+    render(
+      <FeedbackCard
+        data={{
+          isCorrect: false,
+          userAnswer: 'Mercury',
+          correctAnswer: 'Mars',
+          explanation:
+            'Quick summary before the list:\n- First bullet\n- Second bullet\nFinal reminder line.',
+          scheduledDays: 2,
+          newState: 'learning',
+          reps: 2,
+        }}
+      />
+    );
+
+    expect(screen.getByText('Quick summary before the list:')).toBeInTheDocument();
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getByText('Final reminder line.')).toBeInTheDocument();
+  });
+
+  it('keeps markdown markers inside inline code and supports nested emphasis', () => {
+    render(
+      <FeedbackCard
+        data={{
+          isCorrect: true,
+          correctAnswer: 'Mars',
+          explanation: 'Use `**literal**` and **focus on *orbit* cues**.',
+          scheduledDays: 1,
+          newState: 'review',
+          reps: 8,
+        }}
+      />
+    );
+
+    const codeText = screen.getByText('**literal**', { selector: 'code' });
+    expect(codeText.tagName).toBe('CODE');
+    expect(screen.getByText(/focus on/i, { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('orbit', { selector: 'em' })).toBeInTheDocument();
+  });
+
   it('returns null for invalid payloads', () => {
     const { container } = render(
       <FeedbackCard data={null as unknown as Record<string, unknown>} />

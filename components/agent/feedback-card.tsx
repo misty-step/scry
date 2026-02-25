@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import { CalendarClock, CheckCircle2, Gauge, XCircle } from 'lucide-react';
 import { formatReviewStageLabel } from '@/lib/review-stage';
 
@@ -32,7 +33,7 @@ function formatRelativeNextReview(nextReview?: number, scheduledDays?: number): 
   } else if (typeof scheduledDays === 'number' && Number.isFinite(scheduledDays)) {
     ms = scheduledDays * 24 * 60 * 60 * 1000;
   }
-  if (ms == null) return '—';
+  if (ms === null) return '—';
   if (ms <= 0) return 'now';
   const minutes = Math.round(ms / 60000);
   if (minutes < 60) return `in ${minutes}m`;
@@ -50,24 +51,107 @@ function getStageProgress(state?: string): { index: number; total: number } {
   return { index: 1, total: 3 };
 }
 
+function splitInlineCodeSegments(text: string) {
+  const segments: Array<{ type: 'text' | 'code'; value: string }> = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const codeStart = text.indexOf('`', cursor);
+    if (codeStart === -1) {
+      segments.push({ type: 'text', value: text.slice(cursor) });
+      break;
+    }
+
+    if (codeStart > cursor) {
+      segments.push({ type: 'text', value: text.slice(cursor, codeStart) });
+    }
+
+    const codeEnd = text.indexOf('`', codeStart + 1);
+    if (codeEnd === -1) {
+      segments.push({ type: 'text', value: text.slice(codeStart) });
+      break;
+    }
+
+    segments.push({ type: 'code', value: text.slice(codeStart + 1, codeEnd) });
+    cursor = codeEnd + 1;
+  }
+
+  return segments;
+}
+
+function renderEmphasis(text: string, keyPrefix: string) {
+  const nodes: Array<string | ReactElement> = [];
+  let cursor = 0;
+  let key = 0;
+
+  const pushPlainText = (value: string) => {
+    if (!value) return;
+    nodes.push(value);
+  };
+
+  while (cursor < text.length) {
+    if (text.startsWith('**', cursor)) {
+      const end = text.indexOf('**', cursor + 2);
+      if (end !== -1) {
+        nodes.push(
+          <strong key={`${keyPrefix}-strong-${key++}`}>
+            {renderEmphasis(text.slice(cursor + 2, end), `${keyPrefix}-s${key}`)}
+          </strong>
+        );
+        cursor = end + 2;
+        continue;
+      }
+    }
+
+    if (text[cursor] === '*') {
+      const end = text.indexOf('*', cursor + 1);
+      if (end !== -1) {
+        nodes.push(
+          <em key={`${keyPrefix}-em-${key++}`}>
+            {renderEmphasis(text.slice(cursor + 1, end), `${keyPrefix}-e${key}`)}
+          </em>
+        );
+        cursor = end + 1;
+        continue;
+      }
+    }
+
+    const nextBold = text.indexOf('**', cursor);
+    const nextItalic = text.indexOf('*', cursor);
+    const nextTokenCandidates = [nextBold, nextItalic].filter((value) => value >= 0);
+    const nextToken =
+      nextTokenCandidates.length > 0 ? Math.min(...nextTokenCandidates) : text.length;
+
+    if (nextToken <= cursor) {
+      pushPlainText(text[cursor] ?? '');
+      cursor += 1;
+      continue;
+    }
+
+    pushPlainText(text.slice(cursor, nextToken));
+    cursor = nextToken;
+  }
+
+  return nodes;
+}
+
 function renderInlineMarkdown(text: string) {
-  const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
-  return tokens.map((token, i) => {
-    if (token.startsWith('`') && token.endsWith('`')) {
-      return (
-        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
-          {token.slice(1, -1)}
+  const nodes: Array<string | ReactElement> = [];
+
+  splitInlineCodeSegments(text).forEach((segment, index) => {
+    if (segment.type === 'code') {
+      nodes.push(
+        <code key={`code-${index}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
+          {segment.value}
         </code>
       );
+      return;
     }
-    if (token.startsWith('**') && token.endsWith('**')) {
-      return <strong key={i}>{token.slice(2, -2)}</strong>;
-    }
-    if (token.startsWith('*') && token.endsWith('*')) {
-      return <em key={i}>{token.slice(1, -1)}</em>;
-    }
-    return token;
+
+    nodes.push(...renderEmphasis(segment.value, `segment-${index}`));
   });
+
+  return nodes;
 }
 
 function renderExplanation(text: string) {
@@ -78,35 +162,83 @@ function renderExplanation(text: string) {
     .map((section) => section.trim())
     .filter(Boolean);
 
-  return sections.map((section, i) => {
-    const lines = section.split('\n').map((line) => line.trim());
-    const bulletLines = lines.filter((line) => /^[-*]\s+/.test(line));
-    const orderedLines = lines.filter((line) => /^\d+\.\s+/.test(line));
+  return sections.map((section, sectionIndex) => {
+    const lines = section
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    if (bulletLines.length === lines.length) {
-      return (
-        <ul key={i} className="ml-6 list-disc space-y-2">
-          {bulletLines.map((line, idx) => (
-            <li key={idx}>{renderInlineMarkdown(line.replace(/^[-*]\s+/, ''))}</li>
-          ))}
-        </ul>
-      );
-    }
+    const blocks: ReactElement[] = [];
+    let lineIndex = 0;
 
-    if (orderedLines.length === lines.length) {
-      return (
-        <ol key={i} className="ml-6 list-decimal space-y-2">
-          {orderedLines.map((line, idx) => (
-            <li key={idx}>{renderInlineMarkdown(line.replace(/^\d+\.\s+/, ''))}</li>
-          ))}
-        </ol>
-      );
+    while (lineIndex < lines.length) {
+      const line = lines[lineIndex] ?? '';
+      const bulletMatch = /^[-*]\s+(.+)$/.exec(line);
+      if (bulletMatch) {
+        const items: string[] = [];
+        while (lineIndex < lines.length) {
+          const current = lines[lineIndex] ?? '';
+          const match = /^[-*]\s+(.+)$/.exec(current);
+          if (!match) break;
+          items.push(match[1]);
+          lineIndex += 1;
+        }
+        blocks.push(
+          <ul key={`section-${sectionIndex}-ul-${lineIndex}`} className="ml-6 list-disc space-y-2">
+            {items.map((item, idx) => (
+              <li key={idx}>{renderInlineMarkdown(item)}</li>
+            ))}
+          </ul>
+        );
+        continue;
+      }
+
+      const orderedMatch = /^\d+\.\s+(.+)$/.exec(line);
+      if (orderedMatch) {
+        const items: string[] = [];
+        while (lineIndex < lines.length) {
+          const current = lines[lineIndex] ?? '';
+          const match = /^\d+\.\s+(.+)$/.exec(current);
+          if (!match) break;
+          items.push(match[1]);
+          lineIndex += 1;
+        }
+        blocks.push(
+          <ol
+            key={`section-${sectionIndex}-ol-${lineIndex}`}
+            className="ml-6 list-decimal space-y-2"
+          >
+            {items.map((item, idx) => (
+              <li key={idx}>{renderInlineMarkdown(item)}</li>
+            ))}
+          </ol>
+        );
+        continue;
+      }
+
+      const paragraphLines: string[] = [];
+      while (lineIndex < lines.length) {
+        const current = lines[lineIndex] ?? '';
+        if (/^[-*]\s+/.test(current) || /^\d+\.\s+/.test(current)) {
+          break;
+        }
+        paragraphLines.push(current);
+        lineIndex += 1;
+      }
+
+      if (paragraphLines.length > 0) {
+        blocks.push(
+          <p key={`section-${sectionIndex}-p-${lineIndex}`} className="whitespace-pre-wrap">
+            {renderInlineMarkdown(paragraphLines.join('\n'))}
+          </p>
+        );
+      }
     }
 
     return (
-      <p key={i} className="whitespace-pre-wrap">
-        {renderInlineMarkdown(section)}
-      </p>
+      <div key={`section-${sectionIndex}`} className="space-y-3">
+        {blocks}
+      </div>
     );
   });
 }

@@ -43,7 +43,9 @@ interface SendChatOptions {
   intent?: ChatIntent;
 }
 
+// Keep the viewport readable while preserving full thread history server-side.
 const MAX_VISIBLE_CHAT_MESSAGES = 10;
+// Bound local artifact memory for long-running sessions.
 const MAX_ARTIFACT_ENTRIES = 60;
 
 const SUGGESTION_CHIPS: SuggestionChip[] = [
@@ -105,6 +107,8 @@ interface PendingFeedbackState {
   questionText: string | null;
   conceptTitle: string | null;
   userAnswer: string;
+  status: 'submitting' | 'failed';
+  errorMessage?: string;
 }
 
 interface ActiveQuestionState extends Record<string, unknown> {
@@ -243,6 +247,12 @@ export function ReviewChat() {
         }
         setActiveQuestion(null);
         appendArtifact({ id: `complete:${Date.now()}`, createdAt: Date.now(), type: 'complete' });
+      } catch (error) {
+        setActionReply({
+          title: 'Could not load the next question',
+          body: error instanceof Error ? error.message : 'Try again in a moment.',
+        });
+        throw error;
       } finally {
         setIsFetchingQuestion(false);
       }
@@ -276,25 +286,25 @@ export function ReviewChat() {
       const currentConceptId = activeQuestion?.conceptId ?? latestFeedback?.data.conceptId;
       const currentConceptTitle =
         activeQuestion?.conceptTitle ?? latestFeedback?.data.conceptTitle ?? 'this concept';
-
-      if (requestedDays && currentConceptId) {
-        setInput('');
-        setRescheduleTarget({ conceptId: currentConceptId, conceptTitle: currentConceptTitle });
-        setActionReply({
-          title: 'Reschedule ready',
-          body: `Picked up your request. Choose an interval below to move ${currentConceptTitle}.`,
-        });
-        return;
-      }
+      const shouldOpenReschedulePanel = Boolean(requestedDays && currentConceptId);
 
       setInput('');
-      setActionReply(null);
+      if (!shouldOpenReschedulePanel) {
+        setActionReply(null);
+      }
       pendingChatBaselineRef.current = messageList.filter(
         (message: UIMessage) => message.role === 'assistant'
       ).length;
       setIsChatSendPending(true);
       try {
         await sendMessage({ threadId, prompt: trimmed, intent });
+        if (shouldOpenReschedulePanel && currentConceptId) {
+          setRescheduleTarget({ conceptId: currentConceptId, conceptTitle: currentConceptTitle });
+          setActionReply({
+            title: 'Reschedule ready',
+            body: `I sent your message and opened reschedule controls for ${currentConceptTitle}.`,
+          });
+        }
       } catch (error) {
         setIsChatSendPending(false);
         pendingChatBaselineRef.current = null;
@@ -315,6 +325,7 @@ export function ReviewChat() {
         questionText: questionSnapshot.question ?? null,
         conceptTitle: questionSnapshot.conceptTitle ?? null,
         userAnswer: text,
+        status: 'submitting',
       });
       setActiveQuestion(null);
       setRescheduleTarget(null);
@@ -345,11 +356,18 @@ export function ReviewChat() {
         });
         setPendingFeedback(null);
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Try again in a moment.';
         setActiveQuestion(questionSnapshot);
-        setPendingFeedback(null);
+        setPendingFeedback({
+          questionText: questionSnapshot.question ?? null,
+          conceptTitle: questionSnapshot.conceptTitle ?? null,
+          userAnswer: text,
+          status: 'failed',
+          errorMessage,
+        });
         setActionReply({
           title: 'Answer not submitted',
-          body: error instanceof Error ? error.message : 'Try again in a moment.',
+          body: `${errorMessage} You can retry with one click.`,
         });
       } finally {
         setIsSubmittingAnswer(false);
@@ -358,11 +376,24 @@ export function ReviewChat() {
     [threadId, activeQuestion, submitAnswerDirect, appendArtifact]
   );
 
+  const handleRetryPendingFeedback = useCallback(async () => {
+    if (!pendingFeedback) return;
+    if (!activeQuestion) {
+      setActionReply({
+        title: 'Retry unavailable',
+        body: 'Reload the next question, then retry your answer.',
+      });
+      return;
+    }
+    await handleAnswer(pendingFeedback.userAnswer);
+  }, [pendingFeedback, activeQuestion, handleAnswer]);
+
   const executeReschedule = useCallback(
     async (days: number) => {
       if (!threadId || !rescheduleTarget) return;
       const target = rescheduleTarget;
-      const normalizedDays = Math.max(1, Math.min(30, Math.round(days)));
+      const safeDays = Number.isFinite(days) ? days : 1;
+      const normalizedDays = Math.max(1, Math.min(30, Math.round(safeDays)));
       setActiveChipAction('reschedule');
       try {
         const result: RescheduleMutationResult = await rescheduleConceptDirect({
@@ -374,6 +405,20 @@ export function ReviewChat() {
         const scheduledDays = result.scheduledDays ?? normalizedDays;
         const conceptTitle = result.conceptTitle ?? target.conceptTitle;
 
+        setLatestFeedback((prev) => {
+          if (!prev) return prev;
+          if (String(prev.data.conceptId ?? '') !== String(target.conceptId)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              scheduledDays: scheduledDays ?? prev.data.scheduledDays,
+              nextReview: nextReview ?? prev.data.nextReview,
+            },
+          };
+        });
         appendArtifact({
           id: `action:rescheduled:${String(result.conceptId ?? target.conceptId)}:${String(nextReview)}`,
           createdAt: Date.now(),
@@ -389,23 +434,13 @@ export function ReviewChat() {
           title: 'Rescheduled',
           body: `${conceptTitle} moved by ${scheduledDays} day${scheduledDays === 1 ? '' : 's'}.`,
         });
-        setLatestFeedback((prev) => {
-          if (!prev) return prev;
-          if (String(prev.data.conceptId ?? '') !== String(target.conceptId)) {
-            return prev;
-          }
-          return {
-            ...prev,
-            data: {
-              ...prev.data,
-              scheduledDays: scheduledDays ?? prev.data.scheduledDays,
-              nextReview: nextReview ?? prev.data.nextReview,
-            },
-          };
-        });
         setRescheduleTarget(null);
         if (activeQuestion && String(activeQuestion.conceptId) === String(target.conceptId)) {
-          await loadNextQuestion(threadId);
+          try {
+            await loadNextQuestion(threadId);
+          } catch {
+            // loadNextQuestion already sets user-facing action feedback.
+          }
         }
       } catch (error) {
         setActionReply({
@@ -618,6 +653,7 @@ export function ReviewChat() {
       activeQuestion={activeQuestion}
       latestFeedback={latestFeedback}
       pendingFeedback={pendingFeedback}
+      onRetryPendingFeedback={handleRetryPendingFeedback}
       artifactFeed={artifactFeed}
       actionReply={actionReply}
       rescheduleTarget={rescheduleTarget}
@@ -637,7 +673,11 @@ export function ReviewChat() {
         setActionReply(null);
         setRescheduleTarget(null);
         setPendingFeedback(null);
-        await loadNextQuestion(threadId);
+        try {
+          await loadNextQuestion(threadId);
+        } catch {
+          // loadNextQuestion already sets user-facing action feedback.
+        }
       }}
       handleKeyDown={handleKeyDown}
     />
@@ -655,6 +695,7 @@ function ActiveSession({
   activeQuestion,
   latestFeedback,
   pendingFeedback,
+  onRetryPendingFeedback,
   artifactFeed,
   actionReply,
   rescheduleTarget,
@@ -680,6 +721,7 @@ function ActiveSession({
   activeQuestion: ActiveQuestionState | null;
   latestFeedback: ReviewFeedbackState | null;
   pendingFeedback: PendingFeedbackState | null;
+  onRetryPendingFeedback: () => Promise<void>;
   artifactFeed: ArtifactEntry[];
   actionReply: ActionReplyState | null;
   rescheduleTarget: RescheduleTarget | null;
@@ -800,6 +842,10 @@ function ActiveSession({
                   questionText={pendingFeedback.questionText}
                   conceptTitle={pendingFeedback.conceptTitle}
                   userAnswer={pendingFeedback.userAnswer}
+                  status={pendingFeedback.status}
+                  errorMessage={pendingFeedback.errorMessage}
+                  onRetry={onRetryPendingFeedback}
+                  isRetrying={isSubmittingAnswer}
                 />
               )}
 
@@ -1082,15 +1128,25 @@ function PendingFeedbackCard({
   questionText,
   conceptTitle,
   userAnswer,
+  status,
+  errorMessage,
+  onRetry,
+  isRetrying,
 }: {
   questionText: string | null;
   conceptTitle: string | null;
   userAnswer: string;
+  status: 'submitting' | 'failed';
+  errorMessage?: string;
+  onRetry: () => Promise<void>;
+  isRetrying: boolean;
 }) {
   return (
     <section className="mb-6 max-w-3xl overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
       <div className="border-b border-border bg-secondary p-4 md:p-6">
-        <p className="mb-2 text-xs font-medium text-muted-foreground">Checking your answer</p>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          {status === 'failed' ? 'Submission failed' : 'Checking your answer'}
+        </p>
         <h3 className="font-serif text-xl leading-tight text-foreground">
           {conceptTitle ?? 'Current concept'}
         </h3>
@@ -1100,10 +1156,28 @@ function PendingFeedbackCard({
         <p className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm text-foreground">
           Your answer: {userAnswer}
         </p>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Grading and updating your schedule...
-        </div>
+        {status === 'failed' ? (
+          <div className="space-y-2">
+            <p className="text-sm text-destructive">
+              {errorMessage ?? 'Could not submit your answer. Please retry.'}
+            </p>
+            <button
+              onClick={() => {
+                void onRetry();
+              }}
+              disabled={isRetrying}
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isRetrying && <Loader2 className="h-3 w-3 animate-spin" />}
+              Retry submit
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Grading and updating your schedule...
+          </div>
+        )}
       </div>
     </section>
   );

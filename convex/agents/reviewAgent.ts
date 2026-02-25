@@ -25,10 +25,19 @@ function requireAgentUserId(userId: unknown): Id<'users'> {
 let _model: LanguageModel | undefined;
 const model = new Proxy({} as Record<string | symbol, unknown>, {
   get(_, prop) {
-    _model ??= initializeProvider(
-      // REVIEW_AGENT_MODEL is an optional per-agent override for AI_MODEL.
-      process.env.REVIEW_AGENT_MODEL ?? process.env.AI_MODEL ?? DEFAULT_MODEL
-    ).model;
+    if (!_model) {
+      try {
+        _model = initializeProvider(
+          // REVIEW_AGENT_MODEL is an optional per-agent override for AI_MODEL.
+          process.env.REVIEW_AGENT_MODEL ?? process.env.AI_MODEL ?? DEFAULT_MODEL
+        ).model;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Agent model initialization failed (check REVIEW_AGENT_MODEL / AI_MODEL): ${detail}`
+        );
+      }
+    }
     return (_model as unknown as Record<string | symbol, unknown>)[prop];
   },
 }) as unknown as LanguageModel;

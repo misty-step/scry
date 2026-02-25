@@ -37,6 +37,16 @@ function resolveIntent(intent?: string): ChatIntent {
     : 'general';
 }
 
+const WEAK_AREA_SAMPLE_SIZE = 200;
+const WEAK_AREA_LAPSES_WEIGHT = 2.5;
+const WEAK_AREA_LAPSE_RATE_WEIGHT = 3;
+const WEAK_AREA_DUE_NOW_WEIGHT = 1.25;
+const WEAK_AREA_REPS_BONUS_CAP = 10;
+const WEAK_AREA_REPS_BONUS_WEIGHT = 0.05;
+const RESCHEDULE_MIN_DAYS = 1;
+const RESCHEDULE_MAX_DAYS = 30;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 function getStatePriority(state?: string) {
   if (state === 'relearning') return 4;
   if (state === 'learning') return 3;
@@ -150,9 +160,9 @@ export const getWeakAreasDirect = mutation({
       .withIndex('by_user_next_review', (q) =>
         q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
       )
-      // Intentional due-first snapshot: bounded sample for low-latency ranking UI
-      // (not a full global weak-area scan across all concepts).
-      .take(200);
+      // Intentional due-first snapshot: bounded sample for low-latency ranking UI.
+      // This is a triage hint list, not a full global weak-area scan.
+      .take(WEAK_AREA_SAMPLE_SIZE);
 
     const ranked = concepts
       .filter((concept) => concept.phrasingCount > 0)
@@ -161,15 +171,15 @@ export const getWeakAreasDirect = mutation({
         const lapses = concept.fsrs.lapses ?? 0;
         const state = concept.fsrs.state ?? 'new';
         const lapseRate = reps > 0 ? lapses / reps : 0;
-        const dueSoonWeight = concept.fsrs.nextReview <= now ? 1.25 : 0;
+        const dueNowWeight = concept.fsrs.nextReview <= now ? WEAK_AREA_DUE_NOW_WEIGHT : 0;
         // UI-only weak-area heuristic (ranking hints only). This does NOT change FSRS
         // scheduling/interval calculations, which remain exclusively in recordInteractionInternal.
         const priority =
-          lapses * 2.5 +
-          lapseRate * 3 +
+          lapses * WEAK_AREA_LAPSES_WEIGHT +
+          lapseRate * WEAK_AREA_LAPSE_RATE_WEIGHT +
           getStatePriority(state) +
-          dueSoonWeight +
-          Math.min(reps, 10) * 0.05;
+          dueNowWeight +
+          Math.min(reps, WEAK_AREA_REPS_BONUS_CAP) * WEAK_AREA_REPS_BONUS_WEIGHT;
 
         return {
           conceptId: concept._id,
@@ -213,8 +223,13 @@ export const rescheduleConceptDirect = mutation({
     }
 
     const nowMs = Date.now();
-    const days = Math.max(1, Math.min(30, Math.round(args.days ?? 1)));
-    const nextReview = nowMs + days * 24 * 60 * 60 * 1000;
+    const requestedDays =
+      typeof args.days === 'number' && Number.isFinite(args.days) ? args.days : RESCHEDULE_MIN_DAYS;
+    const days = Math.max(
+      RESCHEDULE_MIN_DAYS,
+      Math.min(RESCHEDULE_MAX_DAYS, Math.round(requestedDays))
+    );
+    const nextReview = nowMs + days * MS_PER_DAY;
 
     await ctx.db.patch(concept._id, {
       fsrs: {
