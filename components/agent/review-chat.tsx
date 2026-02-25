@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { FeedbackCard } from './feedback-card';
 import { MessageBubble } from './message-bubble';
 import { QuestionCard } from './question-card';
+import { parseRescheduleIntent } from './review-intent';
 
 type SuggestionChip = {
   id: 'explain' | 'weak-areas' | 'reschedule';
@@ -152,23 +153,6 @@ type ArtifactEntry =
   | { id: string; createdAt: number; type: 'feedback'; data: ReviewFeedbackState }
   | { id: string; createdAt: number; type: 'action'; data: ActionPanelState }
   | { id: string; createdAt: number; type: 'complete' };
-
-function parseRescheduleIntent(prompt: string): number | null {
-  const text = prompt.toLowerCase();
-  if (!/(resched|postpone|push|delay|move)/.test(text)) return null;
-
-  if (text.includes('week') && !/\d+\s*week/.test(text)) return 7;
-  if (text.includes('tomorrow')) return 1;
-  if (text.includes('today')) return 1;
-
-  const weekMatch = text.match(/(\d+)\s*week/);
-  if (weekMatch?.[1]) return Math.max(1, Number.parseInt(weekMatch[1], 10) * 7);
-
-  const dayMatch = text.match(/(\d+)\s*day/);
-  if (dayMatch?.[1]) return Math.max(1, Number.parseInt(dayMatch[1], 10));
-
-  return 1;
-}
 
 export function ReviewChat() {
   const { user } = useUser();
