@@ -11,7 +11,14 @@ import {
   gradeAnswer,
 } from './reviewToolHelpers';
 
-const DEFAULT_MODEL = 'google/gemini-3-flash';
+const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+
+function requireAgentUserId(userId: unknown): Id<'users'> {
+  if (typeof userId !== 'string' || userId.length === 0) {
+    throw new Error('Unauthenticated');
+  }
+  return userId as Id<'users'>;
+}
 
 // Convex module analysis runs at deploy time WITHOUT env vars — initializeProvider()
 // would throw. Proxy defers initialization to first runtime call when env vars are set.
@@ -19,6 +26,7 @@ let _model: LanguageModel | undefined;
 const model = new Proxy({} as Record<string | symbol, unknown>, {
   get(_, prop) {
     _model ??= initializeProvider(
+      // REVIEW_AGENT_MODEL is an optional per-agent override for AI_MODEL.
       process.env.REVIEW_AGENT_MODEL ?? process.env.AI_MODEL ?? DEFAULT_MODEL
     ).model;
     return (_model as unknown as Record<string | symbol, unknown>)[prop];
@@ -32,8 +40,9 @@ const fetchDueConcept = createTool({
     'Fetch the next due concept for review. Returns the concept with a quiz question, or null if nothing is due. The UI renders this as an interactive card automatically.',
   args: z.object({}),
   handler: async (ctx): Promise<Record<string, unknown> | null> => {
+    const userId = requireAgentUserId(ctx.userId);
     const result = await ctx.runQuery(internal.concepts.getDueInternal, {
-      userId: ctx.userId as Id<'users'>,
+      userId,
     });
     return formatDueResult(result as unknown as Record<string, unknown> | null);
   },
@@ -54,10 +63,11 @@ const submitAnswer = createTool({
   }),
   handler: async (ctx, args): Promise<Record<string, unknown>> => {
     assertUserAnswerLength(args.userAnswer);
+    const userId = requireAgentUserId(ctx.userId);
 
     // Fetch correct answer server-side — never trust client-supplied value
     const phrasing = await ctx.runQuery(internal.phrasings.getPhrasingInternal, {
-      userId: ctx.userId as Id<'users'>,
+      userId,
       phrasingId: args.phrasingId as Id<'phrasings'>,
     });
     if (!phrasing) throw new Error('Phrasing not found');
@@ -66,7 +76,7 @@ const submitAnswer = createTool({
     const isCorrect = gradeAnswer(args.userAnswer, correctAnswer);
 
     const result = await ctx.runMutation(internal.concepts.recordInteractionInternal, {
-      userId: ctx.userId as Id<'users'>,
+      userId,
       conceptId: args.conceptId as Id<'concepts'>,
       phrasingId: args.phrasingId as Id<'phrasings'>,
       userAnswer: args.userAnswer,
@@ -97,8 +107,9 @@ const getSessionStats = createTool({
   description: 'Get the current due count and user statistics.',
   args: z.object({}),
   handler: async (ctx): Promise<Record<string, unknown>> => {
+    const userId = requireAgentUserId(ctx.userId);
     const dueCount = await ctx.runQuery(internal.concepts.getConceptsDueCountInternal, {
-      userId: ctx.userId as Id<'users'>,
+      userId,
     });
     return { conceptsDue: dueCount.conceptsDue };
   },

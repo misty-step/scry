@@ -39,7 +39,7 @@ Operational guidance for Claude Code in scry repository.
 
 | Location | Variables |
 |----------|-----------|
-| Convex backend | `GOOGLE_AI_API_KEY`, `AI_MODEL` |
+| Convex backend | `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_MODEL`, optional `REVIEW_AGENT_MODEL` |
 | Vercel | `CONVEX_DEPLOY_KEY` (different per env), `CLERK_*` |
 
 **Build Commands:**
@@ -60,13 +60,16 @@ Full deployment docs: `docs/operations/`, `docs/runbooks/`
 
 ## AI Provider Configuration
 
-**Production:** Google Gemini 3 Flash with `thinkingConfig: { thinkingBudget: 8192, includeThoughts: true }`
+**Production:** Google Gemini 3 Flash Preview (`google/gemini-3-flash-preview`)
 
-**Provider:** `convex/lib/aiProviders.ts` — `initializeGoogleProvider()` for centralized initialization
+**Provider:** `convex/lib/aiProviders.ts` — `initializeProvider()` for centralized model initialization
+
+**Agent-specific override:**
+- `REVIEW_AGENT_MODEL` (optional) overrides `AI_MODEL` for review chat only.
 
 **Model change:**
 ```bash
-npx convex env set AI_MODEL "gemini-3-flash-preview" --prod
+npx convex env set AI_MODEL "google/gemini-3-flash-preview" --prod
 ```
 
 ## Bandwidth Optimization (Convex Starter = 1GB/mo)
