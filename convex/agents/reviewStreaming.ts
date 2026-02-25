@@ -15,7 +15,7 @@ import { calculateConceptStatsDelta } from '../lib/conceptFsrsHelpers';
 import { updateStatsCounters } from '../lib/userStatsHelpers';
 import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
-import { buildSubmitAnswerPayload, formatDueResult } from './reviewToolHelpers';
+import { buildSubmitAnswerPayload, formatDueResult, gradeAnswer } from './reviewToolHelpers';
 
 const CHAT_INTENT_VALUES = ['general', 'explain', 'stats'] as const;
 type ChatIntent = (typeof CHAT_INTENT_VALUES)[number];
@@ -82,7 +82,7 @@ export const submitAnswerDirect = mutation({
     if (!phrasing) throw new Error('Phrasing not found');
 
     const correctAnswer = phrasing.correctAnswer ?? '';
-    const isCorrect = args.userAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+    const isCorrect = gradeAnswer(args.userAnswer, correctAnswer);
 
     const result = await ctx.runMutation(internal.concepts.recordInteractionInternal, {
       userId: user._id,

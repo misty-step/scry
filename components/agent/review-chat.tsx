@@ -147,19 +147,18 @@ export function ReviewChat() {
   const [activeQuestion, setActiveQuestion] = useState<ActiveQuestionState | null>(null);
   const [latestFeedback, setLatestFeedback] = useState<ReviewFeedbackState | null>(null);
   const [pendingFeedback, setPendingFeedback] = useState<PendingFeedbackState | null>(null);
-  const [actionPanel, setActionPanel] = useState<ActionPanelState | null>(null);
+  const [, setActionPanel] = useState<ActionPanelState | null>(null);
   const [actionReply, setActionReply] = useState<ActionReplyState | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
   const [activeChipAction, setActiveChipAction] = useState<SuggestionChip['id'] | null>(null);
   const [isFetchingQuestion, setIsFetchingQuestion] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
-  const [reviewComplete, setReviewComplete] = useState(false);
+  const [, setReviewComplete] = useState(false);
   const [artifactFeed, setArtifactFeed] = useState<ArtifactEntry[]>([]);
   const [isChatSendPending, setIsChatSendPending] = useState(false);
   const pendingChatBaselineRef = useRef<number | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const [actionPanelSignal, setActionPanelSignal] = useState(0);
 
   const createThread = useMutation(api.agents.reviewStreaming.createReviewThread);
   const fetchNextQuestion = useMutation(api.agents.reviewStreaming.fetchNextQuestion);
@@ -307,8 +306,8 @@ export function ReviewChat() {
       if (!threadId || !activeQuestion) return;
       const questionSnapshot = activeQuestion;
       setPendingFeedback({
-        questionText: (questionSnapshot.question as string) ?? null,
-        conceptTitle: (questionSnapshot.conceptTitle as string) ?? null,
+        questionText: questionSnapshot.question ?? null,
+        conceptTitle: questionSnapshot.conceptTitle ?? null,
         userAnswer: text,
       });
       setActiveQuestion(null);
@@ -330,7 +329,7 @@ export function ReviewChat() {
         });
         const feedbackEntry: ReviewFeedbackState = {
           data: result as Record<string, unknown>,
-          questionText: (questionSnapshot.question as string) ?? null,
+          questionText: questionSnapshot.question ?? null,
         };
         setLatestFeedback(feedbackEntry);
         appendArtifact({
@@ -380,7 +379,6 @@ export function ReviewChat() {
             scheduledDays: (result.scheduledDays as number) ?? normalizedDays,
           },
         });
-        setActionPanelSignal((prev) => prev + 1);
         setActionReply({
           title: 'Rescheduled',
           body: `${(result.conceptTitle as string) ?? target.conceptTitle} moved by ${(result.scheduledDays as number) ?? normalizedDays} day${((result.scheduledDays as number) ?? normalizedDays) === 1 ? '' : 's'}.`,
@@ -517,7 +515,6 @@ export function ReviewChat() {
                 ) ?? [],
             },
           });
-          setActionPanelSignal((prev) => prev + 1);
           const count = (result.itemCount as number) ?? 0;
           setActionReply({
             title: 'Weak areas ready',
@@ -562,7 +559,6 @@ export function ReviewChat() {
               description: 'Answer or load a question first, then reschedule.',
             },
           });
-          setActionPanelSignal((prev) => prev + 1);
           setActionReply({
             title: 'Reschedule unavailable',
             body: 'Load a concept first, then choose Reschedule.',
@@ -649,14 +645,11 @@ export function ReviewChat() {
       activeQuestion={activeQuestion}
       latestFeedback={latestFeedback}
       pendingFeedback={pendingFeedback}
-      actionPanel={actionPanel}
-      actionPanelSignal={actionPanelSignal}
       artifactFeed={artifactFeed}
       actionReply={actionReply}
       rescheduleTarget={rescheduleTarget}
       isFetchingQuestion={isFetchingQuestion}
       isSubmittingAnswer={isSubmittingAnswer}
-      reviewComplete={reviewComplete}
       isChatThinking={isChatSendPending || assistantStreaming}
       activeChipAction={activeChipAction}
       onDismissActionReply={() => setActionReply(null)}
@@ -690,14 +683,11 @@ function ActiveSession({
   activeQuestion,
   latestFeedback,
   pendingFeedback,
-  actionPanel,
-  actionPanelSignal,
   artifactFeed,
   actionReply,
   rescheduleTarget,
   isFetchingQuestion,
   isSubmittingAnswer,
-  reviewComplete,
   isChatThinking,
   activeChipAction,
   onDismissActionReply,
@@ -715,17 +705,14 @@ function ActiveSession({
   setInput: (v: string) => void;
   chatScrollRef: React.RefObject<HTMLDivElement | null>;
   chatInputRef: React.RefObject<HTMLInputElement | null>;
-  activeQuestion: Record<string, unknown> | null;
+  activeQuestion: ActiveQuestionState | null;
   latestFeedback: ReviewFeedbackState | null;
   pendingFeedback: PendingFeedbackState | null;
-  actionPanel: ActionPanelState | null;
-  actionPanelSignal: number;
   artifactFeed: ArtifactEntry[];
   actionReply: ActionReplyState | null;
   rescheduleTarget: RescheduleTarget | null;
   isFetchingQuestion: boolean;
   isSubmittingAnswer: boolean;
-  reviewComplete: boolean;
   isChatThinking: boolean;
   activeChipAction: SuggestionChip['id'] | null;
   onDismissActionReply: () => void;
@@ -738,8 +725,6 @@ function ActiveSession({
   handleKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const messageList = useMemo(() => messages?.results ?? [], [messages?.results]);
-  const contentScrollRef = useRef<HTMLDivElement>(null);
-  const actionPanelDesktopRef = useRef<HTMLDivElement>(null);
   const [showFullHistory, setShowFullHistory] = useState(false);
   const focusChat = useCallback(() => {
     requestAnimationFrame(() => {
@@ -758,17 +743,6 @@ function ActiveSession({
   useEffect(() => {
     setShowFullHistory(false);
   }, [artifactFeed.length]);
-
-  useEffect(() => {
-    if (!actionPanelSignal || !actionPanel) return;
-    const isDesktop =
-      typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
-    if (!isDesktop) return;
-    const target = actionPanelDesktopRef.current;
-    requestAnimationFrame(() => {
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, [actionPanel, actionPanelSignal]);
 
   const latestQuestionArtifactId = useMemo(() => {
     for (let i = artifactFeed.length - 1; i >= 0; i -= 1) {
@@ -806,76 +780,7 @@ function ActiveSession({
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Main: Asymmetric Split */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        {/* LEFT: Review Content */}
-        <div ref={contentScrollRef} className="hidden">
-          {/* Loading state */}
-          {isFetchingQuestion && (
-            <div className="flex items-center gap-2 pt-4 md:pt-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Finding next concept...
-            </div>
-          )}
-
-          {pendingFeedback && (
-            <PendingFeedbackCard
-              questionText={pendingFeedback.questionText}
-              conceptTitle={pendingFeedback.conceptTitle}
-              userAnswer={pendingFeedback.userAnswer}
-            />
-          )}
-
-          {/* Feedback card */}
-          {latestFeedback && (
-            <FeedbackCard
-              data={latestFeedback.data}
-              questionText={latestFeedback.questionText ?? undefined}
-            />
-          )}
-
-          {/* Quiz card */}
-          {activeQuestion && (
-            <QuestionCard
-              key={`${String(activeQuestion.conceptId ?? '')}:${String(activeQuestion.phrasingId ?? '')}:${String(activeQuestion.question ?? '')}`}
-              data={activeQuestion}
-              onAnswer={handleAnswer}
-              disabled={isSubmittingAnswer}
-            />
-          )}
-
-          {isSubmittingAnswer && !pendingFeedback && (
-            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking answer...
-            </div>
-          )}
-
-          {!isFetchingQuestion &&
-            !activeQuestion &&
-            !latestFeedback &&
-            !pendingFeedback &&
-            reviewComplete && (
-              <div className="max-w-3xl rounded-2xl border border-border bg-background p-6 shadow-sm md:p-8">
-                <h3 className="font-serif text-2xl text-foreground">All done for now</h3>
-                <p className="mt-3 text-muted-foreground">
-                  You have no additional due cards in this session.
-                </p>
-              </div>
-            )}
-
-          {actionPanel && (
-            <div ref={actionPanelDesktopRef}>
-              <ActionPanelCard
-                data={actionPanel}
-                className={cn(
-                  'mt-6 hidden md:block',
-                  !latestFeedback && !activeQuestion && !pendingFeedback ? '' : 'border-primary/20'
-                )}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: Chat Panel */}
+        {/* Chat Panel */}
         <div className="flex min-h-0 w-full flex-1 flex-col border-border bg-background md:border-l">
           {/* Chat header */}
           <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur md:backdrop-blur-0">

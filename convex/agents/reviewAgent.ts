@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { initializeProvider } from '../lib/aiProviders';
-import { buildSubmitAnswerPayload, formatDueResult } from './reviewToolHelpers';
+import { buildSubmitAnswerPayload, formatDueResult, gradeAnswer } from './reviewToolHelpers';
 
 const DEFAULT_MODEL = 'google/gemini-3-flash';
 
@@ -56,7 +56,7 @@ const submitAnswer = createTool({
     if (!phrasing) throw new Error('Phrasing not found');
 
     const correctAnswer = phrasing.correctAnswer ?? '';
-    const isCorrect = args.userAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
+    const isCorrect = gradeAnswer(args.userAnswer, correctAnswer);
 
     const result = await ctx.runMutation(internal.concepts.recordInteractionInternal, {
       userId: ctx.userId as Id<'users'>,

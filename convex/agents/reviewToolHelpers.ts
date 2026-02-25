@@ -1,5 +1,13 @@
 import type { Id } from '../_generated/dataModel';
 
+function normalizeAnswer(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function gradeAnswer(userAnswer: string, correctAnswer: string) {
+  return normalizeAnswer(userAnswer) === normalizeAnswer(correctAnswer);
+}
+
 export function formatDueResult(
   result: Record<string, unknown> | null
 ): Record<string, unknown> | null {
