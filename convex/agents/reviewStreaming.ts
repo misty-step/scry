@@ -133,7 +133,7 @@ export const getWeakAreasDirect = mutation({
       .withIndex('by_user_next_review', (q) =>
         q.eq('userId', user._id).eq('deletedAt', undefined).eq('archivedAt', undefined)
       )
-      .take(300);
+      .take(200); // Bounded candidate set for in-memory weak-area ranking
 
     const ranked = concepts
       .filter((concept) => concept.phrasingCount > 0)
@@ -205,6 +205,7 @@ export const rescheduleConceptDirect = mutation({
     });
 
     const statsDelta = calculateConceptStatsDelta({
+      // Manual postpone changes timing only; FSRS state is intentionally unchanged.
       oldState: concept.fsrs.state ?? 'new',
       newState: concept.fsrs.state ?? 'new',
       oldNextReview: concept.fsrs.nextReview,
@@ -253,20 +254,6 @@ export const sendMessage = mutation({
         : 'general',
     });
     return { messageId };
-  },
-});
-
-// Auto-start: agent fetches first concept without a visible user message
-export const startReviewSession = internalAction({
-  args: { threadId: v.string() },
-  handler: async (ctx, { threadId }) => {
-    const result = await reviewAgent.streamText(
-      ctx,
-      { threadId },
-      { prompt: 'Start my review session. Fetch the first concept and present it.' },
-      { saveStreamDeltas: { chunking: 'word', throttleMs: 100 } }
-    );
-    await result.consumeStream();
   },
 });
 

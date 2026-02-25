@@ -42,6 +42,7 @@ interface SendChatOptions {
 }
 
 const MAX_VISIBLE_CHAT_MESSAGES = 10;
+const MAX_ARTIFACT_ENTRIES = 60;
 
 const SUGGESTION_CHIPS: SuggestionChip[] = [
   {
@@ -92,6 +93,18 @@ interface PendingFeedbackState {
   userAnswer: string;
 }
 
+interface ActiveQuestionState extends Record<string, unknown> {
+  conceptId: Id<'concepts'>;
+  phrasingId: Id<'phrasings'>;
+  question: string;
+  conceptTitle?: string;
+  conceptDescription?: string;
+  recentAttempts?: number;
+  recentCorrect?: number;
+  lapses?: number;
+  reps?: number;
+}
+
 interface RescheduleTarget {
   conceptId: Id<'concepts'>;
   conceptTitle: string;
@@ -130,7 +143,8 @@ export function ReviewChat() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isStarting, setIsStarting] = useState(false);
-  const [activeQuestion, setActiveQuestion] = useState<Record<string, unknown> | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [activeQuestion, setActiveQuestion] = useState<ActiveQuestionState | null>(null);
   const [latestFeedback, setLatestFeedback] = useState<ReviewFeedbackState | null>(null);
   const [pendingFeedback, setPendingFeedback] = useState<PendingFeedbackState | null>(null);
   const [actionPanel, setActionPanel] = useState<ActionPanelState | null>(null);
@@ -173,9 +187,15 @@ export function ReviewChat() {
     (message: UIMessage) => message.role === 'assistant' && message.status === 'streaming'
   );
   const appendArtifact = useCallback((entry: ArtifactEntry) => {
-    setArtifactFeed((prev) =>
-      prev.some((item) => item.id === entry.id) ? prev : [...prev, entry]
-    );
+    setArtifactFeed((prev) => {
+      if (prev.some((item) => item.id === entry.id)) {
+        return prev;
+      }
+      const next = [...prev, entry];
+      return next.length > MAX_ARTIFACT_ENTRIES
+        ? next.slice(next.length - MAX_ARTIFACT_ENTRIES)
+        : next;
+    });
   }, []);
 
   useEffect(() => {
@@ -199,9 +219,15 @@ export function ReviewChat() {
       try {
         const next = await fetchNextQuestion({ threadId: targetThreadId });
         if (next) {
-          setActiveQuestion(next);
-          const questionId = `question:${String(next.conceptId ?? '')}:${String(next.phrasingId ?? '')}:${String(next.question ?? '')}:${Date.now()}`;
-          appendArtifact({ id: questionId, createdAt: Date.now(), type: 'question', data: next });
+          const typedNext = next as ActiveQuestionState;
+          setActiveQuestion(typedNext);
+          const questionId = `question:${String(typedNext.conceptId ?? '')}:${String(typedNext.phrasingId ?? '')}:${String(typedNext.question ?? '')}:${Date.now()}`;
+          appendArtifact({
+            id: questionId,
+            createdAt: Date.now(),
+            type: 'question',
+            data: typedNext,
+          });
           return;
         }
         setActiveQuestion(null);
@@ -216,11 +242,15 @@ export function ReviewChat() {
 
   const handleStart = useCallback(async () => {
     setIsStarting(true);
+    setStartError(null);
     try {
       setArtifactFeed([]);
       const { threadId: newThreadId } = await createThread();
       setThreadId(newThreadId);
       await loadNextQuestion(newThreadId);
+    } catch (error) {
+      setThreadId(null);
+      setStartError(error instanceof Error ? error.message : 'Unable to start review session.');
     } finally {
       setIsStarting(false);
     }
@@ -259,19 +289,14 @@ export function ReviewChat() {
       ).length;
       setIsChatSendPending(true);
       try {
-        try {
-          await sendMessage({ threadId, prompt: trimmed, intent });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes('extra field `intent`')) {
-            await sendMessage({ threadId, prompt: trimmed });
-          } else {
-            throw error;
-          }
-        }
-      } catch {
+        await sendMessage({ threadId, prompt: trimmed, intent });
+      } catch (error) {
         setIsChatSendPending(false);
         pendingChatBaselineRef.current = null;
+        setActionReply({
+          title: 'Message not sent',
+          body: error instanceof Error ? error.message : 'Try sending again in a moment.',
+        });
       }
     },
     [threadId, activeQuestion, latestFeedback, sendMessage, messageList]
@@ -293,15 +318,15 @@ export function ReviewChat() {
       try {
         const result = await submitAnswerDirect({
           threadId,
-          conceptId: questionSnapshot.conceptId as never,
-          phrasingId: questionSnapshot.phrasingId as never,
+          conceptId: questionSnapshot.conceptId,
+          phrasingId: questionSnapshot.phrasingId,
           userAnswer: text,
-          conceptTitle: (questionSnapshot.conceptTitle as string) ?? '',
-          conceptDescription: (questionSnapshot.conceptDescription as string) ?? '',
-          recentAttempts: (questionSnapshot.recentAttempts as number) ?? 0,
-          recentCorrect: (questionSnapshot.recentCorrect as number) ?? 0,
-          lapses: (questionSnapshot.lapses as number) ?? 0,
-          reps: (questionSnapshot.reps as number) ?? 0,
+          conceptTitle: questionSnapshot.conceptTitle ?? '',
+          conceptDescription: questionSnapshot.conceptDescription ?? '',
+          recentAttempts: questionSnapshot.recentAttempts ?? 0,
+          recentCorrect: questionSnapshot.recentCorrect ?? 0,
+          lapses: questionSnapshot.lapses ?? 0,
+          reps: questionSnapshot.reps ?? 0,
         });
         const feedbackEntry: ReviewFeedbackState = {
           data: result as Record<string, unknown>,
@@ -329,27 +354,28 @@ export function ReviewChat() {
   const executeReschedule = useCallback(
     async (days: number) => {
       if (!threadId || !rescheduleTarget) return;
+      const target = rescheduleTarget;
       const normalizedDays = Math.max(1, Math.min(30, Math.round(days)));
       setActiveChipAction('reschedule');
       try {
         const result = await rescheduleConceptDirect({
           threadId,
-          conceptId: rescheduleTarget.conceptId,
+          conceptId: target.conceptId,
           days: normalizedDays,
         });
         setActionPanel({
           type: 'rescheduled',
-          conceptTitle: (result.conceptTitle as string) ?? rescheduleTarget.conceptTitle,
+          conceptTitle: (result.conceptTitle as string) ?? target.conceptTitle,
           nextReview: (result.nextReview as number) ?? Date.now(),
           scheduledDays: (result.scheduledDays as number) ?? normalizedDays,
         });
         appendArtifact({
-          id: `action:rescheduled:${String(result.conceptId ?? rescheduleTarget.conceptId)}:${String(result.nextReview ?? Date.now())}`,
+          id: `action:rescheduled:${String(result.conceptId ?? target.conceptId)}:${String(result.nextReview ?? Date.now())}`,
           createdAt: Date.now(),
           type: 'action',
           data: {
             type: 'rescheduled',
-            conceptTitle: (result.conceptTitle as string) ?? rescheduleTarget.conceptTitle,
+            conceptTitle: (result.conceptTitle as string) ?? target.conceptTitle,
             nextReview: (result.nextReview as number) ?? Date.now(),
             scheduledDays: (result.scheduledDays as number) ?? normalizedDays,
           },
@@ -357,13 +383,11 @@ export function ReviewChat() {
         setActionPanelSignal((prev) => prev + 1);
         setActionReply({
           title: 'Rescheduled',
-          body: `${(result.conceptTitle as string) ?? rescheduleTarget.conceptTitle} moved by ${(result.scheduledDays as number) ?? normalizedDays} day${((result.scheduledDays as number) ?? normalizedDays) === 1 ? '' : 's'}.`,
+          body: `${(result.conceptTitle as string) ?? target.conceptTitle} moved by ${(result.scheduledDays as number) ?? normalizedDays} day${((result.scheduledDays as number) ?? normalizedDays) === 1 ? '' : 's'}.`,
         });
         setLatestFeedback((prev) => {
           if (!prev) return prev;
-          if (
-            (prev.data.conceptId as string | undefined) !== (rescheduleTarget.conceptId as string)
-          ) {
+          if ((prev.data.conceptId as string | undefined) !== (target.conceptId as string)) {
             return prev;
           }
           return {
@@ -378,11 +402,15 @@ export function ReviewChat() {
         setRescheduleTarget(null);
         if (
           activeQuestion &&
-          (activeQuestion.conceptId as string | undefined) ===
-            (rescheduleTarget.conceptId as string)
+          (activeQuestion.conceptId as string | undefined) === (target.conceptId as string)
         ) {
           await loadNextQuestion(threadId);
         }
+      } catch (error) {
+        setActionReply({
+          title: 'Reschedule failed',
+          body: error instanceof Error ? error.message : 'Try again in a moment.',
+        });
       } finally {
         setActiveChipAction(null);
       }
@@ -498,6 +526,11 @@ export function ReviewChat() {
                 ? `I ranked ${count} concepts by lapses and difficulty.`
                 : 'No major weak areas right now. You are in good shape.',
           });
+        } catch (error) {
+          setActionReply({
+            title: 'Weak areas unavailable',
+            body: error instanceof Error ? error.message : 'Try again in a moment.',
+          });
         } finally {
           setActiveChipAction(null);
         }
@@ -591,6 +624,9 @@ export function ReviewChat() {
                   </>
                 )}
               </button>
+              {startError && (
+                <p className="mt-3 max-w-[36ch] text-sm text-destructive">{startError}</p>
+              )}
             </div>
 
             {/* Right: Stats panel */}

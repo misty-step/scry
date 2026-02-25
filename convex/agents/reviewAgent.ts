@@ -120,5 +120,5 @@ export const reviewAgent = new Agent(components.agent, {
 - Do not call fetchDueConcept or submitAnswer unless the user explicitly asks to run quiz actions through chat.
 - Avoid repeating obvious UI labels; focus on meaning and memory cues.`,
   tools: { fetchDueConcept, submitAnswer, getSessionStats },
-  maxSteps: 10,
+  maxSteps: 30,
 });
