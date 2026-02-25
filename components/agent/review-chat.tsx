@@ -147,13 +147,11 @@ export function ReviewChat() {
   const [activeQuestion, setActiveQuestion] = useState<ActiveQuestionState | null>(null);
   const [latestFeedback, setLatestFeedback] = useState<ReviewFeedbackState | null>(null);
   const [pendingFeedback, setPendingFeedback] = useState<PendingFeedbackState | null>(null);
-  const [, setActionPanel] = useState<ActionPanelState | null>(null);
   const [actionReply, setActionReply] = useState<ActionReplyState | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
   const [activeChipAction, setActiveChipAction] = useState<SuggestionChip['id'] | null>(null);
   const [isFetchingQuestion, setIsFetchingQuestion] = useState(false);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
-  const [, setReviewComplete] = useState(false);
   const [artifactFeed, setArtifactFeed] = useState<ArtifactEntry[]>([]);
   const [isChatSendPending, setIsChatSendPending] = useState(false);
   const pendingChatBaselineRef = useRef<number | null>(null);
@@ -212,8 +210,6 @@ export function ReviewChat() {
   const loadNextQuestion = useCallback(
     async (targetThreadId: string) => {
       setIsFetchingQuestion(true);
-      setReviewComplete(false);
-      setActionPanel(null);
       setRescheduleTarget(null);
       try {
         const next = await fetchNextQuestion({ threadId: targetThreadId });
@@ -230,7 +226,6 @@ export function ReviewChat() {
           return;
         }
         setActiveQuestion(null);
-        setReviewComplete(true);
         appendArtifact({ id: `complete:${Date.now()}`, createdAt: Date.now(), type: 'complete' });
       } finally {
         setIsFetchingQuestion(false);
@@ -281,7 +276,6 @@ export function ReviewChat() {
       }
 
       setInput('');
-      setActionPanel(null);
       setActionReply(null);
       pendingChatBaselineRef.current = messageList.filter(
         (message: UIMessage) => message.role === 'assistant'
@@ -311,7 +305,6 @@ export function ReviewChat() {
         userAnswer: text,
       });
       setActiveQuestion(null);
-      setActionPanel(null);
       setRescheduleTarget(null);
       setIsSubmittingAnswer(true);
       try {
@@ -339,7 +332,6 @@ export function ReviewChat() {
           data: feedbackEntry,
         });
         setPendingFeedback(null);
-        setReviewComplete(false);
       } catch {
         setActiveQuestion(questionSnapshot);
         setPendingFeedback(null);
@@ -361,12 +353,6 @@ export function ReviewChat() {
           threadId,
           conceptId: target.conceptId,
           days: normalizedDays,
-        });
-        setActionPanel({
-          type: 'rescheduled',
-          conceptTitle: (result.conceptTitle as string) ?? target.conceptTitle,
-          nextReview: (result.nextReview as number) ?? Date.now(),
-          scheduledDays: (result.scheduledDays as number) ?? normalizedDays,
         });
         appendArtifact({
           id: `action:rescheduled:${String(result.conceptId ?? target.conceptId)}:${String(result.nextReview ?? Date.now())}`,
@@ -482,19 +468,6 @@ export function ReviewChat() {
         setActiveChipAction(chip.id);
         try {
           const result = await getWeakAreasDirect({ threadId, limit: 5 });
-          setActionPanel({
-            type: 'weak-areas',
-            generatedAt: (result.generatedAt as number) ?? Date.now(),
-            itemCount: (result.itemCount as number) ?? 0,
-            items:
-              ((result.items as Array<Record<string, unknown>> | undefined) ?? []).map((item) => ({
-                title: (item.title as string) ?? 'Untitled',
-                state: (item.state as string) ?? 'new',
-                lapses: (item.lapses as number) ?? 0,
-                reps: (item.reps as number) ?? 0,
-                dueNow: Boolean(item.dueNow),
-              })) ?? [],
-          });
           appendArtifact({
             id: `action:weak-areas:${String((result.generatedAt as number) ?? Date.now())}`,
             createdAt: Date.now(),
@@ -544,11 +517,6 @@ export function ReviewChat() {
           'this concept';
 
         if (!conceptId) {
-          setActionPanel({
-            type: 'notice',
-            title: 'No concept selected',
-            description: 'Answer or load a question first, then reschedule.',
-          });
           appendArtifact({
             id: `action:notice:no-concept:${Date.now()}`,
             createdAt: Date.now(),
@@ -661,7 +629,6 @@ export function ReviewChat() {
       handleNextQuestion={async () => {
         if (!threadId) return;
         setLatestFeedback(null);
-        setActionPanel(null);
         setActionReply(null);
         setRescheduleTarget(null);
         setPendingFeedback(null);
