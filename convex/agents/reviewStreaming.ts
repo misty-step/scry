@@ -49,6 +49,8 @@ export const createReviewThread = mutation({
   },
 });
 
+// Intentionally mutation-based: this is an imperative, one-shot UI action with
+// thread ownership checks (non-reactive fetch, not a subscribed query surface).
 export const fetchNextQuestion = mutation({
   args: { threadId: v.string() },
   handler: async (ctx, { threadId }) => {
@@ -119,6 +121,8 @@ export const submitAnswerDirect = mutation({
   },
 });
 
+// Intentionally mutation-based: invoked on demand from UI and rate-limited as an
+// action endpoint (not a reactive query that auto-re-runs on document changes).
 export const getWeakAreasDirect = mutation({
   args: {
     threadId: v.string(),

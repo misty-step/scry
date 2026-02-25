@@ -1194,6 +1194,7 @@ function ReviewStatsPanel({ count }: { count: number }) {
 
   const totalConcepts = dashboard?.totalConcepts ?? 0;
   const totalPhrasings = dashboard?.totalPhrasings ?? 0;
+  const totalPhrasingsLabel = totalPhrasings >= 10001 ? '10,000+' : String(totalPhrasings);
   const masteryPercent = dashboard?.masteryPercent ?? 0;
   const streak = dashboard?.streak ?? 0;
 
@@ -1230,7 +1231,9 @@ function ReviewStatsPanel({ count }: { count: number }) {
           <span className="flex-1 font-mono text-[0.5rem] uppercase tracking-[0.06em] opacity-50">
             Phrasings
           </span>
-          <span className="font-mono text-sm font-semibold tabular-nums">{totalPhrasings}</span>
+          <span className="font-mono text-sm font-semibold tabular-nums">
+            {totalPhrasingsLabel}
+          </span>
         </div>
         <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.09] px-3.5 py-2.5">
           <BarChart3 className="size-[15px] shrink-0 opacity-[0.35]" />

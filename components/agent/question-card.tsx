@@ -38,10 +38,10 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
     onAnswer?.(option);
   };
 
-  const intervalText = q.stability
+  const stabilityText = q.stability
     ? q.stability < 1
-      ? 'Due later today'
-      : `Due in ${Math.round(q.stability)} day${Math.round(q.stability) === 1 ? '' : 's'}`
+      ? 'Stability <1 day (90% recall)'
+      : `Stability ~${Math.round(q.stability)} day${Math.round(q.stability) === 1 ? '' : 's'} (90% recall)`
     : null;
 
   const stageLabel =
@@ -65,10 +65,10 @@ export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: Que
             <span className="text-sm text-muted-foreground">{q.conceptTitle}</span>
           )}
         </div>
-        {intervalText && (
+        {stabilityText && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Zap className="h-4 w-4" />
-            <span className="text-xs">{intervalText}</span>
+            <span className="text-xs">{stabilityText}</span>
           </div>
         )}
       </div>
