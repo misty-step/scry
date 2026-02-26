@@ -18,15 +18,19 @@ interface QuestionData {
 }
 
 interface QuestionCardProps {
-  data: Record<string, unknown>;
+  question: Record<string, unknown>;
   onAnswer?: (answer: string) => void;
   disabled?: boolean;
 }
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-export function QuestionCard({ data, onAnswer, disabled: externalDisabled }: QuestionCardProps) {
-  const q = (typeof data === 'object' && data !== null ? data : {}) as QuestionData;
+export function QuestionCard({
+  question,
+  onAnswer,
+  disabled: externalDisabled,
+}: QuestionCardProps) {
+  const q = (typeof question === 'object' && question !== null ? question : {}) as QuestionData;
   const [selected, setSelected] = useState<string | null>(null);
 
   if (!q.question) return null;

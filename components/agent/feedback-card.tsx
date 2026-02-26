@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { CalendarClock, CheckCircle2, Gauge, XCircle } from 'lucide-react';
 import { formatReviewStageLabel } from '@/lib/review-stage';
+import { renderInlineMarkdown } from './rich-text';
 
 interface FeedbackData {
   isCorrect?: boolean;
@@ -21,7 +22,7 @@ interface FeedbackData {
 
 /** Question text passed separately since the feedback tool doesn't return it */
 interface FeedbackCardProps {
-  data: Record<string, unknown>;
+  feedback: Record<string, unknown>;
   questionText?: string;
   compact?: boolean;
 }
@@ -49,109 +50,6 @@ function getStageProgress(state?: string): { index: number; total: number } {
   if (state === 'review') return { index: 3, total: 3 };
   if (state === 'learning' || state === 'relearning') return { index: 2, total: 3 };
   return { index: 1, total: 3 };
-}
-
-function splitInlineCodeSegments(text: string) {
-  const segments: Array<{ type: 'text' | 'code'; value: string }> = [];
-  let cursor = 0;
-
-  while (cursor < text.length) {
-    const codeStart = text.indexOf('`', cursor);
-    if (codeStart === -1) {
-      segments.push({ type: 'text', value: text.slice(cursor) });
-      break;
-    }
-
-    if (codeStart > cursor) {
-      segments.push({ type: 'text', value: text.slice(cursor, codeStart) });
-    }
-
-    const codeEnd = text.indexOf('`', codeStart + 1);
-    if (codeEnd === -1) {
-      segments.push({ type: 'text', value: text.slice(codeStart) });
-      break;
-    }
-
-    segments.push({ type: 'code', value: text.slice(codeStart + 1, codeEnd) });
-    cursor = codeEnd + 1;
-  }
-
-  return segments;
-}
-
-function renderEmphasis(text: string, keyPrefix: string) {
-  const nodes: Array<string | ReactElement> = [];
-  let cursor = 0;
-  let key = 0;
-
-  const pushPlainText = (value: string) => {
-    if (!value) return;
-    nodes.push(value);
-  };
-
-  while (cursor < text.length) {
-    if (text.startsWith('**', cursor)) {
-      const end = text.indexOf('**', cursor + 2);
-      if (end !== -1) {
-        nodes.push(
-          <strong key={`${keyPrefix}-strong-${key++}`}>
-            {renderEmphasis(text.slice(cursor + 2, end), `${keyPrefix}-s${key}`)}
-          </strong>
-        );
-        cursor = end + 2;
-        continue;
-      }
-    }
-
-    if (text[cursor] === '*') {
-      const end = text.indexOf('*', cursor + 1);
-      if (end !== -1) {
-        nodes.push(
-          <em key={`${keyPrefix}-em-${key++}`}>
-            {renderEmphasis(text.slice(cursor + 1, end), `${keyPrefix}-e${key}`)}
-          </em>
-        );
-        cursor = end + 1;
-        continue;
-      }
-    }
-
-    const nextBold = text.indexOf('**', cursor);
-    const nextItalic = text.indexOf('*', cursor);
-    const nextTokenCandidates = [nextBold, nextItalic].filter((value) => value >= 0);
-    const nextToken =
-      nextTokenCandidates.length > 0 ? Math.min(...nextTokenCandidates) : text.length;
-
-    if (nextToken <= cursor) {
-      pushPlainText(text[cursor] ?? '');
-      cursor += 1;
-      continue;
-    }
-
-    pushPlainText(text.slice(cursor, nextToken));
-    cursor = nextToken;
-  }
-
-  return nodes;
-}
-
-function renderInlineMarkdown(text: string) {
-  const nodes: Array<string | ReactElement> = [];
-
-  splitInlineCodeSegments(text).forEach((segment, index) => {
-    if (segment.type === 'code') {
-      nodes.push(
-        <code key={`code-${index}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
-          {segment.value}
-        </code>
-      );
-      return;
-    }
-
-    nodes.push(...renderEmphasis(segment.value, `segment-${index}`));
-  });
-
-  return nodes;
 }
 
 function renderExplanation(text: string) {
@@ -263,9 +161,9 @@ function normalizeExplanationText(text: string) {
   return grouped.join('\n\n');
 }
 
-export function FeedbackCard({ data, questionText, compact = false }: FeedbackCardProps) {
-  if (typeof data !== 'object' || data === null) return null;
-  const fb = data as FeedbackData;
+export function FeedbackCard({ feedback, questionText, compact = false }: FeedbackCardProps) {
+  if (typeof feedback !== 'object' || feedback === null) return null;
+  const fb = feedback as FeedbackData;
   const sectionPadding = compact ? 'p-3.5 md:p-5' : 'p-4 md:p-8';
   const labelClass = compact ? 'mb-2 text-[11px] font-medium' : 'mb-3 text-xs font-medium';
   const answerClass = compact
@@ -275,6 +173,7 @@ export function FeedbackCard({ data, questionText, compact = false }: FeedbackCa
     ? 'max-w-none space-y-3 font-serif text-base leading-relaxed text-foreground/85'
     : 'max-w-none space-y-4 font-serif text-lg leading-relaxed text-foreground/85';
   const statValueClass = compact ? 'text-sm font-semibold' : 'text-base font-semibold';
+  const stageProgress = getStageProgress(fb.newState);
 
   return (
     <div className={compact ? 'max-w-none' : 'max-w-4xl'}>
@@ -369,14 +268,14 @@ export function FeedbackCard({ data, questionText, compact = false }: FeedbackCa
                 Stage
               </p>
               <p className={compact ? 'text-sm font-semibold' : statValueClass}>
-                {formatReviewStageLabel(fb.newState, { fallback: '—' })}{' '}
-                {getStageProgress(fb.newState).index}/{getStageProgress(fb.newState).total}
+                {formatReviewStageLabel(fb.newState, { fallback: '—' })} {stageProgress.index}/
+                {stageProgress.total}
               </p>
               <div className="mt-1 flex items-center gap-1">
                 {[1, 2, 3].map((step) => (
                   <span
                     key={step}
-                    className={`h-1.5 flex-1 rounded-full ${step <= getStageProgress(fb.newState).index ? 'bg-primary' : 'bg-border'}`}
+                    className={`h-1.5 flex-1 rounded-full ${step <= stageProgress.index ? 'bg-primary' : 'bg-border'}`}
                   />
                 ))}
               </div>

@@ -278,7 +278,7 @@ export function ReviewChat() {
 
   const handleSendChat = useCallback(
     async (text: string, options?: SendChatOptions) => {
-      if (!threadId || !text.trim()) return;
+      if (!threadId || !text.trim() || isChatSendPending || assistantStreaming) return;
       const trimmed = text.trim();
       const allowRescheduleIntent = options?.allowRescheduleIntent ?? true;
       const intent = options?.intent ?? 'general';
@@ -314,7 +314,15 @@ export function ReviewChat() {
         });
       }
     },
-    [threadId, activeQuestion, latestFeedback, sendMessage, messageList]
+    [
+      threadId,
+      isChatSendPending,
+      assistantStreaming,
+      activeQuestion,
+      latestFeedback,
+      sendMessage,
+      messageList,
+    ]
   );
 
   const handleAnswer = useCallback(
@@ -864,7 +872,7 @@ function ActiveSession({
                   return (
                     <FeedbackCard
                       key={item.key}
-                      data={entry.data.data}
+                      feedback={entry.data.data}
                       questionText={entry.data.questionText ?? undefined}
                       compact
                     />
@@ -875,7 +883,7 @@ function ActiveSession({
                   return (
                     <QuestionCard
                       key={item.key}
-                      data={entry.data}
+                      question={entry.data}
                       onAnswer={handleAnswer}
                       disabled={!isLatestQuestion || isSubmittingAnswer}
                     />
@@ -885,7 +893,7 @@ function ActiveSession({
                   return (
                     <ActionPanelCard
                       key={item.key}
-                      data={entry.data}
+                      actionPanel={entry.data}
                       className="mb-0 border-primary/20"
                     />
                   );
@@ -1020,7 +1028,7 @@ function ActiveSession({
               />
               <button
                 onClick={() => handleSend(input)}
-                disabled={!input.trim()}
+                disabled={!input.trim() || isChatThinking}
                 className="shrink-0 rounded-xl bg-primary p-2.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
@@ -1045,8 +1053,14 @@ function formatActionDate(value: number) {
   });
 }
 
-function ActionPanelCard({ data, className }: { data: ActionPanelState; className?: string }) {
-  if (data.type === 'notice') {
+function ActionPanelCard({
+  actionPanel,
+  className,
+}: {
+  actionPanel: ActionPanelState;
+  className?: string;
+}) {
+  if (actionPanel.type === 'notice') {
     return (
       <section
         className={cn(
@@ -1058,13 +1072,13 @@ function ActionPanelCard({ data, className }: { data: ActionPanelState; classNam
           <TriangleAlert className="h-3.5 w-3.5" />
           Action needed
         </div>
-        <h3 className="text-sm font-semibold">{data.title}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{data.description}</p>
+        <h3 className="text-sm font-semibold">{actionPanel.title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{actionPanel.description}</p>
       </section>
     );
   }
 
-  if (data.type === 'rescheduled') {
+  if (actionPanel.type === 'rescheduled') {
     return (
       <section
         className={cn(
@@ -1076,11 +1090,13 @@ function ActionPanelCard({ data, className }: { data: ActionPanelState; classNam
           <CalendarClock className="h-3.5 w-3.5" />
           Schedule updated
         </div>
-        <h3 className="text-sm font-semibold">{data.conceptTitle}</h3>
+        <h3 className="text-sm font-semibold">{actionPanel.conceptTitle}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Moved to{' '}
-          <span className="font-medium text-foreground">{formatActionDate(data.nextReview)}</span> (
-          {data.scheduledDays === 1 ? '1 day' : `${data.scheduledDays} days`}).
+          <span className="font-medium text-foreground">
+            {formatActionDate(actionPanel.nextReview)}
+          </span>{' '}
+          ({actionPanel.scheduledDays === 1 ? '1 day' : `${actionPanel.scheduledDays} days`}).
         </p>
       </section>
     );
@@ -1095,13 +1111,13 @@ function ActionPanelCard({ data, className }: { data: ActionPanelState; classNam
     >
       <div className="mb-3 inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <Target className="h-3.5 w-3.5" />
-        Weak areas ({data.itemCount})
+        Weak areas ({actionPanel.itemCount})
       </div>
       <div className="space-y-2">
-        {data.items.length === 0 && (
+        {actionPanel.items.length === 0 && (
           <p className="text-sm text-muted-foreground">No weak concepts detected yet.</p>
         )}
-        {data.items.map((item) => (
+        {actionPanel.items.map((item) => (
           <div
             key={`${item.title}:${item.reps}:${item.lapses}`}
             className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-3 py-2"
