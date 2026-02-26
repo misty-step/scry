@@ -30,9 +30,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Convex webhook secret not configured' }, { status: 500 });
   }
 
-  let stripe: Stripe;
   try {
-    stripe = getStripe();
+    getStripe();
   } catch (error) {
     console.error('Stripe configuration error:', error);
     return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
@@ -41,7 +40,7 @@ export async function POST(req: Request) {
   // FIRST: Verify signature (fail-fast)
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = getStripe().webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Webhook signature verification failed:', message);
@@ -53,7 +52,7 @@ export async function POST(req: Request) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(session, convexWebhookSecret, stripe);
+        await handleCheckoutCompleted(session, convexWebhookSecret);
         break;
       }
 
@@ -99,8 +98,7 @@ export async function POST(req: Request) {
 
 async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
-  convexWebhookSecret: string,
-  stripe: Stripe
+  convexWebhookSecret: string
 ) {
   if (session.mode !== 'subscription') {
     return;
@@ -119,7 +117,7 @@ async function handleCheckoutCompleted(
   }
 
   // Fetch full subscription details
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
   await syncSubscriptionToConvex(subscription, clerkUserId, convexWebhookSecret);
 }
 

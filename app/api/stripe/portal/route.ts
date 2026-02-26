@@ -9,10 +9,8 @@ export async function POST() {
     if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-    const stripe = getStripe();
-
     // Search for customer in Stripe by metadata
-    const customers = await stripe.customers.search({
+    const customers = await getStripe().customers.search({
       query: `metadata['clerkUserId']:'${userId}'`,
     });
 
@@ -23,7 +21,7 @@ export async function POST() {
     const customerId = customers.data[0].id;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-    const portalSession = await stripe.billingPortal.sessions.create({
+    const portalSession = await getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${baseUrl}/settings`,
     });

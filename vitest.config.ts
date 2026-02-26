@@ -100,6 +100,7 @@ export default defineConfig({
         'convex/concepts.ts', // Core CRUD + AI generation, requires Convex + AI provider runtime
         'convex/embeddings.ts', // Vector embeddings sync, requires Convex + embedding provider runtime
         'convex/iqc.ts', // Background job processor, requires Convex scheduler runtime
+        'convex/agents/**', // Convex agent runtime modules; validated via integration/E2E flows
         // Schema version constant (single line export)
         'convex/schemaVersion.ts',
         // Generated and artifact files

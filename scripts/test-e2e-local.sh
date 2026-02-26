@@ -17,13 +17,13 @@ export PLAYWRIGHT_BASE_URL="http://localhost:3000"
 
 # Run only the local E2E tests
 echo "Running local E2E tests..."
-npx playwright test spaced-repetition.local.test.ts --reporter=list
+npx playwright test tests/e2e/spaced-repetition.local.test.ts tests/e2e/agent-review-smoke.test.ts --reporter=list
 
 # Run production E2E tests if requested
 if [ "$1" == "--all" ]; then
     echo ""
     echo "Running production E2E tests..."
-    npx playwright test spaced-repetition.test.ts --reporter=list
+    npx playwright test tests/e2e/spaced-repetition.test.ts tests/e2e/agent-review-smoke.test.ts --reporter=list
 fi
 
 echo ""

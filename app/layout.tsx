@@ -59,7 +59,7 @@ export default function RootLayout({
                       <div className={getLayoutClassName()}>
                         <ConditionalNavbar />
                         {needsNavbarSpacer() && <div className="h-16" />}
-                        <main>{children}</main>
+                        <main className="mx-auto w-full max-w-7xl">{children}</main>
                         <Footer />
                       </div>
                       <Toaster />
