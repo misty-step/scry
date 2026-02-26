@@ -97,6 +97,34 @@ describe('reviewToolHelpers', () => {
     it('returns null when no due result exists', () => {
       expect(formatDueResult(null)).toBeNull();
     });
+
+    it('fills safe defaults for missing optional due fields', () => {
+      const result = formatDueResult({
+        concept: {
+          _id: 'concepts_2' as Id<'concepts'>,
+          title: 'Binary Search',
+          fsrs: {},
+        },
+        phrasing: {
+          _id: 'phrasings_2' as Id<'phrasings'>,
+          question: 'What is the time complexity?',
+        },
+        interactions: [],
+      });
+
+      expect(result).toMatchObject({
+        conceptId: 'concepts_2',
+        conceptTitle: 'Binary Search',
+        conceptDescription: '',
+        fsrsState: 'new',
+        lapses: 0,
+        reps: 0,
+        type: 'multiple-choice',
+        options: [],
+        recentAttempts: 0,
+        recentCorrect: 0,
+      });
+    });
   });
 
   describe('buildSubmitAnswerPayload', () => {
@@ -136,6 +164,28 @@ describe('reviewToolHelpers', () => {
         lapses: 1,
         reps: 4,
       });
+    });
+
+    it('defaults optional concept fields to empty strings', () => {
+      const payload = buildSubmitAnswerPayload({
+        result: {
+          conceptId: 'concepts_9' as Id<'concepts'>,
+          nextReview: 1735689600000,
+          scheduledDays: 1,
+          newState: 'new',
+          totalAttempts: 1,
+          totalCorrect: 0,
+          lapses: 1,
+          reps: 1,
+        },
+        userAnswer: 'Wrong',
+        correctAnswer: 'Right',
+        isCorrect: false,
+        explanation: '',
+      });
+
+      expect(payload.conceptTitle).toBe('');
+      expect(payload.conceptDescription).toBe('');
     });
   });
 });

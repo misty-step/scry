@@ -6,7 +6,7 @@ describe('FeedbackCard', () => {
   it('renders markdown-like explanation with lists and inline formatting', () => {
     render(
       <FeedbackCard
-        data={{
+        feedback={{
           isCorrect: false,
           userAnswer: 'Venus',
           correctAnswer: 'Mars',
@@ -34,7 +34,7 @@ describe('FeedbackCard', () => {
   it('renders mixed paragraphs and lists from one explanation block', () => {
     render(
       <FeedbackCard
-        data={{
+        feedback={{
           isCorrect: false,
           userAnswer: 'Mercury',
           correctAnswer: 'Mars',
@@ -55,7 +55,7 @@ describe('FeedbackCard', () => {
   it('keeps markdown markers inside inline code and supports nested emphasis', () => {
     render(
       <FeedbackCard
-        data={{
+        feedback={{
           isCorrect: true,
           correctAnswer: 'Mars',
           explanation: 'Use `**literal**` and **focus on *orbit* cues**.',
@@ -74,7 +74,7 @@ describe('FeedbackCard', () => {
 
   it('returns null for invalid payloads', () => {
     const { container } = render(
-      <FeedbackCard data={null as unknown as Record<string, unknown>} />
+      <FeedbackCard feedback={null as unknown as Record<string, unknown>} />
     );
     expect(container.firstChild).toBeNull();
   });
