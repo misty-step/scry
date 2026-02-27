@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, internalQuery } from './_generated/server';
+import { updateStatsCounters } from './lib/userStatsHelpers';
 
 export const getPhrasingInternal = internalQuery({
   args: { userId: v.id('users'), phrasingId: v.id('phrasings') },
@@ -71,6 +72,10 @@ export const insertGenerated = internalMutation({
         embeddingGeneratedAt: phrasing.embeddingGeneratedAt,
       });
       ids.push(id);
+    }
+
+    if (ids.length > 0) {
+      await updateStatsCounters(ctx, args.userId, { totalPhrasings: ids.length });
     }
 
     return { ids };

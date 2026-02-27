@@ -25,6 +25,7 @@ type CardState = 'new' | 'learning' | 'review' | 'relearning';
  */
 export interface StatDeltas {
   totalCards?: number;
+  totalPhrasings?: number;
   newCount?: number;
   learningCount?: number;
   matureCount?: number; // 'review' state
@@ -72,6 +73,10 @@ export async function updateStatsCounters(
   const newStats = {
     userId,
     totalCards: Math.max(0, (existingStats?.totalCards ?? 0) + (deltas.totalCards ?? 0)),
+    totalPhrasings: Math.max(
+      0,
+      (existingStats?.totalPhrasings ?? 0) + (deltas.totalPhrasings ?? 0)
+    ),
     newCount: Math.max(0, (existingStats?.newCount ?? 0) + (deltas.newCount ?? 0)),
     learningCount: Math.max(0, (existingStats?.learningCount ?? 0) + (deltas.learningCount ?? 0)),
     matureCount: Math.max(0, (existingStats?.matureCount ?? 0) + (deltas.matureCount ?? 0)),

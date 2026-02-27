@@ -305,18 +305,11 @@ export const getReviewDashboard = query({
     const totalConcepts = stats?.totalCards ?? 0;
     const matureCount = stats?.matureCount ?? 0;
     const masteryPercent = totalConcepts > 0 ? Math.round((matureCount / totalConcepts) * 100) : 0;
-
-    // Bounded count — avoids O(N) full scan per ADR-0001
-    const phrasings = await ctx.db
-      .query('phrasings')
-      .withIndex('by_user_active', (q) =>
-        q.eq('userId', userId).eq('deletedAt', undefined).eq('archivedAt', undefined)
-      )
-      .take(10001);
+    const totalPhrasings = stats?.totalPhrasings ?? 0;
 
     return {
       totalConcepts,
-      totalPhrasings: phrasings.length,
+      totalPhrasings,
       masteryPercent,
       streak: user.currentStreak ?? 0,
     };
@@ -758,6 +751,8 @@ export const archivePhrasing = mutation({
       updatedAt: now,
     });
 
+    await updateStatsCounters(ctx, user._id, { totalPhrasings: -1 });
+
     // Fetch remaining active phrasings to recalculate scores
     const remainingPhrasings = await ctx.db
       .query('phrasings')
@@ -825,6 +820,8 @@ export const unarchivePhrasing = mutation({
       archivedAt: undefined,
       updatedAt: now,
     });
+
+    await updateStatsCounters(ctx, user._id, { totalPhrasings: 1 });
 
     // Fetch all active phrasings (including newly unarchived)
     const activePhrasings = await ctx.db
@@ -1189,7 +1186,7 @@ async function archiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   });
 
   // Process all phrasings in batches to prevent unbounded queries (issue #121)
-  await updatePhrasingsBatched(
+  const processed = await updatePhrasingsBatched(
     ctx,
     userId,
     concept._id,
@@ -1200,6 +1197,7 @@ async function archiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
   await updateStatsCounters(ctx, userId, {
     totalCards: -1,
+    totalPhrasings: -processed,
     ...(deltas ?? {}),
   });
 
@@ -1215,7 +1213,7 @@ async function unarchiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concep
   await ctx.db.patch(concept._id, { archivedAt: undefined, updatedAt: now });
 
   // Process all phrasings in batches to prevent unbounded queries (issue #121)
-  await updatePhrasingsBatched(
+  const processed = await updatePhrasingsBatched(
     ctx,
     userId,
     concept._id,
@@ -1226,6 +1224,7 @@ async function unarchiveConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concep
   const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
   await updateStatsCounters(ctx, userId, {
     totalCards: 1,
+    totalPhrasings: processed,
     ...(deltas ?? {}),
   });
 
@@ -1245,7 +1244,7 @@ async function softDeleteConceptDoc(ctx: MutationCtx, userId: Id<'users'>, conce
   });
 
   // Process all phrasings in batches to prevent unbounded queries (issue #121)
-  await updatePhrasingsBatched(
+  const processed = await updatePhrasingsBatched(
     ctx,
     userId,
     concept._id,
@@ -1256,6 +1255,7 @@ async function softDeleteConceptDoc(ctx: MutationCtx, userId: Id<'users'>, conce
   const deltas = calculateStateTransitionDelta(concept.fsrs.state, undefined);
   await updateStatsCounters(ctx, userId, {
     totalCards: -1,
+    totalPhrasings: -processed,
     ...(deltas ?? {}),
   });
 
@@ -1271,7 +1271,7 @@ async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   await ctx.db.patch(concept._id, { deletedAt: undefined, updatedAt: now });
 
   // Process all phrasings in batches to prevent unbounded queries (issue #121)
-  await updatePhrasingsBatched(
+  const processed = await updatePhrasingsBatched(
     ctx,
     userId,
     concept._id,
@@ -1282,6 +1282,7 @@ async function restoreConceptDoc(ctx: MutationCtx, userId: Id<'users'>, concept:
   const deltas = calculateStateTransitionDelta(undefined, concept.fsrs.state ?? 'new');
   await updateStatsCounters(ctx, userId, {
     totalCards: 1,
+    totalPhrasings: processed,
     ...(deltas ?? {}),
   });
 

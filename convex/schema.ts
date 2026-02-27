@@ -21,6 +21,7 @@ export default defineSchema({
   userStats: defineTable({
     userId: v.id('users'),
     totalCards: v.number(), // Total non-deleted cards
+    totalPhrasings: v.optional(v.number()), // Total non-deleted/non-archived phrasings (O(1) dashboard stat)
     newCount: v.number(), // Cards in 'new' state
     learningCount: v.number(), // Cards in 'learning' state
     matureCount: v.number(), // Cards in 'review' state
