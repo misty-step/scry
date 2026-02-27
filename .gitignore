@@ -90,3 +90,6 @@ eval_results.json
 
 # ESLint cache
 .eslintcache
+
+# Pi runtime state (session logs/cache)
+.pi/state/
