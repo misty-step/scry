@@ -1,0 +1,109 @@
+scry-foundation-v2:
+  description: "Explore and pressure-test local Pi foundation changes before applying."
+  steps:
+    - agent: planner
+      prompt: |
+        Design a repo-local foundation update for this goal:
+
+        $INPUT
+
+        Requirements:
+        - cite concrete evidence from repository files/workflows
+        - produce adopt/bridge/ignore decisions
+        - keep controls explicit, local, and auditable
+    - agent: reviewer
+      prompt: |
+        Stress-test this foundation proposal for drift risk, CI mismatch, maintenance burden, and safety gaps.
+        Return only severity-tagged findings, required fixes, and a ready/not-ready verdict.
+
+        Proposal:
+        $INPUT
+
+scry-delivery-v2:
+  description: "Default plan -> implement -> review loop aligned with branch-protected CI."
+  steps:
+    - agent: planner
+      prompt: |
+        Plan implementation for this task with minimal scope and CI-parity verification:
+
+        $INPUT
+    - agent: worker
+      prompt: |
+        Implement the approved plan with focused diffs.
+        Verification baseline: pnpm lint && pnpm tsc --noEmit && pnpm test:ci
+        Add pnpm test:contract for convex/** changes.
+        Add pnpm build for dependency/build/config/workflow changes.
+        Add pnpm audit --audit-level=critical when dependencies or lockfile change.
+        Do not run deploy-coupled commands unless explicitly requested.
+
+        Task:
+        $INPUT
+    - agent: reviewer
+      prompt: |
+        Review correctness, CI-parity evidence, Convex safety, and Pure FSRS integrity.
+        Provide severity-tagged findings and a merge-ready verdict.
+
+        Change summary:
+        $INPUT
+
+scry-convex-delivery-v1:
+  description: "Backend-first delivery for Convex-heavy tasks (schema/query/mutation + UI wiring)."
+  steps:
+    - agent: planner
+      prompt: |
+        Build a backend-first plan for this Convex task.
+        Sequence explicitly:
+        1) convex schema/query/mutation updates
+        2) generated API/type readiness
+        3) frontend wiring
+        Include rollback and verification details.
+
+        Task:
+        $INPUT
+    - agent: worker
+      prompt: |
+        Execute backend-first.
+        Keep query bandwidth bounded (no unbounded collect; use index + take/paginate).
+        Run: pnpm lint && pnpm tsc --noEmit && pnpm test:ci && pnpm test:contract
+        Then wire frontend usage once backend contracts are ready.
+
+        Task:
+        $INPUT
+    - agent: reviewer
+      prompt: |
+        Validate backend-first sequencing, Convex bandwidth rules, and contract-test coverage.
+        Fail the review if UI calls are added before backend contracts exist.
+
+        Change summary:
+        $INPUT
+
+scry-seam-retrospective-v1:
+  description: "Accretive learning loop: convert one resolved failure into one durable local guardrail."
+  steps:
+    - agent: planner
+      prompt: |
+        From this completed task/result, extract:
+        - root cause
+        - fix that worked
+        - one reusable scry-specific guardrail candidate
+        Reject generic advice; include evidence paths.
+
+        Input:
+        $INPUT
+    - agent: worker
+      prompt: |
+        Apply exactly one minimal update to docs/pi-local-workflow.md under the "Lessons (local)" section.
+        Constraints:
+        - max 6 lines added
+        - include one evidence path citation
+        - no other files edited
+
+        Candidate:
+        $INPUT
+    - agent: reviewer
+      prompt: |
+        Approve only if the lesson is repo-specific, non-duplicate, and evidence-backed.
+        Reject noisy or generic lessons and recommend removal.
+
+        Proposed lesson:
+        $INPUT
