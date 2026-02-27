@@ -9,7 +9,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { internalAction, mutation, query } from '../_generated/server';
+import { internalAction, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { requireUserFromClerk } from '../clerk';
 import { calculateConceptStatsDelta } from '../lib/conceptFsrsHelpers';
 import { updateStatsCounters } from '../lib/userStatsHelpers';
@@ -22,6 +22,23 @@ import {
   formatDueResult,
   gradeAnswer,
 } from './reviewToolHelpers';
+import * as dtos from './dtos';
+
+/**
+ * Validates that the current user owns the specified thread.
+ * Returns the thread metadata if valid, otherwise throws an Unauthorized error.
+ */
+async function requireThreadOwnership(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  threadId: string
+) {
+  const thread = await getThreadMetadata(ctx, components.agent, { threadId });
+  if (thread.userId !== userId) {
+    throw new Error('Unauthorized');
+  }
+  return thread;
+}
 
 const CHAT_INTENT_VALUES = ['general', 'explain', 'stats'] as const;
 type ChatIntent = (typeof CHAT_INTENT_VALUES)[number];
@@ -68,11 +85,10 @@ export const createReviewThread = mutation({
 // Intentionally mutation-based: this is an imperative, one-shot UI action with
 // thread ownership checks (non-reactive fetch, not a subscribed query surface).
 export const fetchNextQuestion = mutation({
-  args: { threadId: v.string() },
+  args: dtos.FetchNextQuestionArgs,
   handler: async (ctx, { threadId }) => {
     const user = await requireUserFromClerk(ctx);
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, threadId);
 
     const due = await ctx.runQuery(internal.concepts.getDueInternal, { userId: user._id });
     return formatDueResult(due as unknown as Record<string, unknown> | null);
@@ -80,25 +96,12 @@ export const fetchNextQuestion = mutation({
 });
 
 export const submitAnswerDirect = mutation({
-  args: {
-    threadId: v.string(),
-    conceptId: v.id('concepts'),
-    phrasingId: v.id('phrasings'),
-    userAnswer: v.string(),
-    conceptTitle: v.optional(v.string()),
-    conceptDescription: v.optional(v.string()),
-    recentAttempts: v.optional(v.number()),
-    recentCorrect: v.optional(v.number()),
-    lapses: v.optional(v.number()),
-    reps: v.optional(v.number()),
-  },
+  args: dtos.SubmitAnswerDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
     assertUserAnswerLength(args.userAnswer);
-
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, args.threadId);
 
     const phrasing = await ctx.runQuery(internal.phrasings.getPhrasingInternal, {
       userId: user._id,
@@ -141,16 +144,11 @@ export const submitAnswerDirect = mutation({
 // Intentionally mutation-based: invoked on demand from UI and rate-limited as an
 // action endpoint (not a reactive query that auto-re-runs on document changes).
 export const getWeakAreasDirect = mutation({
-  args: {
-    threadId: v.string(),
-    limit: v.optional(v.number()),
-  },
+  args: dtos.GetWeakAreasDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
-
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, args.threadId);
 
     const now = Date.now();
     const limit = Math.max(1, Math.min(8, args.limit ?? 5));
@@ -205,17 +203,11 @@ export const getWeakAreasDirect = mutation({
 });
 
 export const rescheduleConceptDirect = mutation({
-  args: {
-    threadId: v.string(),
-    conceptId: v.id('concepts'),
-    days: v.optional(v.number()),
-  },
+  args: dtos.RescheduleConceptDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
-
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, args.threadId);
 
     const concept = await ctx.db.get(args.conceptId);
     if (!concept || concept.userId !== user._id || concept.deletedAt || concept.archivedAt) {
@@ -268,16 +260,14 @@ export const rescheduleConceptDirect = mutation({
 // Send a message and trigger async streaming response
 export const sendMessage = mutation({
   args: {
-    threadId: v.string(),
-    prompt: v.string(),
+    ...dtos.SendMessageArgs,
     intent: v.optional(CHAT_INTENT_VALIDATOR),
   },
   handler: async (ctx, { threadId, prompt, intent }) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
     assertChatPromptLength(prompt);
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, threadId);
     const { messageId } = await reviewAgent.saveMessage(ctx, {
       threadId,
       prompt,
@@ -315,14 +305,13 @@ export const streamResponse = internalAction({
 // Query for listing messages with streaming support
 export const listMessages = query({
   args: {
-    threadId: v.string(),
+    ...dtos.ListMessagesArgs,
     paginationOpts: paginationOptsValidator,
     streamArgs: vStreamArgs,
   },
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
-    const thread = await getThreadMetadata(ctx, components.agent, { threadId: args.threadId });
-    if (thread.userId !== user._id) throw new Error('Unauthorized');
+    await requireThreadOwnership(ctx, user._id, args.threadId);
     const streams = await syncStreams(ctx, components.agent, {
       threadId: args.threadId,
       streamArgs: args.streamArgs,
