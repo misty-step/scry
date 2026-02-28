@@ -36,11 +36,8 @@ async function requireThreadOwnership(
   let thread;
   try {
     thread = await getThreadMetadata(ctx, components.agent, { threadId });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Thread not found') {
-      throw new Error('Unauthorized');
-    }
-    throw error;
+  } catch {
+    throw new Error('Unauthorized');
   }
   if (thread.userId !== userId) {
     throw new Error('Unauthorized');

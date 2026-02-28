@@ -1,5 +1,11 @@
 import { v } from 'convex/values';
 
+/**
+ * Shared DTO objects for agent mutations/queries.
+ * Note: These are defined as raw objects so they can be either used directly
+ * as `args: dtos.myArgs` or spread `args: { ...dtos.myArgs, extraField: v.string() }`.
+ */
+
 export const submitAnswerDirectArgs = {
   threadId: v.string(),
   conceptId: v.id('concepts'),
