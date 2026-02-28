@@ -9,6 +9,9 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 
 ## Current root snapshot
 
+> This is a filesystem snapshot at time of writing (2026-02-27), not a tracked-files-only list.
+> It includes tracked files plus gitignored/local artifacts; classification sections below define disposition.
+
 ```text
 .changeset
 .claude
@@ -91,62 +94,90 @@ vitest.setup.ts
 ### A) Runtime source (keep at root or canonical app dirs)
 - `app/`, `components/`, `hooks/`, `lib/`, `convex/`, `public/`, `tests/`, `types/`, `scripts/`
 - `instrumentation.ts`, `instrumentation-client.ts`, `middleware.ts`
+- `sentry.client.config.ts`, `sentry.edge.config.ts`, `sentry.server.config.ts`
 
-Disposition: **keep** (canonical runtime layout).
+Disposition: **keep** (canonical runtime/observability layout).
 
-### B) Build/test/tooling config (keep, but dedupe in later slices)
+### B) Build/test/tooling config and tracked templates (keep, rationalize later)
 - `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `vitest.setup.ts`
 - `next.config.ts`, `playwright.config.ts`, `postcss.config.mjs`, `prettier.config.mjs`, `eslint.config.mjs`
 - `components.json`, `vercel.json`, `.npmrc`, `.mcp.json`
+- `.gitignore`, `.prettierignore`, `.prettierrc.json`
 - `.gitleaks.toml`, `.trivyignore`, `.codecov.yml`, `.size-limit.json`
-- `.lefthook.yml`, `lefthook.yml` (potential duplication)
-- `.lighthouserc.js`, `lighthouserc.json` (potential duplication)
+- `.env.example` (tracked environment template)
+- `lefthook.yml` + `.lefthook.yml` (divergent active config surfaces; merge required, not blind deletion)
+- `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; choose canonical path in follow-up)
+- `prettier.config.mjs` + `.prettierrc.json` (possible dual Prettier config surface; verify precedence and reduce)
 
-Disposition: **keep for now**, audit duplicates in follow-up cleanup.
+Disposition: **keep for now**, then merge/rationalize duplicates explicitly.
 
-### C) Governance/context docs (rationalize location)
+### C) Governance/context docs (root-anchored vs movable)
 - `README.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `vision.md`
 
 Disposition:
-- `README.md`, `AGENTS.md`: **keep at root**.
-- `CLAUDE.md`, `GEMINI.md`, `vision.md`: candidate move to `docs/context/` or `docs/architecture/` in a later slice once references are updated.
+- `README.md`: **keep at root**.
+- `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`: **keep at root (tool discovery anchors)**.
+- `vision.md`: candidate move under `docs/` in a later slice if references are updated.
 
 ### D) Repository/meta directories (keep)
-- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.pi/`, `.claude/`
+- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`
 
 Disposition: **keep**.
 
-### E) Generated/local-only artifacts (must stay ignored and out of cleanup noise)
+Notes:
+- `.pi/` is repo-local Pi foundation config/artifacts.
+- `.pi/state/*` is local runtime state and should remain ignored/untracked.
+
+### E1) Generated/build outputs and local artifacts (keep ignored)
 - `.next/`, `node_modules/`, `coverage/`, `test-results/`, `playwright-report/`, `.playwright-mcp/`, `.vercel/`
 - `tsconfig.tsbuildinfo`, `next-env.d.ts`, `eval_results.json`, `thinktank.log`
-- local env variants: `.env.local`, `.env.preview`, `.env.production`, `.env.test.local`, `.env.vercel*`
 
-Disposition: **local-only / generated**. Keep ignored and verify no accidental tracking in cleanup slices.
+Disposition: **generated/local artifacts**. Keep ignored and out of tracked history.
+
+### E2) Local env variants (verify tracked status individually)
+- `.env.local`, `.env.preview`, `.env.production`, `.env.test.local`, `.env.vercel*`, `.env.sentry-build-plugin`
+
+Disposition: **treat as local env variants unless explicitly tracked by policy**.
+
+Verification note (current state):
+- `git ls-files | rg '^\.env'` returns only `.env.example`.
 
 ## High-noise cleanup targets (priority order)
 
-1. **Duplicate config filenames**
-   - `lefthook.yml` vs `.lefthook.yml`
+1. **Divergent duplicate config surfaces**
+   - `lefthook.yml` vs `.lefthook.yml` (**merge active hooks, then converge to one canonical file**)
    - `.lighthouserc.js` vs `lighthouserc.json`
-2. **Context file sprawl at root**
-   - `CLAUDE.md`, `GEMINI.md`, `vision.md`
-3. **Persistent generated artifacts risk**
-   - ensure `eval_results.json`, `thinktank.log`, test/build outputs remain untracked in normal loops.
+   - `prettier.config.mjs` vs `.prettierrc.json`
+2. **Root context/doc sprawl (non-tool-anchored files)**
+   - `vision.md` (candidate relocation)
+3. **Persistent generated artifact drift risk**
+   - ensure `eval_results.json`, `thinktank.log`, and test/build outputs remain untracked.
 
 ## Proposed next slices
 
 ### Slice 2 (issue #271 follow-up)
-- Resolve duplicate config surfaces (`lefthook`, `lighthouse`) with single source-of-truth.
-- Update docs/scripts to reference only canonical files.
+- Resolve divergent config surfaces (`lefthook`, `lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
+- Update docs/scripts to reference canonical paths only.
 
 ### Slice 3 (issue #271 follow-up)
-- Move non-root-critical context docs (`CLAUDE.md`, `GEMINI.md`, optionally `vision.md`) under `docs/`.
-- Add redirect/reference notes where needed.
+- Move non-root-critical docs (starting with `vision.md`) under `docs/`.
+- Keep tool-discovery anchors (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) at root.
 
 ### Slice 4 (issue #271 follow-up)
-- Add automated root hygiene check (simple script or CI guard) for unexpected tracked artifacts.
+- Add automated root hygiene check (script/CI guard) for unexpected tracked artifacts and duplicate config surfaces.
 
 ## Verification for this slice
 
-- Inventory generated from current root.
-- No runtime or CI behavior changes in this slice.
+Commands used for baseline verification:
+
+```bash
+git status --short
+git ls-files | rg '^\.env'
+```
+
+Optional CI-parity spot checks before follow-up cleanup slices:
+
+```bash
+pnpm tsc --noEmit
+pnpm test:ci
+```
