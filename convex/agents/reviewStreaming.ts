@@ -33,7 +33,15 @@ async function requireThreadOwnership(
   userId: Id<'users'>,
   threadId: string
 ) {
-  const thread = await getThreadMetadata(ctx, components.agent, { threadId });
+  let thread;
+  try {
+    thread = await getThreadMetadata(ctx, components.agent, { threadId });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Thread not found') {
+      throw new Error('Unauthorized');
+    }
+    throw error;
+  }
   if (thread.userId !== userId) {
     throw new Error('Unauthorized');
   }
@@ -85,7 +93,7 @@ export const createReviewThread = mutation({
 // Intentionally mutation-based: this is an imperative, one-shot UI action with
 // thread ownership checks (non-reactive fetch, not a subscribed query surface).
 export const fetchNextQuestion = mutation({
-  args: dtos.FetchNextQuestionArgs,
+  args: dtos.fetchNextQuestionArgs,
   handler: async (ctx, { threadId }) => {
     const user = await requireUserFromClerk(ctx);
     await requireThreadOwnership(ctx, user._id, threadId);
@@ -96,7 +104,7 @@ export const fetchNextQuestion = mutation({
 });
 
 export const submitAnswerDirect = mutation({
-  args: dtos.SubmitAnswerDirectArgs,
+  args: dtos.submitAnswerDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
@@ -144,7 +152,7 @@ export const submitAnswerDirect = mutation({
 // Intentionally mutation-based: invoked on demand from UI and rate-limited as an
 // action endpoint (not a reactive query that auto-re-runs on document changes).
 export const getWeakAreasDirect = mutation({
-  args: dtos.GetWeakAreasDirectArgs,
+  args: dtos.getWeakAreasDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
@@ -203,7 +211,7 @@ export const getWeakAreasDirect = mutation({
 });
 
 export const rescheduleConceptDirect = mutation({
-  args: dtos.RescheduleConceptDirectArgs,
+  args: dtos.rescheduleConceptDirectArgs,
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'default', false);
@@ -260,7 +268,7 @@ export const rescheduleConceptDirect = mutation({
 // Send a message and trigger async streaming response
 export const sendMessage = mutation({
   args: {
-    ...dtos.SendMessageArgs,
+    ...dtos.sendMessageArgs,
     intent: v.optional(CHAT_INTENT_VALIDATOR),
   },
   handler: async (ctx, { threadId, prompt, intent }) => {
@@ -305,7 +313,7 @@ export const streamResponse = internalAction({
 // Query for listing messages with streaming support
 export const listMessages = query({
   args: {
-    ...dtos.ListMessagesArgs,
+    ...dtos.listMessagesArgs,
     paginationOpts: paginationOptsValidator,
     streamArgs: vStreamArgs,
   },

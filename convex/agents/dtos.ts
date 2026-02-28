@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 
-export const SubmitAnswerDirectArgs = {
+export const submitAnswerDirectArgs = {
   threadId: v.string(),
   conceptId: v.id('concepts'),
   phrasingId: v.id('phrasings'),
@@ -13,27 +13,27 @@ export const SubmitAnswerDirectArgs = {
   reps: v.optional(v.number()),
 };
 
-export const GetWeakAreasDirectArgs = {
+export const getWeakAreasDirectArgs = {
   threadId: v.string(),
   limit: v.optional(v.number()),
 };
 
-export const RescheduleConceptDirectArgs = {
+export const rescheduleConceptDirectArgs = {
   threadId: v.string(),
   conceptId: v.id('concepts'),
   days: v.optional(v.number()),
 };
 
-export const FetchNextQuestionArgs = {
+export const fetchNextQuestionArgs = {
   threadId: v.string(),
 };
 
-export const SendMessageArgs = {
+export const sendMessageArgs = {
   threadId: v.string(),
   prompt: v.string(),
-  // Note: intent validator imported where used
+  // intent is intentionally excluded — it is specific to sendMessage and not shared
 };
 
-export const ListMessagesArgs = {
+export const listMessagesArgs = {
   threadId: v.string(),
 };
