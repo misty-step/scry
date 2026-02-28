@@ -101,13 +101,13 @@ Disposition: **keep** (canonical runtime/observability layout).
 ### B) Build/test/tooling config and tracked templates (keep, rationalize later)
 - `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `vitest.setup.ts`
 - `next.config.ts`, `playwright.config.ts`, `postcss.config.mjs`, `prettier.config.mjs`, `eslint.config.mjs`
-- `components.json`, `vercel.json`, `.npmrc`, `.mcp.json`
+- `components.json`, `vercel.json`, `.npmrc`, `.mcp.json` (repo-shared MCP tooling config)
 - `.gitignore`, `.prettierignore`, `.prettierrc.json`
 - `.gitleaks.toml`, `.trivyignore`, `.codecov.yml`, `.size-limit.json`
 - `.env.example` (tracked environment template)
 - `lefthook.yml` + `.lefthook.yml` (divergent active config surfaces; merge required, not blind deletion)
 - `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; choose canonical path in follow-up)
-- `prettier.config.mjs` + `.prettierrc.json` (possible dual Prettier config surface; verify precedence and reduce)
+- `prettier.config.mjs` + `.prettierrc.json` (confirmed dual Prettier config surface; `.prettierrc.json` is currently active)
 
 Disposition: **keep for now**, then merge/rationalize duplicates explicitly.
 
@@ -116,8 +116,10 @@ Disposition: **keep for now**, then merge/rationalize duplicates explicitly.
 
 Disposition:
 - `README.md`: **keep at root**.
-- `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`: **keep at root (tool discovery anchors)**.
+- `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`: **keep at root (repo workflow contract + root-linked references)**.
 - `vision.md`: candidate move under `docs/` in a later slice if references are updated.
+
+Note: root retention for these instruction files is a repository policy/convention decision, not an MCP filename auto-discovery claim.
 
 ### D) Repository/meta directories (keep)
 - `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`
@@ -134,6 +136,9 @@ Notes:
 
 Disposition: **generated/local artifacts**. Keep ignored and out of tracked history.
 
+Current exception to resolve in Slice 2:
+- `.playwright-mcp/signin-email-sent-state.png` and `.playwright-mcp/signin-page-redesigned.png` are currently tracked and should be removed from git index while keeping directory ignored.
+
 ### E2) Local env variants (verify tracked status individually)
 - `.env.local`, `.env.preview`, `.env.production`, `.env.test.local`, `.env.vercel*`, `.env.sentry-build-plugin`
 
@@ -141,30 +146,50 @@ Disposition: **treat as local env variants unless explicitly tracked by policy**
 
 Verification note (current state):
 - `git ls-files | rg '^\.env'` returns only `.env.example`.
+- `git ls-files .playwright-mcp` shows two tracked PNG artifacts (cleanup required in follow-up slice).
+- `pnpm exec prettier --find-config-path docs/architecture/root-topology-inventory.md` resolves to `.prettierrc.json`.
 
 ## High-noise cleanup targets (priority order)
 
 1. **Divergent duplicate config surfaces**
-   - `lefthook.yml` vs `.lefthook.yml` (**merge active hooks, then converge to one canonical file**)
+   - `lefthook.yml` vs `.lefthook.yml` (**merge active hooks, then converge to one canonical file; decide whether `.lefthook.yml` stays local-only/ignored after merge**)
    - `.lighthouserc.js` vs `lighthouserc.json`
-   - `prettier.config.mjs` vs `.prettierrc.json`
-2. **Root context/doc sprawl (non-tool-anchored files)**
+   - `prettier.config.mjs` vs `.prettierrc.json` (`.prettierrc.json` currently active)
+2. **Tracked artifacts that should be untracked**
+   - `.playwright-mcp/signin-email-sent-state.png`
+   - `.playwright-mcp/signin-page-redesigned.png`
+3. **Root context/doc sprawl (non-root-critical files)**
    - `vision.md` (candidate relocation)
-3. **Persistent generated artifact drift risk**
+4. **Persistent generated artifact drift risk**
    - ensure `eval_results.json`, `thinktank.log`, and test/build outputs remain untracked.
 
 ## Proposed next slices
 
 ### Slice 2 (issue #271 follow-up)
 - Resolve divergent config surfaces (`lefthook`, `lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
+- Preserve required hook coverage during `lefthook` convergence (including secret scanning + type/test checks).
+- Remove tracked `.playwright-mcp/*.png` artifacts from git index and keep directory ignored.
 - Update docs/scripts to reference canonical paths only.
+
+Exit criteria:
+- canonical config decision documented for each duplicate surface
+- `git ls-files .playwright-mcp` returns no tracked files
+- hook/tooling docs reference only canonical config paths
 
 ### Slice 3 (issue #271 follow-up)
 - Move non-root-critical docs (starting with `vision.md`) under `docs/`.
-- Keep tool-discovery anchors (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) at root.
+- Keep root workflow anchors (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) at root unless repository policy is intentionally changed.
+
+Exit criteria:
+- moved docs have updated links/references
+- root anchor files unchanged unless an explicit policy-change PR is approved
 
 ### Slice 4 (issue #271 follow-up)
 - Add automated root hygiene check (script/CI guard) for unexpected tracked artifacts and duplicate config surfaces.
+
+Exit criteria:
+- hygiene check runs in CI
+- check fails on newly tracked generated artifacts or duplicate canonical config files
 
 ## Verification for this slice
 
@@ -172,7 +197,9 @@ Commands used for baseline verification:
 
 ```bash
 git status --short
-git ls-files | rg '^\.env'
+git ls-files | rg '^\.env'          # or: git ls-files | grep -E '^\.env'
+git ls-files .playwright-mcp
+pnpm exec prettier --find-config-path docs/architecture/root-topology-inventory.md
 ```
 
 Optional CI-parity spot checks before follow-up cleanup slices:
