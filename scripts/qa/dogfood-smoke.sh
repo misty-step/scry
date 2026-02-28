@@ -17,10 +17,13 @@ Options:
 EOF
 }
 
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BASE_URL="https://scry.study"
-SESSION="scry-dogfood-$(date +%Y%m%d-%H%M%S)"
-OUT_DIR="/tmp/dogfood-scry-$(date +%Y%m%d-%H%M%S)"
+SESSION="scry-dogfood-$TIMESTAMP"
+OUT_DIR="/tmp/dogfood-scry-$TIMESTAMP"
 FAIL_ON_HIGH=false
+QA_TEST_EMAIL="${QA_TEST_EMAIL:-qa-bot@example.com}"
+QA_TEST_PASSWORD="${QA_TEST_PASSWORD:-invalid-password}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +48,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --)
+      # Accept pnpm argument forwarding separator and continue parsing.
       shift
       ;;
     *)
@@ -60,20 +64,33 @@ if ! command -v agent-browser >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$OUT_DIR/screenshots" "$OUT_DIR/videos"
+if ! command -v jq >/dev/null 2>&1; then
+  echo "jq not found. Install with: brew install jq" >&2
+  exit 1
+fi
+
+mkdir -p "$OUT_DIR/screenshots"
 
 ab() {
   agent-browser --session "$SESSION" "$@"
 }
 
-safe_ab() {
+run_ab() {
   set +e
   ab "$@"
   local status=$?
   set -e
+  if [[ "$status" -ne 0 ]]; then
+    AB_FAILURE_COUNT=$((AB_FAILURE_COUNT + 1))
+  fi
   return "$status"
 }
 
+soft_ab() {
+  run_ab "$@" || true
+}
+
+AB_FAILURE_COUNT=0
 LANDING_URL="$BASE_URL"
 SIGN_IN_URL="${BASE_URL%/}/sign-in"
 
@@ -81,42 +98,42 @@ echo "→ Session: $SESSION"
 echo "→ Output:  $OUT_DIR"
 echo "→ Base URL: $BASE_URL"
 
-safe_ab open "$LANDING_URL" >/dev/null
-safe_ab wait --load domcontentloaded >/dev/null
-safe_ab screenshot --annotate "$OUT_DIR/screenshots/initial.png" >/dev/null
+soft_ab open "$LANDING_URL" >/dev/null
+soft_ab wait --load domcontentloaded >/dev/null
+soft_ab screenshot --annotate "$OUT_DIR/screenshots/initial.png" >/dev/null
 
-safe_ab open "$SIGN_IN_URL" >/dev/null
-safe_ab wait --load domcontentloaded >/dev/null
-safe_ab screenshot --annotate "$OUT_DIR/screenshots/sign-in.png" >/dev/null
+soft_ab open "$SIGN_IN_URL" >/dev/null
+soft_ab wait --load domcontentloaded >/dev/null
+soft_ab screenshot --annotate "$OUT_DIR/screenshots/sign-in.png" >/dev/null
 
-safe_ab click "button:has-text('Continue')" >/dev/null
-safe_ab wait 1000 >/dev/null
-safe_ab screenshot --annotate "$OUT_DIR/screenshots/login-empty-submit.png" >/dev/null
-
-safe_ab fill "input[name='identifier']" "qa-bot@example.com" >/dev/null
-safe_ab fill "input[name='password']" "wrongpassword123" >/dev/null
-safe_ab click "button:has-text('Continue')" >/dev/null
-safe_ab wait 4000 >/dev/null
-safe_ab screenshot --annotate "$OUT_DIR/screenshots/login-unknown-account.png" >/dev/null
+soft_ab fill "input[name='identifier']" "$QA_TEST_EMAIL" >/dev/null
+soft_ab fill "input[name='password']" "$QA_TEST_PASSWORD" >/dev/null
+soft_ab click "button:has-text('Continue')" >/dev/null
+soft_ab wait "text=Couldn't find your account." >/dev/null
+soft_ab screenshot --annotate "$OUT_DIR/screenshots/login-unknown-account.png" >/dev/null
 
 DUP_EVAL_JSON="$OUT_DIR/dup-eval.json"
-if safe_ab eval "(() => { const txt = document.body?.innerText || ''; const needle = \"Couldn't find your account.\"; return { url: location.href, duplicateCount: Math.max(0, txt.split(needle).length - 1), hasError: txt.includes(needle) }; })()" >"$DUP_EVAL_JSON"; then
-  DUP_COUNT="$(jq -r '.duplicateCount // 0' "$DUP_EVAL_JSON" 2>/dev/null || echo 0)"
+if run_ab eval "(() => { const txt = document.body?.innerText || ''; const needle = \"Couldn't find your account.\"; return { url: location.href, duplicateCount: Math.max(0, txt.split(needle).length - 1), hasError: txt.includes(needle) }; })()" >"$DUP_EVAL_JSON"; then
+  DUP_COUNT="$(jq -r '.duplicateCount // 0' "$DUP_EVAL_JSON")"
 else
   DUP_COUNT=0
 fi
 
-safe_ab click "a:has-text('Sign up')" >/dev/null
-safe_ab wait --load domcontentloaded >/dev/null
-safe_ab screenshot --annotate "$OUT_DIR/screenshots/sign-up.png" >/dev/null
+soft_ab click "a:has-text('Sign up')" >/dev/null
+soft_ab wait --load domcontentloaded >/dev/null
+soft_ab screenshot --annotate "$OUT_DIR/screenshots/sign-up.png" >/dev/null
 
 CF_EVAL_JSON="$OUT_DIR/cloudflare-eval.json"
-if safe_ab eval "(() => { const text = (document.body?.innerText || '').toLowerCase(); const title = (document.title || '').toLowerCase(); const isCloudflareChallenge = title.includes('just a moment') || text.includes('performing security verification') || text.includes('ray id'); return { url: location.href, title: document.title, isCloudflareChallenge }; })()" >"$CF_EVAL_JSON"; then
-  CF_CHALLENGE="$(jq -r '.isCloudflareChallenge // false' "$CF_EVAL_JSON" 2>/dev/null || echo false)"
-  SIGNUP_URL="$(jq -r '.url // ""' "$CF_EVAL_JSON" 2>/dev/null || echo "")"
+if run_ab eval "(() => { const text = (document.body?.innerText || '').toLowerCase(); const title = (document.title || '').toLowerCase(); const isCloudflareChallenge = title.includes('just a moment') || text.includes('performing security verification') || text.includes('ray id'); return { url: location.href, title: document.title, isCloudflareChallenge }; })()" >"$CF_EVAL_JSON"; then
+  CF_CHALLENGE="$(jq -r '.isCloudflareChallenge // false' "$CF_EVAL_JSON")"
+  SIGNUP_URL="$(jq -r '.url // ""' "$CF_EVAL_JSON")"
 else
   CF_CHALLENGE=false
   SIGNUP_URL=""
+fi
+
+if [[ ! "$DUP_COUNT" =~ ^[0-9]+$ ]]; then
+  DUP_COUNT=0
 fi
 
 DATE_STR="$(date +%Y-%m-%d)"
@@ -130,11 +147,14 @@ if [[ "$CF_CHALLENGE" == "true" ]]; then
   HIGH_COUNT=$((HIGH_COUNT + 1))
 fi
 
-if [[ "$DUP_COUNT" =~ ^[0-9]+$ ]] && [[ "$DUP_COUNT" -gt 1 ]]; then
+if [[ "$AB_FAILURE_COUNT" -gt 0 ]]; then
+  MEDIUM_COUNT=$((MEDIUM_COUNT + 1))
+fi
+
+if [[ "$DUP_COUNT" -gt 1 ]]; then
   LOW_COUNT=$((LOW_COUNT + 1))
 fi
 
-MEDIUM_COUNT=$((MEDIUM_COUNT + 1))
 TOTAL_COUNT=$((HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
 
 cat >"$REPORT_PATH" <<EOF
@@ -157,35 +177,37 @@ cat >"$REPORT_PATH" <<EOF
 | Low | $LOW_COUNT |
 | **Total** | **$TOTAL_COUNT** |
 
-## Issues
+## Findings
+EOF
 
-### ISSUE-001: Sign-up automation path reliability
+if [[ "$CF_CHALLENGE" == "true" ]]; then
+  cat >>"$REPORT_PATH" <<EOF
+
+### ISSUE-001: Cloudflare challenge blocks unattended sign-up flow
 
 | Field | Value |
 |-------|-------|
-| **Severity** | $( [[ "$CF_CHALLENGE" == "true" ]] && echo "high" || echo "medium" ) |
+| **Severity** | high |
 | **Category** | functional |
 | **URL** | ${SIGNUP_URL:-$SIGN_IN_URL} |
 | **Repro Video** | N/A |
 
 **Description**
 
-Sign-up transition was exercised from sign-in. $( [[ "$CF_CHALLENGE" == "true" ]] && echo "Cloudflare bot verification challenge was detected, which blocks unattended UAT on this host." || echo "No Cloudflare challenge detected in this run." )
+Sign-up transition from sign-in encountered Cloudflare bot verification, which blocks unattended UAT on this host.
 
-**Repro Steps**
+**Evidence**
 
-1. Open sign-in page.
-   ![Step 1](screenshots/sign-in.png)
-
-2. Click **Sign up**.
-   ![Step 2](screenshots/login-unknown-account.png)
-
-3. Observe resulting page.
-   ![Result](screenshots/sign-up.png)
+![Result](screenshots/sign-up.png)
 
 ---
+EOF
+fi
 
-### ISSUE-002: Browser automation wait strategy
+if [[ "$AB_FAILURE_COUNT" -gt 0 ]]; then
+  cat >>"$REPORT_PATH" <<EOF
+
+### ISSUE-002: Browser automation command failures during smoke run
 
 | Field | Value |
 |-------|-------|
@@ -196,26 +218,50 @@ Sign-up transition was exercised from sign-in. $( [[ "$CF_CHALLENGE" == "true" ]
 
 **Description**
 
-For this smoke suite, 'domcontentloaded' is used as the default wait strategy because it is consistently reliable for auth surfaces with ongoing background network activity.
+$AB_FAILURE_COUNT agent-browser command(s) failed during this run. The report was still produced, but reliability of individual steps may be reduced.
 
 ---
+EOF
+fi
 
-### ISSUE-003: Unknown-account error rendering duplication
+if [[ "$DUP_COUNT" -gt 1 ]]; then
+  cat >>"$REPORT_PATH" <<EOF
+
+### ISSUE-003: Unknown-account error message appears multiple times
 
 | Field | Value |
 |-------|-------|
-| **Severity** | $( [[ "$DUP_COUNT" -gt 1 ]] && echo "low" || echo "low (not reproduced)" ) |
+| **Severity** | low |
 | **Category** | ux |
 | **URL** | $SIGN_IN_URL |
 | **Repro Video** | N/A |
 
 **Description**
 
-The unknown-account message 'Couldn't find your account.' appeared **$DUP_COUNT** time(s) in this run after submitting unknown credentials.
+The unknown-account message 'Couldn't find your account.' appeared **$DUP_COUNT** time(s) after submitting unknown credentials.
 
 **Evidence**
 
 ![Result](screenshots/login-unknown-account.png)
+
+---
+EOF
+fi
+
+if [[ "$TOTAL_COUNT" -eq 0 ]]; then
+  cat >>"$REPORT_PATH" <<'EOF'
+
+No actionable findings were detected in this smoke run.
+EOF
+fi
+
+cat >>"$REPORT_PATH" <<EOF
+
+## Artifacts
+
+- report: $REPORT_PATH
+- screenshots: $OUT_DIR/screenshots
+- diagnostics: $DUP_EVAL_JSON, $CF_EVAL_JSON
 EOF
 
 echo "✓ Report written: $REPORT_PATH"

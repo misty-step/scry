@@ -38,13 +38,20 @@ Never run deploy-coupled commands without explicit approval:
 - `./scripts/deploy-production.sh`
 
 ## Reusable QA smoke command
+Prerequisites:
+- `agent-browser` installed and on `PATH`
+- `jq` installed and on `PATH`
+
+Commands:
 - Production smoke run (dogfood + agent-browser): `pnpm qa:dogfood`
 - Local smoke run: `pnpm qa:dogfood:local`
 - Optional strict mode: `pnpm qa:dogfood:local -- --fail-on-high`
+- Alternate local port example: `pnpm qa:dogfood -- --url http://localhost:3100`
 
 Artifacts are written to `/tmp/dogfood-scry-<timestamp>/` with:
 - `report.md`
 - `screenshots/*.png`
+- diagnostic JSON: `dup-eval.json`, `cloudflare-eval.json`
 
 ## 72h accretive experiment (SEAM-lite)
 Use `scry-seam-retrospective-v1` after completed tasks for 72 hours to test whether one evidence-backed lesson per task reduces repeated mistakes.
