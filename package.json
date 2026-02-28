@@ -44,6 +44,7 @@
     "test:e2e:full": "playwright test",
     "qa:dogfood": "bash scripts/qa/dogfood-smoke.sh",
     "qa:dogfood:local": "bash scripts/qa/dogfood-smoke.sh --url http://localhost:3000",
+    "spike:bun:matrix": "bash scripts/tooling/run-bun-parity-matrix.sh",
     "eval": "promptfoo eval -c evals/promptfoo.yaml",
     "eval:view": "promptfoo view",
     "evolve": "tsx scripts/evolve-prompts.ts",
