@@ -37,6 +37,15 @@ Never run deploy-coupled commands without explicit approval:
 - `pnpm convex:deploy`
 - `./scripts/deploy-production.sh`
 
+## Reusable QA smoke command
+- Production smoke run (dogfood + agent-browser): `pnpm qa:dogfood`
+- Local smoke run: `pnpm qa:dogfood:local`
+- Optional strict mode: `pnpm qa:dogfood:local -- --fail-on-high`
+
+Artifacts are written to `/tmp/dogfood-scry-<timestamp>/` with:
+- `report.md`
+- `screenshots/*.png`
+
 ## 72h accretive experiment (SEAM-lite)
 Use `scry-seam-retrospective-v1` after completed tasks for 72 hours to test whether one evidence-backed lesson per task reduces repeated mistakes.
 

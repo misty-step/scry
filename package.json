@@ -42,6 +42,8 @@
     "test:unit": "vitest --run --dir .",
     "test:integration": "vitest --run tests/**/*.{test,spec}.ts",
     "test:e2e:full": "playwright test",
+    "qa:dogfood": "bash scripts/qa/dogfood-smoke.sh",
+    "qa:dogfood:local": "bash scripts/qa/dogfood-smoke.sh --url http://localhost:3000",
     "eval": "promptfoo eval -c evals/promptfoo.yaml",
     "eval:view": "promptfoo view",
     "evolve": "tsx scripts/evolve-prompts.ts",
