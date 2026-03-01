@@ -30,7 +30,6 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .github
 .gitignore
 .gitleaks.toml
-.lefthook.yml
 .lighthouserc.js
 .mcp.json
 .next
@@ -105,7 +104,7 @@ Disposition: **keep** (canonical runtime/observability layout).
 - `.gitignore`, `.prettierignore`, `.prettierrc.json`
 - `.gitleaks.toml`, `.trivyignore`, `.codecov.yml`, `.size-limit.json`
 - `.env.example` (tracked environment template)
-- `lefthook.yml` + `.lefthook.yml` (divergent active config surfaces; merge required, not blind deletion)
+- `lefthook.yml` (unified config after merging `.lefthook.yml` coverage in Slice 1)
 - `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; `lighthouserc.json` is currently canonical for CI)
 - `prettier.config.mjs` + `.prettierrc.json` (confirmed dual Prettier config surface; `.prettierrc.json` is currently active)
 
@@ -153,7 +152,7 @@ Verification note (current state):
 ## High-noise cleanup targets (priority order)
 
 1. **Divergent duplicate config surfaces**
-   - `lefthook.yml` vs `.lefthook.yml` (**merge active hooks, then converge to one canonical file; decide whether `.lefthook.yml` stays local-only/ignored after merge**)
+   - `lefthook.yml` (**unified config after merge**)
    - `.lighthouserc.js` vs `lighthouserc.json`
    - `prettier.config.mjs` vs `.prettierrc.json` (`.prettierrc.json` currently active)
 2. **Tracked artifacts that should be untracked**
@@ -167,9 +166,8 @@ Verification note (current state):
 ## Proposed next slices
 
 ### Slice 2 (issue #271 follow-up)
-- Resolve divergent config surfaces (`lefthook`, `lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
+- Resolve divergent config surfaces (`lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
 - Canonicalize to `lighthouserc.json` for Lighthouse (align with CI usage) and merge `.lighthouserc.js` assertions.
-- Preserve required hook coverage during `lefthook` convergence (including secret scanning + type/test checks).
 - Remove tracked `.playwright-mcp/*.png` artifacts from git index and keep directory ignored.
 - Update docs/scripts to reference canonical paths only.
 

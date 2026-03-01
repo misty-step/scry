@@ -6,7 +6,7 @@ pre-commit:
   commands:
     # Secret scanning to prevent leaks
     trufflehog:
-      run: trufflehog git file://. --since-commit HEAD --only-verified --fail
+      run: trufflehog filesystem {staged_files} --fail
     
     # Root topology hygiene to catch unclassified files
     topology-hygiene:
