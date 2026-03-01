@@ -106,7 +106,7 @@ Disposition: **keep** (canonical runtime/observability layout).
 - `.gitleaks.toml`, `.trivyignore`, `.codecov.yml`, `.size-limit.json`
 - `.env.example` (tracked environment template)
 - `lefthook.yml` + `.lefthook.yml` (divergent active config surfaces; merge required, not blind deletion)
-- `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; choose canonical path in follow-up)
+- `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; `lighthouserc.json` is currently canonical for CI)
 - `prettier.config.mjs` + `.prettierrc.json` (confirmed dual Prettier config surface; `.prettierrc.json` is currently active)
 
 Disposition: **keep for now**, then merge/rationalize duplicates explicitly.
@@ -132,7 +132,7 @@ Notes:
 
 ### E1) Generated/build outputs and local artifacts (keep ignored)
 - `.next/`, `node_modules/`, `coverage/`, `test-results/`, `playwright-report/`, `.playwright-mcp/`, `.vercel/`
-- `tsconfig.tsbuildinfo`, `next-env.d.ts`, `eval_results.json`, `thinktank.log`
+- `tsconfig.tsbuildinfo`, `next-env.d.ts`, `eval_results.json`, `thinktank.log` (previously tracked in history, now ignored)
 
 Disposition: **generated/local artifacts**. Keep ignored and out of tracked history.
 
@@ -143,6 +143,7 @@ Current exception to resolve in Slice 2:
 - `.env.local`, `.env.preview`, `.env.production`, `.env.test.local`, `.env.vercel*`, `.env.sentry-build-plugin`
 
 Disposition: **treat as local env variants unless explicitly tracked by policy**.
+Note: `.env.production` is currently required by `docs/runbooks/production-deployment.md` for manual deployments.
 
 Verification note (current state):
 - `git ls-files | rg '^\.env'` returns only `.env.example`.
@@ -167,6 +168,7 @@ Verification note (current state):
 
 ### Slice 2 (issue #271 follow-up)
 - Resolve divergent config surfaces (`lefthook`, `lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
+- Canonicalize to `lighthouserc.json` for Lighthouse (align with CI usage) and merge `.lighthouserc.js` assertions.
 - Preserve required hook coverage during `lefthook` convergence (including secret scanning + type/test checks).
 - Remove tracked `.playwright-mcp/*.png` artifacts from git index and keep directory ignored.
 - Update docs/scripts to reference canonical paths only.
