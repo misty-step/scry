@@ -127,7 +127,7 @@ Note: root retention for these instruction files is a repository policy/conventi
 Disposition: **keep**.
 
 Notes:
-- `.pi/` is repo-local Pi foundation config/artifacts.
+- `.pi/` is repo-local Pi foundation config/artifacts (12 files tracked, including bootstrap reports).
 - `.pi/state/*` is local runtime state and should remain ignored/untracked.
 
 ### E1) Generated/build outputs and local artifacts (keep ignored)
