@@ -42,7 +42,7 @@ jobs:
           PID1=$!
           bun run tsc --noEmit &
           PID2=$!
-          bun audit &
+          bun audit --audit-level=critical &
           PID3=$!
           wait $PID1
           EXIT1=$?

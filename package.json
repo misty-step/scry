@@ -160,6 +160,14 @@
       "better-sqlite3",
       "@swc/core",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "fast-xml-parser": ">=5.3.5",
+      "basic-ftp": ">=5.2.0"
+    }
+  },
+  "overrides": {
+    "fast-xml-parser": ">=5.3.5",
+    "basic-ftp": ">=5.2.0"
   }
 }
