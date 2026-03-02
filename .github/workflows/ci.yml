@@ -32,9 +32,24 @@ jobs:
       - name: Run quality checks
         run: |
           pnpm lint &
+          LINT_PID=$!
           pnpm tsc --noEmit &
+          TSC_PID=$!
           pnpm audit --audit-level=critical &
-          wait
+          AUDIT_PID=$!
+          wait $LINT_PID
+          LINT_EXIT=$?
+          wait $TSC_PID
+          TSC_EXIT=$?
+          wait $AUDIT_PID
+          AUDIT_EXIT=$?
+          [ "$LINT_EXIT" -ne 0 ] && echo "ERROR: lint failed (exit $LINT_EXIT)"
+          [ "$TSC_EXIT" -ne 0 ] && echo "ERROR: typecheck failed (exit $TSC_EXIT)"
+          [ "$AUDIT_EXIT" -ne 0 ] && echo "ERROR: audit failed (exit $AUDIT_EXIT)"
+          if [ "$LINT_EXIT" -ne 0 ] || [ "$TSC_EXIT" -ne 0 ] || [ "$AUDIT_EXIT" -ne 0 ]; then
+            echo "ERROR: Quality checks failed"
+            exit 1
+          fi
 
       - name: Check for .only in tests
         run: |

@@ -43,6 +43,7 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .vercel
 AGENTS.md
 app
+bun.lock
 CLAUDE.md
 components
 components.json
@@ -98,7 +99,7 @@ vitest.setup.ts
 Disposition: **keep** (canonical runtime/observability layout).
 
 ### B) Build/test/tooling config and tracked templates (keep, rationalize later)
-- `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `vitest.setup.ts`
+- `package.json`, `pnpm-lock.yaml`, `bun.lock`, `tsconfig.json`, `vitest.config.ts`, `vitest.setup.ts`
 - `next.config.ts`, `playwright.config.ts`, `postcss.config.mjs`, `prettier.config.mjs`, `eslint.config.mjs`
 - `components.json`, `vercel.json`, `.npmrc`, `.mcp.json` (repo-shared MCP tooling config)
 - `.gitignore`, `.prettierignore`, `.prettierrc.json`

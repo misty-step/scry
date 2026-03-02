@@ -27,12 +27,13 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          cache: true
 
       - name: Verify Bun version
-        run: bun --version
+        run: bun --version | grep -q "^1\.2\." || exit 1
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       # Quality checks in parallel
       - name: Run quality checks
@@ -41,11 +42,18 @@ jobs:
           PID1=$!
           bun run tsc --noEmit &
           PID2=$!
+          bun audit &
+          PID3=$!
           wait $PID1
           EXIT1=$?
           wait $PID2
           EXIT2=$?
-          if [ "$EXIT1" -ne 0 ] || [ "$EXIT2" -ne 0 ]; then
+          wait $PID3
+          EXIT3=$?
+          [ "$EXIT1" -ne 0 ] && echo "ERROR: lint failed (exit $EXIT1)"
+          [ "$EXIT2" -ne 0 ] && echo "ERROR: typecheck failed (exit $EXIT2)"
+          [ "$EXIT3" -ne 0 ] && echo "ERROR: security audit failed (exit $EXIT3)"
+          if [ "$EXIT1" -ne 0 ] || [ "$EXIT2" -ne 0 ] || [ "$EXIT3" -ne 0 ]; then
             echo "ERROR: Quality checks failed"
             exit 1
           fi
@@ -73,9 +81,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          cache: true
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Run tests with coverage
         run: bun run test:ci

@@ -20,11 +20,13 @@ Bun is **available as an alternative** to pnpm. Both package managers work, but 
 | Task | pnpm | Bun |
 |------|------|-----|
 | Install dependencies | `pnpm install` | `bun install` |
+| Deterministic install | `pnpm install --frozen-lockfile` | `bun install --frozen-lockfile` |
 | Dev server | `pnpm dev` | `bun run dev` |
 | Lint | `pnpm lint` | `bun run lint` |
 | Typecheck | `pnpm tsc --noEmit` | `bun run tsc --noEmit` |
 | Test | `pnpm test:ci` | `bun run test:ci` |
 | QA smoke | `pnpm qa:dogfood:local` | `bun run qa:dogfood:local` |
+| Security | `pnpm audit` | `bun audit` |
 
 ## Important Differences
 
@@ -44,10 +46,10 @@ bunx eslint .
 
 ### Lockfiles
 
-- **pnpm**: Uses `pnpm-lock.yaml`
-- **Bun**: Uses `bun.lock` (if generated)
+- **pnpm**: Uses `pnpm-lock.yaml` (Primary source of truth for production)
+- **Bun**: Uses `bun.lock` (Tracked for CI deterministic validation)
 
-**Do not commit both lockfiles.** The repository currently uses `pnpm-lock.yaml` as the source of truth.
+**Do not update `bun.lock` unless intentionally changing dependencies.** CI uses `bun install --frozen-lockfile`.
 
 ## Running Parity Checks
 
