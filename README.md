@@ -135,6 +135,7 @@ pnpm dev                    # Start development server
 pnpm build                  # Build for production
 pnpm start                  # Start production server
 pnpm lint                   # Run linting
+pnpm qa                     # Lint + typecheck + test:ci
 
 # Testing
 pnpm test                   # Run unit tests

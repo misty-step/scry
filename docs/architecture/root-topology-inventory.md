@@ -136,8 +136,8 @@ Notes:
 
 Disposition: **generated/local artifacts**. Keep ignored and out of tracked history.
 
-Current exception to resolve in Slice 2:
-- `.playwright-mcp/signin-email-sent-state.png` and `.playwright-mcp/signin-page-redesigned.png` are currently tracked and should be removed from git index while keeping directory ignored.
+Tracked artifact exception resolved:
+- `.playwright-mcp/signin-email-sent-state.png` and `.playwright-mcp/signin-page-redesigned.png` were removed from git index and remain local-only under the ignored `.playwright-mcp/` directory.
 
 ### E2) Local env variants (verify tracked status individually)
 - `.env.local`, `.env.preview`, `.env.production`, `.env.test.local`, `.env.vercel*`, `.env.sentry-build-plugin`
@@ -147,7 +147,7 @@ Note: `.env.production` is currently required by `docs/runbooks/production-deplo
 
 Verification note (current state):
 - `git ls-files | rg '^\.env'` returns only `.env.example`.
-- `git ls-files .playwright-mcp` shows two tracked PNG artifacts (cleanup required in follow-up slice).
+- `git ls-files .playwright-mcp` returns no tracked files.
 - `pnpm exec prettier --find-config-path docs/architecture/root-topology-inventory.md` resolves to `.prettierrc.json`.
 
 ## High-noise cleanup targets (priority order)
@@ -156,12 +156,9 @@ Verification note (current state):
    - `lefthook.yml` (**unified config after merge**)
    - `.lighthouserc.js` vs `lighthouserc.json`
    - `prettier.config.mjs` vs `.prettierrc.json` (`.prettierrc.json` currently active)
-2. **Tracked artifacts that should be untracked**
-   - `.playwright-mcp/signin-email-sent-state.png`
-   - `.playwright-mcp/signin-page-redesigned.png`
-3. **Root context/doc sprawl (non-root-critical files)**
+2. **Root context/doc sprawl (non-root-critical files)**
    - `vision.md` (candidate relocation)
-4. **Persistent generated artifact drift risk**
+3. **Persistent generated artifact drift risk**
    - ensure `eval_results.json`, `thinktank.log`, and test/build outputs remain untracked.
 
 ## Proposed next slices
@@ -169,12 +166,10 @@ Verification note (current state):
 ### Slice 2 (issue #271 follow-up)
 - Resolve divergent config surfaces (`lighthouse`, `prettier`) with explicit precedence and one canonical source per concern.
 - Canonicalize to `lighthouserc.json` for Lighthouse (align with CI usage) and merge `.lighthouserc.js` assertions.
-- Remove tracked `.playwright-mcp/*.png` artifacts from git index and keep directory ignored.
 - Update docs/scripts to reference canonical paths only.
 
 Exit criteria:
 - canonical config decision documented for each duplicate surface
-- `git ls-files .playwright-mcp` returns no tracked files
 - hook/tooling docs reference only canonical config paths
 
 ### Slice 3 (issue #271 follow-up)

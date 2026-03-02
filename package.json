@@ -29,6 +29,7 @@
     "test:tti": "node --input-type=module scripts/lighthouse-tti-test.js",
     "test:perf:review": "node scripts/measure-review-performance.js",
     "lint": "eslint .",
+    "qa": "eslint . && tsc --noEmit && vitest --run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "assets:generate": "node scripts/generate-static-assets.js",
