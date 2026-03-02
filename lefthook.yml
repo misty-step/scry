@@ -4,6 +4,14 @@
 pre-commit:
   parallel: true
   commands:
+    # Secret scanning to prevent leaks
+    trufflehog:
+      run: trufflehog filesystem {staged_files} --fail
+    
+    # Root topology hygiene to catch unclassified files
+    topology-hygiene:
+      run: ./scripts/tooling/topology-hygiene-check.sh
+
     # TypeScript type checking to catch compilation errors early
     typecheck:
       glob: "*.{ts,tsx}"
@@ -18,9 +26,12 @@ pre-commit:
 pre-push:
   parallel: false
   commands:
-    # Fast unit regression check on changed files (no coverage)
-    # Typecheck runs in pre-commit (changed files) + CI (full codebase)
-    # Coverage enforced in CI with proper tracking
+    # Fast unit regression check on changed files
     test-unit-changed:
       run: ./scripts/test-changed-batches.sh
       fail_text: "Unit tests (changed files) failed. Fix before pushing."
+
+    # Verify Convex contracts before pushing
+    convex-check:
+      run: pnpm test:contract
+      fail_text: "Convex contract check failed."
