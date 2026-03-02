@@ -97,7 +97,7 @@ start_dev_server_check() {
   else
     local note
     note="$(tail -n 5 "$DEV_STDERR" | sanitize_note | paste -sd ' ' -)"
-    write_row "Dev startup" "$bun_cmd" "❌ fail" "${note:-Timed out waiting for ${PARITY_URL}}" "TODO (#272): investigate dev startup under Bun"
+    write_row "Dev startup" "$bun_cmd" "❌ fail" "${note:-Timed out waiting for ${PARITY_URL}}" ""
 
     if [[ -n "$DEV_PID" ]] && kill -0 "$DEV_PID" >/dev/null 2>&1; then
       kill "$DEV_PID" >/dev/null 2>&1 || true
@@ -111,11 +111,11 @@ run_qa_smoke_check() {
   local bun_cmd="bun run qa:dogfood -- --url ${PARITY_URL}"
 
   if [[ -z "$DEV_PID" ]]; then
-    write_row "QA smoke (local)" "$bun_cmd" "❌ fail" "Skipped because dev startup check did not pass" "TODO (#272): unblock dev startup before QA smoke parity"
+    write_row "QA smoke (local)" "$bun_cmd" "❌ fail" "Skipped because dev startup check did not pass" ""
     return
   fi
 
-  run_check "QA smoke (local)" "$bun_cmd" "TODO (#272): investigate QA smoke parity failure"
+  run_check "QA smoke (local)" "$bun_cmd" ""
 }
 
 cat >"$OUT" <<EOF
@@ -127,10 +127,10 @@ Generated: $GENERATED_UTC
 |---|---|---|---|---|
 EOF
 
-run_check "Install" "bun install" "TODO (#272): investigate bun install parity"
-run_check "Lint" "bun run lint" "TODO (#272): resolve Bun lint parity blocker"
-run_check "Typecheck" "bun run tsc --noEmit" "TODO (#272): resolve Bun typecheck parity blocker"
-run_check "Tests" "bun run test:ci" "TODO (#272): resolve Bun test parity blocker"
+run_check "Install" "bun install" ""
+run_check "Lint" "bun run lint" ""
+run_check "Typecheck" "bun run tsc --noEmit" ""
+run_check "Tests" "bun run test:ci" ""
 start_dev_server_check
 run_qa_smoke_check
 

@@ -28,7 +28,7 @@
     "test:lighthouse": "lighthouse http://localhost:3000/quiz-mode --view --preset=desktop --only-categories=performance",
     "test:tti": "node --input-type=module scripts/lighthouse-tti-test.js",
     "test:perf:review": "node scripts/measure-review-performance.js",
-    "lint": "next lint",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "assets:generate": "node scripts/generate-static-assets.js",
