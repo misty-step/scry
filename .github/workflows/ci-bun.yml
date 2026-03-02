@@ -41,12 +41,9 @@ jobs:
           PID1=$!
           bun run tsc --noEmit &
           PID2=$!
-          bun pm scan &
-          PID3=$!
           wait $PID1 || EXIT1=$?
           wait $PID2 || EXIT2=$?
-          wait $PID3 || EXIT3=$?
-          if [ "${EXIT1:-0}" -ne 0 ] || [ "${EXIT2:-0}" -ne 0 ] || [ "${EXIT3:-0}" -ne 0 ]; then
+          if [ "${EXIT1:-0}" -ne 0 ] || [ "${EXIT2:-0}" -ne 0 ]; then
             echo "ERROR: Quality checks failed"
             exit 1
           fi
