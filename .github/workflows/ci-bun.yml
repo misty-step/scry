@@ -32,7 +32,7 @@ jobs:
         run: bun --version
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
       # Quality checks in parallel
       - name: Run quality checks
@@ -45,7 +45,6 @@ jobs:
           EXIT1=$?
           wait $PID2
           EXIT2=$?
-          echo "EXIT1=$EXIT1, EXIT2=$EXIT2"
           if [ "$EXIT1" -ne 0 ] || [ "$EXIT2" -ne 0 ]; then
             echo "ERROR: Quality checks failed"
             exit 1
@@ -76,7 +75,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Run tests with coverage
         run: bun run test:ci
