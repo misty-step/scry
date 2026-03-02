@@ -21,7 +21,7 @@ Bun is **available as an alternative** to pnpm. Both package managers work, but 
 |------|------|-----|
 | Install dependencies | `pnpm install` | `bun install` |
 | Dev server | `pnpm dev` | `bun run dev` |
-| Lint | `pnpm lint` | `bunx eslint . --ext .ts,.tsx` |
+| Lint | `pnpm lint` | `bun run lint` |
 | Typecheck | `pnpm tsc --noEmit` | `bun run tsc --noEmit` |
 | Test | `pnpm test:ci` | `bun run test:ci` |
 | QA smoke | `pnpm qa:dogfood:local` | `bun run qa:dogfood:local` |
@@ -30,14 +30,16 @@ Bun is **available as an alternative** to pnpm. Both package managers work, but 
 
 ### Linting
 
-Next.js 16 has removed the `next lint` command. Use ESLint directly:
+Next.js 16 has removed the `next lint` command. We've updated the `lint` script in `package.json` to use ESLint directly.
 
 ```bash
-# ❌ Don't use
+# ❌ Don't use (fails with "Invalid project directory")
 bunx next lint
 
 # ✅ Use instead
-bunx eslint . --ext .ts,.tsx,.js,.jsx
+bun run lint
+# OR
+bunx eslint .
 ```
 
 ### Lockfiles
@@ -72,15 +74,7 @@ If Bun causes issues, see: [Bun Rollback Runbook](/docs/operations/BUN_ROLLBACK_
 
 ### "Invalid project directory provided"
 
-If you see this error when running Bun commands, ensure you're using the correct command syntax:
-
-```bash
-# ❌ Wrong
-bun run lint
-
-# ✅ Correct (for linting)
-bunx eslint . --ext .ts,.tsx
-```
+If you see this error when running `next lint`, it's because Next.js 16 no longer includes the `lint` command. Use `bun run lint` (or `pnpm lint`) instead, as we have updated the package script to use ESLint directly.
 
 ### Installation issues
 

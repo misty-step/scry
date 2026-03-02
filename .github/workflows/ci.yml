@@ -38,7 +38,7 @@ jobs:
 
       - name: Check for .only in tests
         run: |
-          if git grep -E "(describe|test|it)\.only" "*.test.{ts,tsx}"; then
+          if git grep -E "(describe|test|it)\.only" -- "*.test.ts" "*.test.tsx"; then
             echo "ERROR: Found .only in test files"
             echo "Remove .only before committing"
             exit 1

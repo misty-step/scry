@@ -47,11 +47,10 @@ git rm .github/workflows/ci-bun.yml
 ### Step 2: Update package.json
 
 ```bash
-# Revert packageManager field
-git checkout HEAD -- package.json
-
-# Or manually edit:
-# "packageManager": "pnpm@10.12.1"
+# Revert package.json to the state before the migration began
+# Option A: restore from a known-good commit
+git checkout ORIG_HEAD -- package.json
+# Option B: manual revert of the "packageManager" field to "pnpm@10.12.1"
 ```
 
 ### Step 3: Remove bun.lock (if exists)
@@ -66,8 +65,8 @@ git add -A
 ### Step 4: Restore pnpm lockfile
 
 ```bash
-# Ensure pnpm-lock.yaml is intact
-git checkout HEAD -- pnpm-lock.yaml
+# Ensure pnpm-lock.yaml is restored from pre-migration state
+git restore --source=ORIG_HEAD -- pnpm-lock.yaml
 ```
 
 ### Step 5: Commit and push

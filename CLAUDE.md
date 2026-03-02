@@ -4,8 +4,8 @@ Operational guidance for Claude Code in scry repository.
 
 ## Core Operations
 
-**Package Manager:** pnpm only (10.0+)
-**Dev Setup:** `pnpm dev` (Next.js + Convex concurrently)
+**Package Manager:** pnpm (10.0+) [BUN MIGRATION IN PROGRESS - see docs/guides/BUN_MIGRATION_GUIDE.md]
+**Dev Setup:** `pnpm dev` or `bun run dev`
 **Convex:** dev=amicable-lobster-935, prod=uncommon-axolotl-639
 **Tests:** `pnpm test` | `pnpm test:contract` | `pnpm test:coverage`
 
