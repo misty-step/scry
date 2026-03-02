@@ -7,8 +7,11 @@ export function getStripe(): Stripe {
     if (!process.env.STRIPE_SECRET_KEY) {
       throw new Error('STRIPE_SECRET_KEY environment variable is required');
     }
+    // Stripe types only allow the latest API version, but we may use different versions
+    // across environments. Using type assertion to allow version flexibility.
     stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2026-01-28.clover',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      apiVersion: '2026-02-25.clover' as any,
       typescript: true,
     });
   }
