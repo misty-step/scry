@@ -173,5 +173,14 @@
       "serialize-javascript": ">=7.0.3",
       "tar": ">=7.5.8"
     }
+  },
+  "resolutions": {
+    "fast-xml-parser": ">=5.3.5",
+    "basic-ftp": ">=5.2.0",
+    "minimatch": ">=10.2.3",
+    "axios": ">=1.13.5",
+    "rollup": ">=4.59.0",
+    "serialize-javascript": ">=7.0.3",
+    "tar": ">=7.5.8"
   }
 }
