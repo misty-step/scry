@@ -12,7 +12,8 @@
     "+prompts/discover.md",
     "+prompts/design.md",
     "+prompts/deliver.md",
-    "+prompts/review.md"
+    "+prompts/review.md",
+    "+prompts/respond-close-loop.md"
   ],
   "themes": [],
   "enableSkillCommands": false
