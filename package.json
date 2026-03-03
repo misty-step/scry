@@ -158,6 +158,7 @@
     ],
     "convex/_generated/**": []
   },
+  "// dependency-pins": "pnpm.overrides is pnpm's source of truth; resolutions keeps Bun lock/audit parity during migration",
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
