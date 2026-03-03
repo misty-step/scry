@@ -14,6 +14,7 @@
   "// build:prod": "Standalone production build with atomic deployment",
   "// build:local": "Local production build for testing (deploys then builds)",
   "// dev": "Normal development with hot reload (Convex + Next.js)",
+  "// lint": "Next.js 16 removed `next lint`; lint runs via eslint.config.mjs through `eslint .`",
   "scripts": {
     "dev": "concurrently \"next dev --turbopack\" \"convex dev\"",
     "build": "next build",
@@ -28,7 +29,9 @@
     "test:lighthouse": "lighthouse http://localhost:3000/quiz-mode --view --preset=desktop --only-categories=performance",
     "test:tti": "node --input-type=module scripts/lighthouse-tti-test.js",
     "test:perf:review": "node scripts/measure-review-performance.js",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "qa": "eslint . && tsc --noEmit && vitest --run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "assets:generate": "node scripts/generate-static-assets.js",
@@ -155,11 +158,30 @@
     ],
     "convex/_generated/**": []
   },
+  "// dependency-pins": "pnpm.overrides is pnpm's source of truth; resolutions keeps Bun lock/audit parity during migration",
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "@swc/core",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "fast-xml-parser": ">=5.3.5",
+      "basic-ftp": ">=5.2.0",
+      "minimatch": ">=10.2.3",
+      "axios": ">=1.13.5",
+      "rollup": ">=4.59.0",
+      "serialize-javascript": ">=7.0.3",
+      "tar": ">=7.5.8"
+    }
+  },
+  "resolutions": {
+    "fast-xml-parser": ">=5.3.5",
+    "basic-ftp": ">=5.2.0",
+    "minimatch": ">=10.2.3",
+    "axios": ">=1.13.5",
+    "rollup": ">=4.59.0",
+    "serialize-javascript": ">=7.0.3",
+    "tar": ">=7.5.8"
   }
 }
