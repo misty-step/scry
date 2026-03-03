@@ -31,7 +31,10 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://scry.study';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'Scry - Simple Learning',
   description: 'Transform any topic into quiz questions with AI',
 };
