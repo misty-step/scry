@@ -14,6 +14,14 @@ export type RecordInteractionArgs = {
   sessionId?: string;
 };
 
+/**
+ * Core interaction recording pipeline extracted from `concepts.recordInteraction`.
+ *
+ * Invariants:
+ * - Authorization checks happen before any write.
+ * - FSRS scheduling and state transition decisions remain colocated here.
+ * - Side effects preserve existing ordering: interaction insert → phrasing patch → concept patch → stats.
+ */
 export async function recordInteractionCore(
   ctx: MutationCtx,
   userId: Id<'users'>,
