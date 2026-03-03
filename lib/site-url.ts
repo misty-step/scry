@@ -1,4 +1,4 @@
-const DEFAULT_SITE_URL = 'https://scry.study';
+const DEFAULT_SITE_URL = 'https://www.scry.study';
 
 function parseSiteUrl(value: string): URL | null {
   const trimmed = value.trim();
