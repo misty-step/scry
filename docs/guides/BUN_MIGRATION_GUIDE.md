@@ -23,7 +23,7 @@ Bun is **available as an alternative** to pnpm. Both package managers work, but 
 | Deterministic install | `pnpm install --frozen-lockfile` | `bun install --frozen-lockfile` |
 | Dev server | `pnpm dev` | `bun run dev` |
 | Lint | `pnpm lint` | `bun run lint` |
-| Typecheck | `pnpm tsc --noEmit` | `bun run tsc --noEmit` |
+| Typecheck | `pnpm typecheck` | `bun run typecheck` |
 | Test | `pnpm test:ci` | `bun run test:ci` |
 | QA gate | `pnpm qa` | `bun run qa` |
 | QA smoke | `pnpm qa:dogfood:local` | `bun run qa:dogfood:local` |

@@ -40,7 +40,7 @@ jobs:
         run: |
           bun run lint &
           PID1=$!
-          bun run tsc --noEmit &
+          bun run typecheck &
           PID2=$!
           bun audit --audit-level=critical &
           PID3=$!

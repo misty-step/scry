@@ -33,7 +33,7 @@ jobs:
         run: |
           pnpm lint &
           LINT_PID=$!
-          pnpm tsc --noEmit &
+          pnpm typecheck &
           TSC_PID=$!
           pnpm audit --audit-level=critical &
           AUDIT_PID=$!
