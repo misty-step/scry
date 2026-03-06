@@ -1,4 +1,4 @@
-name: CI
+name: Quality Checks
 on:
   push:
   pull_request:
@@ -90,3 +90,15 @@ jobs:
           json-final-path: ./coverage/coverage-final.json
           vite-config-path: ./vitest.config.ts
           file-coverage-mode: changes
+
+  merge-gate:
+    name: merge-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [quality, test]
+    steps:
+      - run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]] || \
+             [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            exit 1
+          fi
