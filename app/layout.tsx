@@ -14,6 +14,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmationProvider } from '@/hooks/use-confirmation';
 import { validateEnv } from '@/lib/env';
 import { getLayoutClassName, needsNavbarSpacer } from '@/lib/layout-mode';
+import { getSiteUrl, getSiteUrlObject } from '@/lib/site-url';
 import { ClerkConvexProvider } from './clerk-provider';
 
 // Validate environment variables at build/dev time
@@ -31,7 +32,20 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const siteUrl = getSiteUrl();
+
+const softwareApplicationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Scry',
+  description: 'Transform any topic into quiz questions with AI',
+  applicationCategory: 'EducationalApplication',
+  operatingSystem: 'Web',
+  url: siteUrl,
+};
+
 export const metadata: Metadata = {
+  metadataBase: getSiteUrlObject(),
   title: 'Scry - Simple Learning',
   description: 'Transform any topic into quiz questions with AI',
 };
@@ -44,6 +58,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+        />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
