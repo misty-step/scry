@@ -20,10 +20,10 @@ const mockConceptLogger = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock('@/convex/lib/analytics', () => ({
+vi.mock('@/convex/lib/logging', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }));
-vi.mock('@/convex/lib/userStatsHelpers', () => ({
+vi.mock('@/convex/lib/concepts', () => ({
   updateStatsCounters: (...args: unknown[]) => mockUpdateStatsCounters(...args),
 }));
 // Question embedding helpers and validation removed with questions table.
@@ -38,7 +38,7 @@ vi.mock('@/convex/scheduling', () => ({
   }),
 }));
 
-vi.mock('@/convex/lib/logger', () => ({
+vi.mock('@/convex/lib/logging', () => ({
   createConceptsLogger: () => mockConceptLogger,
   generateCorrelationId: vi.fn(),
   logConceptEvent: vi.fn(),

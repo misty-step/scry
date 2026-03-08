@@ -1,10 +1,10 @@
-import type { Doc } from '../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import {
   defaultEngine,
   type ConceptDoc,
   type ConceptFsrsState,
   type FsrsEngine,
-} from '../fsrs/engine';
+} from '../../fsrs/engine';
 
 export type InteractionDoc = Doc<'interactions'>;
 

@@ -3,7 +3,7 @@ name: Prompt Evaluation
 on:
   push:
     paths:
-      - 'convex/lib/promptTemplates.ts'
+      - 'convex/lib/prompts/promptTemplates.ts'
       - 'evals/**'
       - '.claude/skills/langfuse-prompts/**'
     branches:
@@ -11,7 +11,7 @@ on:
       - 'feature/**'
   pull_request:
     paths:
-      - 'convex/lib/promptTemplates.ts'
+      - 'convex/lib/prompts/promptTemplates.ts'
       - 'evals/**'
       - '.claude/skills/langfuse-prompts/**'
   workflow_dispatch:

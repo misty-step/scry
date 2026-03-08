@@ -15,7 +15,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { action, internalAction, internalMutation, internalQuery } from './_generated/server';
-import { createConceptsLogger, type LogContext } from './lib/logger';
+import { createConceptsLogger, type LogContext } from './lib/logging';
 
 const conceptsLogger = createConceptsLogger({ module: 'embeddings' });
 

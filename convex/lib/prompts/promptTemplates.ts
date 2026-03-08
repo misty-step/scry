@@ -17,7 +17,7 @@
  * - Trust over prescription
  */
 
-import { MAX_CONCEPTS_PER_GENERATION } from './constants';
+import { MAX_CONCEPTS_PER_GENERATION } from '../utils';
 
 /**
  * Intent Extraction Prompt
@@ -152,7 +152,7 @@ User input: "${userInput}"`;
  * Production config is NO LONGER defined here as a static constant.
  * Instead, it's dynamically read from Convex environment variables at runtime.
  *
- * See: convex/lib/productionConfig.ts (getProductionConfig query)
+ * See: convex/lib/utils/productionConfig.ts (getProductionConfig query)
  *
  * This ensures Genesis Lab always tests with the exact same configuration
  * that production uses, making divergence architecturally impossible.

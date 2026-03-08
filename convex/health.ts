@@ -8,7 +8,7 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 import { action, query } from './_generated/server';
-import { getSecretDiagnostics } from './lib/envDiagnostics';
+import { getSecretDiagnostics } from './lib/utils';
 
 /**
  * Required environment variables for Convex functions to work properly

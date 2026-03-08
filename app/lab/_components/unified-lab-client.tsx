@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/convex/_generated/api';
-import { buildLearningSciencePrompt } from '@/convex/lib/promptTemplates';
+import { buildLearningSciencePrompt } from '@/convex/lib/prompts';
 import { loadConfigs, saveConfigs } from '@/lib/lab-storage';
 import { cn } from '@/lib/utils';
 import type { ExecutionResult, GoogleInfraConfig, InfraConfig } from '@/types/lab';
@@ -84,7 +84,7 @@ export function UnifiedLabClient() {
   const [configs, setConfigs] = useState<InfraConfig[]>([]);
 
   // Fetch actual production config from runtime environment
-  const productionConfig = useQuery(api.lib.productionConfig.getProductionConfig);
+  const productionConfig = useQuery(api.lib.utils.productionConfig.getProductionConfig);
   const executeConfig = useAction(api.lab.executeConfig);
 
   // Helper to create failed ExecutionResult for Promise.allSettled rejections

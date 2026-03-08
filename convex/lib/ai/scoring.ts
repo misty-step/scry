@@ -9,8 +9,8 @@
 
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import type { GeneratedPhrasing } from '../generation';
 import { getReasoningOptions, type ProviderClient } from './aiProviders';
-import type { GeneratedPhrasing } from './generationContracts';
 
 /**
  * Schema for LLM-as-judge evaluation response

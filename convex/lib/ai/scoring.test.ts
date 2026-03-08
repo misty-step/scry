@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { GeneratedPhrasing } from './generationContracts';
+import type { GeneratedPhrasing } from '../generation';
 import { evaluatePhrasingQuality, isScoringEnabled } from './scoring';
 
 // Mock the ai module

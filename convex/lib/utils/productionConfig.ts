@@ -8,7 +8,7 @@
  * identical configs, preventing divergence and test/prod mismatches.
  */
 
-import { query } from '../_generated/server';
+import { query } from '../../_generated/server';
 
 /**
  * Get current production AI configuration

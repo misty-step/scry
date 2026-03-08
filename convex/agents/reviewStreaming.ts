@@ -11,8 +11,8 @@ import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { internalAction, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { requireUserFromClerk } from '../clerk';
-import { calculateConceptStatsDelta } from '../lib/conceptFsrsHelpers';
-import { updateStatsCounters } from '../lib/userStatsHelpers';
+import { updateStatsCounters } from '../lib/concepts';
+import { calculateConceptStatsDelta } from '../lib/fsrs';
 import { enforceRateLimit } from '../rateLimit';
 import { reviewAgent } from './reviewAgent';
 import {

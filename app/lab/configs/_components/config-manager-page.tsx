@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/convex/_generated/api';
-import { buildLearningSciencePrompt } from '@/convex/lib/promptTemplates';
+import { buildLearningSciencePrompt } from '@/convex/lib/prompts';
 import { loadConfigs, saveConfigs } from '@/lib/lab-storage';
 import {
   isValidConfig,
@@ -56,7 +56,7 @@ export function ConfigManagerPage() {
   const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
 
   // Fetch actual production config from runtime environment
-  const productionConfig = useQuery(api.lib.productionConfig.getProductionConfig);
+  const productionConfig = useQuery(api.lib.utils.productionConfig.getProductionConfig);
 
   // Load configs when production config is available
   useEffect(() => {

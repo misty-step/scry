@@ -1,8 +1,8 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getSecretDiagnostics } from '../utils';
 import { initializeProvider } from './aiProviders';
-import { getSecretDiagnostics } from './envDiagnostics';
 
 vi.mock('@openrouter/ai-sdk-provider', () => ({
   createOpenRouter: vi.fn(),

@@ -12,17 +12,18 @@ import {
   scheduleConceptReview,
   selectPhrasingForConcept,
 } from './fsrs';
-import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
-import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
 import {
   clampPageSize,
   computeThinScoreFromCount,
   matchesConceptView,
   prioritizeConcepts,
   type ConceptLibraryView,
-} from './lib/conceptHelpers';
-import { buildInteractionContext } from './lib/interactionContext';
-import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
+  buildInteractionContext,
+  calculateStateTransitionDelta,
+  TARGET_PHRASINGS_PER_CONCEPT,
+  updateStatsCounters,
+} from './lib/concepts';
+import { calculateConceptStatsDelta } from './lib/fsrs';
 import { enforceRateLimit } from './rateLimit';
 
 type ConceptDoc = Doc<'concepts'>;

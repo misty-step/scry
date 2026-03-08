@@ -1,9 +1,9 @@
 import { generateObject } from 'ai';
 import { action } from '../_generated/server';
 import { prepareConceptIdeas } from '../aiGeneration';
-import { getReasoningOptions, initializeProvider } from '../lib/aiProviders';
-import { conceptIdeasSchema } from '../lib/generationContracts';
-import { buildConceptSynthesisPrompt } from '../lib/promptTemplates';
+import { getReasoningOptions, initializeProvider } from '../lib/ai';
+import { conceptIdeasSchema } from '../lib/generation';
+import { buildConceptSynthesisPrompt } from '../lib/prompts';
 import { EVAL_CASES } from './cases';
 
 export const run = action({

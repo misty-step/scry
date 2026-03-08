@@ -26,7 +26,7 @@ vi.mock('@sentry/nextjs', () => ({
   captureCheckIn: vi.fn(() => ''),
   setUser: vi.fn(),
 }));
-vi.mock('@/convex/lib/analytics', () => ({
+vi.mock('@/convex/lib/logging', () => ({
   trackEvent: vi.fn(),
 }));
 

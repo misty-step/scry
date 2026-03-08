@@ -1,5 +1,5 @@
-import type { ConceptState } from '../fsrs';
-import { calculateStateTransitionDelta, type StatDeltas } from './userStatsHelpers';
+import type { ConceptState } from '../../fsrs';
+import { calculateStateTransitionDelta, type StatDeltas } from '../concepts';
 
 interface StatsDeltaArgs {
   oldState: ConceptState;

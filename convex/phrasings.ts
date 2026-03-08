@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, internalQuery } from './_generated/server';
-import { updateStatsCounters } from './lib/userStatsHelpers';
+import { updateStatsCounters } from './lib/concepts';
 
 export const getPhrasingInternal = internalQuery({
   args: { userId: v.id('users'), phrasingId: v.id('phrasings') },

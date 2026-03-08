@@ -1,7 +1,7 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { LanguageModel } from 'ai';
 import type { Logger } from 'pino';
-import { getSecretDiagnostics } from './envDiagnostics';
+import { getSecretDiagnostics } from '../utils';
 
 type SecretDiagnostics = ReturnType<typeof getSecretDiagnostics>;
 

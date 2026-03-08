@@ -13,7 +13,7 @@ import type {
   AnalyticsEventDefinitions,
   AnalyticsEventName,
   AnalyticsEventProperties,
-} from '../../lib/analytics';
+} from '../../../lib/analytics';
 
 /**
  * Track an analytics event (no-op in Convex)

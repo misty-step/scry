@@ -14,7 +14,7 @@ import { v } from 'convex/values';
 import pino from 'pino';
 import { z } from 'zod';
 import { action } from './_generated/server';
-import { getReasoningOptions, initializeProvider } from './lib/aiProviders';
+import { getReasoningOptions, initializeProvider } from './lib/ai';
 
 // Logger for this module
 const logger = pino({ name: 'lab' });

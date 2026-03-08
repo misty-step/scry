@@ -11,8 +11,8 @@
  * - Apply deltas atomically in single transaction
  */
 
-import type { Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
 
 /**
  * Card state type matching schema
