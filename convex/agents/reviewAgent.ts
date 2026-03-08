@@ -3,7 +3,7 @@ import type { LanguageModel } from 'ai';
 import { z } from 'zod';
 import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { initializeProvider } from '../lib/aiProviders';
+import { initializeProvider } from '../lib/ai';
 import {
   assertUserAnswerLength,
   buildSubmitAnswerPayload,

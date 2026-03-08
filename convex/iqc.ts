@@ -5,13 +5,11 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { ActionCtx, internalAction, internalMutation, mutation, query } from './_generated/server';
 import { requireUserFromClerk } from './clerk';
-import { getReasoningOptions, initializeProvider } from './lib/aiProviders';
-import { chunkArray } from './lib/chunkArray';
-import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
-import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
-import { createConceptsLogger, generateCorrelationId, logConceptEvent } from './lib/logger';
-import type { StatDeltas } from './lib/userStatsHelpers';
-import { updateStatsCounters } from './lib/userStatsHelpers';
+import { getReasoningOptions, initializeProvider } from './lib/ai';
+import { type StatDeltas, updateStatsCounters } from './lib/concepts';
+import { calculateConceptStatsDelta, DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrs';
+import { createConceptsLogger, generateCorrelationId, logConceptEvent } from './lib/logging';
+import { chunkArray } from './lib/utils';
 
 type ConceptDoc = Doc<'concepts'>;
 const logger = createConceptsLogger({

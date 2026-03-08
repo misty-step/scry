@@ -7,7 +7,7 @@ import { makeConcept, makeGenerationJob } from '@/tests/helpers';
 const initializeProviderMock = vi.fn();
 const getReasoningOptionsMock = vi.fn();
 
-vi.mock('@/convex/lib/aiProviders', () => ({
+vi.mock('@/convex/lib/ai', () => ({
   initializeProvider: (...args: unknown[]) => initializeProviderMock(...args),
   getReasoningOptions: (...args: unknown[]) => getReasoningOptionsMock(...args),
 }));

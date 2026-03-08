@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareConceptIdeas, prepareGeneratedPhrasings } from '../../convex/aiGeneration';
-import { getReasoningOptions, REASONING_BUDGET } from '../../convex/lib/aiProviders';
-import { MAX_CONCEPTS_PER_GENERATION } from '../../convex/lib/constants';
-import { logConceptEvent, type ConceptsLogger } from '../../convex/lib/logger';
+import { getReasoningOptions, REASONING_BUDGET } from '../../convex/lib/ai';
+import { logConceptEvent, type ConceptsLogger } from '../../convex/lib/logging';
+import { MAX_CONCEPTS_PER_GENERATION } from '../../convex/lib/utils';
 
 /**
  * Tests for AI generation error classification

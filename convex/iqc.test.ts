@@ -13,8 +13,8 @@ import {
   type MergeCandidate,
   type MergeDecision,
 } from './iqc';
-import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrsReplay';
-import { logConceptEvent, type ConceptsLogger } from './lib/logger';
+import { DEFAULT_REPLAY_LIMIT, replayInteractionsIntoState } from './lib/fsrs';
+import { logConceptEvent, type ConceptsLogger } from './lib/logging';
 
 describe('IQC helpers', () => {
   describe('buildProposalKey', () => {

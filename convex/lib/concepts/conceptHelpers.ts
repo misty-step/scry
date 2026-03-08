@@ -1,4 +1,4 @@
-import type { Doc } from '../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 
 export type ConceptDoc = Doc<'concepts'>;
 export type ConceptLibraryView = 'all' | 'due' | 'thin' | 'tension' | 'archived' | 'deleted';

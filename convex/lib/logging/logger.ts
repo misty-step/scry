@@ -5,7 +5,7 @@
  * this provides a simple structured logging utility that works within Convex's runtime.
  */
 
-import type { LogLevel, LogContext as SharedLogContext } from '../../types/logger';
+import type { LogLevel, LogContext as SharedLogContext } from '../../../types/logger';
 
 export interface LogContext extends SharedLogContext {
   domains?: string[];
@@ -155,4 +155,4 @@ export function logConceptEvent(
   });
 }
 
-export { generateCorrelationId } from '../../types/logger';
+export { generateCorrelationId } from '../../../types/logger';

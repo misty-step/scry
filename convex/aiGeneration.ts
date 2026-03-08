@@ -16,10 +16,17 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction } from './_generated/server';
-import { getReasoningOptions, initializeProvider, type ProviderClient } from './lib/aiProviders';
-import { trackEvent } from './lib/analytics';
-import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
-import { MAX_CONCEPTS_PER_GENERATION } from './lib/constants';
+import {
+  flushLangfuse,
+  getLangfuse,
+  getReasoningOptions,
+  initializeProvider,
+  isLangfuseConfigured,
+  type ProviderClient,
+} from './lib/ai';
+import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/concepts';
+import { trackEvent } from './lib/logging';
+import { MAX_CONCEPTS_PER_GENERATION } from './lib/utils';
 import {
   conceptIdeasSchema,
   intentSchema,
@@ -27,16 +34,15 @@ import {
   type ConceptIdea,
   type ContentType,
   type GeneratedPhrasing,
-} from './lib/generationContracts';
-import { flushLangfuse, getLangfuse, isLangfuseConfigured } from './lib/langfuse';
+} from './lib/generation';
 import {
   createConceptsLogger,
   generateCorrelationId,
   logConceptEvent,
   type LogContext,
-} from './lib/logger';
+} from './lib/logging';
 import { getPrompt } from './lib/prompts';
-import { evaluatePhrasingQuality, isScoringEnabled } from './lib/scoring';
+import { evaluatePhrasingQuality, isScoringEnabled } from './lib/ai';
 
 // Logger for this module
 const conceptsLogger = createConceptsLogger({

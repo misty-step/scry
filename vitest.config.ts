@@ -69,7 +69,7 @@ export default defineConfig({
         // Re-export only files - underlying modules are tested
         'convex/fsrs.ts',
         // No-op stubs for Convex environment
-        'convex/lib/analytics.ts',
+        'convex/lib/logging/analytics.ts',
         // Browser-only utilities (haptics, layout, etc.)
         'lib/haptic.ts',
         'lib/layout-mode.ts',
@@ -87,7 +87,7 @@ export default defineConfig({
         // Canvas animation hook (visual, best tested via E2E/visual regression)
         'hooks/use-particle-field.ts',
         // Convex config queries (environment variable readers)
-        'convex/lib/productionConfig.ts',
+        'convex/lib/utils/productionConfig.ts',
         // use-review-flow.ts: reducer is tested directly, hook has complex timer effects tested via E2E
         'hooks/use-review-flow.ts',
         // Browser-only environment detection
