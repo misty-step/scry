@@ -28,12 +28,23 @@ export async function recordInteractionCore(
   args: RecordInteractionArgs
 ) {
   const concept = await ctx.db.get(args.conceptId);
-  if (!concept || concept.userId !== userId) {
+  if (
+    !concept ||
+    concept.userId !== userId ||
+    concept.archivedAt !== undefined ||
+    concept.deletedAt !== undefined
+  ) {
     throw new Error('Concept not found or unauthorized');
   }
 
   const phrasing = await ctx.db.get(args.phrasingId);
-  if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
+  if (
+    !phrasing ||
+    phrasing.userId !== userId ||
+    phrasing.conceptId !== concept._id ||
+    phrasing.archivedAt !== undefined ||
+    phrasing.deletedAt !== undefined
+  ) {
     throw new Error('Phrasing not found or unauthorized');
   }
 
@@ -60,9 +71,12 @@ export async function recordInteractionCore(
     context: interactionContext,
   });
 
+  const newAttemptCount = (phrasing.attemptCount ?? 0) + 1;
+  const newCorrectCount = (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0);
+
   await ctx.db.patch(phrasing._id, {
-    attemptCount: (phrasing.attemptCount ?? 0) + 1,
-    correctCount: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
+    attemptCount: newAttemptCount,
+    correctCount: newCorrectCount,
     lastAttemptedAt: nowMs,
   });
 
@@ -90,8 +104,8 @@ export async function recordInteractionCore(
     nextReview: scheduleResult.nextReview,
     scheduledDays: scheduleResult.scheduledDays,
     newState: scheduleResult.state,
-    totalAttempts: (phrasing.attemptCount ?? 0) + 1,
-    totalCorrect: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
+    totalAttempts: newAttemptCount,
+    totalCorrect: newCorrectCount,
     lapses: scheduleResult.fsrs.lapses ?? 0,
     reps: scheduleResult.fsrs.reps ?? 0,
   };

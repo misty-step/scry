@@ -265,4 +265,71 @@ describe('recordInteractionCore', () => {
     expect(mockDb.insert).not.toHaveBeenCalled();
     expect(mockDb.patch).not.toHaveBeenCalled();
   });
+
+  it('throws when concept is archived', async () => {
+    const concept = {
+      _id: 'concept-1' as Id<'concepts'>,
+      userId: 'user-1' as Id<'users'>,
+      archivedAt: 1_700_000_000_000,
+      deletedAt: undefined,
+      fsrs: { state: 'new' },
+    } as any;
+
+    const mockDb = {
+      get: vi.fn(async () => concept),
+      insert: vi.fn(),
+      patch: vi.fn(),
+    };
+
+    await expect(
+      recordInteractionCore({ db: mockDb } as any, 'user-1' as Id<'users'>, {
+        conceptId: 'concept-1' as Id<'concepts'>,
+        phrasingId: 'phrasing-1' as Id<'phrasings'>,
+        userAnswer: 'answer',
+        isCorrect: true,
+      })
+    ).rejects.toThrow('Concept not found or unauthorized');
+
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockDb.patch).not.toHaveBeenCalled();
+  });
+
+  it('throws when phrasing is deleted', async () => {
+    const userId = 'user-1' as Id<'users'>;
+    const conceptId = 'concept-1' as Id<'concepts'>;
+    const phrasingId = 'phrasing-1' as Id<'phrasings'>;
+
+    const concept = {
+      _id: conceptId,
+      userId,
+      archivedAt: undefined,
+      deletedAt: undefined,
+      fsrs: { state: 'new' },
+    } as any;
+    const phrasing = {
+      _id: phrasingId,
+      userId,
+      conceptId,
+      archivedAt: undefined,
+      deletedAt: 1_700_000_000_000,
+    } as any;
+
+    const mockDb = {
+      get: vi.fn().mockResolvedValueOnce(concept).mockResolvedValueOnce(phrasing),
+      insert: vi.fn(),
+      patch: vi.fn(),
+    };
+
+    await expect(
+      recordInteractionCore({ db: mockDb } as any, userId, {
+        conceptId,
+        phrasingId,
+        userAnswer: 'answer',
+        isCorrect: true,
+      })
+    ).rejects.toThrow('Phrasing not found or unauthorized');
+
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockDb.patch).not.toHaveBeenCalled();
+  });
 });
