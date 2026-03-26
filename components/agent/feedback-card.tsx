@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { CalendarClock, CheckCircle2, Gauge, XCircle } from 'lucide-react';
 import { formatReviewStageLabel } from '@/lib/review-stage';
+import { cn } from '@/lib/utils';
 import { renderInlineMarkdown } from './rich-text';
 
 interface FeedbackData {
@@ -164,13 +165,13 @@ function normalizeExplanationText(text: string) {
 export function FeedbackCard({ feedback, questionText, compact = false }: FeedbackCardProps) {
   if (typeof feedback !== 'object' || feedback === null) return null;
   const fb = feedback as FeedbackData;
-  const sectionPadding = compact ? 'p-3.5 md:p-5' : 'p-4 md:p-8';
-  const labelClass = compact ? 'mb-2 text-[11px] font-medium' : 'mb-3 text-xs font-medium';
+  const sectionPadding = compact ? 'px-3 py-2.5 md:p-5' : 'p-4 md:p-8';
+  const labelClass = compact ? 'mb-1.5 text-[11px] font-medium' : 'mb-3 text-xs font-medium';
   const answerClass = compact
-    ? 'font-serif text-lg md:text-xl text-foreground'
+    ? 'font-serif text-base md:text-xl text-foreground'
     : 'font-serif text-xl md:text-2xl text-foreground';
   const explanationClass = compact
-    ? 'max-w-none space-y-3 font-serif text-base leading-relaxed text-foreground/85'
+    ? 'max-w-none space-y-2 font-serif text-[0.9375rem] leading-snug text-foreground/85'
     : 'max-w-none space-y-4 font-serif text-lg leading-relaxed text-foreground/85';
   const statValueClass = compact ? 'text-sm font-semibold' : 'text-base font-semibold';
   const stageProgress = getStageProgress(fb.newState);
@@ -178,24 +179,24 @@ export function FeedbackCard({ feedback, questionText, compact = false }: Feedba
   return (
     <div className={compact ? 'max-w-none' : 'max-w-4xl'}>
       {/* Status badge */}
-      <div className={compact ? 'mb-3 flex items-center gap-2.5' : 'mb-4 flex items-center gap-3'}>
+      <div className={compact ? 'mb-2 flex items-center gap-2' : 'mb-4 flex items-center gap-3'}>
         {fb.isCorrect ? (
-          <div className="flex items-center gap-2 rounded-full bg-success-background px-3 py-1.5">
-            <CheckCircle2 className="h-4 w-4 text-success" />
-            <span className="text-sm font-medium text-success">Correct</span>
+          <div className={cn('flex items-center gap-1.5 rounded-full bg-success-background', compact ? 'px-2.5 py-1' : 'px-3 py-1.5')}>
+            <CheckCircle2 className={compact ? 'h-3.5 w-3.5 text-success' : 'h-4 w-4 text-success'} />
+            <span className={cn('font-medium text-success', compact ? 'text-xs' : 'text-sm')}>Correct</span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 rounded-full bg-error-background px-3 py-1.5">
-            <XCircle className="h-4 w-4 text-error" />
-            <span className="text-sm font-medium text-error">Incorrect</span>
+          <div className={cn('flex items-center gap-1.5 rounded-full bg-error-background', compact ? 'px-2.5 py-1' : 'px-3 py-1.5')}>
+            <XCircle className={compact ? 'h-3.5 w-3.5 text-error' : 'h-4 w-4 text-error'} />
+            <span className={cn('font-medium text-error', compact ? 'text-xs' : 'text-sm')}>Incorrect</span>
           </div>
         )}
         {fb.conceptTitle && (
-          <span className="text-sm text-muted-foreground">{fb.conceptTitle}</span>
+          <span className={cn('text-muted-foreground', compact ? 'text-xs' : 'text-sm')}>{fb.conceptTitle}</span>
         )}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm md:rounded-2xl">
         {/* Question context */}
         {questionText && (
           <div className={`border-b border-border bg-secondary ${sectionPadding}`}>
@@ -203,7 +204,7 @@ export function FeedbackCard({ feedback, questionText, compact = false }: Feedba
             <p
               className={
                 compact
-                  ? 'font-serif text-base leading-snug text-muted-foreground'
+                  ? 'font-serif text-sm leading-snug text-muted-foreground'
                   : 'font-serif text-lg text-muted-foreground'
               }
             >
@@ -240,7 +241,7 @@ export function FeedbackCard({ feedback, questionText, compact = false }: Feedba
             <p
               className={
                 compact
-                  ? 'mb-3 text-[11px] font-medium text-muted-foreground'
+                  ? 'mb-1.5 text-[11px] font-medium text-muted-foreground'
                   : 'mb-4 text-xs font-medium text-muted-foreground'
               }
             >
@@ -251,50 +252,50 @@ export function FeedbackCard({ feedback, questionText, compact = false }: Feedba
         )}
 
         {/* Review schedule metadata */}
-        <div className={compact ? 'bg-muted/80 p-3.5 md:p-5' : 'bg-muted/80 p-4 md:p-6'}>
+        <div className={compact ? 'bg-muted/80 px-3 py-2.5 md:p-5' : 'bg-muted/80 p-4 md:p-6'}>
           <p
             className={
               compact
-                ? 'mb-3 text-[11px] font-medium text-muted-foreground'
+                ? 'mb-2 text-[11px] font-medium text-muted-foreground'
                 : 'mb-4 text-xs font-medium text-muted-foreground'
             }
           >
             Review Snapshot
           </p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-border/70 bg-background/80 px-2.5 py-2">
-              <p className="mb-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <div className="grid grid-cols-3 gap-1.5 md:gap-2">
+            <div className="rounded-md border border-border/70 bg-background/80 px-2 py-1.5 md:rounded-lg md:px-2.5 md:py-2">
+              <p className="mb-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground md:mb-1">
                 <Gauge className="h-3 w-3" />
                 Stage
               </p>
-              <p className={compact ? 'text-sm font-semibold' : statValueClass}>
+              <p className={compact ? 'text-xs font-semibold md:text-sm' : statValueClass}>
                 {formatReviewStageLabel(fb.newState, { fallback: '—' })} {stageProgress.index}/
                 {stageProgress.total}
               </p>
-              <div className="mt-1 flex items-center gap-1">
+              <div className="mt-1 flex items-center gap-0.5 md:gap-1">
                 {[1, 2, 3].map((step) => (
                   <span
                     key={step}
-                    className={`h-1.5 flex-1 rounded-full ${step <= stageProgress.index ? 'bg-primary' : 'bg-border'}`}
+                    className={`h-1 flex-1 rounded-full md:h-1.5 ${step <= stageProgress.index ? 'bg-primary' : 'bg-border'}`}
                   />
                 ))}
               </div>
             </div>
-            <div className="rounded-lg border border-border/70 bg-background/80 px-2.5 py-2">
-              <p className="mb-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <div className="rounded-md border border-border/70 bg-background/80 px-2 py-1.5 md:rounded-lg md:px-2.5 md:py-2">
+              <p className="mb-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground md:mb-1">
                 <CheckCircle2 className="h-3 w-3" />
                 Reviews
               </p>
-              <p className={`${compact ? 'text-sm font-semibold' : statValueClass} tabular-nums`}>
+              <p className={`${compact ? 'text-xs font-semibold md:text-sm' : statValueClass} tabular-nums`}>
                 {fb.reps ?? '—'}
               </p>
             </div>
-            <div className="rounded-lg border border-border/70 bg-background/80 px-2.5 py-2">
-              <p className="mb-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <div className="rounded-md border border-border/70 bg-background/80 px-2 py-1.5 md:rounded-lg md:px-2.5 md:py-2">
+              <p className="mb-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground md:mb-1">
                 <CalendarClock className="h-3 w-3" />
                 Next review
               </p>
-              <p className={compact ? 'text-sm font-semibold' : statValueClass}>
+              <p className={compact ? 'text-xs font-semibold md:text-sm' : statValueClass}>
                 {formatRelativeNextReview(fb.nextReview, fb.scheduledDays)}
               </p>
             </div>

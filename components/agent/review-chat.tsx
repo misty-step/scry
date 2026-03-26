@@ -669,6 +669,7 @@ export function ReviewChat() {
       isSubmittingAnswer={isSubmittingAnswer}
       isChatThinking={isChatSendPending || assistantStreaming}
       activeChipAction={activeChipAction}
+      dueCount={dueCount?.conceptsDue ?? 0}
       onDismissActionReply={() => setActionReply(null)}
       onDismissReschedule={() => setRescheduleTarget(null)}
       onSubmitReschedule={executeReschedule}
@@ -711,6 +712,7 @@ function ActiveSession({
   isSubmittingAnswer,
   isChatThinking,
   activeChipAction,
+  dueCount,
   onDismissActionReply,
   onDismissReschedule,
   onSubmitReschedule,
@@ -737,6 +739,7 @@ function ActiveSession({
   isSubmittingAnswer: boolean;
   isChatThinking: boolean;
   activeChipAction: SuggestionChip['id'] | null;
+  dueCount: number;
   onDismissActionReply: () => void;
   onDismissReschedule: () => void;
   onSubmitReschedule: (days: number) => Promise<void>;
@@ -805,20 +808,27 @@ function ActiveSession({
         {/* Chat Panel */}
         <div className="flex min-h-0 w-full flex-1 flex-col border-border bg-background md:border-l">
           {/* Chat header */}
-          <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur md:backdrop-blur-0">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <Bot className="h-4 w-4" />
+          <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-3 py-2 backdrop-blur md:px-4 md:py-2.5 md:backdrop-blur-0">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary md:h-7 md:w-7 md:rounded-lg">
+                <Bot className="h-3.5 w-3.5 md:h-4 md:w-4" />
               </div>
               <h3 className="text-sm font-semibold leading-none">Willow</h3>
             </div>
-            {isChatThinking && <p className="text-xs text-muted-foreground">Replying...</p>}
+            <div className="flex items-center gap-3">
+              {isChatThinking && <p className="text-xs text-muted-foreground">Replying...</p>}
+              {dueCount > 0 && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                  {dueCount} due
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Chat messages */}
           <div
             ref={chatScrollRef}
-            className="min-h-0 flex-1 space-y-4 overflow-auto p-4 md:space-y-5 md:p-5"
+            className="min-h-0 flex-1 space-y-3 overflow-auto px-3 py-3 md:space-y-5 md:p-5"
           >
             {messages?.status === 'LoadingFirstPage' && (
               <div className="flex items-center justify-center py-8">
@@ -935,38 +945,40 @@ function ActiveSession({
             )}
           </div>
 
-          {/* Suggestion chips */}
-          <div className="border-t border-border bg-secondary/95 px-4 py-2.5 backdrop-blur md:bg-secondary md:px-5 md:py-3 md:backdrop-blur-0">
-            <div className="flex flex-wrap items-center gap-2">
-              {SUGGESTION_CHIPS.map((chip) => (
-                <button
-                  key={chip.label}
-                  onClick={() => {
-                    if (chip.intent === 'chat') {
-                      focusChat();
+          {/* Suggestion chips + next question */}
+          <div className="border-t border-border bg-secondary/95 px-3 py-2 backdrop-blur md:bg-secondary md:px-5 md:py-3 md:backdrop-blur-0">
+            <div className="flex items-center gap-1.5 md:gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 md:gap-2">
+                {SUGGESTION_CHIPS.map((chip) => (
+                  <button
+                    key={chip.label}
+                    onClick={() => {
+                      if (chip.intent === 'chat') {
+                        focusChat();
+                      }
+                      void onSuggestionChip(chip);
+                    }}
+                    disabled={
+                      activeChipAction === chip.id ||
+                      (chip.needsConceptContext && !activeQuestion && !latestFeedback)
                     }
-                    void onSuggestionChip(chip);
-                  }}
-                  disabled={
-                    activeChipAction === chip.id ||
-                    (chip.needsConceptContext && !activeQuestion && !latestFeedback)
-                  }
-                  className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    {activeChipAction === chip.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {chip.label}
-                  </span>
-                </button>
-              ))}
+                    className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 md:px-3 md:py-1.5"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {activeChipAction === chip.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                      {chip.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
               {latestFeedback && (
                 <button
                   onClick={() => {
                     void handleNextQuestion();
                   }}
-                  className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 md:py-1.5"
                 >
-                  <span>Next question</span>
+                  <span>Next</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -1015,8 +1027,8 @@ function ActiveSession({
           </div>
 
           {/* Chat input */}
-          <div className="sticky bottom-0 z-30 border-t border-border bg-background/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur md:bg-background md:p-4 md:pb-4 md:backdrop-blur-0">
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-background px-2 py-2 shadow-sm">
+          <div className="sticky bottom-0 z-30 border-t border-border bg-background/95 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur md:bg-background md:px-4 md:pb-4 md:pt-3 md:backdrop-blur-0">
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-2 py-1.5 shadow-sm md:rounded-2xl md:px-2 md:py-2">
               <input
                 ref={chatInputRef}
                 type="text"
@@ -1024,12 +1036,12 @@ function ActiveSession({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask anything..."
-                className="flex-1 bg-transparent py-2.5 pl-2 pr-2 text-sm outline-none"
+                className="flex-1 bg-transparent py-1.5 pl-2 pr-2 text-sm outline-none md:py-2.5"
               />
               <button
                 onClick={() => handleSend(input)}
                 disabled={!input.trim() || isChatThinking}
-                className="shrink-0 rounded-xl bg-primary p-2.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-primary p-2 text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:rounded-xl md:p-2.5"
               >
                 <Send className="h-4 w-4" />
               </button>
