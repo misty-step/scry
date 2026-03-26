@@ -143,7 +143,7 @@
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.1",
     "prettier-plugin-ember-template-tag": "^2.1.3",
-    "promptfoo": "^0.120.23",
+    "promptfoo": "^0.121.3",
     "size-limit": "^11.2.0",
     "tailwindcss": "^4.1.18",
     "tsx": "^4.21.0",
@@ -172,7 +172,8 @@
       "axios": ">=1.13.5",
       "rollup": ">=4.59.0",
       "serialize-javascript": ">=7.0.3",
-      "tar": ">=7.5.8"
+      "tar": ">=7.5.8",
+      "simple-git": ">=3.32.3"
     }
   },
   "resolutions": {
@@ -182,6 +183,7 @@
     "axios": ">=1.13.5",
     "rollup": ">=4.59.0",
     "serialize-javascript": ">=7.0.3",
-    "tar": ">=7.5.8"
+    "tar": ">=7.5.8",
+    "simple-git": ">=3.32.3"
   }
 }
