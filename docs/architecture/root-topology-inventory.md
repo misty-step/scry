@@ -16,6 +16,7 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .changeset
 .claude
 .codecov.yml
+.DS_Store
 .env.example
 .env.local
 .env.preview
