@@ -1,7 +1,7 @@
 # Delete Dead Code
 
 Priority: high
-Status: in-progress
+Status: done
 Estimate: S
 
 ## Goal
@@ -16,16 +16,25 @@ Remove ~4,000 lines of unused and duplicate code — dev-only routes and the leg
 
 ## Oracle
 
-- [ ] `/app/lab/` directory deleted (UnifiedLabClient 684 lines, ConfigManagerPage 471 lines)
-- [ ] `/app/evolve/` directory deleted (EvolveDashboard)
-- [ ] `/app/design-lab/` directory deleted (LandingTuner)
-- [ ] `/app/test-error/` directory deleted (167 lines)
-- [ ] Legacy ReviewFlow components deleted: `components/review-flow.tsx` (119 lines), `components/review/session-context.tsx` (476 lines), and all supporting review components (~2,430 lines total)
-- [ ] `components/review-flow.test.tsx.skip` and `components/generation-modal.test.tsx.skip` deleted (tests for dead code are dead tests)
-- [ ] `/app/page.tsx` redirects to `/agent` (or renders the agentic review directly)
-- [ ] All imports of deleted components removed — no dead imports, no unused exports
-- [ ] `pnpm build:local` succeeds with zero errors
-- [ ] `pnpm test` passes (delete tests that reference deleted components)
+- [x] `/app/lab/` directory deleted (UnifiedLabClient 684 lines, ConfigManagerPage 471 lines)
+- [x] `/app/evolve/` directory deleted (EvolveDashboard)
+- [x] `/app/design-lab/` directory deleted (LandingTuner)
+- [x] `/app/test-error/` directory deleted (167 lines)
+- [x] Legacy ReviewFlow components deleted: `components/review-flow.tsx` (119 lines), `components/review/session-context.tsx` (476 lines), and all supporting review components (~2,430 lines total)
+- [x] `components/review-flow.test.tsx.skip` and `components/generation-modal.test.tsx.skip` deleted (tests for dead code are dead tests)
+- [x] `/app/page.tsx` redirects to `/agent` (or renders the agentic review directly)
+- [x] All imports of deleted components removed — no dead imports, no unused exports
+- [x] `pnpm build:local` succeeds with zero errors
+- [x] `pnpm test` passes (delete tests that reference deleted components)
+
+## What Was Built
+
+PR: https://github.com/misty-step/scry/pull/307
+
+89 files changed, 20 insertions, 13,249 deletions. Deleted all dev-only routes,
+legacy review flow, orphaned hooks/libs/types, and dead loading skeletons.
+Root route redirects to `/agent`. Review bench found and fixed: no-op callback
+prop in navbar, dead `app/loading.tsx`, and entirely unused `loading-skeletons.tsx`.
 
 ## Notes
 
