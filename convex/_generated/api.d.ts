@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as agents_dtos from "../agents/dtos.js";
 import type * as agents_reviewAgent from "../agents/reviewAgent.js";
 import type * as agents_reviewStreaming from "../agents/reviewStreaming.js";
+import type * as agents_reviewToolHelpers from "../agents/reviewToolHelpers.js";
 import type * as aiGeneration from "../aiGeneration.js";
 import type * as clerk from "../clerk.js";
 import type * as concepts from "../concepts.js";
@@ -26,7 +28,6 @@ import type * as generationJobs from "../generationJobs.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as iqc from "../iqc.js";
-import type * as lab from "../lab.js";
 import type * as lib_aiProviders from "../lib/aiProviders.js";
 import type * as lib_analytics from "../lib/analytics.js";
 import type * as lib_chunkArray from "../lib/chunkArray.js";
@@ -45,6 +46,7 @@ import type * as lib_promptTemplates from "../lib/promptTemplates.js";
 import type * as lib_prompts from "../lib/prompts.js";
 import type * as lib_scoring from "../lib/scoring.js";
 import type * as lib_userStatsHelpers from "../lib/userStatsHelpers.js";
+import type * as migrations from "../migrations.js";
 import type * as phrasings from "../phrasings.js";
 import type * as rateLimit from "../rateLimit.js";
 import type * as schemaVersion from "../schemaVersion.js";
@@ -60,8 +62,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "agents/dtos": typeof agents_dtos;
   "agents/reviewAgent": typeof agents_reviewAgent;
   "agents/reviewStreaming": typeof agents_reviewStreaming;
+  "agents/reviewToolHelpers": typeof agents_reviewToolHelpers;
   aiGeneration: typeof aiGeneration;
   clerk: typeof clerk;
   concepts: typeof concepts;
@@ -78,7 +82,6 @@ declare const fullApi: ApiFromModules<{
   health: typeof health;
   http: typeof http;
   iqc: typeof iqc;
-  lab: typeof lab;
   "lib/aiProviders": typeof lib_aiProviders;
   "lib/analytics": typeof lib_analytics;
   "lib/chunkArray": typeof lib_chunkArray;
@@ -97,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "lib/prompts": typeof lib_prompts;
   "lib/scoring": typeof lib_scoring;
   "lib/userStatsHelpers": typeof lib_userStatsHelpers;
+  migrations: typeof migrations;
   phrasings: typeof phrasings;
   rateLimit: typeof rateLimit;
   schemaVersion: typeof schemaVersion;

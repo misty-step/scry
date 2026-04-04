@@ -9,7 +9,6 @@ import type { AnalyticsProps } from '@vercel/analytics/react';
  * Filters sensitive URLs from analytics tracking:
  * - Webhook endpoints
  * - URLs with tokens/keys/secrets in query params
- * - Test error routes
  */
 export function AnalyticsWrapper() {
   const beforeSend: AnalyticsProps['beforeSend'] = (event) => {
@@ -18,11 +17,10 @@ export function AnalyticsWrapper() {
 
     // Skip tracking for sensitive paths
     if (
-      url.includes('/api/webhooks') ||  // Webhook endpoints
-      url.includes('token=') ||          // Query params with tokens
-      url.includes('key=') ||            // Query params with keys
-      url.includes('secret=') ||         // Query params with secrets
-      url.includes('/test-error')        // Test error routes
+      url.includes('/api/webhooks') || // Webhook endpoints
+      url.includes('token=') || // Query params with tokens
+      url.includes('key=') || // Query params with keys
+      url.includes('secret=') // Query params with secrets
     ) {
       return null; // Don't track this event
     }

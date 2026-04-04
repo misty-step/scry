@@ -1,7 +1,7 @@
 # Delete Dead Code
 
 Priority: high
-Status: ready
+Status: in-progress
 Estimate: S
 
 ## Goal

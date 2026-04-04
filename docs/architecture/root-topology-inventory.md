@@ -31,6 +31,7 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .github
 .gitignore
 .gitleaks.toml
+.groom
 .lighthouserc.js
 .mcp.json
 .next
@@ -106,6 +107,7 @@ Disposition: **keep** (canonical runtime/observability layout).
 - `components.json`, `vercel.json`, `.npmrc`, `.mcp.json` (repo-shared MCP tooling config)
 - `.gitignore`, `.prettierignore`, `.prettierrc.json`
 - `.gitleaks.toml`, `.trivyignore`, `.codecov.yml`, `.size-limit.json`
+- `.groom/` (code review quality scores, tracked for trend analysis)
 - `.env.example` (tracked environment template)
 - `lefthook.yml` (unified config after merging `.lefthook.yml` coverage in Slice 1)
 - `.lighthouserc.js` + `lighthouserc.json` (dual config surfaces; `lighthouserc.json` is currently canonical for CI)
