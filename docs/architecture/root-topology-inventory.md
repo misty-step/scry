@@ -16,21 +16,35 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .changeset
 .claude
 .codecov.yml
+.DS_Store
 .env.example
+.env.local
+.env.preview
+.env.production
+.env.sentry-build-plugin
+.env.test.local
+.env.vercel
+.env.vercel-prod
+.env.vercel.local
+.env.vercel.preview
 .git
 .github
 .gitignore
 .gitleaks.toml
 .lighthouserc.js
 .mcp.json
+.next
 .npmrc
 .pi
+.playwright-mcp
 .prettierignore
 .prettierrc.json
 .size-limit.json
 .trivyignore
+.vercel
 AGENTS.md
 app
+backlog.d
 bun.lock
 CLAUDE.md
 components
@@ -39,6 +53,7 @@ convex
 coverage
 docs
 eslint.config.mjs
+eval_results.json
 evals
 experiments
 GEMINI.md
@@ -49,9 +64,11 @@ lefthook.yml
 lib
 lighthouserc.json
 middleware.ts
+next-env.d.ts
 next.config.ts
 node_modules
 package.json
+playwright-report
 playwright.config.ts
 pnpm-lock.yaml
 postcss.config.mjs
@@ -62,7 +79,9 @@ scripts
 sentry.client.config.ts
 sentry.edge.config.ts
 sentry.server.config.ts
+test-results
 tests
+thinktank.log
 tsconfig.json
 tsconfig.tsbuildinfo
 types
@@ -105,7 +124,7 @@ Disposition:
 Note: root retention for these instruction files is a repository policy/convention decision, not an MCP filename auto-discovery claim.
 
 ### D) Repository/meta directories (keep)
-- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`
+- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`, `backlog.d/`
 
 Disposition: **keep**.
 
