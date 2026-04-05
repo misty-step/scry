@@ -30,8 +30,6 @@ import type { ConceptBulkAction } from '@/types/concepts';
 const VIEW_TABS: { value: ConceptsView; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'due', label: 'Due' },
-  { value: 'thin', label: 'Thin' },
-  { value: 'tension', label: 'Tension' },
   { value: 'archived', label: 'Archived' },
   { value: 'deleted', label: 'Trash' },
 ];
@@ -44,14 +42,6 @@ const VIEW_DESCRIPTIONS: Record<ConceptsView, { title: string; body: string }> =
   due: {
     title: 'Concepts ready for review.',
     body: 'Clearing these keeps FSRS intervals honest.',
-  },
-  thin: {
-    title: 'Thin concepts need more phrasing coverage.',
-    body: 'Generate variants to stabilize recall depth.',
-  },
-  tension: {
-    title: 'Tension indicates conflicting or overlapping phrasings.',
-    body: 'Resolve duplicates or split overloaded ideas.',
   },
   archived: {
     title: 'Archived concepts are paused.',
@@ -296,8 +286,8 @@ export function ConceptsClient() {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Concepts Library</h1>
         <p className="text-sm text-muted-foreground">
-          Concept-first view of your knowledge. Track due status, thin spots, and tension signals at
-          a glance.
+          Concept-first view of your knowledge. Track due work, archived material, and concept
+          health at a glance.
         </p>
       </div>
 

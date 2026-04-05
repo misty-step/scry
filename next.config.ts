@@ -176,6 +176,11 @@ const nextConfig: NextConfig = {
   // Configure redirects for legacy routes
   async redirects() {
     return [
+      {
+        source: '/agent',
+        destination: '/',
+        permanent: true,
+      },
       // Redirect legacy questions/library routes to the concepts library
       {
         source: '/questions',

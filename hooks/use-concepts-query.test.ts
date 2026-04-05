@@ -100,7 +100,7 @@ describe('useConceptsQuery', () => {
   });
 
   it('handles all view types', () => {
-    const views: ConceptsView[] = ['all', 'due', 'thin', 'tension', 'archived', 'deleted'];
+    const views: ConceptsView[] = ['all', 'due', 'archived', 'deleted'];
 
     views.forEach((view) => {
       vi.clearAllMocks();

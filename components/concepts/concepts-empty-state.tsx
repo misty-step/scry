@@ -13,8 +13,6 @@ interface ConceptsEmptyStateProps {
 const VIEW_MESSAGES: Record<ConceptsView, string> = {
   all: 'No concepts yet. Generate new material or seed from existing questions.',
   due: 'No concepts are currently due. Great job staying ahead!',
-  thin: 'No thin concepts detected. Keep monitoring as you learn new material.',
-  tension: 'No tension indicators detected. Your library looks clean.',
   archived: 'No archived concepts. Archive items to clear them from active review.',
   deleted: 'Trash is empty. Deleted items will appear here before permanent removal.',
 };
