@@ -39,7 +39,7 @@ export function Navbar() {
       >
         <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-4 md:px-8">
           <Link
-            href="/"
+            href="/agent"
             className="text-xl md:text-2xl font-semibold tracking-tight text-foreground/80 hover:text-foreground border-b-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
             Scry.
@@ -124,16 +124,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      <GenerationModal
-        open={generateOpen}
-        onOpenChange={setGenerateOpen}
-        onGenerationSuccess={() => {
-          // Dispatch event to trigger review if on homepage
-          if (pathname === '/') {
-            window.dispatchEvent(new CustomEvent('start-review-after-generation'));
-          }
-        }}
-      />
+      <GenerationModal open={generateOpen} onOpenChange={setGenerateOpen} />
     </>
   );
 }

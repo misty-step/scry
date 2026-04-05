@@ -2,8 +2,7 @@
  * Prompt Resolution
  *
  * Provides compiled prompts from hardcoded templates.
- * Templates are the source of truth; evolutionary optimization
- * happens offline via scripts/evolve-prompts.ts.
+ * Templates are the source of truth.
  *
  * Prompt IDs:
  * - scry-intent-extraction
@@ -87,7 +86,6 @@ function buildPrompt<T extends PromptId>(promptId: T, variables: PromptVariables
  * Get a prompt by ID.
  *
  * Returns compiled prompt text from hardcoded templates.
- * Evolutionary optimization is handled offline by scripts/evolve-prompts.ts.
  *
  * @param promptId - The prompt identifier
  * @param variables - Variables to compile into the prompt template

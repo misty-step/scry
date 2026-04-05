@@ -96,10 +96,7 @@ scry/
 | File | Purpose |
 |------|---------|
 | `app/layout.tsx` | Root layout with provider stack |
-| `components/review-flow.tsx` | Main review session interface |
 | `components/generation-modal.tsx` | AI generation input |
-| `hooks/use-review-flow.ts` | Review state machine |
-| `hooks/use-unified-edit.ts` | Concept+phrasing editing |
 | `lib/sentry.ts` | Sentry config with PII scrubbing |
 | `lib/logger.ts` | Pino structured logging |
 

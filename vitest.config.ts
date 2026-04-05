@@ -62,7 +62,6 @@ export default defineConfig({
         'convex/deployments.ts',
         'convex/health.ts',
         'convex/http.ts',
-        'convex/lab.ts',
         'convex/schema.ts',
         'convex/system.ts',
         'convex/types.ts',
@@ -88,8 +87,6 @@ export default defineConfig({
         'hooks/use-particle-field.ts',
         // Convex config queries (environment variable readers)
         'convex/lib/productionConfig.ts',
-        // use-review-flow.ts: reducer is tested directly, hook has complex timer effects tested via E2E
-        'hooks/use-review-flow.ts',
         // Browser-only environment detection
         'lib/environment-client.ts',
         // spacedRepetition.ts: thin wrapper, logic tested via simulation, contracts tested in api-contract.test.ts
