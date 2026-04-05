@@ -1,7 +1,7 @@
 # Simplify Product Surface
 
 Priority: high
-Status: ready
+Status: in-progress
 Estimate: M
 
 ## Goal
