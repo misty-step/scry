@@ -13,7 +13,7 @@ export function Footer() {
   const [showHelp, setShowHelp] = useState(false);
   const { shortcuts } = useKeyboardShortcuts([], true);
 
-  if (pathname.startsWith('/agent')) return null;
+  if (pathname === '/') return null;
 
   return (
     <>

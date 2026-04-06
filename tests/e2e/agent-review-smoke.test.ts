@@ -9,6 +9,7 @@ test.describe('Agent Review Route', () => {
 
     await page.goto('/agent');
     await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/$/);
 
     // If authenticated and cards are due, kick the session once and ensure no runtime crash.
     const beginSessionButton = page.getByRole('button', { name: /Begin Session/i });
@@ -34,8 +35,9 @@ test.describe('Agent Review Route', () => {
   });
 
   test('does not show / Review navbar breadcrumb @smoke', async ({ page }) => {
-    await page.goto('/agent');
+    await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
+    await expect(page).toHaveURL(/\/$/);
 
     const breadcrumb = page.getByText('/ Review');
     await expect(breadcrumb).toHaveCount(0);
@@ -44,8 +46,9 @@ test.describe('Agent Review Route', () => {
   test('agent chips use deterministic actions and removed legacy labels @smoke', async ({
     page,
   }) => {
-    await page.goto('/agent');
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\/$/);
 
     await expect(page.getByText('Discuss this topic')).toHaveCount(0);
     await expect(page.getByText('Scry Agent')).toHaveCount(0);

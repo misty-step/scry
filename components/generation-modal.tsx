@@ -4,7 +4,6 @@ import * as React from 'react';
 import { useMutation } from 'convex/react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -86,7 +85,7 @@ export function GenerationModal({ open, onOpenChange, onGenerationSuccess }: Gen
       localStorage.removeItem(DRAFT_STORAGE_KEY);
 
       toast.success('Generation started', {
-        description: 'Check Background Tasks to monitor progress',
+        description: 'Watch the Generate badge for progress.',
         duration: TOAST_DURATION.SUCCESS,
       });
 

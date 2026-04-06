@@ -2,11 +2,16 @@
 
 import { useEffect } from 'react';
 import Error from 'next/error';
-import * as Sentry from '@sentry/nextjs';
+import { captureRuntimeException } from '@/lib/error-monitoring';
 
 export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    void captureRuntimeException(error, {
+      context: {
+        digest: error.digest,
+        route: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
+      },
+    });
   }, [error]);
 
   return (

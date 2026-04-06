@@ -6,11 +6,10 @@
  */
 
 import { getDeploymentEnvironment } from './environment';
+import { captureRuntimeException } from './error-monitoring';
+import { redactEmails } from './error-sanitization';
 import { shouldEnableSentry } from './sentry';
 
-const EMAIL_REDACTION_PATTERN =
-  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?<!\[EMAIL_REDACTED\])/g;
-const EMAIL_REDACTED = '[EMAIL_REDACTED]';
 const USER_METADATA_PREFIX = 'user.';
 
 type ServerTrack = typeof import('@vercel/analytics/server').track;
@@ -121,7 +120,7 @@ function isSentryEnabled(): boolean {
 }
 
 export function sanitizeString(value: string): string {
-  return value.replace(EMAIL_REDACTION_PATTERN, EMAIL_REDACTED);
+  return redactEmails(value);
 }
 
 export function sanitizeUserMetadata(
@@ -396,25 +395,8 @@ export function trackEvent<Name extends AnalyticsEventName>(
 }
 
 export function reportError(error: Error, context?: Record<string, unknown>): void {
-  if (!isSentryEnabled()) {
-    return;
-  }
-
   const sanitizedContext = sanitizeErrorContext(context);
-
-  void loadSentry()
-    .then((Sentry) => {
-      if (!Sentry) {
-        return;
-      }
-
-      Sentry.captureException(error, sanitizedContext ? { extra: sanitizedContext } : undefined);
-    })
-    .catch((captureError) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('[analytics] Failed to report error to Sentry', captureError);
-      }
-    });
+  void captureRuntimeException(error, sanitizedContext ? { context: sanitizedContext } : undefined);
 }
 
 export function setUserContext(userId: string, metadata: AnalyticsUserMetadata = {}): void {
@@ -434,6 +416,10 @@ export function setUserContext(userId: string, metadata: AnalyticsUserMetadata =
     sentryUser[`meta_${key}`] = value;
   }
 
+  if (!isSentryEnabled()) {
+    return;
+  }
+
   void loadSentry()
     .then((Sentry) => {
       if (!Sentry) {
@@ -451,6 +437,10 @@ export function setUserContext(userId: string, metadata: AnalyticsUserMetadata =
 
 export function clearUserContext(): void {
   currentUserContext = null;
+
+  if (!isSentryEnabled()) {
+    return;
+  }
 
   void loadSentry()
     .then((Sentry) => {

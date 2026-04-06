@@ -1,4 +1,5 @@
-import * as Sentry from '@sentry/nextjs';
+import { captureRuntimeException, captureRuntimeRequestError } from './lib/error-monitoring';
+import { shouldEnableSentry } from './lib/sentry';
 
 type ConceptTelemetryMetadata = {
   event?: string;
@@ -11,15 +12,21 @@ type ConceptTelemetryMetadata = {
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    await import('./sentry.server.config');
+    if (shouldEnableSentry(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN)) {
+      await import('./sentry.server.config');
+    }
   }
 
   if (process.env.NEXT_RUNTIME === 'edge') {
-    await import('./sentry.edge.config');
+    if (shouldEnableSentry(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN)) {
+      await import('./sentry.edge.config');
+    }
   }
 }
 
-export const onRequestError = Sentry.captureRequestError;
+export async function onRequestError(...args: Parameters<typeof captureRuntimeRequestError>) {
+  await captureRuntimeRequestError(...args);
+}
 
 export function captureConceptsTelemetryFailure(
   error: unknown,
@@ -43,11 +50,10 @@ export function captureConceptsTelemetryFailure(
   // Use console directly - instrumentation.ts runs in Edge context where pino isn't available
   console.error('[concepts.failure]', logPayload);
 
-  Sentry.captureException(normalizedError, {
-    tags: {
+  void captureRuntimeException(normalizedError, {
+    context: {
+      ...metadata,
       domain: 'concepts',
-      phase: metadata.phase,
     },
-    extra: metadata,
   });
 }

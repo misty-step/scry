@@ -4,7 +4,6 @@ import { useUser } from '@clerk/nextjs';
 import { useMutation } from 'convex/react';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/convex/_generated/api';
@@ -53,7 +52,7 @@ export function NoCardsEmptyState({ onGenerationSuccess }: NoCardsEmptyStateProp
       await createJob({ prompt: topic.trim() });
 
       toast.success('Generation started', {
-        description: 'Check Background Tasks to monitor progress',
+        description: 'Watch the Generate badge for progress.',
         duration: TOAST_DURATION.SUCCESS,
       });
 
@@ -167,7 +166,7 @@ export function NothingDueEmptyState({
       await createJob({ prompt: topic.trim() });
 
       toast.success('Generation started', {
-        description: 'Check Background Tasks to monitor progress',
+        description: 'Watch the Generate badge for progress.',
         duration: TOAST_DURATION.SUCCESS,
       });
 
