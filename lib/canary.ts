@@ -1,5 +1,5 @@
-const EMAIL_REDACTION_PATTERN =
-  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?<!\[EMAIL_REDACTED\])/g;
+import { redactEmails, shouldIgnoreError } from './error-sanitization';
+
 const DEFAULT_CANARY_ENDPOINT = 'https://canary-obs.fly.dev';
 const DEFAULT_CANARY_SERVICE = 'scry';
 
@@ -47,7 +47,7 @@ export type CanaryCaptureResult =
     };
 
 function scrubString(value: string): string {
-  return value.replace(EMAIL_REDACTION_PATTERN, '[EMAIL_REDACTED]');
+  return redactEmails(value);
 }
 
 function scrubValue<T>(value: T): T {
@@ -96,12 +96,26 @@ function normalizeError(error: unknown): {
   };
 }
 
+function preferRuntimeValue(
+  serverValue: string | undefined,
+  clientValue: string | undefined
+): string | undefined {
+  const isServerRuntime =
+    process.env.NEXT_RUNTIME === 'nodejs' ||
+    process.env.NEXT_RUNTIME === 'edge' ||
+    typeof window === 'undefined';
+
+  return isServerRuntime ? serverValue || clientValue : clientValue || serverValue;
+}
+
 function resolveCanaryConfig(): CanaryConfig | null {
   const endpoint =
-    process.env.NEXT_PUBLIC_CANARY_ENDPOINT ||
-    process.env.CANARY_ENDPOINT ||
+    preferRuntimeValue(process.env.CANARY_ENDPOINT, process.env.NEXT_PUBLIC_CANARY_ENDPOINT) ||
     DEFAULT_CANARY_ENDPOINT;
-  const apiKey = process.env.NEXT_PUBLIC_CANARY_API_KEY || process.env.CANARY_API_KEY;
+  const apiKey = preferRuntimeValue(
+    process.env.CANARY_API_KEY,
+    process.env.NEXT_PUBLIC_CANARY_API_KEY
+  );
 
   if (!endpoint || !apiKey) {
     return null;
@@ -117,28 +131,13 @@ function resolveCanaryConfig(): CanaryConfig | null {
       process.env.NODE_ENV ||
       'production',
     service:
-      process.env.NEXT_PUBLIC_CANARY_SERVICE ||
-      process.env.CANARY_SERVICE ||
+      preferRuntimeValue(process.env.CANARY_SERVICE, process.env.NEXT_PUBLIC_CANARY_SERVICE) ||
       DEFAULT_CANARY_SERVICE,
   };
 }
 
 export function isCanaryConfigured(): boolean {
   return resolveCanaryConfig() !== null;
-}
-
-function shouldIgnoreError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const code =
-    typeof (error as { code?: unknown }).code === 'string'
-      ? ((error as { code?: string }).code ?? '')
-      : '';
-  const message = error.message.toLowerCase();
-
-  return code === 'ECONNRESET' || message === 'aborted' || message.includes('econnreset');
 }
 
 async function sendToCanary(

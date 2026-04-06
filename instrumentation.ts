@@ -24,7 +24,7 @@ export async function register() {
   }
 }
 
-export async function onRequestError(...args: unknown[]) {
+export async function onRequestError(...args: Parameters<typeof captureRuntimeRequestError>) {
   await captureRuntimeRequestError(...args);
 }
 
@@ -54,7 +54,6 @@ export function captureConceptsTelemetryFailure(
     context: {
       ...metadata,
       domain: 'concepts',
-      phase: metadata.phase,
     },
   });
 }

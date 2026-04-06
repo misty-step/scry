@@ -108,12 +108,17 @@ describe('error monitoring', () => {
 
     const { captureRuntimeRequestError } = await import('./error-monitoring');
     const error = new Error('boom');
-    const request = { method: 'GET', url: '/healthz' };
-    await captureRuntimeRequestError(error, request, { routeType: 'render' });
+    const request = { headers: {}, method: 'GET', path: '/healthz', url: '/healthz' };
+    const context = {
+      routePath: '/healthz',
+      routeType: 'render' as const,
+      routerKind: 'App Router' as const,
+    };
+    await captureRuntimeRequestError(error, request, context);
 
     expect(initMock).toHaveBeenCalledOnce();
     expect(captureRequestErrorMock).toHaveBeenCalledOnce();
-    expect(captureRequestErrorMock).toHaveBeenCalledWith(error, request, { routeType: 'render' });
+    expect(captureRequestErrorMock).toHaveBeenCalledWith(error, request, context);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[monitoring] Canary capture failed',
       expect.objectContaining({

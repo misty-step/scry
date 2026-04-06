@@ -1,10 +1,9 @@
 import type { Breadcrumb, Event, EventHint } from '@sentry/nextjs';
 import { isCanaryConfigured } from './canary';
+import { redactEmails, shouldIgnoreError } from './error-sanitization';
 
 // Centralized Sentry options with aggressive PII scrubbing shared across runtimes.
 
-const EMAIL_REDACTION_PATTERN =
-  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?<!\[EMAIL_REDACTED\])/g;
 const EMAIL_REDACTED = '[EMAIL_REDACTED]';
 const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'set-cookie', 'x-api-key']);
 
@@ -33,21 +32,7 @@ function parseSampleRate(value: string | undefined, fallback: number): number {
 }
 
 function sanitizeString(value: string): string {
-  return value.replace(EMAIL_REDACTION_PATTERN, EMAIL_REDACTED);
-}
-
-function shouldIgnoreError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const code =
-    typeof (error as { code?: unknown }).code === 'string'
-      ? ((error as { code?: string }).code ?? '')
-      : '';
-  const message = error.message.toLowerCase();
-
-  return code === 'ECONNRESET' || message === 'aborted' || message.includes('econnreset');
+  return redactEmails(value);
 }
 
 function sanitizeHeaders(

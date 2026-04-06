@@ -7,11 +7,9 @@
 
 import { getDeploymentEnvironment } from './environment';
 import { captureRuntimeException } from './error-monitoring';
+import { redactEmails } from './error-sanitization';
 import { shouldEnableSentry } from './sentry';
 
-const EMAIL_REDACTION_PATTERN =
-  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?<!\[EMAIL_REDACTED\])/g;
-const EMAIL_REDACTED = '[EMAIL_REDACTED]';
 const USER_METADATA_PREFIX = 'user.';
 
 type ServerTrack = typeof import('@vercel/analytics/server').track;
@@ -122,7 +120,7 @@ function isSentryEnabled(): boolean {
 }
 
 export function sanitizeString(value: string): string {
-  return value.replace(EMAIL_REDACTION_PATTERN, EMAIL_REDACTED);
+  return redactEmails(value);
 }
 
 export function sanitizeUserMetadata(

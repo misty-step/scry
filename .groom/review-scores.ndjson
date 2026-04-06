@@ -1,2 +1,3 @@
 {"date":"2026-04-04","pr":307,"correctness":9,"depth":8,"simplicity":10,"craft":9,"verdict":"ship"}
 {"date":"2026-04-05","pr":null,"correctness":9,"depth":8,"simplicity":9,"craft":9,"verdict":"ship"}
+{"date":"2026-04-06","pr":309,"correctness":9,"depth":8,"simplicity":9,"craft":9,"verdict":"ship","providers":["claude","thinktank","codex","gemini"]}

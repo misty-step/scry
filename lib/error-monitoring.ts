@@ -7,6 +7,7 @@ import {
 } from './sentry';
 
 type SentryModule = typeof import('@sentry/nextjs');
+type RequestErrorArgs = Parameters<SentryModule['captureRequestError']>;
 
 export interface RuntimeCaptureOptions {
   context?: Record<string, unknown>;
@@ -114,7 +115,7 @@ export async function captureRuntimeException(
   );
 }
 
-export async function captureRuntimeRequestError(...args: unknown[]): Promise<void> {
+export async function captureRuntimeRequestError(...args: RequestErrorArgs): Promise<void> {
   const canaryResult = await captureCanaryRequestError(args[0], args[1]);
   if (canaryResult.status === 'sent' || canaryResult.status === 'ignored') {
     return;
@@ -138,5 +139,5 @@ export async function captureRuntimeRequestError(...args: unknown[]): Promise<vo
     return;
   }
 
-  await Sentry.captureRequestError(...(args as Parameters<typeof Sentry.captureRequestError>));
+  await Sentry.captureRequestError(...args);
 }
