@@ -1,13 +1,14 @@
-import type { Breadcrumb, Event, EventHint } from "@sentry/nextjs";
+import type { Breadcrumb, Event, EventHint } from '@sentry/nextjs';
+import { isCanaryConfigured } from './canary';
 
 // Centralized Sentry options with aggressive PII scrubbing shared across runtimes.
 
 const EMAIL_REDACTION_PATTERN =
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?<!\[EMAIL_REDACTED\])/g;
-const EMAIL_REDACTED = "[EMAIL_REDACTED]";
-const SENSITIVE_HEADERS = new Set(["authorization", "cookie", "set-cookie", "x-api-key"]);
+const EMAIL_REDACTED = '[EMAIL_REDACTED]';
+const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'set-cookie', 'x-api-key']);
 
-type SentryTarget = "client" | "server" | "edge";
+export type SentryTarget = 'client' | 'server' | 'edge';
 
 export type SentryInitOptions = Record<string, unknown> & {
   enabled: boolean;
@@ -35,6 +36,20 @@ function sanitizeString(value: string): string {
   return value.replace(EMAIL_REDACTION_PATTERN, EMAIL_REDACTED);
 }
 
+function shouldIgnoreError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code =
+    typeof (error as { code?: unknown }).code === 'string'
+      ? ((error as { code?: string }).code ?? '')
+      : '';
+  const message = error.message.toLowerCase();
+
+  return code === 'ECONNRESET' || message === 'aborted' || message.includes('econnreset');
+}
+
 function sanitizeHeaders(
   headers: Record<string, unknown> | undefined
 ): Record<string, unknown> | undefined {
@@ -50,13 +65,15 @@ function sanitizeHeaders(
       continue;
     }
 
-    if (typeof rawValue === "string") {
+    if (typeof rawValue === 'string') {
       headers[key] = sanitizeString(rawValue);
       continue;
     }
 
     if (Array.isArray(rawValue)) {
-      headers[key] = rawValue.map((item) => (typeof item === "string" ? sanitizeString(item) : item));
+      headers[key] = rawValue.map((item) =>
+        typeof item === 'string' ? sanitizeString(item) : item
+      );
     }
   }
 
@@ -68,7 +85,7 @@ function sanitizeValue<T>(value: T, seen: WeakSet<object>): T {
     return value;
   }
 
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return sanitizeString(value) as T;
   }
 
@@ -76,7 +93,7 @@ function sanitizeValue<T>(value: T, seen: WeakSet<object>): T {
     return value.map((item) => sanitizeValue(item, seen)) as T;
   }
 
-  if (typeof value === "object") {
+  if (typeof value === 'object') {
     if (seen.has(value as object)) {
       return value;
     }
@@ -91,7 +108,11 @@ function sanitizeValue<T>(value: T, seen: WeakSet<object>): T {
   return value;
 }
 
-export function sanitizeEvent(event: Event, _hint?: EventHint): Event {
+export function sanitizeEvent(event: Event, hint?: EventHint): Event | null {
+  if (shouldIgnoreError(hint?.originalException)) {
+    return null;
+  }
+
   const seen = new WeakSet<object>();
 
   if (event.user) {
@@ -104,12 +125,14 @@ export function sanitizeEvent(event: Event, _hint?: EventHint): Event {
   }
 
   if (event.request) {
-    event.request.headers = sanitizeHeaders(event.request.headers) as Record<string, string> | undefined;
+    event.request.headers = sanitizeHeaders(event.request.headers) as
+      | Record<string, string>
+      | undefined;
     event.request.query_string =
-      typeof event.request.query_string === "string"
+      typeof event.request.query_string === 'string'
         ? sanitizeString(event.request.query_string)
         : event.request.query_string;
-    if (typeof event.request.data === "string") {
+    if (typeof event.request.data === 'string') {
       event.request.data = sanitizeString(event.request.data);
     }
   }
@@ -139,31 +162,51 @@ export function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
     breadcrumb.data = sanitizeValue(breadcrumb.data, seen);
   }
 
-  if (typeof breadcrumb.message === "string") {
+  if (typeof breadcrumb.message === 'string') {
     breadcrumb.message = sanitizeString(breadcrumb.message);
   }
 
   return breadcrumb;
 }
 
-export function shouldEnableSentry(dsn: string | undefined): boolean {
+function shouldUseSentryBaseConfig(dsn: string | undefined): boolean {
   if (!dsn) {
     return false;
   }
 
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === 'test') {
     return false;
   }
 
-  if (process.env.NEXT_PUBLIC_DISABLE_SENTRY === "true") {
+  if (process.env.NODE_ENV !== 'production' && process.env.SENTRY_ENABLE_DEV !== 'true') {
+    return false;
+  }
+
+  if (process.env.NEXT_PUBLIC_DISABLE_SENTRY === 'true') {
     return false;
   }
 
   return true;
 }
 
+export function shouldEnableSentry(dsn: string | undefined): boolean {
+  if (!shouldUseSentryBaseConfig(dsn)) {
+    return false;
+  }
+
+  if (isCanaryConfigured()) {
+    return false;
+  }
+
+  return true;
+}
+
+export function shouldEnableSentryFallback(dsn: string | undefined): boolean {
+  return shouldUseSentryBaseConfig(dsn);
+}
+
 function resolveDsn(target: SentryTarget): string | undefined {
-  if (target === "client") {
+  if (target === 'client') {
     return process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
   }
 
@@ -195,9 +238,12 @@ function resolveRelease(): string | undefined {
   );
 }
 
-export function createSentryOptions(target: SentryTarget): SentryInitOptions {
+export function createSentryOptions(
+  target: SentryTarget,
+  mode: 'default' | 'fallback' = 'default'
+): SentryInitOptions {
   const dsn = resolveDsn(target);
-  const enabled = shouldEnableSentry(dsn);
+  const enabled = mode === 'fallback' ? shouldEnableSentryFallback(dsn) : shouldEnableSentry(dsn);
   const tracesSampleRate = parseSampleRate(
     process.env.SENTRY_TRACES_SAMPLE_RATE,
     DEFAULT_TRACES_SAMPLE_RATE
@@ -214,7 +260,7 @@ export function createSentryOptions(target: SentryTarget): SentryInitOptions {
     beforeBreadcrumb: (breadcrumb: Breadcrumb) => sanitizeBreadcrumb(breadcrumb),
   };
 
-  if (target === "client") {
+  if (target === 'client') {
     options.replaysSessionSampleRate = parseSampleRate(
       process.env.SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
       0
