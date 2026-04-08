@@ -9,11 +9,10 @@ import { requireUserFromClerk } from './clerk';
 import {
   defaultEngine as conceptEngine,
   initializeConceptFsrs,
-  scheduleConceptReview,
   selectPhrasingForConcept,
 } from './fsrs';
+import { recordInteractionCore } from './interactions';
 import { TARGET_PHRASINGS_PER_CONCEPT } from './lib/conceptConstants';
-import { calculateConceptStatsDelta } from './lib/conceptFsrsHelpers';
 import {
   clampPageSize,
   computeThinScoreFromCount,
@@ -21,7 +20,6 @@ import {
   prioritizeConcepts,
   type ConceptLibraryView,
 } from './lib/conceptHelpers';
-import { buildInteractionContext } from './lib/interactionContext';
 import { calculateStateTransitionDelta, updateStatsCounters } from './lib/userStatsHelpers';
 import { enforceRateLimit } from './rateLimit';
 
@@ -316,88 +314,6 @@ export const getReviewDashboard = query({
   },
 });
 
-async function recordInteractionHandler(
-  ctx: MutationCtx,
-  userId: Id<'users'>,
-  args: {
-    conceptId: Id<'concepts'>;
-    phrasingId: Id<'phrasings'>;
-    userAnswer: string;
-    isCorrect: boolean;
-    timeSpent?: number;
-    sessionId?: string;
-  }
-) {
-  const concept = await ctx.db.get(args.conceptId);
-  if (!concept || concept.userId !== userId) {
-    throw new Error('Concept not found or unauthorized');
-  }
-
-  const phrasing = await ctx.db.get(args.phrasingId);
-  if (!phrasing || phrasing.userId !== userId || phrasing.conceptId !== concept._id) {
-    throw new Error('Phrasing not found or unauthorized');
-  }
-
-  const nowMs = Date.now();
-  const now = new Date(nowMs);
-
-  const scheduleResult = scheduleConceptReview(concept, args.isCorrect, { now });
-
-  const interactionContext = buildInteractionContext({
-    sessionId: args.sessionId,
-    scheduledDays: scheduleResult.scheduledDays,
-    nextReview: scheduleResult.nextReview,
-    fsrsState: scheduleResult.state,
-  });
-
-  const interactionId = await ctx.db.insert('interactions', {
-    userId,
-    conceptId: concept._id,
-    phrasingId: phrasing._id,
-    userAnswer: args.userAnswer,
-    isCorrect: args.isCorrect,
-    attemptedAt: nowMs,
-    timeSpent: args.timeSpent,
-    context: interactionContext,
-  });
-
-  await ctx.db.patch(phrasing._id, {
-    attemptCount: (phrasing.attemptCount ?? 0) + 1,
-    correctCount: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
-    lastAttemptedAt: nowMs,
-  });
-
-  await ctx.db.patch(concept._id, {
-    fsrs: scheduleResult.fsrs,
-    updatedAt: nowMs,
-  });
-
-  const statsDelta = calculateConceptStatsDelta({
-    oldState: concept.fsrs.state ?? 'new',
-    newState: scheduleResult.state,
-    oldNextReview: concept.fsrs.nextReview,
-    newNextReview: scheduleResult.nextReview,
-    nowMs,
-  });
-
-  if (statsDelta) {
-    await updateStatsCounters(ctx, userId, statsDelta);
-  }
-
-  return {
-    conceptId: concept._id,
-    phrasingId: phrasing._id,
-    interactionId,
-    nextReview: scheduleResult.nextReview,
-    scheduledDays: scheduleResult.scheduledDays,
-    newState: scheduleResult.state,
-    totalAttempts: (phrasing.attemptCount ?? 0) + 1,
-    totalCorrect: (phrasing.correctCount ?? 0) + (args.isCorrect ? 1 : 0),
-    lapses: scheduleResult.fsrs.lapses ?? 0,
-    reps: scheduleResult.fsrs.reps ?? 0,
-  };
-}
-
 export const recordInteraction = mutation({
   args: {
     conceptId: v.id('concepts'),
@@ -410,7 +326,7 @@ export const recordInteraction = mutation({
   handler: async (ctx, args) => {
     const user = await requireUserFromClerk(ctx);
     await enforceRateLimit(ctx, user._id.toString(), 'recordInteraction', false);
-    return recordInteractionHandler(ctx, user._id, args);
+    return recordInteractionCore(ctx, user._id, args);
   },
 });
 
@@ -423,7 +339,7 @@ export const recordInteractionInternal = internalMutation({
     isCorrect: v.boolean(),
   },
   handler: async (ctx, { userId, ...args }) => {
-    return recordInteractionHandler(ctx, userId, args);
+    return recordInteractionCore(ctx, userId, args);
   },
 });
 
