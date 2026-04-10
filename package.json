@@ -166,7 +166,7 @@
     ],
     "overrides": {
       "fast-xml-parser": ">=5.3.5",
-      "basic-ftp": ">=5.2.0",
+      "basic-ftp": ">=5.2.2",
       "minimatch": ">=10.2.3",
       "axios": ">=1.13.5",
       "rollup": ">=4.59.0",
@@ -177,7 +177,7 @@
   },
   "resolutions": {
     "fast-xml-parser": ">=5.3.5",
-    "basic-ftp": ">=5.2.0",
+    "basic-ftp": ">=5.2.2",
     "minimatch": ">=10.2.3",
     "axios": ">=1.13.5",
     "rollup": ">=4.59.0",
