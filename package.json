@@ -59,7 +59,7 @@
   "dependencies": {
     "@ai-sdk/google": "^2.0.40",
     "@clerk/clerk-react": "^5.60.0",
-    "@clerk/nextjs": "^6.37.3",
+    "@clerk/nextjs": "^6.39.2",
     "@clerk/themes": "^2.4.51",
     "@convex-dev/agent": "^0.3.2",
     "@formkit/auto-animate": "^0.9.0",
