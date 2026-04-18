@@ -28,6 +28,6 @@ Make Scry's top-level test oracle truthful. `bun test` currently fails in unrela
 Observed while wiring `memory-engine` canary ticket 10. The FSRS seam passed under the native Scry runner:
 
 - `corepack pnpm@10.12.1 tsc --noEmit`
-- `corepack pnpm@10.12.1 exec vitest --run tests/convex/memory-engine-adapter.test.ts tests/convex/fsrs.engine.test.ts tests/convex/fsrs.test.ts convex/fsrs/conceptScheduler.test.ts`
+- `corepack pnpm@10.12.1 exec vitest --run tests/convex/memory-engine-adapter.test.ts tests/convex/fsrs.test.ts convex/fsrs/conceptScheduler.test.ts`
 
 But `bun test` failed in unrelated app and AI-generation paths, so the broken oracle should be fixed at the repo level rather than copied into downstream tickets.
