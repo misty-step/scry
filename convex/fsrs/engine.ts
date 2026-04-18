@@ -1,9 +1,19 @@
-import { Card, createEmptyCard, FSRS, generatorParameters, Grade, Rating, State } from 'ts-fsrs';
-import type { Doc } from '../_generated/dataModel';
+import {
+  Rating as MemoryEngineRating,
+  next as scheduleNext,
+  type ScheduleState,
+} from 'memory-engine';
+import { Card, createEmptyCard, FSRS, generatorParameters, State, type Grade } from 'ts-fsrs';
+import {
+  conceptFsrsStateToScheduleState,
+  mapDbStateToFsrs,
+  mapFsrsStateToDb,
+  scheduleStateToConceptFsrsState,
+  type ConceptFsrsState,
+  type ConceptState,
+} from './memoryEngineAdapter';
 
-export type ConceptDoc = Doc<'concepts'>;
-export type ConceptFsrsState = ConceptDoc['fsrs'];
-export type ConceptState = NonNullable<ConceptFsrsState['state']>;
+export type { ConceptDoc, ConceptFsrsState, ConceptState } from './memoryEngineAdapter';
 
 const DEFAULT_PARAMS = generatorParameters({
   maximum_interval: 365,
@@ -37,9 +47,13 @@ export class FsrsEngine {
 
   schedule({ state, isCorrect, now = new Date() }: ScheduleArgs): ScheduleResult {
     const rating = this.ratingFromCorrectness(isCorrect);
-    const currentCard = this.stateToCard(state, now);
-    const { card: updatedCard } = this.fsrs.next(currentCard, now, rating);
-    const nextState = this.cardToState(updatedCard);
+    const updatedScheduleState = scheduleNext(
+      conceptFsrsStateToScheduleState(state, now),
+      rating,
+      now.getTime()
+    );
+    const updatedCard = this.scheduleStateToCard(updatedScheduleState);
+    const nextState = scheduleStateToConceptFsrsState(updatedScheduleState);
 
     nextState.retrievability = this.fsrs.get_retrievability(updatedCard, now, false) as number;
 
@@ -73,73 +87,52 @@ export class FsrsEngine {
   }
 
   private ratingFromCorrectness(isCorrect: boolean): Grade {
-    return isCorrect ? Rating.Good : Rating.Again;
+    return isCorrect ? MemoryEngineRating.Good : MemoryEngineRating.Again;
   }
 
   private stateToCard(state?: ConceptFsrsState | null, now: Date = new Date()): Card {
-    if (!state || state.nextReview === undefined) {
+    const scheduleState = conceptFsrsStateToScheduleState(state, now);
+
+    if (scheduleState === null) {
       return createEmptyCard(now);
     }
 
-    const dbState: ConceptState = state.state ?? 'new';
+    return this.scheduleStateToCard(scheduleState);
+  }
+
+  private scheduleStateToCard(state: ScheduleState): Card {
+    const { last_review, ...rest } = state;
+
+    if (last_review === null) {
+      return {
+        ...rest,
+        due: new Date(state.due),
+        learning_steps: 0,
+      };
+    }
 
     return {
-      due: new Date(state.nextReview),
-      stability: state.stability ?? 0,
-      difficulty: state.difficulty ?? 0,
-      elapsed_days: state.elapsedDays ?? 0,
-      scheduled_days: state.scheduledDays ?? 0,
-      reps: state.reps ?? 0,
-      lapses: state.lapses ?? 0,
-      state: this.mapDbStateToFsrs(dbState),
-      last_review: state.lastReview ? new Date(state.lastReview) : undefined,
+      ...rest,
+      due: new Date(state.due),
+      last_review: new Date(last_review),
       learning_steps: 0,
     };
   }
 
   private cardToState(card: Card): ConceptFsrsState {
-    return {
-      stability: card.stability,
-      difficulty: card.difficulty,
-      lastReview: card.last_review?.getTime(),
-      nextReview: card.due.getTime(),
-      elapsedDays: card.elapsed_days,
-      retrievability: undefined,
-      scheduledDays: card.scheduled_days,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: this.mapFsrsStateToDb(card.state),
-    };
+    return scheduleStateToConceptFsrsState({
+      ...card,
+      due: card.due.getTime(),
+      last_review: card.last_review?.getTime() ?? null,
+    });
   }
 
   private mapDbStateToFsrs(state: ConceptState): State {
-    switch (state) {
-      case 'new':
-        return State.New;
-      case 'learning':
-        return State.Learning;
-      case 'review':
-        return State.Review;
-      case 'relearning':
-        return State.Relearning;
-      default:
-        return State.New;
-    }
+    return mapDbStateToFsrs(state);
   }
 
   private mapFsrsStateToDb(state: State): ConceptState {
-    switch (state) {
-      case State.New:
-        return 'new';
-      case State.Learning:
-        return 'learning';
-      case State.Review:
-        return 'review';
-      case State.Relearning:
-        return 'relearning';
-      default:
-        return 'new';
-    }
+    return mapFsrsStateToDb(state);
   }
 }
 

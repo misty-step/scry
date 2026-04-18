@@ -34,7 +34,6 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .groom
 .lighthouserc.js
 .mcp.json
-.next
 .npmrc
 .pi
 .playwright-mcp
