@@ -16,7 +16,7 @@ The core product output — quiz questions generated from user content — has *
 
 ## Oracle
 
-- [ ] `evals/promptfoo.yaml` includes a `phrasing-generation` eval config section using `evals/prompts/phrasing-generation.txt` as the prompt
+- [ ] `evals/promptfoo-phrasing.yaml` covers phrasing generation using `evals/prompts/phrasing-generation.txt` as the prompt
 - [ ] Minimum 15 phrasing generation test cases covering:
   - Enumerable content (NATO alphabet, planets) → 3 cases
   - Conceptual content (cognitive biases, ML fundamentals) → 3 cases
@@ -29,7 +29,7 @@ The core product output — quiz questions generated from user content — has *
   - `llm-rubric` for **standalone clarity** ("question is understandable without external context") — score >= 3/5
   - `llm-rubric` for **explanation value** ("explanation teaches WHY the answer is correct, not just restates it") — score >= 3/5
   - `javascript` for structural validation (correct fields, option count, type field)
-- [ ] `pnpm eval` runs the full suite including phrasing generation
+- [ ] `pnpm eval` runs the full suite including phrasing generation, with `pnpm eval:phrasing` available for the focused suite
 - [ ] `prompt-eval.yml` CI workflow triggers on changes to phrasing generation prompt template
 - [ ] Baseline results captured — current pass rate and average LLM scores documented
 

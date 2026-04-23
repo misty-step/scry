@@ -12,6 +12,20 @@ Create `evals/promptfoo-phrasing.yaml` alongside the existing `evals/promptfoo.y
 
 Rationale: concept-synthesis uses `intentJson` as its sole input variable and a transform that extracts the top-level JSON object. Phrasing generation uses five different template variables (`conceptTitle`, `contentType`, `originIntent`, `existingQuestions`, `targetCount`) and produces `{"phrasings": [...]}`. Mixing them in one file would require conditional transforms and convoluted defaultTest logic. Two files is cleaner.
 
+## Product Gate
+
+- Outcome: make the user-facing quiz wording measurable before broadening content types or changing generation behavior.
+- Non-goals: do not change the production generation pipeline, prompt semantics, FSRS scheduling, or review UI behavior in this ticket.
+- Pure FSRS check: this is eval coverage only; it does not add caps, comfort shortcuts, artificial limits, or scheduling changes.
+- Alternatives considered:
+  - Minimal viable: add only a handful of structural promptfoo cases. Fails by missing the subjective quality dimensions users actually feel.
+  - Product-complete: add a separate phrasing suite with structural checks, LLM rubrics, CI wiring, and baseline capture. Chosen.
+  - Inversion/deletion: defer phrasing evals until content-type work. Fails because items 004-006 depend on this pattern and would compound unmeasured output quality.
+
+## Implementation Handoff Gate
+
+The ship gate is GitHub Actions `Quality Checks` `merge-gate`: `pnpm lint`, `pnpm typecheck`, `pnpm audit --audit-level=critical`, no focused tests via the `.only` grep, and `pnpm test:ci` must pass; local parity is `pnpm lint && pnpm tsc --noEmit && pnpm test:ci`, with `pnpm test:contract` for `convex/**`, `pnpm build` for build/config/workflow/dependency surfaces, and `pnpm audit --audit-level=critical` for dependency or lockfile changes.
+
 ### Input Format
 
 Each test case provides these `vars` to the prompt template `evals/prompts/phrasing-generation.txt`:
@@ -459,7 +473,7 @@ The `compare-prompts.ts` script (line 11) already supports `--target phrasing-ge
 
 1. **Create `evals/promptfoo-phrasing.yaml`** with the full config:
    - `prompts` pointing to `file://prompts/phrasing-generation.txt`
-   - `providers` matching production (same `openrouter:google/gemini-3-pro-preview` config as concept-synthesis)
+   - `providers` matching the concept-synthesis eval config (`openrouter:google/gemini-3.1-pro-preview` as of 2026-04-23)
    - `defaultTest` with transform, structural assertions (S1-S6), and quality rubrics (Q1-Q4)
    - All 17 test cases with their vars and per-case assertions
 
@@ -485,7 +499,7 @@ pnpm eval:phrasing
 pnpm eval:view
 
 # Run a single test case by description filter
-npx promptfoo eval -c evals/promptfoo-phrasing.yaml --filter "NATO"
+npx promptfoo eval -c evals/promptfoo-phrasing.yaml --filter-pattern "NATO"
 
 # Run with verbose output to debug assertion failures
 npx promptfoo eval -c evals/promptfoo-phrasing.yaml -o results.json -j 1 --verbose

@@ -63,15 +63,34 @@ jobs:
         continue-on-error: true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          PROMPTFOO_REQUEST_TIMEOUT: 120000  # 2 min timeout per request
+          PROMPTFOO_REQUEST_TIMEOUT: 120000 # 2 min timeout per request
           TEST_FILTER: ${{ github.event.inputs.test_filter }}
         run: |
-          FILTER_ARG=""
-          if [ -n "$TEST_FILTER" ]; then
-            FILTER_ARG="--filter '$TEST_FILTER'"
-          fi
           # Use lower concurrency (-j 2) to avoid rate limits on shared CI runners
-          npx promptfoo eval -c evals/promptfoo.yaml -o eval-results.json -j 2 $FILTER_ARG
+          run_promptfoo() {
+            local config="$1"
+            local output="$2"
+            if [ -n "$TEST_FILTER" ]; then
+              npx promptfoo eval -c "$config" -o "$output" -j 2 --filter-pattern "$TEST_FILTER"
+            else
+              npx promptfoo eval -c "$config" -o "$output" -j 2
+            fi
+          }
+
+          SYNTHESIS_EXIT=0
+          PHRASING_EXIT=0
+
+          run_promptfoo evals/promptfoo.yaml eval-results-synthesis.json || SYNTHESIS_EXIT=$?
+          run_promptfoo evals/promptfoo-phrasing.yaml eval-results-phrasing.json || PHRASING_EXIT=$?
+
+          jq -s '.[0].results.results += .[1].results.results | .[0]' \
+            eval-results-synthesis.json \
+            eval-results-phrasing.json \
+            > eval-results.json
+
+          if [ "$SYNTHESIS_EXIT" -ne 0 ] || [ "$PHRASING_EXIT" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Run baseline comparison
         if: github.event_name == 'pull_request'
@@ -110,7 +129,7 @@ jobs:
           if [ "$FAILURES" -gt 0 ]; then
             echo "### Failed Tests" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            jq -r '.results.results[] | select(.success == false) | "- **\(.vars.intentJson | fromjson | .atomic_units[0] // "Unknown")**: \(.error // "Assertion failed")"' eval-results.json >> $GITHUB_STEP_SUMMARY
+            jq -r '.results.results[] | select(.success == false) | "- **\((.vars.conceptTitle // (try (.vars.intentJson | fromjson | .atomic_units[0]) catch null) // .description // "Unknown"))**: \(.error // "Assertion failed")"' eval-results.json >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⚠️ $FAILURES test(s) failed (non-blocking)"
           else
@@ -123,7 +142,10 @@ jobs:
         if: always()
         with:
           name: promptfoo-results
-          path: eval-results.json
+          path: |
+            eval-results.json
+            eval-results-synthesis.json
+            eval-results-phrasing.json
           retention-days: 30
 
       - name: Comment on PR
@@ -153,6 +175,22 @@ jobs:
             const avgLlmScore = llmScores.length > 0
               ? (llmScores.reduce((a, b) => a + b, 0) / llmScores.length).toFixed(2)
               : 'N/A';
+            const resultLabel = (result) => {
+              if (result.vars?.conceptTitle) {
+                return result.vars.conceptTitle;
+              }
+
+              if (result.vars?.intentJson) {
+                try {
+                  const intent = JSON.parse(result.vars.intentJson);
+                  return intent.atomic_units?.[0] || 'Unknown';
+                } catch {
+                  return 'Unknown';
+                }
+              }
+
+              return result.description || 'Unknown';
+            };
 
             let body = `## ${status} Prompt Evaluation Results\n\n`;
             body += `| Metric | Value |\n`;
@@ -174,12 +212,7 @@ jobs:
                 .filter(r => !r.success)
                 .slice(0, 5) // Limit to first 5 failures
                 .forEach(r => {
-                  try {
-                    const intent = JSON.parse(r.vars.intentJson);
-                    body += `- **${intent.atomic_units?.[0] || 'Unknown'}**: Assertion failed\n`;
-                  } catch {
-                    body += `- **Unknown**: Assertion failed\n`;
-                  }
+                  body += `- **${resultLabel(r)}**: Assertion failed\n`;
                 });
               if (failures > 5) {
                 body += `\n... and ${failures - 5} more failures\n`;
