@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { assessConfidence } from '../confidence';
 import type { SearchRequest, SearchResult } from '../provider-adapter';
 
