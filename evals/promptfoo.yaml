@@ -26,6 +26,9 @@ commandLineOptions:
 # Global test configuration
 defaultTest:
   options:
+    # llm-rubric assertions must use the same keyed provider family in CI;
+    # otherwise promptfoo falls back to a default grader that needs OPENAI_API_KEY.
+    provider: openrouter:google/gemini-3.1-pro-preview
     # Strip thinking content and markdown, extract JSON object
     transform: |
       const jsonMatch = output.match(/\{[\s\S]*\}/);
