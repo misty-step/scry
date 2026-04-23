@@ -1,0 +1,459 @@
+# Scry Phrasing Generation Evaluation Suite
+# Baseline captured 2026-04-23 with openrouter:google/gemini-3.1-pro-preview:
+# Pass rate: 1/17 (5.9%)
+# Avg standalone: 0.88/1.0
+# Avg distractors: 0.56/1.0
+# Avg explanation: 0.50/1.0
+# Avg difficulty: 0.79/1.0
+# Latency p95: 128861ms
+
+description: 'Scry Phrasing Generation Evaluation'
+
+prompts:
+  - file://prompts/phrasing-generation.txt
+
+providers:
+  # Current OpenRouter Gemini Pro preview for eval infrastructure.
+  - id: openrouter:google/gemini-3.1-pro-preview
+    config:
+      temperature: 0.4
+      max_tokens: 8192
+
+commandLineOptions:
+  maxConcurrency: 2
+  delay: 500
+
+defaultTest:
+  options:
+    transform: |
+      const jsonMatch = output.match(/\{[\s\S]*\}/);
+      return jsonMatch ? jsonMatch[0].trim() : output.trim();
+
+  assert:
+    - type: is-json
+
+    - type: latency
+      threshold: 60000
+
+    - type: javascript
+      value: |
+        const data = JSON.parse(output);
+        if (!Array.isArray(data.phrasings)) return false;
+        const target = Number.parseInt(context.vars.targetCount, 10);
+        return Number.isFinite(target) && data.phrasings.length >= target;
+
+    - type: javascript
+      value: |
+        const data = JSON.parse(output);
+        const validTypes = ['multiple-choice', 'true-false'];
+        return data.phrasings.every((p) =>
+          typeof p.question === 'string' && p.question.trim().length > 0 &&
+          typeof p.explanation === 'string' && p.explanation.trim().length > 0 &&
+          validTypes.includes(p.type) &&
+          Array.isArray(p.options) &&
+          p.options.length >= 2 && p.options.length <= 4 &&
+          typeof p.correctAnswer === 'string' &&
+          p.options.includes(p.correctAnswer)
+        );
+
+    - type: javascript
+      value: |
+        const data = JSON.parse(output);
+        return data.phrasings.every((p) => {
+          if (p.type === 'multiple-choice') return p.options.length >= 3 && p.options.length <= 4;
+          if (p.type === 'true-false') return p.options.length === 2 && p.options.includes('True') && p.options.includes('False');
+          return false;
+        });
+
+    - type: javascript
+      value: |
+        const data = JSON.parse(output);
+        return data.phrasings.every((p) => p.question.length <= 200);
+
+    - type: llm-rubric
+      value: |
+        Evaluate whether each quiz question in this JSON output can be understood
+        without external context. A good standalone question explicitly identifies
+        its subject or topic in the stem. A poor question uses pronouns like "it"
+        or "this" without a referent, or assumes the reader knows what concept is
+        being tested.
+
+        The concept being tested is: "{{conceptTitle}}" (content type: {{contentType}}).
+
+        Score 0.0 if questions are completely context-dependent.
+        Score 0.5 if questions are mostly clear but occasionally vague.
+        Score 1.0 if every question explicitly identifies its topic and is fully self-contained.
+      threshold: 0.6
+      weight: 2
+
+    - type: llm-rubric
+      value: |
+        Evaluate the quality of wrong answer options in this JSON output.
+
+        Good multiple-choice distractors are semantically adjacent to the correct
+        answer: common misconceptions, related-but-wrong concepts, or plausible
+        confusions. Bad distractors are obviously wrong, unrelated to the topic,
+        or differ only in formatting or punctuation.
+
+        For true-false questions, evaluate whether the statement tests a meaningful
+        distinction rather than trivial phrasing.
+
+        The concept is: "{{conceptTitle}}" ({{contentType}}).
+
+        Score 0.0 if distractors are random or trivially wrong.
+        Score 0.5 if some distractors are plausible but others are obvious.
+        Score 1.0 if all distractors test genuine misconceptions and are semantically adjacent.
+      threshold: 0.6
+      weight: 2
+
+    - type: llm-rubric
+      value: |
+        Evaluate whether the explanation field in each phrasing teaches why the
+        correct answer is right, rather than merely restating it.
+
+        A good explanation provides reasoning, addresses why common wrong answers
+        fail, and helps the learner build understanding. A poor explanation just
+        says "The answer is X" or repeats the question.
+
+        Score 0.0 if explanations just restate the answer.
+        Score 0.5 if explanations state the correct fact but lack depth.
+        Score 1.0 if explanations teach reasoning and address misconceptions.
+      threshold: 0.6
+      weight: 1
+
+    - type: llm-rubric
+      value: |
+        Evaluate whether the questions are appropriately calibrated: neither
+        trivially easy nor impossibly obscure.
+
+        Good questions require genuine understanding or recall of the concept.
+        Bad questions either ask something any person would know, or require niche
+        expertise beyond the concept scope.
+
+        The concept is: "{{conceptTitle}}" ({{contentType}}).
+
+        Score 0.0 if questions are all trivial or all unanswerable.
+        Score 0.5 if difficulty is uneven or slightly miscalibrated.
+        Score 1.0 if questions appropriately test meaningful knowledge.
+      threshold: 0.6
+      weight: 1
+
+tests:
+  - description: 'Enumerable: NATO phonetic alphabet letter'
+    vars:
+      conceptTitle: 'Alpha (NATO Phonetic Alphabet)'
+      contentType: 'enumerable'
+      originIntent: >-
+        {"content_type":"enumerable","goal":"memorize","atomic_units":["Alpha","Bravo","Charlie","Delta","Echo"],"synthesis_ops":["letter-to-word mapping"],"confidence":0.95}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('nato') || text.includes('phonetic alphabet');
+
+  - description: 'Enumerable: solar system planet'
+    vars:
+      conceptTitle: 'Jupiter'
+      contentType: 'enumerable'
+      originIntent: >-
+        {"content_type":"enumerable","goal":"memorize","atomic_units":["Mercury","Venus","Earth","Mars","Jupiter","Saturn","Uranus","Neptune"],"synthesis_ops":["order from sun","planet categories","notable planetary facts"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('jupiter') && (text.includes('planet') || text.includes('solar system'));
+
+  - description: 'Enumerable: periodic table element'
+    vars:
+      conceptTitle: 'Helium'
+      contentType: 'enumerable'
+      originIntent: >-
+        {"content_type":"enumerable","goal":"memorize","atomic_units":["Hydrogen","Helium","Lithium","Beryllium","Boron"],"synthesis_ops":["atomic number","chemical symbols","element properties"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('helium') && (text.includes('element') || text.includes('periodic'));
+
+  - description: 'Conceptual: cognitive bias with existing phrasing'
+    vars:
+      conceptTitle: 'Confirmation Bias'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["confirmation bias","anchoring bias","availability heuristic"],"synthesis_ops":["how they affect decision making","mitigation strategies"],"confidence":0.9}
+      existingQuestions: '1. What cognitive bias causes people to favor information that confirms their existing beliefs?'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const existing = 'what cognitive bias causes people to favor information that confirms their existing beliefs';
+          return data.phrasings.every((p) => {
+            const question = p.question.toLowerCase().replace(/[^\w\s]/g, '');
+            const words = question.split(/\s+/).filter(Boolean);
+            const existingWords = existing.split(/\s+/);
+            const overlap = words.filter((word) => existingWords.includes(word)).length;
+            return overlap / Math.max(words.length, existingWords.length) < 0.7;
+          });
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('bias') || text.includes('belief') || text.includes('decision');
+
+  - description: 'Conceptual: machine learning fundamental'
+    vars:
+      conceptTitle: 'Gradient Descent'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["gradient descent","loss function","learning rate"],"synthesis_ops":["optimization intuition","model training"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: llm-rubric
+        value: |
+          These questions test gradient descent in machine learning. Evaluate
+          technical accuracy: the questions, answers, and explanations should
+          correctly connect gradient descent to loss minimization, optimization,
+          and model parameter updates. Score 0.0 for factual errors, 0.5 for
+          shallow but correct coverage, and 1.0 for accurate questions that test
+          genuine understanding.
+        threshold: 0.6
+
+  - description: 'Conceptual: ethics thought experiment'
+    vars:
+      conceptTitle: 'Trolley Problem (Ethics)'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["trolley problem","utilitarian reasoning","deontological reasoning"],"synthesis_ops":["ethical tradeoffs","action versus omission"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('ethic') || text.includes('moral') || text.includes('utilitarian') || text.includes('deontological');
+
+  - description: 'Verbatim: Gettysburg Address memorization'
+    vars:
+      conceptTitle: '"Four score and seven years ago" (Gettysburg Address, Lincoln)'
+      contentType: 'verbatim'
+      originIntent: >-
+        {"content_type":"verbatim","goal":"memorize","atomic_units":["Four score and seven years ago","government of the people, by the people, for the people"],"synthesis_ops":["historical context","rhetorical devices"],"confidence":0.95}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('lincoln') || text.includes('gettysburg') || text.includes('civil war');
+      - type: llm-rubric
+        value: |
+          These questions test memorization of the Gettysburg Address by Abraham
+          Lincoln. Evaluate whether they test recall of specific phrases or
+          sequences from the speech, rather than generic historical trivia.
+          Score 0.0 if questions are generic history trivia, 0.5 if they reference
+          the speech but do not test specific text recall, and 1.0 if they directly
+          test recall of specific lines or phrases.
+        threshold: 0.6
+
+  - description: 'Verbatim: Shakespeare soliloquy'
+    vars:
+      conceptTitle: '"To be, or not to be" (Hamlet, Act 3 Scene 1)'
+      contentType: 'verbatim'
+      originIntent: >-
+        {"content_type":"verbatim","goal":"memorize","atomic_units":["To be, or not to be","Whether tis nobler in the mind to suffer","The slings and arrows of outrageous fortune"],"synthesis_ops":["Hamlet context","meaning interpretation"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('hamlet') || text.includes('shakespeare');
+
+  - description: 'Verbatim: First Amendment'
+    vars:
+      conceptTitle: 'First Amendment (US Constitution)'
+      contentType: 'verbatim'
+      originIntent: >-
+        {"content_type":"verbatim","goal":"memorize","atomic_units":["Congress shall make no law respecting an establishment of religion","abridging the freedom of speech","the right of the people peaceably to assemble"],"synthesis_ops":["five freedoms","constitutional source"],"confidence":0.95}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('first amendment') || text.includes('constitution') || text.includes('congress');
+
+  - description: 'Mixed: World War II event'
+    vars:
+      conceptTitle: 'D-Day (Operation Overlord, June 1944)'
+      contentType: 'mixed'
+      originIntent: >-
+        {"content_type":"mixed","goal":"understand","atomic_units":["D-Day","Operation Overlord","Normandy landings","June 6 1944"],"synthesis_ops":["turning points","Allied strategy","historical context"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: llm-rubric
+        value: |
+          These questions test D-Day / Operation Overlord. Evaluate historical
+          accuracy: dates, location, participating forces, and significance should
+          be correct and not confuse D-Day with other World War II events. Score
+          0.0 for factual errors, 0.5 for correct but shallow coverage, and 1.0
+          for accurate questions that test meaningful knowledge.
+        threshold: 0.6
+
+  - description: 'Mixed: Renaissance figure'
+    vars:
+      conceptTitle: 'Leonardo da Vinci'
+      contentType: 'mixed'
+      originIntent: >-
+        {"content_type":"mixed","goal":"understand","atomic_units":["Leonardo da Vinci","Mona Lisa","The Last Supper","anatomical studies","engineering notebooks"],"synthesis_ops":["art and science contributions","Renaissance context"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '5'
+    assert:
+      - type: llm-rubric
+        value: |
+          These five questions should cover Leonardo da Vinci as both artist and
+          scientific or engineering observer. Score 0.0 if they focus only on one
+          side, 0.5 if one side is token coverage, and 1.0 if art and science are
+          both substantively represented.
+        threshold: 0.6
+
+  - description: 'Edge: single-word concept'
+    vars:
+      conceptTitle: 'Democracy'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["democracy"],"synthesis_ops":["representative democracy","direct democracy","citizen participation"],"confidence":0.8}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('democracy') || text.includes('democratic');
+
+  - description: 'Edge: very long concept title'
+    vars:
+      conceptTitle: 'The relationship between mitochondrial DNA inheritance patterns and maternal lineage tracing in forensic genetics'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["mitochondrial DNA inheritance","maternal lineage tracing","forensic genetics"],"synthesis_ops":["inheritance pattern","forensic identification"],"confidence":0.85}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.phrasings.every((p) => p.question.length <= 200);
+
+  - description: 'Edge: highly technical niche topic'
+    vars:
+      conceptTitle: 'Monadic Composition in Haskell'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["monadic composition","bind operator","Kleisli arrows"],"synthesis_ops":["relationship to functors","practical use in IO"],"confidence":0.8}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const text = JSON.stringify(data).toLowerCase();
+          return text.includes('haskell') || text.includes('monad') || text.includes('functional');
+      - type: llm-rubric
+        value: |
+          These questions test monadic composition in Haskell. Evaluate technical
+          accuracy: questions, correct answers, and explanations should correctly
+          represent bind, composition, and related functional programming ideas.
+          Score 0.0 for factual errors, 0.5 for correct but superficial coverage,
+          and 1.0 for technically accurate questions that test real understanding.
+        threshold: 0.6
+
+  - description: 'Edge: large batch request'
+    vars:
+      conceptTitle: 'Photosynthesis'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["photosynthesis"],"synthesis_ops":["light reactions","Calvin cycle","chloroplast structure","inputs and outputs"],"confidence":0.9}
+      existingQuestions: 'None (generate first phrasings for this concept)'
+      targetCount: '5'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const questions = data.phrasings.map((p) => p.question.toLowerCase());
+          for (let i = 0; i < questions.length; i++) {
+            for (let j = i + 1; j < questions.length; j++) {
+              const wordsA = new Set(questions[i].split(/\s+/).filter(Boolean));
+              const wordsB = new Set(questions[j].split(/\s+/).filter(Boolean));
+              const intersection = [...wordsA].filter((word) => wordsB.has(word)).length;
+              const similarity = intersection / Math.min(wordsA.size, wordsB.size);
+              if (similarity > 0.8) return false;
+            }
+          }
+          return true;
+      - type: llm-rubric
+        value: |
+          These five questions should test different aspects of photosynthesis,
+          such as inputs and outputs, light reactions, Calvin cycle, chloroplast
+          structure, or comparison to respiration. Score 0.0 if all questions test
+          the same narrow fact, 0.5 if there is some variety but significant
+          overlap, and 1.0 if each question tests a distinct aspect.
+        threshold: 0.6
+
+  - description: 'Deduplication: avoids repeating one existing phrasing'
+    vars:
+      conceptTitle: 'Confirmation Bias'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["confirmation bias"],"synthesis_ops":["evidence selection","belief persistence"],"confidence":0.9}
+      existingQuestions: '1. What cognitive bias causes people to favor information confirming existing beliefs?'
+      targetCount: '3'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const existing = 'what cognitive bias causes people to favor information confirming existing beliefs';
+          return data.phrasings.every((p) => {
+            const question = p.question.toLowerCase().replace(/[^\w\s]/g, '');
+            return question !== existing && !question.includes('favor information confirming existing beliefs');
+          });
+
+  - description: 'Deduplication: avoids multiple existing phrasings'
+    vars:
+      conceptTitle: 'Photosynthesis'
+      contentType: 'conceptual'
+      originIntent: >-
+        {"content_type":"conceptual","goal":"understand","atomic_units":["photosynthesis"],"synthesis_ops":["chemical inputs","oxygen byproduct","chloroplasts"],"confidence":0.9}
+      existingQuestions: |-
+        1. What process converts CO2 and water into glucose using sunlight?
+        2. In photosynthesis, what gas is released as a byproduct?
+      targetCount: '2'
+    assert:
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const banned = [
+            'converts co2 and water into glucose',
+            'what gas is released as a byproduct'
+          ];
+          return data.phrasings.every((p) => {
+            const question = p.question.toLowerCase();
+            return banned.every((phrase) => !question.includes(phrase));
+          });

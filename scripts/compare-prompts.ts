@@ -7,7 +7,7 @@
  *
  * Usage:
  *   npx tsx scripts/compare-prompts.ts --target concept-synthesis
- *   npx tsx scripts/compare-prompts.ts --target intent-extraction --variable model --value gemini-3-flash
+ *   npx tsx scripts/compare-prompts.ts --target intent-extraction --variable model --value google/gemini-3.1-flash-lite-preview
  *   npx tsx scripts/compare-prompts.ts --target phrasing-generation --variable prompt --strategy simplification
  */
 import { execSync } from 'child_process';
@@ -85,8 +85,8 @@ const _MUTATION_STRATEGIES = [
 
 // Model alternatives for A/B testing
 const MODEL_ALTERNATIVES = [
-  'google/gemini-3-flash',
-  'google/gemini-3-pro-preview',
+  'google/gemini-3.1-flash-lite-preview',
+  'google/gemini-3.1-pro-preview',
   'anthropic/claude-sonnet-4.5',
   'openai/gpt-4o',
 ];
@@ -400,7 +400,7 @@ Examples:
   npx tsx scripts/compare-prompts.ts --target concept-synthesis
 
   # Specific model comparison
-  npx tsx scripts/compare-prompts.ts --target intent-extraction --variable model --value google/gemini-3-flash
+  npx tsx scripts/compare-prompts.ts --target intent-extraction --variable model --value google/gemini-3.1-flash-lite-preview
 
   # Temperature tweak
   npx tsx scripts/compare-prompts.ts --target phrasing-generation --variable temperature --value 0.5
