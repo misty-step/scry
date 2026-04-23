@@ -52,13 +52,13 @@ function formatLog(level: LogLevel, message: string, context?: LogContext): stri
 export const logger = {
   debug(message: string, context?: LogContext) {
     if (shouldLog('debug')) {
-      console.log(formatLog('debug', message, context));
+      console.warn(formatLog('debug', message, context));
     }
   },
 
   info(message: string, context?: LogContext) {
     if (shouldLog('info')) {
-      console.log(formatLog('info', message, context));
+      console.warn(formatLog('info', message, context));
     }
   },
 

@@ -7,7 +7,9 @@
     "+/Users/phaedrus/.pi/agent/extensions/web-search",
     "+/Users/phaedrus/.pi/agent/extensions/organic-workflows"
   ],
-  "skills": [],
+  "skills": [
+    "+skills/*"
+  ],
   "prompts": [
     "+prompts/discover.md",
     "+prompts/design.md",

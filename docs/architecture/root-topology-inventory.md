@@ -1,7 +1,7 @@
 # Root Topology Inventory (Slice 1)
 
 Issue: #271 (parent #270)
-Date: 2026-02-27
+Date: 2026-04-23
 
 ## Objective
 
@@ -9,24 +9,16 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 
 ## Current root snapshot
 
-> This is a filesystem snapshot at time of writing (2026-02-27), not a tracked-files-only list.
+> This is a filesystem snapshot at time of writing (2026-04-23), not a tracked-files-only list.
 > It includes tracked files plus gitignored/local artifacts; classification sections below define disposition.
 
 ```text
+.agent
 .changeset
 .claude
 .codecov.yml
-.DS_Store
+.codex
 .env.example
-.env.local
-.env.preview
-.env.production
-.env.sentry-build-plugin
-.env.test.local
-.env.vercel
-.env.vercel-prod
-.env.vercel.local
-.env.vercel.preview
 .git
 .github
 .gitignore
@@ -34,15 +26,13 @@ Create a full root-level inventory and classify each item so follow-up cleanup s
 .groom
 .lighthouserc.js
 .mcp.json
-.next
 .npmrc
 .pi
-.playwright-mcp
 .prettierignore
 .prettierrc.json
 .size-limit.json
+.spellbook
 .trivyignore
-.vercel
 AGENTS.md
 app
 backlog.d
@@ -51,10 +41,8 @@ CLAUDE.md
 components
 components.json
 convex
-coverage
 docs
 eslint.config.mjs
-eval_results.json
 evals
 experiments
 GEMINI.md
@@ -65,11 +53,9 @@ lefthook.yml
 lib
 lighthouserc.json
 middleware.ts
-next-env.d.ts
 next.config.ts
 node_modules
 package.json
-playwright-report
 playwright.config.ts
 pnpm-lock.yaml
 postcss.config.mjs
@@ -80,9 +66,7 @@ scripts
 sentry.client.config.ts
 sentry.edge.config.ts
 sentry.server.config.ts
-test-results
 tests
-thinktank.log
 tsconfig.json
 tsconfig.tsbuildinfo
 types
@@ -126,13 +110,15 @@ Disposition:
 Note: root retention for these instruction files is a repository policy/convention decision, not an MCP filename auto-discovery claim.
 
 ### D) Repository/meta directories (keep)
-- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`, `backlog.d/`
+- `.git/`, `.github/`, `.changeset/`, `docs/`, `evals/`, `experiments/`, `.claude/`, `.pi/`, `.agent/`, `.codex/`, `.spellbook/`, `backlog.d/`
 
 Disposition: **keep**.
 
 Notes:
 - `.pi/` is repo-local Pi foundation config/artifacts (12 files tracked, including bootstrap reports).
 - `.pi/state/*` is local runtime state and should remain ignored/untracked.
+- `.agent/skills/` is the shared Spellbook skill layer. `.claude/skills/`, `.codex/skills/`, and `.pi/skills/` are symlink bridges to it.
+- `.spellbook/repo-brief.md` is the tailored harness brief used by skills and agents.
 
 ### E1) Generated/build outputs and local artifacts (keep ignored)
 - `.next/`, `node_modules/`, `coverage/`, `test-results/`, `playwright-report/`, `.playwright-mcp/`, `.vercel/`
