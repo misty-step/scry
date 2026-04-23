@@ -128,6 +128,9 @@ importers:
       lucide-react:
         specifier: ^0.563.0
         version: 0.563.0(react@19.2.4)
+      memory-engine:
+        specifier: file:../memory-engine
+        version: file:../memory-engine
       next:
         specifier: 16.1.6
         version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -7079,6 +7082,10 @@ packages:
   memjs@1.3.2:
     resolution: {integrity: sha512-qUEg2g8vxPe+zPn09KidjIStHPtoBO8Cttm8bgJFWWabbsjQ9Av9Ky+6UcvKx6ue0LLb/LEhtcyQpRyKfzeXcg==}
     engines: {node: '>=0.10.0'}
+
+  memory-engine@file:../memory-engine:
+    resolution: {directory: ../memory-engine, type: directory}
+    engines: {bun: '>=1.3.0'}
 
   memory-pager@1.5.0:
     resolution: {integrity: sha512-ZS4Bp4r/Zoeq6+NLJpP+0Zzm0pR8whtGPf1XExKLJBAczGMnSi3It14OiNCStjQjM6NU1okjQGSxgEZN8eBYKg==}
@@ -17407,6 +17414,10 @@ snapshots:
 
   memjs@1.3.2:
     optional: true
+
+  memory-engine@file:../memory-engine:
+    dependencies:
+      ts-fsrs: 5.2.3
 
   memory-pager@1.5.0:
     optional: true

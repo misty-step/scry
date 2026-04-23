@@ -100,13 +100,19 @@ describe('conceptScheduler', () => {
   it('supports incorrect answers transitioning to relearning', () => {
     let concept = createConcept();
 
-    // Graduate concept with a few correct answers
-    for (let i = 0; i < 3; i++) {
-      const result = scheduleConceptReview(concept, true, { now: fixedNow, engine });
+    // Graduate concept to review by answering at each due time.
+    for (let i = 0; i < 8 && concept.fsrs.state !== 'review'; i++) {
+      const reviewAt = new Date(Math.max(fixedNow.getTime(), concept.fsrs.nextReview));
+      const result = scheduleConceptReview(concept, true, { now: reviewAt, engine });
       concept = { ...concept, fsrs: result.fsrs };
     }
 
-    const relapse = scheduleConceptReview(concept, false, { now: fixedNow, engine });
+    expect(concept.fsrs.state).toBe('review');
+
+    const relapse = scheduleConceptReview(concept, false, {
+      now: new Date(concept.fsrs.nextReview),
+      engine,
+    });
     expect(relapse.state).toBe('relearning');
     expect(relapse.fsrs.lapses).toBeGreaterThanOrEqual(1);
   });
