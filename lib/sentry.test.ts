@@ -4,6 +4,11 @@ describe('shouldEnableSentry', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
+    vi.stubEnv('CANARY_ENDPOINT', '');
+    vi.stubEnv('CANARY_API_KEY', '');
+    vi.stubEnv('NEXT_PUBLIC_CANARY_ENDPOINT', '');
+    vi.stubEnv('NEXT_PUBLIC_CANARY_API_KEY', '');
+    vi.stubEnv('NEXT_PUBLIC_DISABLE_SENTRY', '');
   });
 
   it('disables Sentry in development by default', async () => {

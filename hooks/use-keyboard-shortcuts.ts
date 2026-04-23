@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -17,54 +17,61 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[], enabled = 
   const [showHelp, setShowHelp] = useState(false);
 
   // Global shortcuts that work anywhere
-  const globalShortcuts: ShortcutDefinition[] = [
-    {
-      key: '?',
-      description: 'Show keyboard shortcuts help',
-      action: () => setShowHelp((prev) => !prev),
-      context: 'global',
-    },
-    {
-      key: 'h',
-      description: 'Go to home/review',
-      action: () => router.push('/'),
-      context: 'global',
-    },
-    {
-      key: 'c',
-      description: 'Go to concepts',
-      action: () => router.push('/concepts'),
-      context: 'global',
-    },
-    {
-      key: 's',
-      ctrl: true,
-      description: 'Go to settings',
-      action: () => {
-        router.push('/settings');
-        toast.info('Opening settings...');
+  const globalShortcuts = useMemo<ShortcutDefinition[]>(
+    () => [
+      {
+        key: '?',
+        description: 'Show keyboard shortcuts help',
+        action: () => setShowHelp((prev) => !prev),
+        context: 'global',
       },
-      context: 'global',
-    },
-    {
-      key: 'g',
-      description: 'Generate new questions',
-      action: () => {
-        // Dispatch event to open generation modal
-        window.dispatchEvent(new CustomEvent('open-generation-modal'));
+      {
+        key: 'h',
+        description: 'Go to home/review',
+        action: () => router.push('/'),
+        context: 'global',
       },
-      context: 'global',
-    },
-    {
-      key: 'Escape',
-      description: 'Close modals/cancel editing',
-      action: () => {
-        // Dispatch a custom event that components can listen to
-        window.dispatchEvent(new CustomEvent('escape-pressed'));
+      {
+        key: 'c',
+        description: 'Go to concepts',
+        action: () => router.push('/concepts'),
+        context: 'global',
       },
-      context: 'global',
-    },
-  ];
+      {
+        key: 's',
+        ctrl: true,
+        description: 'Go to settings',
+        action: () => {
+          router.push('/settings');
+          toast.info('Opening settings...');
+        },
+        context: 'global',
+      },
+      {
+        key: 'g',
+        description: 'Generate new questions',
+        action: () => {
+          // Dispatch event to open generation modal
+          window.dispatchEvent(new CustomEvent('open-generation-modal'));
+        },
+        context: 'global',
+      },
+      {
+        key: 'Escape',
+        description: 'Close modals/cancel editing',
+        action: () => {
+          // Dispatch a custom event that components can listen to
+          window.dispatchEvent(new CustomEvent('escape-pressed'));
+        },
+        context: 'global',
+      },
+    ],
+    [router]
+  );
+  const allShortcuts = useMemo(
+    () => [...globalShortcuts, ...shortcuts],
+    [globalShortcuts, shortcuts]
+  );
 
   const handleKeyPress = useCallback(
     (e: KeyboardEvent) => {
@@ -78,8 +85,6 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[], enabled = 
       }
 
       // Combine user shortcuts with global shortcuts
-      const allShortcuts = [...globalShortcuts, ...shortcuts];
-
       // Find matching shortcut
       const matchingShortcut = allShortcuts.find((shortcut) => {
         const keyMatch =
@@ -96,7 +101,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[], enabled = 
         matchingShortcut.action();
       }
     },
-    [shortcuts, router]
+    [allShortcuts]
   );
 
   useEffect(() => {
@@ -109,6 +114,6 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[], enabled = 
   return {
     showHelp,
     setShowHelp,
-    shortcuts: [...globalShortcuts, ...shortcuts],
+    shortcuts: allShortcuts,
   };
 }

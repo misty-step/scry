@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ClerkProvider, useAuth, useUser } from '@clerk/nextjs';
 import { ConvexReactClient, useMutation } from 'convex/react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
-
 import { api } from '@/convex/_generated/api';
 import { useClerkAppearance } from '@/hooks/use-clerk-appearance';
 
@@ -30,50 +29,57 @@ export function ClerkConvexProvider({ children }: { children: React.ReactNode })
 }
 
 function EnsureConvexUser({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const ensureUser = useMutation(api.clerk.ensureUser);
-  const [hasEnsured, setHasEnsured] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ensuredUserId, setEnsuredUserId] = useState<string | null>(null);
+  const [failedUserId, setFailedUserId] = useState<string | null>(null);
+  const inFlightUserIdRef = useRef<string | null>(null);
+  const userId = isSignedIn ? (user?.id ?? null) : null;
+  const ready = isLoaded && (!userId || ensuredUserId === userId || failedUserId === userId);
 
   useEffect(() => {
-    if (!isLoaded) {
-      setReady(false);
+    if (!userId) {
+      inFlightUserIdRef.current = null;
       return;
     }
 
-    if (!isSignedIn) {
-      setHasEnsured(false);
-      setReady(true);
+    if (
+      ensuredUserId === userId ||
+      failedUserId === userId ||
+      inFlightUserIdRef.current === userId
+    ) {
       return;
     }
 
-    if (hasEnsured) {
-      setReady(true);
-      return;
-    }
-
-    setReady(false);
     let cancelled = false;
+    inFlightUserIdRef.current = userId;
 
     void (async () => {
       try {
         await ensureUser();
         if (!cancelled) {
-          setHasEnsured(true);
-          setReady(true);
+          setEnsuredUserId(userId);
+          setFailedUserId((current) => (current === userId ? null : current));
         }
       } catch (error) {
         console.error('Failed to ensure Convex user', error);
         if (!cancelled) {
-          setReady(true);
+          setFailedUserId(userId);
+        }
+      } finally {
+        if (!cancelled && inFlightUserIdRef.current === userId) {
+          inFlightUserIdRef.current = null;
         }
       }
     })();
 
     return () => {
       cancelled = true;
+      if (inFlightUserIdRef.current === userId) {
+        inFlightUserIdRef.current = null;
+      }
     };
-  }, [ensureUser, hasEnsured, isLoaded, isSignedIn]);
+  }, [ensureUser, ensuredUserId, failedUserId, userId]);
 
   if (!ready) {
     return null;

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { useUser } from '@clerk/nextjs';
-
 import {
   clearUserContext,
   setUserContext,
@@ -42,12 +41,7 @@ function buildUserMetadata(user: ReturnType<typeof useUser>['user']): Record<str
 export function useTrackEvent(): TrackEventHandler {
   const { isSignedIn, user } = useUser();
 
-  const memoizedMetadata = useMemo(() => buildUserMetadata(user), [
-    user?.id,
-    user?.fullName,
-    user?.username,
-    user?.primaryEmailAddress?.emailAddress,
-  ]);
+  const memoizedMetadata = useMemo(() => buildUserMetadata(user), [user]);
 
   useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -60,10 +54,10 @@ export function useTrackEvent(): TrackEventHandler {
     }
   }, [isSignedIn, memoizedMetadata, user?.id]);
 
-  return useCallback(<Name extends AnalyticsEventName>(
-    name: Name,
-    properties?: AnalyticsEventProperties<Name>
-  ) => {
-    trackEvent(name, properties);
-  }, []);
+  return useCallback(
+    <Name extends AnalyticsEventName>(name: Name, properties?: AnalyticsEventProperties<Name>) => {
+      trackEvent(name, properties);
+    },
+    []
+  );
 }

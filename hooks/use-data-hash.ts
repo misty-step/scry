@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 
 /**
  * Simple string hash function for data comparison
@@ -27,55 +27,46 @@ export function useDataHash<T>(data: T): {
 } {
   const previousHashRef = useRef<number | null>(null);
   const currentHashRef = useRef<number | null>(null);
+  const subscribe = useCallback(() => () => {}, []);
+  const previousHash = useSyncExternalStore(
+    subscribe,
+    () => previousHashRef.current,
+    () => previousHashRef.current
+  );
 
-  // Calculate hash of current data
   let currentHash: number | null = null;
   let hasChanged = false;
 
   try {
-    // Only hash if data is not null/undefined
     if (data !== null && data !== undefined) {
       const dataString = JSON.stringify(data);
       currentHash = hashString(dataString);
-      currentHashRef.current = currentHash;
-
-      // Compare with previous hash
-      if (previousHashRef.current === null) {
-        // First time seeing data
-        hasChanged = true;
-      } else if (previousHashRef.current !== currentHash) {
-        // Data has changed
-        hasChanged = true;
-      } else {
-        // Data unchanged
-        hasChanged = false;
-      }
+      hasChanged = previousHash !== currentHash;
     } else {
-      // Handle null/undefined data
       currentHash = null;
-      hasChanged = previousHashRef.current !== null;
+      hasChanged = previousHash !== null;
     }
   } catch {
-    // Handle circular references or other JSON.stringify errors
-    // Treat errors as "changed" to avoid missing updates
+    currentHash = null;
     hasChanged = true;
   }
 
   // Update function to manually mark the current hash as "previous"
-  const update = () => {
+  const update = useCallback(() => {
     previousHashRef.current = currentHashRef.current;
-  };
+  }, []);
 
   // Auto-update previous hash when data changes
   useEffect(() => {
+    currentHashRef.current = currentHash;
     if (hasChanged) {
-      previousHashRef.current = currentHashRef.current;
+      previousHashRef.current = currentHash;
     }
   }, [currentHash, hasChanged]);
 
   return {
     hasChanged,
-    previousHash: previousHashRef.current,
+    previousHash,
     currentHash,
     update,
   };

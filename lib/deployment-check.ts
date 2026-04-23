@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
@@ -47,15 +47,15 @@ const VERSION_CHECK_ENABLED = process.env.NEXT_PUBLIC_DISABLE_VERSION_CHECK !== 
  * ```
  */
 export function useDeploymentCheck() {
-  const [hasChecked, setHasChecked] = useState(false);
   const backendVersion = useQuery(api.system.getSchemaVersion);
+  const hasWarnedDisabledRef = useRef(false);
 
   useEffect(() => {
     // Skip if disabled via feature flag
     if (!VERSION_CHECK_ENABLED) {
-      if (!hasChecked) {
+      if (!hasWarnedDisabledRef.current) {
         console.warn('⚠️ Version check disabled via NEXT_PUBLIC_DISABLE_VERSION_CHECK');
-        setHasChecked(true);
+        hasWarnedDisabledRef.current = true;
       }
       return;
     }
@@ -86,9 +86,7 @@ export function useDeploymentCheck() {
       // Throw to trigger error boundary
       throw error;
     }
-
-    setHasChecked(true);
-  }, [backendVersion, hasChecked]);
+  }, [backendVersion]);
 
   return backendVersion;
 }

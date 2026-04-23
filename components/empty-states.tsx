@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@clerk/nextjs';
 import { useMutation } from 'convex/react';
@@ -350,10 +350,19 @@ export function ZenEmptyState({
   stats,
   onGenerateNewKnowledge,
 }: ZenEmptyStateProps) {
-  const formatNextReviewTime = (timestamp: number | null) => {
+  const [referenceNow, setReferenceNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setReferenceNow(Date.now());
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [nextReviewTime]);
+
+  const formatNextReviewTime = (timestamp: number | null, now: number) => {
     if (!timestamp) return null;
 
-    const now = Date.now();
     const diff = timestamp - now;
 
     // Never return "Now" - show "< 1 minute" for imminent reviews
@@ -384,7 +393,7 @@ export function ZenEmptyState({
     }
   };
 
-  const nextReviewFormatted = formatNextReviewTime(nextReviewTime);
+  const nextReviewFormatted = formatNextReviewTime(nextReviewTime, referenceNow);
 
   return (
     <div className="max-w-xl mx-auto px-4">

@@ -750,7 +750,8 @@ function ActiveSession({
   handleKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   const messageList = useMemo(() => messages?.results ?? [], [messages?.results]);
-  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [historyExpandedAtLength, setHistoryExpandedAtLength] = useState<number | null>(null);
+  const showFullHistory = historyExpandedAtLength === artifactFeed.length;
   const focusChat = useCallback(() => {
     requestAnimationFrame(() => {
       chatInputRef.current?.focus();
@@ -764,10 +765,6 @@ function ActiveSession({
         : messageList.slice(Math.max(0, messageList.length - MAX_VISIBLE_CHAT_MESSAGES)),
     [messageList, showFullHistory]
   );
-
-  useEffect(() => {
-    setShowFullHistory(false);
-  }, [artifactFeed.length]);
 
   const latestQuestionArtifactId = useMemo(() => {
     for (let i = artifactFeed.length - 1; i >= 0; i -= 1) {
@@ -839,7 +836,7 @@ function ActiveSession({
             <div className="mx-auto w-full max-w-4xl space-y-3">
               {hiddenMessageCount > 0 && !showFullHistory && (
                 <button
-                  onClick={() => setShowFullHistory(true)}
+                  onClick={() => setHistoryExpandedAtLength(artifactFeed.length)}
                   className="rounded-full border border-border bg-secondary px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   Show {hiddenMessageCount} earlier message{hiddenMessageCount === 1 ? '' : 's'}
@@ -848,7 +845,7 @@ function ActiveSession({
 
               {showFullHistory && hiddenMessageCount > 0 && (
                 <button
-                  onClick={() => setShowFullHistory(false)}
+                  onClick={() => setHistoryExpandedAtLength(null)}
                   className="rounded-full border border-border bg-secondary px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   Collapse earlier history
