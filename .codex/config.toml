@@ -1,0 +1,48 @@
+[project]
+name = "scry"
+root = "."
+
+[skills]
+shared_root = ".agent/skills"
+bridge_root = ".codex/skills"
+installed = [
+  "deliver",
+  "shape",
+  "implement",
+  "code-review",
+  "ci",
+  "refactor",
+  "flywheel",
+  "settle",
+  "ship",
+  "yeet",
+  "diagnose",
+  "research",
+  "deploy",
+  "monitor",
+  "qa",
+  "convex-migrate",
+  "groom",
+  "office-hours",
+  "ceo-review",
+  "reflect",
+]
+excluded = ["demo"]
+
+[conventions]
+package_manager = "pnpm"
+shared_skill_root = ".agent/skills"
+source_of_truth = ["package.json", ".github/workflows", "lefthook.yml", "CLAUDE.md"]
+note = "Do not add a [permissions] command allowlist here. Codex parses [permissions] as filesystem permission TOML; command allowlists belong in .claude/settings.local.json."
+
+[gate]
+ship = "The ship gate is GitHub Actions `Quality Checks` `merge-gate`: `pnpm lint`, `pnpm typecheck`, `pnpm audit --audit-level=critical`, no focused tests via the `.only` grep, and `pnpm test:ci` must pass; local parity is `pnpm lint && pnpm tsc --noEmit && pnpm test:ci`, with `pnpm test:contract` for `convex/**`, `pnpm build` for build/config/workflow/dependency surfaces, and `pnpm audit --audit-level=critical` for dependency or lockfile changes."
+local_parity = ["pnpm lint", "pnpm tsc --noEmit", "pnpm test:ci"]
+convex = "pnpm test:contract"
+build_surface = "pnpm build"
+dependency_surface = "pnpm audit --audit-level=critical"
+
+[git]
+base_branch = "master"
+branch_pattern = "^(feat|fix|chore|refactor|docs|test|perf)/(\\d+)-"
+backlog_root = "backlog.d"
