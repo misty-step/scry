@@ -196,7 +196,7 @@ jobs:
             body += `| Metric | Value |\n`;
             body += `|--------|-------|\n`;
             body += `| Pass Rate | ${passRate}% (${passed}/${total}) |\n`;
-            body += `| LLM Score | ${avgLlmScore}/5 |\n`;
+            body += `| LLM Score | ${avgLlmScore}/1 |\n`;
             body += `| Failed | ${failures} |\n\n`;
 
             // Add comparison results if available
