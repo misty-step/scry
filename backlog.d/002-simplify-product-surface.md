@@ -1,7 +1,7 @@
 # Simplify Product Surface
 
 Priority: high
-Status: in-progress
+Status: done
 Estimate: M
 
 ## Goal
@@ -48,6 +48,7 @@ Pare the app down to three screens — review (home), generate (modal), library 
 - Settings and theme controls moved into the user menu, and the standalone theme-toggle component was deleted
 - Library tabs now expose only All, Due, Archived, and Trash while preserving thin/tension as row-level signals
 - Legacy `/agent` routing, navbar state, and smoke coverage were updated to the new home-route behavior
+- Restored `app/agent/page.tsx` as a permanent redirect so legacy `/agent` links now match the shipped oracle and regression coverage
 
 ## Workarounds
 
