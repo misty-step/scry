@@ -74,18 +74,20 @@ Assert every item at start; refuse on any miss.
   `^(feat|fix|chore|refactor|docs|test|perf)/(\d+)-`.
 - Working tree is clean: `git status --short` is empty.
 - No merge, rebase, or cherry-pick is in progress.
-- `/settle` already ran on this exact HEAD, or equivalent evidence exists:
-  GitHub PR checks pass, or git-native verdict storage says this HEAD is
-  landable.
-- The scry gate above is green. In GitHub mode, `gh pr checks` must show
-  the required `Quality Checks / merge-gate` pass. In git-native mode, the
-  operator must have run local parity recently on this HEAD:
+- Same-HEAD landability evidence exists. Acceptable evidence: GitHub mode
+  has the required `Quality Checks / merge-gate` green and a mergeable PR;
+  git-native mode has a `ship` or `conditional` verdict; or git-native
+  mode has operator-provided/current-session local gate receipts for the
+  scry gate on this exact HEAD. Do not require a PR or verdict solely to
+  land a locally verified git-native branch. A `dont-ship` verdict still
+  blocks.
+- For git-native local gate evidence, use the scry gate above:
   `pnpm lint && pnpm tsc --noEmit && pnpm test:ci`, plus
   `pnpm test:contract` for `convex/**`, `pnpm build` for build/config/
   workflow/dependency surfaces, and `pnpm audit --audit-level=critical`
-  for dependency or lockfile changes.
-- A verdict at `refs/verdicts/<branch>` reads `ship` or `conditional`, or
-  the GitHub PR has at least one approving review. Prefer:
+  for dependency or lockfile changes. A current-session successful run
+  after the latest branch commit is sufficient evidence.
+- Prefer verdict storage when available:
 
 ```sh
 source scripts/lib/verdicts.sh
@@ -276,8 +278,9 @@ git commit -F "$tmp"
 rm -f "$tmp"
 ```
 
-Git-native mode still requires the local verdict or operator-provided gate
-evidence from the prerequisites.
+Git-native mode still requires same-HEAD landability evidence from the
+prerequisites: a local verdict or operator-provided/current-session gate
+receipt.
 
 ### 7. Pull Master And Verify Trailers
 
@@ -362,8 +365,12 @@ Stop and report the exact unblock action when any condition holds:
 - Working tree is dirty.
 - Merge, rebase, or cherry-pick is in progress.
 - `verdict_check_landable "$branch"` returns `2` (`dont-ship`).
-- GitHub required checks are red, missing, cancelled, or pending.
-- PR is not mergeable per `gh pr view --json mergeable,mergeStateStatus`.
+- No same-HEAD landability evidence exists: no green PR checks, no
+  landable verdict, and no operator-provided/current-session local gate
+  receipt.
+- In GitHub mode, required checks are red, missing, cancelled, or pending.
+- If a PR exists, it is not mergeable per
+  `gh pr view --json mergeable,mergeStateStatus`.
 - Primary ID has no `backlog.d/<id>-*.md` file and the branch has no
   closing trailers.
 - The squash commit on master is missing any required
