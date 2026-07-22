@@ -1843,6 +1843,27 @@ impl PostgresStudyStore {
                AND attempt.status = 'running'",
             &[&now_ms, &reclaim_grace_ms],
         )?;
+        // Reconciliation is inside the same advisory-locked transaction as lease
+        // reclaim. If the process dies at any point, either all stale-attempt
+        // cleanup and the successor claim commit, or none of them do.
+        transaction.execute(
+            "DELETE FROM memory_engine_generated_prompt_drafts draft
+             USING memory_engine_generation_job_attempts attempt
+             WHERE draft.account_id = attempt.account_id
+               AND attempt.status = 'stale'
+               AND attempt.generation_run_id IS NOT NULL
+               AND draft.draft->>'generationRunId' = attempt.generation_run_id",
+            &[],
+        )?;
+        transaction.execute(
+            "DELETE FROM memory_engine_generation_runs run
+             USING memory_engine_generation_job_attempts attempt
+             WHERE run.account_id = attempt.account_id
+               AND attempt.status = 'stale'
+               AND attempt.generation_run_id IS NOT NULL
+               AND run.generation_run_id = attempt.generation_run_id",
+            &[],
+        )?;
         transaction.execute(
             "UPDATE memory_engine_generation_jobs
              SET status = 'failed', error = 'Maximum generation attempts exhausted.',
@@ -6376,6 +6397,198 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn live_generation_job_reconciliation_removes_stale_output_and_preserves_successor() {
+        let Some(database_url) = std::env::var("MEMORY_ENGINE_POSTGRES_TEST_URL").ok() else {
+            eprintln!("skipping live stale-output reconciliation test; MEMORY_ENGINE_POSTGRES_TEST_URL is unset");
+            return;
+        };
+        let schema = format!(
+            "memory_engine_test_jobs_reconcile_{}_{}",
+            std::process::id(),
+            NOW
+        );
+        let mut admin = crate::connect_client(&database_url).expect("connect admin postgres");
+        admin
+            .batch_execute(&format!(r#"CREATE SCHEMA "{schema}";"#))
+            .expect("create schema");
+        let scoped_url = scoped_postgres_url(&database_url, &schema);
+        let result = (|| -> Result<(), PostgresStoreError> {
+            let mut store = PostgresStudyStore::connect(&scoped_url)?;
+            store.migrate()?;
+            {
+                let mut account = store.for_account(AccountScope::new("acct_reconcile")?);
+                account.ensure_account(NOW)?;
+            }
+            let started = store.enqueue_generation_job(
+                "acct_reconcile",
+                "job-reconcile",
+                "src-nato-live",
+                "Live reconcile",
+                "deterministic",
+                NOW,
+                2,
+                4,
+                100,
+                86_400_000,
+            )?;
+            let PostgresEnqueueOutcome::Started(_) = started else {
+                panic!("reconciliation job must start");
+            };
+            let first = store
+                .claim_generation_job("worker-a", NOW, 10, 0, 1, 3)?
+                .expect("first attempt");
+            let first_run_id = format!("job:{}:attempt:{}", first.id, first.attempts);
+            assert!(store.bind_generation_job_attempt_run(
+                "acct_reconcile",
+                &first.id,
+                first.attempts,
+                first.lease_token.as_deref().expect("first token"),
+                &first_run_id,
+            )?);
+            {
+                let account = store.for_account(AccountScope::new("acct_reconcile")?);
+                let mut study = BetaStudySession::from_store(account, live_now);
+                study
+                    .add_source(study_source_input())
+                    .map_err(|error| PostgresStoreError::StudySession(error.to_string()))?;
+                study
+                    .generate_with_run_id(
+                        Some(vec!["src-nato-live".to_owned()]),
+                        first_run_id.clone(),
+                    )
+                    .map_err(|error| PostgresStoreError::StudySession(error.to_string()))?;
+            }
+
+            let first_count = store
+                .for_account(AccountScope::new("acct_reconcile")?)
+                .snapshot()?
+                .generated_prompt_drafts
+                .iter()
+                .filter(|draft| draft.generation_run_id.as_deref() == Some(first_run_id.as_str()))
+                .count();
+            assert!(
+                first_count > 0,
+                "real first generation must persist pending output"
+            );
+
+            {
+                let mut other = store.for_account(AccountScope::new("acct_other")?);
+                other.ensure_account(NOW)?;
+                let other_draft = accepted_draft(
+                    "draft-other-account",
+                    &ReviewUnitId::new("unit-other-account"),
+                    &["src-nato-live"],
+                    &[],
+                    Some(&first_run_id),
+                );
+                other.save_generation_run(&generation_run(
+                    &first_run_id,
+                    &["src-nato-live"],
+                    &["draft-other-account"],
+                ))?;
+                other.save_generated_prompt_draft(&other_draft)?;
+            }
+
+            // A fresh worker reclaims the expired lease. This is the crash
+            // boundary: the old process persisted output but never ran the
+            // post-generation fence/discard.
+            let mut restarted = PostgresStudyStore::connect(&scoped_url)?;
+            restarted.migrate()?;
+            let successor = restarted
+                .claim_generation_job("worker-b", NOW + 16, 10, 0, 1, 3)?
+                .expect("expired attempt must be reclaimed");
+            assert_eq!(successor.attempts, 2);
+            let after_reclaim = restarted
+                .for_account(AccountScope::new("acct_reconcile")?)
+                .snapshot()?;
+            assert!(
+                after_reclaim
+                    .generated_prompt_drafts
+                    .iter()
+                    .all(|draft| draft.generation_run_id.as_deref() != Some(first_run_id.as_str())),
+                "restart reconciliation must remove stale pending output"
+            );
+            let other_snapshot = restarted
+                .for_account(AccountScope::new("acct_other")?)
+                .snapshot()?;
+            assert_eq!(
+                other_snapshot
+                    .generated_prompt_drafts
+                    .iter()
+                    .filter(|draft| draft.id == "draft-other-account")
+                    .count(),
+                1,
+                "same run id in another account must remain untouched"
+            );
+
+            assert!(
+                after_reclaim
+                    .generation_runs
+                    .iter()
+                    .all(|run| run.id != first_run_id),
+                "restart reconciliation must remove stale run receipt"
+            );
+
+            let second_run_id = format!("job:{}:attempt:{}", successor.id, successor.attempts);
+            assert!(restarted.bind_generation_job_attempt_run(
+                "acct_reconcile",
+                &successor.id,
+                successor.attempts,
+                successor.lease_token.as_deref().expect("successor token"),
+                &second_run_id,
+            )?);
+            {
+                let account = restarted.for_account(AccountScope::new("acct_reconcile")?);
+                let mut study = BetaStudySession::from_store(account, live_now);
+                study
+                    .generate_with_run_id(
+                        Some(vec!["src-nato-live".to_owned()]),
+                        second_run_id.clone(),
+                    )
+                    .map_err(|error| PostgresStoreError::StudySession(error.to_string()))?;
+            }
+            let successor_count = restarted
+                .for_account(AccountScope::new("acct_reconcile")?)
+                .snapshot()?
+                .generated_prompt_drafts
+                .iter()
+                .filter(|draft| draft.generation_run_id.as_deref() == Some(second_run_id.as_str()))
+                .count();
+            assert!(
+                successor_count > 0,
+                "real successor generation must persist pending output"
+            );
+            // Replaying startup reconciliation must be idempotent and must not
+            // delete valid successor-attempt output.
+            let mut replay = PostgresStudyStore::connect(&scoped_url)?;
+            replay.migrate()?;
+            assert!(replay
+                .claim_generation_job("worker-c", NOW + 17, 10, 0, 1, 3)?
+                .is_none());
+            let final_snapshot = replay
+                .for_account(AccountScope::new("acct_reconcile")?)
+                .snapshot()?;
+            assert_eq!(
+                final_snapshot
+                    .generated_prompt_drafts
+                    .iter()
+                    .filter(
+                        |draft| draft.generation_run_id.as_deref() == Some(second_run_id.as_str())
+                    )
+                    .count(),
+                successor_count,
+                "successor output must survive stale cleanup replay"
+            );
+            Ok(())
+        })();
+        admin
+            .batch_execute(&format!(r#"DROP SCHEMA "{schema}" CASCADE;"#))
+            .expect("drop schema");
+        result.expect("stale-output reconciliation contract");
     }
 
     fn source_document(id: &str) -> SourceDocument {
