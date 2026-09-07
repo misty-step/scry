@@ -17,15 +17,16 @@ use std::{
 };
 
 use memory_engine_core::{
-    defer_queue_availability, Prompt, QueueCandidate, ReviewUnitId, ReviewUnitLifecycle,
-    ScheduleState,
+    defer_queue_availability, Prompt, QueueCandidate, Rating, ReviewUnitId, ReviewUnitLifecycle,
+    ScheduleState, Verdict,
 };
 use memory_engine_generation::BetaGenerationStore;
 use memory_engine_persistence::{
-    parse_strict_boolean_answer, AppliedReviewReceipt, BetaReviewUnitRecord, BetaStoreSnapshot,
-    ConceptReferenceNote, GeneratedPromptDraft, GeneratedPromptValidationStatus, GenerationRun,
-    LearnerDraftDecision, LearnerDraftDecisionExport, ReferenceSpan, RemediationPackRecord,
-    ScheduleRecord, SourceDocument, SourcePermission,
+    normalized_concept_key, parse_strict_boolean_answer, promoted_review_unit,
+    review_occurrence_key, transition_learner_draft, AppliedReviewReceipt, BetaReviewUnitRecord,
+    BetaStoreError, BetaStoreSnapshot, ConceptReferenceNote, GeneratedPromptDraft, GenerationRun,
+    LearnerDraftDecisionExport, LearnerDraftDecisionInput, ReferenceSpan, RemediationPackRecord,
+    ReviewExposure, ScheduleRecord, SourceDocument, SourcePermission,
 };
 use memory_engine_service::{
     content_feedback_replay_matches, ContentFeedback, ContentFeedbackStore, MemoryServiceStore,
@@ -479,6 +480,21 @@ ALTER TABLE memory_engine_accounts
     ADD COLUMN IF NOT EXISTS active_graded_review JSONB;
 ";
 
+/// Additive only: absence means unexposed, never backfilled from attempts.
+/// Pre-v9 binaries can read the schema but cannot enforce exposure semantics.
+const REVIEW_EXPOSURES_MIGRATION_SQL: &str = r"
+CREATE TABLE IF NOT EXISTS memory_engine_review_exposures (
+    account_id TEXT NOT NULL,
+    review_unit_id TEXT NOT NULL,
+    occurrence_key TEXT NOT NULL,
+    exposure JSONB NOT NULL,
+    revealed_at_ms BIGINT NOT NULL,
+    PRIMARY KEY (account_id, review_unit_id, occurrence_key),
+    FOREIGN KEY (account_id, review_unit_id)
+        REFERENCES memory_engine_review_units(account_id, review_unit_id) ON DELETE CASCADE
+);
+";
+
 /// Production waitlist storage: one row per normalized email plus an
 /// append-only audit log of every join/invite/delete transition. The
 /// audit log is intentionally separate from the operational row so a
@@ -517,6 +533,7 @@ pub static MIGRATION_SQL: LazyLock<String> = LazyLock::new(|| {
         SESSION_SCHEMA_MIGRATION_SQL,
         REMEDIATION_PACKS_MIGRATION_SQL,
         ACTIVE_GRADED_REVIEW_MIGRATION_SQL,
+        REVIEW_EXPOSURES_MIGRATION_SQL,
     ]
     .concat()
 });
@@ -546,6 +563,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (6, SESSION_SCHEMA_MIGRATION_SQL),
     (7, REMEDIATION_PACKS_MIGRATION_SQL),
     (8, ACTIVE_GRADED_REVIEW_MIGRATION_SQL),
+    (9, REVIEW_EXPOSURES_MIGRATION_SQL),
 ];
 
 fn migration_now_ms() -> i64 {
@@ -2947,16 +2965,6 @@ fn waitlist_entry_from_row(row: &postgres::Row) -> PostgresWaitlistEntry {
     }
 }
 
-enum PostgresLearnerDecision {
-    Keep,
-    Edit {
-        prompt_text: String,
-        expected_answer: String,
-        choices: Vec<String>,
-    },
-    Reject,
-}
-
 #[derive(Clone)]
 struct GenerationLeaseFence {
     run_id: String,
@@ -3082,11 +3090,16 @@ impl AccountStudyStore<'_> {
     ///
     /// Returns [`PostgresStoreError`] when Postgres reads or JSON decoding fail.
     pub fn snapshot(&self) -> Result<BetaStoreSnapshot, PostgresStoreError> {
+        self.read_snapshot(false)
+    }
+
+    fn read_snapshot(&self, review_only: bool) -> Result<BetaStoreSnapshot, PostgresStoreError> {
         let rows = self.client.borrow_mut().query(
             "SELECT kind, value
              FROM (
                 SELECT 'source_document'::text AS kind, created_at_ms AS sort_at,
-                       source_document_id::text AS sort_id, document AS value
+                       source_document_id::text AS sort_id,
+                       CASE WHEN $2 THEN document || '{\"body\":\"\"}'::jsonb ELSE document END AS value
                 FROM memory_engine_source_documents WHERE account_id = $1
                 UNION ALL
                 SELECT 'reference_span', created_at_ms, reference_span_id::text, span
@@ -3102,14 +3115,27 @@ impl AccountStudyStore<'_> {
                        jsonb_build_object('reviewUnitId', review_unit_id, 'state', state)
                 FROM memory_engine_schedules WHERE account_id = $1
                 UNION ALL
-                SELECT 'attempt', occurred_at_ms, lpad(attempt_id::text, 19, '0'), attempt
+                SELECT 'attempt', occurred_at_ms, lpad(attempt_id::text, 19, '0'),
+                       CASE WHEN $2 THEN
+                         (attempt - 'gradedPrompt') || jsonb_build_object(
+                            'submittedAnswer', '',
+                            'grade', CASE WHEN attempt->'grade' IS NOT NULL AND attempt->'grade' <> 'null'::jsonb
+                                THEN attempt->'grade' || '{\"submittedAnswer\":\"\",\"expectedAnswer\":\"\"}'::jsonb
+                                ELSE 'null'::jsonb END
+                         )
+                       ELSE attempt END
                 FROM memory_engine_attempts WHERE account_id = $1
                 UNION ALL
                 SELECT 'generation_run', started_at_ms, generation_run_id::text, run
                 FROM memory_engine_generation_runs WHERE account_id = $1
                 UNION ALL
                 SELECT 'content_feedback', occurred_at_ms, feedback_id::text, feedback
-                FROM memory_engine_content_feedback WHERE account_id = $1
+                FROM memory_engine_content_feedback AS feedback_rows
+                WHERE account_id = $1 AND (NOT $2 OR NOT EXISTS (
+                    SELECT 1 FROM memory_engine_content_feedback AS child
+                    WHERE child.account_id = feedback_rows.account_id
+                      AND child.feedback->>'supersedesId' = feedback_rows.feedback_id
+                ))
                 UNION ALL
                 SELECT 'applied_review', applied_at_ms, receipt_key::text,
                        jsonb_build_object(
@@ -3118,16 +3144,19 @@ impl AccountStudyStore<'_> {
                            'expectedPriorScheduleState', expected_prior_schedule_state,
                            'scheduleState', schedule_state
                        )
-                FROM memory_engine_applied_reviews WHERE account_id = $1
+                FROM memory_engine_applied_reviews WHERE account_id = $1 AND NOT $2
                 UNION ALL
                 SELECT 'concept_reference_note', updated_at_ms, concept_key::text, note
-                FROM memory_engine_concept_reference_notes WHERE account_id = $1
+                FROM memory_engine_concept_reference_notes WHERE account_id = $1 AND NOT $2
                 UNION ALL
                 SELECT 'remediation_pack', created_at_ms, pack_id::text, pack
                 FROM memory_engine_remediation_packs WHERE account_id = $1
+                UNION ALL
+                SELECT 'review_exposure', revealed_at_ms, review_unit_id || ':' || occurrence_key, exposure
+                FROM memory_engine_review_exposures WHERE account_id = $1 AND NOT $2
              ) AS snapshot_rows
              ORDER BY kind, sort_at, sort_id",
-            &[&self.scope.account_id],
+            &[&self.scope.account_id, &review_only],
         )?;
 
         let mut snapshot = BetaStoreSnapshot {
@@ -3140,6 +3169,52 @@ impl AccountStudyStore<'_> {
             hydrate_snapshot_row(&mut snapshot, kind, value)?;
         }
         Ok(snapshot)
+    }
+
+    /// Durably mark this occurrence assisted before exposing answer material.
+    ///
+    /// # Errors
+    /// Rejects a stale occurrence or failed account-scoped transaction.
+    pub fn reveal_review_occurrence(
+        &mut self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<ScheduleState>,
+        revealed_at: i64,
+    ) -> Result<(), PostgresStoreError> {
+        let account_id = self.scope.account_id.clone();
+        self.with_account_transaction(|transaction| {
+            assert_known_review_unit_in_transaction(transaction, &account_id, review_unit_id)?;
+            let current: Option<ScheduleState> = transaction.query_opt(
+                "SELECT state FROM memory_engine_schedules WHERE account_id = $1 AND review_unit_id = $2",
+                &[&account_id, &review_unit_id.as_str()],
+            )?.map(|row| serde_json::from_value(row.get::<_, serde_json::Value>(0))).transpose()?;
+            if current != prior_schedule {
+                return Err(PostgresStoreError::StaleScheduleWrite(review_unit_id.clone()));
+            }
+            insert_review_exposure(transaction, &account_id, &ReviewExposure {
+                review_unit_id: review_unit_id.clone(),
+                prior_schedule_state: prior_schedule,
+                revealed_at,
+            })
+        })
+    }
+
+    /// Preserve existing exposure history during an authorized account transfer.
+    /// This is import-only; learner reveal must use the occurrence-fenced method.
+    ///
+    /// # Errors
+    /// Returns an error if a referenced unit is outside this account or the batch fails.
+    pub fn copy_review_exposures(
+        &mut self,
+        exposures: &[ReviewExposure],
+    ) -> Result<(), PostgresStoreError> {
+        let account_id = self.scope.account_id.clone();
+        self.with_account_transaction(|transaction| {
+            for exposure in exposures {
+                insert_review_exposure(transaction, &account_id, exposure)?;
+            }
+            Ok(())
+        })
     }
 
     /// Ensure the scoped account row exists.
@@ -3418,7 +3493,7 @@ impl AccountStudyStore<'_> {
         draft_id: &str,
         decided_at: i64,
     ) -> Result<BetaReviewUnitRecord, PostgresStoreError> {
-        self.decide_learner_draft(draft_id, &PostgresLearnerDecision::Keep, decided_at)?
+        self.decide_learner_draft(draft_id, &LearnerDraftDecisionInput::Keep, decided_at)?
             .1
             .ok_or(PostgresStoreError::RejectedGeneratedPromptDraft)
     }
@@ -3439,10 +3514,10 @@ impl AccountStudyStore<'_> {
     ) -> Result<BetaReviewUnitRecord, PostgresStoreError> {
         self.decide_learner_draft(
             draft_id,
-            &PostgresLearnerDecision::Edit {
-                prompt_text: prompt_text.to_owned(),
-                expected_answer: expected_answer.to_owned(),
-                choices: choices.to_vec(),
+            &LearnerDraftDecisionInput::Edit {
+                prompt_text,
+                expected_answer,
+                choices,
             },
             decided_at,
         )?
@@ -3461,7 +3536,7 @@ impl AccountStudyStore<'_> {
         draft_id: &str,
         decided_at: i64,
     ) -> Result<GeneratedPromptDraft, PostgresStoreError> {
-        self.decide_learner_draft(draft_id, &PostgresLearnerDecision::Reject, decided_at)?
+        self.decide_learner_draft(draft_id, &LearnerDraftDecisionInput::Reject, decided_at)?
             .0
             .ok_or_else(|| PostgresStoreError::UnknownGeneratedPromptDraft(draft_id.to_owned()))
     }
@@ -3469,14 +3544,14 @@ impl AccountStudyStore<'_> {
     fn decide_learner_draft(
         &mut self,
         draft_id: &str,
-        decision: &PostgresLearnerDecision,
+        decision: &LearnerDraftDecisionInput<'_>,
         decided_at: i64,
     ) -> Result<(Option<GeneratedPromptDraft>, Option<BetaReviewUnitRecord>), PostgresStoreError>
     {
         let account_id = self.scope.account_id.clone();
         let draft_id = draft_id.to_owned();
         self.with_account_transaction(|transaction| {
-            let mut draft: GeneratedPromptDraft = transaction
+            let draft: GeneratedPromptDraft = transaction
                 .query_opt(
                     "SELECT draft FROM memory_engine_generated_prompt_drafts WHERE account_id = $1 AND draft_id = $2 FOR UPDATE",
                     &[&account_id, &draft_id],
@@ -3487,57 +3562,25 @@ impl AccountStudyStore<'_> {
                 })
                 .transpose()?
                 .ok_or_else(|| PostgresStoreError::UnknownGeneratedPromptDraft(draft_id.clone()))?;
-            if draft.validation.status != GeneratedPromptValidationStatus::Accepted {
-                return Err(PostgresStoreError::RejectedGeneratedPromptDraft);
-            }
-            if let Some(recorded) = draft.learner_decision.as_ref() {
-                if learner_decision_matches(&draft, recorded, decision) {
-                    if matches!(decision, &PostgresLearnerDecision::Reject) {
-                        return Ok((Some(draft), None));
-                    }
-                    let existing = review_unit_from_transaction(transaction, &account_id, &draft.review_unit_id)?;
-                    return Ok((Some(draft), Some(existing)));
-                }
-                return Err(PostgresStoreError::LearnerDraftDecisionAlreadyRecorded(draft_id.clone()));
-            }
-            let run_id = draft.generation_run_id.as_ref().ok_or(PostgresStoreError::MissingGenerationRunForAcceptedDraft)?;
-            let run_exists = transaction
-                .query_opt(
-                    "SELECT 1
-                     FROM memory_engine_generation_runs
-                     WHERE account_id = $1 AND generation_run_id = $2
-                       AND (run->>'status' = 'finalized'
-                            OR (run->>'status' IS NULL AND (run->>'completedAt') IS NOT NULL
-                                AND (run->>'completedAt')::BIGINT <> -9223372036854775808))",
+            let run: Option<GenerationRun> = if let Some(run_id) = draft.generation_run_id.as_ref() {
+                transaction.query_opt(
+                    "SELECT run FROM memory_engine_generation_runs WHERE account_id = $1 AND generation_run_id = $2",
                     &[&account_id, run_id],
-                )?
-                .is_some();
-            if !run_exists {
-                return Err(PostgresStoreError::MissingGenerationRunForAcceptedDraft);
-            }
-            let reject = matches!(decision, &PostgresLearnerDecision::Reject);
-            let edited = matches!(decision, &PostgresLearnerDecision::Edit { .. });
-            if let PostgresLearnerDecision::Edit {
-                prompt_text,
-                expected_answer,
-                choices,
-            } = decision
-            {
-                let prompt_text = prompt_text.trim();
-                let expected_answer = expected_answer.trim();
-                assert_non_blank(prompt_text, "Learner prompt")?;
-                assert_non_blank(expected_answer, "Learner expected answer")?;
-                replace_prompt_text(&mut draft.prompt, prompt_text);
-                apply_learner_prompt_answer(&mut draft.prompt, expected_answer, choices)?;
-                if !draft.critique_notes.iter().any(|note| note == "Learner edited pending wording.") {
-                    draft.critique_notes.push("Learner edited pending wording.".to_owned());
-                }
-            }
-            draft.learner_decision = Some(if reject {
-                LearnerDraftDecision::Rejected { decided_at }
+                )?.map(|row| serde_json::from_value(row.get::<_, serde_json::Value>(0))).transpose()?
             } else {
-                LearnerDraftDecision::Kept { edited, decided_at }
-            });
+                None
+            };
+            let was_decided = draft.learner_decision.is_some();
+            let draft = transition_learner_draft(&draft, run.as_ref(), decision, decided_at)
+                .map_err(draft_transition_error)?;
+            let reject = matches!(decision, LearnerDraftDecisionInput::Reject);
+            if was_decided {
+                if reject {
+                    return Ok((Some(draft), None));
+                }
+                let existing = review_unit_from_transaction(transaction, &account_id, &draft.review_unit_id)?;
+                return Ok((Some(draft), Some(existing)));
+            }
             let draft_value = serde_json::to_value(&draft)?;
             transaction.execute(
                 "UPDATE memory_engine_generated_prompt_drafts SET draft = $3 WHERE account_id = $1 AND draft_id = $2",
@@ -3546,19 +3589,7 @@ impl AccountStudyStore<'_> {
             if reject {
                 return Ok((Some(draft), None));
             }
-            let review_unit = BetaReviewUnitRecord {
-                review_unit_id: draft.review_unit_id.clone(),
-                prompt_id: draft.prompt_id.clone(),
-                prompt: draft.prompt.clone(),
-                queue: draft.queue.clone(),
-                reference_span_ids: draft.reference_span_ids.clone(),
-                concept_reference_note_key: draft.concept_reference_note_key.clone(),
-                generated_prompt_draft_id: Some(draft.id.clone()),
-                archived_at: None,
-                snoozed_until: None,
-                remediation_pack_id: draft.remediation_pack_id.clone(),
-                created_at: draft.created_at,
-            };
+            let review_unit = promoted_review_unit(&draft);
             let value = serde_json::to_value(&review_unit)?;
             let inserted = transaction.execute(
                 "INSERT INTO memory_engine_review_units (account_id, review_unit_id, record, created_at_ms, archived_at_ms) VALUES ($1, $2, $3, $4, NULL) ON CONFLICT (account_id, review_unit_id) DO NOTHING",
@@ -3716,8 +3747,24 @@ impl AccountStudyStore<'_> {
         snoozed_until: i64,
     ) -> Result<Vec<BetaReviewUnitRecord>, PostgresStoreError> {
         let account_id = self.scope.account_id.clone();
-        let concept_key = concept_key.to_owned();
+        let concept_key = normalized_concept_key(concept_key);
+        if concept_key.is_empty() {
+            return Err(PostgresStoreError::NoConceptKey);
+        }
         self.with_account_transaction(|transaction| {
+            let matching_ids = transaction
+                .query(
+                    "SELECT review_unit_id, record->'queue'->>'conceptKey'
+                 FROM memory_engine_review_units WHERE account_id = $1 AND archived_at_ms IS NULL",
+                    &[&account_id],
+                )?
+                .into_iter()
+                .filter_map(|row| {
+                    row.get::<_, Option<String>>(1)
+                        .is_some_and(|key| normalized_concept_key(&key) == concept_key)
+                        .then(|| row.get::<_, String>(0))
+                })
+                .collect::<Vec<_>>();
             let rows = transaction.query(
                 "UPDATE memory_engine_review_units
                  SET record = jsonb_set(
@@ -3728,9 +3775,9 @@ impl AccountStudyStore<'_> {
                  )
                  WHERE account_id = $1
                    AND archived_at_ms IS NULL
-                   AND record->'queue'->>'conceptKey' = $2
+                   AND review_unit_id = ANY($2)
                  RETURNING record",
-                &[&account_id, &concept_key, &snoozed_until],
+                &[&account_id, &matching_ids, &snoozed_until],
             )?;
             rows.into_iter()
                 .map(|row| {
@@ -3831,8 +3878,19 @@ impl AccountStudyStore<'_> {
             .concept_key
             .as_deref()
             .filter(|key| !key.trim().is_empty())
-            .map(str::to_owned)
+            .map(normalized_concept_key)
             .ok_or(PostgresStoreError::NoConceptKey)?;
+        let matching_ids = active_records
+            .iter()
+            .filter(|(_, record)| {
+                record
+                    .queue
+                    .concept_key
+                    .as_deref()
+                    .is_some_and(|key| normalized_concept_key(key) == concept_key)
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
 
         let rows = transaction.query(
             "UPDATE memory_engine_review_units
@@ -3844,9 +3902,9 @@ impl AccountStudyStore<'_> {
              )
              WHERE account_id = $1
                AND archived_at_ms IS NULL
-               AND record->'queue'->>'conceptKey' = $2
+               AND review_unit_id = ANY($2)
              RETURNING record",
-            &[&self.scope.account_id, &concept_key, &snoozed_until],
+            &[&self.scope.account_id, &matching_ids, &snoozed_until],
         )?;
         let snoozed = rows
             .into_iter()
@@ -4660,6 +4718,58 @@ impl ContentFeedbackStore for AccountStudyStore<'_> {
 }
 
 impl BetaStudyStore for AccountStudyStore<'_> {
+    fn review_snapshot(&self) -> Result<BetaStoreSnapshot, <Self as MemoryServiceStore>::Error> {
+        // Queue/progression and public library summaries still need lightweight
+        // history. Full receipts, graded prompt evidence and source/answer bodies
+        // belong to export/material reads, not each submit or current-card render.
+        self.read_snapshot(true)
+    }
+
+    fn applied_review(
+        &self,
+        review_unit_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Option<AppliedReviewReceipt>, <Self as MemoryServiceStore>::Error> {
+        self.client
+            .borrow_mut()
+            .query_opt(
+                "SELECT receipt_key, attempt, expected_prior_schedule_state, schedule_state
+             FROM memory_engine_applied_reviews
+             WHERE account_id = $1 AND review_unit_id = $2 AND receipt_key = $3",
+                &[
+                    &self.scope.account_id,
+                    &review_unit_id,
+                    &idempotency_receipt_key(idempotency_key),
+                ],
+            )?
+            .map(|row| {
+                Ok(AppliedReviewReceipt {
+                    key: row.get(0),
+                    attempt: serde_json::from_value(row.get(1))?,
+                    expected_prior_schedule_state: row
+                        .get::<_, Option<serde_json::Value>>(2)
+                        .map(serde_json::from_value)
+                        .transpose()?,
+                    schedule_state: serde_json::from_value(row.get(3))?,
+                })
+            })
+            .transpose()
+    }
+
+    fn reveal_review_occurrence(
+        &mut self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<ScheduleState>,
+        revealed_at: i64,
+    ) -> Result<(), <Self as MemoryServiceStore>::Error> {
+        AccountStudyStore::reveal_review_occurrence(
+            self,
+            review_unit_id,
+            prior_schedule,
+            revealed_at,
+        )
+    }
+
     fn save_source_document(
         &mut self,
         document: SourceDocument,
@@ -4815,6 +4925,9 @@ fn hydrate_snapshot_row(
         "remediation_pack" => snapshot
             .remediation_packs
             .push(serde_json::from_value(value)?),
+        "review_exposure" => snapshot
+            .review_exposures
+            .push(serde_json::from_value(value)?),
         _ => unreachable!("snapshot query returned an unknown row kind"),
     }
     Ok(())
@@ -4838,6 +4951,75 @@ fn review_unit_from_transaction(
     };
     let value: serde_json::Value = row.get(0);
     Ok(serde_json::from_value(value)?)
+}
+
+fn assert_review_occurrence_in_transaction(
+    transaction: &mut CountingTransaction<'_>,
+    account_id: &str,
+    attempt: &ServiceAttemptRecord,
+    expected_prior_schedule: Option<&ScheduleState>,
+) -> Result<(), PostgresStoreError> {
+    let review_unit_id = &attempt.review_unit_id;
+    let current_schedule = transaction.query_opt(
+        "SELECT state FROM memory_engine_schedules
+         WHERE account_id = $1 AND review_unit_id = $2",
+        &[&account_id, &review_unit_id.as_str()],
+    )?;
+    let current_schedule: Option<ScheduleState> = current_schedule
+        .map(|row| {
+            let value: serde_json::Value = row.get(0);
+            serde_json::from_value(value)
+        })
+        .transpose()?;
+    if current_schedule.as_ref() != expected_prior_schedule {
+        return Err(PostgresStoreError::StaleScheduleWrite(
+            review_unit_id.clone(),
+        ));
+    }
+    let revealed = transaction
+        .query_opt(
+            "SELECT 1 FROM memory_engine_review_exposures
+             WHERE account_id = $1 AND review_unit_id = $2 AND occurrence_key = $3",
+            &[
+                &account_id,
+                &review_unit_id.as_str(),
+                &review_occurrence_key(expected_prior_schedule),
+            ],
+        )?
+        .is_some();
+    if revealed
+        && !attempt.grade.as_ref().is_some_and(|grade| {
+            grade.verdict == Verdict::Revealed && grade.rating == Rating::Again && !grade.is_correct
+        })
+    {
+        return Err(PostgresStoreError::StaleScheduleWrite(
+            review_unit_id.clone(),
+        ));
+    }
+    Ok(())
+}
+
+fn insert_review_exposure(
+    transaction: &mut CountingTransaction<'_>,
+    account_id: &str,
+    exposure: &ReviewExposure,
+) -> Result<(), PostgresStoreError> {
+    let value = serde_json::to_value(exposure)?;
+    let key = review_occurrence_key(exposure.prior_schedule_state.as_ref());
+    transaction.execute(
+        "INSERT INTO memory_engine_review_exposures
+            (account_id, review_unit_id, occurrence_key, exposure, revealed_at_ms)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (account_id, review_unit_id, occurrence_key) DO NOTHING",
+        &[
+            &account_id,
+            &exposure.review_unit_id.as_str(),
+            &key,
+            &value,
+            &exposure.revealed_at,
+        ],
+    )?;
+    Ok(())
 }
 
 fn source_document_from_transaction(
@@ -4940,6 +5122,7 @@ fn current_review_unit_matches(
         applied_reviews: Vec::new(),
         concept_reference_notes: Vec::new(),
         remediation_packs: Vec::new(),
+        review_exposures: Vec::new(),
     };
 
     Ok(select_current_review_unit(&snapshot, &candidates, now)
@@ -4994,6 +5177,26 @@ impl MemoryServiceStore for AccountStudyStore<'_> {
         Ok(Some(serde_json::from_value(value)?))
     }
 
+    fn review_was_revealed(
+        &self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<&ScheduleState>,
+    ) -> Result<bool, Self::Error> {
+        Ok(self
+            .client
+            .borrow_mut()
+            .query_opt(
+                "SELECT 1 FROM memory_engine_review_exposures
+             WHERE account_id = $1 AND review_unit_id = $2 AND occurrence_key = $3",
+                &[
+                    &self.scope.account_id,
+                    &review_unit_id.as_str(),
+                    &review_occurrence_key(prior_schedule),
+                ],
+            )?
+            .is_some())
+    }
+
     fn apply_review(
         &mut self,
         review_unit_id: &ReviewUnitId,
@@ -5036,22 +5239,12 @@ impl MemoryServiceStore for AccountStudyStore<'_> {
             return Err(PostgresStoreError::DuplicateAppliedReview(receipt_key));
         }
 
-        let current_schedule = transaction.query_opt(
-            "SELECT state FROM memory_engine_schedules
-             WHERE account_id = $1 AND review_unit_id = $2",
-            &[&self.scope.account_id, &review_unit_id.as_str()],
+        assert_review_occurrence_in_transaction(
+            &mut transaction,
+            &self.scope.account_id,
+            &attempt,
+            expected_prior_schedule_state.as_ref(),
         )?;
-        let current_schedule = current_schedule
-            .map(|row| {
-                let value: serde_json::Value = row.get(0);
-                serde_json::from_value(value)
-            })
-            .transpose()?;
-        if current_schedule != expected_prior_schedule_state {
-            return Err(PostgresStoreError::StaleScheduleWrite(
-                review_unit_id.clone(),
-            ));
-        }
 
         let attempt_value = serde_json::to_value(&attempt)?;
         let expected_value = expected_prior_schedule_state
@@ -5350,38 +5543,20 @@ fn reject_archived(review_unit: &BetaReviewUnitRecord) -> Result<(), PostgresSto
         .ok_or_else(|| PostgresStoreError::ReviewUnitArchived(review_unit.review_unit_id.clone()))
 }
 
-fn learner_decision_matches(
-    draft: &GeneratedPromptDraft,
-    recorded: &LearnerDraftDecision,
-    requested: &PostgresLearnerDecision,
-) -> bool {
-    match (recorded, requested) {
-        (LearnerDraftDecision::Kept { edited: false, .. }, PostgresLearnerDecision::Keep)
-        | (LearnerDraftDecision::Rejected { .. }, PostgresLearnerDecision::Reject) => true,
-        (
-            LearnerDraftDecision::Kept { edited: true, .. },
-            PostgresLearnerDecision::Edit {
-                prompt_text,
-                expected_answer,
-                choices,
-            },
-        ) => learner_edit_matches_draft(&draft.prompt, prompt_text, expected_answer, choices),
-        _ => false,
-    }
-}
-
-fn prompt_text_for_export(prompt: &Prompt) -> String {
-    match prompt {
-        Prompt::Mcq { prompt, .. } | Prompt::Boolean { prompt, .. } => prompt.clone(),
-        Prompt::Exact(prompt) => prompt.prompt.clone(),
-    }
-}
-
-fn prompt_expected_answer_for_export(prompt: &Prompt) -> String {
-    match prompt {
-        Prompt::Mcq { correct_choice, .. } => correct_choice.clone(),
-        Prompt::Boolean { correct_answer, .. } => correct_answer.to_string(),
-        Prompt::Exact(prompt) => prompt.accepted_answers.first().cloned().unwrap_or_default(),
+fn draft_transition_error(error: BetaStoreError) -> PostgresStoreError {
+    match error {
+        BetaStoreError::RejectedGeneratedPromptDraft => {
+            PostgresStoreError::RejectedGeneratedPromptDraft
+        }
+        BetaStoreError::LearnerDraftDecisionAlreadyRecorded(id) => {
+            PostgresStoreError::LearnerDraftDecisionAlreadyRecorded(id)
+        }
+        BetaStoreError::MissingGenerationRunForAcceptedDraft => {
+            PostgresStoreError::MissingGenerationRunForAcceptedDraft
+        }
+        BetaStoreError::InvalidBooleanAnswer => PostgresStoreError::InvalidBooleanAnswer,
+        BetaStoreError::Blank { label } => PostgresStoreError::Blank { label },
+        error => PostgresStoreError::StudySession(error.to_string()),
     }
 }
 
@@ -5419,86 +5594,6 @@ fn replace_prompt_answer(prompt: &mut Prompt, answer: &str) -> Result<(), Postgr
     Ok(())
 }
 
-fn apply_learner_prompt_answer(
-    prompt: &mut Prompt,
-    expected_answer: &str,
-    choices: &[String],
-) -> Result<(), PostgresStoreError> {
-    if choices.is_empty() || !matches!(prompt, Prompt::Mcq { .. }) {
-        return replace_prompt_answer(prompt, expected_answer);
-    }
-    replace_prompt_choices(prompt, expected_answer, choices)
-}
-
-fn replace_prompt_choices(
-    prompt: &mut Prompt,
-    expected_answer: &str,
-    choices: &[String],
-) -> Result<(), PostgresStoreError> {
-    let Prompt::Mcq {
-        choices: stored,
-        correct_choice,
-        ..
-    } = prompt
-    else {
-        return replace_prompt_answer(prompt, expected_answer);
-    };
-    let next = normalize_mcq_choices(expected_answer, choices)?;
-    expected_answer.clone_into(correct_choice);
-    *stored = next;
-    Ok(())
-}
-
-fn normalize_mcq_choices(
-    expected_answer: &str,
-    choices: &[String],
-) -> Result<Vec<String>, PostgresStoreError> {
-    let mut next = Vec::new();
-    for choice in choices {
-        let trimmed = choice.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if !next.iter().any(|existing| existing == trimmed) {
-            next.push(trimmed.to_owned());
-        }
-    }
-    if !next.iter().any(|choice| choice == expected_answer) {
-        next.insert(0, expected_answer.to_owned());
-    }
-    if next.len() < 2 {
-        return Err(PostgresStoreError::Blank {
-            label: "Learner MCQ choices",
-        });
-    }
-    Ok(next)
-}
-
-fn learner_edit_matches_draft(
-    prompt: &Prompt,
-    prompt_text: &str,
-    expected_answer: &str,
-    choices: &[String],
-) -> bool {
-    if prompt_text_for_export(prompt) != prompt_text.trim()
-        || prompt_expected_answer_for_export(prompt) != expected_answer.trim()
-    {
-        return false;
-    }
-    if choices.is_empty() || !matches!(prompt, Prompt::Mcq { .. }) {
-        return true;
-    }
-    normalize_mcq_choices(expected_answer.trim(), choices)
-        .is_ok_and(|next| prompt_choices_for_export(prompt) == next)
-}
-
-fn prompt_choices_for_export(prompt: &Prompt) -> Vec<String> {
-    match prompt {
-        Prompt::Mcq { choices, .. } => choices.clone(),
-        Prompt::Boolean { .. } | Prompt::Exact(_) => Vec::new(),
-    }
-}
-
 #[must_use]
 pub fn migration_sql() -> &'static str {
     MIGRATION_SQL.as_str()
@@ -5513,9 +5608,6 @@ pub fn generation_jobs_migration_sql() -> &'static str {
 pub fn applied_review_receipt_key(attempt: &ServiceAttemptRecord) -> String {
     applied_review_key(attempt)
 }
-
-#[allow(dead_code)]
-fn _receipt_type_anchor(_: &AppliedReviewReceipt) {}
 
 #[cfg(test)]
 mod tests {
@@ -5842,6 +5934,10 @@ mod tests {
             (6, "memory_engine_api_sessions"),
             (7, "memory_engine_remediation_packs"),
             (8, "active_graded_review JSONB"),
+            (
+                9,
+                "CREATE TABLE IF NOT EXISTS memory_engine_review_exposures",
+            ),
         ];
 
         for (version, marker) in PINNED {
@@ -7037,6 +7133,7 @@ mod tests {
             occurred_at: 1_779_465_600_000,
             idempotency_key: Some("mobile-submit-1".to_owned()),
             grade: None,
+            graded_prompt: None,
         };
 
         assert_eq!(
@@ -7055,6 +7152,7 @@ mod tests {
             occurred_at: 1_779_465_600_000,
             idempotency_key: None,
             grade: None,
+            graded_prompt: None,
         };
 
         assert!(applied_review_receipt_key(&attempt).starts_with("attempt\0unit-a\0prompt-a"));
@@ -8270,8 +8368,94 @@ mod tests {
         run_postgres_concept_snooze_contract(&mut store)?;
         run_postgres_remediation_pack_contract(&mut store)?;
         run_postgres_active_graded_review_contract(&mut store)?;
+        run_postgres_exposure_contract(database_url)?;
         run_postgres_review_transition_lock_contract(database_url)?;
 
+        Ok(())
+    }
+
+    fn run_postgres_exposure_contract(database_url: &str) -> Result<(), PostgresStoreError> {
+        let scope = AccountScope::new("acct-exposure-owner")?;
+        let mut first_connection = PostgresStudyStore::connect(database_url)?;
+        let mut account = first_connection.for_account(scope.clone());
+        account.ensure_account(NOW)?;
+        let mut study = BetaStudySession::from_store(account, live_now);
+        study.add_source(study_source_input())?;
+        let drafts = study.generate(None)?;
+        let quiz = study
+            .keep_draft(&drafts.drafts[0].id)?
+            .current
+            .expect("quiz");
+        let answer = quiz.revision_expected_answer.clone();
+
+        let mut stale_connection = PostgresStudyStore::connect(database_url)?;
+        let mut stale_tab =
+            BetaStudySession::for_review(stale_connection.for_account(scope.clone()), live_now);
+        stale_tab.start()?;
+        study.reveal()?;
+        drop(study);
+        drop(first_connection);
+
+        let mut restarted_connection = PostgresStudyStore::connect(database_url)?;
+        let mut restarted =
+            BetaStudySession::for_review(restarted_connection.for_account(scope.clone()), live_now);
+        let resumed = restarted.resume_review(quiz.review_unit_id.as_str())?;
+        assert_eq!(resumed.status, BetaStudyStatus::Revealed);
+        assert_eq!(resumed.current.expect("resumed").choices, quiz.choices);
+        let graded = restarted.submit_answer_with_idempotency_key(
+            answer.clone(),
+            1_800,
+            Some("exposed-review"),
+        )?;
+        let current = graded.current.expect("graded");
+        let grade = current.grade.expect("grade");
+        assert_eq!(grade.verdict, memory_engine_core::Verdict::Revealed);
+        assert_eq!(grade.rating, memory_engine_core::Rating::Again);
+        assert!(!grade.is_correct);
+        assert_eq!(current.feedback.expect("feedback").item_history.correct, 0);
+        let mut account = restarted.into_store();
+        let committed = account.snapshot()?;
+        assert_eq!(committed.attempts.len(), 1);
+        assert_eq!(committed.applied_reviews.len(), 1);
+        assert!(stale_tab
+            .submit_answer_with_idempotency_key(answer, 1_800, Some("stale-tab"))
+            .is_err());
+        assert_eq!(account.snapshot()?, committed);
+
+        account.update_review_unit_prompt_text(
+            &quiz.review_unit_id,
+            "Edited next question",
+            "OMEGA",
+        )?;
+        let mut replay = BetaStudySession::for_review(account, live_now);
+        assert!(replay.restore_graded_review(quiz.review_unit_id.as_str(), "exposed-review")?);
+        let focused = replay.view()?;
+        assert_eq!(
+            focused.current.as_ref().expect("replay").prompt,
+            quiz.prompt
+        );
+        assert_eq!(
+            focused.current.as_ref().expect("replay").expected_answer,
+            Some(quiz.revision_expected_answer)
+        );
+        let account = replay.into_store();
+        let mut full = BetaStudySession::from_store(account, live_now);
+        assert!(full.restore_graded_review(quiz.review_unit_id.as_str(), "exposed-review")?);
+        assert_eq!(
+            full.view()?,
+            focused,
+            "focused reads preserve the complete public view"
+        );
+        let account = full.into_store();
+        assert_eq!(account.snapshot()?.attempts, committed.attempts);
+        assert_eq!(
+            account.snapshot()?.applied_reviews,
+            committed.applied_reviews
+        );
+        drop(account);
+        let mut other = restarted_connection.for_account(AccountScope::new("acct-exposure-other")?);
+        other.ensure_account(NOW)?;
+        assert_eq!(other.snapshot()?, BetaStoreSnapshot::default());
         Ok(())
     }
 
@@ -9195,6 +9379,7 @@ mod tests {
             occurred_at,
             idempotency_key: Some(idempotency_key.to_owned()),
             grade: None,
+            graded_prompt: None,
         }
     }
     #[test]

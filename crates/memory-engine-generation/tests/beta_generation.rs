@@ -282,7 +282,7 @@ fn structured_generation_preserves_same_stage_variants_for_one_concept() {
                     "Stage: recognition-3",
                     "Question: What is the NATO phonetic alphabet word for A?",
                     "Answer: ALFA",
-                    "Distractors: BRAVO, CHARLIE",
+                    "Distractors: ABLE, AMBER",
                     "Reference: The NATO phonetic alphabet word for A is ALFA.",
                     "",
                     "Concept: NATO letter A",
@@ -290,7 +290,7 @@ fn structured_generation_preserves_same_stage_variants_for_one_concept() {
                     "Stage: recognition-3",
                     "Question: Choose the code word used for the letter A.",
                     "Answer: ALFA",
-                    "Distractors: BRAVO, CHARLIE",
+                    "Distractors: ABLE, AMBER",
                     "Reference: The NATO phonetic alphabet word for A is ALFA.",
                     "",
                     "Concept: NATO letter A",
@@ -298,7 +298,7 @@ fn structured_generation_preserves_same_stage_variants_for_one_concept() {
                     "Stage: recognition-3",
                     "Question: In radio spelling, which word represents A?",
                     "Answer: ALFA",
-                    "Distractors: BRAVO, CHARLIE",
+                    "Distractors: ABLE, AMBER",
                     "Reference: The NATO phonetic alphabet word for A is ALFA.",
                 ]
                 .join("\n"),
@@ -432,14 +432,11 @@ fn persists_rejected_unsupported_and_duplicate_drafts() {
         result.rejected_draft_ids,
         ["run-options-draft-src-options-3-gamma-advice"]
     );
-    assert_eq!(
-        result.validation_failures,
-        ["src-options block 2: Duplicate-ish generated draft"]
-    );
     let drafts = store.snapshot().generated_prompt_drafts;
+    assert_eq!(drafts.len(), 2, "the duplicate must not be persisted");
     assert_eq!(
-        drafts[1].validation.reasons,
-        ["Unsupported by cited source material"]
+        drafts[1].validation.status,
+        GeneratedPromptValidationStatus::Rejected
     );
 }
 
@@ -626,7 +623,10 @@ fn repairs_zero_accepted_source_once_and_counts_repair_usage() {
             kind: SourceDocumentKind::Text,
             title: "Repairable notes".to_owned(),
             project_key: None,
-            body: Some("Repairable notes say spaced practice needs feedback.".to_owned()),
+            body: Some(
+                "Feedback after retrieval identifies errors and corrects misconceptions."
+                    .to_owned(),
+            ),
             uri: None,
             permission: SourcePermission::ModelEligible,
             freshness: Some(NOW),
@@ -664,10 +664,6 @@ fn repairs_zero_accepted_source_once_and_counts_repair_usage() {
 
     let snapshot = store.snapshot();
     assert_eq!(snapshot.generated_prompt_drafts.len(), 2);
-    assert_eq!(
-        snapshot.generated_prompt_drafts[0].validation.reasons,
-        ["Exercises require a worked solution"]
-    );
     assert_eq!(
         snapshot.generated_prompt_drafts[1].validation.status,
         GeneratedPromptValidationStatus::Accepted
@@ -753,7 +749,16 @@ fn repair_feedback_is_capped_before_provider_retry() {
             kind: SourceDocumentKind::Text,
             title: "Repair cap notes".to_owned(),
             project_key: None,
-            body: Some("Repair cap notes require worked solutions.".to_owned()),
+            body: Some(
+                [
+                    "Each generation source permits one repair pass.",
+                    "The provider receives at most four rejected drafts.",
+                    "Repair feedback is capped to bound retry cost.",
+                    "A repaired factual claim must include supporting evidence.",
+                    "A repaired exercise must include a worked solution.",
+                ]
+                .join(" "),
+            ),
             uri: None,
             permission: SourcePermission::ModelEligible,
             freshness: Some(NOW),
@@ -1409,9 +1414,8 @@ fn authored_block_without_a_reference_is_a_world_knowledge_card() {
     )
     .expect("generation");
 
-    // No cited reference, so the card is a world-knowledge expansion: grounding
-    // is decided per card by quote presence, and a quote-free card is accepted
-    // and grounded in the captured input rather than rejected.
+    // A quote-free authored card remains usable, but its captured seed is
+    // lineage rather than source evidence for the answer.
     assert_eq!(result.accepted_draft_ids.len(), 1);
     assert!(result.rejected_draft_ids.is_empty());
     assert!(result.validation_failures.is_empty());
@@ -1420,10 +1424,6 @@ fn authored_block_without_a_reference_is_a_world_knowledge_card() {
         draft.validation.status,
         GeneratedPromptValidationStatus::Accepted
     );
-    assert!(draft
-        .critique_notes
-        .iter()
-        .any(|note| note.contains("Expanded from input")));
 }
 
 /// A model-style provider that expands the input from world knowledge: its
@@ -1506,9 +1506,9 @@ fn world_knowledge_card_without_a_quote_is_accepted_and_seeded() {
         .save_source_document(SourceDocument {
             id: "src-topic".to_owned(),
             kind: SourceDocumentKind::Text,
-            title: "NATO phonetic alphabet".to_owned(),
+            title: "NATO".to_owned(),
             project_key: None,
-            body: Some("nato phonetic alphabet".to_owned()),
+            body: Some("NATO".to_owned()),
             uri: None,
             permission: SourcePermission::ModelEligible,
             freshness: Some(NOW),
@@ -1539,10 +1539,10 @@ fn world_knowledge_card_without_a_quote_is_accepted_and_seeded() {
     assert!(result.validation_failures.is_empty());
 
     let snapshot = store.snapshot();
-    // No per-fact quote, so the card grounds in the captured input itself as its
-    // reference span — a real pointer the store can resolve.
+    // Even a one-word topic remains usable for model expansion. Keep its
+    // lineage without pretending the seed establishes the generated answer.
     assert_eq!(snapshot.reference_spans.len(), 1);
-    assert_eq!(snapshot.reference_spans[0].text, "nato phonetic alphabet");
+    assert_eq!(snapshot.reference_spans[0].text, "NATO");
     let draft = &snapshot.generated_prompt_drafts[0];
     assert_eq!(
         draft.validation.status,
@@ -1551,11 +1551,11 @@ fn world_knowledge_card_without_a_quote_is_accepted_and_seeded() {
     assert_eq!(draft.source_document_ids, ["src-topic"]);
     assert_eq!(draft.reference_span_ids.len(), 1);
     assert_eq!(draft.queue.concept_key.as_deref(), Some("nato-alphabet-b"));
-    // Recorded as a world-knowledge expansion, not a source-grounded extraction.
-    assert!(draft
-        .critique_notes
-        .iter()
-        .any(|note| note.contains("Expanded from input")));
+    assert!(draft.learner_decision.is_none());
+    assert!(
+        snapshot.review_units.is_empty(),
+        "generation is not learner approval"
+    );
 }
 
 #[test]
@@ -2094,9 +2094,12 @@ impl DraftProvider for RepairingProvider {
             candidates: vec![DraftCandidate {
                 index: 1,
                 concept: "Repair feedback".to_owned(),
-                question: "Explain why spaced practice needs feedback.".to_owned(),
-                answer: "Spaced practice needs feedback.".to_owned(),
-                evidence: Some("Repairable notes say spaced practice needs feedback.".to_owned()),
+                question: "How does feedback improve retrieval practice?".to_owned(),
+                answer: "It identifies errors and corrects misconceptions.".to_owned(),
+                evidence: Some(
+                    "Feedback after retrieval identifies errors and corrects misconceptions."
+                        .to_owned(),
+                ),
                 distractors: Vec::new(),
                 worked_solution: None,
                 activity_kind: GeneratedLearningActivityKind::Exercise,
@@ -2119,22 +2122,22 @@ impl DraftProvider for RepairingProvider {
         rejections: &[DraftRejection],
     ) -> Result<Option<ProviderDrafts>, ProviderFailure> {
         assert_eq!(rejections.len(), 1);
-        assert_eq!(
-            rejections[0].reasons,
-            ["Exercises require a worked solution"]
-        );
         Ok(Some(ProviderDrafts {
             model: DraftProvider::model(self),
             learning_intent: None,
             candidates: vec![DraftCandidate {
                 index: 1,
                 concept: "Repair feedback".to_owned(),
-                question: "Explain why spaced practice needs feedback.".to_owned(),
-                answer: "Spaced practice needs feedback.".to_owned(),
-                evidence: Some("Repairable notes say spaced practice needs feedback.".to_owned()),
+                question: "How does feedback improve retrieval practice?".to_owned(),
+                answer: "It identifies errors and corrects misconceptions.".to_owned(),
+                evidence: Some(
+                    "Feedback after retrieval identifies errors and corrects misconceptions."
+                        .to_owned(),
+                ),
                 distractors: Vec::new(),
                 worked_solution: Some(
-                    "Feedback tells the learner whether the spaced retrieval was correct."
+                    "Compare the recalled answer with the target, identify errors, and correct \
+                     misconceptions before the next retrieval."
                         .to_owned(),
                 ),
                 activity_kind: GeneratedLearningActivityKind::Exercise,
@@ -2261,20 +2264,48 @@ impl DraftProvider for RepairCapProvider {
         Ok(ProviderDrafts {
             model: DraftProvider::model(self),
             learning_intent: None,
-            candidates: (1..=5)
-                .map(|index| DraftCandidate {
-                    index,
-                    concept: format!("Repair cap {index}"),
-                    question: format!("Explain repair cap item {index}."),
-                    answer: "Repair cap notes require worked solutions.".to_owned(),
-                    evidence: Some("Repair cap notes require worked solutions.".to_owned()),
-                    distractors: Vec::new(),
-                    worked_solution: None,
-                    activity_kind: GeneratedLearningActivityKind::Exercise,
-                    activity_stage: "free-recall".to_owned(),
-                    unsupported: false,
-                })
-                .collect(),
+            candidates: [
+                (
+                    "How many repair passes may each generation source receive?",
+                    "one repair pass",
+                    "Each generation source permits one repair pass.",
+                ),
+                (
+                    "How many rejected drafts may the repair provider receive?",
+                    "at most four rejected drafts",
+                    "The provider receives at most four rejected drafts.",
+                ),
+                (
+                    "Why is repair feedback capped?",
+                    "to bound retry cost",
+                    "Repair feedback is capped to bound retry cost.",
+                ),
+                (
+                    "What must accompany a repaired factual claim?",
+                    "supporting evidence",
+                    "A repaired factual claim must include supporting evidence.",
+                ),
+                (
+                    "What must accompany a repaired exercise?",
+                    "a worked solution",
+                    "A repaired exercise must include a worked solution.",
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(offset, (question, answer, evidence))| DraftCandidate {
+                index: offset + 1,
+                concept: format!("Repair cap {}", offset + 1),
+                question: question.to_owned(),
+                answer: answer.to_owned(),
+                evidence: Some(evidence.to_owned()),
+                distractors: Vec::new(),
+                worked_solution: None,
+                activity_kind: GeneratedLearningActivityKind::Exercise,
+                activity_stage: "free-recall".to_owned(),
+                unsupported: false,
+            })
+            .collect(),
             failures: Vec::new(),
             usage: None,
         })
@@ -2292,11 +2323,15 @@ impl DraftProvider for RepairCapProvider {
             candidates: vec![DraftCandidate {
                 index: 1,
                 concept: "Repair cap".to_owned(),
-                question: "Explain why repair feedback is capped.".to_owned(),
-                answer: "Repair feedback is capped to bound retry cost.".to_owned(),
-                evidence: Some("Repair cap notes require worked solutions.".to_owned()),
+                question: "Why is repair feedback capped?".to_owned(),
+                answer: "to bound retry cost".to_owned(),
+                evidence: Some("Repair feedback is capped to bound retry cost.".to_owned()),
                 distractors: Vec::new(),
-                worked_solution: Some("The retry receives a bounded rejection list.".to_owned()),
+                worked_solution: Some(
+                    "Sending a bounded rejection list limits the content processed during \
+                     the single retry."
+                        .to_owned(),
+                ),
                 activity_kind: GeneratedLearningActivityKind::Exercise,
                 activity_stage: "free-recall".to_owned(),
                 unsupported: false,

@@ -8,7 +8,7 @@ use memory_engine_persistence_postgres::{
 };
 use memory_engine_service::RecordContentFeedbackCommand;
 
-use crate::{
+use crate::native::{
     account_id_for, app_session_max_age_ms, cookie_max_age_from_expiry, new_browser_session_id,
     new_magic_link_token, new_session_token, normalize_email, normalize_required_text,
     project_deck_id_for, read_browser_session_id, secret_hash, session_csrf_token, source_id_for,
@@ -240,10 +240,10 @@ impl AccountRegistry {
     /// must survive restart and work across replicas for both adapters.
     fn persisted_invite_allows(&self, email: &str) -> Result<bool, ApiFailure> {
         if let Some(database_url) = self.postgres_url() {
-            return crate::with_postgres_store(&database_url, |store| {
+            return crate::native::with_postgres_store(&database_url, |store| {
                 Ok(store
                     .waitlist_list()
-                    .map_err(crate::postgres_failure)?
+                    .map_err(crate::native::postgres_failure)?
                     .into_iter()
                     .any(|entry| entry.email == email && entry.invited_at_ms.is_some()))
             });
@@ -251,7 +251,7 @@ impl AccountRegistry {
         let Some(store_path) = self.waitlist_store_path() else {
             return Ok(false);
         };
-        Ok(crate::waitlist::list(&store_path)?
+        Ok(crate::native::waitlist::list(&store_path)?
             .into_iter()
             .any(|entry| entry.email == email && entry.invited_at_ms.is_some()))
     }
@@ -288,10 +288,10 @@ impl AccountRegistry {
     fn persist_waitlist_join(&self, email: &str, source: &str) -> Result<(), ApiFailure> {
         let now = self.now();
         if let Some(database_url) = self.postgres_url() {
-            return crate::with_postgres_store(&database_url, |store| {
+            return crate::native::with_postgres_store(&database_url, |store| {
                 store
                     .waitlist_join(email, source, now)
-                    .map_err(crate::postgres_failure)
+                    .map_err(crate::native::postgres_failure)
             });
         }
         let Some(store_path) = self.waitlist_store_path() else {
@@ -299,7 +299,7 @@ impl AccountRegistry {
                 "Waitlist persistence is not configured.".to_owned(),
             ));
         };
-        crate::waitlist::join(&store_path, email, source, now)
+        crate::native::waitlist::join(&store_path, email, source, now)
     }
 
     /// List every waitlist entry for the operator.
@@ -314,10 +314,10 @@ impl AccountRegistry {
     ) -> Result<Vec<WaitlistEntry>, ApiFailure> {
         self.verify_admin_token(admin_token)?;
         if let Some(database_url) = self.postgres_url() {
-            return crate::with_postgres_store(&database_url, |store| {
+            return crate::native::with_postgres_store(&database_url, |store| {
                 Ok(store
                     .waitlist_list()
-                    .map_err(crate::postgres_failure)?
+                    .map_err(crate::native::postgres_failure)?
                     .into_iter()
                     .map(waitlist_entry_from_postgres)
                     .collect())
@@ -328,7 +328,7 @@ impl AccountRegistry {
                 "Waitlist persistence is not configured.".to_owned(),
             ));
         };
-        crate::waitlist::list(&store_path)
+        crate::native::waitlist::list(&store_path)
     }
 
     /// Mark one waitlist entry invited for the operator. Idempotent: marking
@@ -352,10 +352,10 @@ impl AccountRegistry {
         };
         let now = self.now();
         let entry = if let Some(database_url) = self.postgres_url() {
-            crate::with_postgres_store(&database_url, |store| {
+            crate::native::with_postgres_store(&database_url, |store| {
                 store
                     .waitlist_mark_invited(&email, now)
-                    .map_err(crate::postgres_failure)
+                    .map_err(crate::native::postgres_failure)
             })?
             .map(waitlist_entry_from_postgres)
         } else {
@@ -364,7 +364,7 @@ impl AccountRegistry {
                     "Waitlist persistence is not configured.".to_owned(),
                 ));
             };
-            crate::waitlist::mark_invited(&store_path, &email, now)?
+            crate::native::waitlist::mark_invited(&store_path, &email, now)?
         };
         let entry = entry.ok_or_else(|| ApiFailure::not_found("Waitlist entry not found."))?;
         // Admission reads the durable invited_at_ms row on every request;
@@ -398,10 +398,10 @@ impl AccountRegistry {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let deleted = if let Some(database_url) = self.postgres_url() {
-            crate::with_postgres_store(&database_url, |store| {
+            crate::native::with_postgres_store(&database_url, |store| {
                 store
                     .waitlist_delete(&email, now)
-                    .map_err(crate::postgres_failure)
+                    .map_err(crate::native::postgres_failure)
             })?
         } else {
             let Some(store_path) = self.waitlist_store_path() else {
@@ -409,7 +409,7 @@ impl AccountRegistry {
                     "Waitlist persistence is not configured.".to_owned(),
                 ));
             };
-            crate::waitlist::delete(&store_path, &email, now)?
+            crate::native::waitlist::delete(&store_path, &email, now)?
         };
         if deleted {
             // Removing the durable row also revokes outstanding challenges in
@@ -439,17 +439,17 @@ impl AccountRegistry {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _durable_auth_lock = self
             .waitlist_store_path()
-            .map(|path| crate::file_lock::acquire(&path.with_file_name("auth.lock")))
+            .map(|path| crate::native::file_lock::acquire(&path.with_file_name("auth.lock")))
             .transpose()?;
         let now = self.now();
         if let Some(database_url) = self.postgres_url() {
-            crate::with_postgres_store(&database_url, |store| {
+            crate::native::with_postgres_store(&database_url, |store| {
                 store
                     .waitlist_delete(&email, now)
-                    .map_err(crate::postgres_failure)
+                    .map_err(crate::native::postgres_failure)
             })?;
         } else if let Some(store_path) = self.waitlist_store_path() {
-            let _ = crate::waitlist::delete(&store_path, &email, now)?;
+            let _ = crate::native::waitlist::delete(&store_path, &email, now)?;
         }
         let mut data = self.lock_data();
         let Some(allowed) = data.auth_config.allowed_emails.as_mut() else {
@@ -476,7 +476,7 @@ impl AccountRegistry {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _durable_auth_lock = self
             .waitlist_store_path()
-            .map(|path| crate::file_lock::acquire(&path.with_file_name("auth.lock")))
+            .map(|path| crate::native::file_lock::acquire(&path.with_file_name("auth.lock")))
             .transpose()?;
         if let Some(database_url) = self.postgres_url() {
             return self.verify_magic_link_postgres(&database_url, &token_hash);
@@ -519,10 +519,10 @@ impl AccountRegistry {
             expires_at_ms,
             csrf_token_hash,
             outcome,
-        ) = crate::with_postgres_store(database_url, |store| {
+        ) = crate::native::with_postgres_store(database_url, |store| {
             let email = store
                 .auth_challenge_email(token_hash, now_ms)
-                .map_err(crate::postgres_failure)?
+                .map_err(crate::native::postgres_failure)?
                 .ok_or_else(|| ApiFailure::forbidden("Magic link is invalid or expired."))?;
             let configured_allowed = auth_config.email_allowed(&email);
             let account_id = account_id_for(&email);
@@ -544,7 +544,7 @@ impl AccountRegistry {
                     csrf_token_hash: &csrf_token_hash,
                     expires_at_ms,
                 })
-                .map_err(crate::postgres_failure)?;
+                .map_err(crate::native::postgres_failure)?;
             Ok((
                 email,
                 account_id,
@@ -920,11 +920,10 @@ impl AccountRegistry {
             let data = self.lock_data();
             data.auth_config.clone()
         };
-        let mut mac =
-            crate::UnsubscribeHmac::new_from_slice(auth_config.unsubscribe_secret.as_bytes())
-                .map_err(|_| {
-                    ApiFailure::internal("unsubscribe signing secret is invalid".to_owned())
-                })?;
+        let mut mac = crate::native::UnsubscribeHmac::new_from_slice(
+            auth_config.unsubscribe_secret.as_bytes(),
+        )
+        .map_err(|_| ApiFailure::internal("unsubscribe signing secret is invalid".to_owned()))?;
         mac.update(&payload);
         mac.verify_slice(&signature)
             .map_err(|_| ApiFailure::forbidden("That unsubscribe link is invalid or expired."))?;
@@ -1600,6 +1599,17 @@ impl AccountRegistry {
             .reveal_review(account_id, &account.store_path, review_unit_id)
     }
 
+    pub(crate) fn resume_review(
+        &self,
+        account_id: &str,
+        session_token: &str,
+        review_unit_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        let account = self.require_account(account_id, session_token)?;
+        self.storage()
+            .resume_review(account_id, &account.store_path, review_unit_id)
+    }
+
     /// Runs an API registry operation.
     ///
     /// # Errors
@@ -2090,7 +2100,7 @@ fn signed_unsubscribe_token(
     expires_at_ms: i64,
 ) -> String {
     let payload = format!("v2\n{account_id}\n{email}\n{unsubscribe_nonce}\n{expires_at_ms}");
-    let Ok(mut mac) = crate::UnsubscribeHmac::new_from_slice(secret.as_bytes()) else {
+    let Ok(mut mac) = crate::native::UnsubscribeHmac::new_from_slice(secret.as_bytes()) else {
         return String::new();
     };
     mac.update(payload.as_bytes());
@@ -2168,7 +2178,7 @@ impl AuthConfig {
                         .map_err(|error| ApiFailure::internal(error.to_string()))?;
                 }
                 let lock_path = path.with_extension("lock");
-                let _lock = crate::file_lock::acquire(&lock_path)?;
+                let _lock = crate::native::file_lock::acquire(&lock_path)?;
                 let already_recorded = fs::read_to_string(path)
                     .unwrap_or_default()
                     .lines()

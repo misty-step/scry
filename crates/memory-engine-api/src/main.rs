@@ -77,8 +77,18 @@ async fn main() {
         eprintln!("{error}");
     }
     scheduler.shutdown().await;
-    if !shutdown_error_reporting(Duration::from_secs(6)) {
-        eprintln!("Canary reporter did not drain before shutdown deadline");
+    match shutdown_error_reporting(Duration::from_secs(6)) {
+        Ok(report) => eprintln!(
+            "Canary shutdown drain=completed outcome={:?} requests_accepted={} requests_dropped={} observations_accepted={} observations_dropped={} retries={} last_failure={:?}",
+            report.outcome(),
+            report.requests_accepted(),
+            report.requests_dropped(),
+            report.observations_accepted(),
+            report.observations_dropped(),
+            report.retries(),
+            report.last_failure(),
+        ),
+        Err(error) => eprintln!("Canary shutdown drain=unconfirmed delivery=unconfirmed: {error}"),
     }
     if serve_result.is_err() {
         process::exit(1);

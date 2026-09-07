@@ -29,8 +29,8 @@ use memory_engine_generation::{
     SourceAuthorizationError,
 };
 use memory_engine_persistence::{
-    BetaPersistenceStore, BetaReviewUnitRecord, BetaStoreError, BetaStoreSnapshot,
-    ConceptReferenceNote, GeneratedLearningActivityKind, GeneratedPromptDraft,
+    AppliedReviewReceipt, BetaPersistenceStore, BetaReviewUnitRecord, BetaStoreError,
+    BetaStoreSnapshot, ConceptReferenceNote, GeneratedLearningActivityKind, GeneratedPromptDraft,
     GeneratedPromptValidationStatus, LearnerDraftDecision, RemediationPackRecord,
     RemediationPackStatus, SourceDocument, SourceDocumentKind,
 };
@@ -369,6 +369,44 @@ impl<E> From<ServiceError<E>> for BetaStudyError<E> {
 pub trait BetaStudyStore:
     BetaGenerationStore<Error = <Self as MemoryServiceStore>::Error> + MemoryServiceStore
 {
+    /// Read the learner review projection without export-only historical bodies.
+    ///
+    /// # Errors
+    /// Returns the adapter's read/decode error.
+    fn review_snapshot(&self) -> Result<BetaStoreSnapshot, <Self as MemoryServiceStore>::Error> {
+        self.snapshot()
+    }
+
+    /// Resolve exactly one committed receipt for replay.
+    ///
+    /// # Errors
+    /// Returns the adapter's read/decode error.
+    fn applied_review(
+        &self,
+        review_unit_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Option<AppliedReviewReceipt>, <Self as MemoryServiceStore>::Error> {
+        Ok(self
+            .snapshot()?
+            .applied_reviews
+            .into_iter()
+            .find(|receipt| {
+                receipt.attempt.review_unit_id.as_str() == review_unit_id
+                    && receipt.attempt.idempotency_key.as_deref() == Some(idempotency_key)
+            }))
+    }
+
+    /// Persist assistance for this exact prior schedule occurrence.
+    ///
+    /// # Errors
+    /// Returns a stale-occurrence or durable write error.
+    fn reveal_review_occurrence(
+        &mut self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<ScheduleState>,
+        revealed_at: i64,
+    ) -> Result<(), <Self as MemoryServiceStore>::Error>;
+
     /// Save source material for later generation.
     ///
     /// # Errors
@@ -504,6 +542,20 @@ pub trait BetaStudyStore:
 }
 
 impl BetaStudyStore for BetaPersistenceStore {
+    fn reveal_review_occurrence(
+        &mut self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<ScheduleState>,
+        revealed_at: i64,
+    ) -> Result<(), <Self as MemoryServiceStore>::Error> {
+        BetaPersistenceStore::reveal_review_occurrence(
+            self,
+            review_unit_id,
+            prior_schedule,
+            revealed_at,
+        )
+    }
+
     fn save_source_document(
         &mut self,
         document: SourceDocument,
@@ -620,7 +672,9 @@ pub struct BetaStudySession<S = BetaPersistenceStore> {
     store: S,
     now: fn() -> i64,
     cached_snapshot: RefCell<Option<Rc<BetaStoreSnapshot>>>,
+    review_only: bool,
     current: Option<GeneratedPromptDraft>,
+    current_prior_schedule: Option<ScheduleState>,
     status: BetaStudyStatus,
     expected_answer: Option<String>,
     reference_text: Option<String>,
@@ -654,7 +708,9 @@ impl BetaStudySession<BetaPersistenceStore> {
             store,
             now: options.now,
             cached_snapshot: RefCell::new(Some(Rc::new(snapshot))),
+            review_only: false,
             current: None,
+            current_prior_schedule: None,
             status,
             expected_answer: None,
             reference_text: None,
@@ -673,7 +729,21 @@ where
 {
     #[must_use]
     pub fn from_store(store: S, now: fn() -> i64) -> Self {
-        let snapshot = store.snapshot();
+        Self::from_store_mode(store, now, false)
+    }
+
+    /// Construct a request-scoped review session using focused durable reads.
+    #[must_use]
+    pub fn for_review(store: S, now: fn() -> i64) -> Self {
+        Self::from_store_mode(store, now, true)
+    }
+
+    fn from_store_mode(store: S, now: fn() -> i64, review_only: bool) -> Self {
+        let snapshot = if review_only {
+            store.review_snapshot()
+        } else {
+            store.snapshot()
+        };
         let status = match &snapshot {
             Ok(snapshot) if !has_active_sources(snapshot) => BetaStudyStatus::Empty,
             Ok(_) | Err(_) => BetaStudyStatus::Drafting,
@@ -683,7 +753,9 @@ where
             store,
             now,
             cached_snapshot: RefCell::new(snapshot.ok().map(Rc::new)),
+            review_only,
             current: None,
+            current_prior_schedule: None,
             status,
             expected_answer: None,
             reference_text: None,
@@ -712,10 +784,11 @@ where
         idempotency_key: &str,
     ) -> Result<bool, BetaStudyError<<S as MemoryServiceStore>::Error>> {
         let snapshot = self.snapshot()?;
-        let Some(receipt) = snapshot.applied_reviews.iter().find(|receipt| {
-            receipt.attempt.review_unit_id.as_str() == review_unit_id
-                && receipt.attempt.idempotency_key.as_deref() == Some(idempotency_key)
-        }) else {
+        let Some(receipt) = self
+            .store
+            .applied_review(review_unit_id, idempotency_key)
+            .map_err(BetaStudyError::Store)?
+        else {
             return Ok(false);
         };
         let Some(grade) = receipt.attempt.grade.as_ref() else {
@@ -728,11 +801,27 @@ where
         else {
             return Ok(false);
         };
-        let Some(current) =
+        let Some(mut current) =
             approved_draft_from_unit(&snapshot.generated_prompt_drafts, review_unit)
         else {
             return Ok(false);
         };
+        if let Some(prompt) = &receipt.attempt.graded_prompt {
+            current.prompt = prompt.clone();
+        } else {
+            // Legacy receipts did not record the question/options. Do not
+            // substitute today's edited wording as historical graded evidence.
+            current.prompt = Prompt::Exact(memory_engine_core::ExactPrompt {
+                kind: memory_engine_core::ExactPromptKind::ShortAnswer,
+                review_unit_id: current.review_unit_id.clone(),
+                prompt: "Original quiz wording was not recorded for this earlier review."
+                    .to_owned(),
+                accepted_answers: vec![grade.expected_answer.clone()],
+                equivalence_groups: Vec::new(),
+                ignored_tokens: Vec::new(),
+            });
+            current.worked_solution = None;
+        }
 
         self.current = Some(current);
         self.expected_answer = Some(grade.expected_answer.clone());
@@ -745,6 +834,42 @@ where
         self.status = BetaStudyStatus::Graded;
         self.remediation_notice = None;
         Ok(true)
+    }
+
+    /// Resume the same active quiz without grading, advancing, or changing its
+    /// occurrence-seeded choice order. Historical or archived units are not resumed.
+    ///
+    /// # Errors
+    /// Returns no-active-unit for an unavailable quiz or a durable read error.
+    pub fn resume_review(
+        &mut self,
+        review_unit_id: &str,
+    ) -> Result<BetaStudyView, BetaStudyError<<S as MemoryServiceStore>::Error>> {
+        let snapshot = self.snapshot()?;
+        let candidates = self
+            .store
+            .list_queue_candidates()
+            .map_err(BetaStudyError::Store)?;
+        let now = (self.now)();
+        let active_sources = active_source_ids(&snapshot);
+        self.current = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.review_unit_id.as_str() == review_unit_id
+                    && candidate.lifecycle.is_schedulable(now)
+                    && candidate.due <= now
+            })
+            .find_map(|candidate| find_approved_draft(&snapshot, candidate))
+            .filter(|draft| draft_has_active_source(draft, &active_sources));
+        self.current = self
+            .current
+            .take()
+            .map(|draft| presented_draft(&snapshot, draft));
+        if self.current.is_none() {
+            return Err(BetaStudyError::NoActiveReviewUnit);
+        }
+        self.reset_current_presentation()?;
+        self.view()
     }
 
     /// Opt this session into automatic remediation-pack generation using the
@@ -1269,16 +1394,16 @@ where
         self.learn_more_internal(&FakeModelProvider, false)
     }
 
-    /// Show reference material, generating and caching a concept note when no source span exists.
+    /// Show a durable concept note grounded in the actual captured source context.
     ///
-    /// Source-backed items always prefer their cited source spans. Generated
-    /// fallback notes are cached by concept key, so repeated reference views do
-    /// not call the provider again.
+    /// Notes are cached by concept key across requests and process restarts.
+    /// Captured input is retained separately from generated explanation, never
+    /// relabeled as verified fact or replaced by invented source quotations.
     ///
     /// # Errors
     ///
     /// Returns [`BetaStudyError::NoActiveReviewUnit`] when no item is active,
-    /// or a generation/store error when fallback note creation fails.
+    /// or a generation/store error when note creation or persistence fails.
     pub fn learn_more_with_provider(
         &mut self,
         provider: &dyn ReferenceNoteProvider,
@@ -1311,56 +1436,137 @@ where
         ensure_active_source_model_eligible(&snapshot, draft, false)
     }
 
-    fn learn_more_internal(
+    /// Prepare reference context without calling a provider. `None` means the
+    /// cached note or exact local source reference is already in the view.
+    ///
+    /// # Errors
+    /// Rejects unavailable or archived provenance before any external IO.
+    pub fn prepare_reference_note(
         &mut self,
-        provider: &dyn ReferenceNoteProvider,
+    ) -> Result<Option<ReferenceNoteRequest>, BetaStudyError<<S as MemoryServiceStore>::Error>>
+    {
+        self.prepare_reference_note_internal(false)
+    }
+
+    fn prepare_reference_note_internal(
+        &mut self,
         enforce_source_permission: bool,
-    ) -> Result<BetaStudyView, BetaStudyError<<S as MemoryServiceStore>::Error>> {
+    ) -> Result<Option<ReferenceNoteRequest>, BetaStudyError<<S as MemoryServiceStore>::Error>>
+    {
         let active = self
             .current
             .as_ref()
             .ok_or(BetaStudyError::NoActiveReviewUnit)?;
-        let snapshot = self.snapshot()?;
+        let snapshot = self.store.snapshot().map_err(BetaStudyError::Store)?;
         validate_reference_spans::<<S as MemoryServiceStore>::Error>(&snapshot, active)?;
         let authorization =
             ensure_active_source_model_eligible(&snapshot, active, enforce_source_permission)?;
-        if let Some(text) = reference_text(&snapshot, active) {
-            self.reference_text = Some(text);
-            return self.view();
-        }
 
         let (concept_key, concept_label) = concept_identity_for_draft(active);
+        let mut source_context = source_reference_text(&snapshot, active);
         if let Some(note) = snapshot
             .concept_reference_notes
             .iter()
             .find(|note| note.concept_key == concept_key)
         {
-            self.reference_text = Some(note.body.clone());
-            return self.view();
+            if let Some(context) = source_context
+                .as_deref()
+                .filter(|context| !note.body.contains(*context))
+            {
+                let mut updated = note.clone();
+                updated.body.push_str("\n\n");
+                updated.body.push_str(context);
+                updated.updated_at = (self.now)();
+                self.invalidate_snapshot();
+                self.reference_text = Some(
+                    self.store
+                        .save_concept_reference_note(updated)
+                        .map_err(BetaStudyError::Store)?
+                        .body,
+                );
+            } else {
+                self.reference_text = Some(note.body.clone());
+            }
+            return Ok(None);
+        }
+        if let Some(text) = authorization
+            .local_only_source_id()
+            .and_then(|_| source_context.take())
+        {
+            let timestamp = (self.now)();
+            self.invalidate_snapshot();
+            let note = self
+                .store
+                .save_concept_reference_note(ConceptReferenceNote {
+                    concept_key,
+                    title: concept_label,
+                    body: text,
+                    model: memory_engine_persistence::GeneratedPromptModel {
+                        provider: "local".to_owned(),
+                        name: "source-reference".to_owned(),
+                        version: "v1".to_owned(),
+                    },
+                    created_at: timestamp,
+                    updated_at: timestamp,
+                })
+                .map_err(BetaStudyError::Store)?;
+            self.reference_text = Some(note.body);
+            return Ok(None);
         }
 
-        let note = provider
-            .explain_concept(&ReferenceNoteRequest::new(
-                concept_key.clone(),
-                concept_label,
-                prompt_text(&active.prompt),
-                prompt_expected_answer(&active.prompt),
-                Vec::new(),
-                authorization,
-            ))
-            .map_err(|failure| {
-                BetaStudyError::Generation(BetaGenerationError::ProviderFailure(
-                    failure.to_string(),
-                ))
-            })?;
+        if let Some(id) = authorization.local_only_source_id() {
+            return Err(BetaStudyError::Generation(
+                BetaGenerationError::LocalOnlySource(id.to_owned()),
+            ));
+        }
+        Ok(Some(ReferenceNoteRequest::new(
+            concept_key,
+            concept_label,
+            prompt_text(&active.prompt),
+            prompt_expected_answer(&active.prompt),
+            Vec::new(),
+            authorization,
+        )))
+    }
+
+    /// Commit a real asynchronous provider response after rechecking the
+    /// prepared context. A concurrently cached note wins; changed source or
+    /// parent context must be prepared again rather than publishing stale text.
+    ///
+    /// # Errors
+    /// Rejects changed/withdrawn context or failed note persistence.
+    pub fn commit_reference_note(
+        &mut self,
+        request: &ReferenceNoteRequest,
+        mut note: memory_engine_generation::ReferenceNoteDraft,
+        model: memory_engine_persistence::GeneratedPromptModel,
+    ) -> Result<BetaStudyView, BetaStudyError<<S as MemoryServiceStore>::Error>> {
+        let Some(current_request) = self.prepare_reference_note_internal(true)? else {
+            return self.view();
+        };
+        if current_request != *request {
+            return Err(BetaStudyError::Generation(BetaGenerationError::ProviderFailure(
+                "The reference context changed while its explanation was being prepared. Please try again.".to_owned(),
+            )));
+        }
+        let snapshot = self.store.snapshot().map_err(BetaStudyError::Store)?;
+        let active = self
+            .current
+            .as_ref()
+            .ok_or(BetaStudyError::NoActiveReviewUnit)?;
+        let source_context = source_reference_text(&snapshot, active);
+        if let Some(context) = source_context {
+            note.body.push_str("\n\n");
+            note.body.push_str(&context);
+        }
         self.invalidate_snapshot();
         let note = self
             .store
             .save_concept_reference_note(ConceptReferenceNote {
-                concept_key,
+                concept_key: request.concept_key.clone(),
                 title: note.title,
                 body: note.body,
-                model: provider.model(),
+                model,
                 created_at: (self.now)(),
                 updated_at: (self.now)(),
             })
@@ -1369,7 +1575,23 @@ where
         self.view()
     }
 
+    fn learn_more_internal(
+        &mut self,
+        provider: &dyn ReferenceNoteProvider,
+        enforce_source_permission: bool,
+    ) -> Result<BetaStudyView, BetaStudyError<<S as MemoryServiceStore>::Error>> {
+        let Some(request) = self.prepare_reference_note_internal(enforce_source_permission)? else {
+            return self.view();
+        };
+        let note = provider.explain_concept(&request).map_err(|failure| {
+            BetaStudyError::Generation(BetaGenerationError::ProviderFailure(failure.to_string()))
+        })?;
+        self.commit_reference_note(&request, note, provider.model())
+    }
+
     /// Edit the active approved review prompt without revealing or rescheduling it.
+    /// A committed recap keeps its original question, answer and displayed
+    /// options; the edit changes only the definition used on future occurrences.
     ///
     /// # Errors
     ///
@@ -1391,12 +1613,10 @@ where
                 &expected_answer.into(),
             )
             .map_err(BetaStudyError::Store)?;
-        self.reload_current();
-        self.expected_answer = None;
-        self.reference_text = None;
-        self.grade = None;
-        self.schedule_change = None;
-        self.status = BetaStudyStatus::Answering;
+        if self.status != BetaStudyStatus::Graded {
+            self.reload_current();
+            self.reset_current_presentation()?;
+        }
         self.view()
     }
 
@@ -1529,6 +1749,28 @@ where
         self.snooze_current_until((self.now)() + DEFAULT_SNOOZE_DEFER_MS)
     }
 
+    /// Prepare manual Bridge context without calling a provider or writing.
+    ///
+    /// # Errors
+    /// Rejects missing parents and withdrawn or local-only source permission.
+    pub fn prepare_bridge_material(
+        &self,
+    ) -> Result<
+        memory_engine_generation::BridgeMaterialRequest,
+        BetaStudyError<<S as MemoryServiceStore>::Error>,
+    > {
+        let active = self
+            .current
+            .as_ref()
+            .ok_or(BetaStudyError::NoActiveReviewUnit)?;
+        let snapshot = self.snapshot()?;
+        memory_engine_generation::prepare_bridge_material::<<S as MemoryServiceStore>::Error>(
+            &snapshot,
+            &active.review_unit_id,
+        )
+        .map_err(BetaStudyError::Generation)
+    }
+
     /// Generate bridge material using the deterministic CI-safe provider.
     ///
     /// # Errors
@@ -1602,16 +1844,12 @@ where
     ///
     /// A pack member's grade only checks for pack completion; it never
     /// spawns a nested pack (remediation stays a small, bounded ladder, not
-    /// a recursive DAG). A non-member's wrong or close grade may trigger a
-    /// new pack; so does any grade recorded after the learner revealed the
-    /// answer first (`was_revealed`), since the deterministic grader has no
-    /// way to distinguish a copied reveal from genuine recall; a correct
-    /// grade without a prior reveal never does.
+    /// a recursive DAG). A non-member's wrong, close, or durably revealed
+    /// grade may trigger a new pack; an unassisted correct grade never does.
     fn reconcile_remediation_after_grade(
         &mut self,
         review_unit_id: &ReviewUnitId,
         review: &ReviewAppliedResult,
-        was_revealed: bool,
     ) -> Result<(), BetaStudyError<<S as MemoryServiceStore>::Error>> {
         let now = (self.now)();
         let snapshot = self.snapshot()?;
@@ -1637,7 +1875,10 @@ where
             return Ok(());
         }
 
-        if !was_revealed && !matches!(review.grade.verdict, Verdict::Wrong | Verdict::Close) {
+        if !matches!(
+            review.grade.verdict,
+            Verdict::Wrong | Verdict::Close | Verdict::Revealed
+        ) {
             return Ok(());
         }
         if snapshot.remediation_packs.iter().any(|pack| {
@@ -1805,7 +2046,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`BetaStudyError::NoActiveReviewUnit`] when no item is active.
+    /// Returns no-active-unit, stale-occurrence or durable persistence errors.
     pub fn reveal(
         &mut self,
     ) -> Result<BetaStudyView, BetaStudyError<<S as MemoryServiceStore>::Error>> {
@@ -1816,6 +2057,13 @@ where
             .current
             .as_ref()
             .ok_or(BetaStudyError::NoActiveReviewUnit)?;
+        self.store
+            .reveal_review_occurrence(
+                &active.review_unit_id,
+                self.current_prior_schedule.clone(),
+                (self.now)(),
+            )
+            .map_err(BetaStudyError::Store)?;
         self.expected_answer = Some(prompt_expected_answer(&active.prompt));
         self.status = BetaStudyStatus::Revealed;
         self.view()
@@ -1851,36 +2099,35 @@ where
         if self.status == BetaStudyStatus::Graded {
             return self.view();
         }
-        let was_revealed = self.status == BetaStudyStatus::Revealed;
         let active = self
             .current
             .clone()
             .ok_or(BetaStudyError::NoActiveReviewUnit)?;
         let answer = answer.into();
-        let prior_schedule = self
-            .store
-            .read_schedule_state(&active.review_unit_id)
-            .map_err(|error| BetaStudyError::Service(ServiceError::Store(error)))?;
+        let prior_schedule = self.current_prior_schedule.clone();
         self.invalidate_snapshot();
         let review = {
             let mut service =
                 MemoryService::with_clock(&mut self.store, mastered_after_three_reviews, self.now);
-            service.grade_apply_review(GradeApplyReviewCommand {
-                prompt: active.prompt.clone(),
-                submitted_answer: answer.clone(),
-                response_time_ms,
-                prompt_id: Some(active.prompt_id.clone()),
-                occurred_at: None,
-                idempotency_key: Some(idempotency_key.map_or_else(
-                    || {
-                        format!(
-                            "beta-study:{}:{}:{answer}",
-                            active.review_unit_id, active.prompt_id
-                        )
-                    },
-                    Into::into,
-                )),
-            })?
+            service.grade_apply_review_at_schedule(
+                GradeApplyReviewCommand {
+                    prompt: active.prompt.clone(),
+                    submitted_answer: answer.clone(),
+                    response_time_ms,
+                    prompt_id: Some(active.prompt_id.clone()),
+                    occurred_at: None,
+                    idempotency_key: Some(idempotency_key.map_or_else(
+                        || {
+                            format!(
+                                "beta-study:{}:{}:{answer}",
+                                active.review_unit_id, active.prompt_id
+                            )
+                        },
+                        Into::into,
+                    )),
+                },
+                prior_schedule.clone(),
+            )?
         };
 
         self.expected_answer = Some(review.grade.expected_answer.clone());
@@ -1896,7 +2143,7 @@ where
             // provider outage or store error inside remediation must not turn a
             // committed submission into an error, so it becomes a notice.
             if self
-                .reconcile_remediation_after_grade(&active.review_unit_id, &review, was_revealed)
+                .reconcile_remediation_after_grade(&active.review_unit_id, &review)
                 .is_err()
             {
                 self.remediation_notice = Some(
@@ -2080,6 +2327,16 @@ where
                     .find(|candidate| candidate.review_unit_id == review_unit_id)
                     .and_then(|candidate| find_approved_draft(&snapshot, candidate))
             });
+        self.current = self
+            .current
+            .take()
+            .map(|draft| presented_draft(&snapshot, draft));
+        self.reset_current_presentation()
+    }
+
+    fn reset_current_presentation(
+        &mut self,
+    ) -> Result<(), BetaStudyError<<S as MemoryServiceStore>::Error>> {
         self.status = if self.current.is_some() {
             BetaStudyStatus::Answering
         } else {
@@ -2089,6 +2346,22 @@ where
         self.reference_text = None;
         self.grade = None;
         self.schedule_change = None;
+        self.current_prior_schedule = None;
+        if let Some(active) = &self.current {
+            let schedule = self
+                .store
+                .read_schedule_state(&active.review_unit_id)
+                .map_err(BetaStudyError::Store)?;
+            if self
+                .store
+                .review_was_revealed(&active.review_unit_id, schedule.as_ref())
+                .map_err(BetaStudyError::Store)?
+            {
+                self.status = BetaStudyStatus::Revealed;
+                self.expected_answer = Some(prompt_expected_answer(&active.prompt));
+            }
+            self.current_prior_schedule = schedule;
+        }
 
         Ok(())
     }
@@ -2108,6 +2381,10 @@ where
             .find(|unit| unit.review_unit_id == active.review_unit_id)
             .and_then(|unit| approved_draft_from_unit(&snapshot.generated_prompt_drafts, unit))
             .filter(|draft| draft_has_active_source(draft, &active_source_ids));
+        self.current = self
+            .current
+            .take()
+            .map(|draft| presented_draft(&snapshot, draft));
     }
     fn snapshot(
         &self,
@@ -2116,7 +2393,14 @@ where
             return Ok(snapshot);
         }
 
-        let snapshot = Rc::new(self.store.snapshot().map_err(BetaStudyError::Store)?);
+        let snapshot = Rc::new(
+            if self.review_only {
+                self.store.review_snapshot()
+            } else {
+                self.store.snapshot()
+            }
+            .map_err(BetaStudyError::Store)?,
+        );
         *self.cached_snapshot.borrow_mut() = Some(Rc::clone(&snapshot));
         Ok(snapshot)
     }
@@ -2469,7 +2753,7 @@ fn current_view(parts: CurrentViewParts<'_>) -> BetaStudyCurrent {
         activity_kind: draft.activity_kind.clone(),
         activity_stage: draft.activity_stage.clone(),
         prompt: prompt_text(&draft.prompt).to_owned(),
-        choices: projected_choices(snapshot, draft, grade.is_some()),
+        choices: prompt_choices(&draft.prompt),
         revision_expected_answer: prompt_expected_answer(&draft.prompt),
         worked_solution: expected_answer
             .as_ref()
@@ -3058,29 +3342,19 @@ fn prompt_text(prompt: &Prompt) -> &str {
     }
 }
 
-fn projected_choices(
+fn presented_draft(
     snapshot: &BetaStoreSnapshot,
-    draft: &GeneratedPromptDraft,
-    hold_latest_attempt: bool,
-) -> Vec<String> {
-    let Prompt::Mcq { choices, .. } = &draft.prompt else {
-        return Vec::new();
-    };
-    if choices.len() <= 1 {
-        return choices.clone();
+    mut draft: GeneratedPromptDraft,
+) -> GeneratedPromptDraft {
+    if let Prompt::Mcq { choices, .. } = &mut draft.prompt {
+        let attempts = snapshot
+            .attempts
+            .iter()
+            .filter(|attempt| attempt.review_unit_id == draft.review_unit_id)
+            .count();
+        *choices = shuffle_mcq_choices(choices, draft.review_unit_id.as_str(), attempts);
     }
-    let attempts = snapshot
-        .attempts
-        .iter()
-        .filter(|attempt| attempt.review_unit_id == draft.review_unit_id)
-        .count();
-    // Recap holds the just-graded order by seeding with attempts - 1.
-    let display_attempts = if hold_latest_attempt {
-        attempts.saturating_sub(1)
-    } else {
-        attempts
-    };
-    shuffle_mcq_choices(choices, draft.review_unit_id.as_str(), display_attempts)
+    draft
 }
 
 fn stable_seed(value: &str) -> usize {
@@ -3144,30 +3418,30 @@ fn prompt_choices(prompt: &Prompt) -> Vec<String> {
     }
 }
 
-fn reference_text(snapshot: &BetaStoreSnapshot, draft: &GeneratedPromptDraft) -> Option<String> {
-    let text = draft
+fn source_reference_text(
+    snapshot: &BetaStoreSnapshot,
+    draft: &GeneratedPromptDraft,
+) -> Option<String> {
+    let source_ids = draft
         .reference_span_ids
         .iter()
         .filter_map(|id| snapshot.reference_spans.iter().find(|span| &span.id == id))
-        .map(|span| span.text.trim())
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    if !text.is_empty() {
-        return Some(text);
-    }
-
-    draft
-        .concept_reference_note_key
-        .as_ref()
-        .and_then(|key| {
-            snapshot
-                .concept_reference_notes
-                .iter()
-                .find(|note| &note.concept_key == key)
+        .map(|span| span.source_document_id.as_str())
+        .chain(draft.source_document_ids.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    let sections = snapshot
+        .source_documents
+        .iter()
+        .filter(|source| source_ids.contains(source.id.as_str()) && source_is_active(source))
+        .filter_map(|source| {
+            source
+                .body
+                .as_deref()
+                .filter(|body| !body.trim().is_empty())
+                .map(|body| format!("Captured input: {}\n\n{}", source.title, body.trim()))
         })
-        .map(|note| note.body.trim().to_owned())
-        .filter(|body| !body.is_empty())
+        .collect::<Vec<_>>();
+    (!sections.is_empty()).then(|| sections.join("\n\n"))
 }
 
 fn validate_reference_spans<E>(

@@ -2,7 +2,7 @@
   "schema": "memory-engine.architecture-map/v1",
   "mapId": "memory-engine.system-visualization",
   "title": "Memory Engine System Visualization Workbench Map",
-  "updatedAt": "2026-07-15",
+  "updatedAt": "2026-09-07",
   "views": [
     {
       "id": "architecture-boundary",
@@ -27,7 +27,7 @@
     {
       "id": "fleet-integration",
       "label": "Fleet Integration",
-      "description": "Current repo-owned evidence for Canary, GitHub Issues, Landmark, and the project map."
+      "description": "Current repo-owned boundaries for Worker-native logs, external monitoring, GitHub Issues, Landmark, and the project map."
     }
   ],
   "nodes": [
@@ -703,15 +703,41 @@
       ]
     },
     {
-      "id": "node.fleet.canary",
-      "label": "Canary Runtime Reporter",
+      "id": "node.fleet.worker-logs",
+      "label": "Worker-native Logs",
       "kind": "observability",
-      "summary": "Production API errors report to Canary as memory-engine-api when configured.",
+      "summary": "Bounded, content-free browser, performance, and health records use the Worker runtime logger. Browser receipt 202 with runtime_logged and attempts 0 is not remote acceptance or durable readback.",
       "viewTags": ["fleet-integration"],
       "layout": {"fleet-integration": {"x": 940, "y": 140}},
       "refs": [
-        {"kind": "source", "path": "crates/memory-engine-canary/src/lib.rs", "label": "Canary contract"},
-        {"kind": "doc", "path": "docs/runbook.md", "label": "production readback"}
+        {"kind": "source", "path": "crates/memory-engine-cloudflare/src/telemetry.rs", "label": "Worker-native telemetry contract"},
+        {"kind": "config", "path": "wrangler.jsonc", "label": "Worker observability configuration"},
+        {"kind": "doc", "path": "docs/runbook.md", "label": "logging and evidence limits"}
+      ]
+    },
+    {
+      "id": "node.runtime.cloudflare",
+      "label": "Cloudflare Worker Boundary",
+      "kind": "service",
+      "summary": "memory-engine-cloudflare owns the Wasm Worker, SQLite-backed Scry Durable Object, alarms, private R2 recovery, and Resend Fetch boundary. No live Worker is deployed yet; native DigitalOcean/Postgres remains authoritative until Main records cutover proof.",
+      "viewTags": ["fleet-integration"],
+      "layout": {"fleet-integration": {"x": 940, "y": 360}},
+      "refs": [
+        {"kind": "source", "path": "crates/memory-engine-cloudflare/src/lib.rs", "label": "Cloudflare runtime boundary"},
+        {"kind": "doc", "path": "docs/runbook.md", "label": "Main-owned cutover and recovery proof"}
+      ]
+    },
+    {
+      "id": "node.fleet.external-monitor",
+      "label": "Repository External Monitor",
+      "kind": "observability",
+      "summary": "scripts/scry-monitor (bun run ops:monitor) observes public health and sends Resend unhealthy/recovery mail. The master-only production-monitor environment owns mail secrets. GitHub five-minute cron and notification cache are best effort; SCRY_MONITOR_ENABLED remains false until cutover.",
+      "viewTags": ["fleet-integration"],
+      "layout": {"fleet-integration": {"x": 610, "y": 360}},
+      "refs": [
+        {"kind": "source", "path": "scripts/scry-monitor", "label": "public probes and operator mail receipts"},
+        {"kind": "config", "path": ".github/workflows/production-health.yml", "label": "master-only external witness"},
+        {"kind": "doc", "path": "docs/qa/system.md", "label": "receipt meanings and monitoring limitations"}
       ]
     },
     {
@@ -1287,15 +1313,28 @@
       ]
     },
     {
-      "id": "edge.fleet.canary-to-runtime",
-      "from": "node.fleet.canary",
-      "to": "node.service.prototype",
-      "label": "reports API failures",
+      "id": "edge.fleet.monitor-to-runtime",
+      "from": "node.fleet.external-monitor",
+      "to": "node.runtime.cloudflare",
+      "label": "observes public health",
       "kind": "observes",
-      "summary": "The production API state boundary emits fire-and-forget Canary error reports.",
+      "summary": "GET /healthz, /readyz, and /statusz are observational and do not wake work. The memory_engine.runtime_health.v1 status witness requires an active actor and integer backupAgeMs from 0 through 90000000 (25 hours). Resend provider acceptance is not inbox delivery; delayed, dropped, or disabled cron and lost cache prevent an SLA or durable alert history.",
       "viewTags": ["fleet-integration"],
       "refs": [
-        {"kind": "source", "path": "crates/memory-engine-api-state/src/lib.rs", "label": "Canary reporter integration"}
+        {"kind": "source", "path": "crates/memory-engine-cloudflare/src/lib.rs", "label": "observational runtime health witness"},
+        {"kind": "source", "path": "scripts/scry-monitor", "label": "external health and notification reconciliation"}
+      ]
+    },
+    {
+      "id": "edge.fleet.worker-logs-to-runtime",
+      "from": "node.fleet.worker-logs",
+      "to": "node.runtime.cloudflare",
+      "label": "logs content-free runtime observations",
+      "kind": "observes",
+      "summary": "The Cloudflare runtime emits bounded browser, performance, and health records locally, with no external reporter or telemetry-ingest credentials.",
+      "viewTags": ["fleet-integration"],
+      "refs": [
+        {"kind": "source", "path": "crates/memory-engine-cloudflare/src/telemetry.rs", "label": "native runtime logger"}
       ]
     }
   ]

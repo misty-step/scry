@@ -1,0 +1,23 @@
+{
+  "id": "qualified-observational-study",
+  "title": "Reading an observational pilot study",
+  "category": "adversarial-unsupported-claims",
+  "body": "An observational pilot study followed 24 adults. More frequent retrieval practice was associated with better delayed recall in this sample. The researchers did not randomly assign practice frequency, so the association cannot establish causation. The results do not justify claiming the same benefit for all populations. A larger randomized study would be needed to test a causal explanation.",
+  "expect": {
+    "min_drafts": 2,
+    "max_drafts": 4,
+    "key_terms": ["association", "causation", "random"],
+    "source_supported": true,
+    "forbidden_claims": ["proves causation", "240 adults", "guarantees improvement", "all learners benefit"]
+  },
+  "reference": {
+    "concept": "Association versus causal evidence",
+    "question": "What cannot be established by this observational association?",
+    "answer": "causation",
+    "explanation_terms": ["association", "causation", "random"],
+    "example_terms": ["practice", "recall"],
+    "distinction_terms": ["observational", "causal"],
+    "source_supported": true,
+    "forbidden_claims": ["proves causation", "240 adults", "guarantees improvement", "all learners benefit"]
+  }
+}

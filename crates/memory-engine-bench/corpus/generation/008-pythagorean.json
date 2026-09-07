@@ -7,5 +7,15 @@
     "min_drafts": 2,
     "max_drafts": 8,
     "key_terms": ["hypotenuse", "right angle", "3, 4, 5"]
+  },
+  "reference": {
+    "concept": "Right triangle side relationships",
+    "question": "Which side of a right triangle is opposite the right angle?",
+    "answer": "hypotenuse",
+    "explanation_terms": ["hypotenuse", "right angle", "square"],
+    "example_terms": ["3", "4", "5"],
+    "distinction_terms": ["right", "triangle"],
+    "source_supported": true,
+    "forbidden_claims": ["every triangle satisfies", "hypotenuse is the shortest"]
   }
 }

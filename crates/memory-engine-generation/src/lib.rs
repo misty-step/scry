@@ -7,9 +7,9 @@
 //! crate never talks to a network.
 //!
 //! Every provider's output passes the same trust gate before persistence:
-//! drafts must carry evidence quoting the source (verified by normalized
-//! substring match), duplicates are filtered, and exercises require worked
-//! solutions.
+//! claimed source quotes and answer support are checked, model-expanded facts
+//! are labeled honestly, duplicates and defective retrieval shapes are rejected,
+//! and exercises require worked solutions. Acceptance is not proof of truth.
 
 mod provider;
 
@@ -36,15 +36,9 @@ use memory_engine_persistence::{
     SourcePermission, SourcePermissionReceipt,
 };
 
-/// The text a world-knowledge card grounds in: the captured input itself. A
-/// card with no verbatim quote was expanded from the model's knowledge about
-/// the input (a topic), so the input is its reference seed.
-///
-/// `require_source` (run before any persistence) guarantees a non-blank body, so
-/// the body branch is always taken and the seed is never empty — the store's
-/// non-blank reference-span check therefore cannot trip on a knowledge card. The
-/// title fallback only matters if a future change lets an empty-body source
-/// reach persistence.
+/// The captured input retained for lineage of model-expanded knowledge. This
+/// seed is not evidence for the generated answer; labels and critique notes
+/// explicitly distinguish it from a verified source quotation.
 fn knowledge_seed(source: &SourceDocument) -> &str {
     source
         .body
@@ -400,7 +394,7 @@ where
     let mut seen_signatures =
         existing_accepted_candidate_signatures(&snapshot.generated_prompt_drafts);
     for source in &sources {
-        let Some(source_usage) = process_generation_source(
+        let source_usage = process_generation_source(
             store,
             provider,
             &request,
@@ -411,10 +405,7 @@ where
             &mut accepted_draft_ids,
             &mut rejected_draft_ids,
             &mut producing_models,
-        )?
-        else {
-            continue;
-        };
+        )?;
         usage = merge_usage(usage, source_usage.drafts);
         usage = merge_usage(usage, source_usage.repair);
         save_generation_run_progress(
@@ -455,20 +446,15 @@ where
     })
 }
 
-/// The two provider-usage additions [`process_generation_source`] accumulated
-/// for one source, mirrored in the same order the original inline loop body
-/// merged them: draft generation first, then repair.
+/// Draft-generation and repair usage for one source, including paid failures.
 struct SourceGenerationUsage {
     drafts: Option<ProviderUsage>,
     repair: Option<ProviderUsage>,
 }
 
-/// Runs generation and repair for one source, mutating the run's shared
-/// accumulators in place. Returns `None` when draft generation itself failed
-/// for this source (the caller records the failure and skips this source's
-/// progress checkpoint, matching the prior inline-loop `continue`), or
-/// `Some(usage)` mirroring the two provider-usage additions the original
-/// inline loop body accumulated.
+/// Runs generation and one bounded repair for a source. A failed provider
+/// response still returns its reported usage so rejected/truncated paid output
+/// remains in the run receipt.
 #[allow(clippy::too_many_arguments)]
 fn process_generation_source<S>(
     store: &mut S,
@@ -481,7 +467,7 @@ fn process_generation_source<S>(
     accepted_draft_ids: &mut Vec<String>,
     rejected_draft_ids: &mut Vec<String>,
     producing_models: &mut Vec<GeneratedPromptModel>,
-) -> Result<Option<SourceGenerationUsage>, BetaGenerationError<S::Error>>
+) -> Result<SourceGenerationUsage, BetaGenerationError<S::Error>>
 where
     S: BetaGenerationStore,
 {
@@ -489,7 +475,10 @@ where
         Ok(drafts) => drafts,
         Err(failure) => {
             validation_failures.push(format!("{}: {failure}", source.id));
-            return Ok(None);
+            return Ok(SourceGenerationUsage {
+                drafts: failure.usage().cloned(),
+                repair: None,
+            });
         }
     };
     let drafts = enforce_content_policy(source, drafts);
@@ -501,10 +490,8 @@ where
         producing_models.push(source_model.clone());
     }
 
-    // Grounding is decided per card, by the generator, not by a heuristic
-    // over the source: a card that cites a verbatim quote is source-grounded
-    // (the quote must verify); a card with no quote is a world-knowledge
-    // expansion grounded in the captured topic itself.
+    // A claimed quote must verify; a quote-free card is model-expanded
+    // knowledge, not a factual claim supported by the captured topic seed.
     let mut source_rejections = Vec::new();
     let mut max_candidate_index = 0;
     let learning_intent = drafts.learning_intent;
@@ -541,10 +528,10 @@ where
         &mut max_candidate_index,
     )?;
 
-    Ok(Some(SourceGenerationUsage {
+    Ok(SourceGenerationUsage {
         drafts: drafts.usage,
         repair: repair_usage,
-    }))
+    })
 }
 
 fn load_sources<E>(
@@ -586,7 +573,7 @@ where
         Ok(None) => return Ok(None),
         Err(failure) => {
             validation_failures.push(format!("{} repair: {failure}", source.id));
-            return Ok(None);
+            return Ok(failure.usage().cloned());
         }
     };
     let repair = enforce_content_policy(source, repair);
@@ -667,11 +654,8 @@ where
 {
     for candidate in candidates {
         *context.max_candidate_index = (*context.max_candidate_index).max(candidate.index);
-        // The generator decides grounding per card. A cited quote means the
-        // card claims to come from the provided text, so the quote must verify
-        // against it (a fabricated citation is rejected downstream). No quote
-        // means a world-knowledge expansion of the input, which grounds in the
-        // captured input itself as its reference seed.
+        // Preserve source lineage in both lanes without laundering a captured
+        // topic seed into evidence for a generated factual claim.
         let cited = candidate
             .evidence
             .as_deref()
@@ -725,6 +709,44 @@ where
     }
 
     Ok(())
+}
+
+/// Preview the shared trust gate before an asynchronous, single repair pass.
+/// `drafts` must already have passed [`enforce_content_policy`]. No draft, run,
+/// or learner decision is persisted; commit must run the gate again against
+/// the current store after the asynchronous boundary.
+#[must_use]
+pub fn generation_repair_rejections(
+    snapshot: &BetaStoreSnapshot,
+    source: &SourceDocument,
+    drafts: &ProviderDrafts,
+) -> Vec<DraftRejection> {
+    let mut seen = existing_accepted_candidate_signatures(&snapshot.generated_prompt_drafts);
+    let mut rejections = Vec::new();
+    for candidate in &drafts.candidates {
+        let signature = CandidateSignature::from_candidate(candidate);
+        let reasons = if seen.iter().any(|prior| prior.duplicates(&signature)) {
+            vec!["Duplicate-ish generated draft".to_owned()]
+        } else {
+            let quote = candidate
+                .evidence
+                .as_deref()
+                .map(str::trim)
+                .filter(|quote| !normalize_for_match(quote).is_empty());
+            source_candidate_reasons(
+                candidate,
+                false,
+                quote.is_some(),
+                quote.is_none_or(|quote| source_contains_quote(source, quote)),
+            )
+        };
+        if reasons.is_empty() {
+            seen.push(signature);
+        } else if rejections.len() < MAX_REPAIR_REJECTIONS {
+            rejections.push(candidate_rejection(candidate, reasons));
+        }
+    }
+    rejections
 }
 
 fn candidate_rejection(candidate: &DraftCandidate, reasons: Vec<String>) -> DraftRejection {
@@ -1123,6 +1145,21 @@ fn bridge_material_request(
     )
 }
 
+/// Prepare actual source context and the cached concept note for an
+/// asynchronous manual Bridge call, without invoking a provider or writing.
+///
+/// # Errors
+/// Rejects unknown parents and missing, archived, or local-only provenance.
+pub fn prepare_bridge_material<E>(
+    snapshot: &BetaStoreSnapshot,
+    parent_review_unit_id: &ReviewUnitId,
+) -> Result<BridgeMaterialRequest, BetaGenerationError<E>> {
+    let context = bridge_generation_context::<E>(snapshot, parent_review_unit_id)?;
+    let (_, _, authorization) =
+        source_authorization_for_parent::<E>(snapshot, &context.parent, true)?;
+    Ok(bridge_material_request(snapshot, &context, authorization))
+}
+
 fn bridge_reference_note(
     context: &BridgeGenerationContext,
     material: &BridgeMaterial,
@@ -1223,7 +1260,7 @@ where
         drafts.push(draft);
     }
 
-    enforce_bridge_pack_ladder(&mut drafts);
+    enforce_bridge_pack_ladder(&mut drafts, base.parent_stage_order);
     for draft in drafts {
         record_bridge_draft(&mut result, &draft);
         store
@@ -1234,7 +1271,7 @@ where
     Ok(result)
 }
 
-fn enforce_bridge_pack_ladder(drafts: &mut [GeneratedPromptDraft]) {
+fn enforce_bridge_pack_ladder(drafts: &mut [GeneratedPromptDraft], parent_stage_order: u32) {
     let accepted_stage_orders = drafts
         .iter()
         .filter(|draft| draft.validation.status == GeneratedPromptValidationStatus::Accepted)
@@ -1244,7 +1281,7 @@ fn enforce_bridge_pack_ladder(drafts: &mut [GeneratedPromptDraft]) {
         .iter()
         .filter(|draft| draft.validation.status == GeneratedPromptValidationStatus::Accepted)
         .count();
-    if accepted_count <= 1 || accepted_stage_orders.len() >= 2 {
+    if accepted_count <= 1 || accepted_stage_orders.len() >= 2 || parent_stage_order <= 1 {
         return;
     }
 
@@ -1314,13 +1351,12 @@ fn persist_candidate<S>(
 where
     S: BetaGenerationStore,
 {
-    // A source-grounded card cites the verbatim quote that proves its answer; a
-    // world-knowledge card cites the captured input it was expanded from. Either
-    // way the span is a real pointer into the source the store can resolve.
+    // A source-supported card cites a checked quote. A model-expanded card
+    // retains its seed for lineage, explicitly labeled as non-evidence.
     let label = if params.grounded {
         format!("{} source evidence", candidate.concept)
     } else {
-        format!("{} input", candidate.concept)
+        format!("{} model-expanded input (not evidence)", candidate.concept)
     };
     let reference_span = store
         .save_reference_span(ReferenceSpan {
@@ -1517,21 +1553,17 @@ fn merge_usage(
     let Some(addition) = addition else {
         return total;
     };
-    let total = total.unwrap_or(GenerationRunUsage {
-        input_tokens: 0,
-        output_tokens: 0,
-        cost_usd_micros: None,
-        latency_ms: 0,
-    });
-
+    let Some(total) = total else {
+        return Some(provider_usage_to_run_usage(&addition));
+    };
     Some(GenerationRunUsage {
-        input_tokens: total.input_tokens + addition.input_tokens,
-        output_tokens: total.output_tokens + addition.output_tokens,
-        cost_usd_micros: match (total.cost_usd_micros, addition.cost_usd_micros) {
-            (None, None) => None,
-            (left, right) => Some(left.unwrap_or(0) + right.unwrap_or(0)),
-        },
-        latency_ms: total.latency_ms + addition.latency_ms,
+        input_tokens: total.input_tokens.saturating_add(addition.input_tokens),
+        output_tokens: total.output_tokens.saturating_add(addition.output_tokens),
+        cost_usd_micros: total
+            .cost_usd_micros
+            .zip(addition.cost_usd_micros)
+            .map(|(left, right)| left.saturating_add(right)),
+        latency_ms: total.latency_ms.saturating_add(addition.latency_ms),
     })
 }
 
@@ -1579,7 +1611,80 @@ pub fn evidence_quote_matches(source_text: &str, quote: &str) -> bool {
         return quote == source;
     }
 
-    source.contains(&quote)
+    token_sequence_present(&source, &quote)
+}
+
+fn token_sequence_present(text: &str, needle: &str) -> bool {
+    !needle.is_empty()
+        && text.match_indices(needle).any(|(start, _)| {
+            (start == 0 || text.as_bytes()[start - 1] == b' ')
+                && (start + needle.len() == text.len()
+                    || text.as_bytes()[start + needle.len()] == b' ')
+        })
+}
+
+/// A conservative lexical support floor, not a semantic entailment oracle.
+/// Blocks unrelated quotes, unsupported quantities, and topic seeds cited as
+/// evidence. Legitimate paraphrases can be rejected and repaired with source
+/// wording; human-calibrated evals still judge factual correctness.
+#[must_use]
+pub fn answer_has_evidence_support(evidence: &str, answer: &str) -> bool {
+    let evidence = normalize_for_match(evidence);
+    let answer = normalize_for_match(answer);
+    if answer.is_empty() || evidence.is_empty() {
+        return false;
+    }
+    if token_sequence_present(&evidence, &answer) {
+        return true;
+    }
+    let words: Vec<_> = answer
+        .split_whitespace()
+        .filter(|word| {
+            !matches!(
+                *word,
+                "a" | "an"
+                    | "the"
+                    | "is"
+                    | "are"
+                    | "was"
+                    | "were"
+                    | "be"
+                    | "been"
+                    | "of"
+                    | "to"
+                    | "and"
+                    | "or"
+                    | "in"
+                    | "on"
+                    | "at"
+                    | "for"
+                    | "from"
+                    | "by"
+                    | "with"
+                    | "that"
+                    | "this"
+                    | "it"
+                    | "its"
+                    | "they"
+                    | "their"
+                    | "as"
+            )
+        })
+        .collect();
+    if words.is_empty() {
+        return false;
+    }
+    if words
+        .iter()
+        .any(|word| word.chars().any(char::is_numeric) && !token_sequence_present(&evidence, word))
+    {
+        return false;
+    }
+    let supported = words
+        .iter()
+        .filter(|word| token_sequence_present(&evidence, word))
+        .count();
+    supported.saturating_mul(5) >= words.len().saturating_mul(3)
 }
 
 fn normalize_for_match(text: &str) -> String {
@@ -1634,7 +1739,7 @@ fn build_draft(
         &source.id,
         candidate,
     ));
-    let reasons = validation_reasons(
+    let reasons = source_candidate_reasons(
         candidate,
         context.duplicate,
         context.grounded,
@@ -1647,9 +1752,9 @@ fn build_draft(
     };
     let critique_notes = if status == GeneratedPromptValidationStatus::Accepted {
         if context.grounded {
-            vec![format!("Grounded in {}.", context.reference_span_id)]
+            vec![format!("Source quotation verified in {}; answer support checked lexically, not independently fact-checked.", context.reference_span_id)]
         } else {
-            vec![format!("Expanded from input \"{}\".", source.title)]
+            vec![format!("Model-expanded from input \"{}\"; the captured seed is not evidence for this answer.", source.title)]
         }
     } else {
         reasons
@@ -1735,7 +1840,7 @@ fn bridge_draft(
     };
     let critique_notes = if status == GeneratedPromptValidationStatus::Accepted {
         vec![format!(
-            "Grounded in concept reference note {}.",
+            "Study material derived from concept reference note {}; model explanation is not independent source evidence.",
             context.concept_key
         )]
     } else {
@@ -1817,11 +1922,7 @@ fn bridge_validation_reasons(
     if context.duplicate {
         reasons.push("Duplicate-ish generated draft".to_owned());
     }
-    if candidate.activity_kind == GeneratedLearningActivityKind::Exercise
-        && candidate.worked_solution.is_none()
-    {
-        reasons.push("Exercises require a worked solution".to_owned());
-    }
+    reasons.extend(candidate_quality_reasons(candidate));
 
     reasons
 }
@@ -1895,16 +1996,72 @@ fn validation_reasons(
     if duplicate {
         reasons.push("Duplicate-ish generated draft".to_owned());
     }
+    reasons.extend(candidate_quality_reasons(candidate));
+
+    reasons
+}
+
+fn source_candidate_reasons(
+    candidate: &DraftCandidate,
+    duplicate: bool,
+    grounded: bool,
+    quote_verified: bool,
+) -> Vec<String> {
+    let mut reasons = validation_reasons(candidate, duplicate, grounded, quote_verified);
+    if grounded
+        && quote_verified
+        && candidate
+            .evidence
+            .as_deref()
+            .is_some_and(|quote| !answer_has_evidence_support(quote, &candidate.answer))
+    {
+        reasons.push("Cited quote does not support the answer".to_owned());
+    }
+    reasons
+}
+
+/// Provider-independent retrieval quality gate, shared with Bridge and evals.
+/// Mechanical defects are rejected; plausibility and deeper factual entailment
+/// remain explicit human-calibrated quality judgments.
+#[must_use]
+pub fn candidate_quality_reasons(candidate: &DraftCandidate) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if candidate.concept.trim().is_empty()
+        || candidate.concept.split_whitespace().count() > 12
+        || candidate.concept.len() > 160
+        || candidate.question.trim().is_empty()
+        || candidate.question.len() > 1_024
+        || candidate.answer.trim().is_empty()
+        || candidate.answer.len() > 2_048
+        || candidate
+            .worked_solution
+            .as_ref()
+            .is_some_and(|text| text.len() > 8_000)
+        || candidate
+            .evidence
+            .as_ref()
+            .is_some_and(|text| text.len() > 8_000)
+    {
+        reasons.push("Draft fields are empty or exceed the bounded content size".to_owned());
+    }
     if references_source_artifact(&candidate.question) {
         reasons.push("Question references the source instead of standing alone".to_owned());
     }
+    if token_sequence_present(
+        &normalize_for_match(&candidate.question),
+        &normalize_for_match(&candidate.answer),
+    ) {
+        reasons.push("Question gives away the answer".to_owned());
+    }
     if candidate.activity_kind == GeneratedLearningActivityKind::Exercise
-        && candidate.worked_solution.is_none()
+        && candidate
+            .worked_solution
+            .as_deref()
+            .is_none_or(|text| text.trim().is_empty())
     {
         reasons.push("Exercises require a worked solution".to_owned());
     }
     reasons.extend(mcq_quality_reasons(candidate));
-
     reasons
 }
 
@@ -1960,20 +2117,77 @@ fn mcq_quality_reasons(candidate: &DraftCandidate) -> Vec<String> {
         reasons.push("MCQ question tests multiple atoms".to_owned());
     }
 
+    if !(2..=3).contains(&candidate.distractors.len()) {
+        reasons.push("MCQ requires 2-3 plausible distractors".to_owned());
+    }
+    let mut seen = BTreeSet::new();
     let answer = normalize_for_match(&candidate.answer);
     for distractor in &candidate.distractors {
         let normalized = normalize_for_match(distractor);
         if normalized.is_empty() {
+            reasons.push("MCQ contains an empty distractor".to_owned());
             continue;
         }
         if normalized == answer {
             reasons.push("MCQ distractor duplicates the correct answer".to_owned());
+        }
+        if !seen.insert(normalized.clone()) {
+            reasons.push("MCQ repeats a distractor".to_owned());
+        }
+        if matches!(
+            normalized.as_str(),
+            "all of the above" | "none of the above"
+        ) {
+            reasons.push("MCQ uses a catch-all distractor".to_owned());
+        }
+    }
+    let options: Vec<_> = std::iter::once(candidate.answer.as_str())
+        .chain(candidate.distractors.iter().map(String::as_str))
+        .collect();
+    for (index, option) in options.iter().enumerate() {
+        if let Some((low, high)) = numeric_interval(option) {
+            if options[..index]
+                .iter()
+                .filter_map(|other| numeric_interval(other))
+                .any(|(other_low, other_high)| low <= other_high && other_low <= high)
+            {
+                reasons.push("MCQ options contain overlapping numeric ranges".to_owned());
+            }
+        }
+    }
+    let question = normalize_for_match(&candidate.question);
+    if let Some(letter) = question
+        .split_once("letter ")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .filter(|token| token.len() == 1 && token.as_bytes()[0].is_ascii_alphabetic())
+    {
+        if options
+            .iter()
+            .any(|option| !option.trim().to_ascii_lowercase().starts_with(letter))
+        {
+            reasons.push("MCQ distractors expose the answer through its keyed initial".to_owned());
         }
     }
 
     reasons.sort();
     reasons.dedup();
     reasons
+}
+
+fn numeric_interval(option: &str) -> Option<(f64, f64)> {
+    let (left, right) = option
+        .split_once(" to ")
+        .or_else(|| option.split_once('–'))
+        .or_else(|| option.split_once('—'))
+        .or_else(|| {
+            option.trim_start_matches('-').find('-').map(|index| {
+                let index = index + usize::from(option.starts_with('-'));
+                (&option[..index], &option[index + 1..])
+            })
+        })?;
+    let low = left.trim().parse::<f64>().ok()?;
+    let high = right.split_whitespace().next()?.parse::<f64>().ok()?;
+    (low.is_finite() && high.is_finite() && low <= high).then_some((low, high))
 }
 
 fn compound_question(question: &str) -> bool {
@@ -2373,5 +2587,91 @@ mod tests {
             reasons.is_empty(),
             "a self-contained card must not be rejected: {reasons:?}"
         );
+    }
+
+    #[test]
+    fn a_quote_cannot_match_only_a_prefix_of_a_source_word() {
+        assert!(!evidence_quote_matches(
+            "In the chloroplasts, light is absorbed.",
+            "in the chloroplast"
+        ));
+        assert!(evidence_quote_matches(
+            "In the chloroplast, light is absorbed.",
+            "in the chloroplast"
+        ));
+    }
+
+    #[test]
+    fn unrelated_quotes_and_unsupported_numbers_fail_answer_support() {
+        assert!(!super::answer_has_evidence_support(
+            "NATO phonetic alphabet",
+            "Alfa"
+        ));
+        assert!(!super::answer_has_evidence_support(
+            "The pilot followed 24 adults.",
+            "240 adults"
+        ));
+        assert!(super::answer_has_evidence_support(
+            "The pilot followed 24 adults.",
+            "24 adults"
+        ));
+        assert!(super::answer_has_evidence_support(
+            "The no-cache directive allows storage but requires revalidation.",
+            "It requires revalidation"
+        ));
+    }
+
+    #[test]
+    fn overlapping_numeric_mcq_options_are_rejected_but_disjoint_ranges_are_usable() {
+        let invalid = quiz(
+            "Which temperature interval is specified for the process?",
+            "10 to 20",
+            &["15 to 25", "30 to 40"],
+        );
+        let valid = quiz(
+            "Which temperature interval is specified for the process?",
+            "10 to 20",
+            &["21 to 30", "31 to 40"],
+        );
+        assert!(!super::candidate_quality_reasons(&invalid).is_empty());
+        assert!(super::candidate_quality_reasons(&valid).is_empty());
+    }
+
+    #[test]
+    fn a_distractor_cannot_repeat_or_reveal_the_keyed_initial_answer() {
+        let repeated = quiz(
+            "Which cell structure carries out photosynthesis?",
+            "chloroplast",
+            &["mitochondrion", "Mitochondrion!"],
+        );
+        let clue = quiz(
+            "In the NATO alphabet, which code word represents the letter A?",
+            "Alfa",
+            &["Bravo", "Charlie"],
+        );
+        let sound = quiz(
+            "In the NATO alphabet, which code word represents the letter A?",
+            "Alfa",
+            &["Atlas", "Aster"],
+        );
+        assert!(!super::candidate_quality_reasons(&repeated).is_empty());
+        assert!(!super::candidate_quality_reasons(&clue).is_empty());
+        assert!(super::candidate_quality_reasons(&sound).is_empty());
+    }
+
+    #[test]
+    fn recall_questions_must_not_embed_the_correct_answer() {
+        let leaked = quiz(
+            "Name the organelle chloroplast that carries out photosynthesis.",
+            "chloroplast",
+            &[],
+        );
+        let clean = quiz(
+            "Which organelle carries out photosynthesis in plants?",
+            "chloroplast",
+            &[],
+        );
+        assert!(!super::candidate_quality_reasons(&leaked).is_empty());
+        assert!(super::candidate_quality_reasons(&clean).is_empty());
     }
 }

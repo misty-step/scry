@@ -27,18 +27,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// Branded production origin. `scry.study` is a custom domain in front of
-/// the same `DigitalOcean` App Platform deployment `docs/runbook.md` documents
-/// and health-checks directly.
-pub const DEFAULT_BASE_URL: &str = "https://scry.study";
-
-/// The `DigitalOcean` App Platform origin `scry.study` fronts. Still live and
-/// still the identity `docs/runbook.md`'s deploy smoke checks against, but no
-/// longer the default a client advertises. Pass it explicitly
-/// (`--base-url` / `MEMORY_ENGINE_MCP_BASE_URL`) only as an operator-origin
-/// fallback, e.g. while DNS for the branded domain is degraded.
-pub const OPERATOR_ORIGIN_FALLBACK_BASE_URL: &str =
-    "https://memory-engine-api-i2xcr.ondigitalocean.app";
+/// Scry's Cloudflare production origin. Stored credentials retain their explicit
+/// origin; migration never silently sends an existing token to a different host.
+pub const DEFAULT_BASE_URL: &str = "https://scry.misty-step.workers.dev";
 
 /// The shape persisted to `default_credentials_path()`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

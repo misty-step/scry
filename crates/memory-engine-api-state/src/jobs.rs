@@ -25,7 +25,7 @@ use memory_engine_persistence_postgres::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, Notify, Semaphore};
 
-use crate::AccountRegistry;
+use crate::native::{AccountRegistry, GenerationJob, JobStatus};
 
 /// Most generation jobs run at once; the rest wait. Bounds concurrent model
 /// calls so a burst of captures can't open dozens of sockets at once.
@@ -55,38 +55,6 @@ fn default_retryable() -> bool {
     true
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum JobStatus {
-    Queued,
-    Running,
-    Retry,
-    Succeeded,
-    Failed,
-}
-
-impl JobStatus {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => "queued",
-            Self::Running => "running",
-            Self::Retry => "retry",
-            Self::Succeeded => "succeeded",
-            Self::Failed => "failed",
-        }
-    }
-
-    /// Succeeded/failed jobs no longer change on their own, so they are the
-    /// prunable history (see `MAX_TERMINAL_JOBS_PER_ACCOUNT`). This also governs
-    /// crash-restore: a *non*-terminal job is reset to a retryable failure on
-    /// restart, since no worker owns it after the restart (see `load_jobs`).
-    #[must_use]
-    pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Failed)
-    }
-}
-
 /// A job-status update fanned out over the SSE broadcast channel. Carries the
 /// owning `account_id` so the SSE handler can deliver a learner only their own
 /// jobs; `payload` is the `GenerationJob` serialized for the browser.
@@ -94,35 +62,6 @@ impl JobStatus {
 pub struct JobBroadcast {
     pub account_id: String,
     pub payload: String,
-}
-
-/// One generation job. The account/source ids drive the worker; the rest is
-/// learner-facing status surfaced in the activity log and over SSE.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerationJob {
-    pub id: String,
-    /// Authorization + store routing for the worker; never serialized to the UI.
-    #[serde(skip)]
-    pub account_id: String,
-    #[serde(skip)]
-    pub source_id: String,
-    pub title: String,
-    pub status: JobStatus,
-    /// Number of scheduled review cards created by this job. Trust-gated
-    /// generation leaves this at zero until a learner keeps or edits a draft.
-    pub card_count: usize,
-    pub attempts: u32,
-    /// False once the bounded attempt budget is exhausted. This is sent over
-    /// SSE so the browser never advertises a retry that the API must reject.
-    pub retryable: bool,
-    pub error: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-    #[serde(skip)]
-    pub retry_at: Option<i64>,
-    #[serde(skip)]
-    pub lease_expires_at: Option<i64>,
 }
 
 /// The on-disk shape of a [`GenerationJob`]. Distinct from the UI serialization
@@ -561,11 +500,15 @@ impl JobQueue {
         timings: &mut crate::SubmitReviewTimings,
     ) -> Vec<GenerationJob> {
         if let Some(database_url) = self.inner.postgres_url.as_deref() {
-            return crate::with_postgres_store_timed(database_url, Some(timings), |store| {
-                store
-                    .list_generation_jobs(account_id, 50)
-                    .map_err(crate::postgres_failure)
-            })
+            return crate::native::with_postgres_store_timed(
+                database_url,
+                Some(timings),
+                |store| {
+                    store
+                        .list_generation_jobs(account_id, 50)
+                        .map_err(crate::native::postgres_failure)
+                },
+            )
             .map(|jobs| jobs.into_iter().map(GenerationJob::from).collect())
             .unwrap_or_default();
         }
@@ -1084,7 +1027,7 @@ impl JobQueue {
         let Ok(bytes) = serialized else {
             return;
         };
-        if let Err(error) = crate::write_atomic(path, &bytes) {
+        if let Err(error) = crate::native::write_atomic(path, &bytes) {
             eprintln!(
                 "memory-engine: failed to persist job history to {}: {error}",
                 path.display()
@@ -1122,11 +1065,6 @@ impl JobQueue {
     }
 }
 
-/// Delegates to [`PostgresStudyStore::migrate_once`], which owns the one
-/// process-wide "already migrated" cache shared with the HTTP request
-/// path (`lib.rs`'s `connect_postgres_migrated`) — not a private cache of
-/// its own, so this worker and the request path can never each
-/// independently believe they are the first to see `database_url`.
 fn claim_worker_start(started: &AtomicBool) -> bool {
     !started.swap(true, Ordering::AcqRel)
 }
@@ -1238,7 +1176,7 @@ fn load_jobs(path: &Path, now: i64) -> Vec<GenerationJob> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AccountRegistry;
+    use crate::native::AccountRegistry;
 
     // A ghost source fails fast in the worker (no model call), so every job
     // becomes terminal (failed) without touching the network.
@@ -1482,7 +1420,7 @@ mod tests {
     fn rerunning_a_generation_job_is_idempotent_after_an_interrupted_schedule() {
         let store = TempStore::new("idempotent-generation");
         let registry = AccountRegistry::with_store_root(store.0.clone()).with_auth_config(
-            crate::AuthConfig::allow_emails(["idempotent@example.com".to_owned()])
+            crate::native::AuthConfig::allow_emails(["idempotent@example.com".to_owned()])
                 .with_anonymous_account_creation(true),
         );
         let account = registry
@@ -1496,7 +1434,7 @@ mod tests {
                     title: "Idempotent source".to_owned(),
                     body: "Concept: Stable generation\nQuestion: What stays stable?\nAnswer: The job identity."
                         .to_owned(),
-                    permission: crate::SourcePermission::ModelEligible,
+                    permission: crate::native::SourcePermission::ModelEligible,
                 },
             )
             .expect("source");
@@ -1573,7 +1511,7 @@ mod tests {
             .expect("create schema");
         let result = (|| -> Result<(), String> {
             let registry = AccountRegistry::with_postgres_url(scoped_url.clone())
-                .with_auth_config(crate::AuthConfig::for_local_tests());
+                .with_auth_config(crate::native::AuthConfig::for_local_tests());
             let account = registry
                 .create_account("fence@example.com")
                 .map_err(|error| error.message.clone())?;
@@ -1585,7 +1523,7 @@ mod tests {
                         title: "Fence source".to_owned(),
                         body: "Concept: Fence\nQuestion: What keeps stale work out?\nAnswer: The durable attempt ledger."
                             .to_owned(),
-                        permission: crate::SourcePermission::ModelEligible,
+                        permission: crate::native::SourcePermission::ModelEligible,
                     },
                 )
                 .map_err(|error| error.message.clone())?;
@@ -1732,7 +1670,7 @@ mod tests {
             .expect("create schema");
         let result = (|| -> Result<(), String> {
             let registry = AccountRegistry::with_postgres_url(scoped_url.clone())
-                .with_auth_config(crate::AuthConfig::for_local_tests())
+                .with_auth_config(crate::native::AuthConfig::for_local_tests())
                 .with_clock(test_clock_ms);
             let account = registry
                 .create_account("expiry@example.com")
@@ -1745,7 +1683,7 @@ mod tests {
                         title: "Expiry source".to_owned(),
                         body: "Concept: Expiry\nQuestion: What keeps stale work out?\nAnswer: The durable attempt ledger."
                             .to_owned(),
-                        permission: crate::SourcePermission::ModelEligible,
+                        permission: crate::native::SourcePermission::ModelEligible,
                     },
                 )
                 .map_err(|error| error.message.clone())?;
@@ -1902,7 +1840,7 @@ mod tests {
         let schema = format!(
             "memory_engine_test_provider_cost_{}_{}",
             std::process::id(),
-            crate::wall_clock_ms()
+            crate::native::wall_clock_ms()
         );
         let scoped_url = format!(
             "{}{}options=-csearch_path%3D{}",
@@ -1926,7 +1864,7 @@ mod tests {
                 max_drafts: 8,
             });
             let registry = AccountRegistry::with_postgres_url(scoped_url.clone())
-                .with_auth_config(crate::AuthConfig::for_local_tests())
+                .with_auth_config(crate::native::AuthConfig::for_local_tests())
                 .with_generation_provider_config(provider_config);
             {
                 let mut ledger =
@@ -1945,7 +1883,7 @@ mod tests {
                         title: "Provider cost source".to_owned(),
                         body: "Mitochondria are organelles found in most eukaryotic cells. They generate most of the cell's supply of adenosine triphosphate, used as a source of chemical energy."
                             .to_owned(),
-                        permission: crate::SourcePermission::ModelEligible,
+                        permission: crate::native::SourcePermission::ModelEligible,
                     },
                 )
                 .map_err(|error| error.message.clone())?;

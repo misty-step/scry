@@ -5,6 +5,10 @@ node_modules/
 dist/
 target/
 *.tsbuildinfo
+.wrangler/
+crates/memory-engine-cloudflare/build/
+__pycache__/
+*.pyc
 
 # Test coverage
 coverage/
@@ -14,6 +18,8 @@ coverage/
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
 
 # OS / editor
 .DS_Store

@@ -14,4 +14,12 @@ assert (
     "/usr/local/lib/scry/retention-preflight.py"
 ) in INSTALLER
 assert 'PREFLIGHT="$SCRIPT_DIR/../lib/scry/retention-preflight.py"' in UPLOADER
+for rel in (
+    "bin/scry-restore",
+    "bin/scry-backup-freshness",
+    "bin/scry-backup-alert",
+    "scripts/lib/scry_ops.py",
+):
+    assert (ROOT / rel).is_file(), rel
+    assert rel in INSTALLER, rel
 print("OK (installed preflight path matches uploader path)")

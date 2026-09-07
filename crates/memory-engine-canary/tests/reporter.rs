@@ -3,11 +3,12 @@ use std::{
     net::TcpListener,
     sync::mpsc,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use memory_engine_canary::{
-    CanaryConfig, CanaryReporter, CheckInEvent, CheckInStatus, ErrorEvent, Severity,
+    CanaryConfig, CanaryReporter, CheckInEvent, CheckInStatus, DeliveryFailure, DeliveryOutcome,
+    ErrorEvent, Severity,
 };
 
 #[test]
@@ -25,7 +26,9 @@ fn posts_the_canary_error_contract() {
         context: Some(serde_json::json!({ "route": "/app/generate" })),
         fingerprint: vec!["api-internal".to_owned()],
     });
-    reporter.drain(Duration::from_secs(2));
+    let delivery = reporter.shutdown(Duration::from_secs(2)).expect("drain");
+    assert_eq!(delivery.outcome(), DeliveryOutcome::Accepted);
+    assert_eq!(delivery.requests_accepted(), 1);
 
     let request = request
         .recv_timeout(Duration::from_secs(2))
@@ -44,12 +47,19 @@ fn posts_the_canary_error_contract() {
 }
 
 #[test]
-fn reporting_failures_never_reach_the_caller() {
-    // Nothing listening on this endpoint: report must not panic or block long.
-    let reporter = CanaryReporter::new(test_config("http://127.0.0.1:9".to_owned()));
-
+fn reporting_is_nonblocking_even_when_delivery_fails() {
+    // TCP port zero cannot be a listening service; no shared fixed port is used.
+    let reporter = CanaryReporter::new(test_config("http://127.0.0.1:0".to_owned()));
+    let started = Instant::now();
     reporter.report(&simple_event("unreachable"));
-    reporter.drain(Duration::from_secs(3));
+    assert!(started.elapsed() < Duration::from_millis(500));
+
+    let delivery = reporter.shutdown(Duration::from_secs(5)).expect("drain");
+    assert_eq!(delivery.outcome(), DeliveryOutcome::Dropped);
+    assert_eq!(delivery.requests_accepted(), 0);
+    assert_eq!(delivery.requests_dropped(), 1);
+    assert_eq!(delivery.retries(), 1);
+    assert_eq!(delivery.last_failure(), Some(DeliveryFailure::Transport));
 }
 
 #[test]
@@ -64,7 +74,9 @@ fn posts_the_canary_check_in_contract() {
         ttl_ms: 120_000,
         context: Some(serde_json::json!({ "source": "memory-engine-api" })),
     });
-    reporter.drain(Duration::from_secs(2));
+    let delivery = reporter.shutdown(Duration::from_secs(2)).expect("drain");
+    assert_eq!(delivery.outcome(), DeliveryOutcome::Accepted);
+    assert_eq!(delivery.requests_accepted(), 1);
 
     let request = request
         .recv_timeout(Duration::from_secs(2))

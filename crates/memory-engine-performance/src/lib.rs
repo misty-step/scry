@@ -12,16 +12,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SchemaVersion {
-    V1,
+    V2,
 }
 
-/// The v1 contract identifier.
+/// Stable contract family identifier; the payload carries its schema version.
 pub const SCHEMA_ID: &str = "memory_engine.performance";
 /// Baseline that downstream contract consumers must pin until a new schema version is published.
-pub const BASELINE_VERSION: SchemaVersion = SchemaVersion::V1;
-/// Maximum request/UI duration accepted by v1, in milliseconds.
+pub const BASELINE_VERSION: SchemaVersion = SchemaVersion::V2;
+/// Maximum request/UI duration accepted by v2, in milliseconds.
 pub const REQUEST_UI_MAX_DURATION_MS: u64 = 60_000;
-/// Maximum generation duration accepted by v1, in milliseconds.
+/// Maximum generation duration accepted by v2, in milliseconds.
 pub const GENERATION_MAX_DURATION_MS: u64 = 600_000;
 /// Strict maximum for one aggregate payload. Valid payloads must be smaller.
 pub const MAX_PAYLOAD_BYTES: usize = 2 * 1024;
@@ -146,7 +146,7 @@ pub enum ActionFamily {
 }
 
 impl Action {
-    /// Every v1 action, in deterministic order.
+    /// Every supported action, in deterministic order.
     #[must_use]
     pub const fn all() -> &'static [Self] {
         &[
@@ -316,12 +316,13 @@ impl Namespace {
     }
 }
 
-/// Navigation mode keeps full-page and progressive/browser-disabled behavior
-/// distinguishable without storing a URL or browser payload.
+/// Navigation mode distinguishes an observed in-place update from full-page
+/// navigation without storing a URL or browser payload.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Navigation {
     FullPage,
+    InPlace,
     JavascriptEnhanced,
     JavascriptDisabled,
     Machine,
@@ -332,6 +333,7 @@ impl Navigation {
     pub const fn all() -> &'static [Self] {
         &[
             Self::FullPage,
+            Self::InPlace,
             Self::JavascriptEnhanced,
             Self::JavascriptDisabled,
             Self::Machine,
@@ -451,7 +453,7 @@ impl ExcludedField {
     }
 }
 
-/// The two fixed histogram families in v1.
+/// The two fixed histogram families.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HistogramKind {
@@ -681,7 +683,7 @@ impl CompletionMarker {
         viewport: Viewport,
     ) -> Result<Self, MarkerError> {
         let marker = Self {
-            schema: SchemaVersion::V1,
+            schema: SchemaVersion::V2,
             action,
             phase,
             outcome,
@@ -1053,7 +1055,7 @@ impl Snapshot {
     ///
     /// # Errors
     ///
-    /// Returns [`SnapshotError`] when the marker cannot form a valid v1
+    /// Returns [`SnapshotError`] when the marker cannot form a valid v2
     /// aggregate.
     pub fn new(
         marker: CompletionMarker,
@@ -1062,7 +1064,7 @@ impl Snapshot {
     ) -> Result<Self, SnapshotError> {
         marker.validate().map_err(SnapshotError::Marker)?;
         let snapshot = Self {
-            schema: SchemaVersion::V1,
+            schema: SchemaVersion::V2,
             histogram: Histogram::new(marker.action.histogram_kind()),
             marker,
             count: 0,
@@ -1083,7 +1085,7 @@ impl Snapshot {
     /// # Errors
     ///
     /// Returns [`SnapshotDecodeError`] when JSON is malformed or describes an
-    /// unreachable v1 aggregate.
+    /// unreachable v2 aggregate.
     pub fn decode_json(bytes: &[u8]) -> Result<Self, SnapshotDecodeError> {
         let wire: SnapshotWire =
             serde_json::from_slice(bytes).map_err(SnapshotDecodeError::Json)?;
@@ -1233,10 +1235,10 @@ impl Snapshot {
     ///
     /// # Errors
     ///
-    /// Returns [`SnapshotError`] when the snapshot is not a reachable v1
+    /// Returns [`SnapshotError`] when the snapshot is not a reachable v2
     /// aggregate.
     pub fn validate(&self) -> Result<(), SnapshotError> {
-        if self.schema != SchemaVersion::V1 {
+        if self.schema != SchemaVersion::V2 {
             return Err(SnapshotError::UnsupportedSchema);
         }
         self.marker.validate().map_err(SnapshotError::Marker)?;
@@ -1463,7 +1465,7 @@ pub fn worst_case_series_cardinality() -> usize {
                     for &navigation in Navigation::all() {
                         for &viewport in Viewport::all() {
                             let marker = CompletionMarker {
-                                schema: SchemaVersion::V1,
+                                schema: SchemaVersion::V2,
                                 action,
                                 phase,
                                 outcome,
@@ -1497,7 +1499,7 @@ pub fn worst_case_payload_bytes() -> usize {
                     for &navigation in Navigation::all() {
                         for &viewport in Viewport::all() {
                             let marker = CompletionMarker {
-                                schema: SchemaVersion::V1,
+                                schema: SchemaVersion::V2,
                                 action,
                                 phase,
                                 outcome,
@@ -1506,7 +1508,7 @@ pub fn worst_case_payload_bytes() -> usize {
                                 viewport,
                             };
                             let snapshot = Snapshot {
-                                schema: SchemaVersion::V1,
+                                schema: SchemaVersion::V2,
                                 marker,
                                 histogram: Histogram {
                                     kind: histogram_kind,
@@ -1533,7 +1535,7 @@ pub fn worst_case_payload_bytes() -> usize {
     maximum
 }
 
-/// Compute all fixed v1 budgets without sending telemetry.
+/// Compute all fixed v2 budgets without sending telemetry.
 #[must_use]
 pub fn budget_report() -> BudgetReport {
     let max_payload_bytes = worst_case_payload_bytes();
@@ -1807,7 +1809,8 @@ mod tests {
     #[test]
     fn closed_values_reject_unknown_actions_versions_and_labels() {
         assert!(serde_json::from_str::<Action>(r#"{"review":"future"}"#).is_err());
-        assert!(serde_json::from_str::<SchemaVersion>(r#""v2""#).is_err());
+        assert!(serde_json::from_str::<SchemaVersion>(r#""v1""#).is_err());
+        assert!(serde_json::from_str::<SchemaVersion>(r#""v3""#).is_err());
         let marker = browser_marker(
             Action::Review(ReviewAction::Submit),
             CompletionPhase::ImmediateAck,
@@ -1817,6 +1820,32 @@ mod tests {
             .expect("object")
             .insert("route".to_owned(), serde_json::json!("/secret/path"));
         assert!(serde_json::from_value::<CompletionMarker>(json).is_err());
+    }
+
+    #[test]
+    fn in_place_and_full_page_completions_cannot_share_an_aggregate() {
+        let marker = |navigation| {
+            CompletionMarker::browser(
+                Action::Review(ReviewAction::Submit),
+                CompletionPhase::VisibleAfterTwoAnimationFrames,
+                Outcome::Succeeded,
+                navigation,
+                Viewport::Mobile,
+            )
+            .expect("browser completion")
+        };
+        let in_place = marker(Navigation::InPlace);
+        let mut full_page =
+            Snapshot::new(marker(Navigation::FullPage), Window::new(42), Boot::new(7))
+                .expect("full-page aggregate");
+        assert!(matches!(
+            full_page.record(in_place.observation(30).expect("visible observation")),
+            Err(RecordError::MarkerMismatch)
+        ));
+        let encoded = serde_json::to_value(in_place).expect("marker JSON");
+        assert_eq!(encoded["schema"], "v2");
+        assert_eq!(encoded["navigation"], "in_place");
+        assert_eq!(full_page.count(), 0);
     }
 
     #[test]
@@ -1944,22 +1973,11 @@ mod tests {
     #[test]
     fn cardinality_payload_and_rate_budgets_are_calculated_and_bounded() {
         let report = budget_report();
-        // Pinned tripwire, not a hard version gate: no live sender emits
-        // `GenerationAction`/`MachineRouteAction` yet (grep the workspace —
-        // only this crate's own `Action::all()` and tests reference the
-        // full taxonomy), so v1's shape is still stabilizing pre-ship and
-        // may move in place when it drifts from the real route set. Moved
-        // 4,030 -> 4,450 here to match PR83's keep/edit/reject decision
-        // split plus the new session-revoke machine routes, keeping this
-        // taxonomy mirroring `V1Route` per the `MachineRouteAction` doc
-        // comment. Once a real wire sender/consumer depends on v1's exact
-        // shape, widen it only via a new `SchemaVersion` instead of editing
-        // this baseline in place.
-        assert_eq!(
-            report.series_cardinality, 4_450,
-            "schema v1 cardinality baseline moved: confirm this is a deliberate, \
-             reviewed taxonomy change (see comment above), not an accidental budget regression"
-        );
+        // v2 adds one explicit in-place browser mode to v1's 4,450 series:
+        // 88 valid action/phase pairs × 5 outcomes × 4 viewports = 1,760.
+        // Existing modes retain their meaning; no timing-breakdown dimensions
+        // enter aggregates. Any future closed-taxonomy growth needs review.
+        assert_eq!(report.series_cardinality, 6_210);
         assert!(report.series_cardinality <= MAX_SERIES_CARDINALITY);
         assert!(report.cardinality_within_limit);
         assert!(report.max_payload_bytes < MAX_PAYLOAD_BYTES);

@@ -12,7 +12,7 @@
 
 use memory_engine_credentials::{env_session, read_credentials, DEFAULT_BASE_URL};
 
-pub use memory_engine_credentials::{Session, OPERATOR_ORIGIN_FALLBACK_BASE_URL};
+pub use memory_engine_credentials::Session;
 
 /// Resolve credentials in order: `MEMORY_ENGINE_ACCOUNT_ID` /
 /// `MEMORY_ENGINE_SESSION_TOKEN` env vars, then the shared credentials file

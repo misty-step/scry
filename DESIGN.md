@@ -1,166 +1,216 @@
-# Scry Design System — "Ledger"
+# Scry design system
 
-Status: the binding visual and interaction contract for every production
-surface rendered by `crates/memory-engine-api-render`. Locked by operator
-verdict 2026-07-09 (design lab LAB-001, option TASTE-1 "Ledger"; runners-up
-TASTE-3, TASTE-2, APPLE-3). Agents doing visual work read this file first;
-the conformance gate in `crates/memory-engine-api-render/src/design_preview.rs`
-enforces the checkable parts.
+Status: the binding visual and interaction contract for production surfaces in
+`crates/memory-engine-api-render`. The operator’s current authorization to
+implement and ship the comprehensive PWA redesign supersedes the July 2026
+Ledger aesthetic lock. Existing route, wire, storage, environment, and DOM
+integration identifiers are not product naming and remain stable.
 
-Provenance note: Ledger deliberately diverges from the vendored Misty Step
-aesthetic kit law (one size, zero radius, status-on-glyph-only). Scry owns its
-system; `assets/ledger.css` is the single stylesheet of record.
+## Direction: a reading-first study instrument
 
-## Character
+Scry is for understanding and recalling material the learner cares about. It
+should feel like opening a well-set reading page with a few reliable study
+controls, not administering a database or checking a score dashboard.
 
-Warm paper and ink. A memory instrument: calm, precise, trustworthy, quietly
-confident. Sessions are 1 to 10 minutes, phone-first, often in stolen moments.
-The review card is the whole product while it is on screen; everything else
-gets out of its way.
+The initial design plan paired a cool reading ground, a single left-aligned
+content column, serif study text, and a quiet thumb-reachable dock. Reviewing
+that plan against the frontend-design guidance removed the generic dashboard
+hero count, repeated rounded-card grid, uppercase labels, monospace metadata,
+and decorative motion. The revised emphasis is the material itself: an actual
+question, an actual source passage, or the next deliberate study action.
 
-## Tokens (`assets/ledger.css` `:root`, `--lg-*`)
+```text
+Standing view                    Quiz / Study note
+Scry         Due     Account     Scry         Due     Account
+                                 
+Page title                       Question or reading title
+Next useful action               Readable study content
+Source / draft / evidence        Answer choices or answer field
+                                 Deliberate action
+Home  Create  Library  Progress   Quiet footer
+```
 
-Light ("paper"):
+Left-align content and controls. Center the reading column in the viewport,
+not the text within it. Long material gets vertical space, not extra columns.
+Structure reflects content: Source sections, Quiz answer choices, draft
+inspection, and a dedicated Study note are different surfaces, not identical
+cards with different labels.
 
-| token | value | role |
+## Product vocabulary
+
+- **Quiz**: a question and answer used in deliberate retrieval practice. An
+  easier Quiz is still a Quiz, not an automatically approved remediation pack.
+- **Study note**: readable material and source context supporting the same Quiz.
+- **Source**: saved material or a topic from which study material is prepared.
+- **Concept**: the exact normalized learning concept, not an entire Source.
+- **Progress**: the learner-facing navigation label for `/app/analytics`.
+
+Use sentence case and plain action verbs. Do not expose internal card, deck,
+workspace, ledger, or provider vocabulary as the primary product model.
+Provider/model provenance may appear in a purposeful technical disclosure.
+Never promise perfect memory, fabricated recall scores, or automatic mastery.
+
+## Color and type
+
+The stable stylesheet is `assets/ledger.css`, served at `/static/ledger.css`.
+The legacy `--lg-*` token prefix is an internal compatibility identifier.
+
+| Role | Light | Dark |
 |---|---|---|
-| `--lg-paper` | `#F6F2EA` | page ground |
-| `--lg-paper-2` | `#EFE9DD` | raised surfaces: choices, fields, sheets |
-| `--lg-ink` | `#1B1A16` | primary text, contained buttons |
-| `--lg-ink-2` | `#57534A` | secondary text, labels |
-| `--lg-line` | `#D9D1C1` | hairlines, borders |
-| `--lg-accent` | `#B24E27` | the one signal: primary action, kickers |
-| `--lg-accent-ink` | `#8E3B1B` | accent-on-paper text (AA) |
-| `--lg-pine` | `#2F6146` | verdict Correct |
-| `--lg-clay` | `#A6382C` | verdict Try again |
-| `--lg-ochre` | `#9A6A16` | verdict Close, watch states |
-| `--lg-slate` | `#4A5560` | verdict Revealed, neutral status |
+| Reading ground (`--lg-paper`) | `#F4F8FA` | `#0F2430` |
+| Tidal surface (`--lg-paper-2`) | `#E3EFF3` | `#1C3948` |
+| Field (`--lg-field`) | `#FFFFFF` | `#142F3E` |
+| Petrol ink (`--lg-ink`) | `#153746` | `#E8F3F6` |
+| Secondary ink (`--lg-ink-2`) | `#466574` | `#B3CDD8` |
+| Action (`--lg-accent`) | `#256581` | `#91C5DB` |
+| Correct (`--lg-pine`) | `#28664E` | `#8FD2B1` |
+| Try again (`--lg-clay`) | `#983F49` | `#F1A8B0` |
+| Close (`--lg-ochre`) | `#805719` | `#E2C28C` |
+| Assisted / Revealed (`--lg-slate`) | `#555B8B` | `#BEC3ED` |
 
-Dark ("slate ground"): `--lg-ground #15130D`, paper `#1E1B13`, ink `#ECE6D8`,
-ink-2 `#A79E8B`, line `#37301F`, accent `#E07B45`, pine `#4E9A72`, clay
-`#D2604F`, ochre `#C79433`. Dark mode follows `prefers-color-scheme` via a
-custom-property swap; both modes must hold WCAG AA.
+Dark mode follows `prefers-color-scheme` and is deep blue, not warm-black or
+acid-neon. Primary, secondary, semantic, and control text must meet WCAG AA in
+both modes. Controls have a stronger boundary token than decorative dividers.
+State must be conveyed in words, not color alone. Wrong MCQ choices retain
+readable contrast; do not lower text opacity to simulate dimming.
 
-Type: `--lg-sans: "Geist", …` for prose and controls; `--lg-mono: "Geist
-Mono", …` for labels, counts, horizons, and every numeral. Numerals are
-always mono + `tabular-nums` so counts align like a ledger.
+**Literata**, variable normal 200–900, is for actual Quiz questions, answer
+choices, explanations, captured passages, and Study note reading. Body reading
+uses 18px with approximately 1.85 line-height; questions use a responsive
+23–29px scale and 1.55 line-height. Keep reading below about 65 characters per
+line. Preserve paragraph breaks and wrap long tokens without clipping them.
 
-Registers (exactly these; no ad-hoc sizes):
+**Manrope**, variable normal 200–800, is for headings, controls, labels, and
+supporting UI. Page headings use a responsive 28–40px scale; the entry headline
+may reach 48px. Body UI is 16px; support is 13–15px. Labels are readable sentence
+case, never tracked-out uppercase. Counts use tabular numerals only where
+alignment helps, not a separate monospace visual system.
 
-| register | spec | use |
-|---|---|---|
-| display | 30px+ / 640+ / -2% tracking | cover H1, workspace "Today", due hero count |
-| prompt | 23px / 600 / 1.28 | the review question only |
-| body | 16px / 400-600 / 1.45 | prose, choices, fields |
-| meta | 13px / 500 | secondary prose, hints |
-| label | 10-11px mono / 600 / letterspaced caps | kickers, group labels, ledger keys |
+Both variable Latin WOFF2 fonts are self-hosted. Fallbacks include Charter,
+Iowan Old Style, Georgia, Segoe UI, and platform sans-serif. There are no remote
+font requests or runtime font dependencies.
 
-Space scale: 4 / 8 / 12 / 20 / 32. Radius: `--lg-r: 7px` (controls, cards),
-`--lg-r-lg: 12px` (hero panels). Motion: `--lg-ease: cubic-bezier(.16,1,.3,1)`,
-tap settle 190ms (1px translateY on `:active`). Motion is feedback only; the
-sole looping element is the generating pulse on an in-flight job, and it
-stops when the job resolves. `prefers-reduced-motion` removes translates and
-the pulse; state color applies instantly.
+- `/static/fonts/literata-latin-variable.woff2`
+- `/static/fonts/manrope-latin-variable.woff2`
+- `/static/fonts/OFL.txt` carries the font copyright notices and complete license.
+- Source files and their shared SIL Open Font License are in
+  `crates/memory-engine-api-render/assets/fonts/`.
+- The renderer exports `LITERATA_WOFF2`, `MANROPE_WOFF2`, and `FONT_LICENSE`
+  for static serving.
 
-## Interaction law (every click fights for its life)
+The original Scry monogram uses light lettering on a solid petrol ground,
+with its content inside the maskable safe area. Its SVG source and 512px,
+192px, 180px Apple touch, and 32px favicon PNGs are in
+`crates/memory-engine-api-render/assets/icons/`. Raster bytes are exported as
+`PWA_ICON_512`, `PWA_ICON_192`, `APPLE_TOUCH_ICON`, and `FAVICON`; serving paths
+and the web manifest stay owned by the application boundary.
 
-- MCQ: **one tap answers.** The choice buttons are the submit; there is no
-  separate confirm.
-- Free response: type, then one submit.
-- Graded Correct and Graded Close / Try again / Revealed: **no auto-advance,
-  ever.** The default view shows the verdict, accepted answer, one concise
-  grading reason, a truthful bridge notice when easier drafts await review,
-  and deliberate Continue. Schedule horizon, source reference, concept
-  progress, success history, and generated-card quality controls live inside
-  one collapsed Details disclosure. The page holds indefinitely. Quality
-  feedback saves in place; only a deliberate Continue tap (or Enter while it
-  is focused) advances the card.
-- Pre-grade shows **no card meta**: no stage, no last-seen, no success rate,
-  no health. Just kicker, prompt, the answer mechanism, and the hatch row.
-- Escape hatches: only **Reveal answer** stays on the card, beside one `···`
-  (More) disclosure holding Reference, Skip, Snooze, Bridge, Delete, and the
-  Capture punch-out. Six permanent buttons under a card is a defect. Every
-  action in the disclosure carries a leading icon and a tooltip truthful to
-  what the route actually does (Skip defers within the session; Snooze
-  defers until tomorrow — they must never read as interchangeable).
-- The Home view's first element is the due hero: count + one Start review tap.
+## Layout, access, and motion
 
-## IA and navigation (memory-engine-087)
+Standing pages use a maximum 48rem column; Quiz and Study note use 44rem.
+Mobile gutters are 16–20px. All flex/grid children can shrink. Source sections
+are block-flow content, permission controls take a full line, labels wrap, and
+nested disclosures stay within the available width. The Library must reflow
+at **320px and 390px**, including long Source titles, open permission/removal
+controls, MCQ drafts, and generation failures. `overflow-x: hidden` or `clip`
+on the viewport is not a layout fix.
 
-The signed-in app is four focused views, each owning one job-to-be-done.
-No view mixes capture + source management + analytics in one scroll.
+Every interactive target is at least 44px high, including compact controls,
+navigation, retries, account actions, and disclosure summaries. Answer choices
+are at least 64px high and the deliberate Continue control is at least 56px.
+Use native buttons, forms, links, labels, and details/summary semantics. Keep
+one page-level heading and a visible keyboard focus ring. The skip link targets
+`#me-main`; heading and verdict focus can move programmatically without
+requiring a mouse. Announcements are polite and atomic where the changed
+result needs to be read together.
 
-| view | route | job-to-be-done |
-|---|---|---|
-| Home | `/` | due hero + Start review, caught-up state, reminders behind a disclosure |
-| Create | `/app/create` | capture material |
-| Library | `/app/library` | saved material, per-source card counts, concept drilldown, generation activity, source removal |
-| Analytics | `/app/analytics` | concept health |
+The standing-view dock sticks to the bottom with a solid surface and respects
+safe-area insets. Review is not a navigation destination: it has no standing
+view dock, no competing analytics, and no draft triage beneath the question.
+Account controls remain available in the header. Disclosures expand into the
+document instead of using a clipped floating action grid. A small account
+menu is bounded to the viewport.
 
-Review is not a nav destination — it is a full-bleed loop entered from the
-Home due hero (or the next/submit POST loop) and exited when the queue
-empties. The review card owns the screen; no nav, no workspace sections.
+There is no ambient animation, loading pulse, celebratory drawing, or timed
+advance. Pending feedback is immediate and still. Small user-triggered color
+transitions may last 120ms. `prefers-reduced-motion` removes animation and
+transitions. Forced-color mode retains selected and accepted-answer outlines.
 
-**Nav grammar** (`me-nav`): persistent bottom bar on standing views (Home,
-Create, Library, Analytics). Four equal-width items, mono label register,
-`aria-current="page"` on the active view, accent tint on the current item.
-Sign-out stays one tap away in the same bar. Every item is at least 44px.
-Navigation is one tap between any two standing views.
+## Surface contract
 
-**POST return targets**: capture → Create; generate, archive, retry,
-permission → Library; reminders → Home. Each POST returns to the view that
-owns the action, so the learner never lands on a scroll of unrelated
-sections after submitting.
+| Surface | Primary job and required next action |
+|---|---|
+| Signed out | Explain Source → Quiz / Study note → practice; request a magic link with an explicit invite/waitlist explanation. |
+| Request received | Explain the invited-email or waitlist outcome without disclosing account eligibility; use the newest link or return to start. |
+| Recovery | Render the real error safely; provide the correct retry/link action rather than a dead end. Never print a secret. |
+| Home, due | Present the genuine due count in a useful sentence and one Start review action. No filler stats. |
+| Home, new | Explain how to add the first Source/topic and explicitly open Create. |
+| Home, caught up | Say nothing is due and offer a deliberate pause or Create action. |
+| Create | One source/topic field, truthful model-use warning, Create quizzes, pending status, and an explicit Library destination. |
+| Capture waiting | A dedicated, non-editable page follows one saved generation job, shows honest status, and offers an ordinary Library link. Only that job’s terminal event may navigate to Library. |
+| Library | Vertical Source sections, counts, Concept drilldown, source-scoped permission and removal, inspectable drafts, and live generation activity. |
+| Draft inspection | Show question, accepted answer, every choice, available explanation, actual Source context, and optional generation provenance. Keep, reject, or edit-and-keep are explicit decisions. |
+| Quiz | Actual question and one-tap MCQ choices or a labelled free-response field with one submit. Reveal plus a single More disclosure. |
+| Graded Quiz | Hold the result: canonical verdict, accepted answer, concise grading reason, truthful easier-draft notice if present, and Continue. Details stays collapsed. |
+| Study note | A dedicated reading surface for `current.reference_text`, escaped and preserving line breaks, returning to the same Quiz. State absence honestly. |
+| Progress | Filterable, bounded Concept evidence list with real recall history and pagination. Distinguish untried from struggling; no invented score. |
+| Account / reminders | Browser sign-out scope is explicit; service sessions remain separate. Reminder actions stay native protected forms behind a Home disclosure. |
 
-## Post-grade feedback
+## Learning-loop invariants
 
-After grading (and only after), the default view is the answer key, not the
-dossier. It contains the canonical verdict, accepted answer, a concise reason,
-relevant recovery, and Continue. The reflective record stays one disclosure
-away: schedule horizon, source reference, concept progress, the historical
-success ledger, and generated-card quality controls all live inside Details.
-When history is unavailable, Details says so and keeps any available reference
-and quality controls. None of this dossier appears before grading.
+- **One tap answers an MCQ.** The exact choice value submits; no separate confirm
+  and no letter-guessing interface.
+- Free response is type, then submit. Browser timing starts from actual
+  presentation; a missing time stays missing rather than becoming a fake fast
+  recall measurement.
+- A revealed answer is assisted practice for that occurrence. Submitting after
+  reveal must produce `Revealed` with the conservative scheduling result; do
+  not fabricate exposure for historical attempts.
+- The four visible verdict literals remain **Correct**, **Close**, **Try again**,
+  and **Revealed**. The graded page holds indefinitely. **No auto-advance.**
+- Only deliberate Continue advances the review. Quiz-quality feedback saves in
+  place, with its stable idempotency and superseding identifiers preserved.
+- Details contains schedule horizon, Concept progress, recall history, the Study
+  note entry, and Quiz-quality controls. No history/stage/success dossier is
+  shown before grading.
+- More offers Study note, Skip, Snooze quiz, exact Concept snooze, manual Bridge,
+  Edit, Create, and confirmed Delete. Each touch-visible description tells the
+  truth about scope: Skip is later in this session; Snooze is until tomorrow;
+  Concept snooze is the exact Concept only; Source removal affects every Quiz
+  generated from that Source.
+- Bridge requests two or three genuinely easier inspectable drafts. It is not
+  an automatic pack rollout. No draft enters review without learner approval.
+- Study notes reuse durable source-backed material. Never invent quotes or
+  render untrusted material as HTML. `render_reference_page(account, view)`
+  consumes resolved data, not a loader. Its return form is POST `/app/resume`
+  with `csrfToken` and the same `reviewUnitId`; it does not call Continue.
+  Preserve model-expanded/source-informed provenance labels and critique text
+  supplied in the note. A captured topic seed is not evidence for generated
+  claims. Keep span labels visible and use neutral Source context headings,
+  never label all generated input as verified evidence.
 
-## Component grammar
+## Integration and verification
 
-- **Choices** (`lg-choice`): full-width rows on `--lg-paper-2`, 1px `--lg-line`
-  border, radius 7, min-height 56px, mono key chip. Graded: correct row pine
-  wash (`color-mix` ~14%) + pine border; other rows dim to 42%. The recap keeps
-  presentation order. Never a left-only border stripe.
-- **Buttons**: contained ink (`lg-btn`) for primary; accent fill only for
-  Start review; quiet outline (`lg-quiet`) for hatches. All tap targets are
-  at least 44px.
-- **Fields**: bounded boxes on `--lg-paper-2`, radius 7; focus = 2px accent
-  outline, offset 1.
-- **Due hero**: ink-bordered radius-12 panel; mono display count; accent
-  Start button.
-- **Feed rows / health rows**: hairline-topped rows, mono meta right-aligned;
-  the health meter is a 4px bar tinted pine/ochre/clay by health, with the
-  mono stat line beneath.
-- **Cover**: display H1, mono tagline, email + send stacked full-width;
-  "No passwords. Ever." mono footline.
-- **Layout**: single column, measure-width, centered; the page scrolls
-  vertically, never horizontally. Any horizontal scrollbar at 390px is a
-  release-blocking defect.
+Preserve `.ae-view`, `footer.ae-bar`, `.me-due`, `.me-verdict`, `form.me-next`,
+answer-form actions, CSRF fields, response-time fields, and idempotency fields.
+Fresh answer/result views include an empty `[data-review-status]` live region.
+`.me-verdict` is programmatically focusable. Generation retains `#me-jobs`,
+`.me-job`, `data-job-id`, `data-status`, and the title/meta/retry hooks.
+`render_capture_waiting_page(account, job)` adds one
+`[data-generation-job-id][data-terminal-url="/app/library"]` container and a
+`[data-generation-status]` live region. Only a terminal event for that exact
+job may navigate automatically. Library has editable draft/source forms and
+must not receive this terminal-navigation hook. The waiting renderer does not
+load account state or invent a due count when the job provides none.
 
-## Anti-patterns (reject on sight)
+Home and Quiz render from an already resolved study view; they do not load the
+Source catalog. A live generation notice may consult jobs to avoid stale
+status. Do not introduce loaders for display-only concerns.
 
-Left-border accent stripes on cards. Pre-grade meta of any kind. Any form of
-auto-advance on a graded page, correct or not. Gradient text, glass,
-blobs, purple-on-black. Ambient motion. Em-dashes in UI copy. New raw hex
-values outside the `ledger.css` token block. Fabricated numbers (counts,
-times, rates come from real state — the honest-effort invariant,
-memory-engine-074).
-
-## Enforcement
-
-- `design_preview.rs` conformance tests assert the Ledger law: token sheet
-  present, register scale exact, verdict tint classes, hatch collapse,
-  pre-grade/post-grade split, Details containment, all four verdicts, and no raw
-  hex outside tokens in `render.rs`.
-- Behavior tests in `memory-engine-api` assert the interaction law at the route
-  boundary: one-tap MCQ, dossier containment, feedback save-in-place, and
-  Continue as the only advance.
-- The live phone walk (390×844) is the overflow gate: no horizontal scroll on
-  cover, workspace, review, graded, and sheet-open states.
+Behavior/security/accessibility tests protect the form and study invariants,
+not incidental wording, exact CSS token strings, or the old aesthetic lock.
+Visual acceptance is the actual PWA at 320px, 390px, and desktop in both color
+schemes, including open disclosures, long content, focus, pending/error
+feedback, grading, and same-Quiz Study note return. Check with JavaScript both
+available and unavailable; normal forms must remain usable. Rendering a
+preview or passing a source-string assertion is not proof of mobile reflow.

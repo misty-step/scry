@@ -1,0 +1,694 @@
+#!/usr/bin/env python3
+"""Private, bounded PostgreSQL export and Cloudflare recovery operations.
+
+PostgreSQL is read only: this command never loads PostgresStudyStore or applies
+migrations. An operator must stop old writers separately before primary import.
+No credential may be provided in command-line arguments or printed in receipts.
+"""
+import argparse
+import ctypes
+import ctypes.util
+import hashlib
+import inspect
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import shlex
+import stat
+import subprocess
+import sys
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from lib.scry_ops import OperationError, private_env
+
+BUNDLE_SCHEMA = "memory_engine.cloudflare_import.v1"
+MAX_BUNDLE = 16 * 1024 * 1024
+MAX_ROW = 1024 * 1024
+MAX_ROWS = 100_000
+CHUNK_BYTES = 256 * 1024
+MAX_MANIFEST = 128 * 1024
+SEQUENCES = {
+    "memory_engine_attempts": "memory_engine_attempts_attempt_id_seq",
+    "memory_engine_waitlist_audit_log": "memory_engine_waitlist_audit_log_audit_id_seq",
+}
+# Exact deployed schema8, plus additive schema9 exposures when actually present.
+# Column order is canonical, not the physical order of ALTER TABLE additions.
+PG_COLUMNS = {
+    "memory_engine_accounts": "account_id created_at_ms active_graded_review",
+    "memory_engine_rate_limits": "rate_limit_key window_start_ms attempt_count",
+    "memory_engine_auth_challenges": "challenge_hash email_normalized expires_at_ms consumed_at_ms",
+    "memory_engine_api_sessions": "session_token_hash account_id created_at_ms expires_at_ms revoked_at_ms",
+    "memory_engine_browser_sessions": "session_id_hash account_id session_token_hash csrf_token_hash created_at_ms expires_at_ms revoked_at_ms",
+    "memory_engine_return_notification_preferences": "account_id email_normalized enabled last_sent_at_ms unsubscribe_nonce updated_at_ms claim_id claim_expires_at_ms pending_delivery_key pending_due_count pending_unsubscribe_expires_at_ms retry_attempts next_retry_at_ms",
+    "memory_engine_waitlist_entries": "email_normalized source created_at_ms updated_at_ms invited_at_ms",
+    "memory_engine_waitlist_audit_log": "audit_id email_normalized event occurred_at_ms",
+    "memory_engine_source_documents": "account_id source_document_id document created_at_ms",
+    "memory_engine_reference_spans": "account_id reference_span_id source_document_id span created_at_ms",
+    "memory_engine_generation_runs": "account_id generation_run_id run started_at_ms",
+    "memory_engine_concept_reference_notes": "account_id concept_key note updated_at_ms",
+    "memory_engine_generated_prompt_drafts": "account_id draft_id review_unit_id draft created_at_ms",
+    "memory_engine_review_units": "account_id review_unit_id record created_at_ms archived_at_ms",
+    "memory_engine_schedules": "account_id review_unit_id state updated_at_ms",
+    "memory_engine_attempts": "account_id attempt_id review_unit_id prompt_id idempotency_key attempt occurred_at_ms",
+    "memory_engine_applied_reviews": "account_id receipt_key review_unit_id attempt expected_prior_schedule_state schedule_state applied_at_ms",
+    "memory_engine_content_feedback": "account_id feedback_id review_unit_id feedback occurred_at_ms",
+    "memory_engine_remediation_packs": "account_id pack_id pack attempt_id created_at_ms",
+    "memory_engine_review_exposures": "account_id review_unit_id occurrence_key exposure revealed_at_ms",
+    "memory_engine_generation_jobs": "account_id job_id source_id title status card_count attempts error model_key cost_usd_micros created_at_ms updated_at_ms retry_at_ms lease_owner lease_expires_at_ms lease_token reserved_cost_usd_micros",
+    "memory_engine_generation_job_attempts": "account_id job_id attempt lease_token status generation_run_id reservation_cost_usd_micros reserved_cost_usd_micros cost_usd_micros error started_at_ms completed_at_ms updated_at_ms",
+}
+PG_COLUMNS = {name: sorted(columns.split()) for name, columns in PG_COLUMNS.items()}
+PG_PRIMARY = {
+    "memory_engine_accounts": "account_id",
+    "memory_engine_rate_limits": "rate_limit_key",
+    "memory_engine_auth_challenges": "challenge_hash",
+    "memory_engine_api_sessions": "session_token_hash",
+    "memory_engine_browser_sessions": "session_id_hash",
+    "memory_engine_return_notification_preferences": "account_id",
+    "memory_engine_waitlist_entries": "email_normalized",
+    "memory_engine_waitlist_audit_log": "audit_id",
+    "memory_engine_source_documents": "account_id source_document_id",
+    "memory_engine_reference_spans": "account_id reference_span_id",
+    "memory_engine_generation_runs": "account_id generation_run_id",
+    "memory_engine_concept_reference_notes": "account_id concept_key",
+    "memory_engine_generated_prompt_drafts": "account_id draft_id",
+    "memory_engine_review_units": "account_id review_unit_id",
+    "memory_engine_schedules": "account_id review_unit_id",
+    "memory_engine_attempts": "attempt_id",
+    "memory_engine_applied_reviews": "account_id receipt_key",
+    "memory_engine_content_feedback": "account_id feedback_id",
+    "memory_engine_remediation_packs": "account_id pack_id",
+    "memory_engine_review_exposures": "account_id review_unit_id occurrence_key",
+    "memory_engine_generation_jobs": "account_id job_id",
+    "memory_engine_generation_job_attempts": "account_id job_id attempt",
+    "memory_engine_schema_migrations": "version",
+}
+PG_NULLABLE = {
+    "memory_engine_accounts": {"active_graded_review"},
+    "memory_engine_auth_challenges": {"consumed_at_ms"},
+    "memory_engine_api_sessions": {"revoked_at_ms"},
+    "memory_engine_browser_sessions": {"revoked_at_ms"},
+    "memory_engine_return_notification_preferences": {
+        "last_sent_at_ms", "claim_id", "claim_expires_at_ms", "pending_delivery_key", "pending_due_count",
+        "pending_unsubscribe_expires_at_ms", "next_retry_at_ms",
+    },
+    "memory_engine_waitlist_entries": {"invited_at_ms"},
+    "memory_engine_review_units": {"archived_at_ms"},
+    "memory_engine_attempts": {"prompt_id", "idempotency_key"},
+    "memory_engine_applied_reviews": {"expected_prior_schedule_state"},
+    "memory_engine_generation_jobs": {"error", "retry_at_ms", "lease_owner", "lease_expires_at_ms", "lease_token"},
+    "memory_engine_generation_job_attempts": {"generation_run_id", "error", "completed_at_ms"},
+}
+JSON_COLUMNS = {
+    "active_graded_review", "document", "span", "run", "note", "draft", "record", "state",
+    "attempt", "expected_prior_schedule_state", "schedule_state", "feedback", "pack", "exposure",
+}
+INTEGER_COLUMNS = {
+    "attempt_count", "card_count", "attempts", "retry_attempts", "version",
+}
+BIGINT_COLUMNS = {
+    "audit_id", "pending_due_count", "window_start_ms", "cost_usd_micros", "reserved_cost_usd_micros", "reservation_cost_usd_micros",
+}
+NEW_TABLES = {
+    "memory_engine_return_notification_schedule", "memory_engine_mail_receipts", "memory_engine_mail_outbox",
+    "memory_engine_source_revisions", "memory_engine_model_operations", "memory_engine_recovery_imports",
+}
+
+
+def compact(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def is_hash(value):
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def require(condition, message):
+    if not condition:
+        raise OperationError(message)
+
+
+def private_read(path, maximum):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o600,
+                "input must be an owner-owned regular mode-0600 file")
+        require(info.st_size <= maximum, "private input exceeds the explicit size bound")
+        data = stream.read(maximum + 1)
+        require(len(data) <= maximum, "private input exceeds the explicit size bound")
+        return data
+
+
+def private_write(path, data):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        os.unlink(path)
+        raise
+
+
+def unused_output(path):
+    require(not os.path.lexists(path), "output already exists; select a new private filename")
+    require(Path(path).parent.is_dir(), "output parent directory does not exist")
+
+
+def strict_json(data):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            require(key not in value, "duplicate recovery JSON key")
+            value[key] = item
+        return value
+    def invalid_constant(_):
+        raise OperationError("nonfinite recovery JSON number")
+    return json.loads(data, object_pairs_hook=pairs, parse_constant=invalid_constant)
+
+
+def pg_type(table, column):
+    if table == "memory_engine_generation_job_attempts" and column == "attempt":
+        return "integer"
+    if table == "memory_engine_remediation_packs" and column == "attempt_id":
+        return "text"
+    if column in JSON_COLUMNS:
+        return "jsonb"
+    if column == "enabled":
+        return "boolean"
+    if column in INTEGER_COLUMNS:
+        return "integer"
+    if column.endswith("_at_ms") or column in BIGINT_COLUMNS or column == "attempt_id":
+        return "bigint"
+    return "text"
+
+
+def pg_sql(schema):
+    require(re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", schema), "invalid PostgreSQL schema identifier")
+    quoted_schema = '"' + schema + '"'
+    sql = [
+        "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;",
+        "SET LOCAL statement_timeout = '120s';",
+        "SET LOCAL idle_in_transaction_session_timeout = '120s';",
+        "SELECT json_build_object('kind','catalog','schema',current_schema(),'capturedAtMs',floor(extract(epoch FROM transaction_timestamp())*1000)::bigint,'tables',"
+        "(SELECT coalesce(json_agg(t ORDER BY t.name),'[]'::json) FROM ("
+        "SELECT c.relname AS name,c.relkind AS kind,c.relrowsecurity AS row_security,c.relforcerowsecurity AS force_row_security,"
+        "(SELECT json_agg(json_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notnull',a.attnotnull) ORDER BY a.attname) "
+        "FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns,"
+        "(SELECT json_agg(a.attname ORDER BY k.ordinality) FROM pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality) "
+        "JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=k.attnum WHERE i.indrelid=c.oid AND i.indisprimary) AS primary "
+        "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relkind IN ('r','p','v','m','f'))t),"
+        "'sequences',(SELECT coalesce(json_agg(s ORDER BY s.sequencename),'[]'::json) FROM "
+        "(SELECT sequencename,data_type::text,start_value,min_value,max_value,increment_by,cycle,cache_size FROM pg_sequences WHERE schemaname=current_schema())s));",
+        f"SELECT json_build_object('kind','migration','row',row_to_json(m)) FROM {quoted_schema}.memory_engine_schema_migrations m ORDER BY version;",
+    ]
+    for table, columns in PG_COLUMNS.items():
+        expressions = []
+        for column in columns:
+            expression = '"' + column + '"'
+            kind = pg_type(table, column)
+            if kind == "jsonb":
+                expression += "::text"
+            elif kind == "boolean":
+                expression += "::integer"
+            expressions.append(expression)
+        statement = f"SELECT json_build_object('kind','row','table','{table}','values',json_build_array({','.join(expressions)})) FROM {quoted_schema}.\"{table}\";"
+        if table == "memory_engine_review_exposures":
+            # Inspect optional schema9 data without invoking ANY migration code.
+            sql.extend([f"SELECT $recovery${statement}$recovery$ WHERE to_regclass('{schema}.{table}') IS NOT NULL", "\\gexec"])
+        else:
+            sql.append(statement)
+    for table, sequence in SEQUENCES.items():
+        sql.append(f"SELECT json_build_object('kind','sequence','table','{table}','value',last_value,'isCalled',is_called) FROM {quoted_schema}.\"{sequence}\";")
+    sql.extend(["COMMIT;", ""])
+    return "\n".join(sql)
+
+
+def bounded_process(argv, payload, environment=None, maximum=MAX_BUNDLE * 4):
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=environment)
+    timer = threading.Timer(180, process.kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        process.stdin.write(payload)
+        process.stdin.close()
+        data = process.stdout.read(maximum + 1)
+        if len(data) > maximum:
+            process.kill()
+            raise OperationError("read-only exporter output exceeds the explicit bound")
+        require(process.wait() == 0, "read-only exporter failed; remote/psql stderr intentionally withheld")
+        return data
+    finally:
+        timer.cancel()
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        process.stdout.close()
+
+
+def connection_environment(connection):
+    """Use libpq's own URI/keyword parser; PGDATABASE does not expand conninfo."""
+    class Option(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_char_p) for name in
+                    ("keyword", "envvar", "compiled", "val", "label", "dispchar")] + [
+                        ("dispsize", ctypes.c_int)]
+    library = ctypes.util.find_library("pq")
+    require(library is not None, "libpq is required alongside psql")
+    libpq = ctypes.CDLL(library)
+    libpq.PQconninfoParse.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+    libpq.PQconninfoParse.restype = ctypes.POINTER(Option)
+    libpq.PQconninfoFree.argtypes = [ctypes.POINTER(Option)]
+    libpq.PQfreemem.argtypes = [ctypes.c_void_p]
+    error = ctypes.c_void_p()
+    options = libpq.PQconninfoParse(connection.encode(), ctypes.byref(error))
+    if not options:
+        if error.value:
+            libpq.PQfreemem(error)
+        raise OperationError("private PostgreSQL connection configuration is invalid")
+    try:
+        values = {}
+        index = 0
+        while options[index].keyword:
+            option = options[index]
+            if option.val is not None:
+                require(option.envvar is not None, "connection option has no safe libpq environment equivalent")
+                values[option.envvar.decode()] = option.val.decode()
+            index += 1
+        return values
+    finally:
+        libpq.PQconninfoFree(options)
+
+
+def pg_environment(path, schema):
+    values = private_env(path)
+    require(bool(values.get("MEMORY_ENGINE_POSTGRES_URL")), "private environment lacks MEMORY_ENGINE_POSTGRES_URL")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
+    environment.update(connection_environment(values["MEMORY_ENGINE_POSTGRES_URL"]))
+    environment["PGOPTIONS"] = f"-c default_transaction_read_only=on -c search_path={schema}"
+    environment["PGCONNECT_TIMEOUT"] = "10"
+    environment["PGAPPNAME"] = "scry-read-only-cloudflare-export"
+    return environment
+
+
+def drop_database_user(environment, username):
+    if username is None:
+        return environment
+    require(re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username), "invalid database OS user")
+    require(os.geteuid() == 0, "database OS user selection requires remote root after private environment read")
+    account = pwd.getpwnam(username)
+    os.initgroups(account.pw_name, account.pw_gid)
+    os.setgid(account.pw_gid)
+    os.setuid(account.pw_uid)
+    require(os.geteuid() == account.pw_uid and os.getegid() == account.pw_gid, "database OS privilege drop failed")
+    environment.update(HOME=account.pw_dir, USER=account.pw_name, LOGNAME=account.pw_name, PGUSER=account.pw_name)
+    return environment
+
+
+def remote_program():
+    # Send the very same private-file parser and execution boundary, not an
+    # independently evolving shell/environment parser. This code has no secret.
+    return "\n".join([
+        "import ctypes, ctypes.util, hashlib, inspect, json, os, pwd, re, stat, subprocess, sys, threading",
+        "from pathlib import Path",
+        "MAX_BUNDLE = 16 * 1024 * 1024",
+        "class OperationError(Exception): pass",
+        inspect.getsource(require), inspect.getsource(private_env),
+        inspect.getsource(bounded_process), inspect.getsource(connection_environment), inspect.getsource(pg_environment),
+        inspect.getsource(drop_database_user),
+        "try:",
+        "    config = json.loads(sys.stdin.buffer.read(131072))",
+        "    environment = pg_environment(config['envFile'],config['schema'])",
+        "    environment = drop_database_user(environment,config['databaseUser'])",
+        "    result = bounded_process(['psql','-X','-q','-A','-t','-0','-w','-v','ON_ERROR_STOP=1'], config['sql'].encode(), environment)",
+        "    sys.stdout.buffer.write(result)",
+        "except Exception:",
+        "    sys.exit(1)",
+    ])
+
+
+def export_postgres(args):
+    unused_output(args.output)
+    require(len(args.expected_account_id) == 1, "PostgreSQL migration is scoped to exactly one explicitly known account")
+    require(args.database_user is None or args.ssh and args.sudo, "--database-user requires --ssh --sudo")
+    sql = pg_sql(args.schema)
+    if args.ssh:
+        require(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.@:-]{0,254}", args.ssh), "invalid SSH host identifier")
+        runner = (["sudo", "-n"] if args.sudo else []) + ["python3", "-c", remote_program()]
+        command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", args.ssh, shlex.join(runner)]
+        raw = bounded_process(command, compact({"sql": sql, "envFile": str(args.env_file), "schema": args.schema, "databaseUser": args.database_user}).encode())
+    else:
+        require(not args.sudo, "--sudo requires --ssh; do not elevate the local operator process implicitly")
+        raw = bounded_process(["psql", "-X", "-q", "-A", "-t", "-0", "-w", "-v", "ON_ERROR_STOP=1"], sql.encode(), pg_environment(args.env_file, args.schema))
+    records = []
+    # libpq JSON aggregates can contain formatting newlines. NUL is a record
+    # delimiter; JSON string content cannot contain a literal NUL.
+    for line in raw.split(b"\0"):
+        if not line:
+            continue
+        require(len(line) <= MAX_ROW * 2, "PostgreSQL row exceeds the explicit bound")
+        records.append(strict_json(line))
+    del raw
+    catalogs = [row for row in records if row.get("kind") == "catalog"]
+    require(len(catalogs) == 1 and catalogs[0]["schema"] == args.schema, "source schema does not match the selected PostgreSQL schema")
+    catalog = catalogs[0]
+    migrations = [row["row"] for row in records if row.get("kind") == "migration"]
+    require(len(migrations) in (8, 9), "only complete PostgreSQL schema8/schema9 ledgers are supported")
+    for version, row in enumerate(migrations, 1):
+        require(set(row) == {"version", "applied_at_ms"} and row["version"] == version and type(row["applied_at_ms"]) is int,
+                "unknown, gapped, or malformed PostgreSQL migration ledger")
+    schema_version = len(migrations)
+    expected_tables = set(PG_COLUMNS)
+    if schema_version == 8:
+        expected_tables.remove("memory_engine_review_exposures")
+    require({table["name"] for table in catalog["tables"]} == expected_tables | {"memory_engine_schema_migrations"},
+            "unknown or missing source table; no rows were silently omitted")
+    require(len(catalog["tables"]) == len(expected_tables) + 1, "duplicate source catalog table")
+    table_catalog = {}
+    for table in catalog["tables"]:
+        require(table["kind"] == "r", "source views, partitions, and foreign tables are unsupported")
+        require(not table["row_security"] and not table["force_row_security"], "row-level security would make completeness unverifiable")
+        name = table["name"]
+        columns = sorted(["version", "applied_at_ms"]) if name == "memory_engine_schema_migrations" else PG_COLUMNS[name]
+        require([column["name"] for column in table["columns"]] == columns, "unknown or missing source column")
+        for column in table["columns"]:
+            require(column["type"] == pg_type(name, column["name"]), "unexpected source column type")
+            require(column["notnull"] == (column["name"] not in PG_NULLABLE.get(name, set())), "unexpected source column nullability")
+        require(table["primary"] == PG_PRIMARY[name].split(), "unknown source primary key")
+        table_catalog[name] = table
+    require({row["sequencename"] for row in catalog["sequences"]} == set(SEQUENCES.values())
+            and len(catalog["sequences"]) == 2, "unknown or missing source sequence")
+    for sequence in catalog["sequences"]:
+        require(sequence["data_type"] == "bigint" and sequence["start_value"] == 1 and sequence["min_value"] == 1
+                and sequence["max_value"] == 9223372036854775807
+                and sequence["increment_by"] == 1 and not sequence["cycle"] and sequence["cache_size"] == 1,
+                "unsupported source sequence policy")
+    sequences = []
+    rows_by_table = {name: [] for name in expected_tables}
+    for record in records:
+        kind = record.get("kind")
+        if kind == "row":
+            require(record["table"] in rows_by_table, "unexpected exported row table")
+            rows_by_table[record["table"]].append(record["values"])
+        elif kind == "sequence":
+            sequences.append({key: record[key] for key in ("table", "value", "isCalled")})
+        else:
+            require(kind in {"catalog", "migration"}, "unknown PostgreSQL export record")
+    tables = []
+    for name in sorted(expected_tables):
+        columns = PG_COLUMNS[name]
+        primary = [columns.index(key) for key in table_catalog[name]["primary"]]
+        rows = rows_by_table[name]
+        require(all(isinstance(row, list) and len(row) == len(columns) for row in rows), "incomplete PostgreSQL row")
+        # SQLite BINARY ordering, not the source database's locale collation.
+        rows.sort(key=lambda row: tuple(row[index] for index in primary))
+        require(all(tuple(left[index] for index in primary) != tuple(right[index] for index in primary)
+                    for left, right in zip(rows, rows[1:])), "duplicate source primary key")
+        data = "".join(compact(row) + "\n" for row in rows)
+        tables.append({"name": name, "columns": columns, "rows": len(rows), "sha256": digest(data.encode()), "data": data})
+    bundle = {"schema": BUNDLE_SCHEMA, "source": {
+        "engine": "postgresql", "schemaVersion": schema_version, "schemaName": args.schema,
+        "instance": "postgresql", "capturedAtMs": catalog["capturedAtMs"], "migrations": migrations,
+        "sequences": sorted(sequences, key=lambda sequence: sequence["table"]),
+        "recoveryState": None,
+    }, "tables": tables, "fingerprint": None}
+    encoded = compact(bundle).encode()
+    receipt = check_bundle(encoded, args.expected_account_id)
+    private_write(args.output, encoded)
+    return receipt
+
+
+def identity(bundle):
+    table = next(table for table in bundle["tables"] if table["name"] == "memory_engine_accounts")
+    index = table["columns"].index("account_id")
+    ids = sorted(strict_json(line)[index] for line in table["data"].split("\n")[:-1])
+    require(all(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value) for value in ids), "unsupported account identity")
+    require(len(ids) == len(set(ids)), "duplicate account identity")
+    return ids, digest(compact(ids).encode())
+
+
+def bundle_fingerprint(bundle):
+    lines = ["memory_engine.cloudflare_fingerprint.v1\n4\n"]
+    for table in sorted(bundle["tables"], key=lambda table: table["name"]):
+        if table["name"] != "memory_engine_recovery_imports":
+            lines.append(f"{table['name']}\t{table['rows']}\t{table['sha256']}\n")
+    for sequence in sorted(bundle["source"]["sequences"], key=lambda sequence: sequence["table"]):
+        lines.append(f"{sequence['table']}\t{sequence['value']}\t{str(sequence['isCalled']).lower()}\n")
+    return digest("".join(lines).encode())
+
+
+def check_bundle(data, expected_ids=None):
+    require(len(data) <= MAX_BUNDLE, "bundle exceeds 16 MiB; nothing was truncated")
+    bundle = strict_json(data)
+    require(set(bundle) == {"schema", "source", "tables", "fingerprint"} and bundle["schema"] == BUNDLE_SCHEMA, "unsupported recovery bundle schema")
+    source = bundle["source"]
+    require(set(source) == {"engine", "schemaVersion", "schemaName", "instance", "capturedAtMs", "migrations", "sequences", "recoveryState"}, "unknown source metadata")
+    postgres = source["engine"] == "postgresql"
+    require(postgres and source["schemaVersion"] in (8, 9)
+            or source["engine"] == "cloudflare-sqlite" and source["schemaVersion"] == 4, "unknown storage schema")
+    if postgres:
+        require(source["recoveryState"] is None, "unexpected PostgreSQL recovery control state")
+    else:
+        require(isinstance(source["recoveryState"], dict) and set(source["recoveryState"]) == {
+            "singleton", "learner_traffic_enabled", "next_backup_at_ms", "lease_token", "lease_expires_at_ms", "last_backup_id", "last_backup_at_ms"
+        } and source["recoveryState"]["singleton"] == 1
+            and type(source["recoveryState"]["learner_traffic_enabled"]) is int
+            and source["recoveryState"]["learner_traffic_enabled"] in (0, 1), "incomplete source recovery control metadata")
+    require(len(source["migrations"]) == source["schemaVersion"], "partial source migration ledger")
+    for version, migration in enumerate(source["migrations"], 1):
+        expected = {"version", "applied_at_ms"} | (set() if postgres else {"name"})
+        require(set(migration) == expected and migration["version"] == version and type(migration["applied_at_ms"]) is int, "invalid source migration ledger")
+        if not postgres:
+            require(migration["name"] == ("001-auth", "002-study", "003-jobs", "004-recovery")[version - 1], "unknown SQLite migration")
+    expected = set(PG_COLUMNS)
+    if postgres and source["schemaVersion"] == 8:
+        expected.remove("memory_engine_review_exposures")
+    if not postgres:
+        expected |= NEW_TABLES
+    require(isinstance(bundle["tables"], list) and {table["name"] for table in bundle["tables"]} == expected
+            and len(bundle["tables"]) == len(expected), "unknown, missing, or duplicated bundle table")
+    rows = 0
+    for table in bundle["tables"]:
+        require(set(table) == {"name", "columns", "rows", "sha256", "data"}, "unknown table envelope")
+        require(isinstance(table["data"], str) and type(table["rows"]) is int and table["rows"] >= 0, "invalid table data")
+        require(is_hash(table["sha256"]) and digest(table["data"].encode()) == table["sha256"], "table checksum mismatch")
+        require(table["columns"] == sorted(set(table["columns"])), "noncanonical table columns")
+        if postgres:
+            require(table["columns"] == PG_COLUMNS[table["name"]], "unknown PostgreSQL column")
+        count = 0
+        require(not table["data"] or table["data"].endswith("\n"), "truncated NDJSON table")
+        for line in table["data"].split("\n")[:-1]:
+            require(len(line.encode()) <= MAX_ROW, "table row exceeds the explicit bound")
+            values = strict_json(line)
+            require(isinstance(values, list) and len(values) == len(table["columns"]) and compact(values) == line, "noncanonical or incomplete row")
+            require(all(value is None or isinstance(value, str) or type(value) is int and abs(value) <= 9007199254740991 for value in values),
+                    "unsupported or inexact SQL scalar")
+            count += 1
+        require(count == table["rows"], "table count mismatch")
+        rows += count
+    require(rows <= MAX_ROWS, "bundle exceeds the explicit row bound")
+    sequence_rows = source["sequences"]
+    require(len(sequence_rows) == 2 and {row["table"] for row in sequence_rows} == set(SEQUENCES), "incomplete sequence state")
+    for sequence in sequence_rows:
+        require(set(sequence) == {"table", "value", "isCalled"} and type(sequence["value"]) is int
+                and 0 <= sequence["value"] <= 9007199254740991 and type(sequence["isCalled"]) is bool,
+                "unsupported sequence state")
+    ids, ids_hash = identity(bundle)
+    if expected_ids is not None:
+        require(ids == sorted(expected_ids), "account identities differ from the explicit migration scope")
+    require(not postgres or len(ids) == 1, "PostgreSQL migration requires exactly one known account")
+    if postgres:
+        require(bundle["fingerprint"] is None, "unexpected PostgreSQL destination fingerprint")
+    else:
+        require(bundle["fingerprint"] == bundle_fingerprint(bundle), "authoritative bundle fingerprint mismatch")
+    return {"schema": "memory_engine.cloudflare_bundle_receipt.v1", "sha256": digest(data), "bytes": len(data),
+            "sourceSchemaVersion": source["schemaVersion"], "accountCount": len(ids), "accountIdsSha256": ids_hash,
+            "rows": rows, "fingerprintSha256": bundle["fingerprint"],
+            "tables": [{key: table[key] for key in ("name", "rows", "sha256")} for table in sorted(bundle["tables"], key=lambda table: table["name"])]}
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise OperationError("recovery HTTP redirects are forbidden")
+
+
+class Api:
+    def __init__(self, args):
+        parsed = urllib.parse.urlsplit(args.base)
+        require(parsed.scheme == "https" or parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"},
+                "recovery requires HTTPS except on a loopback development endpoint")
+        require(parsed.hostname and not parsed.username and not parsed.password and not parsed.query and not parsed.fragment
+                and parsed.path in ("", "/"), "base must be a credential-free origin URL")
+        require(re.fullmatch(r"app|restore-[a-z0-9-]{8,64}", args.target), "invalid recovery target")
+        self.base = args.base.rstrip("/")
+        self.target = args.target
+        values = private_env(args.admin_env)
+        self.token = values.get("MEMORY_ENGINE_ADMIN_TOKEN", "")
+        require(self.token and "\r" not in self.token and "\n" not in self.token, "private admin environment lacks a valid MEMORY_ENGINE_ADMIN_TOKEN")
+        self.opener = urllib.request.build_opener(NoRedirect())
+
+    def request(self, method, route, data=None, headers=None, maximum=MAX_BUNDLE):
+        request_headers = {"X-Admin-Token": self.token, "X-Scry-Recovery-Target": self.target,
+                           "X-Scry-Confirm-Target": self.target, "Content-Type": "application/json"}
+        request_headers.update(headers or {})
+        request = urllib.request.Request(self.base + route, data=data, headers=request_headers, method=method)
+        try:
+            with self.opener.open(request, timeout=180) as response:
+                require(response.status == 200, "unexpected recovery response status")
+                body = response.read(maximum + 1)
+                require(len(body) <= maximum, "recovery HTTP response exceeds the explicit bound")
+                checksum = response.headers.get("X-Scry-Content-Sha256")
+                if checksum:
+                    require(is_hash(checksum) and digest(body) == checksum, "recovery transport checksum mismatch")
+                return body, checksum
+        except urllib.error.HTTPError as error:
+            raise OperationError(f"recovery request failed (HTTP {error.code}); response body intentionally withheld") from None
+        except urllib.error.URLError:
+            raise OperationError("recovery endpoint connection failed") from None
+
+    def json(self, method, route, value=None):
+        return strict_json(self.request(method, route, None if value is None else compact(value).encode())[0])
+
+
+def load_backup_receipt(path):
+    receipt = strict_json(private_read(path, MAX_MANIFEST))
+    require(receipt.get("schema") == "memory_engine.cloudflare_backup_receipt.v1", "unsupported backup receipt")
+    require(re.fullmatch(r"[0-9]{1,16}-[0-9a-f]{64}", receipt["backupId"]), "invalid backup identifier")
+    require(all(is_hash(receipt.get(key)) for key in ("manifestSha256", "bundleSha256", "fingerprintSha256", "accountIdsSha256")), "invalid backup receipt checksums")
+    return receipt
+
+
+def retrieve(api, receipt):
+    query = urllib.parse.urlencode({"backupId": receipt["backupId"]})
+    encoded, checksum = api.request("GET", "/internal/recovery/manifest?" + query, maximum=MAX_MANIFEST)
+    require(checksum == receipt["manifestSha256"] and digest(encoded) == receipt["manifestSha256"], "manifest does not match the saved backup receipt")
+    manifest = strict_json(encoded)
+    require(manifest["schema"] == "memory_engine.cloudflare_backup.v1" and manifest["complete"] is True
+            and manifest["backupId"] == receipt["backupId"] and manifest["bundleSha256"] == receipt["bundleSha256"], "invalid or misrouted complete manifest")
+    require(0 < manifest["bytes"] <= MAX_BUNDLE and len(manifest["chunks"]) == (manifest["bytes"] + CHUNK_BYTES - 1) // CHUNK_BYTES,
+            "manifest chunk coverage is incomplete")
+    data = bytearray()
+    for index, chunk in enumerate(manifest["chunks"]):
+        require(chunk["index"] == index and chunk["bytes"] == min(CHUNK_BYTES, manifest["bytes"] - index * CHUNK_BYTES)
+                and is_hash(chunk["sha256"]), "invalid chunk manifest")
+        body, checksum = api.request("GET", "/internal/recovery/chunk?" + query + "&index=" + str(index), maximum=CHUNK_BYTES)
+        require(len(body) == chunk["bytes"] and checksum == chunk["sha256"] and digest(body) == chunk["sha256"], "backup chunk checksum mismatch")
+        data.extend(body)
+    require(len(data) == manifest["bytes"] and digest(data) == receipt["bundleSha256"], "complete backup checksum mismatch")
+    checked = check_bundle(data)
+    require(checked["fingerprintSha256"] == receipt["fingerprintSha256"] and checked["accountCount"] == receipt["accountCount"]
+            and checked["accountIdsSha256"] == receipt["accountIdsSha256"], "backup identity or fingerprint does not match the receipt")
+    return data, checked
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+    export = commands.add_parser("pg-export", help="repeatable-read READ ONLY psql export; never migrate the native database")
+    export.add_argument("--env-file", required=True, type=Path, help="mode0600 native environment file (on the remote host with --ssh)")
+    export.add_argument("--ssh", help="existing SSH host; no remote files are written")
+    export.add_argument("--sudo", action="store_true", help="use remote noninteractive sudo to read the native private environment")
+    export.add_argument("--database-user", help="drop remote root to this OS/database user after reading the private environment (requires --ssh --sudo)")
+    export.add_argument("--schema", default="public")
+    export.add_argument("--expected-account-id", action="append", required=True)
+    export.add_argument("--output", required=True, type=Path)
+    inspect_bundle = commands.add_parser("inspect", help="verify a private bundle and print only count/hash receipts")
+    inspect_bundle.add_argument("--input", required=True, type=Path)
+    inspect_bundle.add_argument("--expected-account-id", action="append")
+    for name in ("fingerprint", "export", "import", "backup", "list", "retrieve", "restore", "retention"):
+        command = commands.add_parser(name)
+        command.add_argument("--base", required=True, help="Worker origin, HTTPS except loopback")
+        command.add_argument("--admin-env", required=True, type=Path, help="mode0600 file containing MEMORY_ENGINE_ADMIN_TOKEN")
+        command.add_argument("--target", required=True, help="explicit app or separate restore-[a-z0-9-]{8,64} object")
+        if name in {"export", "retrieve"}:
+            command.add_argument("--output", required=True, type=Path)
+        if name == "import":
+            command.add_argument("--input", required=True, type=Path)
+            command.add_argument("--expected-account-id", action="append", required=True)
+            command.add_argument("--source-quiesced", action="store_true", help="assert operator has separately stopped ALL native writers/senders; required for PG -> app")
+        if name in {"backup", "retrieve", "restore"}:
+            command.add_argument("--receipt", required=True, type=Path, help="new private output for backup; saved backup receipt for retrieve/restore")
+        if name == "retention":
+            command.add_argument("--days", type=int, default=30)
+            command.add_argument("--keep", type=int, default=7)
+            command.add_argument("--confirm", action="store_true", required=True)
+    args = parser.parse_args()
+    if args.command == "pg-export":
+        return export_postgres(args)
+    if args.command == "inspect":
+        return check_bundle(private_read(args.input, MAX_BUNDLE), args.expected_account_id)
+    api = Api(args)
+    if args.command == "fingerprint":
+        return api.json("GET", "/internal/migration/fingerprint")
+    if args.command == "export":
+        unused_output(args.output)
+        body, checksum = api.request("GET", "/internal/migration/export")
+        require(checksum is not None, "export omitted its transport checksum")
+        receipt = check_bundle(body)
+        require(strict_json(body)["source"]["instance"] == args.target, "export came from a different recovery object")
+        private_write(args.output, body)
+        return receipt
+    if args.command == "import":
+        body = private_read(args.input, MAX_BUNDLE)
+        receipt = check_bundle(body, args.expected_account_id)
+        bundle = strict_json(body)
+        require(bundle["source"]["engine"] != "postgresql" or args.target != "app" or args.source_quiesced,
+                "primary PostgreSQL import requires --source-quiesced after an independently executed stopped-writer barrier")
+        headers = {"X-Scry-Content-Sha256": receipt["sha256"], "X-Scry-Account-Count": str(receipt["accountCount"]),
+                   "X-Scry-Account-Ids-Sha256": receipt["accountIdsSha256"], "X-Scry-Source-Quiesced": str(args.source_quiesced).lower()}
+        result = strict_json(api.request("POST", "/internal/migration/import", body, headers)[0])
+        require(result.get("verified") is True and result["sourceSha256"] == receipt["sha256"], "import omitted its verified source checksum")
+        return result
+    if args.command == "backup":
+        unused_output(args.receipt)
+        receipt = api.json("POST", "/internal/recovery/backup", {})
+        require(receipt.get("schema") == "memory_engine.cloudflare_backup_receipt.v1", "unexpected backup receipt")
+        private_write(args.receipt, compact(receipt).encode())
+        return receipt
+    if args.command == "list":
+        return api.json("GET", "/internal/recovery/list")
+    if args.command == "retrieve":
+        unused_output(args.output)
+        data, receipt = retrieve(api, load_backup_receipt(args.receipt))
+        private_write(args.output, data)
+        return receipt
+    if args.command == "restore":
+        require(args.target.startswith("restore-"), "restore requires a separate explicit restore-* object")
+        receipt = load_backup_receipt(args.receipt)
+        body = {key: receipt[key] for key in ("backupId", "manifestSha256", "bundleSha256", "fingerprintSha256", "accountIdsSha256", "accountCount")}
+        body["target"] = args.target
+        result = api.json("POST", "/internal/recovery/restore", body)
+        require(result.get("verified") is True and result["fingerprint"]["sha256"] == receipt["fingerprintSha256"], "restored fingerprint differs from the backup")
+        # Independent post-request readback proves the restored transaction survived
+        # its request boundary; this is still not a claim of live production proof.
+        current = api.json("GET", "/internal/migration/fingerprint")
+        require(current["sha256"] == receipt["fingerprintSha256"] and current["accountIdsSha256"] == receipt["accountIdsSha256"],
+                "restored fingerprint changed across the request boundary")
+        return result
+    if args.command == "retention":
+        require(args.target == "app", "retention only operates through the explicit primary object")
+        return api.json("POST", "/internal/recovery/retention", {"target": args.target, "days": args.days, "keep": args.keep, "confirm": args.confirm})
+    raise OperationError("unknown recovery operation")
+
+
+if __name__ == "__main__":
+    os.umask(0o077)
+    try:
+        print(compact(main()))
+    except OperationError as error:
+        print("scry-cloudflare-data: " + str(error), file=sys.stderr)
+        sys.exit(1)
+    except (OSError, ValueError, KeyError, TypeError, StopIteration, subprocess.SubprocessError):
+        # Parser/OS errors can embed learner rows, credentials, or response bodies.
+        print("scry-cloudflare-data: operation failed; private diagnostic content intentionally withheld", file=sys.stderr)
+        sys.exit(1)

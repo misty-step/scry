@@ -26,8 +26,8 @@ never print it. Anonymous account creation is not part of this contract.
   localhost, runs the external consumer runner over HTTP, fetches the served
   OpenAPI contract, completes the full loop, archives its source, and proves
   receipts redact credentials.
-- `docs/qa/scry-v1-production-contract.md` records the production Fly contract
-  receipt against a pre-provisioned account session.
+- `docs/qa/scry-v1-production-contract.md` is historical native-host evidence;
+  current shipment and recovery proof belongs with `docs/runbook.md`.
 
 ## Consumer Demo
 
@@ -43,11 +43,11 @@ cargo run -p memory-engine-contract -- \
 ```
 
 The production demo uses the same pre-provisioned account contract. Production
-account creation is allowlist-gated. The runner's default base URL is the
-branded production origin `https://scry.study`; pass
-`--base-url https://memory-engine-api-i2xcr.ondigitalocean.app` explicitly
-only as a labeled operator-origin fallback (e.g. while DNS for the branded
-domain is degraded):
+account creation is allowlist-gated. The default origin is
+`https://scry.misty-step.workers.dev`; there is no native-provider fallback.
+Existing machine credentials keep their recorded origin. After the verified
+cutover, explicitly update that origin or pass `--base-url` for the new host;
+the migrated Bearer token remains valid until its existing expiry or revocation.
 
 ```sh
 MEMORY_ENGINE_ACCOUNT_ID=acct_... \
@@ -55,13 +55,13 @@ MEMORY_ENGINE_SESSION_TOKEN="$SESSION_TOKEN" \
 cargo run -p memory-engine-contract
 ```
 
-The runner creates a disposable source, enqueues its generation job on the
-durable production queue and polls it to a bounded terminal state (never the
-legacy synchronous `/generate` route, refused with HTTP 409 once
-`MEMORY_ENGINE_POSTGRES_URL` is set — every production deployment), keeps the
-first pending draft explicitly, selects the next review, reveals the answer,
-submits that answer, archives the source, lists active sources, and emits a
-JSON receipt with the source absent from the active list.
+The runner creates a disposable source, enqueues generation, and polls it to a
+bounded terminal state. It explicitly keeps the first pending draft, selects
+a review, reveals and submits the answer, archives the source, and emits a
+redacted receipt with the source absent from the active list. A revealed answer
+records assisted exposure (`Revealed`/`Again`), never successful unaided recall.
+The synchronous `/generate` route uses the same admission/trust policy, but
+queued generation is the preferred interface for restart-safe clients.
 
 ## Scry Integration Notes
 

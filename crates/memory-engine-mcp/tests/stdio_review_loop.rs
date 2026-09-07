@@ -143,7 +143,7 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     //    decision.
     let deck_body = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\n\
          Question: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\n\
-         Distractors: BRAVO, CHARLIE\n\
+         Distractors: ABLE, ADAM\n\
          Reference: The NATO phonetic alphabet word for A is ALFA.";
     let created_deck = call_tool(
         &mut stdin,
@@ -256,9 +256,10 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         .as_str()
         .unwrap_or_default()
         .contains("NATO phonetic alphabet word for A"));
+    assert_eq!(next_payload["current"]["expectedAnswer"], Value::Null);
 
-    // 9. reveal_answer — declared remediation: show the answer without
-    //    grading, and the queue stays on the same card.
+    // 9. reveal_answer — show the answer without grading or advancing, but
+    //    durably mark this occurrence as assisted.
     let revealed = call_tool(
         &mut stdin,
         &rx,
@@ -270,19 +271,53 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     let revealed_payload = tool_payload(&revealed);
     assert_eq!(revealed_payload["current"]["reviewUnitId"], review_unit_id);
     assert_eq!(revealed_payload["current"]["expectedAnswer"], "ALFA");
+    assert_eq!(revealed_payload["current"]["grade"], Value::Null);
+    assert_eq!(revealed_payload["summary"]["attemptCount"], 0);
 
-    // 10. submit_answer — grades the card and advances the schedule.
+    // 10. submit_answer — an exact answer after exposure is still Again,
+    //     never evidence of unassisted correct recall.
     let submitted = call_tool(
         &mut stdin,
         &rx,
         &mut transcript,
         next_id(),
         "submit_answer",
-        &json!({"review_unit_id": review_unit_id, "answer": "ALFA"}),
+        &json!({
+            "review_unit_id": review_unit_id,
+            "answer": "ALFA",
+            "idempotency_key": "stdio-assisted-submit",
+        }),
     );
     let submitted_payload = tool_payload(&submitted);
-    assert_eq!(submitted_payload["current"]["grade"]["verdict"], "correct");
+    assert_eq!(submitted_payload["current"]["grade"]["verdict"], "revealed");
+    assert_eq!(submitted_payload["current"]["grade"]["rating"], 1);
+    assert_eq!(submitted_payload["current"]["grade"]["isCorrect"], false);
+    assert_eq!(submitted_payload["summary"]["attemptCount"], 1);
+    assert_eq!(
+        submitted_payload["current"]["feedback"]["itemHistory"]["correct"],
+        0
+    );
     assert_eq!(submitted_payload["dueCount"], 0);
+
+    // A retried submit returns the assisted receipt without adding an attempt.
+    let replayed = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "submit_answer",
+        &json!({
+            "review_unit_id": review_unit_id,
+            "answer": "ALFA",
+            "idempotency_key": "stdio-assisted-submit",
+        }),
+    );
+    let replayed_payload = tool_payload(&replayed);
+    assert_eq!(
+        replayed_payload["current"]["grade"],
+        submitted_payload["current"]["grade"]
+    );
+    assert_eq!(replayed_payload["summary"]["attemptCount"], 1);
 
     // 11. record_content_feedback — a kept/dropped verdict on the content
     //     itself, distinct from grading the answer.
@@ -310,14 +345,13 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     assert_eq!(tool_payload(&invalidated)["dueCount"], 0);
 
     drop(stdin);
-    let _ = child.wait();
-    let _ = reader.join();
+    let status = child.wait().expect("wait for MCP exit");
+    reader.join().expect("stdout reader");
     server.abort();
 
     assert!(
-        transcript.len() >= 12,
-        "expected at least 12 request/response pairs in the transcript, got {}",
-        transcript.len()
+        status.success(),
+        "MCP must exit successfully at stdin EOF: {status}; transcript: {transcript:#?}"
     );
 }
 

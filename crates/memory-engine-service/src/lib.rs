@@ -8,8 +8,8 @@ use std::{error::Error, fmt};
 
 use memory_engine_core::{
     pick_next_queue_candidate, FsrsScheduler, GradeContext, GradeResult, Grader, Prompt,
-    QueueCandidate, QueueSelectionOptions, QueueSeparationPass, ReviewUnitId, ScheduleState,
-    Scheduler, SchedulerError,
+    QueueCandidate, QueueSelectionOptions, QueueSeparationPass, Rating, ReviewUnitId,
+    ScheduleState, Scheduler, SchedulerError, Verdict,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,9 @@ pub struct ServiceAttemptRecord {
     pub occurred_at: i64,
     pub idempotency_key: Option<String>,
     pub grade: Option<GradeResult>,
+    /// Exact evidence graded at submission; absent on pre-evidence historical rows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graded_prompt: Option<Prompt>,
 }
 
 /// The learner's binary judgment of generated content.
@@ -192,7 +195,26 @@ pub trait MemoryServiceStore {
         review_unit_id: &ReviewUnitId,
     ) -> Result<Option<ScheduleState>, Self::Error>;
 
+    /// Whether this schedule occurrence has durably exposed its answer.
+    ///
+    /// Stores without an exposure surface default to unassisted. Durable study
+    /// adapters also fence this read inside `apply_review` to reject races.
+    ///
+    /// # Errors
+    /// Returns the store error when exposure cannot be read.
+    fn review_was_revealed(
+        &self,
+        _review_unit_id: &ReviewUnitId,
+        _prior_schedule: Option<&ScheduleState>,
+    ) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+
     /// Persist an applied review attempt and its next schedule state.
+    ///
+    /// Durable exposure-aware stores must recheck assistance inside this same
+    /// commit and reject an unassisted grade if reveal won the race. Attempt,
+    /// expected-prior schedule, next schedule and replay receipt remain atomic.
     ///
     /// # Errors
     ///
@@ -229,6 +251,14 @@ where
         review_unit_id: &ReviewUnitId,
     ) -> Result<Option<ScheduleState>, Self::Error> {
         (**self).read_schedule_state(review_unit_id)
+    }
+
+    fn review_was_revealed(
+        &self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<&ScheduleState>,
+    ) -> Result<bool, Self::Error> {
+        (**self).review_was_revealed(review_unit_id, prior_schedule)
     }
 
     fn apply_review(
@@ -496,6 +526,7 @@ where
             occurred_at: command.attempt.occurred_at.unwrap_or_else(|| (self.now)()),
             idempotency_key: command.attempt.idempotency_key,
             grade: None,
+            graded_prompt: None,
         };
 
         self.store
@@ -520,8 +551,22 @@ where
             .store
             .read_schedule_state(&review_unit_id)
             .map_err(ServiceError::Store)?;
+        self.grade_apply_review_at_schedule(command, prior_schedule)
+    }
+
+    /// Grade the occurrence the caller actually presented, rejecting a stale
+    /// occurrence atomically rather than silently grading the next one.
+    ///
+    /// # Errors
+    /// Returns store concurrency/persistence errors or an invalid schedule error.
+    pub fn grade_apply_review_at_schedule(
+        &mut self,
+        command: GradeApplyReviewCommand,
+        prior_schedule: Option<ScheduleState>,
+    ) -> Result<ReviewAppliedResult, ServiceError<TStore::Error>> {
+        let review_unit_id = prompt_review_unit_id(&command.prompt).clone();
         let occurred_at = command.occurred_at.unwrap_or_else(|| (self.now)());
-        let grade = self.grader.grade(
+        let mut grade = self.grader.grade(
             &command.prompt,
             &command.submitted_answer,
             GradeContext {
@@ -529,6 +574,15 @@ where
                 prior_reps: prior_schedule.as_ref().map_or(0, |schedule| schedule.reps),
             },
         );
+        if self
+            .store
+            .review_was_revealed(&review_unit_id, prior_schedule.as_ref())
+            .map_err(ServiceError::Store)?
+        {
+            grade.verdict = Verdict::Revealed;
+            grade.rating = Rating::Again;
+            grade.is_correct = false;
+        }
         let attempt = ServiceAttemptRecord {
             review_unit_id: review_unit_id.clone(),
             prompt_id: command.prompt_id,
@@ -537,6 +591,7 @@ where
             occurred_at,
             idempotency_key: command.idempotency_key,
             grade: Some(grade.clone()),
+            graded_prompt: Some(command.prompt),
         };
         let schedule_state = self
             .scheduler

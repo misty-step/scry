@@ -26,6 +26,164 @@ use serde_json::json;
 const NOW: i64 = 1_779_984_000_000;
 
 #[test]
+fn revealed_occurrence_survives_restart_and_preopened_tabs_without_successful_recall() {
+    let directory = TempDirectory::new("durable-exposure");
+    let path = directory.path().join("study.json");
+    let mut study =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
+    study.add_source(source_input()).expect("source");
+    study.generate(None).expect("drafts");
+    let original = study
+        .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
+        .expect("keep")
+        .current
+        .expect("quiz");
+    let mut stale_tab =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("tab");
+    stale_tab.start().expect("preopened quiz");
+    study.reveal().expect("durable reveal");
+    drop(study);
+
+    let mut restarted =
+        BetaStudySession::for_review(BetaPersistenceStore::open(&path).expect("restart"), now);
+    let resumed = restarted
+        .resume_review(original.review_unit_id.as_str())
+        .expect("resume");
+    assert_eq!(resumed.status, BetaStudyStatus::Revealed);
+    assert_eq!(
+        resumed.current.expect("resumed quiz").choices,
+        original.choices
+    );
+    let result = restarted
+        .submit_answer_with_idempotency_key("ALFA", 1_800, Some("revealed-occurrence"))
+        .expect("assisted grade");
+    let graded = result.current.expect("graded");
+    let grade = graded.grade.expect("grade");
+    assert_eq!(grade.verdict, Verdict::Revealed);
+    assert_eq!(grade.rating, Rating::Again);
+    assert!(!grade.is_correct);
+    assert_eq!(graded.feedback.expect("feedback").item_history.correct, 0);
+    let committed = BetaPersistenceStore::open(&path)
+        .expect("snapshot")
+        .snapshot();
+    assert_eq!(committed.attempts.len(), 1);
+    assert_eq!(committed.applied_reviews.len(), 1);
+    assert!(stale_tab
+        .submit_answer_with_idempotency_key("ALFA", 1_800, Some("other-tab"))
+        .is_err());
+    assert_eq!(
+        BetaPersistenceStore::open(&path)
+            .expect("after stale tab")
+            .snapshot(),
+        committed
+    );
+
+    let mut replay = BetaStudySession::for_review(
+        BetaPersistenceStore::open(&path).expect("restart replay"),
+        now,
+    );
+    assert!(replay
+        .restore_graded_review(original.review_unit_id.as_str(), "revealed-occurrence")
+        .expect("receipt"));
+    assert_eq!(
+        replay
+            .view()
+            .expect("replay view")
+            .current
+            .expect("replay quiz")
+            .grade
+            .expect("grade")
+            .verdict,
+        Verdict::Revealed
+    );
+    replay
+        .submit_answer_with_idempotency_key("ALFA", 1_800, Some("revealed-occurrence"))
+        .expect("view-only retry");
+    assert_eq!(
+        BetaPersistenceStore::open(&path)
+            .expect("after replay")
+            .snapshot(),
+        committed
+    );
+
+    let mut later =
+        BetaStudySession::for_review(BetaPersistenceStore::open(&path).expect("later"), || {
+            NOW + 86_400_000
+        });
+    assert_eq!(
+        later
+            .resume_review(original.review_unit_id.as_str())
+            .expect("next occurrence")
+            .status,
+        BetaStudyStatus::Answering
+    );
+    let recalled = later
+        .submit_answer_with_idempotency_key("ALFA", 1_800, Some("next-occurrence"))
+        .expect("recall");
+    assert_eq!(
+        recalled
+            .current
+            .expect("quiz")
+            .grade
+            .expect("grade")
+            .verdict,
+        Verdict::Correct
+    );
+}
+
+#[test]
+fn editing_a_card_cannot_rewrite_the_prompt_or_answer_of_a_committed_grade() {
+    let directory = TempDirectory::new("graded-evidence");
+    let path = directory.path().join("study.json");
+    let mut study =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
+    study.add_source(source_input()).expect("source");
+    study.generate(None).expect("drafts");
+    let original = study
+        .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
+        .expect("keep")
+        .current
+        .expect("quiz");
+    study
+        .submit_answer_with_idempotency_key("ALFA", 1_800, Some("original-evidence"))
+        .expect("grade");
+    let edited = study
+        .edit_current_prompt("Replacement question", "OMEGA")
+        .expect("edit for next time");
+    assert_eq!(edited.current.expect("graded quiz").prompt, original.prompt);
+    drop(study);
+    let stored = BetaPersistenceStore::open(&path)
+        .expect("reopen")
+        .snapshot();
+    assert_eq!(
+        stored.attempts[0]
+            .grade
+            .as_ref()
+            .expect("grade")
+            .expected_answer,
+        "ALFA"
+    );
+    let mut replay =
+        BetaStudySession::for_review(BetaPersistenceStore::open(&path).expect("replay"), now);
+    assert!(replay
+        .restore_graded_review(original.review_unit_id.as_str(), "original-evidence")
+        .expect("restore"));
+    let current = replay.view().expect("view").current.expect("quiz");
+    assert_eq!(current.prompt, original.prompt);
+    assert_eq!(current.expected_answer.as_deref(), Some("ALFA"));
+    assert_eq!(current.feedback.expect("feedback").expected_answer, "ALFA");
+    assert_eq!(current.choices, original.choices);
+    let edited_prompt = stored
+        .review_units
+        .iter()
+        .find(|unit| unit.review_unit_id == original.review_unit_id)
+        .expect("current definition");
+    assert!(
+        matches!(&edited_prompt.prompt, Prompt::Mcq { correct_choice, .. } if correct_choice == "OMEGA")
+    );
+}
+
+#[test]
 fn queued_generation_is_pending_before_lease_publication() {
     let directory = TempDirectory::new("queued-pending-publication");
     let path = directory.path().join("study.json");
@@ -157,14 +315,14 @@ fn creates_source_generates_keeps_reviews_reveals_and_advances_queue() {
     assert_eq!(reviewed.status, BetaStudyStatus::Graded);
     assert_eq!(
         reviewed_current.grade.expect("grade").verdict,
-        Verdict::Correct
+        Verdict::Revealed
     );
     assert_eq!(
         reviewed_current.review_state.expect("review state").state,
         ScheduleStatus::Learning
     );
     assert_eq!(reviewed.summary.attempt_count, 1);
-    assert_eq!(reviewed.summary.last_outcome, Some(Verdict::Correct));
+    assert_eq!(reviewed.summary.last_outcome, Some(Verdict::Revealed));
     assert_eq!(
         reviewed_current
             .schedule_change
@@ -476,7 +634,7 @@ fn queue_rotates_due_variants_with_the_same_concept_and_stage() {
     assert_ne!(second.prompt, first.prompt);
 
     study
-        .submit_answer("BRAVO", 2_800)
+        .submit_answer("ABLE", 2_800)
         .expect("second submit through study boundary");
     let third = study
         .advance()
@@ -625,7 +783,7 @@ fn concept_progress_rolls_up_items_with_the_same_concept_key() {
 
     study.submit_answer("ALFA", 1_800).expect("first submit");
     study.advance().expect("next");
-    let reviewed = study.submit_answer("BRAVO", 1_800).expect("second submit");
+    let reviewed = study.submit_answer("ABLE", 1_800).expect("second submit");
 
     assert_eq!(reviewed.concept_progress.len(), 1);
     let concept = &reviewed.concept_progress[0];
@@ -717,10 +875,11 @@ fn inspects_and_edits_active_review_item_without_revealing_answer() {
     let inspected_current = inspected.current.as_ref().expect("inspected current");
     assert_eq!(inspected.status, BetaStudyStatus::Answering);
     assert_eq!(inspected_current.expected_answer, None);
-    assert_eq!(
-        inspected_current.reference_text.as_deref(),
-        Some("The NATO phonetic alphabet word for A is ALFA.")
-    );
+    assert!(inspected_current
+        .reference_text
+        .as_deref()
+        .expect("source note")
+        .contains(&source_input().body));
 
     let edited = study
         .edit_current_prompt("Name the NATO code word for the letter A.", "ALFA")
@@ -1666,9 +1825,6 @@ fn revealed_then_submitted_answer_triggers_remediation_pack() {
     let parent_id = approved.current.expect("parent").review_unit_id;
 
     study.reveal().expect("reveal");
-    // The deterministic grader has no way to tell a copied reveal from
-    // genuine recall, so text-matching the just-revealed answer still
-    // grades Correct — the remediation trigger must not depend on that.
     let graded = study
         .submit_answer("CHARLIE ALFA TANGO", 1_800)
         .expect("revealed submit");
@@ -1679,7 +1835,7 @@ fn revealed_then_submitted_answer_triggers_remediation_pack() {
             .grade
             .expect("grade")
             .verdict,
-        Verdict::Correct
+        Verdict::Revealed
     );
 
     let snapshot = BetaPersistenceStore::open(&path).expect("store").snapshot();
@@ -1687,10 +1843,7 @@ fn revealed_then_submitted_answer_triggers_remediation_pack() {
         .remediation_packs
         .iter()
         .find(|pack| pack.parent_review_unit_id == parent_id)
-        .expect(
-            "an attempt submitted after a reveal must trigger a remediation pack \
-             even though the copied answer grades correct",
-        );
+        .expect("an assisted attempt must trigger a remediation pack");
     assert_eq!(pack.status, RemediationPackStatus::Active);
     assert_eq!(pack.review_unit_ids.len(), 2);
 }
@@ -2213,7 +2366,7 @@ fn concept_snooze_input() -> BetaStudySourceInput {
             "Stage: recognition-3",
             "Question: What is the NATO phonetic alphabet word for A?",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, AMBER",
             "Reference: The NATO phonetic alphabet word for A is ALFA.",
             "",
             "Concept: NATO letter A",
@@ -2221,7 +2374,7 @@ fn concept_snooze_input() -> BetaStudySourceInput {
             "Stage: cued-recall",
             "Question: Type the code word used for the letter A.",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, AMBER",
             "Reference: A is represented by ALFA in the NATO phonetic alphabet.",
             "",
             "Concept: NATO letter B",
@@ -2229,7 +2382,7 @@ fn concept_snooze_input() -> BetaStudySourceInput {
             "Stage: recognition-3",
             "Question: What is the NATO phonetic alphabet word for B?",
             "Answer: BRAVO",
-            "Distractors: ALFA, CHARLIE",
+            "Distractors: BAKER, BOSTON",
             "Reference: The NATO phonetic alphabet word for B is BRAVO.",
         ]
         .join("\n"),
@@ -2277,7 +2430,7 @@ fn shared_concept_body() -> String {
         "Stage: recognition-3",
         "Question: What is the NATO phonetic alphabet word for A?",
         "Answer: ALFA",
-        "Distractors: BRAVO, CHARLIE",
+        "Distractors: ABLE, AMBER",
         "Reference: The NATO phonetic alphabet word for A is ALFA.",
         "",
         "Concept: NATO letter A",
@@ -2285,7 +2438,7 @@ fn shared_concept_body() -> String {
         "Stage: cued-recall",
         "Question: Type the code word used for the letter A.",
         "Answer: ALFA",
-        "Distractors: BRAVO, CHARLIE",
+        "Distractors: ABLE, AMBER",
         "Reference: A is represented by ALFA in the NATO phonetic alphabet.",
     ]
     .join("\n")
@@ -2301,7 +2454,7 @@ fn variant_concept_input() -> BetaStudySourceInput {
             "Stage: recognition-3",
             "Question: What is the NATO phonetic alphabet word for A?",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, AMBER",
             "Reference: The NATO phonetic alphabet word for A is ALFA.",
             "",
             "Concept: NATO letter A",
@@ -2309,7 +2462,7 @@ fn variant_concept_input() -> BetaStudySourceInput {
             "Stage: recognition-3",
             "Question: Choose the code word used for the letter A.",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, AMBER",
             "Reference: The NATO phonetic alphabet word for A is ALFA.",
             "",
             "Concept: NATO letter A",
@@ -2317,7 +2470,7 @@ fn variant_concept_input() -> BetaStudySourceInput {
             "Stage: recognition-3",
             "Question: In radio spelling, which word represents A?",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, AMBER",
             "Reference: The NATO phonetic alphabet word for A is ALFA.",
         ]
         .join("\n"),
@@ -2379,6 +2532,7 @@ fn record_graded_attempt_for_review_unit(
             occurred_at: NOW + offset,
             idempotency_key: Some(format!("{}-{offset}", review_unit_id.as_str())),
             grade: Some(grade_result(is_correct)),
+            graded_prompt: None,
         })
         .expect("record attempt");
 }

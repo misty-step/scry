@@ -2,9 +2,8 @@
 //! be notified, kept independent of the study-store adapter (`storage.rs`) so
 //! this slice cannot destabilize the account/session/study contract.
 //!
-//! File-store only. Production runs on Postgres
-//! (`memory_engine_persistence_postgres::PostgresStudyStore::waitlist_*`,
-//! dispatched from `AccountRegistry`); this module exists so local
+//! Native file-store only. The native Postgres adapter is dispatched separately
+//! from `AccountRegistry`; this module exists so local
 //! development and the fast test lane can exercise the full join/list/
 //! invite/delete/audit contract without a live database. Every mutation
 //! also appends a line to an append-only audit log beside the entries file,
@@ -19,24 +18,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{file_lock, write_atomic, ApiFailure};
-/// One waitlist row: normalized email, an audit trail of when it joined and
-/// last changed, the first-run surface it came from, and whether an operator
-/// has since transitioned it to invited. No account, session, or generation
-/// state is ever attached to this record.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WaitlistEntry {
-    pub email: String,
-    pub created_at_ms: i64,
-    pub updated_at_ms: i64,
-    /// Where the join happened, e.g. `"first-run"`. Submitting the form is
-    /// the consent action; this field is the source half of the
-    /// "consent/source metadata" the card asks for.
-    pub source: String,
-    pub invited_at_ms: Option<i64>,
-}
-
+use super::{file_lock, write_atomic};
+use crate::{ApiFailure, WaitlistEntry};
 /// One append-only audit-log line for a waitlist transition. Mirrors the
 /// Postgres `memory_engine_waitlist_audit_log` table's columns.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

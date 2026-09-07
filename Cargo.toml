@@ -8,6 +8,7 @@ members = [
     "crates/memory-engine-bench",
     "crates/memory-engine-canary",
     "crates/memory-engine-cli",
+    "crates/memory-engine-cloudflare",
     "crates/memory-engine-contract",
     "crates/memory-engine-credentials",
     "crates/memory-engine-core",
