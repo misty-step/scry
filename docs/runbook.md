@@ -633,8 +633,10 @@ provider ingest, durable telemetry storage, or remote readback. Canary is
 retired and is not a deployment credential or monitoring dependency.
 Automatic invocation logs are explicitly disabled in every deployment
 environment: they include request URLs, which can carry magic-link credentials.
-Application logs remain enabled. Do not enable invocation logging during a
-mail or browser-auth drill.
+Application logs remain enabled, with `redact_query_string: true` so their
+platform request metadata cannot retain query credentials either. Verify both
+settings through the deployed script-settings API before a mail or browser-auth
+drill; do not rely on the platform's redaction default (false).
 
 `GET /healthz`, `/readyz`, and `/statusz` are observations: none wakes background
 work. The first two witness liveness and readiness. `/statusz` uses
