@@ -122,18 +122,16 @@ verified PostgreSQL primary-import provenance, and matched imported-state
 fingerprint. Main must exercise pause/activation, busy-operation rejection,
 alarm fencing, and independent recovery readback against the actual Worker.
 
-**Cutover proof remains pending until executed.** No live Worker is deployed
-yet; the native DigitalOcean/Postgres service remains authoritative until Main
-records cutover proof. The approved free origin is
-`https://scry.misty-step.workers.dev`, without a registrar prerequisite.
-Main owns the source writer barrier, final import, separate-object restore,
-activation, browser UI/timing, real generation cost/quality, Resend acceptance
-and separate inbox/delivery proof, production smoke, and old-host
-reverse-proxy/redirect retirement. Preserved records do not migrate browser
-cookies across hostnames: prove a fresh workers.dev sign-in as well as imported
-machine sessions and learning history. Record exact versions, source/bundle
-hashes, commands, and actual results; never relabel local smoke or Resend API
-acceptance as deployed migration or inbox-delivery evidence.
+**Production cutover proof remains pending.** Staging Worker
+`https://scry-staging.misty-step.workers.dev` is live and isolated
+(2026-09-07 receipts in the runbook). The native DigitalOcean/Postgres
+service remains authoritative until Main records the source writer barrier,
+final import, recovery, activation, and public proof. The approved free
+production origin is `https://scry.misty-step.workers.dev`, without a
+registrar prerequisite. Preserved records do not migrate browser cookies
+across hostnames. Never relabel staging smoke, Resend API acceptance, or a
+reachable hostname as deployed production migration or inbox-delivery
+evidence.
 
 The capture-anything path adds a focused generation receipt:
 

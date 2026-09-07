@@ -17,9 +17,11 @@ PostgreSQL database (reported schema 8) remain authoritative until Main records
 the source writer barrier, final import/readback, recovery, activation, and
 public proof. Old references to Neon are not a direction to switch back.
 Keep the old host, ingress, credentials, local dumps, and backup work intact
-until Main explicitly changes or retires them. The commands below are a planned
-run sequence, not receipts of executed operations; a reachable Worker hostname
-alone does not prove imported state, activation, mail delivery, or cutover.
+until Main explicitly changes or retires them. Isolated staging receipts exist
+for `https://scry-staging.misty-step.workers.dev` (2026-09-07); they do not
+move production. Production commands below remain a planned sequence until
+Main records the source barrier, final import, recovery, activation, and
+public proof. A reachable Worker hostname alone is not cutover.
 
 | Surface | Staging | Production |
 |---|---|---|
@@ -572,8 +574,11 @@ Do not configure a coarse bucket lifecycle rule that can delete required
 chunks before their complete manifest. Durable Object PITR is an additional
 Cloudflare recovery option; it is not a substitute for the portable R2 restore
 drill. Record the actual platform recovery point and operator procedure before
-claiming PITR proof. No production restore, PITR action, or data drill has been
-executed by this source change.
+claiming PITR proof. Staging R2 backup/retrieve/restore into separate object
+`restore-qa-20260907` was executed 2026-09-07 against live QA state (1 account,
+51 rows; backup/retrieve/restore fingerprints `3da26c5b9ca7e51305e79b3779f48570fec07a89bafe9950fa3fab93e1d5f982`).
+It did not replace `app`. No production restore, PITR action, or production
+data drill has been executed.
 
 ## Auth, learner, generation, and delivery proof
 
@@ -636,6 +641,41 @@ Before public cutover, retain separate actual evidence for:
    measured on the delivered browser contract, not inferred from native timing.
 7. Complete backup retrieval, separate-object restore, and equality of the
    appropriate private fingerprint/count/hash receipts.
+
+### Isolated staging evidence (2026-09-07)
+
+These receipts are for `scry-staging` only. Native `https://scry.study`
+remained `/readyz` 200 and authoritative. Production Worker traffic was not
+enabled.
+
+- Immutable version `cb483442-eac6-468e-8fdd-81d52b2f486c` from
+  `f876bf80848159bfc4bf2eaf448e2318f42ab59b`, bundle
+  `b98c307a9aa07e52b850fab13e9ee0eea9693fa7c978f041f0252324b4561fa1`,
+  activated with `release:traffic --enable`.
+- Deployed script settings: `redact_query_string: true`,
+  `logs.invocation_logs: false`.
+- Fresh AgentMail magic-link: Resend `last_event: delivered`, inbox
+  `received`/`unread`, SPF/DKIM/DMARC pass, consumed on phone-sized
+  `workers.dev`, replay HTTP 403. CSRF missing/mismatch both 403. Current
+  browser logout returned the public sign-in form. Logout-all and signed
+  unsubscribe were not exercised.
+- Capture of a public network-reference source produced grounded Library
+  drafts (library DOM 17698 ms). Explicit keep scheduled study. Reveal
+  graded `Revealed` (assisted). Unassisted MX answer graded `Correct`.
+  Delivered browser contract: `tapToAckMs` 0, `gradedVisibleMs` 176,
+  `viewport: mobile`. Keeping a due draft opened study rather than remaining
+  on editable Library; remaining drafts stayed inspectable on Home/Library.
+- Succeeded generation job `google/gemini-3.7-flash`,
+  `cost_usd_micros` 11216. Operator-gated `POST /v1/service-sessions` 201
+  for the QA email (not mail-derived). That token could not read the native
+  production account id on this object. Native production history lives in
+  the separate rehearsal object, not staging `app`.
+- Reminders enabled with 1 due quiz. Inbox received
+  `You have 1 Scry review` with SPF/DKIM/DMARC pass. Confirmation copy
+  correctly said mailbox delivery was not yet verified; the later due-count
+  message is the inbox proof.
+- CLI, MCP, and skill faces were not live-exercised against staging.
+
 
 ## Health observations and operator alerts
 

@@ -85,8 +85,8 @@ Bootstrap verifies health/assets/schema and the pause, not learner readiness.
 Production requires the same immutable bundle activated and publicly exercised
 in staging, then Main's source barrier, imported-state and recovery evidence.
 Runtime activation does not create another Worker version or rebuild.
-Migration, mail delivery, and public cutover remain pending until actual
-receipts are recorded in the runbook.
+Isolated staging proof is recorded in the runbook. Production migration,
+mail cutover, and public cutover remain pending.
 
 Current strategy and verification docs:
 
