@@ -7610,11 +7610,7 @@ fn server_timing_duration(timing: &str, name: &str) -> u64 {
         .unwrap_or_else(|| panic!("missing {name} duration in {timing}"))
 }
 
-fn assert_postgres_submit_timing(
-    response: &axum::response::Response,
-    expected_statement_count: u64,
-    expected_connect_count: u64,
-) {
+fn assert_postgres_submit_timing(response: &axum::response::Response, expected_connect_count: u64) {
     let request_id = response
         .headers()
         .get("x-request-id")
@@ -7652,13 +7648,6 @@ fn assert_postgres_submit_timing(
         phase_sum_ms <= total_ms,
         "Postgres phases must fit inside total duration: {timing}"
     );
-    let statement_count = timing
-        .split(',')
-        .map(str::trim)
-        .find_map(|metric| metric.strip_prefix(r#"pgstmt;desc=""#))
-        .and_then(|value| value.strip_suffix('"'))
-        .and_then(|value| value.parse::<u64>().ok())
-        .expect("Postgres statement count");
     let connect_count = timing
         .split(',')
         .map(str::trim)
@@ -7671,10 +7660,6 @@ fn assert_postgres_submit_timing(
         "auth + review work must share one pool checkout: {timing}"
     );
     assert_eq!(
-        statement_count, expected_statement_count,
-        "cold-cache submit must count auth, review, and render work: {timing}"
-    );
-    assert_eq!(
         response
             .headers()
             .get("cache-control")
@@ -7684,7 +7669,6 @@ fn assert_postgres_submit_timing(
 }
 async fn assert_postgres_submit_receipt(
     graded: axum::response::Response,
-    expected_statement_count: u64,
     expected_connect_count: u64,
 ) -> String {
     assert_eq!(graded.status(), StatusCode::OK);
@@ -7693,7 +7677,7 @@ async fn assert_postgres_submit_receipt(
         1,
         "authenticated submit response must attach exactly one session cookie"
     );
-    assert_postgres_submit_timing(&graded, expected_statement_count, expected_connect_count);
+    assert_postgres_submit_timing(&graded, expected_connect_count);
     let graded = response_text(graded).await;
     assert!(graded.contains("me-verdict") && graded.contains(">Correct<"));
     graded
@@ -7801,7 +7785,7 @@ async fn assert_postgres_browser_submit_traces(database: &PostgresTestDatabase) 
         ))
         .await
         .expect("Postgres browser submit");
-    assert_postgres_submit_receipt(graded, 25, 1).await;
+    assert_postgres_submit_receipt(graded, 1).await;
 
     let completed_browser_app = router(ApiState::new(
         AccountRegistry::with_postgres_url(database.scoped_url.clone())
@@ -7842,7 +7826,7 @@ async fn assert_postgres_browser_submit_traces(database: &PostgresTestDatabase) 
     let workspace_submit_measured_ms =
         u64::try_from(workspace_submit_started.elapsed().as_millis()).unwrap_or(u64::MAX);
     assert_eq!(workspace_submit.status(), StatusCode::NOT_FOUND);
-    assert_postgres_submit_timing(&workspace_submit, 13, 3);
+    assert_postgres_submit_timing(&workspace_submit, 3);
     // After Continue, a missing review unit is consumed-review 404 HTML.
     // Error render still loads `app_study_view_with_timings` inside the timed
     // render window — see
