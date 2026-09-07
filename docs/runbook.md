@@ -200,7 +200,6 @@ These are required operations, **not a record that they have been executed**:
 | `MEMORY_ENGINE_MAIL_FROM` | replyable approved sender on the existing Resend-verified sending domain |
 | `RESEND_API_KEY` | environment's Resend send authority; required for deployed mail |
 | `OPENROUTER_API_KEY` | model-backed generation through Worker Fetch, never a local smoke requirement |
-| `CANARY_ENDPOINT` / `CANARY_API_KEY` | optional ingest-only telemetry configuration; no readback authority |
 | `MEMORY_ENGINE_ENVIRONMENT` | checked-in `staging` or `production`; both enforce production auth/mail safety |
 | `MEMORY_ENGINE_MAIL_MODE` | checked-in `resend`; only other mode is explicit local/development/test `local-outbox` |
 | `MEMORY_ENGINE_PUBLIC_BASE_URL` | checked-in environment-specific workers.dev origin until reviewed DNS cutover |
@@ -623,6 +622,55 @@ Before public cutover, retain separate actual evidence for:
    measured on the delivered browser contract, not inferred from native timing.
 7. Complete backup retrieval, separate-object restore, and equality of the
    appropriate private fingerprint/count/hash receipts.
+
+## Health observations and operator alerts
+
+The Worker logs bounded, content-free browser, action and recovery observations
+through Cloudflare runtime logging. A browser receipt's HTTP 202 and
+`x-scry-telemetry-delivery: runtime_logged` mean that the runtime logged it;
+`attempts: 0` means no external delivery was attempted. They do not prove
+provider ingest, durable telemetry storage, or remote readback. Canary is
+retired and is not a deployment credential or monitoring dependency.
+
+`GET /healthz`, `/readyz`, and `/statusz` are observations: none wakes background
+work. The first two witness liveness and readiness. `/statusz` uses
+`memory_engine.runtime_health.v1` and returns 200 only when traffic is active
+and `backupAgeMs` is an integer in `0..=90000000` (25 hours). A paused actor,
+missing backup, future timestamp, or stale backup returns 503. Backup freshness
+does not establish that a restore was rehearsed; retain the separate restore
+proof.
+
+`bun run ops:monitor -- --environment production --state-file PATH
+--receipt-file PATH` runs `scripts/scry-monitor` against the canonical
+workers.dev origin. Use `staging` for the isolated environment. Supply only
+`RESEND_API_KEY`, `MEMORY_ENGINE_MAIL_FROM`, and `MEMORY_ENGINE_ALERT_TO` through
+the private process environment. The recipient must be the approved operator;
+no learner, admin, Cloudflare, or model credentials belong in this process.
+The CLI checks mail configuration even when health is good.
+
+`.github/workflows/production-health.yml` owns external observation and alerts.
+Its protected `production-monitor` environment permits only `master` and stores
+those three mail-only secrets. Scheduled runs require the repository variable
+`SCRY_MONITOR_ENABLED=true`; leave it false until Main proves live cutover.
+An explicit master-branch dispatch can run before automatic monitoring is
+enabled. Its optional unique `delivery_drill` label sends a clearly identified
+operator drill, not a simulated production incident.
+
+The first healthy observation sends no mail. Failure opens one incident;
+continued failure does not resend an accepted notification. Recovery sends one
+notification. Pending messages are saved before transport; unconfirmed
+acceptance retains the same payload and idempotency key for retry. A Resend ID
+records provider acceptance only, never inbox placement. The provider's
+idempotency window is bounded; expired pending requests fail rather than silently
+becoming a new send.
+
+GitHub's nominal five-minute cron can be delayed, dropped, or disabled. Its
+per-environment cache can expire or disappear; it is not durable alert history,
+and losing it can repeat an incident notification. The workflow uploads
+sanitized check/provider-acceptance receipts even on failure. This is best-effort
+monitoring, not an availability or delivery SLA. Prove actual dispatch and
+provider acceptance before enabling automatic runs; record inbox placement
+separately if observed.
 
 ## Interim-origin cutover and old-host retirement
 

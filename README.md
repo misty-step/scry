@@ -75,10 +75,10 @@ The Rust migration is complete for the main runtime:
 - service, persistence, generation, study, and local HTTP app hosts
 - Rust QA and benchmark receipt runners
 
-Cloudflare staging (`scry-staging`) and production (`scry`) have separate Durable
-Object namespaces and recovery buckets. No custom-domain route is configured
-before a separately reviewed DNS change. `memory-engine-api` remains a native
-reference/compatibility test surface, not a deployment destination.
+The Cloudflare configuration separates staging (`scry-staging`) and production
+(`scry`) Durable Object namespaces and recovery buckets. No custom-domain route
+is configured before a separately reviewed DNS change. `memory-engine-api`
+remains a native reference/compatibility test surface, not a deployment destination.
 Fresh Worker actors start paused: learner traffic, readiness, and background
 work remain fenced until the fingerprint-guarded `release:traffic --enable`.
 Bootstrap verifies health/assets/schema and the pause, not learner readiness.
@@ -108,6 +108,38 @@ Work starts from the current operator request, checked against live code and
 overlapping work. [GitHub Issues](https://github.com/misty-step/scry/issues)
 preserve historical context and evidence; an issue is optional for direct work.
 Record ownership, the result, and verification evidence in the session or PR.
+
+## Observability and External Monitoring
+
+`memory-engine-cloudflare` owns bounded, content-free browser, performance,
+and health records in Worker-native logs. A browser receipt accepted by
+`POST /app/performance/submit` returns **202** with
+`x-scry-telemetry-delivery: runtime_logged` and `x-scry-telemetry-attempts: 0`.
+This means runtime logging, not remote ingest acceptance or durable readback.
+Canary is retired; no replacement telemetry-ingest endpoint is deployed.
+
+The repository-owned external witness is `scripts/scry-monitor`, exposed as
+`bun run ops:monitor`. It observes public `GET /healthz`, `/readyz`, and
+`/statusz` without learner, admin, or Worker deployment keys; these routes
+neither schedule nor wake background work. `/statusz` reports
+`memory_engine.runtime_health.v1` and is healthy only when the actor is active
+and its recovery backup age is an integer from **0 through 90,000,000 ms
+(25 hours)**. Missing, future-dated, or older recovery evidence is degraded.
+
+`.github/workflows/production-health.yml` runs the witness from `master` using
+the `production-monitor` environment's `RESEND_API_KEY`,
+`MEMORY_ENGINE_MAIL_FROM`, and `MEMORY_ENGINE_ALERT_TO` for unhealthy/recovery
+mail. Local mail configuration is checked even on a quiet healthy run.
+Resend `provider_accepted` receipts are not inbox-delivery proof.
+Five-minute GitHub cron can be delayed, dropped, or disabled; cached notification
+state can expire or be lost, duplicating alerts or losing recovery context.
+Neither is an availability SLA or durable alert history.
+`SCRY_MONITOR_ENABLED` remains `false` until Main's cutover; an explicit
+`master` dispatch can run a probe or labeled delivery drill before enablement,
+but does not establish scheduled production monitoring.
+See [the QA evidence contract](./docs/qa/system.md#observability-and-external-monitor-proof)
+for CLI/workflow entry points and receipt meanings, and
+[the runbook](./docs/runbook.md) for operator setup and cutover proof.
 
 ## Usage
 

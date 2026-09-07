@@ -25,6 +25,7 @@ pub use error::{AppResult, Failure};
 
 const PRIMARY_OBJECT: &str = "app";
 const SAFETY_ALARM_DELAY: Duration = Duration::from_secs(60);
+const MAX_BACKUP_AGE_MS: i64 = 90_000_000;
 
 #[must_use]
 pub fn now_ms() -> i64 {
@@ -316,17 +317,31 @@ impl Scry {
         if path == "/internal/runtime" {
             return self.runtime(req, &db).await;
         }
+        if path == "/statusz" {
+            if req.method() != Method::Get {
+                return Err(Failure::new(405, "Method not allowed."));
+            }
+            // A witness must not wake jobs or repair the backup it is checking.
+            let paused = maintenance(&db)?;
+            let backup_age = backup_age_ms(&db)?;
+            let healthy =
+                !paused && backup_age.is_some_and(|age| (0..=MAX_BACKUP_AGE_MS).contains(&age));
+            return Ok(Response::from_json(&json!({
+                "schema": "memory_engine.runtime_health.v1",
+                "status": if healthy { "healthy" } else { "degraded" },
+                "maintenance": paused,
+                "backupAgeMs": backup_age
+            }))?
+            .with_status(if healthy { 200 } else { 503 }));
+        }
         if path == "/__worker/scheduled" {
             let paused = maintenance(&db)?;
             if !paused {
                 self.run_background().await?;
             }
-            let backup = db.query::<serde_json::Value>(
-                "SELECT last_backup_at_ms FROM memory_engine_recovery_state WHERE singleton = 1", &[],
-            )?.pop().and_then(|row| row["last_backup_at_ms"].as_i64());
             return Ok(Response::from_json(&json!({
                 "maintenance": paused,
-                "backupAgeMs": backup.map(|at| now_ms().saturating_sub(at))
+                "backupAgeMs": backup_age_ms(&db)?
             }))?);
         }
         if recovery_route(&path) {
@@ -352,6 +367,9 @@ impl Scry {
             response.headers_mut().set("Retry-After", "60")?;
             return Ok(response);
         }
+        if path == "/healthz" || path == "/readyz" {
+            return web::handle(req, &db, &self.env).await;
+        }
         let _activity = self.activity();
         // Persist a recovery wake BEFORE any body/network await can enqueue or
         // claim work; request cancellation must not strand a committed job.
@@ -362,7 +380,7 @@ impl Scry {
         if !paused {
             self.arm_next_alarm(&db).await?;
         }
-        self.flush_telemetry();
+        telemetry::flush();
         result
     }
 
@@ -416,20 +434,11 @@ impl Scry {
         let reminders = auth::run_reminders(&db, &self.env).await;
         let backups = recovery::run_due(&db, &self.env).await;
         self.arm_next_alarm(&db).await?;
-        self.flush_telemetry();
+        telemetry::flush();
         generation?;
         reminders?;
         backups?;
         Ok(())
-    }
-
-    fn flush_telemetry(&self) {
-        let env = self.env.clone();
-        self.state.wait_until(async move {
-            // The sender records acceptance/loss itself. Scheduling this future
-            // is not reported as delivery, and never delays a graded response.
-            let _report = telemetry::flush(&env).await;
-        });
     }
 }
 
@@ -441,8 +450,8 @@ async fn scheduled(_event: worker::ScheduledEvent, env: Env, ctx: worker::Schedu
             Ok(health) if !health.maintenance => {
                 let healthy = health
                     .backup_age_ms
-                    .is_some_and(|age| (0..=129_600_000).contains(&age));
-                telemetry::report_health(&env, healthy, health.backup_age_ms).await;
+                    .is_some_and(|age| (0..=MAX_BACKUP_AGE_MS).contains(&age));
+                telemetry::report_health(healthy, health.backup_age_ms);
             }
             Ok(_) => (),
             Err(failure) => {
@@ -450,7 +459,7 @@ async fn scheduled(_event: worker::ScheduledEvent, env: Env, ctx: worker::Schedu
                     "{{\"event\":\"scry.scheduler.failed\",\"status\":{}}}",
                     failure.status
                 );
-                telemetry::report_health(&env, false, None).await;
+                telemetry::report_health(false, None);
             }
         }
     });
@@ -482,6 +491,22 @@ async fn scheduled_wake(env: &Env) -> AppResult<Health> {
     Ok(response.json().await?)
 }
 
+fn backup_age_ms(db: &Database) -> AppResult<Option<i64>> {
+    #[derive(Deserialize)]
+    struct Backup {
+        last_backup_at_ms: Option<i64>,
+    }
+    Ok(db
+        .query::<Backup>(
+            "SELECT last_backup_at_ms FROM memory_engine_recovery_state WHERE singleton = 1",
+            &[],
+        )?
+        .pop()
+        .and_then(|row| row.last_backup_at_ms)
+        .and_then(|at| now_ms().checked_sub(at))
+        .filter(|age| *age >= 0))
+}
+
 fn worker_failure(status: u16) -> worker::Error {
     // Do not let an exception include learner or transport payloads.
     worker::Error::RustError(format!("Scry operation failed (status {status})."))
@@ -500,6 +525,7 @@ fn finish_response(result: AppResult<Response>, path: &str) -> worker::Result<Re
                 || path.starts_with("/internal/")
                 || path == "/readyz"
                 || path == "/healthz"
+                || path == "/statusz"
             {
                 Response::from_json(&json!({"error": failure.message}))?.with_status(failure.status)
             } else {

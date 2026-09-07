@@ -1,0 +1,112 @@
+name: production-health
+
+on:
+  schedule:
+    # Nonzero offset reduces top-of-hour contention. GitHub cron is best effort,
+    # can be delayed/dropped/disabled, and is not a five-minute availability SLA.
+    - cron: '2-59/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Canonical Worker environment to observe
+        type: choice
+        options: [production, staging]
+        default: production
+        required: true
+      delivery_drill:
+        description: Optional unique mail-drill label (letters, digits, '_' or '-'; no incident is simulated)
+        type: string
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    if: github.ref == 'refs/heads/master' && github.event_name == 'schedule' && vars.SCRY_MONITOR_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report disabled monitoring
+        run: echo 'SCRY_MONITOR_ENABLED is not true. No health probe ran; this workflow is not monitoring production.'
+
+  monitor:
+    # Never consume a PR/workflow_run checkout, artifact, or branch cache. Manual
+    # dispatch also requires master; only an explicit dispatch bypasses enablement.
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'schedule' && vars.SCRY_MONITOR_ENABLED == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: production-monitor
+    concurrency:
+      group: production-health-master-${{ inputs.environment || 'production' }}
+      cancel-in-progress: false
+    env:
+      MONITOR_ENVIRONMENT: ${{ inputs.environment || 'production' }}
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'
+    steps:
+      - name: Check out trusted master
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+
+      - name: Explain best-effort witness
+        run: |
+          printf '%s\n' \
+            'External health witness: GitHub scheduling can be delayed, dropped, or disabled; not an SLA.' \
+            'Cached notification state is best effort and can expire; it is not durable alert history.' \
+            'State loss can duplicate alerts or lose recovery context. Resend idempotency lasts 24 hours.' \
+            'Mail receipts prove provider acceptance only, not inbox delivery.' \
+            'Automatic checks require SCRY_MONITOR_ENABLED=true. A skipped probe is not monitoring.' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore best-effort notification state
+        id: state
+        continue-on-error: true
+        # Official actions/cache v6.1.0 release, retrieved from its GitHub tag.
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/scry-monitor/${{ env.MONITOR_ENVIRONMENT }}/state.json
+          # Default-branch scope plus an exact environment prefix: never restore
+          # a PR cache or a broad fallback. Each run/attempt saves a new snapshot.
+          key: scry-monitor-v1-master-${{ env.MONITOR_ENVIRONMENT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            scry-monitor-v1-master-${{ env.MONITOR_ENVIRONMENT }}-
+
+      - name: Probe public health and reconcile operator notifications
+        id: probe
+        env:
+          # Only the production-monitor environment owns this operator envelope.
+          # No learner, admin, magic-link, or Worker deployment credential is needed.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MEMORY_ENGINE_MAIL_FROM: ${{ secrets.MEMORY_ENGINE_MAIL_FROM }}
+          MEMORY_ENGINE_ALERT_TO: ${{ secrets.MEMORY_ENGINE_ALERT_TO }}
+          DRILL_LABEL: ${{ inputs.delivery_drill }}
+        run: |
+          args=(--environment "$MONITOR_ENVIRONMENT"
+                --state-file "target/scry-monitor/$MONITOR_ENVIRONMENT/state.json"
+                --receipt-file "target/scry-monitor/$MONITOR_ENVIRONMENT/receipt.json")
+          if [[ -n "$DRILL_LABEL" ]]; then
+            args+=(--delivery-drill "$DRILL_LABEL")
+          fi
+          python3 scripts/scry-monitor "${args[@]}"
+
+      - name: Save notification state including unaccepted pending mail
+        if: always() && steps.probe.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/scry-monitor/${{ env.MONITOR_ENVIRONMENT }}/state.json
+          key: scry-monitor-v1-master-${{ env.MONITOR_ENVIRONMENT }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload sanitized health and provider-acceptance receipt
+        if: always() && steps.probe.outcome != 'skipped'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-health-${{ env.MONITOR_ENVIRONMENT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/scry-monitor/${{ env.MONITOR_ENVIRONMENT }}/receipt.json
+          if-no-files-found: error
+          retention-days: 14

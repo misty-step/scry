@@ -71,8 +71,8 @@ until the project has enough historical data to define stable budgets.
 
 ### Cloudflare runtime proof
 
-The deployed boundary is `memory-engine-cloudflare`, not an Axum process. A
-green native suite cannot establish Worker/SQLite/alarm/R2/mail behavior.
+The production destination is `memory-engine-cloudflare`, not an Axum process.
+A green native suite cannot establish Worker/SQLite/alarm/R2/mail behavior.
 The repo-owned executable gate is:
 
 ```sh
@@ -122,7 +122,9 @@ verified PostgreSQL primary-import provenance, and matched imported-state
 fingerprint. Main must exercise pause/activation, busy-operation rejection,
 alarm fencing, and independent recovery readback against the actual Worker.
 
-**Cutover proof remains pending until executed.** The approved free origin is
+**Cutover proof remains pending until executed.** No live Worker is deployed
+yet; the native DigitalOcean/Postgres service remains authoritative until Main
+records cutover proof. The approved free origin is
 `https://scry.misty-step.workers.dev`, without a registrar prerequisite.
 Main owns the source writer barrier, final import, separate-object restore,
 activation, browser UI/timing, real generation cost/quality, Resend acceptance
@@ -155,6 +157,99 @@ cargo run -p memory-engine-bench -- generation \
   --judge anthropic/claude-sonnet-4.6 \
   --out docs/evals/generation-gemini-3.7-flash-judged-$(date +%F).md
 ```
+
+### Observability and external monitor proof
+
+Canary was retired by Estate ADR 0003's 2026-08-30 amendment; no live
+replacement telemetry-ingest endpoint exists. The supported implementation is
+Worker-native logging in `crates/memory-engine-cloudflare/src/telemetry.rs`
+and the independent repository-owned `scripts/scry-monitor`. Neither points
+at the service prototype as a production runtime.
+
+Worker logging reconstructs allowlisted, content-free browser receipts,
+bounded performance aggregates, and observed actor/recovery health. Account,
+cookie, CSRF, source, answer, and feedback content do not enter these telemetry
+records. A valid authenticated `POST /app/performance/submit` returns an empty
+**202** response with `x-scry-telemetry-delivery: runtime_logged` and
+`x-scry-telemetry-attempts: 0`: the receipt was logged by the runtime, with zero
+external delivery attempts. Isolate-local aggregation is best effort. This is
+not remote ingest acceptance, durable telemetry storage, or external readback.
+
+The external monitor observes three public GET witnesses without learner,
+admin, or Worker deployment credentials:
+
+| Witness | Healthy observation | Boundary |
+| --- | --- | --- |
+| `/healthz` | 2xx JSON with `status: "ok"` | SQLite accessibility; can remain healthy while paused. |
+| `/readyz` | 2xx JSON with `status: "ready"` | Learner readiness; a paused actor returns 503. |
+| `/statusz` | 200 JSON with `schema: "memory_engine.runtime_health.v1"`, `status: "healthy"`, `maintenance: false`, and integer `backupAgeMs` from 0 through 90,000,000 ms (25 hours), inclusive | Active actor plus recovery freshness. Paused, missing, future-dated, or stale backup evidence yields 503 with `status: "degraded"`; `backupAgeMs` is an integer or null. |
+
+All three routes are observational: they do not schedule alarms, wake jobs, or
+repair the backup being checked. The monitor rejects redirects, malformed
+health responses, and missing or invalid recovery freshness rather than
+treating an HTTP response alone as health.
+
+The POSIX CLI below observes the canonical staging Worker and may send real
+operator mail. `bun run ops:monitor` is the same entry point. Supply
+`RESEND_API_KEY`, `MEMORY_ENGINE_MAIL_FROM`, and `MEMORY_ENGINE_ALERT_TO`
+through the operator environment, never committed values:
+
+```sh
+python3 scripts/scry-monitor --environment staging \
+  --state-file target/scry-monitor/staging/state.json \
+  --receipt-file target/scry-monitor/staging/receipt.json
+# Explicit master-only workflow invocation; the label requests a real mail drill:
+gh workflow run production-health.yml --ref master \
+  -f environment=staging -f delivery_drill=staging-mail-proof
+```
+
+`--environment production` selects the canonical production origin. State and
+receipt paths must differ; state is private notification bookkeeping and the
+`scry.monitor.receipt.v1` receipt is sanitized JSON. Local mail configuration
+is validated on every invocation, even an initially healthy run with no mail.
+An initial healthy observation is quiet; a sustained unhealthy incident and
+its recovery each send once while notification state survives. Unaccepted
+mail retains its original payload and idempotency key for retry; the old
+observation is delivered before current health is reconciled.
+The optional CLI `--delivery-drill LABEL` or workflow `delivery_drill` input
+labels a mail drill without asserting an incident. Repeating the latest
+accepted drill label is quiet while its state survives.
+
+| Receipt | What it establishes |
+| --- | --- |
+| `status: "healthy"` | All three public health checks passed; it says nothing about mail. |
+| `result: "ok"` | Health checks and local configuration/state/notification processing completed without a recorded error. A quiet run is not provider-acceptance proof. |
+| `delivery: "provider_accepted"` with `receiptId` | A Resend 2xx JSON response contained a valid acceptance ID; not inbox delivery. |
+| `delivery: "already_provider_accepted"` | The latest drill's earlier acceptance was found in notification state; no new provider request or inbox observation. |
+| `delivery: "acceptance_unconfirmed"` | A mail request was attempted but no valid provider-acceptance receipt was obtained; acceptance or delivery must not be inferred. |
+| `delivery: "not_attempted"` | Notification failed before a provider request, such as invalid local configuration or a changed pending envelope. |
+
+`.github/workflows/production-health.yml` checks out `master` only and
+serializes runs per target environment. Restrict its `production-monitor`
+GitHub environment to `master`; only that environment supplies the three
+operator mail secrets above, not learner, admin, magic-link, or Worker
+deployment keys. A `master` manual dispatch can select staging or production
+and bypasses `SCRY_MONITOR_ENABLED`; automatic five-minute scheduling requires
+that repository variable to be `true`. It remains `false` until Main's
+cutover. A disabled/skipped probe is not production monitoring.
+
+GitHub cron can be delayed, dropped, or disabled and is not an availability
+SLA. Environment-scoped default-branch cache is best effort, not durable alert
+history: expiry/loss can duplicate alerts or lose recovery context, and
+Resend idempotency expires after 24 hours. Delayed retries describe the
+original observation, not necessarily current health. Workflow artifacts
+retain sanitized receipts for 14 days; neither a green workflow nor provider
+acceptance establishes inbox delivery or continuous monitoring.
+
+Current evidence is local: real workerd exercised browser identity isolation,
+paused SSE fencing, R2 retrieval/separate-object restore, and `/statusz`
+recovery health. The loopback HTTP checks in `scripts/scry-monitor.test.py`
+passed missing-backup, failed-acceptance stable-retry, sustained-incident and
+recovery deduplication, and redirect-refusal scenarios. These are not live
+Worker, external telemetry readback, or real mail-delivery receipts.
+Final full gates for this revision and deployed logging, alert acceptance,
+separate inbox proof, and scheduled production observations remain Main-owned
+evidence to record in [the runbook](../runbook.md), not claims made here.
 
 ## Operating Procedure
 

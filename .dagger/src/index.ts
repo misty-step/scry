@@ -171,10 +171,10 @@ export class MemoryEngine {
     @argument({ ignore: SOURCE_EXCLUDES }) source: Directory,
     gitSha: string,
   ): Promise<Directory> {
-    return dag
-      .container()
-      .build(ciSource(source), { dockerfile: 'Dockerfile', target: 'toolchain' })
-      .withDirectory('/src', ciSource(source))
+    const input = ciSource(source);
+    return input
+      .dockerBuild({ dockerfile: 'Dockerfile', target: 'toolchain' })
+      .withDirectory('/src', input)
       .withWorkdir('/src')
       .withEnvVariable('CARGO_BUILD_JOBS', '2')
       .withExec([
@@ -198,6 +198,7 @@ export class MemoryEngine {
       .withWorkdir('/src')
       .withExec(['python3', 'scripts/scry-ops.test.py'])
       .withExec(['python3', 'scripts/scry-cloudflare.test.py'])
+      .withExec(['python3', 'scripts/scry-monitor.test.py'])
       .withExec(['python3', 'bin/install-scry-backup.test.py'])
       .withExec(['python3', 'bin/retention-preflight.test.py'])
       .withExec(['python3', 'bin/scry-backup-freshness.test.py'])

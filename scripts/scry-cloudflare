@@ -641,6 +641,9 @@ def stream_pause_smoke(local, client):
         started = time.monotonic()
         response.read()
         require(time.monotonic() - started < 5, "job stream remained active after traffic paused")
+    health = request(local.base, "/statusz", expected=(503,))
+    require(health["status"] == "degraded" and health["maintenance"] is True,
+            "public health witness reported a paused runtime as healthy")
     after = request(local.base, "/internal/migration/fingerprint", admin=local.admin)
     require(after["sha256"] == fingerprint["sha256"], "completed pause allowed durable learner writes")
 
@@ -662,6 +665,11 @@ def recovery_smoke(local, fingerprint):
                                  "--base", local.base, "--admin-env", admin_env]).stdout)
     require(result["fingerprint"]["sha256"] == fingerprint["sha256"],
             "R2 restore changed the authoritative learning state")
+    health = request(local.base, "/statusz")
+    require(health["schema"] == "memory_engine.runtime_health.v1"
+            and health["status"] == "healthy" and health["maintenance"] is False
+            and type(health["backupAgeMs"]) is int and 0 <= health["backupAgeMs"] <= 90_000_000,
+            "public health witness did not observe the completed R2 backup")
 
 
 def smoke_bundle(artifact, receipt):
@@ -752,7 +760,7 @@ def smoke_bundle(artifact, receipt):
                               "runtime-survives-restart", "durable-assisted-grading", "durable-idempotent-replay",
                               "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection",
                               "schema-fingerprint", "r2-backup-retrieval-isolated-restore",
-                              "browser-identity-isolation", "stream-pause-fence"],
+                              "browser-identity-isolation", "stream-pause-fence", "public-recovery-health"],
                    "mail_delivery": "local-http-fixture-only", "model_network": "external-models-disabled"})
     print(f"workerd proof={Path(receipt).resolve()} bundle_sha256={digest(artifact / 'manifest.json')}")
 
