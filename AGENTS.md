@@ -38,7 +38,7 @@ not a lock or a mandatory first read.
 - `package.json` scripts, `docs/qa/system.md`, and `docs/evals.md` own current
   verification and authorized model comparison. `docs/runbook.md` owns operating
   procedures; observed runtime/release records remain proof, not copied status
-  prose. Historical extraction packets are not delivery oracles.
+  prose. SLICE docs and exemplars are historical extraction context, not delivery oracles.
 - Treat tests, types, code, docs, and lore as evidence to reconcile. Current
   requested behavior and observed state are authoritative.
 
