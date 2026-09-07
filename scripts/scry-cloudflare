@@ -312,7 +312,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def request(base, route, *, method="GET", body=None, token=None, admin=None, expected=(200,)):
-    headers = {"accept": "application/json"}
+    headers = {"accept": "application/json", "user-agent": "scry-cloudflare"}
     if token:
         headers["authorization"] = f"Bearer {token}"
     if admin:
@@ -923,9 +923,8 @@ def deploy_operation(args):
             else:
                 require(args.current, "an explicit --current deployment receipt is required")
                 current = operation_receipt(args.current, environment)
-                require(current.get("status") == "verified"
-                        or (args.command == "rollback" and current.get("status") == "failed-requires-inspection"),
-                        "current receipt must be verified, or an explicitly selected failed release for rollback")
+                require(current.get("status") in ("verified", "failed-requires-inspection"),
+                        "current receipt must verify a deployment or explicitly record its failure")
                 require(current["schema_sha256"] == manifest["schema_sha256"],
                         "code promotion/rollback cannot cross SQLite schema definitions")
                 require(active_version(config, environment) == current["version_id"], "live deployment changed; refresh the explicit current receipt")
@@ -937,6 +936,8 @@ def deploy_operation(args):
                 # the rollback preflight. An unhealthy outgoing application must
                 # not have to pass the probes that rollback is intended to repair.
                 if args.command != "rollback":
+                    # A failed post-deploy observation is recoverable only after
+                    # the same live preflight succeeds; its receipt is not proof.
                     result["schema_proof"] = live_schema(base, manifest, admin)
                     result["runtime_proof"] = runtime_proof(base, admin)
                 if args.command == "upload":

@@ -350,10 +350,14 @@ bun run release:promote --environment production --artifact "$artifact" \
   --receipt target/cloudflare/production-promoted.json
 ```
 
-`*-current.json` above means a previously produced verified deployment or
-traffic receipt, not a special mutable pointer maintained by the tool. Pass the
-actual retained filename; no `latest` alias or symlink is trusted. The new
-verified receipt is the next operation's explicit `--current`.
+`*-current.json` above names a retained deployment/traffic receipt, not a
+mutable pointer. A `failed-requires-inspection` code-deployment receipt may be
+used explicitly after inspection: upload and promotion still require the
+recorded version to be active, its bundle/schema identity to match, and the
+full live schema/runtime preflight to succeed before any version mutation.
+The failed receipt alone never proves recovery. Use the actual filename; no
+`latest` alias or symlink is trusted. The new verified receipt becomes the next
+operation's explicit `--current`.
 
 Internally, upload uses Wrangler `versions upload --no-bundle`; promotion uses
 `versions deploy VERSION_ID@100 --yes`. The bundle hash is written into the
@@ -374,6 +378,10 @@ immutable version, previous version, and deployment id when returned. Failures
 record `failed-requires-inspection` and any returned version rather than
 silently retrying activation or fabricating success. Inspect a failed operation
 and live versions before taking another action.
+The operator HTTP clients identify themselves as `scry-cloudflare` and
+`scry-cloudflare-data`. Cloudflare ingress can reject Python's generic default
+user-agent with 403/1010 before a request reaches the application; do not
+misdiagnose that response as an application credential failure or weaken auth.
 
 A deployment receipt's `status: verified` proves the active 100% version,
 health/static assets, authenticated SQLite schema, and its explicit

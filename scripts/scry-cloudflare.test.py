@@ -46,7 +46,7 @@ def write_json(path, value):
 
 
 class RollbackFixture:
-    def __init__(self, root):
+    def __init__(self, root, deployment_environment="production"):
         self.root = root
         self.repo = root / "checkout"
         self.repo.mkdir()
@@ -139,7 +139,7 @@ class RollbackFixture:
         # must never be presented as evidence that workerd or CI actually ran.
         self.proof = {"fixture": FIXTURE, "schema": release.PROOF, "status": "passed",
                       "bundle_sha256": bundle_hash, "wrangler": release.WRANGLER}
-        receipt = {"fixture": FIXTURE, "schema": release.RECEIPT, "environment": "production",
+        receipt = {"fixture": FIXTURE, "schema": release.RECEIPT, "environment": deployment_environment,
                    "account_id": release.ACCOUNT, "action": "promote", "schema_sha256": schema_hash}
         outgoing_hash = hashlib.sha256(b"synthetic outgoing bundle").hexdigest()
         self.current = {**receipt, "status": "failed-requires-inspection",
@@ -153,6 +153,7 @@ class RollbackFixture:
                             "schemaVersions": [1], "storageSchemaVersion": 1,
                             "sha256": hashlib.sha256(b"synthetic durable state").hexdigest()}
         self.ready_status = 200
+        self.outgoing_available = False
         self.ci = {"fixture": FIXTURE, "id": 910000001, "name": "ci",
                    "app": {"slug": "github-actions"}, "head_sha": self.revision,
                    "status": "completed", "conclusion": "success"}
@@ -166,7 +167,7 @@ class RollbackFixture:
         self.receipt = root / "synthetic-rollback.json"
         self.args = SimpleNamespace(
             command="rollback", artifact=self.artifact, verification=root / "synthetic-workerd-proof.json",
-            environment="production", receipt=self.receipt, admin_env=admin_env,
+            environment=deployment_environment, receipt=self.receipt, admin_env=admin_env,
             current=root / "synthetic-current.failed.json", version_receipt=root / "synthetic-target.json",
             staging_receipt=None, secrets_file=None,
         )
@@ -197,7 +198,7 @@ class RollbackFixture:
                          f"repos/{repository}/commits/{self.revision}/check-runs?per_page=100"):
             value = [{"fixture": FIXTURE, "check_runs": [self.ci]}]
         elif command[:2] == ("node", str(self.repo / "node_modules/wrangler/bin/wrangler.js")):
-            if command[-4] != "--config" or command[-2:] != ("--env", "production"):
+            if command[-4] != "--config" or command[-2:] != ("--env", self.args.environment):
                 raise AssertionError(f"unexpected fixture Wrangler scope: {command}")
             value = self.cloudflare(command[2:-4], kwargs.get("env", {}))
         else:
@@ -219,7 +220,7 @@ class RollbackFixture:
                 raise AssertionError(f"unexpected synthetic deployment: {command}")
             self.active = version
             record = {"fixture": FIXTURE, "type": "version-deploy", "version": 1,
-                      "worker_name": "scry", "deployment_id": DEPLOYMENT}
+                      "worker_name": "scry-staging" if self.args.environment == "staging" else "scry", "deployment_id": DEPLOYMENT}
             self.deployments.append({"version_id": version, "deployment_id": DEPLOYMENT})
             with Path(environment["WRANGLER_OUTPUT_FILE_PATH"]).open("ab") as stream:
                 stream.write(encoded(record))
@@ -227,7 +228,7 @@ class RollbackFixture:
         raise AssertionError(f"unexpected fixture Wrangler invocation: {command}")
 
     def http(self, request, *, timeout):
-        base = "https://scry.misty-step.workers.dev"
+        base = f"https://{'scry-staging' if self.args.environment == 'staging' else 'scry'}.misty-step.workers.dev"
         if not isinstance(request, urllib.request.Request) or not request.full_url.startswith(base + "/"):
             raise AssertionError("unexpected fixture HTTP origin")
         route = request.full_url[len(base):]
@@ -251,7 +252,7 @@ class RollbackFixture:
             raise AssertionError(f"unexpected fixture HTTP request: {key}")
         # An unhealthy outgoing Worker cannot supply ANY application evidence.
         # The real operation must recover using its explicit receipt/control plane.
-        if self.active == OUTGOING_VERSION:
+        if self.active == OUTGOING_VERSION and not self.outgoing_available:
             raise urllib.error.URLError("synthetic outgoing application is unavailable")
         status, body = responses[key]
         headers = {"content-type": "application/json"}
@@ -260,7 +261,7 @@ class RollbackFixture:
             raise urllib.error.HTTPError(request.full_url, status, FIXTURE, headers, stream)
         return urllib.response.addinfourl(stream, headers, request.full_url, status)
 
-    def rollback(self):
+    def execute(self):
         write_json(self.args.verification, self.proof)
         write_json(self.args.current, self.current)
         write_json(self.args.version_receipt, self.target)
@@ -270,9 +271,9 @@ class RollbackFixture:
 
 
 @contextmanager
-def rollback_fixture():
+def rollback_fixture(deployment_environment="production"):
     with tempfile.TemporaryDirectory(prefix="scry-cloudflare-regression-fixture-") as temporary:
-        fixture = RollbackFixture(Path(temporary))
+        fixture = RollbackFixture(Path(temporary), deployment_environment)
         with ExitStack() as boundaries:
             boundaries.enter_context(patch.dict(os.environ, fixture.environment, clear=True))
             boundaries.enter_context(patch.object(subprocess, "run", side_effect=fixture.external_run))
@@ -283,11 +284,11 @@ def rollback_fixture():
 
 def expect_refusal(fixture, *, switched=False):
     try:
-        fixture.rollback()
+        fixture.execute()
     except fixture.release.OperationError:
         pass
     else:
-        raise AssertionError("unsafe rollback was accepted")
+        raise AssertionError("unsafe deployment was accepted")
     assert not fixture.receipt.exists(), "failed operation published a successful receipt"
     failed_path = Path(str(fixture.receipt) + ".failed.json")
     if switched:
@@ -305,7 +306,7 @@ def expect_refusal(fixture, *, switched=False):
 
 def test_failed_current_recovers_without_outgoing_http():
     with rollback_fixture() as fixture:
-        fixture.rollback()
+        fixture.execute()
         receipt = json.loads(fixture.receipt.read_text())
         assert fixture.active == TARGET_VERSION
         assert fixture.deployments == [{"version_id": TARGET_VERSION, "deployment_id": DEPLOYMENT}]
@@ -320,6 +321,26 @@ def test_failed_current_recovers_without_outgoing_http():
             "maintenance": False, "readiness": "ready", "public_smoke": "passed",
         }, "rollback omitted post-switch runtime/public verification"
         assert not Path(str(fixture.receipt) + ".failed.json").exists()
+
+
+def test_failed_receipt_can_promote_after_live_recovery():
+    with rollback_fixture("staging") as fixture:
+        fixture.args.command = "promote"
+        fixture.target.update(status="uploaded", action="upload")
+        fixture.outgoing_available = True
+        fixture.execute()
+        receipt = json.loads(fixture.receipt.read_text())
+        assert fixture.active == TARGET_VERSION
+        assert receipt["status"] == "verified"
+
+
+def test_failed_receipt_cannot_promote_an_unhealthy_current():
+    with rollback_fixture("staging") as fixture:
+        fixture.args.command = "promote"
+        fixture.target.update(status="uploaded", action="upload")
+        fixture.outgoing_available = True
+        fixture.ready_status = 503
+        expect_refusal(fixture)
 
 
 def test_unsafe_receipts_never_switch():
@@ -366,6 +387,8 @@ def test_post_switch_runtime_failure_is_not_verified():
 
 def main():
     test_failed_current_recovers_without_outgoing_http()
+    test_failed_receipt_can_promote_after_live_recovery()
+    test_failed_receipt_cannot_promote_an_unhealthy_current()
     test_unsafe_receipts_never_switch()
     test_real_artifact_source_and_proof_guards_remain_required()
     test_post_switch_schema_failure_is_not_verified()

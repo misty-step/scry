@@ -539,7 +539,8 @@ class Api:
 
     def request(self, method, route, data=None, headers=None, maximum=MAX_BUNDLE):
         request_headers = {"X-Admin-Token": self.token, "X-Scry-Recovery-Target": self.target,
-                           "X-Scry-Confirm-Target": self.target, "Content-Type": "application/json"}
+                           "X-Scry-Confirm-Target": self.target, "Content-Type": "application/json",
+                           "User-Agent": "scry-cloudflare-data"}
         request_headers.update(headers or {})
         request = urllib.request.Request(self.base + route, data=data, headers=request_headers, method=method)
         try:
