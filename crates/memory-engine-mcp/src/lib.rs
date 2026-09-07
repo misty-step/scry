@@ -76,12 +76,12 @@ pub const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "submit_answer",
-        description: "Grade an answer for the review card identified by review_unit_id (from review_next) and advance its schedule. Returns the verdict, rating, schedule change (before/after review state), post-answer feedback (item history, concept health), and the due count after grading.",
+        description: "Grade an answer for the review card identified by review_unit_id (from review_next) and advance its schedule. A prior reveal is durable assisted exposure: even an exact answer receives verdict revealed, rating 1 (Again), and isCorrect false. Returns the grade, schedule change (before/after review state), post-answer feedback (item history, concept health), and the due count after grading.",
         input_schema: r#"{"type":"object","required":["review_unit_id","answer"],"properties":{"review_unit_id":{"type":"string"},"answer":{"type":"string"},"response_time_ms":{"type":"integer","minimum":1,"description":"Defaults to 5000 when omitted."},"idempotency_key":{"type":"string","description":"Defaults to a fresh key when omitted; pass your own to make retried submits safe to repeat."}}}"#,
     },
     ToolDef {
         name: "reveal_answer",
-        description: "Reveal the current review card's expected answer without grading it — use when the learner wants to see the answer instead of attempting one.",
+        description: "Reveal the current review card's expected answer without grading it yet. This durably marks the review as assisted, so a later submit_answer receives revealed/Again rather than correct recall, even if the submitted answer matches.",
         input_schema: r#"{"type":"object","required":["review_unit_id"],"properties":{"review_unit_id":{"type":"string"}}}"#,
     },
     ToolDef {

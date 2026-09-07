@@ -1,10 +1,9 @@
 /**
  * Scry CI pipeline.
  *
- * One canonical place to run browser behavior contracts, Rust formatting,
- * tests, linting, documentation, and secret scanning. Each function mounts
- * the source and runs the corresponding command. The `check` function runs
- * all gates in sequence and is what CI and agents should invoke before a merge.
+ * Browser behavior contracts, native reference tests against Postgres 16,
+ * Rust fmt/Clippy/rustdoc, action-latency budgets, retained recovery checks,
+ * Gitleaks, and the exact Wasm bundle in real local workerd.
  */
 import {
   argument,
@@ -19,10 +18,10 @@ import {
 
 const BUN_IMAGE = 'oven/bun:1.3.14';
 const GITLEAKS_IMAGE = 'zricethezav/gitleaks:v8.30.0';
-const POSTGRES_IMAGE = 'postgres:17-alpine';
+const POSTGRES_IMAGE = 'postgres:16-alpine';
 const POSTGRES_TEST_URL = 'postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable';
 const RUST_IMAGE = 'rust:1.94-bookworm';
-const SOURCE_EXCLUDES = ['.git/', '.tmp/', 'target/'];
+const SOURCE_EXCLUDES = ['.git/', '.tmp/', 'target/', 'dist/', 'node_modules/', '.wrangler/'];
 
 function ciSource(source: Directory): Directory {
   return source.filter({ gitignore: true, exclude: SOURCE_EXCLUDES });
@@ -100,7 +99,7 @@ export class MemoryEngine {
       .withExec([
         'bash',
         '-c',
-        'for attempt in $(seq 1 20); do (echo >/dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done; cargo test --workspace',
+        'for attempt in $(seq 1 20); do (echo >/dev/tcp/postgres/5432) >/dev/null 2>&1 && break; sleep 1; done; cargo test --workspace --locked',
       ])
       .stdout();
   }
@@ -137,7 +136,7 @@ export class MemoryEngine {
   @func()
   async rustClippy(@argument({ ignore: SOURCE_EXCLUDES }) source: Directory): Promise<string> {
     return this.rustBase(source)
-      .withExec(['cargo', 'clippy', '--workspace', '--all-targets', '--', '-D', 'warnings'])
+      .withExec(['cargo', 'clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings'])
       .stdout();
   }
 
@@ -146,7 +145,7 @@ export class MemoryEngine {
    */
   @func()
   async rustDoc(@argument({ ignore: SOURCE_EXCLUDES }) source: Directory): Promise<string> {
-    return this.rustBase(source).withExec(['cargo', 'doc', '--workspace', '--no-deps']).stdout();
+    return this.rustBase(source).withExec(['cargo', 'doc', '--workspace', '--no-deps', '--locked']).stdout();
   }
 
   /**
@@ -164,6 +163,71 @@ export class MemoryEngine {
   }
 
   /**
+   * Build the repository-pinned toolchain and exercise actual Worker HTTP/state.
+   * This has no Cloudflare credentials and cannot touch remote bindings.
+   */
+  @func()
+  async worker(
+    @argument({ ignore: SOURCE_EXCLUDES }) source: Directory,
+    gitSha: string,
+  ): Promise<Directory> {
+    return dag
+      .container()
+      .build(ciSource(source), { dockerfile: 'Dockerfile', target: 'toolchain' })
+      .withDirectory('/src', ciSource(source))
+      .withWorkdir('/src')
+      .withEnvVariable('CARGO_BUILD_JOBS', '2')
+      .withExec([
+        'python3', 'scripts/scry-cloudflare', 'gate',
+        '--revision', gitSha, '--out', '/tmp/scry-worker-proof',
+      ])
+      .directory('/tmp/scry-worker-proof');
+  }
+
+  /**
+   * Keep the old host's consequential recovery checks until its safe retirement.
+   */
+  @func()
+  async operations(@argument({ ignore: SOURCE_EXCLUDES }) source: Directory): Promise<string> {
+    return dag
+      .container()
+      .from(RUST_IMAGE)
+      .withExec(['apt-get', 'update'])
+      .withExec(['apt-get', 'install', '-y', '--no-install-recommends', 'python3'])
+      .withMountedDirectory('/src', ciSource(source))
+      .withWorkdir('/src')
+      .withExec(['python3', 'scripts/scry-ops.test.py'])
+      .withExec(['python3', 'scripts/scry-cloudflare.test.py'])
+      .withExec(['python3', 'bin/install-scry-backup.test.py'])
+      .withExec(['python3', 'bin/retention-preflight.test.py'])
+      .withExec(['python3', 'bin/scry-backup-freshness.test.py'])
+      .withExec(['python3', 'bin/scry-restore.test.py'])
+      .withExec(['python3', 'bin/scry-backup-alert.test.py'])
+      .stdout();
+  }
+
+  /**
+   * The same file-backed action-latency budget as the local fast gate.
+   */
+  @func()
+  async actionLatencyFile(
+    @argument({ ignore: SOURCE_EXCLUDES }) source: Directory,
+  ): Promise<string> {
+    return rustContainer(source)
+      .withExec([
+        'cargo', 'run', '--locked', '-p', 'memory-engine-qa', '--', 'latency',
+        '--backend', 'file', '--iterations', '5', '--out', '/tmp/action-latency-file.json',
+      ])
+      .withExec([
+        'cargo', 'run', '--locked', '-p', 'memory-engine-qa', '--', 'diff',
+        '--base', 'docs/perf/baselines/action-latency-file.v1.json',
+        '--head', '/tmp/action-latency-file.json',
+        '--budget', 'docs/perf/action-latency-budgets.v1.json',
+      ])
+      .stdout();
+  }
+
+  /**
    * Run every gate in sequence. A non-zero exit on any gate fails the pipeline.
    * Returns a concatenated log on success.
    */
@@ -174,6 +238,7 @@ export class MemoryEngine {
   ): Promise<string> {
     const browserContract = await this.browserContract(source);
     const rustFmt = await this.rustFmt(source);
+    const operations = await this.operations(source);
     const rustTest = await this.rustTest(source);
     const actionLatencyArtifact = await this.actionLatencyPostgres(source, gitSha);
     const actionLatencyReceipt = await actionLatencyArtifact
@@ -184,14 +249,20 @@ export class MemoryEngine {
       .contents();
     const rustClippy = await this.rustClippy(source);
     const rustDoc = await this.rustDoc(source);
+    const actionLatencyFile = await this.actionLatencyFile(source);
+    const workerArtifact = await this.worker(source, gitSha);
+    const workerProof = await workerArtifact.file('workerd-proof.json').contents();
     const secrets = await this.secrets(source);
     return [
       `=== browser contract ===\n${browserContract}`,
       `=== rust fmt ===\n${rustFmt}`,
+      `=== retained recovery contracts ===\n${operations}`,
       `=== rust test ===\n${rustTest}`,
       `=== action latency (postgres) ===\n${actionLatencyReceipt}\n${actionLatencyMarkdown}`,
+      `=== action latency budget (file) ===\n${actionLatencyFile}`,
       `=== rust clippy ===\n${rustClippy}`,
       `=== rust doc ===\n${rustDoc}`,
+      `=== Wasm / isolated workerd ===\n${workerProof}`,
       `=== secrets ===\n${secrets}`,
     ].join('\n');
   }

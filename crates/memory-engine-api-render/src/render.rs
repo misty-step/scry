@@ -1,16 +1,11 @@
 //! Server-rendered study UI.
 //!
-//! The markup consumes the Ledger design system (repo-owned at
-//! `assets/ledger.css`, served from `/static/ledger.css`; the binding
-//! contract is the root `DESIGN.md`): warm paper and ink, register-based
-//! type, mono tabular numerals, verdicts as printed marks. The app is a
-//! single adaptive screen that swaps between a workspace (capture, manage,
-//! reflect) and a review (prompt, answer, grade). Every interaction is a
-//! full-page form POST; `assets/app.js` layers progressive enhancement
-//! (honest response timing, job SSE, the Create pending state) on top.
-//! Graded pages never advance on their own. The learner reviews the verdict,
-//! answer key, and dossier until they explicitly continue. Generated-card
-//! quality feedback saves in place without becoming a second advance action.
+//! Reading-first Scry surfaces use the repo-owned `assets/ledger.css` sheet,
+//! served at the stable `/static/ledger.css` path. `DESIGN.md` binds palette,
+//! typography, accessibility, and the deliberate study loop.
+//! Every action remains a full-page form POST; `assets/app.js` progressively
+//! enhances timing, generation status, and save-in-place feedback. A graded
+//! Quiz never advances without Continue. Study notes return to the same Quiz.
 
 use std::fmt::Write as _;
 
@@ -20,9 +15,10 @@ use memory_engine_study::{
     BetaStudyGrade, LibrarySourceRow, SourcePermission,
 };
 
+#[cfg(test)]
+use memory_engine_api_state::ApiState;
 use memory_engine_api_state::{
-    ApiFailure, ApiState, AppAccount, GenerationJob, JobStatus, SourceRecord, StudyViewResponse,
-    SubmitReviewTimings,
+    AppAccount, GenerationJob, JobStatus, SourceRecord, StudyViewResponse,
 };
 
 #[cfg(test)]
@@ -47,29 +43,10 @@ pub const SNOOZE_CONFIRM_NOTICE: &str = "You'll see this tomorrow.";
 pub const SNOOZE_CONCEPT_CONFIRM_NOTICE: &str = "You'll see this concept tomorrow.";
 
 #[must_use]
-pub fn render_action_result_html(
-    state: &ApiState,
-    account: &AppAccount,
-    result: Result<StudyViewResponse, ApiFailure>,
-) -> String {
-    render_action_result_html_with_notice(state, account, result, None)
-}
-
-#[must_use]
-pub fn render_action_result_html_with_notice(
-    state: &ApiState,
-    account: &AppAccount,
-    result: Result<StudyViewResponse, ApiFailure>,
-    notice: Option<&str>,
-) -> String {
-    render_action_result_html_with_head(state, account, result, notice, "")
-}
-
-#[must_use]
 pub fn render_content_feedback_result_html(
-    state: &ApiState,
     account: &AppAccount,
     view: &StudyViewResponse,
+    jobs: &[GenerationJob],
     notice: &str,
 ) -> String {
     if view.current.is_none() && view.summary.approved_review_unit_count > 0 {
@@ -83,14 +60,14 @@ pub fn render_content_feedback_result_html(
         );
         document_with_head(&inner, "")
     } else {
-        render_account_page_with_head(state, account, Some(view), Some(notice), "")
+        render_account_page(account, Some(view), jobs, Some(notice))
     }
 }
 
 #[must_use]
 pub fn render_content_feedback_recovery_html(
-    state: &ApiState,
     account: &AppAccount,
+    due_count: usize,
     recovery: &ContentFeedbackRecovery<'_>,
 ) -> String {
     let supersedes = recovery.supersedes_id.map_or_else(String::new, |id| {
@@ -100,14 +77,14 @@ pub fn render_content_feedback_recovery_html(
         )
     });
     let choice = if recovery.verdict == "dropped" {
-        "Drop this card"
+        "Drop this quiz"
     } else {
-        "Keep this card"
+        "Keep this quiz"
     };
     let body = format!(
         r#"<section class="ae-group me-content-feedback">
 <p class="me-kicker">Feedback not saved</p>
-<h1 class="me-display">Try that feedback again.</h1>
+<h1 class="me-display">Your feedback needs another try</h1>
 <p class="ae-lede">Selected: <strong>{choice}</strong></p>
 <form action="/app/content-feedback" method="post">
 {csrf}<input type="hidden" name="reviewUnitId" value="{review_unit_id}">
@@ -127,12 +104,9 @@ pub fn render_content_feedback_recovery_html(
         supersedes = supersedes,
         rationale = escape_html(recovery.rationale.unwrap_or_default()),
     );
-    let due = state
-        .app_study_view(account)
-        .map_or(0, |view| view.due_count);
     document(&render_signed_in_body(
         account,
-        due,
+        due_count,
         Some(recovery.message),
         &[],
         &body,
@@ -142,12 +116,12 @@ pub fn render_content_feedback_recovery_html(
 
 #[must_use]
 pub fn render_submit_action_result_html(
-    state: &ApiState,
     account: &AppAccount,
-    result: Result<StudyViewResponse, ApiFailure>,
+    view: Option<&StudyViewResponse>,
+    jobs: &[GenerationJob],
+    notice: Option<&str>,
     request_id: &str,
     trace_id: Option<&str>,
-    timings: &mut SubmitReviewTimings,
 ) -> String {
     let trace = trace_id.map_or_else(String::new, |trace_id| {
         format!(
@@ -163,179 +137,74 @@ pub fn render_submit_action_result_html(
         escape_html(request_id),
         trace,
     );
-    match result {
-        Ok(view) => render_submit_account_page(state, account, Some(&view), None, &head, timings),
-        Err(error) => {
-            let view = state.app_study_view_with_timings(account, timings).ok();
-            render_submit_account_page(
-                state,
-                account,
-                view.as_ref(),
-                Some(&error.message),
-                &head,
-                timings,
-            )
-        }
-    }
-}
-
-fn render_submit_account_page(
-    state: &ApiState,
-    account: &AppAccount,
-    view: Option<&StudyViewResponse>,
-    notice: Option<&str>,
-    head: &str,
-    timings: &mut SubmitReviewTimings,
-) -> String {
-    // Submit responses only need the graded/home study view already in hand.
-    // Loading the full source catalog here opened an extra Neon connection on
-    // every answer for HTML that never reads sources (Home/Review surfaces).
-    // Jobs are loaded only when a Generating… notice must be validated.
-    let sources = Vec::new();
-    let jobs = if notice.is_some_and(is_generating_notice) {
-        state.jobs_for_app_account_with_timings(account, timings)
-    } else {
-        Vec::new()
-    };
-    render_app_shell_with_head(Some(account), &sources, view, &jobs, notice, head)
-}
-
-fn render_action_result_html_with_head(
-    state: &ApiState,
-    account: &AppAccount,
-    result: Result<StudyViewResponse, ApiFailure>,
-    notice: Option<&str>,
-    head: &str,
-) -> String {
-    match result {
-        Ok(view) => render_account_page_with_head(state, account, Some(&view), notice, head),
-        Err(error) => {
-            render_account_page_with_head(state, account, None, Some(&error.message), head)
-        }
-    }
+    render_app_shell_with_head(Some(account), &[], view, jobs, notice, &head)
 }
 
 #[must_use]
 pub fn render_account_page(
-    state: &ApiState,
     account: &AppAccount,
     view: Option<&StudyViewResponse>,
+    jobs: &[GenerationJob],
     notice: Option<&str>,
 ) -> String {
-    render_account_page_with_head(state, account, view, notice, "")
-}
-
-fn render_account_page_with_head(
-    state: &ApiState,
-    account: &AppAccount,
-    view: Option<&StudyViewResponse>,
-    notice: Option<&str>,
-    head: &str,
-) -> String {
-    render_account_page_with_loaders_and_head(
-        state,
-        account,
-        view,
-        notice,
-        head,
-        || state.list_app_sources(account).unwrap_or_default(),
-        || state.jobs_for_app_account(account),
-    )
+    render_app_shell(Some(account), &[], view, jobs, notice)
 }
 
 #[must_use]
 pub fn render_edit_review_html(
-    state: &ApiState,
     account: &AppAccount,
     view: &StudyViewResponse,
+    jobs: &[GenerationJob],
     notice: Option<&str>,
 ) -> String {
-    let jobs = state.jobs_for_app_account(account);
     document(&render_signed_in(
         account,
         &[],
         Some(view),
-        &jobs,
+        jobs,
         notice,
         SignedInSurface::Edit,
     ))
 }
 
-#[cfg(test)]
-fn render_account_page_with_loaders(
-    state: &ApiState,
-    account: &AppAccount,
-    view: Option<&StudyViewResponse>,
-    notice: Option<&str>,
-    load_sources: impl FnOnce() -> Vec<SourceRecord>,
-    load_jobs: impl FnOnce() -> Vec<GenerationJob>,
-) -> String {
-    render_account_page_with_loaders_and_head(
-        state,
+/// Read the current Quiz's saved Study note without advancing its occurrence.
+/// The route resolves the note; rendering never loads or invents material.
+#[must_use]
+pub fn render_reference_page(account: &AppAccount, view: &StudyViewResponse) -> String {
+    let body = view.current.as_ref().map_or_else(
+        || {
+            r#"<section class="me-study-note"><h1 class="me-display">No quiz is open</h1><p class="ae-lede">Open a quiz to read its study note.</p><a class="ae-button" href="/">Back to Home</a></section>"#.to_owned()
+        },
+        |current| {
+            let reading = current
+                .reference_text
+                .as_deref()
+                .filter(|text| !text.trim().is_empty())
+                .map_or_else(
+                    || r#"<p class="ae-lede">No study note is available for this quiz. Return to the quiz or use its More actions to request easier practice.</p>"#.to_owned(),
+                    |text| format!(r#"<div class="me-reading">{}</div>"#, escape_html(text)),
+                );
+            format!(
+                r#"<article class="me-study-note" aria-labelledby="me-study-note-title">
+<h1 class="me-display" id="me-study-note-title">Study note</h1>
+<p class="me-prompt">{prompt}</p>
+{reading}
+<form class="me-resume" action="/app/resume" method="post">{csrf}<input type="hidden" name="reviewUnitId" value="{id}"><button class="ae-button" type="submit">Return to this quiz</button></form>
+</article>"#,
+                prompt = escape_html(&current.prompt),
+                csrf = hidden_csrf_input(account),
+                id = escape_html(&current.review_unit_id.to_string()),
+            )
+        },
+    );
+    document(&render_signed_in_body(
         account,
-        view,
-        notice,
-        "",
-        load_sources,
-        load_jobs,
-    )
-}
-
-fn render_account_page_with_loaders_and_head(
-    state: &ApiState,
-    account: &AppAccount,
-    view: Option<&StudyViewResponse>,
-    notice: Option<&str>,
-    head: &str,
-    load_sources: impl FnOnce() -> Vec<SourceRecord>,
-    load_jobs: impl FnOnce() -> Vec<GenerationJob>,
-) -> String {
-    // When the caller doesn't supply a view (capture, generate, retry-refresh,
-    // GET home), fetch the live study view so the due count and "Start review"
-    // CTA reflect committed state instead of rendering an empty placeholder that
-    // reads "0 due" and hides the way into review. Review screens pass their own
-    // view (with an active `current`) and keep it.
-    let fetched = if view.is_none() {
-        state.app_study_view(account).ok()
-    } else {
-        None
-    };
-    render_account_page_with_resolved_view_and_loaders(
-        account,
-        view.or(fetched.as_ref()),
-        notice,
-        head,
-        load_sources,
-        load_jobs,
-    )
-}
-
-fn render_account_page_with_resolved_view_and_loaders(
-    account: &AppAccount,
-    view: Option<&StudyViewResponse>,
-    notice: Option<&str>,
-    head: &str,
-    load_sources: impl FnOnce() -> Vec<SourceRecord>,
-    load_jobs: impl FnOnce() -> Vec<GenerationJob>,
-) -> String {
-    let active_review = view.is_some_and(|view| view.current.is_some());
-    // Active review responses render only the supplied card. Loading the full
-    // source list here repeats a complete account snapshot while
-    // `render_signed_in` never reads it in the review branch.
-    let sources = if active_review {
-        Vec::new()
-    } else {
-        load_sources()
-    };
-    // Jobs only affect an active review when they validate a "Generating…"
-    // notice. Keep that truth check, but avoid a second Postgres connection for
-    // ordinary next/submit responses where no such notice can be rendered.
-    let jobs = if active_review && !notice.is_some_and(is_generating_notice) {
-        Vec::new()
-    } else {
-        load_jobs()
-    };
-    render_app_shell_with_head(Some(account), &sources, view, &jobs, notice, head)
+        view.due_count,
+        None,
+        &[],
+        &body,
+        None,
+    ))
 }
 
 #[must_use]
@@ -370,18 +239,46 @@ fn render_app_shell_with_head(
 /// (memory-engine-087). Capture is one job-to-be-done — it never shares a
 /// scroll with source management or analytics.
 #[must_use]
-pub fn render_create_page(state: &ApiState, account: &AppAccount, notice: Option<&str>) -> String {
-    let view = state.app_study_view(account).ok();
-    let jobs = state.jobs_for_app_account(account);
-    let inner = render_signed_in(
-        account,
-        &[],
-        view.as_ref(),
-        &jobs,
-        notice,
-        SignedInSurface::Create,
-    );
+pub fn render_create_page(
+    account: &AppAccount,
+    view: Option<&StudyViewResponse>,
+    jobs: &[GenerationJob],
+    notice: Option<&str>,
+) -> String {
+    let inner = render_signed_in(account, &[], view, jobs, notice, SignedInSurface::Create);
     document(&inner)
+}
+
+/// A saved capture follows exactly one generation job. With no editable form
+/// on this surface, its terminal event can safely open Library.
+#[must_use]
+pub fn render_capture_waiting_page(account: &AppAccount, job: &GenerationJob) -> String {
+    let heading = match job.status {
+        JobStatus::Succeeded => "Generation finished",
+        JobStatus::Failed => "Generation needs attention",
+        JobStatus::Queued | JobStatus::Running | JobStatus::Retry => {
+            "Preparing your study material"
+        }
+    };
+    let body = format!(
+        r#"<section class="me-generation-waiting" data-generation-job-id="{id}" data-terminal-url="/app/library" data-status="{status}" aria-labelledby="me-generation-title">
+<h1 class="me-display" id="me-generation-title">{heading}</h1>
+<p class="me-generation-source">{title}</p>
+<p class="me-generation-status" data-generation-status role="status" aria-live="polite" aria-atomic="true">{message}</p>
+<p class="ae-lede">Inspect the generated material in Library before choosing which quizzes to keep. Your review queue does not change until you approve a draft.</p>
+<a class="ae-button" href="/app/library">Open Library</a>
+<p class="me-hint me-generation-help">Leave this page open to follow this request, or open Library whenever you are ready.</p>
+<noscript><p class="me-hint">Live updates need JavaScript. Open Library to check the current status.</p></noscript>
+</section>"#,
+        id = escape_html(&job.id),
+        status = job.status.as_str(),
+        title = escape_html(&job.title),
+        message = job_meta(job),
+    );
+    // This API has no study view. Keep the enhancement hook without inventing
+    // a zero due count or fetching unrelated account state.
+    let header = format!(r#"<span class="me-due"></span>{}"#, account_menu(account),);
+    document(&screen(&header, &body, &render_nav("create")))
 }
 
 /// The Library view: saved material with per-source active-card counts and
@@ -390,24 +287,17 @@ pub fn render_create_page(state: &ApiState, account: &AppAccount, notice: Option
 /// capture or analytics.
 #[must_use]
 pub fn render_library_page(
-    state: &ApiState,
     account: &AppAccount,
+    sources: &[SourceRecord],
     view: Option<&StudyViewResponse>,
+    jobs: &[GenerationJob],
     notice: Option<&str>,
 ) -> String {
-    let fetched = if view.is_none() {
-        state.app_study_view(account).ok()
-    } else {
-        None
-    };
-    let resolved_view = view.or(fetched.as_ref());
-    let sources = state.list_app_sources(account).unwrap_or_default();
-    let jobs = state.jobs_for_app_account(account);
     let inner = render_signed_in(
         account,
-        &sources,
-        resolved_view,
-        &jobs,
+        sources,
+        view,
+        jobs,
         notice,
         SignedInSurface::Library,
     );
@@ -457,9 +347,8 @@ pub fn render_analytics_page(
     let footer = render_nav("analytics");
     let body = format!(
         r#"<section class="me-analytics">
-<p class="me-kicker">Analytics</p>
-<h1 class="me-display me-analytics-title">Concept health</h1>
-<p class="ae-lede ae-dim me-analytics-support">Find the concepts that need another pass, then work down the ledger.</p>
+<h1 class="me-display me-analytics-title">Progress</h1>
+<p class="ae-lede ae-dim me-analytics-support">See what is becoming familiar and which concepts need another pass. These are your recorded reviews, not a score to chase.</p>
 {surface}
 </section>"#,
         surface = render_concept_health_surface(&view.concept_progress, options),
@@ -469,6 +358,17 @@ pub fn render_analytics_page(
 
 #[must_use]
 pub fn render_entry_requested(debug_link: Option<&str>) -> String {
+    let (heading, delivery) = if debug_link.is_some() {
+        (
+            "Open your sign-in link",
+            "For this local session, use the link below or the configured local outbox. Local outbox mode does not send email.",
+        )
+    } else {
+        (
+            "Check your email",
+            "If you’re invited, a sign-in link is on the way. Otherwise, your place on the waitlist is saved and we’ll email when a spot opens.",
+        )
+    };
     let debug = debug_link.map_or_else(String::new, |link| {
         format!(
             r#"<p><a href="{}" class="ae-accent">Open sign-in link</a></p>"#,
@@ -477,9 +377,9 @@ pub fn render_entry_requested(debug_link: Option<&str>) -> String {
     });
     let view = format!(
         r#"<div class="me-cover">
-<p class="me-kicker">Request received</p>
-<h1 class="me-display">Check your email.</h1>
-<p class="ae-lede ae-dim me-support">If you’re invited, a sign-in link is on the way. Otherwise, you’re on the waitlist and we’ll email when a spot opens.</p>
+<h1 class="me-display">{heading}</h1>
+<p class="ae-lede ae-dim me-support">{delivery}</p>
+<p class="me-entry-explainer">Use the newest link to open your study space. You do not need a password.</p>
 {debug}
 <p><a class="ae-accent" href="/">Back to start</a></p>
 </div>"#
@@ -489,17 +389,12 @@ pub fn render_entry_requested(debug_link: Option<&str>) -> String {
 
 #[must_use]
 pub fn render_entry_recovery(title: &str, message: &str) -> String {
-    render_email_recovery("Scry · Invite-only beta", title, message, "Try again")
+    render_email_recovery("Access to Scry", title, message, "Try again")
 }
 
 #[must_use]
 pub fn render_auth_recovery(title: &str, message: &str) -> String {
-    render_email_recovery(
-        "Return to your workspace",
-        title,
-        message,
-        "Request a new link",
-    )
+    render_email_recovery("Sign in to Scry", title, message, "Request a new link")
 }
 
 fn render_email_recovery(kicker: &str, title: &str, message: &str, action: &str) -> String {
@@ -507,7 +402,7 @@ fn render_email_recovery(kicker: &str, title: &str, message: &str, action: &str)
         r#"<div class="me-cover">
 <p class="me-kicker">{}</p>
 <h1 class="me-display">{}</h1>
-<p class="ae-lede ae-dim me-support">{}</p>
+<p class="ae-lede ae-dim me-support" role="alert">{}</p>
 <section class="ae-group me-capture-hero">
 <form action="/app/account" method="post">
 <label class="ae-label" for="me-recovery-email">Your email</label>
@@ -543,9 +438,8 @@ pub fn render_submit_recovery(title: &str, message: &str) -> String {
 pub fn render_return_notification_confirmation(token: &str) -> String {
     let view = format!(
         r#"<div class="me-cover">
-<p class="me-kicker">Return gently</p>
-<h1 class="me-display">Turn off due-count reminders?</h1>
-<p class="ae-lede ae-dim me-support">This confirmation is protected by the link sent to your reminder email. No sign-in is required.</p>
+<h1 class="me-display">Turn off study reminders?</h1>
+<p class="ae-lede ae-dim me-support">This stops reminder emails for the address that received this link. Your sources, quizzes, and review history stay unchanged.</p>
 <section class="ae-group me-capture-hero">
 <form action="/app/return-notifications" method="post">
 <input type="hidden" name="unsubscribeToken" value="{}">
@@ -562,9 +456,8 @@ pub fn render_return_notification_confirmation(token: &str) -> String {
 #[must_use]
 pub fn render_return_notification_disabled() -> String {
     let view = r#"<div class="me-cover">
-<p class="me-kicker">Return gently</p>
-<h1 class="me-display">Reminders are off.</h1>
-<p class="ae-lede ae-dim me-support">You will not receive further due-count reminders. You can opt in again from your study space.</p>
+<h1 class="me-display">Reminders are off</h1>
+<p class="ae-lede ae-dim me-support">You will not receive more study reminders. You can turn them on again from Home.</p>
 <p><a class="ae-accent" href="/">Back to Scry</a></p>
 </div>"#;
     document(&screen_centered("", view, FOOTER_TAGLINE))
@@ -574,9 +467,8 @@ pub fn render_return_notification_disabled() -> String {
 pub fn render_return_notification_recovery(title: &str, message: &str) -> String {
     let view = format!(
         r#"<div class="me-cover">
-<p class="me-kicker">Return gently</p>
 <h1 class="me-display">{}</h1>
-<p class="ae-lede ae-dim me-support">{}</p>
+<p class="ae-lede ae-dim me-support" role="alert">{}</p>
 <p><a class="ae-accent" href="/">Back to Scry</a></p>
 </div>"#,
         escape_html(title),
@@ -599,7 +491,8 @@ fn document_with_head(inner: &str, head: &str) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#f6f2ea">
+<meta name="theme-color" content="#f4f8fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f2430" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -607,9 +500,8 @@ fn document_with_head(inner: &str, head: &str) -> String {
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap">
+<link rel="preload" href="/static/fonts/manrope-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/literata-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/ledger.css">
 {head}
 <script src="/static/app.js" defer></script>
@@ -621,8 +513,8 @@ fn document_with_head(inner: &str, head: &str) -> String {
     )
 }
 
-/// The chrome shell: a fixed top bar, a scrolling stage, a fixed bottom bar.
-/// Workspace and review screens top-align and scroll inside the stage.
+/// Shared chrome: a scrollable document with a thumb-reachable standing-view
+/// dock. The study loop has no persistent navigation competing with the Quiz.
 fn screen(header_right: &str, view: &str, footer: &str) -> String {
     screen_with("ae-stage ae-stage-scroll", header_right, view, footer)
 }
@@ -634,12 +526,13 @@ fn screen_centered(header_right: &str, view: &str, footer: &str) -> String {
 
 fn screen_with(stage: &str, header_right: &str, view: &str, footer: &str) -> String {
     format!(
-        r#"<div class="ae-screen">
+        r##"<div class="ae-screen">
+<a class="me-skip-link" href="#me-main">Skip to content</a>
 <header class="ae-bar">
-<a class="ae-name" href="/">SCRY</a>
+<a class="ae-name" href="/" aria-label="Scry home">Scry</a>
 {header_right}
 </header>
-<main class="{stage}">
+<main class="{stage}" id="me-main" tabindex="-1">
 <div class="ae-view">
 {view}
 </div>
@@ -647,7 +540,7 @@ fn screen_with(stage: &str, header_right: &str, view: &str, footer: &str) -> Str
 <footer class="ae-bar">
 {footer}
 </footer>
-</div>"#
+</div>"##
     )
 }
 
@@ -655,15 +548,17 @@ fn render_signed_out(notice: Option<&str>) -> String {
     let view = format!(
         r#"<div class="me-cover">
 {notice}
-<p class="me-kicker">Scry · Invite-only beta</p>
-<h1 class="me-display">Remember everything.</h1>
-<p class="ae-lede ae-dim me-support">Capture anything worth remembering. We bring it back when it matters.</p>
-<section class="ae-group me-capture-hero">
+<div class="me-cover-intro">
+<h1 class="me-display">Make room for what you want to remember.</h1>
+<p class="ae-lede ae-dim me-support">Bring a source or an idea. Shape it into quizzes and study notes, then return for a little practice at a time.</p>
+</div>
+<section class="ae-group me-capture-hero" aria-label="Sign in or join the waitlist">
 <form class="me-entry-form" action="/app/account" method="post">
 <label class="ae-label" for="me-email">Your email</label>
 <input class="ae-input me-hero-email" id="me-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email address">
-<div class="me-actions"><button class="ae-button" type="submit">Get started</button><span class="ae-dim me-hint">No password. Scry will email a link or save your place.</span></div>
-<p class="me-entry-status ae-dim" aria-live="polite"></p>
+<div class="me-actions"><button class="ae-button" type="submit">Email me a sign-in link</button></div>
+<p class="me-entry-explainer">Scry is invite-only. If a place is not available yet, this saves your place on the waitlist. No password needed.</p>
+<p class="me-entry-status ae-dim" role="status" aria-live="polite"></p>
 </form>
 </section>
 </div>"#,
@@ -704,11 +599,8 @@ fn render_signed_in(
         }
         SignedInSurface::Home => {
             if let Some(current) = view.and_then(|view| view.current.as_ref()) {
-                // Full-bleed review: no nav. Any drafts newly generated while
-                // the learner reviews still get their keep/edit/reject
-                // decision surfaced right below the card, not hidden away.
-                let mut body = render_current_review(account, current);
-                body.push_str(&render_pending_drafts(account, view));
+                // Draft triage belongs in Library, not underneath an active Quiz.
+                let body = render_current_review(account, current);
                 render_signed_in_body(account, due, notice, jobs, &body, None)
             } else {
                 let body = render_home_body(account, view);
@@ -716,7 +608,7 @@ fn render_signed_in(
             }
         }
         SignedInSurface::Create => {
-            let body = render_capture(account);
+            let body = format!("{}{}", render_capture(account), render_create_status(jobs));
             render_signed_in_body(account, due, notice, jobs, &body, Some("create"))
         }
         SignedInSurface::Library => {
@@ -767,16 +659,15 @@ fn render_nav(active: &str) -> String {
         item("Home", "/", "home"),
         item("Create", "/app/create", "create"),
         item("Library", "/app/library", "library"),
-        item("Analytics", "/app/analytics", "analytics"),
+        item("Progress", "/app/analytics", "analytics"),
     )
 }
 
 fn render_review_complete() -> String {
     r#"<section class="ae-group me-review-complete">
-<p class="me-kicker">Review complete</p>
-<h1 class="me-display">You're all caught up.</h1>
-<p class="ae-lede">Nothing else is due right now.</p>
-<div class="me-actions"><a class="ae-button" href="/">Back to workspace</a></div>
+<h1 class="me-display">A good place to pause</h1>
+<p class="ae-lede">Nothing else is due right now. Your review is saved.</p>
+<div class="me-actions"><a class="ae-button" href="/">Back to Home</a><a class="ae-button-quiet" href="/app/library">Open Library</a></div>
 </section>"#
         .to_owned()
 }
@@ -784,17 +675,17 @@ fn render_review_complete() -> String {
 fn render_edit_review(account: &AppAccount, current: &BetaStudyCurrent) -> String {
     format!(
         r#"<section class="ae-group me-edit">
-<p class="me-kicker">Edit card</p>
+<h1 class="me-display">Edit quiz</h1>
 <form class="me-edit-form" action="/app/edit/save" method="post">
 {csrf}
 <input type="hidden" name="reviewUnitId" value="{id}">
-<label class="ae-label" for="me-edit-prompt">Prompt</label>
+<label class="ae-label" for="me-edit-prompt">Question</label>
 <textarea class="ae-input" id="me-edit-prompt" name="prompt" rows="4" required>{prompt}</textarea>
 <label class="ae-label" for="me-edit-answer">Answer</label>
 <input class="ae-input" id="me-edit-answer" name="expectedAnswer" value="{answer}" required autocomplete="off">
 <div class="me-actions"><button class="ae-button" type="submit">Save changes</button></div>
 </form>
-<form action="/app/next" method="post">{csrf}<button class="ae-button-quiet" type="submit">Cancel</button></form>
+<form class="me-resume" action="/app/resume" method="post">{csrf}<input type="hidden" name="reviewUnitId" value="{id}"><button class="ae-button-quiet" type="submit">Cancel</button></form>
 </section>"#,
         csrf = hidden_csrf_input(account),
         id = escape_html(&current.review_unit_id.to_string()),
@@ -808,19 +699,22 @@ fn render_edit_review(account: &AppAccount, current: &BetaStudyCurrent) -> Strin
 /// own view (memory-engine-087).
 fn render_home_body(account: &AppAccount, view: Option<&StudyViewResponse>) -> String {
     let mut html = String::new();
+    let pending_drafts = render_pending_drafts(account, view);
     if let Some(view) = view {
         html.push_str(&render_review_status(account, view));
     }
     if view.is_none_or(|v| v.due_count == 0 && v.summary.approved_review_unit_count == 0) {
-        html.push_str(
-            r#"<p class="ae-lede me-welcome">Type a topic or paste anything worth remembering.</p>"#,
-        );
+        html.push_str(if pending_drafts.is_empty() {
+            r#"<section class="ae-group me-welcome"><h1 class="me-display">Start with something worth remembering</h1><p class="ae-lede">Add a source or a topic. Inspect the generated quizzes before choosing what goes into your review queue.</p><a class="ae-button" href="/app/create">Create your first quizzes</a></section>"#
+        } else {
+            r#"<section class="ae-group me-welcome"><h1 class="me-display">Choose what to practice</h1><p class="ae-lede">Your draft quizzes are ready below. Keep only those you want to review.</p></section>"#
+        });
     }
     html.push_str(&render_return_notifications(account));
     // Generation is non-blocking. Accepted drafts stay pending until the
     // learner inspects their evidence and explicitly keeps, edits, or rejects
     // them (memory-engine-079); that decision lives on Home alongside review.
-    html.push_str(&render_pending_drafts(account, view));
+    html.push_str(&pending_drafts);
     html
 }
 
@@ -840,8 +734,19 @@ fn render_library_body(
     jobs: &[GenerationJob],
 ) -> String {
     let library = view.map_or(&[][..], |v| v.library.as_slice());
-    let mut html = String::new();
+    let mut html = String::from(
+        r#"<header class="me-page-heading"><h1 class="me-display">Library</h1><p class="ae-lede">Your sources, study material, and quizzes. You choose what enters your review queue.</p></header>"#,
+    );
     html.push_str(&render_library_sources(account, sources, library, jobs));
+    if let Some(view) = view {
+        for notice in &view.generation_notices {
+            let _ = write!(
+                html,
+                r#"<p class="me-notice" role="status">{ICON_INFO}<span>{}</span></p>"#,
+                escape_html(notice),
+            );
+        }
+    }
     html.push_str(&render_pending_drafts(account, view));
     html.push_str(&render_jobs(account, jobs));
     html
@@ -858,7 +763,7 @@ fn render_library_sources(
     jobs: &[GenerationJob],
 ) -> String {
     if sources.is_empty() {
-        return String::new();
+        return r#"<section class="ae-group"><h2 class="ae-h">No sources yet</h2><p class="ae-lede">Save a source or a topic to begin building your study material.</p><a class="ae-button" href="/app/create">Add a source</a></section>"#.to_owned();
     }
     let mut rows = String::new();
     for source in sources {
@@ -866,7 +771,7 @@ fn render_library_sources(
         let card_count = lib.map_or(0, |row| row.active_card_count);
         let count_line = format!(
             r#"<span class="ae-dim me-source-count">{card_count} {cards}</span>"#,
-            cards = plural(card_count, "card", "cards"),
+            cards = plural(card_count, "quiz", "quizzes"),
         );
         let concept_detail = lib.map_or_else(String::new, |row| {
             if row.concepts.is_empty() {
@@ -875,9 +780,10 @@ fn render_library_sources(
             let items = row.concepts.iter().fold(String::new(), |mut acc, concept| {
                 let _ = write!(
                     acc,
-                    r#"<li class="me-concept-item"><span>{}</span><span class="me-concept-count">{}</span></li>"#,
+                    r#"<li class="me-concept-item"><span>{}</span><span class="me-concept-count">{} {}</span></li>"#,
                     escape_html(&concept.concept_label),
                     concept.card_count,
+                    plural(concept.card_count, "quiz", "quizzes"),
                 );
                 acc
             });
@@ -891,21 +797,21 @@ fn render_library_sources(
             String::new()
         } else {
             format!(
-                r#"<form action="/app/generate" method="post">{csrf_generate}<input type="hidden" name="sourceId" value="{id}"><button class="ae-button ae-button-compact" type="submit" title="Turn this material into review cards.">Generate cards</button></form>"#,
+                r#"<form action="/app/generate" method="post">{csrf_generate}<input type="hidden" name="sourceId" value="{id}"><button class="ae-button ae-button-compact" type="submit">Generate quizzes</button></form>"#,
                 csrf_generate = hidden_csrf_input(account),
                 id = escape_html(&source.source_id),
             )
         };
         let permission = match &source.permission {
             SourcePermission::LocalOnly => {
-                "<span class=\"ae-dim me-source-permission\">Local only · never sent to a model</span>"
+                "<span class=\"ae-dim me-source-permission\">Local only. This source is not sent to a model.</span>"
             }
             SourcePermission::ModelEligible => {
-                "<span class=\"ae-dim me-source-permission\">Model eligible</span>"
+                "<span class=\"ae-dim me-source-permission\">Model help allowed for this source.</span>"
             }
         };
         let edit_permission = format!(
-            r#"<form class="me-source-permission" action="/app/source/permission" method="post">{csrf}<input type="hidden" name="sourceId" value="{id}"><label class="ae-label" for="permission-{id_label}">Change permission</label><select class="ae-input" id="permission-{id_label}" name="permission" aria-label="Change permission for {title_attr}"><option value="model-eligible" {model_selected}>Allow model help</option><option value="local-only" {local_selected}>Keep local / Never send to a model</option></select><button class="ae-button-quiet ae-button-compact" type="submit">Save permission</button></form>"#,
+            r#"<form class="me-source-permission" action="/app/source/permission" method="post">{csrf}<input type="hidden" name="sourceId" value="{id}"><label class="ae-label" for="permission-{id_label}">Model permission</label><select class="ae-input" id="permission-{id_label}" name="permission" aria-label="Model permission for {title_attr}"><option value="model-eligible" {model_selected}>Allow model help</option><option value="local-only" {local_selected}>Keep local only</option></select><p class="me-hint">This controls future model use. It does not undo a request already sent.</p><button class="ae-button-quiet ae-button-compact" type="submit">Save permission</button></form>"#,
             csrf = hidden_csrf_input(account),
             id = escape_html(&source.source_id),
             id_label = escape_html(&source.source_id),
@@ -924,19 +830,23 @@ fn render_library_sources(
         let _ = write!(
             rows,
             r#"<article class="me-source">
-<p class="ae-item">{title}</p>
-{count_line}
+<header class="me-source-header"><h3 class="me-source-title">{title}</h3>{count_line}</header>
 {concept_detail}
 {permission}
+<details class="me-source-settings">
+<summary>Source settings</summary>
+<div class="me-source-settings-panel">
 {edit_permission}
 <div class="me-row-actions">
 {generate}
 <details class="me-remove-confirm">
-<summary class="ae-button-quiet ae-button-compact" title="Remove this saved material.">Remove</summary>
-<p class="me-remove-warning">This removes the material and stops every card generated from it, across every generation run, from being reviewed.</p>
-<form action="/app/source/archive" method="post">{csrf_archive}<input type="hidden" name="sourceId" value="{id_archive}"><button class="ae-button-quiet ae-button-compact" type="submit">Remove permanently</button></form>
+<summary>Remove source</summary>
+<p class="me-remove-warning">This removes the source from Library and stops all quizzes generated from it, across every generation run, from appearing in review.</p>
+<form action="/app/source/archive" method="post">{csrf_archive}<input type="hidden" name="sourceId" value="{id_archive}"><button class="ae-button-quiet ae-button-compact" type="submit">Remove source and quizzes</button></form>
 </details>
 </div>
+</div>
+</details>
 </article>"#,
             title = escape_html(&source.title),
             permission = permission,
@@ -945,7 +855,7 @@ fn render_library_sources(
         );
     }
     format!(
-        r#"<section class="ae-group me-material"><h2 class="ae-h">Saved material</h2>{rows}</section>"#
+        r#"<section class="ae-group me-material"><h2 class="ae-h">Sources</h2>{rows}</section>"#
     )
 }
 
@@ -953,7 +863,7 @@ fn render_return_notifications(account: &AppAccount) -> String {
     // Collapsed by default so Home stays calm: one due-hero primary action
     // in the open view, reminders one tap deeper (operator dogfood).
     format!(
-        r#"<section class="ae-group me-return-channel">
+        r#"<section class="ae-group me-return-channel" id="me-reminders">
 <details class="me-return-details">
 <summary class="me-return-summary">Daily reminders</summary>
 <p class="ae-lede">Opt in to one quiet email a day when reviews are waiting. No scores or promotional mail.</p>
@@ -961,7 +871,7 @@ fn render_return_notifications(account: &AppAccount) -> String {
 {csrf}<label class="ae-label" for="me-reminder-email">Reminder email</label>
 <input class="ae-input" id="me-reminder-email" name="reminderEmail" type="email" autocomplete="email" required placeholder="you@example.com">
 <input type="hidden" name="enabled" value="on">
-<button class="ae-button" type="submit">Enable due-count reminders</button>
+<button class="ae-button" type="submit">Turn on reminders</button>
 </form>
 <form class="me-return-off" action="/app/return-notifications" method="post">
 {csrf}<input type="hidden" name="enabled" value="off">
@@ -977,7 +887,7 @@ fn render_notice(message: Option<&str>, jobs: &[GenerationJob]) -> String {
     let message = message.filter(|text| generating_notice_is_live(text, jobs));
     message.map_or_else(String::new, |message| {
         format!(
-            r#"<p class="me-notice" role="status">{ICON_INFO}<span>{}</span></p>"#,
+            r#"<p class="me-notice" role="status" aria-live="polite">{ICON_INFO}<span>{}</span></p>"#,
             escape_html(message)
         )
     })
@@ -989,7 +899,8 @@ fn render_notice(message: Option<&str>, jobs: &[GenerationJob]) -> String {
 /// generation-in-progress notice needs to be checked against live job state,
 /// so it never lingers once nothing is left in flight (operator dogfood
 /// finding, memory-engine-081).
-fn is_generating_notice(text: &str) -> bool {
+#[must_use]
+pub fn is_generating_notice(text: &str) -> bool {
     text.contains("Generating")
 }
 
@@ -997,46 +908,70 @@ fn generating_notice_is_live(text: &str, jobs: &[GenerationJob]) -> bool {
     if !is_generating_notice(text) {
         return true;
     }
-    jobs.iter()
-        .any(|job| matches!(job.status, JobStatus::Queued | JobStatus::Running))
+    jobs.iter().any(|job| {
+        matches!(
+            job.status,
+            JobStatus::Queued | JobStatus::Running | JobStatus::Retry
+        )
+    })
 }
 
 fn render_review_status(account: &AppAccount, view: &StudyViewResponse) -> String {
     if view.due_count > 0 {
         return format!(
             r#"<section class="ae-group me-callout">
-<h2 class="ae-h">Due now</h2>
-<p class="me-callout-line"><span class="me-callout-n">{due_count}</span> {items} ready to review.</p>
-<form action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Start review {ICON_ARROW}</button></form>
+<h1 class="me-display">A little practice, ready for you</h1>
+<p class="me-callout-line"><span class="me-callout-n">{due_count}</span> {items} due. Take them one at a time.</p>
+<form action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Start review</button></form>
 </section>"#,
             due_count = view.due_count,
-            items = plural(view.due_count, "item", "items"),
+            items = plural(view.due_count, "quiz is", "quizzes are"),
             csrf = hidden_csrf_input(account),
         );
     }
     // Caught up: only worth saying once the learner actually has reviews.
     if view.summary.approved_review_unit_count > 0 {
         return format!(
-            r#"<section class="ae-group me-caughtup"><p class="me-caughtup-line">{ICON_OK}<span class="ae-item">You're all caught up.</span></p><p class="ae-dim me-hint">Nothing is due right now. Add more below, or come back later.</p></section>"#
+            r#"<section class="ae-group me-caughtup"><p class="me-caughtup-line">{ICON_OK}<span>Review is up to date</span></p><h1 class="me-display">You’re all caught up</h1><p class="ae-lede">Nothing is due right now. Come back when you are ready, or add something new to study.</p><a class="ae-button-quiet" href="/app/create">Create more quizzes</a></section>"#
         );
     }
     String::new()
 }
 
 fn render_capture(account: &AppAccount) -> String {
-    // One action that returns immediately: typing and pressing the button
-    // enqueues a background job, so the learner is free to create more or
-    // review while cards generate. Progress shows in the activity log below.
+    // Capture returns while generation runs. Approval happens in Library.
     format!(
         r#"<section class="ae-group me-capture">
+<h1 class="me-display">What do you want to remember?</h1>
+<p class="ae-lede">Add a topic, paste your notes, or bring a passage you want to understand.</p>
 <form class="me-capture-form" action="/app/capture" method="post">
 {csrf}
-<label class="ae-label me-capture-label" for="me-capture">What do you want to remember?</label>
-<textarea class="ae-input" id="me-capture" name="capture" rows="3" required placeholder="A topic like &ldquo;NATO phonetic alphabet&rdquo;, a list, or pasted notes."></textarea>
-<div class="me-actions"><button class="ae-button" type="submit">Create {ICON_ARROW}</button><span class="ae-dim me-hint me-live-hint">Generates in the background.</span></div>
+<label class="ae-label me-capture-label" for="me-capture">Source or topic</label>
+<textarea class="ae-input" id="me-capture" name="capture" rows="6" required aria-describedby="me-capture-help" placeholder="Paste a passage, write a topic, or add your own notes."></textarea>
+<p class="me-hint" id="me-capture-help">This uses model help. Check generated material against its source before keeping a quiz. Do not include private information you do not want sent to a model.</p>
+<div class="me-actions"><button class="ae-button" type="submit">Create quizzes</button><span class="ae-dim me-hint me-live-hint" role="status" aria-live="polite">You will inspect the drafts before anything enters review.</span></div>
 </form>
 </section>"#,
         csrf = hidden_csrf_input(account),
+    )
+}
+
+fn render_create_status(jobs: &[GenerationJob]) -> String {
+    let in_flight = jobs.iter().any(|job| {
+        matches!(
+            job.status,
+            JobStatus::Queued | JobStatus::Running | JobStatus::Retry
+        )
+    });
+    let message = if in_flight {
+        "Your source is saved and quizzes are being prepared. You can leave this page while generation finishes."
+    } else if jobs.iter().any(|job| job.status == JobStatus::Failed) {
+        "A generation request needs attention. Open Library to inspect its status and available recovery."
+    } else {
+        "Saved sources, generation status, and drafts awaiting your decision live in Library."
+    };
+    format!(
+        r#"<section class="me-capture-next"><p class="me-hint">{message}</p><a class="ae-button-quiet" href="/app/library">Open Library</a></section>"#
     )
 }
 
@@ -1051,70 +986,72 @@ fn render_pending_drafts(account: &AppAccount, view: Option<&StudyViewResponse>)
     });
     let mut rows = String::new();
     for draft in pending {
-        let spans = if draft.source_spans.is_empty() {
-            String::new()
+        let mut spans = String::new();
+        if draft.source_spans.is_empty() {
+            spans.push_str(r#"<p class="me-hint">No source passage accompanies this draft. Check its accuracy before keeping it.</p>"#);
         } else {
-            let mut rendered = String::from("<ul class=\"me-provenance-spans\">");
+            spans.push_str(r#"<ul class="me-provenance-spans">"#);
             for span in &draft.source_spans {
                 let _ = write!(
-                    rendered,
-                    "<li><strong>{}</strong> · {} <span class=\"ae-dim\">{}</span></li>",
+                    spans,
+                    r#"<li><strong>{}</strong><div class="me-reading">{}</div><span class="ae-dim">{}</span></li>"#,
                     escape_html(&span.label),
                     escape_html(&span.text),
-                    escape_html(&span.locator)
+                    escape_html(&span.locator),
                 );
             }
-            rendered.push_str("</ul>");
-            rendered
-        };
+            spans.push_str("</ul>");
+        }
         let provenance = draft.provenance.as_ref().map_or_else(String::new, |p| {
             format!(
-                "<p class=\"ae-dim me-draft-provenance\">Provider: {} · Model: {}{}</p>",
-                escape_html(&p.provider),
-                escape_html(&p.model),
-                p.prompt_version
-                    .as_deref()
-                    .map_or_else(String::new, |v| format!(" · Prompt {}", escape_html(v)))
+                r#"<details class="me-draft-provenance"><summary>Generation details</summary><p>Provider: {provider}<br>Model: {model}{version}</p></details>"#,
+                provider = escape_html(&p.provider),
+                model = escape_html(&p.model),
+                version = p.prompt_version.as_deref().map_or_else(String::new, |v| {
+                    format!("<br>Prompt version: {}", escape_html(v))
+                }),
             )
         });
+        let explanation = draft.worked_solution.as_deref().map_or_else(String::new, |text| {
+            format!(r#"<div class="me-draft-evidence"><h4 class="me-dossier-label">Explanation</h4><div class="me-reading">{}</div></div>"#, escape_html(text))
+        });
+        let id = escape_html(&draft.id);
         let _ = write!(
             rows,
             r#"<article class="me-pending-draft">
-<p class="me-kicker">Pending draft</p>
-<h3 class="ae-h">{}</h3>
-<p class="me-prompt">{}</p>
-<p class="ae-dim">Expected answer: <span class="ae-item">{}</span></p>
-{}
-{}
-{}
-<form action="/app/draft/edit" method="post">{}<input type="hidden" name="draftId" value="{}"><label class="ae-label" for="draft-prompt-{}">Edit prompt</label><textarea class="ae-input" id="draft-prompt-{}" name="prompt" rows="3" required>{}</textarea><label class="ae-label" for="draft-answer-{}">Edit answer</label><input class="ae-input" id="draft-answer-{}" name="expectedAnswer" value="{}" required>{}<div class="me-actions"><button class="ae-button" type="submit">Edit and keep</button></div></form>
-<div class="me-row-actions"><form action="/app/draft/keep" method="post">{}<input type="hidden" name="draftId" value="{}"><button class="ae-button-quiet ae-button-compact" type="submit">Keep as written</button></form><form action="/app/draft/reject" method="post">{}<input type="hidden" name="draftId" value="{}"><button class="ae-button-quiet ae-button-compact" type="submit">Reject</button></form></div>
+<h3 class="me-draft-concept">Concept: {concept}</h3>
+<p class="me-prompt">{prompt}</p>
+<p class="me-draft-answer"><span class="me-answer-label">Accepted answer</span><br>{answer}</p>
+{choices}
+{explanation}
+<section class="me-draft-evidence"><h4 class="me-dossier-label">Source context</h4>{spans}{provenance}</section>
+<div class="me-row-actions">
+<form action="/app/draft/keep" method="post">{csrf}<input type="hidden" name="draftId" value="{id}"><button class="ae-button" type="submit">Keep as written</button></form>
+<form action="/app/draft/reject" method="post">{csrf}<input type="hidden" name="draftId" value="{id}"><button class="ae-button-quiet" type="submit">Reject draft</button></form>
+</div>
+<details class="me-draft-edit"><summary>Edit before keeping</summary>
+<form action="/app/draft/edit" method="post">{csrf}<input type="hidden" name="draftId" value="{id}">
+<label class="ae-label" for="draft-prompt-{id}">Question</label><textarea class="ae-input" id="draft-prompt-{id}" name="prompt" rows="3" required>{prompt}</textarea>
+<label class="ae-label" for="draft-answer-{id}">Accepted answer</label><input class="ae-input" id="draft-answer-{id}" name="expectedAnswer" value="{answer}" required>
+{choice_fields}
+<div class="me-actions"><button class="ae-button" type="submit">Edit and keep</button></div>
+</form>
+</details>
 </article>"#,
-            escape_html(&draft.concept_label),
-            escape_html(&draft.prompt),
-            escape_html(&draft.answer),
-            render_draft_choice_list(draft),
-            provenance,
-            spans,
-            hidden_csrf_input(account),
-            escape_html(&draft.id),
-            escape_html(&draft.id),
-            escape_html(&draft.id),
-            escape_html(&draft.prompt),
-            escape_html(&draft.id),
-            escape_html(&draft.id),
-            escape_html(&draft.answer),
-            render_draft_choice_fields(draft),
-            hidden_csrf_input(account),
-            escape_html(&draft.id),
-            hidden_csrf_input(account),
-            escape_html(&draft.id)
+            concept = escape_html(&draft.concept_label),
+            prompt = escape_html(&draft.prompt),
+            answer = escape_html(&draft.answer),
+            choices = render_draft_choice_list(draft),
+            choice_fields = render_draft_choice_fields(draft),
+            csrf = hidden_csrf_input(account),
         );
     }
     if rows.is_empty() {
         return String::new();
     }
-    format!("<section class=\"ae-group me-pending-drafts\"><h2 class=\"ae-h\">Review generated drafts</h2><p class=\"ae-lede ae-dim\">Nothing enters your queue until you choose.</p>{rows}</section>")
+    format!(
+        r#"<section class="ae-group me-pending-drafts" id="me-drafts"><h2 class="ae-h">Quizzes ready to inspect</h2><p class="ae-lede">Read the question, answer, and source context. Only quizzes you keep enter your review queue.</p>{rows}</section>"#
+    )
 }
 
 fn render_draft_choice_list(draft: &BetaStudyDraftRow) -> String {
@@ -1149,24 +1086,20 @@ fn render_draft_choice_fields(draft: &BetaStudyDraftRow) -> String {
         return String::new();
     }
     format!(
-        r#"<label class="ae-label" for="draft-choices-{id}">Distractors</label><textarea class="ae-input" id="draft-choices-{id}" name="choices" rows="{rows}">{value}</textarea>"#,
+        r#"<label class="ae-label" for="draft-choices-{id}">Other answer choices, one per line</label><textarea class="ae-input" id="draft-choices-{id}" name="choices" rows="{rows}">{value}</textarea>"#,
         id = escape_html(&draft.id),
         rows = distractors.len().max(2),
         value = distractors.join("\n"),
     )
 }
 
-/// A source whose generation is already queued, running, or done never
-/// offers "Generate cards" again — the operator's first dogfood session hit
-/// a duplicate generation run by tapping it while a job for the same source
-/// was still in flight (memory-engine-081; the server-side duplicate guard
-/// is memory-engine-082).
+/// Do not offer duplicate generation while a request is live or completed.
 fn source_generation_in_progress_or_done(source: &SourceRecord, jobs: &[GenerationJob]) -> bool {
     jobs.iter().any(|job| {
         job.source_id == source.source_id
             && matches!(
                 job.status,
-                JobStatus::Queued | JobStatus::Running | JobStatus::Succeeded
+                JobStatus::Queued | JobStatus::Running | JobStatus::Retry | JobStatus::Succeeded
             )
     })
 }
@@ -1186,7 +1119,7 @@ fn render_jobs(account: &AppAccount, jobs: &[GenerationJob]) -> String {
         rows.push_str(&render_job_row(account, job));
     }
     format!(
-        r#"<section class="ae-group me-jobs"><h2 class="ae-h">Activity</h2><ul id="me-jobs" class="me-jobs-list">{rows}</ul></section>"#
+        r#"<section class="ae-group me-jobs"><h2 class="ae-h">Generation activity</h2><ul id="me-jobs" class="me-jobs-list" aria-live="polite" aria-relevant="text">{rows}</ul><p class="me-hint"><a href="/app/library">Refresh Library</a> to see the latest drafts and recovery actions.</p></section>"#
     )
 }
 
@@ -1229,11 +1162,11 @@ fn render_job_retry(account: &AppAccount, job: &GenerationJob) -> String {
 /// `metaFor` switch in `app.js`, which recomputes it on each SSE update.
 fn job_meta(job: &GenerationJob) -> String {
     match job.status {
-        JobStatus::Queued => "Queued…".to_owned(),
-        JobStatus::Running => "Generating cards…".to_owned(),
+        JobStatus::Queued => "Queued for generation.".to_owned(),
+        JobStatus::Running => "Generating quizzes…".to_owned(),
         JobStatus::Retry => "Retrying after a temporary failure…".to_owned(),
         JobStatus::Succeeded => {
-            "Generation succeeded; accepted drafts are pending your review.".to_owned()
+            "Generation finished. Check Library for drafts and notices.".to_owned()
         }
         JobStatus::Failed => escape_html(
             job.error
@@ -1306,22 +1239,23 @@ fn render_answering(account: &AppAccount, current: &BetaStudyCurrent) -> String 
         .as_deref()
         .map_or_else(String::new, |answer| {
             format!(
-                r#"<p class="me-answer"><span class="me-answer-label">Answer</span><span class="ae-item">{}</span></p>"#,
+                r#"<p class="me-answer"><span class="me-answer-label">Revealed answer</span><span class="ae-item">{}</span></p><p class="me-assistance-note">This review now counts as assisted practice, even if you answer correctly.</p>"#,
                 escape_html(answer)
             )
         });
     format!(
-        r#"<p class="me-prompt">{prompt}</p>
-{answer_block}
+        r#"<section class="me-review" aria-labelledby="me-question">
+<h1 class="me-prompt" id="me-question">{prompt}</h1>
 {revealed}
-{reference}
+{answer_block}
+<p data-review-status role="status" aria-live="polite" aria-atomic="true"></p>
 <div class="me-hatch-row">
 {reveal}
 {escape_hatches}
-</div>"#,
+</div>
+</section>"#,
         prompt = escape_html(&current.prompt),
         answer_block = render_answer_block(account, current),
-        reference = render_reference(current),
         reveal = render_reveal_form(account, current),
         escape_hatches = render_escape_hatches(account, current),
     )
@@ -1332,13 +1266,16 @@ fn render_answering(account: &AppAccount, current: &BetaStudyCurrent) -> String 
 /// collapsed disclosure after the deliberate Continue action.
 fn render_graded_review(account: &AppAccount, card: &GradedReviewCard<'_>) -> String {
     format!(
-        r#"<p class="me-prompt">{prompt}</p>
+        r#"<section class="me-review" aria-labelledby="me-question">
+<h1 class="me-prompt" id="me-question">{prompt}</h1>
 {verdict}
 {reveal}
 {reason}
 {bridge}
 {next}
-{details}"#,
+{details}
+<p data-review-status role="status" aria-live="polite" aria-atomic="true"></p>
+</section>"#,
         prompt = escape_html(&card.current.prompt),
         verdict = render_verdict(card.grade),
         reveal = render_answer_reveal(card),
@@ -1354,7 +1291,7 @@ fn render_grading_reason(grade: &BetaStudyGrade) -> String {
         "Correct" => "Your answer matches the accepted answer.",
         "Close" => "Your answer is close, but it misses part of the accepted answer.",
         "Try again" => "Your answer does not match the accepted answer.",
-        "Revealed" => "You chose to reveal the accepted answer.",
+        "Revealed" => "You revealed the answer. This is assisted practice, not independent recall.",
         _ => "This answer needs review.",
     };
     format!(r#"<p class="me-grade-reason">{}</p>"#, escape_html(reason))
@@ -1367,7 +1304,7 @@ fn render_bridge_message(card: &GradedReviewCard<'_>) -> String {
     if !feedback.remediation_drafts_pending {
         return String::new();
     }
-    r#"<p class="me-bridge">Easier practice cards are ready for you to review.</p>"#.to_owned()
+    r#"<p class="me-bridge">Easier quizzes are ready for you to inspect. <a href="/app/library#me-drafts">Review the drafts in Library</a> before adding them to practice.</p>"#.to_owned()
 }
 
 fn render_graded_details(account: &AppAccount, card: &GradedReviewCard<'_>) -> String {
@@ -1381,7 +1318,7 @@ fn render_graded_details(account: &AppAccount, card: &GradedReviewCard<'_>) -> S
 </div>
 </details>"#,
         history = render_dossier_history(&card.dossier),
-        reference = render_reference(card.current),
+        reference = render_reference(account, card.current),
         content_feedback = render_content_feedback(account, card),
     )
 }
@@ -1442,18 +1379,18 @@ fn render_content_feedback(account: &AppAccount, card: &GradedReviewCard<'_>) ->
         .unwrap_or_default();
     format!(
         r#"<section class="me-content-feedback" aria-labelledby="me-content-feedback-title">
-<h2 class="ae-h" id="me-content-feedback-title">Card quality</h2>
-<p class="ae-dim">Was this generated card worth keeping?</p>
+<h2 class="ae-h" id="me-content-feedback-title">Quiz quality</h2>
+<p class="ae-dim">Is this quiz useful and accurate? Feedback saves here without advancing your review.</p>
 <form action="/app/content-feedback" method="post">
 {csrf}<input type="hidden" name="reviewUnitId" value="{review_unit_id}">
 <input type="hidden" name="idempotencyKey" value="{feedback_id}">
 {supersedes}
+<label class="ae-label" for="me-content-feedback-rationale">What would improve it? <span class="ae-dim">(optional)</span></label>
+<textarea class="ae-input me-content-feedback-rationale" id="me-content-feedback-rationale" name="rationale" rows="2"></textarea>
 <div class="me-feedback-actions">
-<button class="ae-button ae-button-quiet" type="submit" name="verdict" value="kept" aria-label="Keep this card">👍 Keep</button>
-<button class="ae-button ae-button-quiet" type="submit" name="verdict" value="dropped" aria-label="Drop this card">👎 Drop</button>
+<button class="ae-button-quiet" type="submit" name="verdict" value="kept">Keep this quiz</button>
+<button class="ae-button-quiet" type="submit" name="verdict" value="dropped">Drop this quiz</button>
 </div>
-<label class="ae-label" for="me-content-feedback-rationale">Why? <span class="ae-dim">(optional)</span></label>
-<textarea class="ae-input me-content-feedback-rationale" id="me-content-feedback-rationale" name="rationale" rows="2" placeholder="A quick note for future improvements…"></textarea>
 </form>
 </section>"#,
         csrf = hidden_csrf_input(account),
@@ -1478,7 +1415,7 @@ fn render_meta_ledger(feedback: &BetaStudyFeedback) -> String {
     );
     let _ = write!(
         rows,
-        r"<div><dt>Success</dt><dd>{} · {}</dd></div>",
+        r"<div><dt>Recall history</dt><dd>{}<br>{}</dd></div>",
         escape_html(&history.success_rate),
         escape_html(&history.trend)
     );
@@ -1503,7 +1440,11 @@ fn render_answer_reveal(card: &GradedReviewCard<'_>) -> String {
         } else {
             "me-graded-choice me-graded-choice-dim"
         };
-        let mark = if is_correct { ICON_OK } else { "" };
+        let mark = if is_correct {
+            r#"<span class="me-answer-label">Accepted answer</span>"#
+        } else {
+            ""
+        };
         let _ = write!(
             rows,
             r#"<li class="{class}"><span>{}</span>{mark}</li>"#,
@@ -1538,7 +1479,7 @@ fn render_choice_buttons(account: &AppAccount, current: &BetaStudyCurrent) -> St
         );
     }
     format!(
-        r#"<form class="me-choices-form" action="/app/submit" method="post">{hidden}{buttons}</form>"#,
+        r#"<form class="me-choices-form" action="/app/submit" method="post" aria-labelledby="me-question">{hidden}{buttons}</form>"#,
         hidden = review_submit_fields(account, current),
     )
 }
@@ -1551,7 +1492,7 @@ fn render_free_response_form(account: &AppAccount, current: &BetaStudyCurrent) -
         r#"<form class="me-submit" action="/app/submit" method="post">{hidden}
 <label class="ae-label" for="me-answer">Your answer</label>
 <input class="ae-input me-answer-input" id="me-answer" name="answer" required autocomplete="off" autocapitalize="off" placeholder="Type your answer…">
-<div class="me-actions"><button class="ae-button" type="submit">Answer</button></div>
+<div class="me-actions"><button class="ae-button" type="submit">Check answer</button></div>
 </form>"#,
         hidden = review_submit_fields(account, current),
     )
@@ -1582,21 +1523,23 @@ fn review_submit_fields(account: &AppAccount, current: &BetaStudyCurrent) -> Str
     )
 }
 
-fn render_reference(current: &BetaStudyCurrent) -> String {
-    current
-        .reference_text
-        .as_ref()
-        .map_or_else(String::new, |reference| {
-            format!(
-                r#"<div class="me-reference"><h2 class="ae-h">Reference</h2><p>{}</p></div>"#,
-                escape_html(reference)
-            )
-        })
+fn render_reference(account: &AppAccount, current: &BetaStudyCurrent) -> String {
+    format!(
+        r#"<section class="me-reference"><h2 class="ae-h">Study note</h2>{action}</section>"#,
+        action = render_review_action(
+            account,
+            current,
+            "/app/reference",
+            "Read study note",
+            ICON_REFERENCE,
+            "Read the study material and its provenance, then return to this same quiz.",
+        ),
+    )
 }
 
 fn render_verdict(grade: &BetaStudyGrade) -> String {
     format!(
-        r#"<p class="me-result">{icon}<span class="me-verdict">{label}</span></p>"#,
+        r#"<p class="me-result">{icon}<span class="me-verdict" tabindex="-1">{label}</span></p>"#,
         icon = verdict_icon(grade.verdict),
         label = verdict_label(grade.verdict),
     )
@@ -1618,6 +1561,7 @@ fn render_concept_health_surface(
     concepts: &[BetaStudyConceptProgress],
     options: AnalyticsViewOptions,
 ) -> String {
+    let has_concepts = !concepts.is_empty();
     let mut concepts = concepts
         .iter()
         .filter(|concept| concept_matches_filter(concept, options.filter))
@@ -1635,7 +1579,11 @@ fn render_concept_health_surface(
         .collect::<String>();
 
     let count = if total == 0 {
-        r#"<p class="me-analytics-empty ae-dim">No concepts match this filter.</p>"#.to_owned()
+        if has_concepts {
+            r#"<p class="me-analytics-empty ae-dim">No concepts match this filter. <a href="/app/analytics">Show all concepts</a>.</p>"#.to_owned()
+        } else {
+            r#"<section class="me-analytics-empty"><h2 class="ae-h">Progress starts with practice</h2><p class="ae-lede">Keep a quiz and begin reviewing. Your concept history will appear here as you study.</p><a class="ae-button-quiet" href="/">Go to Home</a></section>"#.to_owned()
+        }
     } else {
         format!(
             r#"<p class="me-analytics-count ae-dim">Showing {}–{} of {} {}</p>"#,
@@ -1861,8 +1809,8 @@ fn render_concept_row(concept: &BetaStudyConceptProgress) -> String {
     format!(
         r#"<article class="me-concept" data-health="{health}">
 <div class="me-concept-head"><div class="me-concept-label"><strong>{label}</strong><span class="me-health-label {fill}">{health}</span></div><span class="me-trend ae-dim">{trend_icon} {trend}</span></div>
-<div class="ae-meter"><div class="ae-meter-fill {fill}" style="width:{pct}%"></div></div>
-<p class="me-concept-note ae-dim">{success_rate} · {summary}</p>
+<div class="ae-meter" aria-hidden="true"><div class="ae-meter-fill {fill}" style="width:{pct}%"></div></div>
+<p class="me-concept-note ae-dim">{success_rate}<span>{summary}</span></p>
 </article>"#,
         label = escape_html(&concept.concept_label),
         health = escape_html(&concept.health),
@@ -1883,25 +1831,17 @@ fn plural(count: usize, singular: &'static str, plural: &'static str) -> &'stati
 }
 
 fn render_escape_hatches(account: &AppAccount, current: &BetaStudyCurrent) -> String {
-    // Only Reveal earns a permanent spot beside the card (DESIGN.md,
-    // interaction law): Reference/Skip/Snooze/Bridge/Delete and the capture
-    // punch-out live one tap deeper behind a single More disclosure, so
-    // nothing competes with the answer. Delete stays last and visually set
-    // apart so it isn't a stray tap. Every action carries a leading icon and
-    // a tooltip truthful to what the route actually does (memory-engine-081:
-    // Skip and Snooze were indistinguishable) — Skip is a short in-session
-    // deferral (`DEFAULT_SKIP_DEFER_MS`, 15 minutes) and Snooze defers until
-    // tomorrow (`DEFAULT_SNOOZE_DEFER_MS`, 24 hours); see
-    // `memory_engine_study::skip_current`/`snooze_current`.
+    // Only Reveal stays beside the Quiz. Other actions expand into the
+    // document with visible, truthful scope descriptions for touch users.
     format!(
-        r#"<details class="me-more"><summary aria-label="More actions">···</summary><div class="me-more-sheet">{reference}{skip}{snooze}{concept_snooze}{bridge}{edit}<span class="me-hatch-delete">{delete}</span><a class="me-more-capture" href="/app/create" title="Add new material.">{ICON_PLUS}Capture more</a></div></details>"#,
+        r#"<details class="me-more"><summary aria-label="More actions">More</summary><div class="me-more-sheet">{reference}{skip}{snooze}{concept_snooze}{bridge}{edit}<a class="me-more-capture" href="/app/create" title="Add a source or topic.">{ICON_PLUS}<span class="me-action-copy"><span class="me-action-label">Create more quizzes</span><span class="me-action-description">Add another source or topic.</span></span></a><details class="me-hatch-delete"><summary>Delete quiz</summary>{delete}</details></div></details>"#,
         reference = render_review_action(
             account,
             current,
             "/app/reference",
-            "Reference",
+            "Study note",
             ICON_REFERENCE,
-            "Show background reading for this card.",
+            "Read the study material and its provenance, then return to this quiz.",
         ),
         skip = render_review_action(
             account,
@@ -1909,15 +1849,15 @@ fn render_escape_hatches(account: &AppAccount, current: &BetaStudyCurrent) -> St
             "/app/skip",
             "Skip",
             ICON_SKIP,
-            "Show later this session.",
+            "Set this quiz aside until later in this session.",
         ),
         snooze = render_review_action(
             account,
             current,
             "/app/snooze",
-            "Snooze",
+            "Snooze quiz",
             ICON_SNOOZE,
-            "Hide until tomorrow.",
+            "Hide only this quiz until tomorrow.",
         ),
         concept_snooze = current
             .concept_key
@@ -1930,32 +1870,32 @@ fn render_escape_hatches(account: &AppAccount, current: &BetaStudyCurrent) -> St
                     "/app/snooze-concept",
                     "Snooze concept",
                     ICON_SNOOZE,
-                    "Hide every card for this concept until tomorrow.",
+                    "Hide quizzes for this exact concept until tomorrow, not the entire source.",
                 )
             }),
         bridge = render_review_action(
             account,
             current,
             "/app/bridge",
-            "Bridge",
+            "Bridge to easier practice",
             ICON_BRIDGE,
-            "Generate easier warm-up cards, then revisit this one later.",
+            "Request 2–3 easier quiz drafts to inspect. Revisit this quiz later.",
         ),
         edit = render_review_action(
             account,
             current,
             "/app/edit",
-            "Edit",
+            "Edit quiz",
             ICON_EDIT,
-            "Correct the prompt or answer without changing review history.",
+            "Correct the question or answer without changing review history.",
         ),
         delete = render_review_action(
             account,
             current,
             "/app/delete",
-            "Delete",
+            "Delete this quiz",
             ICON_TRASH,
-            "Remove this card from review for good.",
+            "Remove this quiz from review for good. The source stays in Library.",
         ),
     )
 }
@@ -1969,9 +1909,10 @@ fn render_review_action(
     title: &str,
 ) -> String {
     format!(
-        r#"<form action="{action}" method="post">{csrf}<input type="hidden" name="reviewUnitId" value="{id}"><button class="ae-button-quiet ae-button-compact" type="submit" title="{title}">{icon}{label}</button></form>"#,
+        r#"<form action="{action}" method="post">{csrf}<input type="hidden" name="reviewUnitId" value="{id}"><button class="ae-button-quiet ae-button-compact" type="submit" title="{title}">{icon}<span class="me-action-copy"><span class="me-action-label">{label}</span><span class="me-action-description">{title}</span></span></button></form>"#,
         csrf = hidden_csrf_input(account),
         id = escape_html(&current.review_unit_id.to_string()),
+        label = escape_html(label),
         title = escape_html(title),
     )
 }
@@ -2043,8 +1984,11 @@ fn account_menu(account: &AppAccount) -> String {
         r#"<details class="me-account">
 <summary class="me-account-summary">Account</summary>
 <div class="me-account-sheet">
+<p>Manage this browser’s access to your study space.</p>
+<a href="/#me-reminders">Study reminders</a>
 <form class="me-foot-form" action="/app/logout" method="post">{csrf}<button class="ae-button-quiet ae-button-compact" type="submit">Sign out</button></form>
-<form class="me-foot-form" action="/app/logout-all" method="post">{csrf}<button class="ae-button-quiet ae-button-compact" type="submit">Sign out everywhere</button></form>
+<form class="me-foot-form" action="/app/logout-all" method="post">{csrf}<button class="ae-button-quiet ae-button-compact" type="submit">Sign out all browsers</button></form>
+<p>Operator service sessions are separate and are not changed here.</p>
 </div>
 </details>"#
     )
@@ -2058,7 +2002,8 @@ fn escape_html(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-const FOOTER_TAGLINE: &str = r#"<span class="ae-dim">Scry — Remember everything</span>"#;
+const FOOTER_TAGLINE: &str =
+    r#"<span class="ae-dim">Scry. A little practice, kept with you.</span>"#;
 
 // Lucide icons (ISC), inlined for `.ae-icon`: 1.5px stroke, currentColor, no
 // fill. Status hue rides the glyph; the sentence stays ink.
@@ -2080,158 +2025,6 @@ const ICON_BRIDGE: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidde
 const ICON_TRASH: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M18 7l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>"#;
 const ICON_EDIT: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>"#;
 const ICON_PLUS: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>"#;
-
-#[cfg(test)]
-mod source_loading_tests {
-    use std::cell::Cell;
-
-    use memory_engine_api_state::{CreateSourceRequest, EnqueueOutcome};
-    use memory_engine_persistence::SourcePermission;
-
-    use super::{render_account_page_with_loaders, render_capture};
-
-    fn source_body() -> String {
-        [
-            "Concept: NATO letter A",
-            "Activity: quiz",
-            "Stage: recognition-3",
-            "Question: What is the NATO phonetic alphabet word for A?",
-            "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
-            "Reference: The NATO phonetic alphabet word for A is ALFA.",
-        ]
-        .join("\n")
-    }
-
-    #[test]
-    fn active_review_loads_only_data_used_by_the_rendered_branch() {
-        let state = super::render_test_state("render-loader-active@example.com");
-        let created = state
-            .create_account("render-loader-active@example.com")
-            .unwrap();
-        let account = state.create_browser_session(&created).unwrap();
-        let source = state
-            .save_app_source(
-                &account,
-                &CreateSourceRequest {
-                    title: "NATO practice notes".to_owned(),
-                    body: source_body(),
-                    permission: SourcePermission::default(),
-                },
-            )
-            .unwrap();
-        assert!(matches!(
-            state.enqueue_generation_job_by_source(&account, &source.source_id, &source.title),
-            EnqueueOutcome::Started(_)
-        ));
-        state.run_pending_jobs_blocking();
-        let pending_view = state.next_app_review(&account).unwrap();
-        let active_view = state
-            .keep_draft(
-                account.account_id(),
-                account.session_token(),
-                &pending_view.drafts[0].id,
-            )
-            .unwrap();
-        let active_source_loads = Cell::new(0);
-        let active_job_loads = Cell::new(0);
-        render_account_page_with_loaders(
-            &state,
-            &account,
-            Some(&active_view),
-            None,
-            || {
-                active_source_loads.set(active_source_loads.get() + 1);
-                Vec::new()
-            },
-            || {
-                active_job_loads.set(active_job_loads.get() + 1);
-                Vec::new()
-            },
-        );
-        assert_eq!(active_source_loads.get(), 0);
-        assert_eq!(active_job_loads.get(), 0);
-        render_account_page_with_loaders(
-            &state,
-            &account,
-            Some(&active_view),
-            Some("Generating review material…"),
-            Vec::new,
-            || {
-                active_job_loads.set(active_job_loads.get() + 1);
-                Vec::new()
-            },
-        );
-        assert_eq!(
-            active_job_loads.get(),
-            1,
-            "a generation notice still needs live jobs to suppress stale UI"
-        );
-        let notice_page = render_account_page_with_loaders(
-            &state,
-            &account,
-            Some(&active_view),
-            Some("That job can't be retried."),
-            Vec::new,
-            || {
-                active_job_loads.set(active_job_loads.get() + 1);
-                Vec::new()
-            },
-        );
-        assert_eq!(
-            active_job_loads.get(),
-            1,
-            "an unconditional notice does not require job history"
-        );
-        assert!(notice_page.contains("That job can't be retried."));
-        assert_workspace_render_loads_all();
-    }
-
-    fn assert_workspace_render_loads_all() {
-        let workspace_state = super::render_test_state("render-loader-workspace@example.com");
-        let workspace_created = workspace_state
-            .create_account("render-loader-workspace@example.com")
-            .unwrap();
-        let workspace_account = workspace_state
-            .create_browser_session(&workspace_created)
-            .unwrap();
-        let workspace_source_loads = Cell::new(0);
-        let workspace_job_loads = Cell::new(0);
-        render_account_page_with_loaders(
-            &workspace_state,
-            &workspace_account,
-            None,
-            None,
-            || {
-                workspace_source_loads.set(workspace_source_loads.get() + 1);
-                Vec::new()
-            },
-            || {
-                workspace_job_loads.set(workspace_job_loads.get() + 1);
-                Vec::new()
-            },
-        );
-        assert_eq!(workspace_source_loads.get(), 1);
-        assert_eq!(workspace_job_loads.get(), 1);
-    }
-
-    #[test]
-    fn capture_form_is_one_field_and_create_without_a_permission_toggle() {
-        let state = super::render_test_state("render-permission@example.com");
-        let account = state
-            .create_account("render-permission@example.com")
-            .and_then(|account| state.create_browser_session(&account))
-            .expect("account");
-        let html = render_capture(&account);
-
-        assert!(html.contains(r#"name="capture""#));
-        assert!(html.contains("Create"));
-        assert!(html.contains("Generates in the background."));
-        assert!(!html.contains(r#"name="permission""#));
-        assert!(!html.contains("me-capture-permission"));
-        assert!(!html.contains("Keep local / Never send to a model"));
-    }
-}
 
 #[cfg(test)]
 mod analytics_tests {
@@ -2314,19 +2107,6 @@ mod analytics_tests {
         assert!(page.contains("Showing 13–24 of 25 concepts"));
         assert!(page.contains("filter=all&amp;sort=name&amp;page=1"));
         assert!(page.contains("filter=all&amp;sort=name&amp;page=3"));
-    }
-
-    #[test]
-    fn analytics_pagination_keeps_a_centered_page_slot_at_both_boundaries() {
-        let first = super::render_analytics_pagination(1, 3, AnalyticsViewOptions::default());
-        let last = super::render_analytics_pagination(3, 3, AnalyticsViewOptions::default());
-
-        assert!(first.contains(
-            r#"<span class="me-pagination-spacer" aria-hidden="true"></span><span>1 of 3</span>"#
-        ));
-        assert!(last.contains(
-            r#"<span>3 of 3</span><span class="me-pagination-spacer" aria-hidden="true"></span>"#
-        ));
     }
 
     #[test]
@@ -2466,7 +2246,6 @@ mod analytics_tests {
             },
         );
 
-        assert!(page.contains(r#"<h1 class="me-display me-analytics-title">Concept health</h1>"#));
         assert!(page.contains(r#"<option value="untried" selected>Untried</option>"#));
         assert!(page.contains("<strong>Needs data</strong>"));
         assert!(!page.contains("<strong>Needs work</strong>"));

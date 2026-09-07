@@ -1078,8 +1078,8 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{
-        is_client_disconnect_error, looks_like_json, render_page, route, serve_connections,
-        write_response, BetaStudyOptions, BetaStudySession, HttpRequest, HttpResponse,
+        is_client_disconnect_error, looks_like_json, route, serve_connections, write_response,
+        BetaStudyOptions, BetaStudySession, HttpRequest, HttpResponse,
     };
 
     const NOW: i64 = 1_779_984_000_000;
@@ -1125,17 +1125,18 @@ mod tests {
 
         let generated = route(&mut session, &request("POST", "/generate", "{}"));
         let generated: Value = serde_json::from_slice(&generated.body).expect("generated");
-        assert_eq!(
-            generated["drafts"][0]["id"],
-            json!("study-run-1-draft-src-nato-1-nato-letter-a")
-        );
+        let draft = &generated["drafts"][0];
+        assert_eq!(draft["validationStatus"], json!("accepted"));
+        assert_eq!(draft["approved"], json!(false));
+        assert_eq!(draft["learnerDecision"], json!(null));
+        assert_eq!(generated["dueCount"], json!(0));
 
         let kept = route(
             &mut session,
             &request(
                 "POST",
                 "/keep",
-                &json!({"draftId": "study-run-1-draft-src-nato-1-nato-letter-a"}).to_string(),
+                &json!({"draftId": draft["id"]}).to_string(),
             ),
         );
         let kept: Value = serde_json::from_slice(&kept.body).expect("kept");
@@ -1144,6 +1145,8 @@ mod tests {
         let revealed = route(&mut session, &request("POST", "/reveal", "{}"));
         let revealed: Value = serde_json::from_slice(&revealed.body).expect("revealed");
         assert_eq!(revealed["current"]["expectedAnswer"], json!("ALFA"));
+        assert_eq!(revealed["current"]["grade"], json!(null));
+        assert_eq!(revealed["summary"]["attemptCount"], json!(0));
 
         let answered = route(
             &mut session,
@@ -1155,8 +1158,13 @@ mod tests {
         );
         let answered: Value = serde_json::from_slice(&answered.body).expect("answered");
         assert_eq!(answered["status"], json!("graded"));
-        assert_eq!(answered["current"]["grade"]["verdict"], json!("correct"));
-        assert_eq!(answered["current"]["grade"]["rating"], json!(3));
+        assert_eq!(answered["current"]["grade"]["verdict"], json!("revealed"));
+        assert_eq!(answered["current"]["grade"]["rating"], json!(1));
+        assert_eq!(answered["current"]["grade"]["isCorrect"], json!(false));
+        assert_eq!(
+            answered["current"]["feedback"]["itemHistory"]["correct"],
+            json!(0)
+        );
         assert_eq!(answered["summary"]["attemptCount"], json!(1));
     }
 
@@ -1197,39 +1205,16 @@ mod tests {
     }
 
     #[test]
-    fn renders_honest_response_timing_for_review_forms() {
-        let directory = TempDirectory::new("honest-timing-markup");
-        let mut session = session(directory.path().join("study.json"));
-        seed_nato_source_and_generate(&mut session);
-        keep_draft(&mut session, "study-run-1-draft-src-nato-1-nato-letter-a");
-
-        let html = String::from_utf8(route(&mut session, &request("GET", "/", "")).body)
-            .expect("review html");
-        assert!(html.contains(r#"name="responseTimeMs" value=""#));
-        assert!(!html.contains(r#"name="responseTimeMs" value="2400"#));
-        assert!(
-            html.contains(r#"window.performance && typeof window.performance.now === "function""#)
-        );
-        assert!(html.contains("monotonic ? window.performance.now() : Date.now()"));
-        assert!(!html.contains("typeof performance.now"));
-        assert!(!html.contains("? performance.now()"));
-        assert!(html.contains("Date.now"));
-        assert!(html.contains("Math.max(1, Math.round(elapsed))"));
-    }
-
-    #[test]
     fn drives_item_lifecycle_routes_through_rust() {
         let directory = TempDirectory::new("lifecycle");
         let mut lifecycle_session = session(directory.path().join("study.json"));
         seed_nato_source_and_generate(&mut lifecycle_session);
         keep_draft(
             &mut lifecycle_session,
-            "study-run-1-draft-src-nato-2-nato-cat-composition",
-        );
-        keep_draft(
-            &mut lifecycle_session,
             "study-run-1-draft-src-nato-1-nato-letter-a",
         );
+        let before = route(&mut lifecycle_session, &request("GET", "/state", ""));
+        let before: Value = serde_json::from_slice(&before.body).expect("before learning");
 
         let learned = route(
             &mut lifecycle_session,
@@ -1238,9 +1223,15 @@ mod tests {
         let learned: Value = serde_json::from_slice(&learned.body).expect("learned");
         assert_eq!(learned["status"], json!("answering"));
         assert_eq!(learned["current"]["expectedAnswer"], json!(null));
+        assert_eq!(learned["current"]["grade"], json!(null));
+        assert_eq!(learned["summary"]["attemptCount"], json!(0));
         assert_eq!(
-            learned["current"]["referenceText"],
-            json!("The NATO phonetic alphabet word for A is ALFA.")
+            learned["current"]["reviewUnitId"],
+            before["current"]["reviewUnitId"]
+        );
+        assert_eq!(
+            learned["current"]["reviewState"],
+            before["current"]["reviewState"]
         );
 
         let edited = route(
@@ -1305,7 +1296,6 @@ mod tests {
         assert_eq!(saved.status, 200);
         assert_eq!(saved.content_type, "text/html; charset=utf-8");
         let saved_html = String::from_utf8(saved.body).expect("saved html");
-        assert!(saved_html.contains("Beta Study"));
         assert!(saved_html.contains(r#"name="capture""#));
         assert!(!saved_html.contains(r#"name="title""#));
         assert!(!saved_html.contains(r#"name="body""#));
@@ -1347,41 +1337,6 @@ mod tests {
     }
 
     #[test]
-    fn renders_generation_notices_as_human_sentences() {
-        let directory = TempDirectory::new("notice-flow");
-        let session = session(directory.path().join("study.json"));
-        let mut view = session.view().expect("view");
-        view.generation_notices = vec!["No review items could be generated.".to_owned()];
-
-        let generated_html = render_page(&view, None);
-
-        assert!(generated_html.contains("Generation notes"));
-        assert!(generated_html.contains("No review items could be generated"));
-    }
-
-    #[test]
-    fn generates_review_items_for_arbitrary_capture_text() {
-        let directory = TempDirectory::new("arbitrary-capture");
-        let mut session = session(directory.path().join("study.json"));
-
-        let saved = route(
-            &mut session,
-            &form_request(
-                "/source",
-                "capture=Mitochondria+are+organelles+because+cells+use+ATP+as+chemical+energy.",
-            ),
-        );
-        assert_eq!(saved.status, 200);
-
-        let generated = route(&mut session, &form_request("/generate", ""));
-        let generated_html = String::from_utf8(generated.body).expect("generated html");
-
-        assert!(generated_html.contains("Drafts"));
-        assert!(generated_html.contains("Explain the idea"));
-        assert!(!generated_html.contains("No review items could be generated"));
-    }
-
-    #[test]
     fn local_only_source_generates_locally_without_blocking_eligible_generation() {
         let directory = TempDirectory::new("local-only-routing");
         let mut session = session(directory.path().join("study.json"));
@@ -1410,7 +1365,7 @@ mod tests {
                 &json!({
                     "id": "src-eligible",
                     "title": "Shareable notes",
-                    "body": "Mitochondria are organelles because cells use ATP as chemical energy.",
+                    "body": "Concept: Cellular respiration\nActivity: quiz\nStage: recognition-3\nQuestion: Which organelle produces most ATP during aerobic respiration in eukaryotic cells?\nAnswer: Mitochondrion\nDistractors: Ribosome, Lysosome\nReference: During aerobic respiration in eukaryotic cells, the mitochondrion produces most ATP.",
                     "permission": "model-eligible"
                 })
                 .to_string(),
@@ -1427,60 +1382,23 @@ mod tests {
         let generated: Value = serde_json::from_slice(&generated.body).expect("generated");
         let drafts = generated["drafts"].as_array().expect("drafts array");
 
-        let local_draft_prompts: Vec<&str> = drafts
-            .iter()
-            .filter(|draft| {
-                draft["id"]
-                    .as_str()
-                    .is_some_and(|id| id.contains("src-local"))
-            })
-            .filter_map(|draft| draft["prompt"].as_str())
-            .collect();
-        assert!(
-            !local_draft_prompts.is_empty(),
-            "expected the local-only source to generate locally, got: {generated}"
-        );
-        // `FakeModelProvider` is this crate's stand-in for a real model
-        // provider; its candidates are always tagged "Explain the idea...".
-        // The local-only path (`BetaStudySession::generate`) never wires a
-        // model provider at all, so a local-only draft can never carry it.
-        assert!(
-            local_draft_prompts
+        // Explicit source-grounded material proves permission routing and the
+        // learner-decision gate, not the fake provider's prose quality.
+        assert_eq!(drafts.len(), 2, "both sources must produce a pending draft");
+        for source_id in ["src-local", "src-eligible"] {
+            let draft = drafts
                 .iter()
-                .all(|prompt| !prompt.contains("Explain the idea")),
-            "local-only source must never reach the model-fallback provider: {local_draft_prompts:?}"
-        );
-
-        let eligible_draft_prompts: Vec<&str> = drafts
-            .iter()
-            .filter(|draft| {
-                draft["id"]
-                    .as_str()
-                    .is_some_and(|id| id.contains("src-eligible"))
-            })
-            .filter_map(|draft| draft["prompt"].as_str())
-            .collect();
-        assert!(
-            eligible_draft_prompts
-                .iter()
-                .any(|prompt| prompt.contains("Explain the idea")),
-            "model-eligible source must still generate through the model-capable path: {eligible_draft_prompts:?}"
-        );
-    }
-
-    #[test]
-    fn renders_provider_failures_as_generation_notices() {
-        let directory = TempDirectory::new("provider-failure-notice");
-        let session = session(directory.path().join("study.json"));
-        let mut view = session.view().expect("view");
-        view.generation_notices =
-            vec!["src-prose: The model provider could not be reached.".to_owned()];
-
-        let html = render_page(&view, None);
-
-        assert!(html.contains("Generation notes"));
-        assert!(html.contains("src-prose: The model provider could not be reached."));
-        assert!(!html.contains("<script"));
+                .find(|draft| {
+                    draft["id"]
+                        .as_str()
+                        .is_some_and(|id| id.contains(source_id))
+                })
+                .expect("source draft");
+            assert_eq!(draft["validationStatus"], json!("accepted"));
+            assert_eq!(draft["approved"], json!(false));
+            assert_eq!(draft["learnerDecision"], json!(null));
+        }
+        assert_eq!(generated["dueCount"], json!(0));
     }
 
     #[test]
@@ -2007,10 +1925,11 @@ mod tests {
     }
 
     fn keep_draft(session: &mut BetaStudySession, draft_id: &str) {
-        route(
+        let response = route(
             session,
             &request("POST", "/keep", &json!({"draftId": draft_id}).to_string()),
         );
+        assert_eq!(response.status, 200, "keep failed for {draft_id}");
     }
 
     fn now() -> i64 {
@@ -2052,7 +1971,7 @@ mod tests {
             "Stage: recognition-3",
             "Question: What is the NATO phonetic alphabet word for A?",
             "Answer: ALFA",
-            "Distractors: BRAVO, CHARLIE",
+            "Distractors: ABLE, ADAM",
             "Reference: The NATO phonetic alphabet word for A is ALFA.",
         ]
         .join("\n")

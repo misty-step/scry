@@ -16,7 +16,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// `memory-engine-mcp`'s client uses.
 const GENERATION_POLL_MAX_ATTEMPTS: u32 = 40;
 const GENERATION_POLL_INTERVAL: Duration = Duration::from_millis(500);
-const DEFAULT_SOURCE_BODY: &str = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.\n\nConcept: NATO CAT composition\nActivity: exercise\nStage: composition\nQuestion: Spell CAT over the phone using the NATO phonetic alphabet.\nAnswer: CHARLIE ALFA TANGO\nWorked Solution: C is CHARLIE, A is ALFA, and T is TANGO.\nReference: C is CHARLIE. A is ALFA. T is TANGO.";
+const DEFAULT_SOURCE_BODY: &str = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: ABLE, ADAM\nReference: The NATO phonetic alphabet word for A is ALFA.\n\nConcept: NATO CAT composition\nActivity: exercise\nStage: composition\nQuestion: Spell CAT over the phone using the NATO phonetic alphabet.\nAnswer: CHARLIE ALFA TANGO\nWorked Solution: C is CHARLIE, A is ALFA, and T is TANGO.\nReference: C is CHARLIE. A is ALFA. T is TANGO.";
 const REQUIRED_CONTRACT_PATHS: &[&str] = &[
     "/v1/accounts/{account_id}/sources",
     "/v1/accounts/{account_id}/sources/{source_id}",
@@ -111,6 +111,8 @@ fn run_contract(config: &ContractConfig) -> Result<ContractReceipt, ContractFail
         review_unit_id: proof.review_unit_id,
         revealed_answer: proof.revealed_answer,
         verdict: proof.verdict,
+        rating: proof.rating,
+        is_correct: proof.is_correct,
         attempt_count: proof.attempt_count,
         archived_source: true,
         active_source_present_after_archive,
@@ -205,16 +207,22 @@ fn drive_review_loop(
     let current = submitted
         .current
         .ok_or_else(|| ContractFailure("submit returned no current review".to_owned()))?;
-    let verdict = current
+    let grade = current
         .grade
-        .ok_or_else(|| ContractFailure("submit returned no grade".to_owned()))?
-        .verdict;
+        .ok_or_else(|| ContractFailure("submit returned no grade".to_owned()))?;
+    if grade.verdict != "revealed" || grade.rating != 1 || grade.is_correct {
+        return Err(ContractFailure(format!(
+            "revealed answer must remain assisted (revealed/Again/noncorrect), got {grade:?}"
+        )));
+    }
 
     Ok(ReviewLoopProof {
         job_id: job.id,
         review_unit_id,
         revealed_answer,
-        verdict,
+        verdict: grade.verdict,
+        rating: grade.rating,
+        is_correct: grade.is_correct,
         attempt_count: submitted.summary.attempt_count,
     })
 }
@@ -562,8 +570,11 @@ struct CurrentReview {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct Grade {
     verdict: String,
+    rating: u8,
+    is_correct: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -578,6 +589,8 @@ struct ReviewLoopProof {
     review_unit_id: String,
     revealed_answer: String,
     verdict: String,
+    rating: u8,
+    is_correct: bool,
     attempt_count: u32,
 }
 
@@ -593,6 +606,8 @@ struct ContractReceipt {
     review_unit_id: String,
     revealed_answer: String,
     verdict: String,
+    rating: u8,
+    is_correct: bool,
     attempt_count: u32,
     archived_source: bool,
     active_source_present_after_archive: bool,
@@ -681,35 +696,6 @@ mod tests {
     }
 
     #[test]
-    fn default_source_fixture_is_suitable_for_answer_submit() {
-        assert!(DEFAULT_SOURCE_BODY
-            .contains("Question: What is the NATO phonetic alphabet word for A?"));
-        assert!(DEFAULT_SOURCE_BODY.contains("Answer: ALFA"));
-    }
-
-    #[test]
-    fn receipt_serialization_does_not_include_session_token() {
-        let receipt = ContractReceipt {
-            base_url: "https://memory-engine-api-i2xcr.ondigitalocean.app".to_owned(),
-            openapi_version: "3.1.0".to_owned(),
-            contract_path_count: 9,
-            account_id: "acct_demo".to_owned(),
-            source_id: "src_demo".to_owned(),
-            job_id: "job_demo".to_owned(),
-            review_unit_id: "ru_demo".to_owned(),
-            revealed_answer: "ALFA".to_owned(),
-            verdict: "correct".to_owned(),
-            attempt_count: 1,
-            archived_source: true,
-            active_source_present_after_archive: false,
-        };
-
-        let serialized = serde_json::to_string(&receipt).expect("receipt JSON");
-        assert!(!serialized.contains("session"));
-        assert!(!serialized.contains("token"));
-    }
-
-    #[test]
     fn endpoint_trims_duplicate_slashes() {
         assert_eq!(
             endpoint(
@@ -742,6 +728,7 @@ mod tests {
         let created = state
             .create_account("scry-contract-local@example.com")
             .expect("pre-provision local account");
+        let session_token = created.session_token.clone();
         let server = tokio::spawn(async move {
             axum::serve(listener, memory_engine_api::router(state))
                 .await
@@ -762,9 +749,13 @@ mod tests {
         server.abort();
 
         assert_eq!(receipt.openapi_version, "3.1.0");
-        assert_eq!(receipt.verdict, "correct");
+        assert_eq!(receipt.verdict, "revealed");
+        assert_eq!(receipt.rating, 1);
+        assert!(!receipt.is_correct);
         assert_eq!(receipt.attempt_count, 1);
         assert!(receipt.archived_source);
         assert!(!receipt.active_source_present_after_archive);
+        let serialized = serde_json::to_string(&receipt).expect("receipt JSON");
+        assert!(!serialized.contains(&session_token));
     }
 }

@@ -7,11 +7,10 @@
   });
 })();
 
-// One state machine for review-loop forms: response timing, immediate
-// acknowledgment, in-place fetch swap, and the cross-document performance
-// handoff stay together. Native form navigation remains the JS-off path.
-// Submit and next fall back to native submit when fetch cannot complete.
-// Other in-place actions apply any HTML body, then reload if they cannot.
+// Review forms keep one active request and one correlated completion attempt.
+// The server owns grading; JavaScript only acknowledges, swaps authoritative
+// HTML, and observes visibility after paint. Native forms remain the no-JS path.
+// A failed fetch retains the answer and idempotency key for an intentional retry.
 (function () {
   "use strict";
 
@@ -30,15 +29,12 @@
   var presentedAt = hasMonotonicClock ? perf.now() : Date.now();
   var state = {
     busy: false,
-    form: null,
     control: null,
     dimmed: [],
-    token: null,
+    request: null,
     timeoutId: null,
     landingAttempted: false,
-    // Bumped every pagehide so a two-RAF emission scheduled before this
-    // document was hidden (and possibly BFCache-frozen) can tell, once
-    // resumed, that it is stale rather than firing with leftover state.
+    // Any hide, new action, or abandoned request invalidates queued paint work.
     landingEpoch: 0
   };
 
@@ -197,14 +193,39 @@
     }
     state.control = null;
     state.dimmed = [];
+    reviewStatus("", "idle");
   }
 
   function resetState() {
     clearTimeoutIfAny();
     resetReviewUi();
     state.busy = false;
-    state.form = null;
-    state.token = null;
+    state.request = null;
+  }
+
+  function reviewStatus(message, status) {
+    var element = document.querySelector("[data-review-status]");
+    if (!element) return;
+    element.textContent = message;
+    element.setAttribute("data-state", status);
+  }
+
+  function abandonRequest() {
+    var request = state.request;
+    state.landingEpoch += 1;
+    resetState();
+    if (request && request.controller) {
+      try {
+        request.controller.abort();
+      } catch (error) {
+        // Identity checks also reject a late response without AbortController.
+      }
+    }
+  }
+
+  function failRequest(message) {
+    abandonRequest();
+    reviewStatus(message, "failed");
   }
 
   function submitControl(form, event) {
@@ -240,7 +261,6 @@
 
   function setBusy(form, control) {
     state.busy = true;
-    state.form = form;
     state.control = control;
     document.documentElement.setAttribute("data-busy", "");
     if (control) {
@@ -266,9 +286,14 @@
         }
       }
     }
+    reviewStatus(pendingLabelFor(form, control) || "Checking your answer…", "pending");
     if (typeof window.setTimeout === "function") {
       state.timeoutId = window.setTimeout(function () {
-        resetState();
+        if (state.request) {
+          failRequest("The response is taking too long. Your answer is still here; retry when ready.");
+        } else {
+          resetState();
+        }
       }, BUSY_RECOVERY_MS);
     }
   }
@@ -291,26 +316,18 @@
     return true;
   }
 
-  function storeHandoff(form, startedAtMs, acknowledgedAtMs) {
-    // Overwrite, never queue: exactly one submit token can be live per tab.
+  function createHandoff(form, startedAtMs, acknowledgedAtMs) {
     removeHandoff();
-    var traceId = randomId("trace_");
-    if (!traceId) return;
-    if (!traceInput(form, traceId)) return;
-    state.token = traceId;
-    if (!isSafeInteger(startedAtMs) || !isSafeInteger(acknowledgedAtMs)) return;
-    var expiresAtMs = startedAtMs + HANDOFF_TTL_MS;
     if (
-      !isSafeInteger(expiresAtMs) ||
-      acknowledgedAtMs < startedAtMs ||
-      acknowledgedAtMs > expiresAtMs
-    ) {
-      removeHandoff();
-      return;
-    }
-    var store = storage();
-    if (!store) return;
-    var handoff = {
+      !isSafeInteger(startedAtMs) ||
+      !isSafeInteger(acknowledgedAtMs) ||
+      boundedDuration(startedAtMs, acknowledgedAtMs) === null
+    ) return null;
+    var expiresAtMs = startedAtMs + HANDOFF_TTL_MS;
+    if (!isSafeInteger(expiresAtMs)) return null;
+    var traceId = randomId("trace_");
+    if (!traceId || !traceInput(form, traceId)) return null;
+    return {
       version: HANDOFF_VERSION,
       action: HANDOFF_ACTION,
       token: traceId,
@@ -318,11 +335,17 @@
       acknowledgedAtMs: acknowledgedAtMs,
       expiresAtMs: expiresAtMs
     };
+  }
+
+  function storeHandoff(handoff) {
+    if (!handoff) return;
+    var store = storage();
+    if (!store) return;
     try {
       store.setItem(HANDOFF_STORAGE_KEY, JSON.stringify(handoff));
       if (typeof window.setTimeout === "function") {
         window.setTimeout(function () {
-          removeHandoffIfToken(traceId);
+          removeHandoffIfToken(handoff.token);
         }, HANDOFF_TTL_MS);
       }
     } catch (error) {
@@ -376,12 +399,7 @@
   }
 
   function replaceHeadMeta(doc, name) {
-    if (!doc || typeof doc.querySelector !== "function") return;
-    var next = doc.querySelector('meta[name="' + name + '"]');
-    var content =
-      next && typeof next.getAttribute === "function"
-        ? next.getAttribute("content")
-        : null;
+    var content = metaContent(name, doc);
     var current = document.querySelector('meta[name="' + name + '"]');
     if (typeof content === "string" && content) {
       if (current) {
@@ -397,7 +415,7 @@
     }
   }
 
-  function applyInPlaceDocument(html) {
+  function applyInPlaceDocument(html, phases) {
     if (typeof html !== "string" || !html) return false;
     if (typeof window.DOMParser !== "function") return false;
     var currentView = viewRoot();
@@ -411,6 +429,7 @@
     if (!doc || typeof doc.querySelector !== "function") return false;
     var nextView = doc.querySelector(".ae-view");
     if (!nextView) return false;
+    var swapStartedAtMs = phases ? absoluteEpochNow() : null;
     currentView.innerHTML = nextView.innerHTML;
     // Keep header due count honest after a graded submit / continue.
     var currentDue = document.querySelector(".me-due");
@@ -424,142 +443,104 @@
     replaceHeadMeta(doc, "memory-engine-csrf-token");
     replaceHeadMeta(doc, "memory-engine-submit-request");
     replaceHeadMeta(doc, "memory-engine-submit-handoff");
+    if (phases) phases.domSwapMs = boundedDuration(swapStartedAtMs, absoluteEpochNow());
     presentedAt = responseClockNow();
-    // In-place landings have no Navigation Timing entry; never emit the
-    // native-nav handoff telemetry for this attempt.
-    removeHandoff();
-    state.landingAttempted = true;
-    var continueButton = currentView.querySelector(
-      'form.me-next button[type="submit"], form.me-next button:not([type])'
-    );
-    if (continueButton && typeof continueButton.focus === "function") {
+    var focusTarget =
+      currentView.querySelector(".me-verdict") ||
+      currentView.querySelector(".me-answer-input, .me-choice, .me-prompt");
+    if (focusTarget && typeof focusTarget.focus === "function") {
       try {
-        continueButton.focus();
+        if (!hasClass(focusTarget, "me-choice") && !hasClass(focusTarget, "me-answer-input")) {
+          focusTarget.setAttribute("tabindex", "-1");
+        }
+        focusTarget.focus();
       } catch (error) {
-        // Focus is best-effort; the graded result is already on screen.
+        // Focus is best-effort; it never gates grading or measurement.
       }
     }
     return true;
   }
 
-  function nativeSubmit(form, control) {
-    // HTMLFormElement.submit() does not re-fire the submit event and drops
-    // the clicked submitter. For MCQ choices, materialize the answer as a
-    // hidden field so the fallback grades the same choice fetch would have.
-    if (
-      form &&
-      control &&
-      typeof control.getAttribute === "function" &&
-      typeof document.createElement === "function" &&
-      typeof form.appendChild === "function"
-    ) {
-      var name = control.getAttribute("name") || control.name;
-      var value =
-        typeof control.value === "string"
-          ? control.value
-          : control.getAttribute("value");
-      if (typeof name === "string" && name && typeof value === "string") {
-        var existing =
-          typeof form.querySelector === "function"
-            ? form.querySelector(
-                'input[type="hidden"][name="' + name + '"][data-scry-fallback="1"]'
-              )
-            : null;
-        if (!existing) {
-          try {
-            var hidden = document.createElement("input");
-            hidden.setAttribute("type", "hidden");
-            hidden.setAttribute("name", name);
-            hidden.setAttribute("value", value);
-            hidden.setAttribute("data-scry-fallback", "1");
-            form.appendChild(hidden);
-          } catch (error) {
-            // If we cannot materialize the answer, still attempt submit.
-          }
-        }
-      }
-    }
-    if (form && typeof form.submit === "function") {
-      try {
-        form.submit();
-        return;
-      } catch (error) {
-        // Fall through to unlock UI if the browser refuses the submit.
-      }
-    }
-    resetState();
-  }
 
-  function fetchInPlace(form, control) {
+  function fetchInPlace(form, control, handoff) {
     if (!window.fetch || typeof window.fetch !== "function") return false;
     if (typeof window.FormData !== "function") return false;
     if (typeof window.DOMParser !== "function") return false;
-    var action =
-      (typeof form.getAttribute === "function" && form.getAttribute("action")) ||
-      form.action ||
-      "";
-    if (!action) return false;
+    var action = form.getAttribute("action") || "";
     var body = formBody(form, control);
-    if (!body) return false;
-    var requestToken = state.token;
-    var nativeFallback = action === "/app/submit" || action === "/app/next";
-    window
-      .fetch(action, {
-        method: "POST",
-        body: body,
-        credentials: "same-origin",
-        headers: {
-          Accept: "text/html",
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-          "X-Requested-With": "scry-inplace"
-        },
-        redirect: "follow"
-      })
+    if (!action || !body) return false;
+    var request = {
+      epoch: state.landingEpoch,
+      controller: typeof window.AbortController === "function" ? new window.AbortController() : null
+    };
+    state.request = request;
+    var responseAtMs = null;
+    var timing = null;
+    var options = {
+      method: "POST",
+      body: body,
+      credentials: "same-origin",
+      headers: {
+        Accept: "text/html",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "X-Requested-With": "scry-inplace"
+      },
+      redirect: "follow"
+    };
+    if (request.controller) options.signal = request.controller.signal;
+    var fetchRequest;
+    try {
+      fetchRequest = window.fetch(action, options);
+    } catch (error) {
+      failRequest("The response could not be loaded. Your answer is still here; retry when ready.");
+      return true;
+    }
+    fetchRequest
       .then(function (response) {
-        if (!response) throw new Error("submit failed");
+        if (state.request !== request) return null;
+        responseAtMs = handoff ? absoluteEpochNow() : null;
+        if (!response) throw new Error("missing response");
         if (response.status === 401 || response.status === 403) throw new Error("auth");
+        // Error pages may omit the learner's input. Keep the original form
+        // instead of swapping/reposting an ambiguous failed answer.
+        if (action === "/app/submit" && !response.ok) throw new Error("answer unavailable");
         var type = response.headers && response.headers.get
           ? response.headers.get("content-type") || ""
           : "";
         if (type.indexOf("text/html") === -1) throw new Error("not html");
+        if (handoff) timing = fetchServerTiming(response);
         return response.text();
       })
       .then(function (html) {
-        if (state.form !== form) return;
-        if (!applyInPlaceDocument(html)) throw new Error("swap failed");
+        if (state.request !== request) return;
+        var receivedAtMs = handoff ? absoluteEpochNow() : null;
+        var phases = handoff ? {
+          requestToResponseMs: boundedDuration(handoff.startedAtMs, responseAtMs),
+          transferMs: boundedDuration(responseAtMs, receivedAtMs)
+        } : null;
+        if (!applyInPlaceDocument(html, phases)) throw new Error("swap failed");
         resetState();
+        if (handoff) {
+          scheduleCompletion(handoff, "in_place", timing, phases, null, request.epoch);
+        }
       })
       .catch(function () {
-        if (state.form !== form) return;
-        if (requestToken) removeHandoffIfToken(requestToken);
-        if (nativeFallback) {
-          clearTimeoutIfAny();
-          nativeSubmit(form, control);
-          return;
-        }
-        if (window.location && typeof window.location.reload === "function") {
-          try {
-            window.location.reload();
-            return;
-          } catch (error) {
-            // Unlock only if the browser refuses the reload.
-          }
-        }
-        clearTimeoutIfAny();
-        resetState();
+        if (state.request !== request) return;
+        failRequest("The response could not be loaded. Your answer is still here; retry when ready.");
       });
     return true;
   }
 
-
   document.addEventListener("submit", function (event) {
     var form = event && event.target;
-    if (!isNativeForm(form)) return;
+    if (!isNativeForm(form) || event.defaultPrevented) return;
     if (state.busy) {
       event.preventDefault();
       return;
     }
 
+    state.landingEpoch += 1;
+    state.landingAttempted = true;
     var reviewSubmit = isReviewSubmitForm(form);
     var startedAtMs = reviewSubmit ? absoluteEpochNow() : null;
     if (reviewSubmit) {
@@ -572,23 +553,20 @@
 
     var control = submitControl(form, event);
     setBusy(form, control);
-
-    if (isInPlaceActionForm(form) && fetchInPlace(form, control)) {
-      // Fetch owns the round trip. Do not write a native-nav handoff: there
-      // will be no Navigation Timing entry for this answer.
+    var handoff = reviewSubmit
+      ? createHandoff(form, startedAtMs, absoluteEpochNow())
+      : null;
+    if (isInPlaceActionForm(form) && fetchInPlace(form, control, handoff)) {
       event.preventDefault();
       return;
     }
-
-    if (reviewSubmit) {
-      var acknowledgedAtMs = absoluteEpochNow();
-      storeHandoff(form, startedAtMs, acknowledgedAtMs);
-    }
+    storeHandoff(handoff);
   });
 
-  function metaContent(name) {
-    if (typeof document.querySelectorAll !== "function") return null;
-    var metas = document.querySelectorAll('meta[name="' + name + '"]');
+  function metaContent(name, source) {
+    var root = source || document;
+    if (typeof root.querySelectorAll !== "function") return null;
+    var metas = root.querySelectorAll('meta[name="' + name + '"]');
     if (!metas || metas.length !== 1) return null;
     var value = metas[0].getAttribute("content");
     return typeof value === "string" && value ? value : null;
@@ -615,6 +593,27 @@
       match = entry.description;
     }
     return found && typeof match === "string" ? match : null;
+  }
+
+  function fetchServerTiming(response) {
+    try {
+      var header = response.headers && response.headers.get("server-timing");
+      if (typeof header !== "string" || header.length > 4096) return null;
+      var entries = header.split(",");
+      var ids = {};
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i].trim();
+        var name = entry.split(";")[0].trim();
+        if (name !== "request" && name !== "handoff") continue;
+        if (Object.prototype.hasOwnProperty.call(ids, name)) return null;
+        var match = /^(?:request|handoff)\s*;\s*desc="([a-z0-9_]+)"\s*$/.exec(entry);
+        if (!match) return null;
+        ids[name] = match[1];
+      }
+      return ids;
+    } catch (error) {
+      return null;
+    }
   }
 
   function consumeHandoff() {
@@ -671,14 +670,11 @@
     return duration >= 0 && duration <= MAX_DURATION_MS ? duration : null;
   }
 
-  function navigationDuration(navigation, startName, endName) {
-    return boundedDuration(navigation[startName], navigation[endName]);
-  }
-
-  function navigationEpoch(navigation, relativeMs) {
-    if (!isFiniteNumber(relativeMs) || relativeMs < 0 || !perf || !isFiniteNumber(perf.timeOrigin)) return null;
-    var start = isFiniteNumber(navigation.startTime) ? navigation.startTime : 0;
-    var epoch = perf.timeOrigin + start + relativeMs;
+  function navigationEpoch(relativeMs) {
+    // Navigation Timing uses zero when a phase is unavailable. It is not an
+    // observed instant, and every timestamp is already relative to timeOrigin.
+    if (!isFiniteNumber(relativeMs) || relativeMs <= 0 || !perf || !isFiniteNumber(perf.timeOrigin)) return null;
+    var epoch = perf.timeOrigin + relativeMs;
     return isSafeInteger(Math.round(epoch)) ? Math.round(epoch) : null;
   }
 
@@ -689,111 +685,78 @@
     return "desktop";
   }
 
-  function emitLandingTelemetry(persisted) {
-    if (state.landingAttempted) return;
-    state.landingAttempted = true;
-    var handoff = consumeHandoff();
-    if (
-      !handoff ||
-      persisted ||
-      typeof document.querySelector !== "function" ||
-      !document.querySelector(".me-verdict")
-    ) return;
+  function scheduleCompletion(handoff, navigation, timing, phases, responseEndAtMs, scheduledEpoch) {
     if (!window.fetch || typeof window.fetch !== "function") return;
     if (!window.requestAnimationFrame || typeof window.requestAnimationFrame !== "function") return;
-
-    var navigation = navigationTiming();
+    var verdict = document.querySelector(".me-verdict");
     var requestId = metaContent("memory-engine-submit-request");
     var renderedTraceId = metaContent("memory-engine-submit-handoff");
     var csrfToken = metaContent("memory-engine-csrf-token");
     if (
-      !navigation ||
-      !requestId ||
-      !REQUEST_ID_RE.test(requestId) ||
-      !renderedTraceId ||
-      !TRACE_ID_RE.test(renderedTraceId) ||
-      !csrfToken
-    ) {
-      return;
-    }
-    var requestTimingId = serverTimingDescription(navigation, "request");
-    var handoffTimingId = serverTimingDescription(navigation, "handoff");
-    if (
-      !requestTimingId ||
-      !REQUEST_ID_RE.test(requestTimingId) ||
-      !handoffTimingId ||
-      !TRACE_ID_RE.test(handoffTimingId) ||
-      requestTimingId !== requestId ||
-      handoffTimingId !== renderedTraceId
-    ) {
-      return;
-    }
-    if (handoff.token !== renderedTraceId || handoff.token !== handoffTimingId) return;
+      !verdict ||
+      !timing ||
+      !REQUEST_ID_RE.test(requestId || "") ||
+      !TRACE_ID_RE.test(renderedTraceId || "") ||
+      !csrfToken ||
+      timing.request !== requestId ||
+      timing.handoff !== renderedTraceId ||
+      handoff.token !== renderedTraceId
+    ) return;
     var now = absoluteEpochNow();
     if (now === null || now > handoff.expiresAtMs) return;
 
-    // A pagehide between this point and the second animation frame —
-    // including one that freezes this document into BFCache — must
-    // invalidate the scheduled emission: landingEpoch changes, and this
-    // revalidation refuses to let a stale, resumed landing consume state
-    // (or a newer handoff written after restore) that no longer describes
-    // the page the user is actually looking at.
-    var scheduledEpoch = state.landingEpoch;
+    var attempted = false;
     function stillLive() {
       return (
+        !attempted &&
         state.landingEpoch === scheduledEpoch &&
         document.visibilityState !== "hidden" &&
-        typeof document.querySelector === "function" &&
-        !!document.querySelector(".me-verdict")
+        document.querySelector(".me-verdict") === verdict &&
+        metaContent("memory-engine-submit-request") === requestId &&
+        metaContent("memory-engine-submit-handoff") === handoff.token &&
+        metaContent("memory-engine-csrf-token") === csrfToken
       );
     }
-
+    if (!stillLive()) return;
     window.requestAnimationFrame(function () {
       if (!stillLive()) return;
       window.requestAnimationFrame(function () {
         if (!stillLive()) return;
+        attempted = true;
         var visibleAtMs = absoluteEpochNow();
         if (visibleAtMs === null || visibleAtMs > handoff.expiresAtMs) return;
-        var responseStartEpoch = navigationEpoch(navigation, navigation.responseStart);
-        var responseEndEpoch = navigationEpoch(navigation, navigation.responseEnd);
         var tapToAckMs = boundedDuration(handoff.startedAtMs, handoff.acknowledgedAtMs);
-        var requestToResponseMs =
-          responseStartEpoch === null
-            ? null
-            : boundedDuration(handoff.startedAtMs, responseStartEpoch);
-        var transferMs = navigationDuration(navigation, "responseStart", "responseEnd");
-        var navigationMs =
-          responseEndEpoch === null
-            ? null
-            : boundedDuration(responseEndEpoch, visibleAtMs);
         var gradedVisibleMs = boundedDuration(handoff.startedAtMs, visibleAtMs);
         var viewport = viewportClass();
         if (
           tapToAckMs === null ||
-          requestToResponseMs === null ||
-          transferMs === null ||
-          navigationMs === null ||
           gradedVisibleMs === null ||
-          !viewport ||
-          Math.abs(
-            gradedVisibleMs -
-              (requestToResponseMs + transferMs + navigationMs)
-          ) > 4
-        ) {
-          return;
-        }
+          tapToAckMs > gradedVisibleMs ||
+          !viewport
+        ) return;
         var payload = {
-          schema: "memory_engine.browser_submit.v1",
+          schema: "memory_engine.browser_submit.v2",
           csrfToken: csrfToken,
           requestId: requestId,
           traceId: handoff.token,
+          navigation: navigation,
           tapToAckMs: tapToAckMs,
-          requestToResponseMs: requestToResponseMs,
-          transferMs: transferMs,
-          navigationMs: navigationMs,
           gradedVisibleMs: gradedVisibleMs,
           viewport: viewport
         };
+        var names = ["requestToResponseMs", "transferMs", "domSwapMs"];
+        for (var i = 0; i < names.length; i++) {
+          var duration = phases[names[i]];
+          if (isSafeInteger(duration) && duration <= gradedVisibleMs) {
+            payload[names[i]] = duration;
+          }
+        }
+        if (navigation === "full_page") {
+          var navigationMs = boundedDuration(responseEndAtMs, visibleAtMs);
+          if (navigationMs !== null && navigationMs <= gradedVisibleMs) {
+            payload.navigationMs = navigationMs;
+          }
+        }
         try {
           var request = window.fetch("/app/performance/submit", {
             method: "POST",
@@ -804,24 +767,44 @@
           });
           if (request && typeof request.catch === "function") request.catch(function () {});
         } catch (error) {
-          // Telemetry is best effort; the review result is already rendered.
+          // Best effort and never retried: the learner already has the result.
         }
       });
     });
   }
 
+  function emitLandingTelemetry() {
+    if (state.landingAttempted) return;
+    state.landingAttempted = true;
+    var handoff = consumeHandoff();
+    if (!handoff) return;
+    var navigation = navigationTiming();
+    if (!navigation) return;
+    var responseStartAtMs = navigationEpoch(navigation.responseStart);
+    var responseEndAtMs = navigationEpoch(navigation.responseEnd);
+    scheduleCompletion(handoff, "full_page", {
+      request: serverTimingDescription(navigation, "request"),
+      handoff: serverTimingDescription(navigation, "handoff")
+    }, {
+      requestToResponseMs: boundedDuration(handoff.startedAtMs, responseStartAtMs),
+      transferMs: boundedDuration(responseStartAtMs, responseEndAtMs)
+    }, responseEndAtMs, state.landingEpoch);
+  }
+
   window.addEventListener("pagehide", function () {
-    state.landingEpoch += 1;
-    resetState();
+    abandonRequest();
   });
   window.addEventListener("pageshow", function (event) {
     if (event && event.persisted) {
       removeHandoff();
-      resetState();
+      abandonRequest();
       state.landingAttempted = true;
       return;
     }
-    emitLandingTelemetry(false);
+    emitLandingTelemetry();
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") state.landingEpoch += 1;
   });
 })();
 
@@ -840,7 +823,9 @@
     var button = form.querySelector('button[type="submit"]');
     if (!button || button.disabled) return;
     button.disabled = true;
-    button.textContent = "Creating…";
+    button.textContent = "Creating quizzes…";
+    var status = form.querySelector(".me-live-hint");
+    if (status) status.textContent = "Creating drafts for you to inspect before adding quizzes.";
   });
 })();
 
@@ -872,19 +857,18 @@
   "use strict";
   if (!("EventSource" in window)) return;
 
-  var list = document.getElementById("me-jobs");
 
   // The human meta line, kept in sync with `job_meta` in render.rs.
   function metaFor(job) {
     switch (job.status) {
       case "queued":
-        return "Queued…";
+        return "Queued for generation.";
       case "running":
-        return "Generating cards…";
+        return "Generating quizzes…";
       case "retry":
         return "Retrying after a temporary failure…";
       case "succeeded":
-        return "Generation succeeded; accepted drafts are pending your review.";
+        return "Generation finished. Check Library for drafts and notices.";
       case "failed":
         return job.error || "Generation failed. Try again.";
       default:
@@ -909,8 +893,7 @@
     return li;
   }
 
-  function apply(job) {
-    if (!list) return;
+  function apply(list, job) {
     var li = list.querySelector('li[data-job-id="' + cssEscape(job.id) + '"]');
     if (!li) {
       li = createRow(job);
@@ -930,21 +913,32 @@
   // EventSource reconnects automatically; no manual retry needed.
   source.addEventListener("job", function (event) {
     try {
-      // Pages without the activity surface (review/answer/edit) keep the
-      // learner's unsent work: no row patch, no terminal navigation.
-      if (!list) return;
+      // Resolve the live surface after every in-place swap. Library contains
+      // editable forms: activity may update there, but never navigate over work.
+      var list = document.getElementById("me-jobs");
+      var waiting = document.querySelector("[data-generation-job-id][data-terminal-url]");
+      if (!list && !waiting) return;
       var job = JSON.parse(event.data);
-      apply(job);
+      if (list) apply(list, job);
+      if (!waiting || waiting.getAttribute("data-generation-job-id") !== job.id) return;
+      var status = waiting.querySelector("[data-generation-status]");
+      if (status) status.textContent = metaFor(job);
       if (
-        !terminalNavigationStarted &&
-        (job.status === "succeeded" || job.status === "failed")
-      ) {
-        terminalNavigationStarted = true;
-        // The POST response may be this document. Navigate with GET rather
-        // than reload so capture is never submitted twice. SSR refreshes the
-        // authoritative pending-draft/review surface and retry controls.
-        window.location.assign("/");
-      }
+        terminalNavigationStarted ||
+        (job.status !== "succeeded" && job.status !== "failed")
+      ) return;
+      // Only an explicit, job-correlated waiting surface opts into a GET to
+      // the server-owned destination. Replayed terminal events cannot repost
+      // capture or redirect an unrelated quiz, draft edit, or new capture.
+      var destination = waiting.getAttribute("data-terminal-url");
+      if (
+        !destination ||
+        destination.charAt(0) !== "/" ||
+        destination.charAt(1) === "/" ||
+        destination.indexOf("\\") !== -1
+      ) return;
+      terminalNavigationStarted = true;
+      window.location.assign(destination);
     } catch (err) {
       /* ignore a malformed frame; the next event or navigation corrects it */
     }

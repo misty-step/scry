@@ -8,6 +8,7 @@ const HANDOFF_KEY = "memory-engine.submit-handoff.v1";
 function browserHarness(options = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
+  const formEvents = new Map();
   const storage = options.storage ?? new Map();
   const timers = new Map();
   const fetches = [];
@@ -15,11 +16,8 @@ function browserHarness(options = {}) {
   let nextTimerId = 1;
   let performanceTraceInput = null;
   let prevented = 0;
-  // A monotonic clock that advances by `tick` on every read. Real browsers
-  // never return the same perf.now() value twice across a submit-to-landing
-  // trace; `tick: 0` (the default) keeps every pre-existing exact-value
-  // assertion unchanged, and `tick: 1` lets a test prove elapsed time is
-  // genuinely simulated end to end rather than frozen.
+  // Explicit clock advances and optional ticking model distinct observable
+  // boundaries without pretending that a fetch creates navigation entries.
   let clock = options.now ?? 100;
   const tick = options.tick ?? 0;
   // requestAnimationFrame is queued, never fired inline: one call to
@@ -29,6 +27,18 @@ function browserHarness(options = {}) {
   // *next* runAnimationFrame(), never the current one.
   let frameQueue = [];
   let verdictPresent = options.verdict ?? false;
+  let verdictElement = { focus: () => focused.push("verdict"), setAttribute() {} };
+  const focused = [];
+  const statusAttributes = new Map();
+  const reviewStatus = {
+    textContent: "",
+    setAttribute: (name, value) => statusAttributes.set(name, value),
+  };
+  const nativeStatus = { textContent: "" };
+  const generationStatus = { textContent: "" };
+  let jobsList = options.jobsList ?? null;
+  let waitingJob = options.waitingJob ?? null;
+  let randomSequence = 0;
   const sseHandlers = new Map();
   const navigations = [];
   const eventSource = options.eventSource;
@@ -72,37 +82,22 @@ function browserHarness(options = {}) {
   let viewHtml = options.viewHtml ?? '<p class="me-prompt">Q</p>';
   let dueText = options.dueText ?? "1 due";
   let footerHtml = options.footerHtml ?? '<nav class="me-nav">Home</nav>';
-  const fallbackFields = [];
   const form = {
     tagName: "FORM",
     classList: classes(options.formClass ?? "me-choices-form"),
     action: options.action ?? "/app/submit",
     getAttribute: (name) => (name === "action" ? options.action ?? "/app/submit" : null),
+    addEventListener: (name, handler) => addListener(formEvents, name, handler),
     querySelector(selector) {
       if (selector === 'input[name="responseTimeMs"]') return responseInput;
       if (selector === 'input[name="performanceTraceId"]') return performanceTraceInput;
       if (selector === 'button[type="submit"], button:not([type])') return control;
-      const fallbackMatch = selector.match(
-        /^input\[type="hidden"\]\[name="([^"]+)"\]\[data-scry-fallback="1"\]$/,
-      );
-      if (fallbackMatch) {
-        return fallbackFields.find((field) => field.name === fallbackMatch[1]) ?? null;
-      }
+      if (selector === 'button[type="submit"]') return control;
+      if (selector === ".me-entry-status" || selector === ".me-live-hint") return nativeStatus;
       return null;
     },
     querySelectorAll: (selector) => (selector === ".me-choice" ? [control] : []),
     appendChild: (input) => {
-      if (input && input.name === "performanceTraceId") {
-        performanceTraceInput = input;
-        return;
-      }
-      if (input && input.getAttribute && input.getAttribute("data-scry-fallback") === "1") {
-        fallbackFields.push({
-          name: input.name || input.getAttribute("name"),
-          value: input.value || input.getAttribute("value"),
-        });
-        return;
-      }
       performanceTraceInput = input;
     },
     submit() {
@@ -124,17 +119,34 @@ function browserHarness(options = {}) {
     visibilityState: options.visibilityState ?? "visible",
     addEventListener: (name, handler) => addListener(documentEvents, name, handler),
     querySelector(selector) {
-      if (selector === ".me-verdict" && verdictPresent) return {};
+      if (selector === `form.${options.formClass}`) return form;
+      if (selector === ".me-verdict" && verdictPresent) return verdictElement;
+      if (selector === "[data-review-status]") return reviewStatus;
+      if (selector === "[data-generation-job-id][data-terminal-url]") {
+        return waitingJob ? {
+          getAttribute(name) {
+            if (name === "data-generation-job-id") return waitingJob.id;
+            if (name === "data-terminal-url") return waitingJob.destination;
+            return null;
+          },
+          querySelector: (name) => name === "[data-generation-status]" ? generationStatus : null,
+        } : null;
+      }
       if (selector === ".ae-view") {
         return {
           get innerHTML() {
             return viewHtml;
           },
           set innerHTML(value) {
+            clock += options.swapDelayMs ?? 0;
             viewHtml = String(value);
             verdictPresent = viewHtml.includes("me-verdict");
+            verdictElement = { focus: () => focused.push("verdict"), setAttribute() {} };
+            reviewStatus.textContent = "";
+            statusAttributes.clear();
           },
           querySelector(inner) {
+            if (inner === ".me-verdict" && verdictPresent) return verdictElement;
             if (
               inner ===
                 'form.me-next button[type="submit"], form.me-next button:not([type])' &&
@@ -184,7 +196,7 @@ function browserHarness(options = {}) {
       }
       return null;
     },
-    getElementById: (id) => (id === "me-jobs" ? options.jobsList ?? null : null),
+    getElementById: (id) => (id === "me-jobs" ? jobsList : null),
     querySelectorAll(selector) {
       if (selector === ".me-more-sheet button, .me-hatch-row button") {
         return options.hatchButtons ?? [];
@@ -239,6 +251,7 @@ function browserHarness(options = {}) {
           this.map.set(key, value);
         }
         if (responseInput.value !== "") this.map.set("responseTimeMs", responseInput.value);
+        if (performanceTraceInput) this.map.set("performanceTraceId", performanceTraceInput.value);
       }
     }
     append(name, value) {
@@ -259,6 +272,7 @@ function browserHarness(options = {}) {
   }
   class FakeDOMParser {
     parseFromString(html) {
+      clock += options.parseDelayMs ?? 0;
       const viewMatch = html.match(/<div class="ae-view">([\s\S]*?)<\/div>/);
       const dueMatch = html.match(/<span class="me-due">([^<]*)<\/span>/);
       const footerMatch = html.match(/<footer class="ae-bar">([\s\S]*?)<\/footer>/);
@@ -266,13 +280,13 @@ function browserHarness(options = {}) {
       for (const match of html.matchAll(
         /<meta name="([^"]+)" content="([^"]*)">/g,
       )) {
-        meta[match[1]] = match[2];
+        (meta[match[1]] ??= []).push(match[2]);
       }
       const viewHtmlNext = viewMatch ? viewMatch[1] : "";
       return {
         querySelector(selector) {
           if (selector === ".ae-view") {
-            return { innerHTML: viewHtmlNext };
+            return viewMatch ? { innerHTML: viewHtmlNext } : null;
           }
           if (selector === ".me-due" && dueMatch) {
             return { textContent: dueMatch[1] };
@@ -284,10 +298,16 @@ function browserHarness(options = {}) {
           if (metaMatch && meta[metaMatch[1]] !== undefined) {
             return {
               getAttribute: (name) =>
-                name === "content" ? meta[metaMatch[1]] : null,
+                name === "content" ? meta[metaMatch[1]][0] : null,
             };
           }
           return null;
+        },
+        querySelectorAll(selector) {
+          const match = selector.match(/^meta\[name="([^"]+)"\]$/);
+          return (match ? meta[match[1]] ?? [] : []).map((content) => ({
+            getAttribute: (name) => name === "content" ? content : null,
+          }));
         },
       };
     }
@@ -306,12 +326,14 @@ function browserHarness(options = {}) {
     },
     crypto: {
       getRandomValues(values) {
-        for (let index = 0; index < values.length; index += 1) values[index] = index + 1;
+        for (let index = 0; index < values.length; index += 1) values[index] = (index + 1 + randomSequence) % 256;
+        randomSequence += 16;
         return values;
       },
     },
     innerWidth: 390,
     Uint8Array,
+    AbortController,
     addEventListener: (name, handler) => addListener(windowEvents, name, handler),
     requestAnimationFrame: (handler) => {
       frameQueue.push(handler);
@@ -347,6 +369,12 @@ function browserHarness(options = {}) {
   }
   window.window = window;
   if (eventSource) window.EventSource = function EventSource() { return eventSource; };
+  if (options.timeOriginUnavailable) delete window.performance.timeOrigin;
+  if (options.storageUnavailable) {
+    Object.defineProperty(window, "sessionStorage", {
+      get() { throw new Error("storage unavailable"); },
+    });
+  }
 
   vm.runInNewContext(script, {
     console,
@@ -368,14 +396,21 @@ function browserHarness(options = {}) {
           prevented += 1;
         },
       };
+      for (const handler of formEvents.get("submit") ?? []) handler(event);
       for (const handler of documentEvents.get("submit") ?? []) handler(event);
     },
     controlLabel: () => control.textContent,
     controlAttr: (name) => controlAttributes.get(name),
+    controlDisabled: () => control.disabled === true,
     viewHtml: () => viewHtml,
     dueText: () => dueText,
     footerHtml: () => footerHtml,
-    fallbackFields: () => fallbackFields.slice(),
+    focused,
+    statusState: () => statusAttributes.get("data-state"),
+    statusText: () => reviewStatus.textContent,
+    setJobsList: (list) => { jobsList = list; },
+    generationStatus,
+    setWaitingJob: (job) => { waitingJob = job; },
     nativeSubmits: () => nativeSubmitCount,
     responseTimeMs: () => responseInput.value,
     meta: (name) => headMetas.get(name) ?? null,
@@ -402,6 +437,13 @@ function browserHarness(options = {}) {
     },
     setVerdictPresent(present) {
       verdictPresent = present;
+    },
+    setVisibility(visibility) {
+      document.visibilityState = visibility;
+      for (const handler of documentEvents.get("visibilitychange") ?? []) handler();
+    },
+    setMeta(name, value) {
+      headMetas.set(name, value);
     },
     storage,
     fetches,
@@ -484,35 +526,20 @@ test("busy recovery preserves a slow submit handoff until its TTL", () => {
   expect(browser.handoff()).toBeNull();
 });
 
-test("next and content-feedback show pending labels without disabling submitter value", () => {
-  const next = browserHarness({
-    action: "/app/next",
-    formClass: "me-next",
-    controlClasses: ["ae-button"],
-    controlLabel: "Continue →",
-  });
-  next.dispatchSubmit();
-  expect(next.busy()).toBeTrue();
-  expect(next.controlLabel()).toBe("Loading…");
-  expect(next.controlAttr("data-pending-label")).toBe("1");
-  expect(next.controlAttr("aria-disabled")).toBe("true");
-
-  const feedback = browserHarness({
-    action: "/app/content-feedback",
-    formClass: "me-content-feedback",
-    controlClasses: ["ae-button"],
-    controlLabel: "Good question",
-  });
-  feedback.dispatchSubmit();
-  expect(feedback.controlLabel()).toBe("Sending…");
-
-  const choice = browserHarness({
+test("pending review actions announce state without changing the submitted answer", () => {
+  const browser = browserHarness({
     action: "/app/submit",
     controlClasses: ["me-choice"],
     controlLabel: "42",
+    controlValue: "42",
   });
-  choice.dispatchSubmit();
-  expect(choice.controlLabel()).toBe("42");
+  browser.dispatchSubmit();
+  expect(browser.busy()).toBeTrue();
+  expect(browser.statusState()).toBe("pending");
+  expect(browser.controlAttr("aria-disabled")).toBe("true");
+  expect(browser.controlLabel()).toBe("42");
+  browser.runTimer(30_000);
+  expect(browser.controlAttr("aria-disabled")).toBeUndefined();
 });
 
 async function flushMicrotasks() {
@@ -520,46 +547,25 @@ async function flushMicrotasks() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-test("review submit fetches and swaps the graded view without inventing a verdict", async () => {
-  let resolveFetch;
-  const fetchPromise = new Promise((resolve) => {
-    resolveFetch = resolve;
-  });
-  const browser = browserHarness({
-    inPlace: true,
-    action: "/app/submit",
-    controlClasses: ["me-choice"],
-    controlLabel: "42",
-    controlValue: "42",
-    viewHtml: '<p class="me-prompt">What is 6*7?</p><form class="me-choices-form"></form>',
-    fetchImpl() {
-      return fetchPromise;
-    },
-  });
-
-  browser.dispatchSubmit();
-  expect(browser.prevented()).toBe(1);
-  expect(browser.busy()).toBeTrue();
-  expect(browser.handoff()).toBeNull();
-  expect(browser.controlLabel()).toBe("42");
-  expect(browser.fetches).toHaveLength(1);
-  expect(browser.fetches[0].url).toBe("/app/submit");
-  expect(browser.fetches[0].request.headers["X-Requested-With"]).toBe("scry-inplace");
-  expect(browser.fetches[0].request.headers["Content-Type"]).toBe(
-    "application/x-www-form-urlencoded;charset=UTF-8",
-  );
-  const body = browser.fetches[0].request.body;
-  expect(body.get("answer")).toBe("42");
-  expect(Number(body.get("responseTimeMs"))).toBeGreaterThan(0);
-
-  // Server is the only source of the verdict text.
-  resolveFetch({
+function gradedResponse(request, options = {}) {
+  const requestId = options.requestId ?? "req_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const traceId = options.traceId ?? request.body.get("performanceTraceId");
+  const serverTiming = options.serverTiming ??
+    `request;desc="${requestId}", handoff;desc="${traceId}", total;dur=12`;
+  return {
     ok: true,
-    headers: { get: () => "text/html; charset=utf-8" },
-    text: () =>
-      Promise.resolve(`<!doctype html><html><head>
+    status: 200,
+    headers: {
+      get(name) {
+        if (name === "content-type") return "text/html; charset=utf-8";
+        if (name === "server-timing") return serverTiming;
+        return null;
+      },
+    },
+    text: () => Promise.resolve(`<!doctype html><html><head>
 <meta name="memory-engine-csrf-token" content="csrf-next">
-<meta name="memory-engine-submit-request" content="req_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
+<meta name="memory-engine-submit-request" content="${requestId}">
+<meta name="memory-engine-submit-handoff" content="${traceId}">
 </head><body>
 <span class="me-due">0 due</span>
 <div class="ae-view">
@@ -567,38 +573,303 @@ test("review submit fetches and swaps the graded view without inventing a verdic
 <p class="me-result"><span class="me-verdict">Correct</span></p>
 <form class="me-next" action="/app/next" method="post"><button type="submit">Continue</button></form>
 </div>
-<footer class="ae-bar"><p class="me-tagline">tagline</p></footer>
+<footer class="ae-bar"><p class="me-tagline">review</p></footer>
 </body></html>`),
-  });
+  };
+}
 
-  await flushMicrotasks();
-
-  expect(browser.busy()).toBeFalse();
-  expect(browser.viewHtml()).toContain('class="me-verdict">Correct<');
-  expect(browser.viewHtml()).toContain("me-next");
-  expect(browser.dueText()).toBe("0 due");
-  expect(browser.footerHtml()).toContain("tagline");
-  expect(browser.meta("memory-engine-csrf-token")).toBe("csrf-next");
-  expect(browser.nativeSubmits()).toBe(0);
-});
-
-test("in-place submit falls back to native form submit when fetch fails", async () => {
+test("enhanced answer acknowledges once and reports only correlated observed phases after paint", async () => {
+  let resolveFetch;
+  let resolveBody;
+  const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+  const bodyPromise = new Promise((resolve) => { resolveBody = resolve; });
   const browser = browserHarness({
     inPlace: true,
-    action: "/app/submit",
+    tick: 1,
+    parseDelayMs: 50,
+    swapDelayMs: 7,
     controlClasses: ["me-choice"],
     controlLabel: "42",
     controlValue: "42",
+    viewHtml: '<p class="me-prompt">What is 6*7?</p><form class="me-choices-form"></form>',
+    fetchImpl: () => fetchPromise,
+  });
+
+  browser.dispatchSubmit();
+  browser.dispatchSubmit();
+  expect(browser.busy()).toBeTrue();
+  expect(browser.statusState()).toBe("pending");
+  expect(browser.handoff()).toBeNull();
+  expect(browser.controlLabel()).toBe("42");
+  expect(browser.fetches).toHaveLength(1);
+  expect(browser.viewHtml()).not.toContain("me-verdict");
+  const request = browser.fetches[0].request;
+  expect(request.body.get("answer")).toBe("42");
+  expect(Number(request.body.get("responseTimeMs"))).toBeGreaterThan(0);
+  const traceId = request.body.get("performanceTraceId");
+  expect(traceId).toMatch(/^trace_[0-9a-f]{32}$/);
+
+  const response = gradedResponse(request);
+  browser.advanceClock(20);
+  resolveFetch({ ...response, text: () => bodyPromise });
+  await flushMicrotasks();
+  expect(browser.busy()).toBeTrue();
+  expect(browser.viewHtml()).not.toContain("me-verdict");
+  expect(browser.pendingFrames()).toBe(0);
+  browser.advanceClock(13);
+  resolveBody(await response.text());
+  await flushMicrotasks();
+  expect(browser.busy()).toBeFalse();
+  expect(browser.viewHtml()).toContain('class="me-verdict">Correct<');
+  expect(browser.viewHtml()).toContain("me-next");
+  expect(browser.focused).toEqual(["verdict"]);
+  expect(browser.dueText()).toBe("0 due");
+  expect(browser.meta("memory-engine-csrf-token")).toBe("csrf-next");
+  expect(browser.fetches).toHaveLength(1);
+  browser.advanceClock(16);
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(1);
+  browser.advanceClock(16);
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(2);
+  expect(browser.fetches[1].url).toBe("/app/performance/submit");
+  const payload = JSON.parse(browser.fetches[1].request.body);
+  expect(payload).toMatchObject({
+    schema: "memory_engine.browser_submit.v2",
+    requestId: "req_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    traceId,
+    navigation: "in_place",
+  });
+  expect(payload.tapToAckMs).toBeGreaterThan(0);
+  expect(payload.requestToResponseMs).toBeGreaterThanOrEqual(20);
+  expect(payload.domSwapMs).toBe(8);
+  expect(payload.transferMs).toBeGreaterThanOrEqual(13);
+  expect(payload.gradedVisibleMs).toBeGreaterThan(
+    payload.requestToResponseMs + payload.transferMs + payload.domSwapMs,
+  );
+  expect(Object.keys(payload).sort()).toEqual([
+    "schema", "csrfToken", "requestId", "traceId", "navigation",
+    "tapToAckMs", "requestToResponseMs", "transferMs", "domSwapMs",
+    "gradedVisibleMs", "viewport",
+  ].sort());
+  browser.dispatchWindow("pageshow");
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(2);
+  expect(browser.navigations).toEqual([]);
+  expect(browser.nativeSubmits()).toBe(0);
+});
+
+test("a timed-out response cannot replace or complete a retry on the same form", async () => {
+  const pending = [];
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl(url, request) {
+      if (url !== "/app/submit") return {};
+      return new Promise((resolve) => pending.push({ request, resolve }));
+    },
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runTimer(30_000);
+  expect(browser.fetches[0].request.signal.aborted).toBeTrue();
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  pending[0].resolve(gradedResponse(pending[0].request));
+  await flushMicrotasks();
+  expect(browser.viewHtml()).not.toContain("me-verdict");
+  expect(browser.busy()).toBeTrue();
+  expect(browser.pendingFrames()).toBe(0);
+  pending[1].resolve(gradedResponse(pending[1].request));
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.runAnimationFrame();
+  const receipts = browser.fetches.filter(({ url }) => url === "/app/performance/submit");
+  expect(receipts).toHaveLength(1);
+  expect(JSON.parse(receipts[0].request.body).traceId).toBe(
+    pending[1].request.body.get("performanceTraceId"),
+  );
+});
+
+test("hiding between paints cancels completion even when visible again before the callback", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl: (_url, request) => gradedResponse(request),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.setVisibility("hidden");
+  browser.setVisibility("visible");
+  browser.runAnimationFrame();
+  expect(browser.viewHtml()).toContain("me-verdict");
+  expect(browser.fetches).toHaveLength(1);
+  browser.dispatchWindow("pageshow");
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(1);
+});
+
+test("BFCache restore never applies a response that belonged to the abandoned document state", async () => {
+  let resolveFetch;
+  const browser = browserHarness({
+    inPlace: true,
+    viewHtml: '<input class="me-answer-input" value="draft answer">',
+    fetchImpl: () => new Promise((resolve) => { resolveFetch = resolve; }),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.dispatchWindow("pagehide");
+  browser.dispatchWindow("pageshow", { persisted: true });
+  resolveFetch(gradedResponse(browser.fetches[0].request));
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.runAnimationFrame();
+  expect(browser.viewHtml()).toContain('value="draft answer"');
+  expect(browser.busy()).toBeFalse();
+  expect(browser.fetches).toHaveLength(1);
+  expect(browser.handoff()).toBeNull();
+});
+
+test("a response from another handoff still grades but never produces a mismatched receipt", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl: (_url, request) => gradedResponse(request, {
+      serverTiming: 'request;desc="req_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", handoff;desc="trace_ffffffffffffffffffffffffffffffff"',
+    }),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.runAnimationFrame();
+  expect(browser.viewHtml()).toContain("me-verdict");
+  expect(browser.busy()).toBeFalse();
+  expect(browser.fetches).toHaveLength(1);
+});
+
+test("duplicate correlation headers fail closed without blocking the graded view", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl(_url, request) {
+      const response = gradedResponse(request);
+      return gradedResponse(request, {
+        serverTiming: `${response.headers.get("server-timing")}, request;desc="req_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`,
+      });
+    },
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  expect(browser.viewHtml()).toContain("me-verdict");
+  expect(browser.pendingFrames()).toBe(0);
+  expect(browser.fetches).toHaveLength(1);
+});
+
+test("duplicate rendered handoff metadata cannot be collapsed into a trusted receipt", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl(_url, request) {
+      const response = gradedResponse(request);
+      return {
+        ...response,
+        text: async () => (await response.text()).replace(
+          "</head>",
+          '<meta name="memory-engine-submit-handoff" content="trace_ffffffffffffffffffffffffffffffff"></head>',
+        ),
+      };
+    },
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  expect(browser.viewHtml()).toContain("me-verdict");
+  expect(browser.pendingFrames()).toBe(0);
+  expect(browser.fetches).toHaveLength(1);
+});
+
+test("replacing correlation metadata before paint suppresses the queued receipt", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    fetchImpl: (_url, request) => gradedResponse(request),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.setMeta("memory-engine-submit-request", "req_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(1);
+});
+
+test("in-place completion does not require session storage", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    storageUnavailable: true,
+    fetchImpl(url, request) {
+      return url === "/app/submit" ? gradedResponse(request) : {};
+    },
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.runAnimationFrame();
+  expect(browser.fetches).toHaveLength(2);
+  expect(JSON.parse(browser.fetches[1].request.body).navigation).toBe("in_place");
+});
+
+test("missing monotonic origin disables measurement rather than fabricating phases or blocking grading", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    timeOriginUnavailable: true,
+    fetchImpl: (_url, request) => gradedResponse(request),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  browser.runAnimationFrame();
+  browser.runAnimationFrame();
+  expect(browser.viewHtml()).toContain("me-verdict");
+  expect(browser.fetches).toHaveLength(1);
+  expect(browser.busy()).toBeFalse();
+});
+
+test("an unsuccessful answer response cannot erase typed input or silently repost", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    viewHtml: '<input class="me-answer-input" value="my answer">',
+    fetchImpl: (_url, request) => ({ ...gradedResponse(request), ok: false, status: 500 }),
+  });
+  browser.dispatchSubmit();
+  await flushMicrotasks();
+  expect(browser.viewHtml()).toContain('value="my answer"');
+  expect(browser.statusState()).toBe("failed");
+  expect(browser.fetches).toHaveLength(1);
+  expect(browser.pendingFrames()).toBe(0);
+  expect(browser.nativeSubmits()).toBe(0);
+});
+
+test("an uncertain fetch failure preserves the answer for an intentional idempotent retry", async () => {
+  const browser = browserHarness({
+    inPlace: true,
+    controlClasses: ["me-choice"],
+    controlLabel: "42",
+    controlValue: "42",
+    viewHtml: '<input class="me-answer-input" value="typed">',
     fetchImpl() {
       return Promise.reject(new Error("network down"));
     },
   });
-
   browser.dispatchSubmit();
-  expect(browser.prevented()).toBe(1);
   await flushMicrotasks();
-  expect(browser.nativeSubmits()).toBe(1);
-  expect(browser.fallbackFields()).toEqual([{ name: "answer", value: "42" }]);
+  expect(browser.nativeSubmits()).toBe(0);
+  expect(browser.navigations).toEqual([]);
+  expect(browser.viewHtml()).toContain('value="typed"');
+  expect(browser.statusState()).toBe("failed");
+  expect(browser.busy()).toBeFalse();
+  browser.dispatchSubmit();
+  expect(browser.fetches).toHaveLength(2);
+  expect(browser.fetches[1].request.body.get("answer")).toBe("42");
+  expect(browser.fetches[1].request.body.get("idempotencyKey")).toBe(
+    browser.fetches[0].request.body.get("idempotencyKey"),
+  );
+  expect(browser.fetches[1].request.body.get("performanceTraceId")).not.toBe(
+    browser.fetches[0].request.body.get("performanceTraceId"),
+  );
+  await flushMicrotasks();
 });
 
 test("continue uses in-place fetch and does not write a submit handoff", async () => {
@@ -622,7 +893,6 @@ test("continue uses in-place fetch and does not write a submit handoff", async (
 
   browser.dispatchSubmit();
   expect(browser.prevented()).toBe(1);
-  expect(browser.controlLabel()).toBe("Loading…");
   expect(browser.handoff()).toBeNull();
   await flushMicrotasks();
   expect(browser.viewHtml()).toContain("Next card");
@@ -666,7 +936,6 @@ test("skip fetches in place and keeps the server confirm", async () => {
 
   browser.dispatchSubmit();
   expect(browser.prevented()).toBe(1);
-  expect(browser.controlLabel()).toBe("Skipping…");
   expect(browser.handoff()).toBeNull();
   expect(browser.fetches[0].url).toBe("/app/skip");
   await flushMicrotasks();
@@ -698,7 +967,6 @@ test("snooze fetches in place and keeps the server tomorrow notice", async () =>
   });
 
   browser.dispatchSubmit();
-  expect(browser.controlLabel()).toBe("Snoozing…");
   await flushMicrotasks();
   expect(browser.viewHtml()).toContain("tomorrow");
   expect(browser.nativeSubmits()).toBe(0);
@@ -731,7 +999,6 @@ test("keep draft fetches in place and updates the due count", async () => {
 
   browser.dispatchSubmit();
   expect(browser.prevented()).toBe(1);
-  expect(browser.controlLabel()).toBe("Keeping…");
   expect(browser.handoff()).toBeNull();
   expect(browser.fetches[0].request.headers["Content-Type"]).toBe(
     "application/x-www-form-urlencoded;charset=UTF-8",
@@ -816,7 +1083,7 @@ test("keep error HTML swaps without a second POST", async () => {
   expect(browser.busy()).toBeFalse();
 });
 
-test("skip fetch failure reloads instead of posting twice", async () => {
+test("skip fetch failure keeps unsent input and permits an intentional retry", async () => {
   const browser = browserHarness({
     inPlace: true,
     action: "/app/skip",
@@ -833,17 +1100,19 @@ test("skip fetch failure reloads instead of posting twice", async () => {
   expect(browser.prevented()).toBe(1);
   await flushMicrotasks();
   expect(browser.nativeSubmits()).toBe(0);
-  expect(browser.navigations).toEqual(["reload"]);
+  expect(browser.navigations).toEqual([]);
   expect(browser.viewHtml()).toContain('value="typed"');
-  expect(browser.viewHtml()).not.toContain("Try again");
-  expect(browser.busy()).toBeTrue();
+  expect(browser.statusState()).toBe("failed");
+  expect(browser.busy()).toBeFalse();
 
   browser.dispatchSubmit();
   expect(browser.prevented()).toBe(2);
   expect(browser.nativeSubmits()).toBe(0);
+  expect(browser.fetches).toHaveLength(2);
+  await flushMicrotasks();
 });
 
-test("skip 401 reloads instead of swapping recovery into review", async () => {
+test("expired-session responses keep the current question instead of replacing unsent input", async () => {
   const browser = browserHarness({
     inPlace: true,
     action: "/app/skip",
@@ -869,8 +1138,9 @@ test("skip 401 reloads instead of swapping recovery into review", async () => {
   expect(browser.viewHtml()).toContain("Letter N");
   expect(browser.viewHtml()).not.toContain("Return to your workspace");
   expect(browser.nativeSubmits()).toBe(0);
-  expect(browser.navigations).toEqual(["reload"]);
-  expect(browser.busy()).toBeTrue();
+  expect(browser.navigations).toEqual([]);
+  expect(browser.statusState()).toBe("failed");
+  expect(browser.busy()).toBeFalse();
 });
 
 test("skip 404 HTML swaps without reload or a second POST", async () => {
@@ -938,6 +1208,8 @@ test("a second document consumes the handoff and emits one visible receipt only 
   expect(landing.fetches[0].url).toBe("/app/performance/submit");
   const payload = JSON.parse(landing.fetches[0].request.body);
   expect(payload).toMatchObject({
+    schema: "memory_engine.browser_submit.v2",
+    navigation: "full_page",
     requestId,
     traceId: handoff.token,
     viewport: "mobile",
@@ -951,22 +1223,28 @@ test("a second document consumes the handoff and emits one visible receipt only 
   );
 });
 
-test("graded-visible telemetry waits two real animation frames before emitting", () => {
-  const { source, handoff, requestId } = submittedHandoff();
-  const landing = browserHarness(matchingLandingOptions(source, handoff, requestId));
-
+test("unavailable native navigation phases remain absent in an otherwise correlated completion", () => {
+  const { source, handoff, requestId } = submittedHandoff({ tick: 1 });
+  const landing = browserHarness(matchingLandingOptions(source, handoff, requestId, {
+    navigation: {
+      ...matchingNavigation(requestId, handoff.token),
+      responseStart: 0,
+      responseEnd: 0,
+    },
+  }));
   landing.dispatchWindow("pageshow");
-  expect(landing.pendingFrames()).toBe(1);
-  expect(landing.fetches).toHaveLength(0);
-
   landing.runAnimationFrame();
-  expect(landing.pendingFrames()).toBe(1);
-  expect(landing.fetches).toHaveLength(0);
-
   landing.runAnimationFrame();
-  expect(landing.pendingFrames()).toBe(0);
   expect(landing.fetches).toHaveLength(1);
+  const payload = JSON.parse(landing.fetches[0].request.body);
+  expect(payload.navigation).toBe("full_page");
+  expect(payload).not.toHaveProperty("requestToResponseMs");
+  expect(payload).not.toHaveProperty("transferMs");
+  expect(payload).not.toHaveProperty("navigationMs");
+  expect(payload).not.toHaveProperty("domSwapMs");
+  expect(payload.gradedVisibleMs).toBeGreaterThan(payload.tapToAckMs);
 });
+
 
 test("a rejected landing consumes the handoff without emitting telemetry", () => {
   const source = browserHarness();
@@ -980,97 +1258,33 @@ test("a rejected landing consumes the handoff without emitting telemetry", () =>
   expect(landing.fetches).toHaveLength(0);
 });
 
-function entryFormHarness() {
-  const formEvents = new Map();
-  const button = { disabled: false, textContent: "Get started" };
-  const status = { textContent: "" };
-  const form = {
-    tagName: "FORM",
-    classList: { contains: (name) => name === "me-entry-form" },
-    getAttribute: (name) => (name === "action" ? "/app/account" : null),
-    addEventListener: (name, handler) => {
-      const handlers = formEvents.get(name) ?? [];
-      handlers.push(handler);
-      formEvents.set(name, handlers);
-    },
-    querySelector: (selector) => {
-      if (selector === 'button[type="submit"]') return button;
-      if (selector === ".me-entry-status") return status;
-      return null;
-    },
-  };
-  const document = {
-    documentElement: {
-      setAttribute() {},
-      removeAttribute() {},
-      hasAttribute: () => false,
-    },
-    addEventListener: () => {},
-    querySelector: (selector) => (selector === "form.me-entry-form" ? form : null),
-    querySelectorAll: () => [],
-    createElement: () => ({ setAttribute() {}, value: "" }),
-  };
-  const window = {
-    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-    performance: { timeOrigin: 0, now: () => 0, getEntriesByType: () => [] },
-    crypto: { getRandomValues: (values) => values },
-    innerWidth: 390,
-    Uint8Array,
-    addEventListener: () => {},
-    requestAnimationFrame: (handler) => handler(),
-    fetch: () => ({ catch() {} }),
-    setTimeout: () => 0,
-    clearTimeout: () => {},
-  };
-  window.window = window;
 
-  vm.runInNewContext(script, {
-    console,
-    document,
-    window,
-    EventSource: undefined,
-    URL,
+test("entry acknowledgment preserves the first native POST and suppresses a repeated submit", () => {
+  const browser = browserHarness({
+    action: "/app/account",
+    formClass: "me-entry-form",
+    controlClasses: ["ae-button"],
   });
-
-  return {
-    submit: () => {
-      for (const handler of formEvents.get("submit") ?? []) handler({});
-    },
-    button,
-    status,
-  };
-}
-
-test("entry request announces a pending state synchronously, before the network settles", async () => {
-  const browser = entryFormHarness();
-  let networkSettled = false;
-  const network = new Promise((resolve) => {
-    setTimeout(() => {
-      networkSettled = true;
-      resolve();
-    }, 150);
-  });
-
-  const started = performance.now();
-  browser.submit();
-  const elapsed = performance.now() - started;
-
-  expect(elapsed).toBeLessThan(100);
-  expect(browser.button.disabled).toBe(true);
-  expect(browser.button.textContent).toBe("Checking…");
-  expect(browser.status.textContent).toBe("Checking…");
-  expect(networkSettled).toBe(false);
-
-  await network;
-  expect(networkSettled).toBe(true);
+  browser.dispatchSubmit();
+  expect(browser.controlDisabled()).toBeTrue();
+  expect(browser.prevented()).toBe(0);
+  browser.dispatchSubmit();
+  expect(browser.prevented()).toBe(1);
+  expect(browser.fetches).toEqual([]);
 });
 
-test("entry request enhancement is a no-op once the button is pending", () => {
-  const browser = entryFormHarness();
-  browser.submit();
-  browser.button.textContent = "Checking… (server response pending)";
-  browser.submit();
-  expect(browser.button.textContent).toBe("Checking… (server response pending)");
+test("capture acknowledgment stays native and cannot enqueue a second capture while pending", () => {
+  const browser = browserHarness({
+    action: "/app/capture",
+    formClass: "me-capture-form",
+    controlClasses: ["ae-button"],
+  });
+  browser.dispatchSubmit();
+  expect(browser.controlDisabled()).toBeTrue();
+  expect(browser.prevented()).toBe(0);
+  browser.dispatchSubmit();
+  expect(browser.prevented()).toBe(1);
+  expect(browser.fetches).toEqual([]);
 });
 
 test("a BFCache-restored landing clears the handoff and never schedules emission", () => {
@@ -1190,37 +1404,39 @@ test("a second pageshow on the same landing document never emits a duplicate rec
 function jobsListHarness() {
   const meta = { textContent: "old" };
   const row = {
-    dataset: { jobId: "job-1" },
+    dataset: { jobId: "job-1", status: "queued" },
     querySelector: (selector) => (selector === ".me-job-meta" ? meta : null),
   };
   return {
     meta,
+    row,
     querySelector: () => row,
     insertBefore() {},
   };
 }
 
-test("SSE patches intermediate jobs but refreshes the workspace on success", () => {
+test("SSE updates Library activity without navigating over editable drafts", () => {
   const eventSource = {};
   const list = jobsListHarness();
   const browser = browserHarness({ eventSource, jobsList: list });
 
   browser.emitJob({ id: "job-1", status: "running" });
-  expect(list.meta.textContent).toBe("Generating cards…");
+  expect(list.row.dataset.status).toBe("running");
   expect(browser.navigations).toEqual([]);
 
   browser.emitJob({ id: "job-1", status: "succeeded" });
-  expect(browser.navigations).toEqual(["/"]);
+  expect(list.row.dataset.status).toBe("succeeded");
+  expect(browser.navigations).toEqual([]);
 });
 
-test("SSE refreshes the workspace on failure for authoritative retry controls", () => {
+test("SSE presents authoritative failure text without replacing unsaved Library work", () => {
   const eventSource = {};
   const list = jobsListHarness();
   const browser = browserHarness({ eventSource, jobsList: list });
 
   browser.emitJob({ id: "job-1", status: "failed", error: "provider unavailable" });
   expect(list.meta.textContent).toBe("provider unavailable");
-  expect(browser.navigations).toEqual(["/"]);
+  expect(browser.navigations).toEqual([]);
 });
 
 test("SSE terminal events never navigate away from pages without the jobs surface", () => {
@@ -1229,5 +1445,42 @@ test("SSE terminal events never navigate away from pages without the jobs surfac
 
   browser.emitJob({ id: "job-1", status: "succeeded" });
   browser.emitJob({ id: "job-1", status: "failed", error: "provider unavailable" });
+  expect(browser.navigations).toEqual([]);
+});
+
+test("terminal events cannot act on a jobs list removed by an in-place review navigation", () => {
+  const list = jobsListHarness();
+  const browser = browserHarness({ eventSource: {}, jobsList: list });
+  browser.emitJob({ id: "job-1", status: "running" });
+  browser.setJobsList(null);
+  browser.emitJob({ id: "job-1", status: "succeeded" });
+  expect(list.row.dataset.status).toBe("running");
+  expect(browser.navigations).toEqual([]);
+});
+
+test("only the explicit waiting job can complete capture and terminal replay cannot navigate twice", () => {
+  const browser = browserHarness({
+    eventSource: {},
+    waitingJob: { id: "job-current", destination: "/app/library" },
+  });
+  browser.emitJob({ id: "job-other", status: "succeeded" });
+  browser.emitJob({ id: "job-current", status: "running" });
+  expect(browser.navigations).toEqual([]);
+  browser.emitJob({ id: "job-current", status: "failed", error: "provider unavailable" });
+  expect(browser.generationStatus.textContent).toBe("provider unavailable");
+  expect(browser.navigations).toEqual(["/app/library"]);
+  browser.dispatchWindow("pagehide");
+  browser.dispatchWindow("pageshow", { persisted: true });
+  browser.emitJob({ id: "job-current", status: "failed", error: "provider unavailable" });
+  expect(browser.navigations).toEqual(["/app/library"]);
+});
+
+test("removing the capture waiting surface cancels its future terminal navigation", () => {
+  const browser = browserHarness({
+    eventSource: {},
+    waitingJob: { id: "job-current", destination: "/app/library" },
+  });
+  browser.setWaitingJob(null);
+  browser.emitJob({ id: "job-current", status: "succeeded" });
   expect(browser.navigations).toEqual([]);
 });

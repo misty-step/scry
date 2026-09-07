@@ -7,5 +7,15 @@
     "min_drafts": 3,
     "max_drafts": 8,
     "key_terms": ["max-age", "no-store", "ETag", "304"]
+  },
+  "reference": {
+    "concept": "HTTP storage and revalidation",
+    "question": "What does no-cache require before a stored response is reused?",
+    "answer": "revalidation",
+    "explanation_terms": ["no-cache", "revalidation", "storage"],
+    "example_terms": ["ETag", "304"],
+    "distinction_terms": ["no-store", "no-cache"],
+    "source_supported": true,
+    "forbidden_claims": ["no-cache forbids storage", "no-store allows storage"]
   }
 }

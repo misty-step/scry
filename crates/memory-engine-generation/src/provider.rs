@@ -24,9 +24,9 @@ pub struct DraftCandidate {
     pub concept: String,
     pub question: String,
     pub answer: String,
-    /// Verbatim quote from the source backing this draft. Drafts without
-    /// evidence are dropped; drafts whose evidence cannot be found in the
-    /// source are persisted as rejected.
+    /// A source quote supporting this draft, or `None` for explicitly
+    /// model-expanded topic knowledge. The shared gate checks any claimed
+    /// quote; an input seed is not evidence for an expanded factual claim.
     pub evidence: Option<String>,
     pub distractors: Vec<String>,
     pub worked_solution: Option<String>,
@@ -40,7 +40,7 @@ pub struct DraftCandidate {
 pub struct ProviderUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
-    /// Cost in integer micro-USD; `None` when the provider is free/local.
+    /// Cost in integer micro-USD; `None` means unreported, never zero.
     pub cost_usd_micros: Option<i64>,
     pub latency_ms: u64,
 }
@@ -98,12 +98,24 @@ impl Error for SourceAuthorizationError {}
 pub struct AuthorizedSourceDocument {
     id: String,
     permission: SourcePermission,
+    title: String,
+    body: String,
 }
 
 impl AuthorizedSourceDocument {
     #[must_use]
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    #[must_use]
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    #[must_use]
+    pub fn body(&self) -> &str {
+        &self.body
     }
 }
 
@@ -139,11 +151,20 @@ impl SourceAuthorizationContext {
             authorized.push(AuthorizedSourceDocument {
                 id: source.id.clone(),
                 permission: source.permission.clone(),
+                title: source.title.clone(),
+                body: source.body.clone().unwrap_or_default(),
             });
         }
         Ok(Self {
             sources: authorized,
         })
+    }
+
+    /// Actual authorized context, not merely permission receipts. Callers must
+    /// still reject local-only sources before crossing an external boundary.
+    #[must_use]
+    pub fn sources(&self) -> &[AuthorizedSourceDocument] {
+        &self.sources
     }
 
     #[must_use]
@@ -270,6 +291,7 @@ pub struct ProviderFailure {
     message: String,
     transient: bool,
     kind: ProviderFailureKind,
+    usage: Option<ProviderUsage>,
 }
 
 impl ProviderFailure {
@@ -281,6 +303,7 @@ impl ProviderFailure {
             message: message.into(),
             transient: false,
             kind: ProviderFailureKind::General,
+            usage: None,
         }
     }
 
@@ -292,6 +315,7 @@ impl ProviderFailure {
             message: message.into(),
             transient: true,
             kind: ProviderFailureKind::General,
+            usage: None,
         }
     }
 
@@ -304,6 +328,7 @@ impl ProviderFailure {
             ),
             transient: false,
             kind: ProviderFailureKind::LocalOnlySource(source_document_id),
+            usage: None,
         }
     }
 
@@ -316,6 +341,7 @@ impl ProviderFailure {
             ),
             transient: false,
             kind: ProviderFailureKind::ArchivedSource(source_document_id),
+            usage: None,
         }
     }
 
@@ -328,6 +354,18 @@ impl ProviderFailure {
     #[must_use]
     pub fn is_transient(&self) -> bool {
         self.transient
+    }
+
+    /// Preserve reported spend even when a paid response is rejected.
+    #[must_use]
+    pub fn with_usage(mut self, usage: Option<ProviderUsage>) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    #[must_use]
+    pub fn usage(&self) -> Option<&ProviderUsage> {
+        self.usage.as_ref()
     }
 }
 
@@ -374,11 +412,11 @@ pub trait DraftProvider {
     }
 }
 
-/// Produces a short concept-level explanation when no source span exists.
+/// Produces reusable concept study material using authorized source context.
 pub trait ReferenceNoteProvider {
     fn model(&self) -> GeneratedPromptModel;
 
-    /// Generate one short note for the concept behind a review item.
+    /// Generate one reusable explanation for the concept behind a review item.
     ///
     /// # Errors
     ///
@@ -387,6 +425,18 @@ pub trait ReferenceNoteProvider {
         &self,
         request: &ReferenceNoteRequest,
     ) -> Result<ReferenceNoteDraft, ProviderFailure>;
+
+    /// Accounting-aware boundary for evals and callers with usage receipts.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same failures as [`Self::explain_concept`].
+    fn explain_concept_with_usage(
+        &self,
+        request: &ReferenceNoteRequest,
+    ) -> Result<(ReferenceNoteDraft, Option<ProviderUsage>), ProviderFailure> {
+        self.explain_concept(request).map(|note| (note, None))
+    }
 }
 
 /// Produces easier bridge material for a struggling parent item.
@@ -688,8 +738,33 @@ impl BridgeMaterialProvider for FakeModelProvider {
                 })
             },
         )?;
-        let answer = request.parent_expected_answer.clone();
-        let cue = lead_words(&answer, 5);
+        let recent_miss = request.recent_performance.iter().find(|attempt| {
+            matches!(
+                attempt.verdict.as_deref(),
+                Some("wrong" | "close" | "revealed")
+            )
+        });
+        let cue = request
+            .parent_expected_answer
+            .split_whitespace()
+            .find(|word| {
+                recent_miss.is_some_and(|attempt| {
+                    !attempt
+                        .submitted_answer
+                        .split_whitespace()
+                        .any(|submitted| submitted.eq_ignore_ascii_case(word))
+                })
+            })
+            .map_or_else(
+                || lead_words(&request.parent_expected_answer, 1),
+                str::to_owned,
+            );
+        let answer = request
+            .parent_expected_answer
+            .split_whitespace()
+            .next_back()
+            .unwrap_or_default()
+            .to_owned();
 
         Ok(BridgeMaterial {
             model: ReferenceNoteProvider::model(self),
@@ -699,10 +774,10 @@ impl BridgeMaterialProvider for FakeModelProvider {
                     index: 1,
                     concept: request.concept_label.clone(),
                     question: format!(
-                        "Which smaller cue helps with \"{}\"?",
-                        request.parent_prompt
+                        "For {}, which missing component should be included?",
+                        request.concept_label
                     ),
-                    answer: cue.clone(),
+                    answer: cue,
                     evidence: None,
                     distractors: vec![
                         "A different source detail".to_owned(),
@@ -717,7 +792,8 @@ impl BridgeMaterialProvider for FakeModelProvider {
                     index: 2,
                     concept: request.concept_label.clone(),
                     question: format!(
-                        "Use the cue \"{cue}\" to answer the original item in one step."
+                        "For {}, which component completes the final part of the relationship?",
+                        request.concept_label
                     ),
                     answer,
                     evidence: None,
@@ -778,8 +854,15 @@ pub fn enforce_content_policy(
     source: &SourceDocument,
     mut drafts: ProviderDrafts,
 ) -> ProviderDrafts {
-    let classification = classify_learning_intent(source);
     let body = source.body.as_deref().unwrap_or_default();
+    if body.len() > 64 * 1024 {
+        drafts.candidates.clear();
+        drafts
+            .failures
+            .push("Source exceeds the 64 KiB generation limit; split the capture.".to_owned());
+        return drafts;
+    }
+    let classification = classify_learning_intent(source);
     match classification.intent {
         LearningIntent::EnumerableSet => {
             drafts.learning_intent = Some(classification.intent);
@@ -815,6 +898,10 @@ pub fn enforce_content_policy(
         LearningIntent::ConceptUnderstanding
         | LearningIntent::FactRecall
         | LearningIntent::ProcedureProcess => {}
+    }
+    if drafts.candidates.len() > 60 {
+        drafts.candidates.clear();
+        drafts.failures.push("This source requires more than 60 drafts for complete coverage; split the capture rather than study a silently truncated set.".to_owned());
     }
     drafts
 }
@@ -858,16 +945,21 @@ fn enumerable_entries(body: &str) -> Vec<EnumerableEntry> {
         return mappings;
     }
 
-    list_entries(&non_empty_lines(body))
+    let lines = non_empty_lines(body);
+    let mut positions = lines.iter().enumerate();
+    list_entries(&lines)
         .into_iter()
         .enumerate()
-        .map(|(position, (answer, _evidence))| EnumerableEntry {
-            cue: (position + 1).to_string(),
-            answer,
-            // A one-line entry such as `1. Alpha` is too short for the
-            // production provenance floor. Cite the complete source list so
-            // the draft remains grounded without weakening that trust gate.
-            evidence: body.trim().to_owned(),
+        .map(|(position, (answer, evidence))| {
+            let line_position = positions
+                .find(|(_, line)| line.as_str() == evidence)
+                .expect("list entries retain their original source line")
+                .0;
+            EnumerableEntry {
+                cue: (position + 1).to_string(),
+                answer,
+                evidence: sequential_evidence(&lines, line_position),
+            }
         })
         .collect()
 }
@@ -994,7 +1086,7 @@ fn enumerable_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandid
                 index: position + 1,
                 concept: format!("{}: {}", source.title, entry.cue),
                 question,
-                answer: entry.answer.clone(),
+                answer: entry.answer,
                 evidence: Some(entry.evidence),
                 distractors: Vec::new(),
                 worked_solution: None,
@@ -1107,12 +1199,11 @@ fn count_fact_sentences(body: &str) -> usize {
 
 fn verbatim_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandidate> {
     let units = sequential_units(body);
-    let source_evidence = body.trim().to_owned();
     units
         .iter()
         .enumerate()
         .map(|(position, unit)| {
-            let (question, activity_stage) = if position == 0 {
+            let (mut question, mut activity_stage) = if position == 0 {
                 (
                     format!("Recite the opening line of {} exactly.", source.title),
                     "free-recall",
@@ -1123,15 +1214,38 @@ fn verbatim_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandidat
                     "cued-recall",
                 )
             };
+            // An incipit may also be the title, and a refrain may repeat the
+            // preceding line. Neither is a retrieval cue for that same answer.
+            // Use another source line when available without inventing context
+            // or exempting recitation from the shared answer-leakage gate.
+            let answer = crate::normalize_for_match(unit);
+            if crate::token_sequence_present(&crate::normalize_for_match(&question), &answer) {
+                if let Some((cue_position, cue)) =
+                    units.iter().enumerate().find(|(cue_position, cue)| {
+                        *cue_position != position
+                            && !crate::token_sequence_present(
+                                &crate::normalize_for_match(cue),
+                                &answer,
+                            )
+                    })
+                {
+                    question = format!(
+                        "Recite line {} exactly, using line {} as a cue: {cue}",
+                        position + 1,
+                        cue_position + 1,
+                    );
+                    activity_stage = "cued-recall";
+                }
+            }
             DraftCandidate {
                 index: position + 1,
                 concept: format!("{} line {}", source.title, position + 1),
                 question,
                 answer: unit.clone(),
-                // Keep the exact unit as the answer, but cite the complete
-                // source so short verse lines clear the production trust
-                // floor without weakening evidence_quote_matches.
-                evidence: Some(source_evidence.clone()),
+                // Quote only this unit plus enough adjacent context to clear
+                // the trust floor. A long passage must not be copied into
+                // every draft or exceed the per-quote content bound.
+                evidence: Some(sequential_evidence(&units, position)),
                 distractors: Vec::new(),
                 worked_solution: Some(format!("The exact source line is: {unit}")),
                 activity_kind: GeneratedLearningActivityKind::Exercise,
@@ -1140,6 +1254,27 @@ fn verbatim_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandidat
             }
         })
         .collect()
+}
+
+fn sequential_evidence(units: &[String], position: usize) -> String {
+    let word_count = |unit: &str| {
+        unit.split(|character: char| !character.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .take(crate::MIN_EVIDENCE_WORDS)
+            .count()
+    };
+    let mut start = position;
+    let mut end = position + 1;
+    let mut words = word_count(&units[position]);
+    while words < crate::MIN_EVIDENCE_WORDS && end < units.len() {
+        words += word_count(&units[end]);
+        end += 1;
+    }
+    while words < crate::MIN_EVIDENCE_WORDS && start > 0 {
+        start -= 1;
+        words += word_count(&units[start]);
+    }
+    units[start..end].join("\n")
 }
 
 fn sequential_units(body: &str) -> Vec<String> {

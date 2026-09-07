@@ -1,0 +1,23 @@
+{
+  "id": "conditional-boiling-point",
+  "title": "Conditions on a boiling point",
+  "category": "adversarial-conditions-and-distractors",
+  "body": "Pure water boils at 100 degrees Celsius at standard atmospheric pressure of 101.325 kilopascals. Lower external pressure lowers its boiling point. Boiling occurs when the liquid's vapor pressure equals the external pressure. The value 100 degrees Celsius is not a universal boiling point at every altitude or pressure.",
+  "expect": {
+    "min_drafts": 2,
+    "max_drafts": 4,
+    "key_terms": ["pressure", "100", "vapor"],
+    "source_supported": true,
+    "forbidden_claims": ["always boils at 100", "regardless of pressure", "110 degrees Celsius", "higher altitudes raise"]
+  },
+  "reference": {
+    "concept": "Boiling and external pressure",
+    "question": "What must the vapor pressure equal for a liquid to boil?",
+    "answer": "external pressure",
+    "explanation_terms": ["vapor pressure", "external pressure", "boiling"],
+    "example_terms": ["pressure", "lower"],
+    "distinction_terms": ["100", "pressure"],
+    "source_supported": true,
+    "forbidden_claims": ["always boils at 100", "regardless of pressure"]
+  }
+}

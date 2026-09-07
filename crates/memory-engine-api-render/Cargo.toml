@@ -7,10 +7,11 @@ description = "Server-rendered HTML and design previews for the Memory Engine HT
 
 [dependencies]
 memory-engine-persistence = { path = "../memory-engine-persistence" }
-memory-engine-api-state = { path = "../memory-engine-api-state" }
+memory-engine-api-state = { path = "../memory-engine-api-state", default-features = false }
 memory-engine-study = { path = "../memory-engine-study" }
 
 [dev-dependencies]
+memory-engine-api-state = { path = "../memory-engine-api-state" }
 memory-engine-core = { path = "../memory-engine-core" }
 memory-engine-persistence = { path = "../memory-engine-persistence" }
 

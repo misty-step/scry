@@ -58,65 +58,117 @@ Use benchmark output to compare branches manually. If a future regression is
 large and repeatable, shape a ticket with an explicit budget and enough history
 to avoid brittle thresholds.
 
-## Generation model evals
+## Generation, reference, and Bridge evals
 
-The prose→quiz generation pipeline is scored by deterministic judges (no model
-in the judge loop) over a fixed corpus in
-`crates/memory-engine-bench/corpus/generation/`. The bench runs the selected
-provider through the same beta generation runner used at runtime, so receipts
-score accepted drafts after the production trust gate, duplicate suppression,
-and bounded repair pass rather than raw provider output.
+The repository-owned corpus in
+`crates/memory-engine-bench/corpus/generation/` exercises the production quiz
+runner, including the trust gate, source coverage policy, duplicate suppression,
+and one bounded repair pass. Annotated reference cases also exercise actual
+authorized source context and the reusable study-note provider. The manual Bridge
+fixture tests smaller prerequisites for a concrete recent miss.
 
-Run against the deterministic fake provider (the CI-safe default — no network):
+The default is an explicitly labeled deterministic fake, with no network:
 
 ```sh
 cargo run -p memory-engine-bench -- generation
 ```
 
-Run a live model field comparison through Mint's credential-safe egress path:
+The fake is an offline plumbing/contract fixture, **not a quality baseline**. Its
+reference explanations are intentionally not mistaken for useful model output.
+Do not interpret a zero-dollar/unreported-usage fake run as a model quality or
+production cost result. CI does not call live models.
+
+### Paired field comparisons
+
+Keep the model, corpus revision, draft ceiling, transport, and judging rubric
+fixed when comparing prompt/implementation changes. Repeat paired runs to expose
+sampling variance. Existing receipts can be supplied with `--baseline`; model
+judge keep rates and reference mechanical pass rates are paired by source ID.
+Unmatched sources and old receipts without reference rows do not establish a
+reference improvement.
+
+A credential-safe explicit field invocation through the existing Mint path is:
 
 ```sh
-# MINT_BASE_URL and the runtime credential alias are private environment inputs.
+# These variables are private runtime inputs, not values to commit or print.
 OPENROUTER_BASE_URL="${MINT_BASE_URL}/proxy/https/openrouter.ai/api/v1" \
 OPENROUTER_PROXY_TOKEN="${OPENROUTER_MINT_ALIAS:?private runtime alias required}" \
 cargo run -p memory-engine-bench -- generation --model google/gemini-3.7-flash \
-  --prompt principled --out docs/evals/generation-<model>-<date>.md
+  --prompt principled --baseline docs/evals/generation-baseline.md \
+  --out docs/evals/generation-candidate-<date>.md
 ```
 
-Never commit the private base URL or runtime credential alias. The dated
-Mint-routed field receipt is [`generation-061-live-mint-2026-07-21.md`](evals/generation-061-live-mint-2026-07-21.md).
+`--prompt minimal` is the comparison variant; runtime remains principled.
+`--max-drafts <n>` changes the requested ceiling, clamped to 1–60 by the provider.
+The default model stays `google/gemini-3.7-flash` unless dated paired Scry evidence
+supports a change. A newer vendor model announcement is not such evidence.
+Historical receipts remain historical, including
+[`generation-061-live-mint-2026-07-21.md`](evals/generation-061-live-mint-2026-07-21.md)
+and [`generation-field-2026-06-11.md`](evals/generation-field-2026-06-11.md).
 
-`--max-drafts <n>` changes the model draft budget for field sweeps. Keep the
-runtime prompt on `prompt-principled` unless a shaped ticket adds and proves a
-new prompt variant with a judged receipt that clears its oracle.
+### What the receipt measures
 
-Judges score runtime acceptance (accepted persisted drafts divided by persisted
-drafts plus pre-persistence trust-gate failures), provenance (evidence quote
-actually in source — the same predicate the production trust gate enforces),
-answerability,
-duplicate rate, count-in-range, key-term coverage, intent shape match, and
-variant quality. Duplicate rate uses the same cheap concept + answer + question
-surface similarity predicate as the production generation gate, so near-copy
-questions that would be rejected at runtime are filtered before the receipt
-judges accepted output. The production trust gate also rejects compound MCQs
-that ask for multiple atoms and MCQ distractors that duplicate the correct
-answer; rejected candidates are now eligible for the same bounded one-repair
-pass even when the source already produced other accepted drafts. Variant
-quality checks same-concept same-stage groups for meaningfully different
-question surfaces and rejects questions that leak the answer text.
-Intent shape match is the 051 capture-anything oracle: fixtures annotate
-verbatim memorization, enumerable sets, concept understanding, fact recall, and
-procedure/process sources, and the provider must emit different activity kinds,
-stages, and distractor shapes rather than collapsing them into generic
-recognition quizzes. Enumerable and sequential sources additionally pass
-through deterministic source coverage policy so a model cannot omit a required
-mapping or recitation unit; conceptual prose keeps the fewer-better path. The
-receipt also runs the selected provider through a
-bridge-material fixture that must use the recent failed attempt context,
-produce lower-stage items, stay faithful to the parent concept, and avoid
-duplicates against the parent item. The receipt also reports tokens, dollars,
-and latency p50/p95.
+- **Acceptance and failures:** accepted persisted drafts versus accepted,
+  rejected, and pre-persistence failures. Empty output is not perfect acceptance.
+  Provider/repair failures remain visible even when the generation runner
+  records them instead of throwing.
+- **Truthful provenance:** separate source-supported and model-expanded counts;
+  quote verification applies to claimed quotes only. A retained topic seed is
+  not reinterpreted as evidence by the bench. Answerability is a lexical proxy,
+  not semantic entailment or external fact-checking.
+- **Quiz quality guards:** duplicate rate, expected counts, atomicity/leakage
+  gates, same-concept variant quality, keyed-initial distractor cohesion,
+  standalone questions, and content-fit/intent/coverage oracles. Key-term
+  coverage counts correct content, **not distractors**.
+- **Adversarial behavior:** source-embedded role/delimiter injection, forbidden
+  claims, qualified observational findings, conditional numbers, and expected
+  grounding lanes. A real quote about an unrelated subject cannot justify an
+  invented answer.
+- **Reference usefulness guards:** a substantive explanation, concrete example,
+  key distinctions/common confusions, and a retrieval question; task-specific
+  section term coverage; exact authorized-source quotations or explicit
+  model-expanded attribution; forbidden-claim checks. Six corpus cases currently
+  cover technical, mathematical, topic-only, and adversarial reference needs.
+  These are necessary mechanical checks, not a human usefulness verdict.
+- **Manual Bridge:** 2–3 lower-stage, same-concept, non-duplicate prerequisites
+  that target the observed missing component, not merely a relabeled parent.
+- **Cost and latency:** reported token/cost usage includes rejected paid
+  responses and failed repair. Missing costs remain unknown through aggregation;
+  a transient retry makes total cost uncertain if the first response was lost.
+  Receipts distinguish reported subtotals from totals and report unobserved
+  calls. Zero tokens may mean unreported, not free. Latency includes body reads
+  and native retry/backoff; source-clustered intervals expose small-sample
+  uncertainty rather than claiming that a few points are a win.
 
-CI never calls live models; field runs are explicit and local, and their dated
-receipts live in `docs/evals/`. The 2026-06-11 field run that picked the
-default model is `docs/evals/generation-field-2026-06-11.md`.
+Optional `--judge <model-id>` adds the existing anchored quiz rubric. Use a
+different model family where possible; the receipt warns about self-preference.
+The judge receives serialized untrusted source/candidate data and does not punish
+an appropriate short-answer card merely for lacking MCQ options. Its outputs must
+be calibrated against human decisions before they are used to select a default.
+
+Receipts include actual accepted quiz and reference text for **blinded human
+review**. Hide model/variant labels and randomize left/right order. Record
+keep/revise/reject plus the concrete defect for factual faithfulness and
+attribution, atomicity, retrieval depth, plausible mutually exclusive options,
+explanatory substance, example usefulness, and accurate distinctions. A mechanical
+pass without human calibration is labeled human-unassessed, not “verified.”
+
+### Boundaries and regression coverage
+
+`memory-engine-openrouter::content` is transport-free; Worker Fetch and the
+optional native HTTP adapter use the same request/schema/parsing contract.
+Compile a Worker consumer with the dependency's `default-features = false`.
+Every transport still owns credential injection, bounded reads, the deadline,
+and the at-most-one transient retry. The portable module itself does no IO.
+
+The production limits and primary-source rationale are recorded in
+[the generation research note](research/prose-to-quiz-generation.md). Offline
+regressions cover source authorization/body retention, delimiter injection,
+unsupported answers, fabricated quotes, strict missing/unknown fields,
+truncation/refusal, oversized input/output, usage on rejection/repair,
+answer leakage, overlapping/duplicate MCQs, and cached Bridge references.
+Study-layer tests own the durable second-reference-read/no-new-model-call
+contract and learner approval lifecycle.
+
+No live field result is claimed by the 2026-09-06 implementation slice. The
+integration owner records actual validation and field receipts separately.

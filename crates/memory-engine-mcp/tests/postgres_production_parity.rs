@@ -77,7 +77,7 @@ async fn queued_generation_succeeds_on_postgres_where_the_legacy_route_is_refuse
     .header("Authorization", &authorization)
     .send_json(json!({
         "title": "postgres parity fixture",
-        "body": "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.",
+        "body": "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: ABLE, ADAM\nReference: The NATO phonetic alphabet word for A is ALFA.",
     }))
     .expect("create source")
     .body_mut()

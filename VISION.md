@@ -52,9 +52,28 @@ Scry's Rust engine keeps the pure kernel framework-free and persistence-free. `c
 
 Boundary crates own orchestration, persistence, source ingestion, generation providers, sessions, identity, API routes, rendering, clients, deployment, and QA. AI may generate, explain, adapt, or grade material through an explicit boundary; deterministic Rust owns policy and state transitions. Keep the boundary explicit instead of moving service complexity into the kernel.
 
-## Current Production Surface
+## Hosting and Live Proof
 
-The current production proof surface is the native Rust `memory-engine-api` process on Misty Step's isolated DigitalOcean public application host, backed by Neon Postgres and served at `https://scry.study`. Its deployment, auth, storage, rollback, and smoke contract live in `docs/runbook.md`. This document describes the product; the runbook and executable QA documents provide operational proof.
+Scry's production destination is Cloudflare: a Rust Wasm Worker, one SQLite-backed
+Scry Durable Object as the invite-beta transaction owner, alarms for leased
+generation/reminders, private R2 recovery, and Resend over Worker Fetch. There
+is no external production Postgres, D1, Queue, KV consistency cache, or container
+in that architecture. Staging and production isolate namespaces and buckets.
+New actors start paused; fingerprint-guarded activation is durable application
+state, not an environment secret change or another Worker version.
+
+The approved interim origin is `https://scry.misty-step.workers.dev`; registrar
+access is not required to use it. The hosting decision is not a completed-cutover
+claim. The native DigitalOcean/Postgres service remains authoritative until Main
+records the source-bound release, activated same-byte staging proof, stopped
+source writers, final full-history import/readback, restore drill, activation,
+and deployed browser proof. Session records are preserved, but host-scoped
+cookies require a fresh browser sign-in on workers.dev. Resend provider
+acceptance is not proof of inbox placement.
+Only Main may stop source writers, change the old-host reverse proxy/redirect,
+or retire the old host after continuity and recovery evidence. Preserve its
+backups. `docs/runbook.md` separates planned operations from proved results and
+owns the explicit promotion, pause/activation, and rollback contract.
 
 ## Proof Bar
 
@@ -76,4 +95,4 @@ The first real outcome gate is a 30-day retention proof, not a seeded fixture, a
 - `SPEC.md` and `docs/rust-migration.md` retain technical strategy and cutover context; this vision governs product positioning.
 - `docs/runbook.md`, `docs/qa/system.md`, `docs/dogfood/`, and `docs/beta/` hold operational and executable evidence.
 - Work starts from the current operator request; ownership and proof live in the session or PR. GitHub Issues preserves historical context and optional issue attribution.
-- `bun run ci` is the direct host Cargo fast gate; `bun run ci:full` is the Dagger-backed ship-parity gate. This docs correction does not replace Main-owned gates.
+- `bun run ci:local` is the host Cargo plus real Wasm/workerd fast gate; `bun run ci:full` is the Dagger ship-parity gate with live Postgres reference tests and Gitleaks. Native compatibility tests are retained, but native hosting is not the deployment destination.

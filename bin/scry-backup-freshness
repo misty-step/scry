@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Fail closed when Scry recovery evidence is missing or stale."""
+import argparse
+import os
+from pathlib import Path
+import re
+import sys
+import time
+
+CANDIDATES = (
+    Path("/usr/local/lib/scry"),
+    Path(__file__).resolve().parent.parent / "scripts/lib",
+)
+for candidate in CANDIDATES:
+    if (candidate / "scry_ops.py").is_file():
+        sys.path.insert(0, str(candidate))
+        break
+
+from scry_ops import OperationError  # noqa: E402
+
+BACKUP_DIR = Path(os.environ.get("SCRY_BACKUP_DIR", "/var/backups/scry"))
+STATE_DIR = Path(os.environ.get("SCRY_BACKUP_STATE", "/var/lib/scry-backup"))
+ENV_FILE = Path(os.environ.get("SCRY_BACKUP_ENV_FILE", "/etc/public-apps/scry-backup.env"))
+DEFAULT_MAX_AGE = 26 * 3600
+
+
+def newest(directory, pattern):
+    matches = [path for path in Path(directory).glob("*") if path.is_file() and pattern.search(path.name)]
+    if not matches:
+        return None
+    return max(matches, key=lambda path: path.stat().st_mtime)
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--max-age-seconds", type=int, default=int(os.environ.get("SCRY_BACKUP_MAX_AGE", DEFAULT_MAX_AGE)))
+    args = parser.parse_args(argv)
+    try:
+        if not ENV_FILE.is_file():
+            raise OperationError("off-host backup is not provisioned; recovery is not available")
+        if (STATE_DIR / "FAILURE").is_file():
+            raise OperationError("off-host backup FAILURE flag is present")
+        last_run = STATE_DIR / "last-run"
+        if not last_run.is_file():
+            raise OperationError("off-host backup has never recorded a successful run")
+        last = last_run.read_text().strip()
+        if "success" not in last:
+            raise OperationError("off-host backup last-run is not a success")
+        dump = newest(BACKUP_DIR, re.compile(r"^scry-.*\.dump$"))
+        if dump is None:
+            raise OperationError("no local custom-format dump is present")
+        age = time.time() - dump.stat().st_mtime
+        if age > args.max_age_seconds:
+            raise OperationError("newest local dump is stale")
+        print(f"backup freshness ok age_seconds={int(age)}")
+        return 0
+    except OperationError as error:
+        print(f"scry-backup-freshness: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

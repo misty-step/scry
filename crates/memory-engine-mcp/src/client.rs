@@ -883,7 +883,7 @@ mod tests {
         .header("Authorization", &format!("Bearer {session_token}"))
         .send_json(json!({
             "title": "pending-draft fixture",
-            "body": "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\nDistractors: ALFA, CHARLIE\nReference: The NATO phonetic alphabet word for B is BRAVO.",
+            "body": "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\nDistractors: BAKER, BOSTON\nReference: The NATO phonetic alphabet word for B is BRAVO.",
         }))
         .expect("create source")
         .body_mut()
@@ -948,7 +948,7 @@ mod tests {
 
         let deck_body = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\n\
             Question: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\n\
-            Distractors: BRAVO, CHARLIE\n\
+            Distractors: ABLE, ADAM\n\
             Reference: The NATO phonetic alphabet word for A is ALFA.";
 
         let (_deck, outcome) = client

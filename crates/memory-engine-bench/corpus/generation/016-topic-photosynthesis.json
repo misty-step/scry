@@ -1,0 +1,22 @@
+{
+  "id": "topic-photosynthesis",
+  "title": "Photosynthesis",
+  "category": "topic-seed",
+  "body": "photosynthesis",
+  "expect": {
+    "min_drafts": 2,
+    "max_drafts": 5,
+    "key_terms": ["light", "chloroplast", "energy"],
+    "source_supported": false
+  },
+  "reference": {
+    "concept": "Photosynthesis and energy conversion",
+    "question": "Which organelle carries out photosynthesis in plant cells?",
+    "answer": "chloroplast",
+    "explanation_terms": ["chloroplast", "light", "energy"],
+    "example_terms": ["plant", "light"],
+    "distinction_terms": ["energy", "matter"],
+    "source_supported": false,
+    "forbidden_claims": ["the source proves", "the source states that"]
+  }
+}

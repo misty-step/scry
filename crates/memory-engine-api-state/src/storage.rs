@@ -13,7 +13,7 @@ use memory_engine_service::{
 use memory_engine_study::{BetaStudySession, BetaStudySourceInput};
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use crate::native::{
     account_store_path, app_session_max_age_ms, auth_challenge_consumed_path, auth_challenge_path,
     browser_session_path, file_content_feedback_failure, file_study_failure, is_secret_hash,
     persisted_project_deck_exists, persisted_source_exists, persisted_sources,
@@ -168,7 +168,7 @@ fn recover_postgres_submit(
             idempotency_key: consumed,
         }) if consumed == idempotency_key => Err(ApiFailure::not_found("Review unit not found.")),
         None => {
-            let mut study = BetaStudySession::from_store(account, now);
+            let mut study = BetaStudySession::for_review(account, now);
             if !study
                 .restore_graded_review(review_unit_id, idempotency_key)
                 .map_err(postgres_study_failure)?
@@ -196,6 +196,76 @@ fn recover_postgres_submit(
             Err(ApiFailure::not_found("Review unit not found."))
         }
     }
+}
+
+/// Auth entrypoints converge here after validating their own session scope.
+fn submit_postgres_review(
+    account: AccountStudyStore<'_>,
+    now: fn() -> i64,
+    review_unit_id: &str,
+    request: SubmitReviewRequest,
+) -> Result<SubmitReviewOutcome, ApiFailure> {
+    let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
+    if account
+        .applied_review_idempotency_key_exists(&request.idempotency_key)
+        .map_err(postgres_failure)?
+    {
+        return recover_postgres_submit(account, now, review_unit_id, &request.idempotency_key);
+    }
+    let idempotency_key = request.idempotency_key.clone();
+    let mut study = BetaStudySession::for_review(account, now);
+    require_current_review_postgres(&mut study, review_unit_id)?;
+    let view = study
+        .submit_answer_with_idempotency_key(
+            request.answer,
+            request.response_time_ms,
+            Some(request.idempotency_key),
+        )
+        .map_err(study_failure)?;
+    let response = StudyViewResponse::from_view(view);
+    let mut account = study.into_store();
+    let active = serde_json::to_value(ActiveGradedReview::Active {
+        review_unit_id: review_unit_id.to_owned(),
+        idempotency_key: idempotency_key.clone(),
+        view: Box::new(response.clone()),
+    })
+    .map_err(|error| ApiFailure::internal(error.to_string()))?;
+    if !account
+        .save_active_graded_review(&active, &idempotency_key, false)
+        .map_err(postgres_failure)?
+    {
+        return Err(ApiFailure::internal(
+            "Graded review was consumed before it could be presented.".to_owned(),
+        ));
+    }
+    Ok(SubmitReviewOutcome { view: response })
+}
+
+fn next_postgres_review(
+    account: AccountStudyStore<'_>,
+    now: fn() -> i64,
+) -> Result<StudyViewResponse, ApiFailure> {
+    let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
+    let expected_idempotency_key = match decode_active_graded_review(
+        account.active_graded_review().map_err(postgres_failure)?,
+    )? {
+        Some(ActiveGradedReview::Active {
+            idempotency_key, ..
+        }) => Some(idempotency_key),
+        Some(ActiveGradedReview::Consumed { .. }) => None,
+        None => account
+            .latest_applied_review_idempotency_key()
+            .map_err(postgres_failure)?,
+    };
+    let mut study = BetaStudySession::for_review(account, now);
+    let response = StudyViewResponse::from_view(study.start().map_err(study_failure)?);
+    if let Some(idempotency_key) = expected_idempotency_key {
+        study
+            .into_store()
+            .consume_active_graded_review(&idempotency_key)
+            .map_err(postgres_failure)?;
+    }
+    Ok(response)
 }
 
 #[derive(Clone, Debug)]
@@ -758,6 +828,16 @@ impl StudyStorage {
             .reveal_review(account_id, store_path, review_unit_id)
     }
 
+    pub(crate) fn resume_review(
+        &self,
+        account_id: &str,
+        store_path: &FsPath,
+        review_unit_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        self.inner
+            .resume_review(account_id, store_path, review_unit_id)
+    }
+
     pub(crate) fn learn_more_review(
         &self,
         account_id: &str,
@@ -1253,6 +1333,12 @@ trait StudyStorageAdapter: fmt::Debug + Send + Sync {
         store_path: &FsPath,
         review_unit_id: &str,
     ) -> Result<StudyViewResponse, ApiFailure>;
+    fn resume_review(
+        &self,
+        account_id: &str,
+        store_path: &FsPath,
+        review_unit_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure>;
     fn learn_more_review(
         &self,
         account_id: &str,
@@ -1347,10 +1433,13 @@ impl FileStudyStorage {
         if !persisted_source_exists(store_path, source_id)? {
             return Err(ApiFailure::not_found("Source not found."));
         }
-        let mut study = crate::open_study_session(store_path, self.now)?;
-        let view =
-            crate::run_source_generation_with_provider(&mut study, source_id, Some(provider))
-                .map_err(study_failure)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
+        let view = crate::native::run_source_generation_with_provider(
+            &mut study,
+            source_id,
+            Some(provider),
+        )
+        .map_err(study_failure)?;
         Ok(StudyViewResponse::from_view(view))
     }
 
@@ -1359,7 +1448,7 @@ impl FileStudyStorage {
         store_path: &FsPath,
         operation: impl FnOnce(&mut BetaStudySession) -> Result<R, ApiFailure>,
     ) -> Result<R, ApiFailure> {
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         operation(&mut study)
     }
 
@@ -1394,7 +1483,8 @@ impl FileStudyStorage {
         active: &ActiveGradedReview,
         recovering: bool,
     ) -> Result<bool, ApiFailure> {
-        let _lock = crate::file_lock::acquire(&Self::active_graded_review_lock_path(store_path))?;
+        let _lock =
+            crate::native::file_lock::acquire(&Self::active_graded_review_lock_path(store_path))?;
         let idempotency_key = match active {
             ActiveGradedReview::Active {
                 idempotency_key, ..
@@ -1421,7 +1511,8 @@ impl FileStudyStorage {
         let Some(expected_idempotency_key) = expected_idempotency_key else {
             return Ok(());
         };
-        let _lock = crate::file_lock::acquire(&Self::active_graded_review_lock_path(store_path))?;
+        let _lock =
+            crate::native::file_lock::acquire(&Self::active_graded_review_lock_path(store_path))?;
         match Self::load_active_graded_review(store_path)? {
             Some(ActiveGradedReview::Active {
                 idempotency_key, ..
@@ -1448,7 +1539,7 @@ impl FileStudyStorage {
     fn latest_applied_review_idempotency_key(
         store_path: &FsPath,
     ) -> Result<Option<String>, ApiFailure> {
-        let store = crate::open_persistence_store(store_path)?;
+        let store = crate::native::open_persistence_store(store_path)?;
         Ok(store
             .snapshot()
             .applied_reviews
@@ -1468,7 +1559,7 @@ impl FileStudyStorage {
         store_path: &FsPath,
         idempotency_key: &str,
     ) -> Result<bool, ApiFailure> {
-        let store = crate::open_persistence_store(store_path)?;
+        let store = crate::native::open_persistence_store(store_path)?;
         Ok(store
             .snapshot()
             .applied_reviews
@@ -1537,8 +1628,9 @@ impl FileStudyStorage {
         path: &FsPath,
         raw_token: &str,
     ) -> Result<String, ApiFailure> {
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_browser_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_browser_sessions.lock"),
+        )?;
         let Ok(saved) = fs::read_to_string(path) else {
             return Ok(secret_hash(raw_token));
         };
@@ -1608,8 +1700,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         account_id: &str,
         session_token: &str,
     ) -> Result<(), ApiFailure> {
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_api_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_api_sessions.lock"),
+        )?;
         let token_hash = secret_hash(session_token);
         let now_ms = self.now_ms();
         let expires_at_ms = now_ms.saturating_add(app_session_max_age_ms());
@@ -1650,7 +1743,8 @@ impl StudyStorageAdapter for FileStudyStorage {
             .join(&token_hash)
             .join("session");
         if !path.exists() {
-            let _lock = crate::file_lock::acquire(&self.store_root.join("_api_sessions.lock"))?;
+            let _lock =
+                crate::native::file_lock::acquire(&self.store_root.join("_api_sessions.lock"))?;
             if !path.exists() {
                 self.migrate_legacy_account_session(account_id, self.now_ms())?;
             }
@@ -1678,8 +1772,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         session_token: &str,
         now_ms: i64,
     ) -> Result<bool, ApiFailure> {
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_api_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_api_sessions.lock"),
+        )?;
         let token_hash = secret_hash(session_token);
         let path = self
             .store_root
@@ -1727,8 +1822,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         now_ms: i64,
     ) -> Result<(), ApiFailure> {
         let preserved = self.browser_backed_session_hashes_for_account(account_id)?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_api_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_api_sessions.lock"),
+        )?;
         // A pre-hash-migration account may still carry a raw legacy token
         // (see `migrate_legacy_account_session`). Left alone, presenting it
         // later would lazily migrate a "revoked" session back to life, so
@@ -1838,10 +1934,12 @@ impl StudyStorageAdapter for FileStudyStorage {
         now_ms: i64,
         expires_at_ms: i64,
     ) -> Result<bool, ApiFailure> {
-        let _browser_lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_browser_sessions.lock"))?;
-        let _api_lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_api_sessions.lock"))?;
+        let _browser_lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_browser_sessions.lock"),
+        )?;
+        let _api_lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_api_sessions.lock"),
+        )?;
 
         let browser_path = browser_session_path(&self.store_root, session_id);
         let Ok(browser_saved) = fs::read_to_string(&browser_path) else {
@@ -1898,8 +1996,9 @@ impl StudyStorageAdapter for FileStudyStorage {
     }
     fn revoke_browser_session(&self, session_id: &str, now_ms: i64) -> Result<(), ApiFailure> {
         let path = browser_session_path(&self.store_root, session_id);
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_browser_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_browser_sessions.lock"),
+        )?;
         let Ok(saved) = fs::read_to_string(&path) else {
             return Ok(());
         };
@@ -1926,8 +2025,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         account_id: &str,
         now_ms: i64,
     ) -> Result<(), ApiFailure> {
-        let _lock =
-            crate::file_lock::acquire_blocking(&self.store_root.join("_browser_sessions.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &self.store_root.join("_browser_sessions.lock"),
+        )?;
         let root = self.store_root.join("_browser_sessions");
         let Ok(entries) = fs::read_dir(root) else {
             return Ok(());
@@ -2017,8 +2117,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         let account_dir = self.store_root.join(account_id);
         fs::create_dir_all(&account_dir)
             .map_err(|error| ApiFailure::internal(error.to_string()))?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&account_dir.join("return-notifications.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &account_dir.join("return-notifications.lock"),
+        )?;
         let path = account_dir.join("return-notifications.json");
         let existing = match fs::read(&path) {
             Ok(bytes) => Some(
@@ -2128,8 +2229,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         let account_dir = self.store_root.join(account_id);
         fs::create_dir_all(&account_dir)
             .map_err(|error| ApiFailure::internal(error.to_string()))?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&account_dir.join("return-notifications.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &account_dir.join("return-notifications.lock"),
+        )?;
         let path = account_dir.join("return-notifications.json");
         let Ok(bytes) = fs::read(&path) else {
             return Ok(false);
@@ -2165,8 +2267,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         let account_dir = self.store_root.join(&request.account_id);
         fs::create_dir_all(&account_dir)
             .map_err(|error| ApiFailure::internal(error.to_string()))?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&account_dir.join("return-notifications.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &account_dir.join("return-notifications.lock"),
+        )?;
         let now_ms = request.now_ms;
         let granted_at_ms = (self.now)();
         let claim_ttl_ms = request
@@ -2242,8 +2345,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         let account_dir = self.store_root.join(account_id);
         fs::create_dir_all(&account_dir)
             .map_err(|error| ApiFailure::internal(error.to_string()))?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&account_dir.join("return-notifications.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &account_dir.join("return-notifications.lock"),
+        )?;
         let sent_at_ms = (self.now)();
         let path = account_dir.join("return-notifications.json");
         let Ok(bytes) = fs::read(&path) else {
@@ -2277,8 +2381,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         let account_dir = self.store_root.join(account_id);
         fs::create_dir_all(&account_dir)
             .map_err(|error| ApiFailure::internal(error.to_string()))?;
-        let _lock =
-            crate::file_lock::acquire_blocking(&account_dir.join("return-notifications.lock"))?;
+        let _lock = crate::native::file_lock::acquire_blocking(
+            &account_dir.join("return-notifications.lock"),
+        )?;
         let now_ms = (self.now)();
         let path = account_dir.join("return-notifications.json");
         let Ok(bytes) = fs::read(&path) else {
@@ -2312,7 +2417,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         window_ms: i64,
         max_attempts: u32,
     ) -> Result<bool, ApiFailure> {
-        let _lock = crate::file_lock::acquire(&self.store_root.join("_rate_limits.lock"))?;
+        let _lock = crate::native::file_lock::acquire(&self.store_root.join("_rate_limits.lock"))?;
         let mut attempts_by_key = Vec::with_capacity(keys.len());
         for key in keys {
             let path = rate_limit_path(&self.store_root, key);
@@ -2469,7 +2574,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         source_id: &str,
         permission: SourcePermission,
     ) -> Result<(), ApiFailure> {
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         study
             .update_source_permission(source_id, permission)
             .map(drop)
@@ -2489,7 +2594,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         // persistence store owns the atomic commit path; holding the account
         // lock here would turn normal foreground keep or invalidation on
         // the same account into a spurious 409 for the duration of generation.
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         let view = run_source_generation(
             &mut study,
             source_id,
@@ -2511,7 +2616,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         if !persisted_source_exists(store_path, source_id)? {
             return Err(ApiFailure::not_found("Source not found."));
         }
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         let view = run_source_generation_with_run_id(
             &mut study,
             source_id,
@@ -2625,8 +2730,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         _account_id: &str,
         store_path: &FsPath,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        let _transition_lock =
-            crate::file_lock::acquire_blocking(&Self::review_transition_lock_path(store_path))?;
+        let _transition_lock = crate::native::file_lock::acquire_blocking(
+            &Self::review_transition_lock_path(store_path),
+        )?;
         let expected_idempotency_key = match Self::load_active_graded_review(store_path)? {
             Some(ActiveGradedReview::Active {
                 idempotency_key, ..
@@ -2634,7 +2740,7 @@ impl StudyStorageAdapter for FileStudyStorage {
             Some(ActiveGradedReview::Consumed { .. }) => None,
             None => Self::latest_applied_review_idempotency_key(store_path)?,
         };
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         let view = study.start().map_err(study_failure)?;
         let response = StudyViewResponse::from_view(view);
         Self::clear_active_graded_review(store_path, expected_idempotency_key.as_deref())?;
@@ -2646,7 +2752,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         _account_id: &str,
         store_path: &FsPath,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        let study = crate::open_study_session(store_path, self.now)?;
+        let study = crate::native::open_study_session(store_path, self.now)?;
         let view = study.view().map_err(study_failure)?;
 
         Ok(StudyViewResponse::from_view(view))
@@ -2658,10 +2764,33 @@ impl StudyStorageAdapter for FileStudyStorage {
         store_path: &FsPath,
         review_unit_id: &str,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         require_current_review(&mut study, review_unit_id)?;
         let view = study.reveal().map_err(study_failure)?;
 
+        Ok(StudyViewResponse::from_view(view))
+    }
+
+    fn resume_review(
+        &self,
+        _account_id: &str,
+        store_path: &FsPath,
+        review_unit_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        if let Some(ActiveGradedReview::Active {
+            review_unit_id: saved_id,
+            view,
+            ..
+        }) = Self::load_active_graded_review(store_path)?
+        {
+            if saved_id == review_unit_id {
+                return Ok(*view);
+            }
+        }
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
+        let view = study
+            .resume_review(review_unit_id)
+            .map_err(file_study_failure)?;
         Ok(StudyViewResponse::from_view(view))
     }
 
@@ -2673,7 +2802,19 @@ impl StudyStorageAdapter for FileStudyStorage {
     ) -> Result<StudyViewResponse, ApiFailure> {
         let provider_config = self.generation_provider_config.clone();
         self.with_locked_study(store_path, |study| {
-            require_current_review(study, review_unit_id)?;
+            let restored = match Self::load_active_graded_review(store_path)? {
+                Some(ActiveGradedReview::Active {
+                    review_unit_id: saved_id,
+                    idempotency_key,
+                    ..
+                }) if saved_id == review_unit_id => study
+                    .restore_graded_review(review_unit_id, &idempotency_key)
+                    .map_err(file_study_failure)?,
+                _ => false,
+            };
+            if !restored {
+                require_current_review(study, review_unit_id)?;
+            }
             let view = run_reference_generation(study, provider_config)?;
 
             Ok(StudyViewResponse::from_view(view))
@@ -2746,7 +2887,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         prompt: &str,
         expected_answer: &str,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        let mut study = crate::open_study_session(store_path, self.now)?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
         require_current_review(&mut study, review_unit_id)?;
         let view = study
             .edit_current_prompt(prompt, expected_answer)
@@ -2777,8 +2918,9 @@ impl StudyStorageAdapter for FileStudyStorage {
         request: SubmitReviewRequest,
         _timings: Option<&mut SubmitReviewTimings>,
     ) -> Result<SubmitReviewOutcome, ApiFailure> {
-        let _transition_lock =
-            crate::file_lock::acquire_blocking(&Self::review_transition_lock_path(store_path))?;
+        let _transition_lock = crate::native::file_lock::acquire_blocking(
+            &Self::review_transition_lock_path(store_path),
+        )?;
         let applied = !Self::review_already_applied(store_path, &request.idempotency_key)?;
         if !applied {
             let saved = Self::load_active_graded_review(store_path)?;
@@ -2805,7 +2947,7 @@ impl StudyStorageAdapter for FileStudyStorage {
                 return Err(ApiFailure::not_found("Review unit not found."));
             }
             if saved.is_none() {
-                let mut study = crate::open_study_session(store_path, self.now)?;
+                let mut study = crate::native::open_study_session(store_path, self.now)?;
                 if study
                     .restore_graded_review(review_unit_id, &request.idempotency_key)
                     .map_err(study_failure)?
@@ -2872,7 +3014,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         store_path: &FsPath,
         command: RecordContentFeedbackCommand,
     ) -> Result<memory_engine_service::ContentFeedback, ApiFailure> {
-        let mut store = crate::open_persistence_store(store_path)?;
+        let mut store = crate::native::open_persistence_store(store_path)?;
         record_content_feedback(&mut store, command).map_err(file_content_feedback_failure)
     }
 
@@ -2882,7 +3024,7 @@ impl StudyStorageAdapter for FileStudyStorage {
         store_path: &FsPath,
         review_unit_id: &str,
     ) -> Result<Option<String>, ApiFailure> {
-        let store = crate::open_persistence_store(store_path)?;
+        let store = crate::native::open_persistence_store(store_path)?;
         Ok(current_content_feedback_head(
             &store.snapshot().content_feedback,
             account_id,
@@ -3434,6 +3576,9 @@ impl StudyStorageAdapter for PostgresStudyStorage {
                         )
                         .map_err(postgres_failure)?;
                 }
+                account
+                    .copy_review_exposures(&snapshot.review_exposures)
+                    .map_err(postgres_failure)?;
                 Ok(())
             },
         )
@@ -3705,28 +3850,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
         _store_path: &FsPath,
     ) -> Result<StudyViewResponse, ApiFailure> {
         with_postgres_account(&self.database_url, account_id, self.now_ms(), |account| {
-            let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
-            let expected_idempotency_key = match decode_active_graded_review(
-                account.active_graded_review().map_err(postgres_failure)?,
-            )? {
-                Some(ActiveGradedReview::Active {
-                    idempotency_key, ..
-                }) => Some(idempotency_key),
-                Some(ActiveGradedReview::Consumed { .. }) => None,
-                None => account
-                    .latest_applied_review_idempotency_key()
-                    .map_err(postgres_failure)?,
-            };
-            let mut study = BetaStudySession::from_store(account, self.now);
-            let view = study.start().map_err(study_failure)?;
-            let response = StudyViewResponse::from_view(view);
-            if let Some(idempotency_key) = expected_idempotency_key {
-                let mut account = study.into_store();
-                account
-                    .consume_active_graded_review(&idempotency_key)
-                    .map_err(postgres_failure)?;
-            }
-            Ok(response)
+            next_postgres_review(account, self.now)
         })
     }
 
@@ -3756,28 +3880,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
             let scope = AccountScope::new(account_id.to_owned()).map_err(postgres_failure)?;
             let mut account = store.for_account(scope);
             account.ensure_account(now_ms).map_err(postgres_failure)?;
-            let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
-            let expected_idempotency_key = match decode_active_graded_review(
-                account.active_graded_review().map_err(postgres_failure)?,
-            )? {
-                Some(ActiveGradedReview::Active {
-                    idempotency_key, ..
-                }) => Some(idempotency_key),
-                Some(ActiveGradedReview::Consumed { .. }) => None,
-                None => account
-                    .latest_applied_review_idempotency_key()
-                    .map_err(postgres_failure)?,
-            };
-            let mut study = BetaStudySession::from_store(account, now);
-            let view = study.start().map_err(study_failure)?;
-            let response = StudyViewResponse::from_view(view);
-            if let Some(idempotency_key) = expected_idempotency_key {
-                let mut account = study.into_store();
-                account
-                    .consume_active_graded_review(&idempotency_key)
-                    .map_err(postgres_failure)?;
-            }
-            Ok(response)
+            next_postgres_review(account, now)
         })
     }
 
@@ -3844,29 +3947,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
                     AccountScope::new(session.account_id.clone()).map_err(postgres_failure)?;
                 let mut account = store.for_account(scope);
                 account.ensure_account(now_ms).map_err(postgres_failure)?;
-                let _transition_guard =
-                    account.lock_review_transition().map_err(postgres_failure)?;
-                let expected_idempotency_key = match decode_active_graded_review(
-                    account.active_graded_review().map_err(postgres_failure)?,
-                )? {
-                    Some(ActiveGradedReview::Active {
-                        idempotency_key, ..
-                    }) => Some(idempotency_key),
-                    Some(ActiveGradedReview::Consumed { .. }) => None,
-                    None => account
-                        .latest_applied_review_idempotency_key()
-                        .map_err(postgres_failure)?,
-                };
-                let mut study = BetaStudySession::from_store(account, now);
-                let view = study.start().map_err(study_failure)?;
-                let response = StudyViewResponse::from_view(view);
-                if let Some(idempotency_key) = expected_idempotency_key {
-                    let mut account = study.into_store();
-                    account
-                        .consume_active_graded_review(&idempotency_key)
-                        .map_err(postgres_failure)?;
-                }
-                Ok(response)
+                next_postgres_review(account, now)
             })();
             Ok(Some((BrowserSessionValidation { session, touched }, work)))
         })
@@ -3900,45 +3981,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
             let scope = AccountScope::new(account_id.to_owned()).map_err(postgres_failure)?;
             let mut account = store.for_account(scope);
             account.ensure_account(now_ms).map_err(postgres_failure)?;
-            let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
-            if account
-                .applied_review_idempotency_key_exists(&request.idempotency_key)
-                .map_err(postgres_failure)?
-            {
-                return recover_postgres_submit(
-                    account,
-                    now,
-                    review_unit_id,
-                    &request.idempotency_key,
-                );
-            }
-            let idempotency_key = request.idempotency_key.clone();
-            let mut study = BetaStudySession::from_store(account, now);
-            require_current_review_postgres(&mut study, review_unit_id)?;
-            let view = study
-                .submit_answer_with_idempotency_key(
-                    request.answer,
-                    request.response_time_ms,
-                    Some(request.idempotency_key),
-                )
-                .map_err(study_failure)?;
-            let response = StudyViewResponse::from_view(view);
-            let mut account = study.into_store();
-            let active = serde_json::to_value(ActiveGradedReview::Active {
-                review_unit_id: review_unit_id.to_owned(),
-                idempotency_key: idempotency_key.clone(),
-                view: Box::new(response.clone()),
-            })
-            .map_err(|error| ApiFailure::internal(error.to_string()))?;
-            if !account
-                .save_active_graded_review(&active, &idempotency_key, false)
-                .map_err(postgres_failure)?
-            {
-                return Err(ApiFailure::internal(
-                    "Graded review was consumed before it could be presented.".to_owned(),
-                ));
-            }
-            Ok(SubmitReviewOutcome { view: response })
+            submit_postgres_review(account, now, review_unit_id, request)
         })
     }
 
@@ -4007,46 +4050,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
                     AccountScope::new(session.account_id.clone()).map_err(postgres_failure)?;
                 let mut account = store.for_account(scope);
                 account.ensure_account(now_ms).map_err(postgres_failure)?;
-                let _transition_guard =
-                    account.lock_review_transition().map_err(postgres_failure)?;
-                if account
-                    .applied_review_idempotency_key_exists(&request.idempotency_key)
-                    .map_err(postgres_failure)?
-                {
-                    return recover_postgres_submit(
-                        account,
-                        now,
-                        review_unit_id,
-                        &request.idempotency_key,
-                    );
-                }
-                let idempotency_key = request.idempotency_key.clone();
-                let mut study = BetaStudySession::from_store(account, now);
-                require_current_review_postgres(&mut study, review_unit_id)?;
-                let view = study
-                    .submit_answer_with_idempotency_key(
-                        request.answer,
-                        request.response_time_ms,
-                        Some(request.idempotency_key),
-                    )
-                    .map_err(study_failure)?;
-                let response = StudyViewResponse::from_view(view);
-                let mut account = study.into_store();
-                let active = serde_json::to_value(ActiveGradedReview::Active {
-                    review_unit_id: review_unit_id.to_owned(),
-                    idempotency_key: idempotency_key.clone(),
-                    view: Box::new(response.clone()),
-                })
-                .map_err(|error| ApiFailure::internal(error.to_string()))?;
-                if !account
-                    .save_active_graded_review(&active, &idempotency_key, false)
-                    .map_err(postgres_failure)?
-                {
-                    return Err(ApiFailure::internal(
-                        "Graded review was consumed before it could be presented.".to_owned(),
-                    ));
-                }
-                Ok(SubmitReviewOutcome { view: response })
+                submit_postgres_review(account, now, review_unit_id, request)
             })();
             Ok(Some((BrowserSessionValidation { session, touched }, work)))
         })
@@ -4086,10 +4090,38 @@ impl StudyStorageAdapter for PostgresStudyStorage {
         _store_path: &FsPath,
         review_unit_id: &str,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        with_postgres_study(&self.database_url, account_id, self.now, |study| {
-            require_current_review_postgres(study, review_unit_id)?;
+        with_postgres_account(&self.database_url, account_id, self.now_ms(), |account| {
+            let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
+            let mut study = BetaStudySession::for_review(account, self.now);
+            require_current_review_postgres(&mut study, review_unit_id)?;
             let view = study.reveal().map_err(study_failure)?;
 
+            Ok(StudyViewResponse::from_view(view))
+        })
+    }
+
+    fn resume_review(
+        &self,
+        account_id: &str,
+        _store_path: &FsPath,
+        review_unit_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        with_postgres_account(&self.database_url, account_id, self.now_ms(), |account| {
+            if let Some(ActiveGradedReview::Active {
+                review_unit_id: saved_id,
+                view,
+                ..
+            }) = decode_active_graded_review(
+                account.active_graded_review().map_err(postgres_failure)?,
+            )? {
+                if saved_id == review_unit_id {
+                    return Ok(*view);
+                }
+            }
+            let mut study = BetaStudySession::for_review(account, self.now);
+            let view = study
+                .resume_review(review_unit_id)
+                .map_err(postgres_study_failure)?;
             Ok(StudyViewResponse::from_view(view))
         })
     }
@@ -4100,9 +4132,26 @@ impl StudyStorageAdapter for PostgresStudyStorage {
         _store_path: &FsPath,
         review_unit_id: &str,
     ) -> Result<StudyViewResponse, ApiFailure> {
-        with_postgres_study(&self.database_url, account_id, self.now, |study| {
-            require_current_review_postgres(study, review_unit_id)?;
-            let view = run_reference_generation(study, self.generation_provider_config.clone())?;
+        with_postgres_account(&self.database_url, account_id, self.now_ms(), |account| {
+            let saved = decode_active_graded_review(
+                account.active_graded_review().map_err(postgres_failure)?,
+            )?;
+            let mut study = BetaStudySession::from_store(account, self.now);
+            let restored = match saved {
+                Some(ActiveGradedReview::Active {
+                    review_unit_id: saved_id,
+                    idempotency_key,
+                    ..
+                }) if saved_id == review_unit_id => study
+                    .restore_graded_review(review_unit_id, &idempotency_key)
+                    .map_err(postgres_study_failure)?,
+                _ => false,
+            };
+            if !restored {
+                require_current_review_postgres(&mut study, review_unit_id)?;
+            }
+            let view =
+                run_reference_generation(&mut study, self.generation_provider_config.clone())?;
 
             Ok(StudyViewResponse::from_view(view))
         })
@@ -4233,48 +4282,7 @@ impl StudyStorageAdapter for PostgresStudyStorage {
             account_id,
             self.now_ms(),
             timings,
-            |account| {
-                let _transition_guard =
-                    account.lock_review_transition().map_err(postgres_failure)?;
-                if account
-                    .applied_review_idempotency_key_exists(&request.idempotency_key)
-                    .map_err(postgres_failure)?
-                {
-                    return recover_postgres_submit(
-                        account,
-                        self.now,
-                        review_unit_id,
-                        &request.idempotency_key,
-                    );
-                }
-                let idempotency_key = request.idempotency_key.clone();
-                let mut study = BetaStudySession::from_store(account, self.now);
-                require_current_review_postgres(&mut study, review_unit_id)?;
-                let view = study
-                    .submit_answer_with_idempotency_key(
-                        request.answer,
-                        request.response_time_ms,
-                        Some(request.idempotency_key),
-                    )
-                    .map_err(study_failure)?;
-                let response = StudyViewResponse::from_view(view);
-                let mut account = study.into_store();
-                let active = serde_json::to_value(ActiveGradedReview::Active {
-                    review_unit_id: review_unit_id.to_owned(),
-                    idempotency_key: idempotency_key.clone(),
-                    view: Box::new(response.clone()),
-                })
-                .map_err(|error| ApiFailure::internal(error.to_string()))?;
-                if !account
-                    .save_active_graded_review(&active, &idempotency_key, false)
-                    .map_err(postgres_failure)?
-                {
-                    return Err(ApiFailure::internal(
-                        "Graded review was consumed before it could be presented.".to_owned(),
-                    ));
-                }
-                Ok(SubmitReviewOutcome { view: response })
-            },
+            |account| submit_postgres_review(account, self.now, review_unit_id, request),
         )
     }
 
@@ -4403,6 +4411,95 @@ mod tests {
     }
 
     #[test]
+    fn file_reveal_survives_new_authenticated_requests_and_adapter_restart() {
+        let root = std::env::temp_dir().join(format!(
+            "memory-engine-revealed-session-{}-{}",
+            std::process::id(),
+            rand::random::<u128>(),
+        ));
+        let storage = FileStudyStorage {
+            store_root: root.clone(),
+            now: test_now,
+            generation_provider_config: None,
+        };
+        let path = storage.account_store_path("acct");
+        storage.save_source("acct", &path, &crate::SourceRecord {
+            source_id: "source".to_owned(),
+            title: "NATO notes".to_owned(),
+            body: "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.".to_owned(),
+            project_key: None, ttl_expires_at: None, permission: SourcePermission::ModelEligible,
+        }).expect("source");
+        let drafts = storage
+            .generate_source("acct", &path, "source")
+            .expect("drafts");
+        let current = storage
+            .keep_draft("acct", &path, &drafts.drafts[0].id)
+            .expect("keep")
+            .current
+            .expect("quiz");
+        storage
+            .reveal_review("acct", &path, current.review_unit_id.as_str())
+            .expect("reveal request");
+        drop(storage);
+        let restarted = FileStudyStorage {
+            store_root: root.clone(),
+            now: test_now,
+            generation_provider_config: None,
+        };
+        restarted
+            .save_account_session("acct", "new-api-session")
+            .expect("fresh authenticated session");
+        let request = SubmitReviewRequest {
+            answer: "ALFA".to_owned(),
+            response_time_ms: 1_800,
+            idempotency_key: "same-occurrence".to_owned(),
+        };
+        let result = restarted
+            .authenticated_submit_review(
+                "acct",
+                "new-api-session",
+                current.review_unit_id.as_str(),
+                request.clone(),
+                None,
+            )
+            .expect("fresh submit");
+        let grade = result
+            .view
+            .current
+            .as_ref()
+            .expect("graded quiz")
+            .grade
+            .as_ref()
+            .expect("grade");
+        assert_eq!(grade.verdict, memory_engine_core::Verdict::Revealed);
+        assert_eq!(grade.rating, memory_engine_core::Rating::Again);
+        assert!(!grade.is_correct);
+        let replay = restarted
+            .authenticated_submit_review(
+                "acct",
+                "new-api-session",
+                current.review_unit_id.as_str(),
+                request,
+                None,
+            )
+            .expect("replay");
+        assert_eq!(replay.view, result.view);
+        assert_eq!(
+            restarted
+                .resume_review("acct", &path, current.review_unit_id.as_str())
+                .expect("resume graded"),
+            result.view
+        );
+        let snapshot = crate::native::open_persistence_store(&path)
+            .expect("committed snapshot")
+            .snapshot();
+        assert_eq!(snapshot.attempts.len(), 1);
+        assert_eq!(snapshot.applied_reviews.len(), 1);
+        assert_eq!(snapshot.schedules.len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn legacy_account_session_migration_hashes_and_removes_raw_token() {
         let root = std::env::temp_dir().join(format!(
             "memory-engine-legacy-session-migration-{}-{}",
@@ -4489,7 +4586,7 @@ mod tests {
         )
         .expect("browser session fixture");
 
-        let held = crate::file_lock::acquire(&root.join("_browser_sessions.lock"))
+        let held = crate::native::file_lock::acquire(&root.join("_browser_sessions.lock"))
             .expect("hold browser sessions lock");
         let contender = FileStudyStorage {
             store_root: root.clone(),
@@ -4549,7 +4646,7 @@ mod tests {
         )
         .expect("browser session fixture");
 
-        let held = crate::file_lock::acquire(&root.join("_browser_sessions.lock"))
+        let held = crate::native::file_lock::acquire(&root.join("_browser_sessions.lock"))
             .expect("hold browser sessions lock");
         let contender = FileStudyStorage {
             store_root: root.clone(),
@@ -4611,8 +4708,9 @@ mod tests {
                 "unsubscribe-nonce",
             )
             .expect("notification preference");
-        let held = crate::file_lock::acquire(&root.join("acct").join("return-notifications.lock"))
-            .expect("hold notification lock");
+        let held =
+            crate::native::file_lock::acquire(&root.join("acct").join("return-notifications.lock"))
+                .expect("hold notification lock");
         let request = ReturnNotificationClaimRequest {
             account_id: "acct".to_owned(),
             now_ms: test_now(),
@@ -4731,8 +4829,9 @@ mod tests {
             .expect("claim result")
             .expect("claim");
 
-        let held = crate::file_lock::acquire(&root.join("acct").join("return-notifications.lock"))
-            .expect("hold notification lock before completion");
+        let held =
+            crate::native::file_lock::acquire(&root.join("acct").join("return-notifications.lock"))
+                .expect("hold notification lock before completion");
         let contender = FileStudyStorage {
             store_root: root.clone(),
             now: completion_now,
@@ -4964,12 +5063,12 @@ mod tests {
         let path = root.join("return-notifications.lock");
         fs::write(&path, b"existing-owner-marker").expect("existing lock path");
 
-        let first = crate::file_lock::try_acquire(&path)
+        let first = crate::native::file_lock::try_acquire(&path)
             .expect("first lock attempt")
             .expect("first owner");
         let started = std::time::Instant::now();
         assert!(
-            crate::file_lock::try_acquire(&path)
+            crate::native::file_lock::try_acquire(&path)
                 .expect("contended lock attempt")
                 .is_none(),
             "a contended owner must not be acquired"
@@ -4985,7 +5084,7 @@ mod tests {
             fs::read(&path).expect("lock marker"),
             b"existing-owner-marker"
         );
-        let second = crate::file_lock::try_acquire(&path)
+        let second = crate::native::file_lock::try_acquire(&path)
             .expect("second lock attempt")
             .expect("ownership after first drop");
         drop(second);

@@ -145,41 +145,11 @@ fn fake_model_provider_generates_grounded_drafts_from_arbitrary_prose() {
 }
 
 #[test]
-fn one_word_capture_generates_an_accepted_grounded_draft() {
-    let directory = TempDirectory::new("one-word-capture");
-    let path = directory.path().join("store.json");
-    let mut store = BetaPersistenceStore::open(&path).expect("store");
-    store
-        .save_source_document(source_document("src-term", "Mitochondria", "Mitochondria"))
-        .expect("source");
-
-    let result = run_beta_generation_with_provider(
-        &mut store,
-        &FakeModelProvider,
-        request("run-term", "src-term"),
-    )
-    .expect("generation");
-
-    assert!(
-        !result.accepted_draft_ids.is_empty(),
-        "one-word captures should not be rejected as under-evidenced: {:?}",
-        result.validation_failures
-    );
-    assert!(result.rejected_draft_ids.is_empty());
-    let snapshot = store.snapshot();
-    assert_eq!(snapshot.reference_spans[0].text, "Mitochondria");
-    assert_eq!(
-        snapshot.generated_prompt_drafts[0].validation.status,
-        GeneratedPromptValidationStatus::Accepted
-    );
-}
-
-#[test]
 fn fake_model_provider_branches_draft_shapes_by_learning_intent() {
     let model = FakeModelProvider;
     let verbatim = source_document(
         "src-poem",
-        "Hope is the thing with feathers",
+        "Emily Dickinson poem 314",
         "\"Hope\" is the thing with feathers -\nThat perches in the soul -\nAnd sings the tune without the words -\nAnd never stops - at all -",
     );
     let concept = source_document(
@@ -326,10 +296,6 @@ fn enumerable_numbered_lists_preserve_order_and_source_evidence() {
     );
     assert_eq!(drafts.candidates[0].index, 1);
     assert_eq!(drafts.candidates[2].index, 3);
-    assert_eq!(
-        drafts.candidates[1].evidence.as_deref(),
-        Some("1. Alpha\n2. Beta\n3. Gamma")
-    );
     assert!(drafts
         .candidates
         .iter()
@@ -342,6 +308,59 @@ fn enumerable_numbered_lists_preserve_order_and_source_evidence() {
             .collect::<Vec<_>>(),
         [1, 2, 3]
     );
+    assert!(drafts.candidates.iter().all(|candidate| {
+        let evidence = candidate.evidence.as_deref().expect("source quotation");
+        memory_engine_generation::evidence_quote_matches(source.body.as_deref().unwrap(), evidence)
+            && memory_engine_generation::answer_has_evidence_support(evidence, &candidate.answer)
+    }));
+}
+
+#[test]
+fn exhaustive_sets_over_the_limit_are_not_silently_sampled() {
+    let body = (1..=61)
+        .map(|index| format!("{index}. Entry {index}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let source = source_document("src-large-set", "Ordered labels", &body);
+    let generated = FakeModelProvider
+        .generate_drafts(&source)
+        .expect("finite set");
+    let governed = memory_engine_generation::enforce_content_policy(&source, generated);
+    assert!(
+        governed.candidates.is_empty(),
+        "partial finite coverage must never enter study"
+    );
+    assert!(
+        !governed.failures.is_empty(),
+        "the learner must receive a split-capture failure"
+    );
+}
+
+#[test]
+fn long_verbatim_sources_keep_bounded_substantive_quotes_for_each_unit() {
+    let mut lines = vec!["Begin.".to_owned()];
+    lines.extend((1..=50).map(|index| format!(
+        "Line {index} follows the river beyond the meadow and through the orchard, where the changing seasons bring new colors to the hillside and the village gathers to remember the journey together."
+    )));
+    let body = lines.join("\n");
+    assert!(body.len() > 8_000);
+    let source = source_document("src-long-verse", "Long verse", &body);
+    let generated = FakeModelProvider
+        .generate_drafts(&source)
+        .expect("verbatim passage");
+    let governed = memory_engine_generation::enforce_content_policy(&source, generated);
+    assert_eq!(governed.candidates.len(), lines.len());
+    for (candidate, line) in governed.candidates.iter().zip(&lines) {
+        assert_eq!(&candidate.answer, line);
+        let evidence = candidate.evidence.as_deref().expect("source quotation");
+        assert!(evidence.len() <= 8_000);
+        assert!(memory_engine_generation::evidence_quote_matches(
+            &body, evidence
+        ));
+        assert!(memory_engine_generation::answer_has_evidence_support(
+            evidence, line
+        ));
+    }
 }
 
 #[test]
@@ -612,8 +631,15 @@ fn sequential_sources_emit_one_verbatim_card_per_sentence() {
     assert!(drafts.candidates.iter().all(|candidate| {
         candidate.activity_kind == GeneratedLearningActivityKind::Exercise
             && candidate.worked_solution.is_some()
-            && candidate.evidence.as_deref()
-                == Some("First faithful line. Second faithful line. Third faithful line.")
+            && candidate.evidence.as_deref().is_some_and(|evidence| {
+                memory_engine_generation::evidence_quote_matches(
+                    source.body.as_deref().expect("source body"),
+                    evidence,
+                ) && memory_engine_generation::answer_has_evidence_support(
+                    evidence,
+                    &candidate.answer,
+                )
+            })
     }));
     assert_eq!(drafts.candidates[0].activity_stage, "free-recall");
     assert!(drafts.candidates[1..]
@@ -632,7 +658,7 @@ fn verbatim_intent_persists_recitation_prompt_ladder() {
     store
         .save_source_document(source_document(
             "src-poem",
-            "Hope is the thing with feathers",
+            "Emily Dickinson poem 314",
             "\"Hope\" is the thing with feathers -\nThat perches in the soul -\nAnd sings the tune without the words -\nAnd never stops - at all -",
         ))
         .expect("source");
@@ -708,42 +734,96 @@ fn verbatim_intent_persists_recitation_prompt_ladder() {
 }
 
 #[test]
-fn provider_failure_is_recorded_as_human_readable_run_failure() {
-    struct FailingProvider;
+fn recitation_cues_do_not_repeat_the_target_line() {
+    let directory = TempDirectory::new("recitation-cue-collision");
+    let mut store = BetaPersistenceStore::open(directory.path().join("store.json")).expect("store");
+    store
+        .save_source_document(source_document(
+            "src-refrain",
+            "Sing the river home",
+            "Sing the river home.\nSing the river home.\nLet the oars grow still.",
+        ))
+        .expect("source");
 
+    let result = run_beta_generation_with_provider(
+        &mut store,
+        &FakeModelProvider,
+        request("run-refrain", "src-refrain"),
+    )
+    .expect("recitation generation");
+
+    assert_eq!(result.accepted_draft_ids.len(), 3);
+    assert!(result.rejected_draft_ids.is_empty());
+    let snapshot = store.snapshot();
+    assert_eq!(
+        snapshot
+            .generated_prompt_drafts
+            .iter()
+            .map(|draft| match &draft.prompt {
+                Prompt::Exact(exact) if exact.kind == ExactPromptKind::Recitation => {
+                    exact.accepted_answers[0].as_str()
+                }
+                other => panic!("expected exact recitation, got {other:?}"),
+            })
+            .collect::<Vec<_>>(),
+        [
+            "Sing the river home.",
+            "Sing the river home.",
+            "Let the oars grow still.",
+        ]
+    );
+    assert!(snapshot.generated_prompt_drafts[..2]
+        .iter()
+        .all(|draft| draft.activity_stage == "cued-recall"));
+    assert!(
+        snapshot.review_units.is_empty(),
+        "generation is not learner approval"
+    );
+}
+
+#[test]
+fn charged_provider_failure_is_recorded_without_fake_success_or_lost_usage() {
+    struct FailingProvider;
     impl DraftProvider for FailingProvider {
         fn model(&self) -> GeneratedPromptModel {
             test_model("failing-model")
         }
-
         fn generate_drafts(
             &self,
             _source: &SourceDocument,
         ) -> Result<ProviderDrafts, ProviderFailure> {
-            Err(ProviderFailure::new(
-                "model provider unavailable: connection refused",
-            ))
+            Err(
+                ProviderFailure::new("The paid response was truncated.").with_usage(Some(
+                    ProviderUsage {
+                        input_tokens: 100,
+                        output_tokens: 20,
+                        cost_usd_micros: Some(45),
+                        latency_ms: 90,
+                    },
+                )),
+            )
         }
     }
-
-    let directory = TempDirectory::new("failing-provider");
+    let directory = TempDirectory::new("charged-failure");
     let mut store = open_store_with_prose(&directory);
-
     let result = run_beta_generation_with_provider(
         &mut store,
         &FailingProvider,
         request("run-fail", "src-prose"),
     )
-    .expect("generation completes despite provider failure");
-
+    .expect("failed response still produces a receipt");
     assert!(result.draft_ids.is_empty());
+    let snapshot = store.snapshot();
+    let run = &snapshot.generation_runs[0];
+    assert!(run.completed_at.is_some());
+    let usage = run.usage.as_ref().expect("failure accounting");
     assert_eq!(
-        result.validation_failures,
-        ["src-prose: model provider unavailable: connection refused"]
-    );
-    assert_eq!(
-        store.snapshot().generation_runs[0].validation_failures,
-        result.validation_failures
+        (
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cost_usd_micros
+        ),
+        (100, 20, Some(45))
     );
 }
 
@@ -1099,6 +1179,121 @@ fn verbatim_repair_reapplies_policy_and_recitation_intent() {
         }),
         "initial and repaired verbatim drafts must retain Recitation intent"
     );
+}
+
+#[test]
+fn an_irrelevant_real_quote_cannot_support_an_invented_answer() {
+    struct MisattributingProvider;
+    impl DraftProvider for MisattributingProvider {
+        fn model(&self) -> GeneratedPromptModel {
+            test_model("misattributing")
+        }
+        fn generate_drafts(
+            &self,
+            source: &SourceDocument,
+        ) -> Result<ProviderDrafts, ProviderFailure> {
+            Ok(ProviderDrafts {
+                model: self.model(),
+                learning_intent: Some(LearningIntent::ConceptUnderstanding),
+                candidates: vec![DraftCandidate {
+                    index: 1,
+                    concept: "Mitochondrial discovery".into(),
+                    question: "Who first discovered mitochondria?".into(),
+                    answer: "Napoleon Bonaparte".into(),
+                    evidence: source.body.clone(),
+                    distractors: Vec::new(),
+                    worked_solution: None,
+                    activity_kind: GeneratedLearningActivityKind::Quiz,
+                    activity_stage: "cued-recall".into(),
+                    unsupported: false,
+                }],
+                failures: Vec::new(),
+                usage: None,
+            })
+        }
+    }
+    let directory = TempDirectory::new("unrelated-real-quote");
+    let mut store = open_store_with_prose(&directory);
+    let result = run_beta_generation_with_provider(
+        &mut store,
+        &MisattributingProvider,
+        request("run-unsupported", "src-prose"),
+    )
+    .expect("rejected material receipt");
+    assert!(result.accepted_draft_ids.is_empty());
+    assert_eq!(result.rejected_draft_ids.len(), 1);
+}
+
+#[test]
+fn failed_repair_usage_is_aggregated_and_unknown_cost_is_not_treated_as_zero() {
+    struct RepairFailure;
+    impl DraftProvider for RepairFailure {
+        fn model(&self) -> GeneratedPromptModel {
+            test_model("charged-repair")
+        }
+        fn generate_drafts(
+            &self,
+            _source: &SourceDocument,
+        ) -> Result<ProviderDrafts, ProviderFailure> {
+            Ok(ProviderDrafts {
+                model: self.model(),
+                learning_intent: Some(LearningIntent::FactRecall),
+                candidates: vec![DraftCandidate {
+                    index: 1,
+                    concept: "Mitochondrial DNA".into(),
+                    question: "What shape is mitochondrial DNA?".into(),
+                    answer: "circular".into(),
+                    evidence: Some("This quote never appeared in the source.".into()),
+                    distractors: Vec::new(),
+                    worked_solution: None,
+                    activity_kind: GeneratedLearningActivityKind::Quiz,
+                    activity_stage: "cued-recall".into(),
+                    unsupported: false,
+                }],
+                failures: Vec::new(),
+                usage: Some(ProviderUsage {
+                    input_tokens: 100,
+                    output_tokens: 10,
+                    cost_usd_micros: Some(40),
+                    latency_ms: 10,
+                }),
+            })
+        }
+        fn repair_drafts(
+            &self,
+            _source: &SourceDocument,
+            _rejections: &[DraftRejection],
+        ) -> Result<Option<ProviderDrafts>, ProviderFailure> {
+            Err(
+                ProviderFailure::new("The repair response was incomplete.").with_usage(Some(
+                    ProviderUsage {
+                        input_tokens: 20,
+                        output_tokens: 2,
+                        cost_usd_micros: None,
+                        latency_ms: 5,
+                    },
+                )),
+            )
+        }
+    }
+    let directory = TempDirectory::new("paid-failed-repair");
+    let mut store = open_store_with_prose(&directory);
+    let result = run_beta_generation_with_provider(
+        &mut store,
+        &RepairFailure,
+        request("run-paid-repair", "src-prose"),
+    )
+    .expect("receipt");
+    assert!(result.accepted_draft_ids.is_empty());
+    let usage = store.snapshot().generation_runs[0]
+        .usage
+        .clone()
+        .expect("combined usage");
+    assert_eq!(
+        (usage.input_tokens, usage.output_tokens, usage.latency_ms),
+        (120, 12, 15)
+    );
+    assert_eq!(usage.cost_usd_micros, None);
 }
 
 #[test]

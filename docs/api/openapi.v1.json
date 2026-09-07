@@ -3,16 +3,12 @@
   "info": {
     "title": "Memory Engine API",
     "version": "1.0.0",
-    "description": "Versioned JSON API for external learning clients such as Scry. The engine owns memory, generation, scheduling, and grading; clients own product experience."
+    "description": "Scry's versioned learning capabilities. All clients share source permissions, learner approval, durable review evidence, scheduling, and grading."
   },
   "servers": [
     {
-      "url": "https://scry.study",
-      "description": "Branded production origin (default)."
-    },
-    {
-      "url": "https://memory-engine-api-i2xcr.ondigitalocean.app",
-      "description": "DigitalOcean App Platform origin scry.study fronts. Operator-origin fallback only, e.g. while DNS for the branded domain is degraded."
+      "url": "https://scry.misty-step.workers.dev",
+      "description": "Cloudflare production origin."
     }
   ],
   "security": [
@@ -342,8 +338,8 @@
     },
     "/v1/accounts/{account_id}/sources/{source_id}/generate": {
       "post": {
-        "summary": "Legacy synchronous compatibility route for direct generation",
-        "description": "This direct v1 route is rejected with 409 Conflict on Postgres-backed production deployments. Durable production generation uses the queued app workflow and polling.",
+        "summary": "Generate pending drafts synchronously for an owned source",
+        "description": "Runs one admitted generation attempt through the same durable ledger, source permissions, model budget, and learner-approval gate as queued generation. Prefer generation-jobs for restart-safe polling. An in-flight claim or exhausted budget can reject admission; no output is automatically scheduled.",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -353,6 +349,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Study view with inspectable pending drafts or explicit generation notices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyViewResponse"
+                }
+              }
+            }
+          },
           "409": {
             "$ref": "#/components/responses/Error"
           }
@@ -648,7 +654,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Study view with generated bridge items queued ahead of the parent",
+            "description": "Study view with easier Bridge drafts awaiting explicit learner approval",
             "content": {
               "application/json": {
                 "schema": {

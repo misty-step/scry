@@ -1,772 +1,681 @@
-# Production runbook — memory-engine-api
+# Scry production runbook — Cloudflare
 
-Everything here is CLI-driven; no dashboard is required. Scry runs as the
-native Rust `memory-engine-api` process on Misty Step's isolated DigitalOcean
-public application host, backed by Postgres on that same host and served at
-`https://scry.study`. DNS and TLS terminate at Caddy on the same host. Rollback
-switches an immutable host release; it does not change the local store.
+## Destination versus current live truth
 
-## Agent surface summary
+The production destination is `memory-engine-cloudflare`: Rust Wasm on Cloudflare
+Workers, one SQLite-backed `Scry` Durable Object as the invite-beta transaction
+owner, alarms for leased generation/reminders, private R2 recovery, and Resend
+over Worker Fetch. Pure learning policy and the shared Rust renderer remain
+inside the existing Rust capability system. There is no production D1, KV
+consistency cache, Queue, container, external Postgres, or native runtime in
+this destination architecture.
 
-- Service: `memory-engine-api`, systemd unit `scry.service`.
-- Host: isolated public application Droplet, reached through its Tailscale SSH
-  name; public TCP 22 is closed.
-- Product URL and only production origin: `https://scry.study`.
-- Runtime: native Rust binary from `crates/memory-engine-api`; immutable
-  releases live under `/opt/public-apps/scry/releases/<git-commit>` and
-  `/opt/public-apps/scry/current` selects the active release.
-- Store contract: production must set `MEMORY_ENGINE_POSTGRES_URL`; file store
-  requires `MEMORY_ENGINE_ENABLE_FILE_STORE=true` and is local/dev only.
-- Human auth contract: invite allowlist plus magic links; production account creation and
-  magic-link delivery require `MEMORY_ENGINE_AUTH_ALLOWED_EMAILS` plus either
-  `MEMORY_ENGINE_AUTH_MAILER_COMMAND` or the temporary outbox path, and
-  `MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET` for signed reminder links.
-  Machine consumers use operator-gated service sessions
-  (`MEMORY_ENGINE_ADMIN_TOKEN`, below) — never email.
-- Return scheduler: the API process owns a bounded, Postgres-backed sweep;
-  disable it with `MEMORY_ENGINE_RETURN_NOTIFICATION_SCHEDULER_ENABLED=false`,
-  and keep the operator-only `MEMORY_ENGINE_RETURN_NOTIFICATION_MANUAL_TOKEN`
-  out of source control.
-- Smoke contract: every host release runs the service, health, readiness,
-  home-page, and anonymous mutation boundary checks below before it is live.
+**A repository change is not a completed cutover.** The approved interim origin
+is `https://scry.misty-step.workers.dev`; registrar/custom-domain access is not
+a prerequisite. The native DigitalOcean application and its host-local
+PostgreSQL database (reported schema 8) remain authoritative until Main records
+the source writer barrier, final import/readback, recovery, activation, and
+public proof. Old references to Neon are not a direction to switch back.
+Keep the old host, ingress, credentials, local dumps, and backup work intact
+until Main explicitly changes or retires them. The commands below are a planned
+run sequence, not receipts of executed operations; a reachable Worker hostname
+alone does not prove imported state, activation, mail delivery, or cutover.
 
-## Deployed smoke
+| Surface | Staging | Production |
+|---|---|---|
+| Account | Misty Step, `b069014f6a46558ea9146fb6c4ff8f6c` | same account |
+| Worker | `scry-staging` | `scry` |
+| Approved interim origin | `https://scry-staging.misty-step.workers.dev` | `https://scry.misty-step.workers.dev` |
+| `SCRY` binding | private SQLite class `Scry`, staging namespace | private SQLite class `Scry`, production namespace |
+| `RECOVERY` binding | private `scry-staging-recovery` R2 bucket | private `scry-recovery` R2 bucket |
+| Mail transport | Resend HTTPS API with approved staging identities | Resend HTTPS API with approved production sender |
 
-These commands exercise the sole production runtime. The retired provider
-workflow must not be restored: it previously reactivated an obsolete runtime
-after every green `master` push.
+`wrangler.jsonc` contains explicit staging/production bindings and the first
+class migration `{tag: "v1", new_sqlite_classes: ["Scry"]}`. It intentionally has
+**no custom-domain routes**. Never add `scry.study`/`www.scry.study` routes before
+Main's authoritative DNS proof and complete migration plan. The release guard
+also rejects custom routes; the eventual DNS cutover is a separate reviewed
+source/configuration change, not a hidden CLI override.
 
-```sh
-base="https://scry.study"
+Every new actor starts paused: `learner_traffic_enabled INTEGER DEFAULT 0` in
+object-local recovery control is excluded from the authoritative fingerprint.
+`GET /internal/runtime` reports `{maintenance: bool}`. Authenticated
+`POST /internal/runtime` accepts `{enabled: bool, expectedFingerprint: string}`
+and atomically changes primary traffic only when the current fingerprint
+matches and no application/background/import operation is still in flight.
+Busy operations or stale fingerprints return 409; do not retry blindly.
+`/healthz`, static assets, and authenticated internal recovery/schema/runtime
+routes remain usable while paused. `/readyz` and learner routes return 503;
+jobs, reminders, and automatic recovery alarms stay suppressed. `restore-*`
+objects remain paused and never become a second learner-writing instance.
+Activation wakes background work only after the transaction commits.
+This is not `MEMORY_ENGINE_MAINTENANCE` environment control: never toggle a
+Worker secret, change configuration, or deploy another version to change traffic.
 
-status=$(curl -fsS --max-time 15 -o /tmp/memory-engine-healthz -w "%{http_code}" "$base/healthz")
-test "$status" = "200"
-grep -q '"status":"ok"' /tmp/memory-engine-healthz
+## One executable build and release path
 
-# Readiness is dependency-aware: it is only 200 when Postgres and the
-# generation worker are available. `/healthz` above remains liveness-only.
-status=$(curl -fsS --max-time 15 -o /tmp/memory-engine-readyz -w "%{http_code}" "$base/readyz")
-test "$status" = "200"
-grep -q '"status":"ready"' /tmp/memory-engine-readyz
+All supported build/dev/release operations go through
+`scripts/scry-cloudflare`, exposed by the Bun commands below. Direct
+`wrangler deploy`, dashboard edits, native host installers, and implicit
+"previous version" rollback are not release paths. A merge does not deploy.
 
-status=$(curl -fsS --max-time 15 -o /tmp/memory-engine-home -w "%{http_code}" "$base/")
-test "$status" = "200"
-
-status=$(curl -fsS --max-time 15 -o /tmp/memory-engine-auth-boundary -w "%{http_code}" -X POST "$base/app/generate")
-case "$status" in 4??) ;; *) echo "expected 4xx, got $status"; exit 1;; esac
-
-curl -fsS --max-time 15 "$base/manifest.webmanifest" | jq -e \
-  '.display == "standalone" and (.icons | length >= 2)' >/dev/null
-curl -fsS --max-time 15 "$base/favicon.png" | file - | grep -q 'PNG image data, 192 x 192'
-curl -fsS --max-time 15 "$base/apple-touch-icon.png" | file - | grep -q 'PNG image data, 180 x 180'
-```
-
-## Service sessions (machine consumers)
-
-Agents, QA runs, and future service consumers authenticate without email.
-`POST /v1/service-sessions` issues an independent, expiring account-scoped
-session token for an allowlisted service account, gated by the operator admin token.
-The surface is disabled entirely unless the runtime sets
-`MEMORY_ENGINE_ADMIN_TOKEN`. Agents never read mail-provider archives; magic
-links stay a human-only delivery channel.
-
-Provisioning (operator, once):
-
-1. Add the dedicated dogfood email to `MEMORY_ENGINE_AUTH_ALLOWED_EMAILS` in
-   the root-owned `/etc/public-apps/scry.env` file. Use a dedicated address.
-   Magic-link and service/browser logins create independent expiring sessions;
-   logging out one browser profile does not revoke another, while logout-all
-   is explicit.
-2. Set `MEMORY_ENGINE_ADMIN_TOKEN` in the same mode-`0600` environment file.
-   Never commit or print it.
-3. Issue the credential and import it directly into the consuming client's
-   mode-`0600` credential file:
+Prerequisites: Rust 1.94.0, Node 22+, Python 3.11+, Bun, and Git. Dagger plus a
+container engine are required for the ship gate. Operators additionally need
+`gh` access to this repository's protection/check-run metadata and authenticated
+Wrangler access to the specified Cloudflare account. Credentials stay in
+private environment files, the operator's authenticated CLI, or secret stores;
+never put values in command arguments, logs, or checked-in configuration.
 
 ```sh
-base="https://scry.study"
-curl -fsS --max-time 20 \
-  -H 'content-type: application/json' \
-  -H "x-admin-token: $MEMORY_ENGINE_ADMIN_TOKEN" \
-  -d '{"email":"<dogfood-email>"}' \
-  "$base/v1/service-sessions"
-# -> {"accountId":"acct_...","sessionToken":"sess_..."}
+bun run worker:tools
+bun run worker:build --out target/cloudflare/candidate
+bun run worker:smoke --artifact target/cloudflare/candidate \
+  --receipt target/cloudflare/candidate-workerd-proof.json
+bun run dev:isolated --artifact target/cloudflare/candidate --port 8787
 ```
 
-The response maps onto the receipt variables below:
-`MEMORY_ENGINE_ACCOUNT_ID=accountId`,
-`MEMORY_ENGINE_SESSION_TOKEN=sessionToken`.
+Tool installation has one fixed mode: `npm ci` from `package-lock.json`, the
+Wasm target for Rust 1.94.0, `cargo install --locked` of **worker-build 0.8.5**
+and **wasm-bindgen-cli 0.2.125**. Wrangler is **4.129.0** and esbuild **0.28.1**.
+The worker-build release supports wasm-bindgen 0.2.122–0.2.125; this repository
+requires exactly 0.2.125 in Cargo.lock and the CLI, not an independently updated
+bindgen binary. Its optimizer is the worker-build-pinned wasm-opt 130.
 
-Each issue mints a fresh independently auditable token; existing sessions stay
-valid until expiry or explicit revocation. API clients can revoke one bearer
-session or all bearer sessions through the account-scoped DELETE routes below;
-browser logout has the same one/all semantics for cookie sessions. Issuance is
-audited in the app log (`service session issued account=...`).
+Compilation snapshots exact source bytes into a separate directory, then runs
+`worker-build` with `--release --locked --no-default-features` for
+`wasm32-unknown-unknown`. Only that target receives
+`--cfg getrandom_backend="wasm_js"`; inherited Rust/compiler/provider overrides
+are not carried into the build. esbuild and wasm-bindgen binaries are explicitly
+selected and version/hash recorded. `Dockerfile` is the same pinned build/QA
+substrate with an artifact-only final stage; it is not a deployed server image.
 
-`DELETE /v1/accounts/{account_id}/service-sessions/current` revokes only the
-presented bearer token. `DELETE /v1/accounts/{account_id}/service-sessions/all`
-revokes every bearer token for that account. Both routes require the raw bearer
-credential, never a persisted SHA-256 digest.
+The immutable artifact directory contains:
 
-## Waitlist (invite-beta first-run)
+- `worker/index.js` and `worker/index_bg.wasm` — the actual deployed module bytes.
+- `wrangler.json` — self-contained no-bundle configuration for both environments.
+- `source.json` — full source path/content/mode hashes.
+- `manifest.json` — revision, source SHA-256, toolchain and tool hashes, target,
+  dependency flags, module/configuration checksums, and ordered SQLite migration
+  version/name/content hashes. The manifest's SHA-256 is the **bundle hash**.
 
-The signed-out landing page has one email field and one action. `POST
-/app/account` normalizes the address, then either sends the existing magic link
-for configured or durably invited access, or records the address on the
-waitlist. A waitlist row contains only the normalized email, a created/updated
-timestamp pair, and the `"first-run"` source tag — no account, session, or
-generation job is created. Joining is idempotent. Production success responses
-are identical for invited, new, and repeated addresses, so the route cannot be
-used to probe registration or invite state.
+No artifact or receipt is overwritten. Select a new output path for each
+candidate. Local dirty-source builds are useful for development, but cannot be
+released: every remote operation rechecks the artifact's complete source map
+against its Git revision, requires that revision on protected `origin/master`,
+requires administrator-enforced `ci` protection and a successful current GitHub
+Actions `ci` check for that exact revision, and requires a matching real
+workerd proof (traffic operations retain the current verified receipt's proof
+binding). There is no stub, dirty-release, skipped-guard, or arbitrary native
+install mode. Run old-artifact rollback tooling from that artifact's recorded
+reviewed source revision; the script checks its own source hash too.
 
-The unified entry limit runs per normalized email and per trusted
-edge-overwritten client identity. Caddy overwrites `do-connecting-ip` with
-`{http.request.remote.host}` before proxying to the loopback service. The API
-uses that value. Generic caller-controlled `x-real-ip` and `x-forwarded-for`
-headers never influence a quota. If the edge identity is missing, requests use
-the deterministic `unknown` bucket. The active edge contract is
-`/etc/caddy/Caddyfile`.
+### Isolated local workerd
 
-Storage is dual-backend, dispatched the same way as every other
-`memory-engine-api` store: `MEMORY_ENGINE_POSTGRES_URL` set → Postgres
-(`memory_engine_waitlist_entries` plus an append-only
-`memory_engine_waitlist_audit_log` recording every join/invite/delete
-transition); unset → the local file store only
-(`crates/memory-engine-api-state/src/waitlist.rs`, `_waitlist.json` beside
-the other store-root sidecars under `MEMORY_ENGINE_API_STORE_DIR`, with its
-own `_waitlist_audit.jsonl` mirroring the same audit contract for local
-dev/tests without a database). Production uses Postgres. Healthy storage avoids
-the old missing-store failure; durable-storage outages return a branded `503`.
+`dev:isolated` starts the exact verified bundle, not `cargo run`. A unique local
+Worker name, loopback port, inspector port, private home, SQLite/R2 state, and
+private runtime config separate it from every other dev session. `--local`
+disables remote bindings. Model/Cloudflare credentials are not inherited.
+`--state NEW_DIRECTORY` retains only that explicit state after stopping; without
+it, the unique temporary state is removed. Ctrl-C or termination stops the owned
+process group. A later run uses new state; nothing resets a deployed object.
+First launch reads the private actor's fingerprint and performs authenticated
+`POST /internal/runtime` with `enabled: true` and that exact
+`expectedFingerprint`, then observes `/readyz`. Restarts read the persisted
+runtime state and require it to remain active without another mutation.
 
-Operator surface, gated by `MEMORY_ENGINE_ADMIN_TOKEN` (the same admin token
-used by service sessions) — list, export, mark invited, and delete, with no
-direct SQL required:
+The local browser accepts `dev@example.test` (or explicit `--email`). Local auth
+uses exactly `MEMORY_ENGINE_ENVIRONMENT=development`,
+`MEMORY_ENGINE_MAIL_MODE=local-outbox`, and
+`MEMORY_ENGINE_AUTH_EXPOSE_DEBUG_LINKS=true`. `/app/account` shows the local
+magic link. Admin-only `GET /internal/mail/outbox` returns staged messages with
+`mode: "local-outbox"` and `sent: false`; the private runtime configuration has
+the ephemeral admin token. This is **not sent-mail or inbox-delivery proof**.
+The outbox/debug path is unavailable in staging/production mail mode.
+
+The finite smoke runs actual public assets (including `/static/app.js`) and
+readiness, anonymous rejection, allowlisted service-session issuance,
+alarm-driven LocalOnly structured generation, explicit draft keep, two real
+accounts' isolation, durable review resume, and assisted grading across restart.
+Idempotent replay must preserve attempts, schedules, exposure, and receipt hashes.
+The smoke finishes with the admin schema fingerprint.
+A failed smoke retains a private workerd log beside
+the requested receipt; it does not manufacture a passing proof.
+
+### Gates
 
 ```sh
-base="https://scry.study"
-
-# List every entry as JSON.
-curl -fsS --max-time 20 \
-  -H "x-admin-token: $MEMORY_ENGINE_ADMIN_TOKEN" \
-  "$base/internal/waitlist"
-# -> [{"email":"...","createdAtMs":...,"updatedAtMs":...,"source":"first-run","invitedAtMs":null}, ...]
-
-# Export the same rows as CSV (email,createdAtMs,updatedAtMs,source,invitedAtMs).
-curl -fsS --max-time 20 \
-  -H "x-admin-token: $MEMORY_ENGINE_ADMIN_TOKEN" \
-  "$base/internal/waitlist/export"
-
-# Mark one address invited. Idempotent: inviting an already-invited address
-# again returns its existing invitedAtMs unchanged. 404 if the address never
-# joined.
-curl -fsS --max-time 20 \
-  -H "x-admin-token: $MEMORY_ENGINE_ADMIN_TOKEN" \
-  -H 'content-type: application/json' \
-  -d '{"email":"<address>"}' \
-  "$base/internal/waitlist/invite"
-
-# Delete one address. Removes only the operational row; the audit log keeps
-# a permanent record that the address joined (and was invited, if it was).
-# 404 if the address is not present.
-curl -fsS --max-time 20 \
-  -H "x-admin-token: $MEMORY_ENGINE_ADMIN_TOKEN" \
-  -H 'content-type: application/json' \
-  -d '{"email":"<address>"}' \
-  "$base/internal/waitlist/delete"
+bun run ci:local
+bun run ci:full
+# Export Dagger's exact bundle and its workerd proof when needed:
+dagger call worker --source=. --git-sha="$(git rev-parse HEAD)" \
+  export --path=target/cloudflare/dagger-proof
 ```
 
-All four routes sit beside `/internal/scheduler/return-notifications`,
-outside the versioned `/v1/*` contract — operator tooling, not a public API
-surface. Marking invited is durable admission state: every magic-link request
-consults the persisted waitlist row, so a restart or another replica sees the
-same decision. Deleting the operational row revokes admission and outstanding
-unconsumed links; the append-only audit row remains for recovery evidence.
-The configured `MEMORY_ENGINE_AUTH_ALLOWED_EMAILS` entries remain an explicit
-operator allowlist, while invite-beta admission is persisted in the waitlist
-adapter rather than copied into process memory.
+The fast gate retains the browser contract, consequential private-env/old-host
+recovery checks, Rust formatting/tests/Clippy/rustdoc, and the file action-latency
+budget, then invokes the real Wasm/workerd gate. Dagger repeats those boundaries,
+adds Postgres 16 with `MEMORY_ENGINE_POSTGRES_TEST_URL` for native reference
+contracts, retains Postgres latency receipts, and runs Gitleaks. Neither gate
+receives deployment credentials or substitutes a synthetic HTTP server.
 
-## Queued generation (machine consumers)
+The native API remains a compatibility/test surface. Passing native Cargo tests
+alone does not prove the Worker. Passing workerd alone does not prove browser
+latency, model quality, mail delivery, migration, or production recovery.
 
-Bearer-authenticated clients enqueue the same bounded, durable generation job
-used by the browser app, then poll that account-scoped job until it reaches
-`succeeded` or `failed`. No browser cookie, CSRF token, or synchronous model
-request is involved. A duplicate POST while the same source is queued or
-running returns `200` with the existing job id and `"coalesced": true`; a new
-job returns `202`.
-Admission-control rejections return `409`; a transient queue-store failure
-returns `503` so machine clients can retry it.
+## Account provisioning — operator only
+
+These are required operations, **not a record that they have been executed**:
+
+1. Confirm the authenticated account is the Misty Step account above. Provision
+   Workers/SQLite Durable Object and R2 access, appropriate billing/limits, and
+   least-privilege deployment authority. Do not copy a token into the repo.
+2. Create the two named private R2 buckets before release. Do not enable public
+   bucket access, attach a public domain, or share staging/production storage.
+
+   ```sh
+   npx --no-install wrangler r2 bucket create scry-staging-recovery
+   npx --no-install wrangler r2 bucket create scry-recovery
+   npx --no-install wrangler r2 bucket info scry-staging-recovery --json
+   npx --no-install wrangler r2 bucket info scry-recovery --json
+   ```
+
+3. Retain the operator-approved **Resend** sender/domain and its existing verified
+   DNS configuration. Confirm the sender and API key may send to the approved
+   recipient; do not change registrar authority or mail DNS as a hosting side
+   effect. There is no `EMAIL` binding or Cloudflare Email Service onboarding
+   dependency. A successful Resend API response records **provider acceptance
+   only**, not mailbox receipt, Inbox/Spam placement, or authentication results.
+4. Prepare separate owner-owned mode-0600 literal `KEY=value` secret files for
+   staging and production. No shell expansion is supported. Bootstrap passes
+   that private file to Wrangler's documented `--secrets-file`. Use the same
+   environment's admin token in the separate `--admin-env` file. Preserve
+   imported auth/session/reminder signing identities; do not rotate them merely
+   because hosting changed.
+
+| Secret/configuration | Worker contract |
+|---|---|
+| `MEMORY_ENGINE_ADMIN_TOKEN` | operator service-session, waitlist, migration/recovery authorization |
+| `MEMORY_ENGINE_AUTH_ALLOWED_EMAILS` | explicit invite allowlist; keep addresses out of public receipts |
+| `MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET` | stable HMAC secret for existing signed unsubscribe continuity |
+| `MEMORY_ENGINE_MAIL_FROM` | replyable approved sender on the existing Resend-verified sending domain |
+| `RESEND_API_KEY` | environment's Resend send authority; required for deployed mail |
+| `OPENROUTER_API_KEY` | model-backed generation through Worker Fetch, never a local smoke requirement |
+| `CANARY_ENDPOINT` / `CANARY_API_KEY` | optional ingest-only telemetry configuration; no readback authority |
+| `MEMORY_ENGINE_ENVIRONMENT` | checked-in `staging` or `production`; both enforce production auth/mail safety |
+| `MEMORY_ENGINE_MAIL_MODE` | checked-in `resend`; only other mode is explicit local/development/test `local-outbox` |
+| `MEMORY_ENGINE_PUBLIC_BASE_URL` | checked-in environment-specific workers.dev origin until reviewed DNS cutover |
+| `MEMORY_ENGINE_GENERATION_MODEL` | optional reviewed override; provider default remains `google/gemini-3.7-flash` |
+
+`MEMORY_ENGINE_POSTGRES_URL`, filesystem store/outbox paths, mailer commands,
+native ports, systemd, and Caddy are not Worker runtime inputs. Keep old-host
+secret/configuration files intact for the authoritative native service.
+Bootstrap supplies the initial secrets in its one exact-byte deployment.
+Do not update secrets between bootstrap and activation: traffic control uses
+application state so the verified immutable version remains unchanged.
+
+## Bootstrap, activate, upload, promote, pause, rollback
+
+Use new private receipt filenames and keep the full artifact with its proof.
+The following shell variables name **paths**, not credentials:
 
 ```sh
-set -euo pipefail
-
-base="https://scry.study"
-account_id="${MEMORY_ENGINE_ACCOUNT_ID:?set MEMORY_ENGINE_ACCOUNT_ID}"
-session_token="${MEMORY_ENGINE_SESSION_TOKEN:?set MEMORY_ENGINE_SESSION_TOKEN}"
-source_id="${MEMORY_ENGINE_SOURCE_ID:?set MEMORY_ENGINE_SOURCE_ID}"
-
-job_response="$(curl -fsS --max-time 20 \
-  -H "authorization: Bearer $session_token" \
-  -X POST \
-  "$base/v1/accounts/$account_id/sources/$source_id/generation-jobs")"
-job_id="$(printf '%s' "$job_response" | jq -er '.id')"
-
-while :; do
-  job_response="$(curl -fsS --max-time 20 \
-    -H "authorization: Bearer $session_token" \
-    "$base/v1/accounts/$account_id/generation-jobs/$job_id")"
-  case "$(printf '%s' "$job_response" | jq -r '.status')" in
-    succeeded) break ;;
-    failed) printf '%s\n' "$job_response" >&2; exit 1 ;;
-    queued|running|retry) sleep 1 ;;
-    *) printf 'unexpected job response: %s\n' "$job_response" >&2; exit 1 ;;
-  esac
-done
-printf 'scheduled cards created by generation: %s\n' "$(printf '%s' "$job_response" | jq -r '.cardCount')"
+artifact=target/cloudflare/candidate
+proof=target/cloudflare/candidate-workerd-proof.json
+staging_admin=/private/scry-staging-admin.env
+production_admin=/private/scry-production-admin.env
 ```
 
-A succeeded job reports the scheduled cards created by generation in
-`cardCount`; this remains 0 while generated drafts await learner decisions.
-Generation itself creates no review units or due schedules; a learner keep or
-edit decision is the explicit scheduling gate. Inspect the study view for pending
-drafts.
+### First class/Worker creation only
 
-## Legacy v1 compatibility latency
-
-Use this only when a ticket explicitly needs the synchronous compatibility
-path. `/v1/accounts/{account_id}/sources/{source_id}/generate` remains a
-legacy direct API surface and returns `409` on production Postgres hosts;
-production consumers use the queued generation-job workflow above.
-The command below uses an existing allowlisted v1 account/session, saves one article-sized source,
-times the end-to-end direct request, records the response, and archives the
-source. Production account creation is allowlist-protected, so do not use a
-throwaway email here; export a pre-provisioned account id and session token
-first.
+Cloudflare cannot apply a Durable Object class lifecycle migration with
+`versions upload`; initial `v1` requires `deploy`. The repo's explicit bootstrap
+allows this only when Wrangler positively reports the missing Worker error
+**10007**. Authentication failures, timeouts, existing scripts, and an unknown
+status are not evidence of absence. It still enforces reviewed source and the
+exact workerd proof, and it never rebuilds.
 
 ```sh
-set -euo pipefail
+bun run release:bootstrap --environment staging --artifact "$artifact" \
+  --verification "$proof" --admin-env "$staging_admin" \
+  --secrets-file /private/scry-staging-secrets.env \
+  --receipt target/cloudflare/staging-initial.json
 
-base="https://scry.study"
-receipt_dir="docs/qa"
-stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-account_id="${MEMORY_ENGINE_ACCOUNT_ID:?set MEMORY_ENGINE_ACCOUNT_ID}"
-session_token="${MEMORY_ENGINE_SESSION_TOKEN:?set MEMORY_ENGINE_SESSION_TOKEN}"
-source_id=""
-cleanup_source() {
-  if [ -n "$source_id" ]; then
-    curl -fsS --max-time 20 \
-      -H "authorization: Bearer $session_token" \
-      -X DELETE \
-      "$base/v1/accounts/$account_id/sources/$source_id" \
-      >/dev/null || true
-  fi
-}
-trap cleanup_source EXIT
-body='Spaced practice improves long-term retention because each retrieval attempt forces the learner to reconstruct the memory rather than reread it passively. Feedback closes the loop by showing whether the reconstruction was accurate. When practice is delayed, the extra effort strengthens later access, but if the delay is too long the learner may fail without a useful cue. A good study system therefore mixes short recognition checks, cued recall, free recall, and applied composition so the learner moves from identifying an answer toward using the idea in context.'
+# Rehearse migration/recovery separately; only approved nonproduction learners
+# use staging app. A restore-* object is never activated.
+staging_fingerprint="$(bun run ops:data fingerprint \
+  --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target app | jq -er '.sha256')"
+bun run release:traffic --environment staging --artifact "$artifact" \
+  --current target/cloudflare/staging-initial.json --admin-env "$staging_admin" \
+  --expected-fingerprint "$staging_fingerprint" --enable \
+  --receipt target/cloudflare/staging-activated.json
 
-source_json="$(jq -n --arg title "Latency receipt $stamp" --arg body "$body" \
-  '{title:$title, body:$body}')"
-source_response="$(curl -fsS --max-time 20 \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer $session_token" \
-  -d "$source_json" \
-  "$base/v1/accounts/$account_id/sources")"
-source_id="$(printf '%s' "$source_response" | jq -r '.sourceId')"
-
-generate_status="$(curl -fsS --max-time 150 \
-  -H "authorization: Bearer $session_token" \
-  -o "$receipt_dir/production-generation-$stamp.json" \
-  -w "status=%{http_code} time_total=%{time_total}\n" \
-  -X POST \
-  "$base/v1/accounts/$account_id/sources/$source_id/generate")"
-case "$generate_status" in
-  status=2??\ *) ;;
-  *) echo "generation failed: $generate_status"; exit 1 ;;
-esac
-printf '%s\n' "$generate_status" \
-  | tee "$receipt_dir/production-generation-$stamp.latency.txt"
+# Only after activated staging's migration/recovery/product evidence is accepted:
+bun run release:bootstrap --environment production --artifact "$artifact" \
+  --verification "$proof" --admin-env "$production_admin" \
+  --secrets-file /private/scry-production-secrets.env \
+  --staging-receipt target/cloudflare/staging-activated.json \
+  --receipt target/cloudflare/production-initial.json
 ```
 
-## Auth/session migration and rollback
+Bootstrap requires the new primary actor to report `maintenance: true`, public
+health/static assets to work, authenticated SQLite schema access to succeed,
+and readiness/learner requests to return 503. Its verified receipt is explicitly
+paused and has `public_smoke: "not-run-paused"`; it cannot authorize production.
+`staging-activated.json` must bind `maintenance: false`, `readiness: "ready"`,
+and `public_smoke: "passed"` to the exact bundle and still-active staging
+version before production bootstrap/upload/promotion accepts it.
+Production bootstrap still leaves the destination paused for the final import
+and recovery drill. It never stops native writers, migrates data, changes DNS,
+or authorizes production activation.
 
-Postgres migration version 6 replaces the legacy account-scoped raw session
-columns with per-session rows keyed by session_token_hash/session_id_hash,
-adds expiry and revocation timestamps, and hashes legacy rows in one transaction.
-The file adapter performs the equivalent one-time migration for legacy
-session.token and browser-session rows on first read; raw values are not
-retained after the rewrite.
+### Explicit primary traffic control
 
-Before applying migration 6, stop writes and capture a provider snapshot,
-Neon branch, or `pg_dump` archive of the pre-migration database, and retain
-the migration receipt:
+Only `release:traffic` changes the primary actor's learner/background activity.
+It requires the exact artifact and current verified deployment/traffic receipt,
+private admin env, reviewed authoritative fingerprint, explicit `--enable` or
+`--disable`, and a new receipt path. Source/CI/review protection remains enforced.
+Intent is saved before the application mutation; the result records the
+fingerprint, prior/final lifecycle state, schema proof, and unchanged immutable
+Worker version. No upload, deployment, compilation, or secret write occurs.
+If already in the requested state, it verifies without repeating the mutation.
+
+**Production enable is Main-only**, after the independently executed stopped
+source writer/sender barrier, final primary import, independent readback, and
+accepted recovery proof below. `--source-quiesced` is an explicit declaration,
+not a command that stops anything. The root additionally requires verified
+PostgreSQL primary-import provenance and atomically matches the supplied state
+fingerprint. Main must review full private import/restore receipts; a flag or
+matching hash is not a substitute for that evidence.
 
 ```sh
-export DATABASE_URL='postgres://...'
-export PRE_V6_SNAPSHOT_FILE="/secure/backup/memory-engine-pre-auth-v6-$(date -u +%Y%m%dT%H%M%SZ).dump"
-pg_dump --format=custom --no-owner --file="$PRE_V6_SNAPSHOT_FILE" "$DATABASE_URL"
+# This receipt is captured by the final import procedure below, not invented.
+production_fingerprint="$(jq -er \
+  'select(.schema == "memory_engine.cloudflare_import_receipt.v1" and .verified == true) | .fingerprint.sha256' \
+  /private/scry-final-import-receipt.json)"
+bun run release:traffic --environment production --artifact "$artifact" \
+  --current target/cloudflare/production-initial.json --admin-env "$production_admin" \
+  --expected-fingerprint "$production_fingerprint" --source-quiesced --enable \
+  --receipt target/cloudflare/production-activated.json
+
+# Pause later using a freshly reviewed current-state fingerprint, not the old
+# import hash after legitimate learner writes. Source quiescence is not needed
+# to pause; it must still hold when production is re-enabled.
+pause_fingerprint="$(bun run ops:data fingerprint \
+  --base https://scry.misty-step.workers.dev \
+  --admin-env "$production_admin" --target app | jq -er '.sha256')"
+bun run release:traffic --environment production --artifact "$artifact" \
+  --current target/cloudflare/production-activated.json --admin-env "$production_admin" \
+  --expected-fingerprint "$pause_fingerprint" --disable \
+  --receipt target/cloudflare/production-paused.json
 ```
 
-Roll forward by running the API with the versioned Postgres migrator, then
-verify row counts, non-empty 64-character hashes, expiry timestamps, and
-absence of the legacy columns/tables. Run the migrator twice: the second run
-must be a no-op and must leave the same row counts. Do not roll back only
-the binary after migration 6: the hashed-session schema is not compatible
-with a pre-migration binary.
+The pause receipt verifies 503 readiness/learner fences and the same
+authoritative fingerprint after the transaction. Active background work may
+legitimately change the fingerprint after activation. A 409 or uncertain HTTP
+result leaves a `failed-requires-inspection` receipt; read current lifecycle,
+state, and immutable version before a new explicit attempt. The command never
+blindly retries. Reactivation uses the pause receipt as `--current`, a freshly
+reviewed fingerprint, `--enable`, and production's still-true
+`--source-quiesced` declaration.
 
-For a deterministic Postgres rollback, stop API writes and restore the
-snapshot captured *before* migration 6 — never a dump taken during rollback,
-which would only capture the already-migrated state and restore a no-op:
+### Ordinary code changes
+
+Upload identical verified bytes to staging, then explicitly promote that
+returned immutable version. `--current` must identify the currently verified
+100% deployment; a concurrent/manual change causes refusal.
 
 ```sh
-export DATABASE_URL='postgres://...'
-# The exact file captured in the pre-migration step above, not a fresh dump.
-test -r "$PRE_V6_SNAPSHOT_FILE"
-# Roll back only while writes are stopped.
-pg_restore --clean --if-exists --no-owner --dbname="$DATABASE_URL" "$PRE_V6_SNAPSHOT_FILE"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c   "SELECT version FROM memory_engine_schema_migrations ORDER BY version DESC LIMIT 1;"
+bun run release:upload --environment staging --artifact "$artifact" \
+  --verification "$proof" --admin-env "$staging_admin" \
+  --current target/cloudflare/staging-current.json \
+  --receipt target/cloudflare/staging-upload.json
+
+bun run release:promote --environment staging --artifact "$artifact" \
+  --verification "$proof" --admin-env "$staging_admin" \
+  --current target/cloudflare/staging-current.json \
+  --version-receipt target/cloudflare/staging-upload.json \
+  --receipt target/cloudflare/staging-promoted.json
+
+bun run release:upload --environment production --artifact "$artifact" \
+  --verification "$proof" --admin-env "$production_admin" \
+  --current target/cloudflare/production-current.json \
+  --staging-receipt target/cloudflare/staging-promoted.json \
+  --receipt target/cloudflare/production-upload.json
+
+bun run release:promote --environment production --artifact "$artifact" \
+  --verification "$proof" --admin-env "$production_admin" \
+  --current target/cloudflare/production-current.json \
+  --version-receipt target/cloudflare/production-upload.json \
+  --staging-receipt target/cloudflare/staging-promoted.json \
+  --receipt target/cloudflare/production-promoted.json
 ```
 
-Deploy the matching pre-v6 commit only after the restore reports the pre-v6
-schema. For file stores, stop all API processes, archive the complete store
-root before migration, and restore it atomically on rollback:
+`*-current.json` above means a previously produced verified deployment or
+traffic receipt, not a special mutable pointer maintained by the tool. Pass the
+actual retained filename; no `latest` alias or symlink is trusted. The new
+verified receipt is the next operation's explicit `--current`.
+
+Internally, upload uses Wrangler `versions upload --no-bundle`; promotion uses
+`versions deploy VERSION_ID@100 --yes`. The bundle hash is written into the
+Cloudflare version message and checked through `versions view --json`.
+`deployments status --json` verifies the active version. Upload checks that it
+did not alter the active deployment. Production requires a previously verified
+staging receipt for **the same bundle hash and version**, with staging activated
+and `public_smoke` passed; it does not rebuild "equivalent" Wasm for production.
+Code releases do not mutate the durable traffic flag. Promotion checks it before
+and after deployment; rollback reads and reports the recovered state without
+requiring the outgoing application to respond.
+
+Every mutation writes an intent journal first. Code releases retain private
+Wrangler structured output; traffic operations retain only safe application
+intent/result metadata. Completed receipts record environment/account, reviewed
+revision/source/bundle/schema hashes, CI check-run id, workerd proof hash,
+immutable version, previous version, and deployment id when returned. Failures
+record `failed-requires-inspection` and any returned version rather than
+silently retrying activation or fabricating success. Inspect a failed operation
+and live versions before taking another action.
+
+A deployment receipt's `status: verified` proves the active 100% version,
+health/static assets, authenticated SQLite schema, and its explicit
+`runtime_proof`. A paused receipt proves the learner/readiness fence, not
+public learner readiness. An active receipt additionally proves `public_smoke`
+(public app/readiness and auth rejection). Neither declares that live migration,
+restored history, inbox placement, paid generation, UI timing, or cutover passed.
+
+### Explicit code rollback
+
+Keep the old bundle, its workerd proof, and its previously verified deployed
+receipt. From its recorded reviewed source/tooling revision:
 
 ```sh
-export STORE_ROOT='/var/lib/memory-engine/store'
-export STORE_BACKUP="/secure/backup/memory-engine-store-pre-auth-v6-$(date -u +%Y%m%dT%H%M%SZ).tar"
-tar --create --file="$STORE_BACKUP" --directory="$STORE_ROOT" .
-# Roll back with writes stopped; restore into a sibling and swap atomically.
-rm -rf "${STORE_ROOT}.restore"
-mkdir "${STORE_ROOT}.restore"
-tar --extract --file="$STORE_BACKUP" --directory="${STORE_ROOT}.restore"
-mv "$STORE_ROOT" "${STORE_ROOT}.failed"
-mv "${STORE_ROOT}.restore" "$STORE_ROOT"
+bun run release:rollback --environment production \
+  --artifact target/cloudflare/previous-bundle \
+  --verification target/cloudflare/previous-workerd-proof.json \
+  --admin-env "$production_admin" \
+  --current target/cloudflare/production-promoted.json \
+  --version-receipt target/cloudflare/previous-production-verified.json \
+  --receipt target/cloudflare/production-rollback.json
 ```
 
-A failed migration transaction leaves the legacy tables intact; retry is safe.
-A file migration cleanup failure revokes the replacement hash and locks the
-account until the operator restores the pre-migration store snapshot.
+Rollback names an exact previously verified version and uses the same 100%
+version deployment operation; never an inferred predecessor. `--current` may
+be the inspected `.failed.json` receipt from a failed deployment, provided its
+version/hash still matches the live Cloudflare control plane. The outgoing app
+does not have to pass the schema or public probes that rollback is repairing.
+Current and target receipts must have identical ordered SQLite migration-content
+hashes. The recovered version must then pass live schema and runtime verification;
+its receipt reports whether learner traffic is active or paused. Unknown/newer,
+gapped, or changed schema definitions fail closed. Class lifecycle changes are
+also refused by this release path. There is no automatic SQL downgrade.
 
-## Deploy and rollback
+Cloudflare rollback changes code, **not bound resource data**. A class lifecycle
+migration blocks rollback to earlier classes, and removed bindings/buckets can
+make old versions unusable. Schema-changing recovery therefore requires the
+separate-empty-object restore/data procedure below and a separately reviewed
+traffic cutover. Never restore a database underneath live writers or treat an
+old native schema-8 binary as rollback for a migrated SQLite object.
 
-Production deployment is an explicit host release from a protected `master`
-commit. A merge does not mutate production. Branch protection (`ci`, including
-administrators) proves the source gate; the release receipt must name the
-deployed commit and pass the real public smoke below.
+## Full data migration and R2 recovery
 
-Build and install a release from the Scry repository:
+The owner is `scripts/scry-cloudflare-data` and the Worker recovery module.
+Every API command explicitly selects an origin, a private admin env file, and
+`--target app` or a separate `restore-[a-z0-9-]{8,64}` object. The Worker overwrites
+trusted internal object/identity headers. There is no arbitrary SQL endpoint.
+HTTP credentials never follow redirects; HTTPS is required except loopback.
+Root routing must keep `restore-*` targets administrator-only and suppress their
+generation/reminder/recovery alarms. Only `app` may publish backups or perform
+retention; recovery does not grant a second live learner-writing instance.
+
+The portable bundle schema is `memory_engine.cloudflare_import.v1`. Current
+bounds are 16 MiB/bundle, 1 MiB/row, and 100,000 rows. PostgreSQL export reads
+through existing host `psql`/SSH using a **repeatable-read READ ONLY transaction**,
+with catalog/schema checks and no remote file writes or native store startup.
+It accepts the known complete schema-8 ledger (and explicitly recognized
+schema-9 exposures when present), fails on unknown/missing tables, columns,
+types/nullability, keys, RLS, sequences, or accounts, and never invokes
+`PostgresStudyStore::connect`.
+This beta migration requires exactly one explicitly known source account.
+
+All raw accounts, auth challenges, browser/API session hashes, CSRF hashes,
+waitlist/audit rows, reminder preferences/claims, source/reference bodies,
+generation runs/drafts/jobs/attempts/reservations, notes, review units/schedules,
+attempts/idempotency receipts, feedback, remediation, and available exposure
+history are part of the export. JSON payloads remain JSON text, preserving
+source content and integer/timestamp/hash/null values. Import is transactional
+and empty-target-only; known format conversion and new target bookkeeping are
+explicit, with source hashes/counts and destination fingerprint evidence.
+No historical learning/exposure evidence is invented.
+
+Schema 8 exports all 21 application tables, eight migration-ledger rows, and both
+sequence high-water states; recognized schema 9 also exports actual exposures.
+The one known consumed-hold key `idempotencyKey` is normalized to
+`idempotency_key` only after exact raw-source readback, with original private
+bytes and before/after hashes retained in provenance. PostgreSQL booleans map
+to SQLite 0/1. No exposure is backfilled into schema 8's new empty exposure table.
+Imported pending reminder deliveries without a corresponding receipt remain
+unknown rather than being blindly resent. Full SQLite export includes all
+28 application/provenance tables and original ledger/sequence/recovery control
+state; source control/lease state is kept as provenance, not activated on a
+restored object. Platform-internal SQL-inaccessible `__cf_kv` is not application
+state. These conversion and suppression invariants still require Main's real
+catalog, data/session, workerd, and restored-object proof.
+
+### Staging rehearsal and final export
+
+Use a private directory with new mode-0600 bundle filenames. The expected
+account id is supplied from operator knowledge, not inferred from a newly
+created test account. The native env file path below remains on the old host;
+the command does not copy or print its credentials.
+`--sudo --database-user scry` reads the root-owned environment first, then drops
+the exporter to the existing `scry` OS/database user for Unix-socket peer auth.
+It does not grant a new role, alter authentication, or write host files.
 
 ```sh
-set -eu
-test "$(git branch --show-current)" = master
-test -z "$(git status --porcelain)"
-git fetch --quiet origin master
-release=$(git rev-parse HEAD)
-test "$release" = "$(git rev-parse refs/remotes/origin/master)"
-SCRY_SSH_HOST="${SCRY_SSH_HOST:-root@public-apps.tail5f5eb4.ts.net}"
+bun run ops:data pg-export --ssh public-apps --sudo --database-user scry \
+  --env-file /etc/public-apps/scry.env --schema public \
+  --expected-account-id "$expected_account_id" \
+  --output /private/scry-precutover.json
 
-RUST_MIN_STACK=33554432 CARGO_BUILD_JOBS=8 \
-  cargo build --release --locked \
-    -p memory-engine-api \
-    -p memory-engine-canary --bin memory-engine-canary-receipt
+bun run ops:data inspect --input /private/scry-precutover.json \
+  --expected-account-id "$expected_account_id"
 
-stage=$(mktemp -d)
-archive="/tmp/scry-${release}.tar.gz"
-trap 'rm -rf "$stage" "$archive"' EXIT
-install -D -m 0755 target/release/memory-engine-api \
-  "$stage/memory-engine-api"
-install -D -m 0755 target/release/memory-engine-canary-receipt \
-  "$stage/memory-engine-canary-receipt"
-install -D -m 0755 bin/send-magic-link "$stage/bin/send-magic-link"
-tar --sort=name --mtime=@0 --owner=0 --group=0 -C "$stage" -czf "$archive" .
-digest=$(sha256sum "$archive" | cut -d' ' -f1)
-
-scp "$archive" "$SCRY_SSH_HOST:$archive"
-ssh "$SCRY_SSH_HOST" sh -s -- "$release" "$digest" <<'REMOTE'
-set -eu
-release=$1
-digest=$2
-root=/opt/public-apps/scry
-archive="/tmp/scry-${release}.tar.gz"
-test -f /etc/public-apps/scry.env
-printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
-install -d -o root -g root -m 0755 "$root/releases/$release"
-tar -xzf "$archive" -C "$root/releases/$release"
-chown -R root:root "$root/releases/$release"
-ln -sfn "releases/$release" "$root/current.next"
-mv -Tf "$root/current.next" "$root/current"
-ln -sfn "$root/current/bin/send-magic-link" /usr/local/bin/send-magic-link
-systemctl enable --now scry.service
-systemctl restart scry.service
-curl -fsS --max-time 20 http://127.0.0.1:3005/readyz
-rm -f "$archive"
-REMOTE
-./bin/smoke-production
+# Rehearsal into a separate empty object; it does not claim a stopped source:
+bun run ops:data import --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target restore-rehearsal-20260906 \
+  --input /private/scry-precutover.json --expected-account-id "$expected_account_id"
 ```
 
-`/etc/systemd/system/scry.service` is the runtime contract:
-`User=scry`, `EnvironmentFile=/etc/public-apps/scry.env`,
-`ExecStart=/opt/public-apps/scry/current/memory-engine-api`, loopback
-`HOST=127.0.0.1`, and `PORT=3005`. Caddy is the only public ingress and proxies
-`scry.study` and `www.scry.study` to that port while overwriting
-`do-connecting-ip`.
-
-Rollback changes only the active symlink, then reruns the same smoke. It does
-not modify the environment file or the local Postgres data directory:
+For final primary import, **Main alone** first stops all old writers and
+senders: public learner mutations, native generation workers, reminder
+schedulers, machine writers, and any background job capable of changing state.
+The destination must remain paused; primary import rejects an active actor.
+Capture a fresh final read-only export under that barrier. `--source-quiesced`
+is a required assertion of the independently executed barrier, **not a command
+that stops anything**. Never assert it just to bypass the refusal.
 
 ```sh
-known_good="${KNOWN_GOOD_COMMIT:?set an installed release commit}"
-SCRY_SSH_HOST="${SCRY_SSH_HOST:-root@public-apps.tail5f5eb4.ts.net}"
-ssh "$SCRY_SSH_HOST" sh -s -- "$known_good" <<'REMOTE'
-set -eu
-release=$1
-root=/opt/public-apps/scry
-test -x "$root/releases/$release/memory-engine-api"
-ln -sfn "releases/$release" "$root/current.next"
-mv -Tf "$root/current.next" "$root/current"
-systemctl restart scry.service
-curl -fsS --max-time 20 http://127.0.0.1:3005/readyz
-REMOTE
-./bin/smoke-production
+# Capture the actual JSON import result in a new private file; never overwrite.
+(
+  umask 077
+  set -C
+  bun run ops:data import --base https://scry.misty-step.workers.dev \
+    --admin-env "$production_admin" --target app --source-quiesced \
+    --input /private/scry-final-quiesced.json --expected-account-id "$expected_account_id" \
+    > /private/scry-final-import-receipt.json
+)
+
+bun run ops:data fingerprint --base https://scry.misty-step.workers.dev \
+  --admin-env "$production_admin" --target app
 ```
 
-After a rollback, revert or repair `master`, run the deterministic gate, and
-deploy that reviewed commit normally. Never revive the deleted App Platform
-application or any retired Fly path.
+Import requires the reviewed source checksum and exact expected account
+fingerprint. `app` must be empty; there is no destructive replace flag. Preserve
+the import receipt, every table's count/hash comparison, imported session-record
+proof, and full history/active-review continuity evidence. Compare the independent
+fingerprint readback with the import receipt before recovery and activation.
+A successful transport or matching account count alone is insufficient.
 
-## Health
+### Back up, retrieve, restore into a separate object
+
+When active, the main object's alarm performs daily R2 backup and retention
+(30 days, keep at least 7 complete backups per source). While paused, use the
+authenticated manual backup/retrieve/restore commands for pre-activation proof.
+R2 uses private complete manifests and
+256 KiB checksummed chunks. The complete marker is written only after all
+chunks; partial uploads are not considered recoverable backups. Inventory is
+bounded and fails closed rather than silently truncating. Retention removes
+complete markers before chunks and gives incomplete chunks a seven-day grace.
 
 ```sh
-curl -fsS https://scry.study/healthz
-curl -fsS https://scry.study/readyz
-ssh "${SCRY_SSH_HOST:-root@public-apps.tail5f5eb4.ts.net}" \
-  'systemctl is-active scry.service && readlink -f /opt/public-apps/scry/current'
+bun run ops:data backup --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target app \
+  --receipt /private/scry-staging-backup.json
+
+bun run ops:data retrieve --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target app \
+  --receipt /private/scry-staging-backup.json \
+  --output /private/scry-staging-retrieved.json
+
+bun run ops:data restore --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target restore-drill-20260906 \
+  --receipt /private/scry-staging-backup.json
+
+bun run ops:data fingerprint --base https://scry-staging.misty-step.workers.dev \
+  --admin-env "$staging_admin" --target restore-drill-20260906
 ```
 
-Errors, health check-ins, and closed performance aggregates land in Canary
-through one bounded worker queue. Every API 500 (`ApiFailure::internal`) is
-reported as service `memory-engine-api`, environment `production`.
-Performance observations are merged in process and export at most one batch
-per minute for each of the trusted server, untrusted browser, and job
-namespaces. Queue saturation, Canary failure, and shutdown deadlines remain
-fail-open for request handling; delivery/drop/invalid counts ride in the
-bounded aggregate schema. The same JSON is printed as
-`authority=non_authoritative_debug` for immediate log inspection.
+Restore verifies manifest, every chunk, complete bundle, account identity, and
+content fingerprint, commits to a **separate empty** `restore-*` object, then
+performs an independent request-boundary fingerprint readback. It never
+replaces `app`, automatically selects the restored object for learner traffic,
+or shares buckets between environments. For production, run the same commands
+with the production origin/admin file and a new production receipt/restore
+name. Use the `export` command for an additional private SQLite portable bundle;
+`list` exposes complete backup receipts without content. Manual retention is
+explicitly destructive and requires `--target app --days 30 --keep 7 --confirm`.
 
-`POST /app/submit` is the only HTTP route with per-request performance
-headers. Every response carries `X-Request-ID: req_<32 lowercase hex>` and a
-content-free `Server-Timing` value with `request`, `total`, and `render`.
-Browser-enhanced submits also carry the opaque `handoff` token. Postgres-backed
-submits add `pgconnect`, `pgop`, and the cumulative `pgstmt` call count; those
-metrics are omitted rather than reported as zero when the phase did not run.
-The response is always `Cache-Control: no-store`. Health/readiness, static
-assets, generation SSE, and the telemetry endpoint are intentionally outside
-this instrumentation.
+Do not configure a coarse bucket lifecycle rule that can delete required
+chunks before their complete manifest. Durable Object PITR is an additional
+Cloudflare recovery option; it is not a substitute for the portable R2 restore
+drill. Record the actual platform recovery point and operator procedure before
+claiming PITR proof. No production restore, PITR action, or data drill has been
+executed by this source change.
 
-After a graded page is visible for two animation frames, the browser consumes
-its short-lived same-tab handoff and posts one strict, content-free receipt to
-`POST /app/performance/submit`. Canary receives the trusted server route total
-separately from the untrusted browser tap-to-ack and graded-visible durations;
-the browser series carries only a coarse `mobile`, `tablet`, or `desktop`
-viewport. Missing APIs, stale or mismatched handoffs, BFCache restores, and
-malformed timings fail closed without delaying or changing review submission.
+## Auth, learner, generation, and delivery proof
 
-The host release includes a bounded live receipt. Run it through the private
-Tailscale SSH path without printing any secret value:
+Human auth remains invite-gated magic links with independent sliding browser
+sessions and CSRF-checked mutations. Machine faces use
+`POST /v1/service-sessions` with `x-admin-token` and JSON `{ "email": ... }`,
+returning `{accountId, sessionToken}` to a private consuming-client credential
+file. The static allowlist applies even to an admin-issued session. Never read
+mail archives to authenticate machines. Account-scoped DELETE
+`/v1/accounts/{account_id}/service-sessions/current` and `/all` retain their
+explicit revocation semantics.
+Browser-session, challenge, and CSRF records remain preserved, but browser
+cookies are host-scoped and cannot move from `scry.study` to workers.dev.
+Users must perform a fresh magic-link sign-in on the new origin. Machine
+clients may retain their imported bearer token while explicitly changing their
+base URL. Do not weaken cookie/CSRF boundaries to simulate seamless host migration.
 
-```sh
-ssh "${SCRY_SSH_HOST:-root@public-apps.tail5f5eb4.ts.net}" \
-  '/opt/public-apps/scry/current/memory-engine-canary-receipt emit-openapi'
-```
+Waitlist `/internal/waitlist`, `/export`, `/invite`, and `/delete` remain
+admin-only. The public Worker strips caller-supplied trusted headers and derives
+trusted client identity from the Cloudflare request. Caller-controlled forwarded
+IP headers must never choose an auth quota. An unavailable/unknown identity
+still fails closed rather than disabling rate limits.
 
-The receipt times a real loopback `GET /v1/openapi.json`, queues one closed
-server observation, drains the worker, and exits nonzero on HTTP or delivery
-failure. Readback uses a distinct service-bound read credential; the
-production app keeps ingest-only authority:
+All five faces retain `/v1` wire identifiers and learning behavior. Preferred
+generation is `POST /v1/accounts/{account_id}/sources/{source_id}/generation-jobs`,
+then account-scoped `GET /v1/accounts/{account_id}/generation-jobs/{job_id}` until
+terminal status. Coalesced admission returns the existing exact job; generated
+drafts do not schedule reviews until explicit learner keep/edit. The synchronous
+`/sources/{source_id}/generate` route remains a compatibility capability; do not
+copy the old host-specific claim that every production call returns 409.
 
-```sh
-CANARY_READ_ENDPOINT=https://canary.mistystep.io \
-CANARY_READ_API_KEY=... \
-CANARY_READ_SERVICE=memory-engine-api \
-cargo run -p memory-engine-canary --bin memory-engine-canary-receipt -- readback
-```
+Generation uses Worker Fetch against OpenRouter with the shared Rust trust
+runner, not a fake provider or an unproved Workers AI substitution. Current
+provider controls include source 64 KiB, response 1 MiB, 60-second requests,
+180-second leases, three attempts, per-account/global active limits 8/64 and
+running limits 1/4. Admission reserves $0.10 for each potentially dispatched
+unknown-cost call (initial+repair $0.20), with rolling 24-hour account/global
+limits $1/$10. Actual over-allowance cost is charged and blocks further starts;
+unknown costs keep their reservation, never a fictitious zero. LocalOnly
+sources must not reach a model. Cached Notes and manual learner-requested
+Bridge remain explicit, with learner approval before scheduling.
 
-Never reuse or promote the app's ingest key for readback. The deterministic
-admission-overhead receipt is
-`cargo run -p memory-engine-canary --bin memory-engine-canary-receipt -- overhead`;
-it fails above a 5 ms p95.
+Before public cutover, retain separate actual evidence for:
 
-## Runtime environment and secrets
+1. Imported session/challenge/CSRF records and machine sessions, fresh workers.dev
+   browser sign-in, allowlist recheck, one-use magic links, CSRF rejection,
+   logout-current/all, and signed unsubscribe.
+2. Real account/source/history/graded-hold continuity and account isolation.
+3. Browser Capture → waiting → Library draft decisions → Study → reveal/grade →
+   Next, with exact-job terminal reconciliation that does not navigate away
+   from editable Library. Verify the actual mobile surface, not just HTML text.
+4. Real queued generation, lease/replay behavior, provider usage/cost accounting,
+   and the current generation quality acceptance bar.
+5. Resend provider acceptance recorded separately from Inbox/Spam placement and
+   SPF/DKIM/DMARC results, a successfully consumed fresh magic link, replay
+   rejection, and an actual due-count reminder to an approved account with
+   genuinely due material. Resend acceptance, outbox rows, debug links, page
+   renders, and `/healthz` are not inbox-delivery proof.
+6. p95 acknowledgement <100 ms, graded-visible <300 ms, and first quiz <20 s
+   measured on the delivered browser contract, not inferred from native timing.
+7. Complete backup retrieval, separate-object restore, and equality of the
+   appropriate private fingerprint/count/hash receipts.
 
-The root-owned mode-`0600` `/etc/public-apps/scry.env` file owns the live
-runtime configuration below. Edit it only through the private host, never print
-secret values, then restart `scry.service` and rerun the deployed smoke.
+## Interim-origin cutover and old-host retirement
 
-| Secret | Purpose |
-| --- | --- |
-| `MEMORY_ENGINE_POSTGRES_URL` | Local Unix-socket URL `postgresql:///scry?host=/var/run/postgresql&sslmode=disable`. Peer-auth as systemd user `scry`. |
-| `MEMORY_ENGINE_AUTH_ALLOWED_EMAILS` | Comma-separated allowlist; account creation and magic links refuse other emails. |
-| `MEMORY_ENGINE_AUTH_MAILER_COMMAND` | Path to the installed production command `/usr/local/bin/send-magic-link`; do not replace it with the local outbox. |
-| `RESEND_API_KEY` | Encrypted Resend credential consumed only by the bundled mailer; never print or place in a command line. |
-| `MEMORY_ENGINE_MAIL_FROM` | Replyable production sender on the verified `mistystep.io` domain; keep the operator-approved sender and do not switch domains without a new ruling. |
-| `MEMORY_ENGINE_PUBLIC_BASE_URL` | Public link base used to construct the sign-in URL; keep aligned with the deployed Scry host. |
-| `MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET` | Stable secret for HMAC-signed, seven-day, account/email-scoped reminder unsubscribe links. |
-| `MEMORY_ENGINE_RETURN_NOTIFICATION_SCHEDULER_ENABLED` | Optional kill switch; set `false` to disable scheduled reminder sweeps. |
-| `MEMORY_ENGINE_RETURN_NOTIFICATION_MANUAL_TOKEN` | Operator-only token for bounded manual scheduler runs; keep it only in the mode-`0600` environment file. |
-| `MEMORY_ENGINE_RETURN_NOTIFICATION_BATCH_SIZE` | Optional bounded sweep size, default 100 and capped at 1000. |
-| `MEMORY_ENGINE_RETURN_NOTIFICATION_SCHEDULER_INTERVAL_SECONDS` | Optional sweep interval, default 900 seconds and capped at 86400. |
-| `MEMORY_ENGINE_AUTH_LINK_OUTBOX_PATH` | Local/dev-only magic-link outbox fallback; never use it as production delivery proof. |
-| `OPENROUTER_API_KEY` | Enables model-backed generation for pasted prose; absent → structured-block parsing only. |
-| `MEMORY_ENGINE_GENERATION_MODEL` | Optional model override (default `google/gemini-3.7-flash`; see docs/evals.md). |
-| `CANARY_ENDPOINT` / `CANARY_API_KEY` | Ingest-only Canary error, check-in, and bounded performance export; absent → reporting is a no-op. |
-| `MEMORY_ENGINE_ENVIRONMENT` | Environment label on Canary error events. |
-## Store backend selection
+Main alone owns the live account, source write barrier, final data movement,
+actual production activation, browser/machine proof, and old-host routing or
+retirement. The authorized free destination is
+`https://scry.misty-step.workers.dev`; a registrar transfer, custom domain, or
+DNS authority is **not** an activation prerequisite for that origin.
+After exact source/hash/version readback, final imported-state comparison,
+and accepted recovery proof, activate through `release:traffic` and exercise
+that actual HTTPS origin with a fresh browser sign-in and imported machine
+sessions. Record timestamps and evidence; no checklist item is satisfied by
+this runbook's existence.
 
-`main.rs` picks the backend at boot:
+Old `scry.study`/`www.scry.study` ingress must not keep sending learner writes
+to the frozen native database. Main chooses and proves any temporary
+reverse-proxy/redirect behavior, including existing signed links and client
+methods, then retires it only after destination continuity is accepted.
+A later direct custom-domain route needs separately reviewed DNS authority,
+TLS/canonical-host, cookie, and client proof; it is not part of the free-origin
+prerequisite or an implicit CLI override.
 
-1. `MEMORY_ENGINE_POSTGRES_URL` set → Postgres (production).
-2. Else `MEMORY_ENGINE_ENABLE_FILE_STORE=true` + `MEMORY_ENGINE_API_STORE_DIR`
-   → file store (local/dev only; it is not durable production storage).
-3. Else: refuses to boot.
+Before any new destination writes, a failed migration can leave the old host
+as the authoritative source under the controlled barrier. **After Worker
+writes are accepted, blindly routing traffic back to the frozen old database
+would discard learner history.** Recovery then needs a deliberate data-aware
+plan; code rollback cannot merge divergent native and SQLite histories.
 
-Migrations run once per process at first database use, not per request.
+Keep the pre-session host backup work: `bin/scry-pg-dump`,
+`bin/scry-backup-offhost`, `bin/retention-preflight.py`, the installer and
+backup timers/alerts, isolated native restore tooling, and their private
+configuration/dumps. Off-host backup provisioning or freshness must be proven,
+not assumed; an absent/stale destination is a failure. The newly created native
+release installer, rollback launcher, Caddy fragments, and runtime unit were
+removed from this repo because they are no longer a deployment path; **nothing
+was removed from the live host**. Shared private-env helpers and consequential
+recovery tests remain until safe host retirement.
 
-## Database (local Postgres)
+Stopping native writers at the source barrier is distinct from deleting the
+old service. Only after production continuity and recovery/delivery proof are
+accepted may Main retire the old mailer, runtime, reverse proxy/redirect,
+ingress, credentials, and hosting. Preserve required private historical
+snapshots and receipts according to the recovery/retention decision. Do not
+reinstall the old runtime, point back to Neon, delete old dumps, or claim a
+completed Cloudflare migration prematurely.
 
-Postgres 16 runs on `public-apps`. The `scry` OS user owns database `scry`
-via peer auth on `/var/run/postgresql`. `scry.service` waits for
-`postgresql.service`.
+## Source references
 
-Nightly custom-format dumps land in `/var/backups/scry` via
-`/usr/local/sbin/scry-pg-dump` (`/etc/cron.d/scry-pg-dump`), pruned after
-seven days. Restore drill: `pg_restore` into a side database owned by
-`scry`, then drop it.
-
-### Off-host backup
-
-`scry-backup-offhost` (03:45 UTC timer) encrypts the newest dump with GPG
-AES256 and uploads it to the Scry Spaces bucket (`scry/` prefix). Source
-of truth lives in this repository: `bin/scry-backup-offhost`,
-`bin/retention-preflight.py`, `etc/systemd/scry-backup-*`, and the idempotent
-`bin/install-scry-backup.sh`. The installer places the preflight at
-`/usr/local/lib/scry/retention-preflight.py`; never edit `/usr/local` copies
-directly, reinstall from the repo.
-
-**Provisioning status:** the bucket does not exist yet. The required provider
-configuration is bucket versioning plus 30-day current and noncurrent
-age-based expiration covering the complete `scry/` prefix. Neither is active
-today. Because the uploader has no DELETE path, objects would accumulate
-without bound if credentials were added before lifecycle/versioning exist;
-provisioning order is therefore bucket+lifecycle first, credentials second.
-Until then the timer runs and records `skipped target-not-provisioned`.
-
-The pipeline stays inert until `/etc/public-apps/scry-backup.env`
-(mode 0600) defines `SCRY_BACKUP_SPACES_BUCKET`, `SCRY_BACKUP_SPACES_KEY`,
-`SCRY_BACKUP_SPACES_SECRET`, `SCRY_BACKUP_PASSPHRASE`, and optional
-`SCRY_BACKUP_REGION` (default `nyc3`). The passphrase must also live in
-an operator-managed off-host credential store; without that copy the
-ciphertext is unrestorable after droplet loss. Outcomes record to
-`/var/lib/scry-backup/last-run`; failures fail the unit and trigger
-`scry-backup-alert.service` (`FAILURE` flag + `daemon.alert` journal).
-
-The retired Neon project `memory-engine-prod` (`twilight-brook-49749008`) is
-kept until a restoreable Neon dump exists. Do not delete it. Do not point
-production back at Neon.
-
-## Human login (magic links over email)
-
-Human auth is invite allowlist + magic link, delivered by
-`bin/send-magic-link`. Each release carries that script, and deployment keeps
-`/usr/local/bin/send-magic-link` pointed at the active immutable release.
-Production sends through Resend using `RESEND_API_KEY` from the root-owned
-environment file and a replyable `MEMORY_ENGINE_MAIL_FROM` address on the
-verified `mistystep.io` domain. The operator ruling is to keep that verified
-domain and sender, without upgrading billing, adding `scry.study`, or deleting
-`mistystep.io`. Keep
-`MEMORY_ENGINE_AUTH_MAILER_COMMAND=/usr/local/bin/send-magic-link` in
-`/etc/public-apps/scry.env`; never put a secret value in a shell command or
-checked-in file.
-
-The bundled sender has two environment contracts. Magic-link mode uses
-`MEMORY_ENGINE_AUTH_EMAIL` and `MEMORY_ENGINE_AUTH_LINK` and does not require
-an idempotency key. Due-count reminder mode fails closed unless
-`MEMORY_ENGINE_RETURN_NOTIFICATION_IDEMPOTENCY_KEY` is present; it sends that
-same value as Resend's `Idempotency-Key` HTTP header. Retries of one durable
-reminder claim must reuse both the key and the original payload so Resend can
-deduplicate the `POST /emails` request. The key is not shared with magic-link
-mail.
-
-While `MEMORY_ENGINE_AUTH_LINK_OUTBOX_PATH` is set instead, links land in an
-instance-local outbox. That path is a temporary solo-dogfood fallback, not a
-durable delivery channel.
-
-A failed send surfaces as a 500 and therefore lands in Canary. The production
-sender is the encrypted `MEMORY_ENGINE_MAIL_FROM` value on verified
-`mistystep.io`; the script fallback `onboarding@resend.dev` is local-only and must
-not be used as production proof. Switching the sender is a secret change, not a
-code edit — see Deliverability below.
-
-### Due-count return channel
-
-The signed-in workspace offers one explicit, optional return channel: “Enable
-due-count reminders.” It stores the normalized, allowlisted reminder address in
-the account store and sends one confirmation through the same
-`MEMORY_ENGINE_AUTH_MAILER_COMMAND` / `MEMORY_ENGINE_AUTH_LINK_OUTBOX_PATH`
-boundary. The scheduled boundary enumerates enabled preferences without a
-browser request, computes each account's live due count, and sends only when
-reviews are due and the persisted last-send time is at least 24 hours old. The
-policy is deterministic, has no streaks or promotional content, and a learner
-can disable it from the workspace or the signed unsubscribe link in the
-plain-text message. The email GET only renders a confirmation; its POST carries
-the scoped token and performs the mutation without requiring a browser session.
-Disable is persisted and never sends mail. Home/render GETs are read-only and
-never invoke this boundary.
-
-### Scheduled execution and operations
-
-Every API instance starts the scheduler unless
-`MEMORY_ENGINE_RETURN_NOTIFICATION_SCHEDULER_ENABLED=false`. Each sweep is
-bounded by `MEMORY_ENGINE_RETURN_NOTIFICATION_BATCH_SIZE` (default 100,
-maximum 1000), runs at
-`MEMORY_ENGINE_RETURN_NOTIFICATION_SCHEDULER_INTERVAL_SECONDS` (default 900),
-and uses the durable per-account claim as the multi-instance lease/fence. The
-current implementation deliberately uses one synchronous worker per instance;
-Postgres/file claims provide the cross-instance concurrency bound and provider
-idempotency prevents duplicate logical sends.
-
-The file adapter's per-account notification lock is a persistent path with an
-OS descriptor lock. Every writer (save/disable preference, claim, complete,
-release) acquires the lock with a blocking `flock`, so a contending writer
-waits for the lock instead of skipping the account outright; after acquiring
-it, the writer re-reads the account's current on-disk state and re-checks
-eligibility (enabled, claim ownership, retry timing) before mutating, so a
-recheck always sees the latest committed state rather than a stale in-memory
-view. The lock path is never deleted as part of ownership release, so stale
-paths are harmless, and a process crash releases the descriptor for the next
-waiter. The same libc-backed helper protects the repository-owned file
-outbox: it scans durable delivery keys while holding the descriptor lock and
-does not append a duplicate after a lease-expiry reclaim.
-
-The scheduler returns an owned lifecycle handle. The production binary joins
-that handle during graceful shutdown, including any in-flight blocking
-provider call, before exiting. Manual and interactive reminder routes run
-storage and provider work on blocking workers; health requests remain
-responsive while a provider is slow. `lastRunAtMs` records every sweep, while
-`lastSuccessAtMs` advances only for a sweep with zero failed accounts.
-
-The liveness counters are included in `/healthz` under
-`returnNotificationScheduler`. A bounded manual/backfill run is available only
-with the operator token:
-
-```sh
-curl -fsS -X POST \
-  -H "x-scheduler-token: ${MEMORY_ENGINE_RETURN_NOTIFICATION_MANUAL_TOKEN:?set token}" \
-  "$base/internal/scheduler/return-notifications"
-```
-
-Production proof is limited to scheduler health and authorization-failure
-probes. It does not establish provider acceptance or inbox placement for
-due-count reminders. Treat a manual production run as delivery evidence only
-when it uses one allowlisted account with a genuinely due card and retains a
-privacy-safe provider receipt or file-outbox `due-count` entry. Local runs,
-page renders, and `/healthz` alone are not delivery proof.
-
-A failed provider send releases the claim but preserves the complete delivery
-envelope and applies bounded exponential retry backoff (one minute, doubling
-to six hours). A crash after provider acceptance retries only after the lease
-expires with the same idempotency key and payload; stale finalize is fenced by
-claim id. To disable or roll back the trigger, set the scheduler flag false or
-revert the application commit and use the native-host rollback procedure
-below. Inspect `/healthz`, provider send logs, and Canary failures together
-during an incident.
-
-Each unsubscribe link is a seven-day HMAC token bound to the account, normalized
-email, and a persisted unsubscribe nonce. The GET remains read-only; the POST
-atomically compares the current nonce and rotates it while disabling the
-preference, so a replayed or concurrent stale bearer cannot win against an
-authenticated re-enable. The nonce column is an additive migration with an
-empty default for existing Postgres rows, and legacy file JSON defaults the
-same way. Legacy v1 links are intentionally rejected because they cannot carry
-the nonce; the next authenticated enable or reminder delivery backfills the
-nonce and issues only v2 links.
-
-The command boundary receives these variables for a due-count message:
-`MEMORY_ENGINE_RETURN_NOTIFICATION_EMAIL`,
-`MEMORY_ENGINE_RETURN_NOTIFICATION_DUE_COUNT`, and
-`MEMORY_ENGINE_RETURN_NOTIFICATION_UNSUBSCRIBE`; it also receives
-`MEMORY_ENGINE_RETURN_NOTIFICATION_IDEMPOTENCY_KEY` so a retry can reuse the
-same durable delivery identity. The bundled sender requires that key in
-reminder mode and forwards it using Resend's supported `Idempotency-Key`
-contract; a missing key is an error before any provider request. The bundled
-sender supports both the magic-link and due-count envelopes. A file outbox line
-beginning with `due-count` is a local proof receipt; production proof still
-requires checking the provider send log and inbox placement.
-
-### Deliverability (verified mistystep.io sender)
-
-The operator elected to keep the existing verified `mistystep.io` Resend domain
-and sender. Do not upgrade Resend billing, add `scry.study`, or delete
-`mistystep.io` as part of this card. The public product/link host remains
-`scry.study`; the resulting sender/link-domain mismatch is an explicit,
-operator-approved residual risk, not a reason to silently change the sender.
-
-Verify the active provider and DNS state without exposing credentials or message
-content:
-
-```sh
-# Resend: use the deployed scoped Mint alias secret://memory-engine/resend-domain
-# or an authenticated Resend operator surface. Never print the credential.
-# The route allows only GET /domains and GET /domains/<id>; expected: mistystep.io
-# remains status=verified.
-dig +short TXT send.mistystep.io
-dig +short TXT resend._domainkey.mistystep.io
-dig +short TXT _dmarc.mistystep.io
-```
-
-The bundled mailer emits only one bounded diagnostic line to stderr/application
-logs after a successful provider call:
-`resend_status=accepted resend_id=<provider-id>`. Transport failures emit
-`resend_status=transport_error`; non-2xx provider responses emit only
-`resend_status=failed http_status=<status>`. No recipient, token, full link,
-request body, or provider response body is logged. Control characters in recipient,
-sender, subject, and reminder idempotency inputs fail closed before any provider
-request; message paragraph breaks are encoded once as JSON newlines. Keep provider
-IDs as bounded operator evidence and redact them in shared proof when not needed
-for lookup.
-
-For a delivery investigation, use the provider operator surface with the
-redacted provider ID and classify the send as `accepted`, `delivered`,
-`bounced`, `complained`, `delayed`, or `unknown`. Do not copy message
-content or recipient addresses into logs. A provider-accepted event alone does
-not prove Inbox placement.
-
-### Production magic-link proof and rollback
-
-1. Trigger one fresh sign-in request through the normal production Scry UI for
-the already-approved invited Gmail account. Use a unique nonce in the test
-request metadata only; never paste the nonce, recipient, token, or full link into
-proof.
-2. In Gmail, record only the classification (Inbox or Spam) and privacy-safe
-source-header results for SPF, DKIM, and DMARC. Do not screenshot message body,
-recipient, token, or the full link.
-3. Open the link once in the production Scry UI and record successful sign-in.
-Attempt the same link again and record rejection. Attempt the link from a second
-account/session and record rejection; do not record either account identity.
-4. If placement or authentication fails, restore the previous known-good
-`MEMORY_ENGINE_MAIL_FROM` value on the verified `mistystep.io` domain,
-deploy through DigitalOcean, and rerun the deployed smoke. Do not delete the
-verified domain. The temporary outbox remains a local-only fallback and must not
-be enabled as a production delivery claim.
-
-Residual risk: Gmail placement can vary because the approved sender domain and
-public link host differ. Re-run the bounded Inbox/Spam and source-header proof
-after any sender, DNS, or provider reputation change.
-
-`POST /app/account` is abuse-limited in the API boundary before any magic link
-is sent. The fixed window is 5 attempts per 15 minutes per normalized email and
-per trusted edge-overwritten `do-connecting-ip`; a missing edge identity is
-grouped as `unknown`. Forwarding headers are ignored. Rejected requests return `429` with the generic
-message "Too many sign-in attempts. Try again later."; they do not write an
-outbox row or reveal whether an email is allowlisted.
-
-The browser session is server-side. `POST /app/logout` requires the same CSRF
-token as other app mutations, revokes the stored browser session, and clears
-the `__Host-memory_engine_session` cookie with `Max-Age=0`. Reusing the old
-cookie after logout must return `401`, including after a process restart.
+- [Wrangler Worker commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/)
+- [Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)
+- [R2 provisioning commands](https://developers.cloudflare.com/workers/wrangler/commands/r2/)
+- [Durable Objects and version deployment](https://developers.cloudflare.com/workers/versions-and-deployments/gradual-deployments/with-durable-objects/)
+- [Rollback resource/schema limitations](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/)
+- [Resend send-email API and acceptance response](https://resend.com/docs/api-reference/emails/send-email)
+- [Resend email events and delivery status](https://resend.com/docs/webhooks/event-types)
+- [worker-build 0.8.5 compatibility source](https://github.com/cloudflare/workers-rs/blob/v0.8.5/worker-build/src/versions.rs)

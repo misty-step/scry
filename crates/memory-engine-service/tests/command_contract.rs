@@ -333,6 +333,7 @@ fn records_an_attempt_without_grading_or_scheduling() {
             occurred_at: NOW,
             idempotency_key: None,
             grade: None,
+            graded_prompt: None,
         }
     );
     assert_eq!(service.into_store().attempts, [attempt]);

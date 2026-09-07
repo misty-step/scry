@@ -19,6 +19,10 @@ paths=(
   bin/scry-pg-dump
   bin/scry-backup-offhost
   bin/retention-preflight.py
+  bin/scry-restore
+  bin/scry-backup-freshness
+  bin/scry-backup-alert
+  scripts/lib/scry_ops.py
   etc/cron.d/scry-pg-dump
   etc/systemd/scry-backup-offhost.service
   etc/systemd/scry-backup-offhost.timer
@@ -47,6 +51,10 @@ install -m 0755 "$stage/bin/scry-pg-dump" /usr/local/sbin/scry-pg-dump
 install -m 0755 "$stage/bin/scry-backup-offhost" /usr/local/sbin/scry-backup-offhost
 install -d -m 0755 /usr/local/lib/scry
 install -m 0755 "$stage/bin/retention-preflight.py" /usr/local/lib/scry/retention-preflight.py
+install -m 0644 "$stage/scripts/lib/scry_ops.py" /usr/local/lib/scry/scry_ops.py
+install -m 0755 "$stage/bin/scry-restore" /usr/local/sbin/scry-restore
+install -m 0755 "$stage/bin/scry-backup-freshness" /usr/local/sbin/scry-backup-freshness
+install -m 0755 "$stage/bin/scry-backup-alert" /usr/local/sbin/scry-backup-alert
 install -m 0644 "$stage/etc/cron.d/scry-pg-dump" /etc/cron.d/scry-pg-dump
 install -m 0644 "$stage/etc/systemd/scry-backup-offhost.service" /etc/systemd/system/scry-backup-offhost.service
 install -m 0644 "$stage/etc/systemd/scry-backup-offhost.timer" /etc/systemd/system/scry-backup-offhost.timer

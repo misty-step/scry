@@ -4,7 +4,8 @@ use std::{
 };
 
 use memory_engine_canary::{
-    read_performance_timeline, CanaryConfig, CanaryReporter, ReadbackConfig,
+    read_performance_timeline, CanaryConfig, CanaryReporter, DeliveryOutcome, DeliveryReport,
+    DrainError, ReadbackConfig,
 };
 use memory_engine_performance::{
     Action, CompletionMarker, CompletionPhase, MachineRouteAction, Outcome,
@@ -51,49 +52,17 @@ fn emit_openapi() -> Result<(), String> {
     });
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(10)))
+        .http_status_as_error(false)
         .build()
         .into();
     let started = Instant::now();
-    let outcome = match agent.get(&url).call() {
-        Ok(mut response) => {
-            let status = response.status();
-            if !status.is_success() {
-                let elapsed = duration_ms(started);
-                emit_observation(config, elapsed, Outcome::ServerFailed)?;
-                return Err(format!("OpenAPI request failed with status {status}"));
-            }
-            response
-                .body_mut()
-                .read_to_vec()
-                .map_err(|error| format!("OpenAPI response read failed: {error}"))?;
-            Outcome::Succeeded
-        }
-        Err(error) => {
-            let elapsed = duration_ms(started);
-            emit_observation(config, elapsed, Outcome::ServerFailed)?;
-            return Err(format!("OpenAPI request failed: {error}"));
-        }
-    };
+    let action_result = request_openapi(&agent, &url);
     let elapsed = duration_ms(started);
-    emit_observation(config, elapsed, outcome)?;
-    println!(
-        "{}",
-        serde_json::json!({
-            "schema": "memory_engine.performance_receipt.v1",
-            "action": "open_api",
-            "duration_ms": elapsed,
-            "outcome": "succeeded",
-            "drained": true,
-        })
-    );
-    Ok(())
-}
-
-fn emit_observation(
-    config: CanaryConfig,
-    duration_ms: u64,
-    outcome: Outcome,
-) -> Result<(), String> {
+    let outcome = if action_result.is_ok() {
+        Outcome::Succeeded
+    } else {
+        Outcome::ServerFailed
+    };
     let marker = CompletionMarker::server(
         Action::Machine(MachineRouteAction::OpenApi),
         CompletionPhase::ImmediateAck,
@@ -101,16 +70,93 @@ fn emit_observation(
     )
     .map_err(|error| error.to_string())?;
     let observation = marker
-        .observation(duration_ms)
+        .observation(elapsed)
         .map_err(|error| error.to_string())?;
     let reporter = CanaryReporter::new(config);
-    if !reporter.report_performance(observation) {
+    let admitted = reporter.report_performance(observation);
+    let delivery = reporter.shutdown(Duration::from_secs(6));
+    let accepted = admitted
+        && delivery.as_ref().is_ok_and(|report| {
+            report.outcome() == DeliveryOutcome::Accepted
+                && report.observations_accepted() == 1
+                && report.observations_dropped() == 0
+        });
+    println!(
+        "{}",
+        serde_json::json!({
+            "schema": "memory_engine.performance_receipt.v1",
+            "action": "open_api",
+            "duration_ms": elapsed,
+            "outcome": if action_result.is_ok() && accepted { "succeeded" } else { "failed" },
+            "action_outcome": if action_result.is_ok() { "succeeded" } else { "server_failed" },
+            "queue_admission": if admitted { "accepted" } else { "rejected" },
+            "drained": delivery.is_ok(),
+            "delivery": delivery_receipt(&delivery),
+        })
+    );
+    if !admitted {
         return Err("bounded reporter queue rejected the receipt observation".to_owned());
     }
-    if !reporter.shutdown(Duration::from_secs(6)) {
-        return Err("Canary reporter did not drain before the shutdown deadline".to_owned());
+    let report = delivery.map_err(|error| error.to_string())?;
+    if !accepted {
+        let reason = report.last_failure().map_or_else(
+            || "observation lost before acceptance".to_owned(),
+            |error| error.to_string(),
+        );
+        return Err(format!(
+            "Canary did not accept the receipt observation: {reason}"
+        ));
     }
+    action_result
+}
+
+fn request_openapi(agent: &ureq::Agent, url: &str) -> Result<(), String> {
+    let mut response = agent.get(url).call().map_err(|error| match error {
+        ureq::Error::Timeout(_) => "OpenAPI request timed out".to_owned(),
+        _ => "OpenAPI request transport failed".to_owned(),
+    })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "OpenAPI request failed with status {}",
+            response.status()
+        ));
+    }
+    std::io::copy(&mut response.body_mut().as_reader(), &mut std::io::sink())
+        .map_err(|_| "OpenAPI response read failed".to_owned())?;
     Ok(())
+}
+
+fn delivery_receipt(delivery: &Result<DeliveryReport, DrainError>) -> serde_json::Value {
+    match delivery {
+        Ok(report) => serde_json::json!({
+            "status": match report.outcome() {
+                DeliveryOutcome::Empty => "empty",
+                DeliveryOutcome::Accepted => "accepted",
+                DeliveryOutcome::Dropped => "dropped",
+            },
+            "acceptance_boundary": "ingest_http_2xx",
+            "requests_accepted": report.requests_accepted(),
+            "requests_dropped": report.requests_dropped(),
+            "retries": report.retries(),
+            "observations_accepted": report.observations_accepted(),
+            "observations_dropped": report.observations_dropped(),
+            "last_failure": report.last_failure().map(|failure| match failure {
+                memory_engine_canary::DeliveryFailure::Rejected(status) => serde_json::json!({
+                    "kind": "rejected", "http_status": status,
+                }),
+                memory_engine_canary::DeliveryFailure::TimedOut => serde_json::json!({
+                    "kind": "timed_out",
+                }),
+                memory_engine_canary::DeliveryFailure::Transport => serde_json::json!({
+                    "kind": "transport",
+                }),
+            }),
+        }),
+        Err(error) => serde_json::json!({
+            "status": "unconfirmed",
+            "error": error.to_string(),
+        }),
+    }
 }
 
 fn readback() -> Result<(), String> {
@@ -154,6 +200,7 @@ fn overhead() -> Result<(), String> {
     durations.sort_unstable();
     let p95_index = (durations.len() * 95).div_ceil(100).saturating_sub(1);
     let p95_nanos = durations[p95_index];
+    // This command measures admission only; it does not claim backend delivery.
     let _ = reporter.shutdown(Duration::from_secs(6));
     println!(
         "{}",

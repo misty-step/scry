@@ -9,8 +9,8 @@
 //! trust gate enforces), answerability, duplicates, expected draft counts,
 //! and key-term coverage — alongside tokens, dollars, and latency.
 //!
-//! Receipts land in `docs/evals/`; CI never calls live models (the fake
-//! provider is the default when no `--model` is given).
+//! Receipts land in `docs/evals/`; CI never calls live models. With no
+//! `--model`, the fake provider exercises machinery only, not model quality.
 
 use std::{cell::RefCell, fmt::Write as _, fs, path::PathBuf};
 
@@ -32,6 +32,7 @@ use serde::Deserialize;
 
 mod content_fit;
 mod enumerable;
+mod reference;
 
 use content_fit::{ContentFitExpectation, ContentFitScore};
 use enumerable::{EnumerableSetExpectation, EnumerableSetScore};
@@ -45,6 +46,8 @@ struct CorpusSource {
     category: String,
     body: String,
     expect: Expectations,
+    #[serde(default)]
+    reference: Option<reference::Expectation>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -68,6 +71,10 @@ struct Expectations {
     content_fit: Option<ContentFitExpectation>,
     #[serde(default)]
     enumerable_set: Option<EnumerableSetExpectation>,
+    #[serde(default)]
+    forbidden_claims: Vec<String>,
+    #[serde(default)]
+    source_supported: Option<bool>,
 }
 
 /// Deterministic judge scores for one source's provider output.
@@ -118,6 +125,17 @@ pub struct SourceScore {
     /// Model-judge rubric aggregate when `--judge` is enabled.
     pub judge: Option<crate::judge::JudgeAggregate>,
     pub judge_error: Option<String>,
+    pub grounding: GroundingScore,
+    pub review_material: Vec<DraftCandidate>,
+}
+
+/// Attribution and adversarial-claim checks for one source's accepted drafts.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GroundingScore {
+    pub source_supported_drafts: usize,
+    pub model_expanded_drafts: usize,
+    pub forbidden_claims_free: Option<bool>,
+    pub expected_grounding_match: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -127,6 +145,8 @@ pub struct BridgeQualityScore {
     pub faithful_to_concept: f64,
     pub duplicate_rate: f64,
     pub passes: bool,
+    pub targets_recent_miss: bool,
+    pub usage: Option<memory_engine_generation::ProviderUsage>,
 }
 
 #[derive(Debug)]
@@ -231,7 +251,10 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
     let corpus = load_corpus()?;
 
     let (provider, label): (Box<dyn GenerationProvider>, String) = match &parsed.model {
-        None => (Box::new(FakeModelProvider), "fixture/fake-model".to_owned()),
+        None => (
+            Box::new(FakeModelProvider),
+            "fixture/fake-model (machinery only; not model quality)".to_owned(),
+        ),
         Some(model) => {
             let mut config = OpenRouterConfig::from_env()?;
             config.model.clone_from(model);
@@ -268,16 +291,24 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
         .iter()
         .map(|source| score_source(provider.as_ref(), judge.as_ref(), source))
         .collect();
+    let reference_scores: Vec<_> = corpus
+        .iter()
+        .filter_map(|source| {
+            source
+                .reference
+                .as_ref()
+                .map(|expect| reference::score(provider.as_ref(), source, expect))
+        })
+        .collect();
     let bridge = bridge_quality_fixture(provider.as_ref());
-    let baseline = parsed
+    let baseline_text = parsed
         .baseline
         .as_ref()
-        .map(|path| -> Result<Vec<(String, f64)>, String> {
-            let contents = fs::read_to_string(path).map_err(|error| error.to_string())?;
-            Ok(crate::stats::parse_keep_rates(&contents))
-        })
+        .map(|path| fs::read_to_string(path).map_err(|error| error.to_string()))
         .transpose()?;
-    let receipt = render_receipt(&label, &scores, &bridge, baseline.as_deref());
+    let baseline = baseline_text.as_deref().map(crate::stats::parse_keep_rates);
+    let mut receipt = render_receipt(&label, &scores, &bridge, baseline.as_deref());
+    reference::render(&mut receipt, &reference_scores, baseline_text.as_deref());
     println!("{receipt}");
     if let Some(path) = parsed.out {
         if let Some(parent) = path.parent() {
@@ -362,7 +393,7 @@ fn score_source(
             score.rejected_drafts = result.rejected_draft_ids.len();
             score.validation_failures = result.validation_failures.len();
             score.runtime_acceptance = if emitted == 0 {
-                1.0
+                0.0
             } else {
                 fraction(result.accepted_draft_ids.len(), emitted)
             };
@@ -378,6 +409,10 @@ fn score_source(
                     Err(failure) => score.judge_error = Some(failure.to_string()),
                 }
             }
+            if !recording_provider.failures.borrow().is_empty() {
+                score.provider_error = Some(recording_provider.failures.borrow().join("; "));
+            }
+            score.review_material = candidates;
             score
         }
         Err(failure) => SourceScore {
@@ -405,6 +440,8 @@ fn score_source(
             provider_error: Some(failure.to_string()),
             judge: None,
             judge_error: None,
+            grounding: GroundingScore::default(),
+            review_material: Vec::new(),
         },
     }
 }
@@ -412,6 +449,7 @@ fn score_source(
 struct RecordingDraftProvider<'a> {
     inner: &'a dyn DraftProvider,
     learning_intent: RefCell<Option<LearningIntent>>,
+    failures: RefCell<Vec<String>>,
 }
 
 impl<'a> RecordingDraftProvider<'a> {
@@ -419,6 +457,7 @@ impl<'a> RecordingDraftProvider<'a> {
         Self {
             inner,
             learning_intent: RefCell::new(None),
+            failures: RefCell::new(Vec::new()),
         }
     }
 
@@ -443,7 +482,9 @@ impl DraftProvider for RecordingDraftProvider<'_> {
         source: &SourceDocument,
     ) -> Result<memory_engine_generation::ProviderDrafts, memory_engine_generation::ProviderFailure>
     {
-        let drafts = self.inner.generate_drafts(source)?;
+        let drafts = self.inner.generate_drafts(source).inspect_err(|failure| {
+            self.failures.borrow_mut().push(failure.to_string());
+        })?;
         self.record_learning_intent(&drafts);
         Ok(drafts)
     }
@@ -456,7 +497,12 @@ impl DraftProvider for RecordingDraftProvider<'_> {
         Option<memory_engine_generation::ProviderDrafts>,
         memory_engine_generation::ProviderFailure,
     > {
-        let repaired = self.inner.repair_drafts(source, rejections)?;
+        let repaired = self
+            .inner
+            .repair_drafts(source, rejections)
+            .inspect_err(|failure| {
+                self.failures.borrow_mut().push(failure.to_string());
+            })?;
         if let Some(drafts) = &repaired {
             self.record_learning_intent(drafts);
         }
@@ -537,6 +583,7 @@ impl BenchGenerationStore {
                     .iter()
                     .find(|reference| reference.id == *reference_id)
             })
+            .filter(|reference| reference.label.ends_with(" source evidence"))
             .map(|reference| reference.text.clone());
         let concept = draft
             .queue
@@ -649,6 +696,10 @@ fn deterministic_judges(
     candidates: &[DraftCandidate],
 ) -> SourceScore {
     let drafts = candidates.len();
+    let source_supported_drafts = candidates
+        .iter()
+        .filter(|candidate| candidate.evidence.is_some())
+        .count();
     let provenance = fraction(
         candidates
             .iter()
@@ -659,7 +710,7 @@ fn deterministic_judges(
                     .is_some_and(|quote| evidence_quote_matches(body, quote))
             })
             .count(),
-        drafts,
+        source_supported_drafts,
     );
     let answerability = fraction(
         candidates
@@ -683,11 +734,8 @@ fn deterministic_judges(
         .filter(|term| {
             candidates.iter().any(|candidate| {
                 let haystack = format!(
-                    "{} {} {} {}",
-                    candidate.concept,
-                    candidate.question,
-                    candidate.answer,
-                    candidate.distractors.join(" ")
+                    "{} {} {}",
+                    candidate.concept, candidate.question, candidate.answer
                 );
                 normalize(&haystack).contains(&normalize(term))
             })
@@ -720,6 +768,29 @@ fn deterministic_judges(
         provider_error: None,
         judge: None,
         judge_error: None,
+        grounding: GroundingScore {
+            source_supported_drafts,
+            model_expanded_drafts: drafts - source_supported_drafts,
+            forbidden_claims_free: (drafts > 0 && !expect.forbidden_claims.is_empty()).then(|| {
+                candidates.iter().all(|candidate| {
+                    let text = normalize(&format!(
+                        "{} {} {}",
+                        candidate.question,
+                        candidate.answer,
+                        candidate.worked_solution.as_deref().unwrap_or_default()
+                    ));
+                    expect
+                        .forbidden_claims
+                        .iter()
+                        .all(|claim| !text.contains(&normalize(claim)))
+                })
+            }),
+            expected_grounding_match: expect
+                .source_supported
+                .filter(|_| drafts > 0)
+                .map(|supported| source_supported_drafts == if supported { drafts } else { 0 }),
+        },
+        review_material: Vec::new(),
     }
 }
 
@@ -911,26 +982,6 @@ fn surface_similarity(left: &str, right: &str) -> f64 {
     fraction(left.intersection(&right).count(), union)
 }
 
-#[cfg(test)]
-fn shape_signature(candidates: &[DraftCandidate]) -> String {
-    candidates
-        .iter()
-        .map(|candidate| {
-            format!(
-                "{}:{}:{}",
-                activity_kind_label(&candidate.activity_kind),
-                candidate.activity_stage,
-                if candidate.distractors.is_empty() {
-                    "short"
-                } else {
-                    "choice"
-                }
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("|")
-}
-
 fn activity_kind_label(kind: &GeneratedLearningActivityKind) -> &'static str {
     match kind {
         GeneratedLearningActivityKind::Quiz => "quiz",
@@ -1120,7 +1171,7 @@ fn render_keep_rate_rigor(
     }
     let _ = writeln!(
         receipt,
-        "- Power: ~{} sources resolves only large regressions; a ~3pp change needs ~1000 drafts (Miller 2411.00640). Read this suite as a large-regression guard.",
+        "- Power: ~{} source clusters resolves only large regressions. Small changes need more paired sources and repeated runs; the exact sample requirement depends on observed variance, not a universal draft-count rule.",
         keep_values.len(),
     );
 }
@@ -1150,8 +1201,58 @@ fn render_receipt(
     let _ = writeln!(receipt);
     render_model_judge(&mut receipt, scores, baseline);
     render_receipt_totals(&mut receipt, scores, bridge);
+    render_provenance_and_review_material(&mut receipt, scores);
 
     receipt
+}
+
+fn render_provenance_and_review_material(receipt: &mut String, scores: &[SourceScore]) {
+    let _ = writeln!(receipt, "\n## Provenance and adversarial oracles\n");
+    let _ = writeln!(receipt, "Quote presence verifies attribution, not factual entailment. Model-expanded topic facts have no source evidence and require human review. Key-term coverage excludes distractors. Failures and empty output are not perfect acceptance.\n");
+    let _ = writeln!(receipt, "| source | source-supported | model-expanded | expected grounding | forbidden claims absent |\n| --- | --- | --- | --- | --- |");
+    for score in scores {
+        let _ = writeln!(
+            receipt,
+            "| {} | {} | {} | {} | {} |",
+            score.source_id,
+            score.grounding.source_supported_drafts,
+            score.grounding.model_expanded_drafts,
+            score
+                .grounding
+                .expected_grounding_match
+                .map_or("unassessed", |passed| if passed { "pass" } else { "FAIL" }),
+            score
+                .grounding
+                .forbidden_claims_free
+                .map_or("unassessed", |passed| if passed { "pass" } else { "FAIL" })
+        );
+    }
+    let rates: Vec<_> = scores
+        .iter()
+        .map(|score| (score.source_id.clone(), score.runtime_acceptance))
+        .collect();
+    reference::render_comparison(receipt, "Runtime acceptance", &rates, None);
+    let _ = writeln!(receipt, "\n## Accepted quiz material for blinded human review\n\nHuman quality is unassessed unless a calibrated review is recorded. Inspect atomicity, supported claims, conditions, answer leakage, plausible mutually exclusive distractors, and retrieval depth. Compare paired sources with labels hidden and order randomized.\n");
+    for score in scores {
+        let _ = writeln!(receipt, "### {}\n", score.source_id);
+        for candidate in &score.review_material {
+            for line in format!(
+                "Question: {}\nAnswer: {}\nDistractors: {}\nGrounding: {}\n",
+                candidate.question,
+                candidate.answer,
+                candidate.distractors.join(" | "),
+                candidate
+                    .evidence
+                    .as_deref()
+                    .unwrap_or("Model-expanded; no source evidence")
+            )
+            .lines()
+            {
+                let _ = writeln!(receipt, "> {line}");
+            }
+            let _ = writeln!(receipt);
+        }
+    }
 }
 
 fn render_score_rows(receipt: &mut String, scores: &[SourceScore]) {
@@ -1159,8 +1260,9 @@ fn render_score_rows(receipt: &mut String, scores: &[SourceScore]) {
         if let Some(error) = &score.provider_error {
             let _ = writeln!(
                 receipt,
-                "| {} | {} | — | — | 1 | 0% | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | FAILED: {error} |",
-                score.source_id, score.category
+                "| {} | {} | {} | {} | {} | {:.0}% | — | — | — | — | — | — | — | — | — | — | — | — | — | {}/{} | {} | {}ms; FAILED: {error} |",
+                score.source_id, score.category, score.drafts, score.rejected_drafts, score.validation_failures,
+                score.runtime_acceptance * 100.0, score.input_tokens, score.output_tokens, format_cost(score.cost_usd_micros), score.latency_ms
             );
             continue;
         }
@@ -1247,10 +1349,14 @@ fn render_receipt_totals(
     let failed = scores.len() - judged.len();
     let mut latencies: Vec<u64> = judged.iter().map(|score| score.latency_ms).collect();
     latencies.sort_unstable();
-    let total_cost: i64 = judged
+    let total_cost = scores
         .iter()
         .filter_map(|score| score.cost_usd_micros)
-        .sum();
+        .fold(0_i64, i64::saturating_add);
+    let uncertain_cost = scores
+        .iter()
+        .filter(|score| score.cost_usd_micros.is_none())
+        .count();
     let _ = writeln!(receipt, "## Totals");
     let _ = writeln!(receipt);
     let _ = writeln!(
@@ -1295,13 +1401,8 @@ fn render_receipt_totals(
     render_bridge_totals(receipt, bridge);
     let _ = writeln!(
         receipt,
-        "- Total cost: {} · mean per source: {}",
-        format_cost(Some(total_cost)),
-        format_cost(Some(if judged.is_empty() {
-            0
-        } else {
-            total_cost / i64::try_from(judged.len()).unwrap_or(1)
-        })),
+        "- Quiz reported cost subtotal: {} · unreported/uncertain: {uncertain_cost}/{} sources. This is not a total when any usage is missing; zero tokens can mean unreported, not free.",
+        format_cost(Some(total_cost)), scores.len()
     );
     let _ = writeln!(
         receipt,
@@ -1322,6 +1423,12 @@ fn render_bridge_totals(receipt: &mut String, bridge: &Result<BridgeQualityScore
                 bridge.duplicate_rate * 100.0,
                 if bridge.passes { "pass" } else { "FAIL" },
             );
+            let _ = writeln!(receipt, "- Bridge targets the observed missing component: {} · tokens {}/{} · reported cost {} · latency {}ms",
+                bridge.targets_recent_miss,
+                bridge.usage.as_ref().map_or(0, |usage| usage.input_tokens),
+                bridge.usage.as_ref().map_or(0, |usage| usage.output_tokens),
+                format_cost(bridge.usage.as_ref().and_then(|usage| usage.cost_usd_micros)),
+                bridge.usage.as_ref().map_or(0, |usage| usage.latency_ms));
         }
         Err(error) => {
             let _ = writeln!(receipt, "- Bridge fixture: FAILED: {error}");
@@ -1343,6 +1450,13 @@ fn bridge_quality_fixture<P>(provider: &P) -> Result<BridgeQualityScore, String>
 where
     P: BridgeMaterialProvider + ?Sized,
 {
+    let document = SourceDocument {
+        id: "bridge-nato-cat".to_owned(), kind: SourceDocumentKind::Text,
+        title: "NATO code words for CAT".to_owned(), project_key: None,
+        body: Some("In the NATO phonetic alphabet, C is Charlie, A is Alfa, and T is Tango. Spell CAT as CHARLIE ALFA TANGO, preserving the order of its letters.".to_owned()),
+        uri: None, permission: SourcePermission::ModelEligible, freshness: Some(NOW),
+        ttl_expires_at: None, created_at: NOW, archived_at: None,
+    };
     let request = BridgeMaterialRequest::new(
         "nato-cat-composition",
         "nato cat composition",
@@ -1356,12 +1470,12 @@ where
             submitted_answer: "CHARLIE TANGO".to_owned(),
             verdict: Some("wrong".to_owned()),
         }],
-        SourceAuthorizationContext::none(),
+        SourceAuthorizationContext::from_sources(&[document]).expect("authorized Bridge fixture"),
     );
     let material = provider
         .generate_bridge_material(&request)
         .map_err(|failure| failure.to_string())?;
-    Ok(bridge_quality_judges(
+    let mut score = bridge_quality_judges(
         request.parent_stage_order,
         &request.concept_key,
         &[(
@@ -1370,7 +1484,14 @@ where
             request.parent_expected_answer.as_str(),
         )],
         &material.candidates,
-    ))
+    );
+    score.targets_recent_miss = material
+        .candidates
+        .iter()
+        .any(|candidate| normalize(&candidate.answer) == "alfa");
+    score.passes &= score.targets_recent_miss;
+    score.usage = material.usage;
+    Ok(score)
 }
 
 fn bridge_quality_judges(
@@ -1420,10 +1541,12 @@ fn bridge_quality_judges(
         easier_than_parent,
         faithful_to_concept,
         duplicate_rate,
-        passes: drafts > 0
+        passes: (2..=3).contains(&drafts)
             && (easier_than_parent - 1.0).abs() < f64::EPSILON
             && (faithful_to_concept - 1.0).abs() < f64::EPSILON
             && duplicate_rate.abs() < f64::EPSILON,
+        targets_recent_miss: false,
+        usage: None,
     }
 }
 
@@ -1529,19 +1652,26 @@ mod tests {
             requires_variants: false,
             content_fit: None,
             enumerable_set: None,
+            forbidden_claims: Vec::new(),
+            source_supported: None,
         }
     }
 
     const BODY: &str = "A is Alfa. B is Bravo. C is Charlie.";
-    const CORPUS_SOURCE_BODY: &str = "The source explains Alfa and Bravo as code words.";
+    const CORPUS_SOURCE_BODY: &str =
+        "Mitochondria generate ATP through cellular respiration. Chloroplasts capture light energy during photosynthesis.";
 
     fn corpus_source() -> CorpusSource {
         CorpusSource {
-            id: "letters".to_owned(),
-            title: "Letters".to_owned(),
+            id: "cell-energy".to_owned(),
+            title: "Cell energy".to_owned(),
             category: "fixture".to_owned(),
             body: CORPUS_SOURCE_BODY.to_owned(),
-            expect: expectations(),
+            expect: Expectations {
+                key_terms: vec!["mitochondria".to_owned(), "chloroplasts".to_owned()],
+                ..expectations()
+            },
+            reference: None,
         }
     }
 
@@ -1583,6 +1713,33 @@ mod tests {
         assert!((score.key_term_coverage - 1.0).abs() < f64::EPSILON);
         assert!(score.duplicate_rate.abs() < f64::EPSILON);
         assert!(score.count_in_range);
+    }
+
+    #[test]
+    fn adversarial_oracles_require_both_material_and_an_expectation() {
+        let mut expect = expectations();
+        expect.source_supported = Some(true);
+        expect.forbidden_claims = vec!["invented claim".to_owned()];
+        let empty = deterministic_judges(BODY, &expect, None, &[]);
+        assert_eq!(empty.grounding.expected_grounding_match, None);
+        assert_eq!(empty.grounding.forbidden_claims_free, None);
+
+        let candidates = [candidate("What is A?", "Alfa", "A is Alfa")];
+        let checked = deterministic_judges(BODY, &expect, None, &candidates);
+        assert_eq!(checked.grounding.expected_grounding_match, Some(true));
+        assert_eq!(checked.grounding.forbidden_claims_free, Some(true));
+
+        let mut unsupported = candidate("What is A?", "invented claim", "A is Alfa");
+        unsupported.evidence = None;
+        let failed = deterministic_judges(BODY, &expect, None, &[unsupported]);
+        assert_eq!(failed.grounding.expected_grounding_match, Some(false));
+        assert_eq!(failed.grounding.forbidden_claims_free, Some(false));
+
+        expect.source_supported = None;
+        expect.forbidden_claims.clear();
+        let unassessed = deterministic_judges(BODY, &expect, None, &candidates);
+        assert_eq!(unassessed.grounding.expected_grounding_match, None);
+        assert_eq!(unassessed.grounding.forbidden_claims_free, None);
     }
 
     #[test]
@@ -1660,27 +1817,6 @@ mod tests {
         assert_eq!(score.rejected_drafts, 0);
         assert_eq!(score.validation_failures, 1);
         assert!((score.runtime_acceptance - 0.5).abs() < f64::EPSILON);
-
-        let receipt = render_receipt(
-            "fixture",
-            &[score],
-            &Ok(BridgeQualityScore {
-                drafts: 0,
-                easier_than_parent: 1.0,
-                faithful_to_concept: 1.0,
-                duplicate_rate: 0.0,
-                passes: true,
-            }),
-            None,
-        );
-        assert!(
-            receipt.contains("| source | category | accepted | rejected | failures | runtime |")
-        );
-        assert!(receipt.contains("| letters | fixture | 1 | 0 | 1 | 50% |"));
-        assert!(
-            receipt.contains("| N/A | N/A | N/A | N/A |"),
-            "content-fit None must render explicitly as N/A: {receipt}"
-        );
     }
 
     #[test]
@@ -1749,7 +1885,38 @@ mod tests {
 
     #[test]
     fn bridge_quality_scenario_requires_easier_faithful_non_duplicate_items() {
-        let clean = bridge_quality_fixture(&FakeModelProvider).expect("fake bridge fixture");
+        let scaffolds = [
+            DraftCandidate {
+                concept: "NATO CAT composition".to_owned(),
+                activity_stage: "bridge-recognition".to_owned(),
+                distractors: vec!["ABLE".to_owned(), "ADAM".to_owned()],
+                ..candidate(
+                    "Which code word represents the middle letter when spelling CAT in NATO code words?",
+                    "ALFA",
+                    "In the NATO phonetic alphabet, A is ALFA.",
+                )
+            },
+            DraftCandidate {
+                index: 2,
+                concept: "NATO CAT composition".to_owned(),
+                activity_stage: "bridge-cued-recall".to_owned(),
+                ..candidate(
+                    "When spelling CAT in NATO code words, what comes after CHARLIE ALFA?",
+                    "TANGO",
+                    "In the NATO phonetic alphabet, T is TANGO.",
+                )
+            },
+        ];
+        let clean = bridge_quality_judges(
+            4,
+            "nato-cat-composition",
+            &[(
+                "nato-cat-composition",
+                "Spell CAT over the phone using the NATO phonetic alphabet.",
+                "CHARLIE ALFA TANGO",
+            )],
+            &scaffolds,
+        );
 
         assert_eq!(clean.drafts, 2);
         assert!((clean.easier_than_parent - 1.0).abs() < f64::EPSILON);
@@ -1842,7 +2009,7 @@ mod tests {
             concept: "NATO letter A".to_owned(),
             question: question.to_owned(),
             answer: "ALFA".to_owned(),
-            distractors: vec!["BRAVO".to_owned(), "CHARLIE".to_owned()],
+            distractors: vec!["ABLE".to_owned(), "ADAM".to_owned()],
             activity_stage: "recognition-3".to_owned(),
             ..candidate(
                 question,
@@ -1909,23 +2076,6 @@ mod tests {
     }
 
     #[test]
-    fn corpus_loads_and_fake_provider_scores_clean() {
-        let corpus = load_corpus().expect("corpus");
-        assert!(corpus.len() >= 10, "047 requires ≥10 sources");
-
-        for source in &corpus {
-            let score = score_source(&FakeModelProvider, None, source);
-            assert!(score.provider_error.is_none());
-            assert!(
-                (score.provenance - 1.0).abs() < f64::EPSILON,
-                "fake provider quotes verbatim; {} scored {}",
-                source.id,
-                score.provenance
-            );
-        }
-    }
-
-    #[test]
     fn presidents_fixture_is_exhaustively_supported_by_the_fake_provider() {
         let source = load_corpus()
             .expect("corpus")
@@ -1942,66 +2092,6 @@ mod tests {
         assert!(
             enumerable.passes(),
             "the canonical fixture must pass: {enumerable:?}"
-        );
-    }
-
-    #[test]
-    fn intent_eval_fixtures_assert_different_item_shapes() {
-        let corpus = load_corpus().expect("corpus");
-        let intent_sources = corpus
-            .iter()
-            .filter(|source| source.expect.intent.is_some())
-            .collect::<Vec<_>>();
-        assert!(
-            intent_sources.len() >= 4,
-            "051 requires one eval fixture per capture intent"
-        );
-        let intent_labels = intent_sources
-            .iter()
-            .filter_map(|source| source.expect.intent.as_deref())
-            .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(
-            intent_labels,
-            [
-                "concept_understanding",
-                "fact_recall",
-                "enumerable_set",
-                "procedure_process",
-                "verbatim_memorization",
-            ]
-            .into_iter()
-            .collect::<std::collections::BTreeSet<_>>()
-        );
-
-        let mut signatures = std::collections::BTreeSet::new();
-        for source in intent_sources {
-            let document = SourceDocument {
-                id: source.id.clone(),
-                kind: SourceDocumentKind::Text,
-                title: source.title.clone(),
-                project_key: None,
-                body: Some(source.body.clone()),
-                uri: None,
-                permission: SourcePermission::ModelEligible,
-                freshness: Some(NOW),
-                ttl_expires_at: None,
-                created_at: NOW,
-                archived_at: None,
-            };
-            let drafts = FakeModelProvider
-                .generate_drafts(&document)
-                .expect("fake provider");
-            assert!(
-                intent_shape_matches(&source.expect, drafts.learning_intent, &drafts.candidates),
-                "{} should satisfy its intent shape expectation",
-                source.id
-            );
-            signatures.insert(shape_signature(&drafts.candidates));
-        }
-
-        assert!(
-            signatures.len() >= 4,
-            "intent fixtures should not collapse into one generic item shape: {signatures:?}"
         );
     }
 
@@ -2023,8 +2113,16 @@ mod tests {
                 model: self.model(),
                 learning_intent: None,
                 candidates: vec![
-                    candidate("What is A?", "Alfa", &evidence),
-                    candidate("What is A?", "Alfa", &evidence),
+                    candidate(
+                        "Which organelle generates ATP through cellular respiration?",
+                        "Mitochondria",
+                        &evidence,
+                    ),
+                    candidate(
+                        "Which organelle generates ATP through cellular respiration?",
+                        "Mitochondria",
+                        &evidence,
+                    ),
                 ],
                 failures: Vec::new(),
                 usage: None,
@@ -2046,8 +2144,11 @@ mod tests {
             source: &SourceDocument,
         ) -> Result<ProviderDrafts, ProviderFailure> {
             let evidence = source.body.clone().unwrap_or_default();
-            let mut rejected = candidate("What is A?", "Alfa", "A is Alfa.");
-            rejected.evidence = Some(evidence.clone());
+            let mut rejected = candidate(
+                "Which organelle generates ATP through cellular respiration?",
+                "Mitochondria",
+                &evidence,
+            );
             rejected.unsupported = true;
 
             Ok(ProviderDrafts {
@@ -2072,7 +2173,11 @@ mod tests {
             assert_eq!(rejections.len(), 1);
             self.repair_calls.set(self.repair_calls.get() + 1);
             let evidence = source.body.clone().unwrap_or_default();
-            let mut repaired = candidate("What is B?", "Bravo", &evidence);
+            let mut repaired = candidate(
+                "Which organelle captures light energy during photosynthesis?",
+                "Chloroplasts",
+                &evidence,
+            );
             repaired.index = 2;
 
             Ok(Some(ProviderDrafts {

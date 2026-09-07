@@ -36,13 +36,13 @@ QA evidence is organized around product quality, not implementation folders:
 - Science traceability: adopted learning-science principles remain tied to
   cited doctrine plus executable tests or benchmark receipts in
   `docs/science/README.md`.
-- Handoff confidence: the Bun browser lifecycle contract, Rust formatting,
-  tests, Clippy, rustdoc, Gitleaks, and Dagger all pass. The fast `bun run ci`
-  gate runs the browser contract and host Cargo directly; the full
-  `bun run ci:full` Dagger lane repeats the browser contract, binds a Postgres
-  service, and sets `MEMORY_ENGINE_POSTGRES_TEST_URL`, so live Postgres
-  API/store contracts run before handoff instead of skipping as local-only
-  opt-in tests.
+- Handoff confidence: the Bun browser lifecycle contract, retained recovery
+  boundaries, Rust formatting/tests/Clippy/rustdoc, latency budgets, the exact
+  Wasm build, actual local workerd smoke, and Gitleaks all pass. `bun run ci:local`
+  runs the local lanes plus Worker build/smoke; `bun run ci:full` repeats them
+  under Dagger and binds Postgres 16 with `MEMORY_ENGINE_POSTGRES_TEST_URL`.
+  Native Postgres remains a consequential compatibility/migration reference,
+  not the production destination. Neither gate has deployment credentials.
 
 ## Executable Lanes
 
@@ -64,10 +64,74 @@ receipt after each lane:
 | `dogfood.rust-receipts` | Rust CLI, import probe, web shell | exercise migrated dogfood clients through the Rust facade and service crates |
 | `docs.rustdoc` | all public Rust crates | prove public API documentation compiles |
 | `performance.benchmarks` | Rust facade, scheduler, queue, service, science receipts | expose migrated-runtime and learning-policy drift without brittle thresholds |
-| `ci.full` | Dagger CI | prove the Bun browser lifecycle contract, Rust fmt, file/Postgres tests, Clippy, doc, and Gitleaks together |
+| `ci.full` | Dagger CI | prove browser/recovery contracts, native file/Postgres tests, Rust fmt/Clippy/doc, action-latency budgets, actual Wasm/workerd, and Gitleaks together |
 
 All lanes are gating except `performance.benchmarks`, which is receipt-only
 until the project has enough historical data to define stable budgets.
+
+### Cloudflare runtime proof
+
+The deployed boundary is `memory-engine-cloudflare`, not an Axum process. A
+green native suite cannot establish Worker/SQLite/alarm/R2/mail behavior.
+The repo-owned executable gate is:
+
+```sh
+bun run worker:tools
+bun run worker:gate
+# Or retain an explicitly named immutable candidate and proof:
+bun run worker:build --out target/cloudflare/candidate
+bun run worker:smoke --artifact target/cloudflare/candidate \
+  --receipt target/cloudflare/candidate-workerd-proof.json
+```
+
+The same `scripts/scry-cloudflare gate` runs in Dagger's `worker` function.
+`worker-build 0.8.5`, `wasm-bindgen 0.2.125`, `esbuild 0.28.1`, and
+`Wrangler 4.129.0` are pinned; Cargo and npm dependency graphs are locked.
+No synthetic server or substitute provider stands in for the application.
+The exact packaged JS/Wasm runs in local workerd with isolated Durable Object
+SQLite and R2 state, local mail mode, and no inherited model/Cloudflare secrets.
+The gate first activates its new private actor through authenticated
+`GET /internal/migration/fingerprint` and fingerprint-guarded
+`POST /internal/runtime`, then observes real readiness. On restart it reads the
+persisted active state without another activation. It exercises the shared
+`/static/app.js` asset path, anonymous rejection, service-session auth,
+alarm-driven LocalOnly structured generation, explicit draft acceptance,
+isolation between two real accounts, review resume, assisted grading across
+restart, durable idempotent replay without extra history/exposure, and the schema
+fingerprint. Its privacy-safe receipt binds observations to
+the exact artifact hash and source revision. It does not prove mail inbox
+placement, paid model quality, production data continuity, or browser timing.
+
+Export the Dagger-built bundle and its workerd proof when needed:
+
+```sh
+dagger call worker --source=. --git-sha="$(git rev-parse HEAD)" \
+  export --path=target/cloudflare/dagger-proof
+```
+
+Remote bootstrap has a different acceptance boundary: health/static assets,
+authenticated schema access, `maintenance: true`, and 503 learner/readiness
+fences. A paused bootstrap receipt cannot authorize production. Staging must
+first run `release:traffic --enable`; its verified receipt must record
+`runtime_proof.maintenance: false`, `readiness: "ready"`, and
+`public_smoke: "passed"` for the exact bundle and still-deployed staging version.
+Traffic receipts check the immutable version before/after the application-state
+mutation; no secret update, rebuild, or version deployment implements activation.
+Production additionally requires the explicit source-quiesced declaration,
+verified PostgreSQL primary-import provenance, and matched imported-state
+fingerprint. Main must exercise pause/activation, busy-operation rejection,
+alarm fencing, and independent recovery readback against the actual Worker.
+
+**Cutover proof remains pending until executed.** The approved free origin is
+`https://scry.misty-step.workers.dev`, without a registrar prerequisite.
+Main owns the source writer barrier, final import, separate-object restore,
+activation, browser UI/timing, real generation cost/quality, Resend acceptance
+and separate inbox/delivery proof, production smoke, and old-host
+reverse-proxy/redirect retirement. Preserved records do not migrate browser
+cookies across hostnames: prove a fresh workers.dev sign-in as well as imported
+machine sessions and learning history. Record exact versions, source/bundle
+hashes, commands, and actual results; never relabel local smoke or Resend API
+acceptance as deployed migration or inbox-delivery evidence.
 
 The capture-anything path adds a focused generation receipt:
 

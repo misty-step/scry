@@ -1,5 +1,4 @@
 use std::{
-    convert::Infallible,
     fmt::Write as _,
     time::{Duration, Instant},
 };
@@ -21,20 +20,19 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt as _};
 
-#[path = "icons.rs"]
-mod icons;
-
 use memory_engine_study::infer_capture_title;
 
 use memory_engine_api_render::{
-    render_account_page, render_action_result_html, render_action_result_html_with_notice,
-    render_analytics_page, render_app_shell, render_auth_recovery,
-    render_content_feedback_recovery_html, render_content_feedback_result_html, render_create_page,
-    render_edit_review_html, render_entry_recovery, render_entry_requested, render_library_page,
+    is_generating_notice, render_account_page, render_analytics_page, render_app_shell,
+    render_auth_recovery, render_capture_waiting_page, render_content_feedback_recovery_html,
+    render_content_feedback_result_html, render_create_page, render_edit_review_html,
+    render_entry_recovery, render_entry_requested, render_library_page, render_reference_page,
     render_return_notification_confirmation, render_return_notification_disabled,
     render_return_notification_recovery, render_submit_action_result_html, render_submit_recovery,
     AnalyticsConceptFilter, AnalyticsConceptSort, AnalyticsViewOptions, ContentFeedbackRecovery,
-    LEDGER_CSS, SKIP_CONFIRM_NOTICE, SNOOZE_CONCEPT_CONFIRM_NOTICE, SNOOZE_CONFIRM_NOTICE,
+    APPLE_TOUCH_ICON, FAVICON, FONT_LICENSE, LEDGER_CSS, LITERATA_WOFF2, MANROPE_WOFF2,
+    PWA_ICON_192, PWA_ICON_512, SKIP_CONFIRM_NOTICE, SNOOZE_CONCEPT_CONFIRM_NOTICE,
+    SNOOZE_CONFIRM_NOTICE,
 };
 use memory_engine_api_state::{
     browser_session_cookie_header_for_request, browser_session_cookie_present, csrf_token,
@@ -346,13 +344,19 @@ pub(crate) fn v1_contract_operations() -> Vec<V1ContractOperation> {
         .collect()
 }
 
-pub fn router(state: ApiState) -> Router {
-    let router = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
-        .route("/", get(app_home))
+fn static_routes() -> Router<ApiState> {
+    Router::new()
         .route("/static/ledger.css", get(static_ledger_css))
         .route("/static/app.js", get(static_app_js))
+        .route(
+            "/static/fonts/literata-latin-variable.woff2",
+            get(static_literata_font),
+        )
+        .route(
+            "/static/fonts/manrope-latin-variable.woff2",
+            get(static_manrope_font),
+        )
+        .route("/static/fonts/OFL.txt", get(static_font_license))
         .route("/sw.js", get(static_service_worker))
         .route("/offline.html", get(static_offline_html))
         .route("/manifest.webmanifest", get(static_manifest))
@@ -360,6 +364,14 @@ pub fn router(state: ApiState) -> Router {
         .route("/icon-192.png", get(static_icon_192))
         .route("/icon-512.png", get(static_icon_512))
         .route("/apple-touch-icon.png", get(static_apple_touch_icon))
+}
+
+pub fn router(state: ApiState) -> Router {
+    let router = Router::new()
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .route("/", get(app_home))
+        .merge(static_routes())
         .route(
             "/internal/scheduler/return-notifications",
             post(run_return_notification_scheduler),
@@ -397,6 +409,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/app/draft/reject", post(reject_app_draft))
         .route("/app/reveal", post(reveal_app_review))
         .route("/app/reference", post(reference_app_review))
+        .route("/app/resume", post(resume_app_review))
         .route("/app/skip", post(skip_app_review))
         .route("/app/snooze", post(snooze_app_review))
         .route("/app/snooze-concept", post(snooze_concept_app_review))
@@ -541,6 +554,9 @@ async fn no_store_dynamic_responses(request: Request, next: Next) -> Response {
         path.as_str(),
         "/static/ledger.css"
             | "/static/app.js"
+            | "/static/fonts/literata-latin-variable.woff2"
+            | "/static/fonts/manrope-latin-variable.woff2"
+            | "/static/fonts/OFL.txt"
             | "/sw.js"
             | "/offline.html"
             | "/manifest.webmanifest"
@@ -603,6 +619,36 @@ async fn static_ledger_css() -> impl IntoResponse {
     )
 }
 
+async fn static_literata_font() -> impl IntoResponse {
+    (
+        [
+            (CONTENT_TYPE, "font/woff2"),
+            (CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        LITERATA_WOFF2,
+    )
+}
+
+async fn static_manrope_font() -> impl IntoResponse {
+    (
+        [
+            (CONTENT_TYPE, "font/woff2"),
+            (CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        MANROPE_WOFF2,
+    )
+}
+
+async fn static_font_license() -> impl IntoResponse {
+    (
+        [
+            (CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        FONT_LICENSE,
+    )
+}
+
 async fn static_service_worker() -> impl IntoResponse {
     const WORKER: &str = include_str!("../assets/service-worker.js");
     (
@@ -633,8 +679,8 @@ async fn static_manifest() -> impl IntoResponse {
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f6f2ea",
-  "theme_color": "#f6f2ea",
+  "background_color": "#f4f8fa",
+  "theme_color": "#f4f8fa",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
@@ -643,26 +689,104 @@ async fn static_manifest() -> impl IntoResponse {
     ([(CONTENT_TYPE, "application/manifest+json")], MANIFEST)
 }
 
-use icons::{APPLE_TOUCH_ICON_PNG, APP_ICON_192_PNG, APP_ICON_512_PNG};
-
 async fn static_favicon() -> impl IntoResponse {
-    ([(CONTENT_TYPE, "image/png")], APP_ICON_192_PNG)
+    ([(CONTENT_TYPE, "image/png")], FAVICON)
 }
 
 async fn static_apple_touch_icon() -> impl IntoResponse {
-    ([(CONTENT_TYPE, "image/png")], APPLE_TOUCH_ICON_PNG)
+    ([(CONTENT_TYPE, "image/png")], APPLE_TOUCH_ICON)
 }
 
 async fn static_icon_192() -> impl IntoResponse {
-    ([(CONTENT_TYPE, "image/png")], APP_ICON_192_PNG)
+    ([(CONTENT_TYPE, "image/png")], PWA_ICON_192)
 }
 
 async fn static_icon_512() -> impl IntoResponse {
-    ([(CONTENT_TYPE, "image/png")], APP_ICON_512_PNG)
+    ([(CONTENT_TYPE, "image/png")], PWA_ICON_512)
 }
 
 async fn v1_openapi() -> impl IntoResponse {
     ([(CONTENT_TYPE, "application/json")], V1_OPENAPI_JSON)
+}
+
+fn app_account_html(
+    state: &ApiState,
+    account: &AppAccount,
+    view: Option<&StudyViewResponse>,
+    notice: Option<&str>,
+) -> String {
+    let fetched = if view.is_none() {
+        state.app_study_view(account).ok()
+    } else {
+        None
+    };
+    let jobs = if notice.is_some_and(is_generating_notice) {
+        state.jobs_for_app_account(account)
+    } else {
+        Vec::new()
+    };
+    render_account_page(account, view.or(fetched.as_ref()), &jobs, notice)
+}
+
+fn app_create_html(state: &ApiState, account: &AppAccount, notice: Option<&str>) -> String {
+    let view = state.app_study_view(account).ok();
+    let jobs = state.jobs_for_app_account(account);
+    render_create_page(account, view.as_ref(), &jobs, notice)
+}
+
+fn app_library_html(
+    state: &ApiState,
+    account: &AppAccount,
+    view: Option<&StudyViewResponse>,
+    notice: Option<&str>,
+) -> String {
+    let fetched = if view.is_none() {
+        state.app_study_view(account).ok()
+    } else {
+        None
+    };
+    let sources = state.list_app_sources(account).unwrap_or_default();
+    let jobs = state.jobs_for_app_account(account);
+    render_library_page(account, &sources, view.or(fetched.as_ref()), &jobs, notice)
+}
+
+fn app_action_html(
+    state: &ApiState,
+    account: &AppAccount,
+    result: Result<StudyViewResponse, ApiFailure>,
+    notice: Option<&str>,
+) -> String {
+    match result {
+        Ok(view) => app_account_html(state, account, Some(&view), notice),
+        Err(error) => app_account_html(state, account, None, Some(&error.message)),
+    }
+}
+
+fn app_submit_html(
+    state: &ApiState,
+    account: &AppAccount,
+    result: &Result<StudyViewResponse, ApiFailure>,
+    request_id: &str,
+    trace_id: Option<&str>,
+    timings: &mut SubmitReviewTimings,
+) -> String {
+    let recovery_view = if result.is_err() {
+        state.app_study_view_with_timings(account, timings).ok()
+    } else {
+        None
+    };
+    let (view, notice) = match result {
+        Ok(view) => (Some(view), None),
+        Err(error) => (recovery_view.as_ref(), Some(error.message.as_str())),
+    };
+    // Home/review need no source inventory. Only a generation notice requires
+    // live jobs; recovery reads still contribute their measured Postgres phases.
+    let jobs = if notice.is_some_and(is_generating_notice) {
+        state.jobs_for_app_account_with_timings(account, timings)
+    } else {
+        Vec::new()
+    };
+    render_submit_action_result_html(account, view, &jobs, notice, request_id, trace_id)
 }
 
 async fn app_home(State(state): State<ApiState>, request: Request) -> Response {
@@ -675,7 +799,7 @@ async fn app_home(State(state): State<ApiState>, request: Request) -> Response {
     match state.require_browser_session_readonly(headers) {
         Ok(account) => html_with_browser_session_for_request(
             &account,
-            render_account_page(&state, &account, None, None),
+            app_account_html(&state, &account, None, None),
             headers,
             uri,
         ),
@@ -694,7 +818,7 @@ async fn app_analytics(
         Ok(account) => {
             let html = match state.app_study_view(&account) {
                 Ok(view) => render_analytics_page(&account, &view, query.options()),
-                Err(error) => render_account_page(&state, &account, None, Some(&error.message)),
+                Err(error) => app_account_html(&state, &account, None, Some(&error.message)),
             };
             html_with_browser_session_for_request(&account, html, headers, uri)
         }
@@ -708,7 +832,7 @@ async fn app_create(State(state): State<ApiState>, request: Request) -> Response
     match state.require_browser_session_readonly(headers) {
         Ok(account) => html_with_browser_session_for_request(
             &account,
-            render_create_page(&state, &account, None),
+            app_create_html(&state, &account, None),
             headers,
             uri,
         ),
@@ -722,7 +846,7 @@ async fn app_library(State(state): State<ApiState>, request: Request) -> Respons
     match state.require_browser_session_readonly(headers) {
         Ok(account) => html_with_browser_session_for_request(
             &account,
-            render_library_page(&state, &account, None, None),
+            app_library_html(&state, &account, None, None),
             headers,
             uri,
         ),
@@ -752,9 +876,7 @@ fn app_study_action_result(
     };
     (
         status,
-        Html(render_action_result_html_with_notice(
-            state, account, result, notice,
-        )),
+        Html(app_action_html(state, account, result, notice)),
     )
 }
 fn with_browser_session_cookie(
@@ -1247,7 +1369,7 @@ struct AppReviewSubmitForm {
     performance_trace_id: Option<String>,
 }
 
-const BROWSER_SUBMIT_PERFORMANCE_SCHEMA: &str = "memory_engine.browser_submit.v1";
+const BROWSER_SUBMIT_PERFORMANCE_SCHEMA: &str = "memory_engine.browser_submit.v2";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -1264,10 +1386,12 @@ struct BrowserSubmitPerformance {
     csrf_token: Option<String>,
     request_id: String,
     trace_id: String,
+    navigation: memory_engine_performance::Navigation,
     tap_to_ack_ms: u64,
-    request_to_response_ms: u64,
-    transfer_ms: u64,
-    navigation_ms: u64,
+    request_to_response_ms: Option<u64>,
+    transfer_ms: Option<u64>,
+    navigation_ms: Option<u64>,
+    dom_swap_ms: Option<u64>,
     graded_visible_ms: u64,
     viewport: BrowserSubmitViewport,
 }
@@ -1410,7 +1534,7 @@ async fn verify_app_login(
             let view = state.app_study_view(&account).ok();
             no_store_response(html_with_browser_session_for_request(
                 &account,
-                render_account_page(&state, &account, view.as_ref(), None),
+                app_account_html(&state, &account, view.as_ref(), None),
                 &headers,
                 &uri,
             ))
@@ -1461,7 +1585,7 @@ async fn return_notification_page(
         let account = state.require_browser_session_readonly(&headers)?;
         Ok(no_store_response(html_with_browser_session_for_request(
             &account,
-            render_account_page(&state, &account, None, None),
+            app_account_html(&state, &account, None, None),
             &headers,
             &uri,
         )))
@@ -1554,7 +1678,7 @@ async fn update_return_notifications(
         Ok(()) => "Due-count reminders are off.",
         Err(error) => {
             let response =
-                Html(render_account_page(&state, &account, None, Some(&error.message)))
+                Html(app_account_html(&state, &account, None, Some(&error.message)))
                     .into_response();
             return no_store_response(with_browser_session_cookie(
                 response,
@@ -1564,7 +1688,7 @@ async fn update_return_notifications(
             ));
         }
     };
-    let response = Html(render_account_page(&state, &account, None, Some(notice))).into_response();
+    let response = Html(app_account_html(&state, &account, None, Some(notice))).into_response();
     no_store_response(with_browser_session_cookie(
         response, &account, &headers, &uri,
     ))
@@ -1626,14 +1750,14 @@ async fn save_app_account(
             let view = state.app_study_view(&account).ok().or(source_view);
             html_with_browser_session_for_request(
                 &account,
-                render_account_page(&state, &account, view.as_ref(), None),
+                app_account_html(&state, &account, view.as_ref(), None),
                 &headers,
                 &uri,
             )
         }
         Err(error) => html_with_browser_session_for_request(
             &source_account,
-            render_account_page(
+            app_account_html(
                 &state,
                 &source_account,
                 source_view.as_ref(),
@@ -1713,9 +1837,8 @@ async fn create_app_source(
 }
 
 /// Capture material and enqueue generation. Returns immediately: the source is
-/// saved synchronously (fast, local), then a background job generates cards
-/// while the learner is free to do anything else. Progress shows in the
-/// activity log, live over SSE.
+/// saved synchronously, then a background job generates drafts. The dedicated
+/// waiting page follows that exact job while Library stays available.
 async fn capture_app_source(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -1728,36 +1851,25 @@ async fn capture_app_source(
             Err(error) => return app_failure_response(&error),
         };
     let request = capture_request(form.title, form.body, form.capture);
-    let notice = match state.save_app_source(&account, &request) {
+    let html = match state.save_app_source(&account, &request) {
         Ok(source) => {
             match state.enqueue_generation_job_by_source(
                 &account,
                 &source.source_id,
                 &request.title,
             ) {
-                EnqueueOutcome::Started(_) => {
-                    "Generating your cards. They'll appear below as they're ready.".to_owned()
+                EnqueueOutcome::Started(job) | EnqueueOutcome::AlreadyInFlight(job) => {
+                    render_capture_waiting_page(&account, &job)
                 }
-                EnqueueOutcome::AlreadyInFlight(_) => "Already generating this source.".to_owned(),
-                EnqueueOutcome::Rejected(reason) | EnqueueOutcome::Unavailable(reason) => reason,
+                EnqueueOutcome::Rejected(reason) | EnqueueOutcome::Unavailable(reason) => {
+                    app_create_html(&state, &account, Some(&reason))
+                }
             }
         }
-        Err(error) => {
-            return with_browser_session_cookie(
-                Html(render_create_page(&state, &account, Some(&error.message))).into_response(),
-                &account,
-                &headers,
-                &uri,
-            );
-        }
+        Err(error) => app_create_html(&state, &account, Some(&error.message)),
     };
 
-    with_browser_session_cookie(
-        Html(render_create_page(&state, &account, Some(&notice))).into_response(),
-        &account,
-        &headers,
-        &uri,
-    )
+    with_browser_session_cookie(Html(html).into_response(), &account, &headers, &uri)
 }
 
 fn render_save_result_html(
@@ -1766,13 +1878,13 @@ fn render_save_result_html(
     result: Result<(), ApiFailure>,
 ) -> String {
     match result {
-        Ok(()) => render_library_page(
+        Ok(()) => app_library_html(
             state,
             account,
             None,
             Some("Capture saved. Create review when you are ready."),
         ),
-        Err(error) => render_library_page(state, account, None, Some(&error.message)),
+        Err(error) => app_library_html(state, account, None, Some(&error.message)),
     }
 }
 
@@ -1823,7 +1935,7 @@ async fn generate_app_source(
     };
 
     with_browser_session_cookie(
-        Html(render_library_page(&state, &account, None, Some(&notice))).into_response(),
+        Html(app_library_html(&state, &account, None, Some(&notice))).into_response(),
         &account,
         &headers,
         &uri,
@@ -1851,7 +1963,7 @@ async fn archive_app_source(
             // run. Name the actual count instead.
             let cards = if archived_count == 1 { "card" } else { "cards" };
             let notice = format!("Source removed. {archived_count} {cards} retired.");
-            Html(render_library_page(
+            Html(app_library_html(
                 &state,
                 &account,
                 Some(&view),
@@ -1859,7 +1971,7 @@ async fn archive_app_source(
             ))
             .into_response()
         }
-        Err(error) => Html(render_library_page(
+        Err(error) => Html(app_library_html(
             &state,
             &account,
             None,
@@ -1883,14 +1995,14 @@ async fn update_app_source_permission(
         };
     let response =
         match state.update_app_source_permission(&account, &form.source_id, form.permission) {
-            Ok(()) => Html(render_library_page(
+            Ok(()) => Html(app_library_html(
                 &state,
                 &account,
                 None,
                 Some("Source permission updated."),
             ))
             .into_response(),
-            Err(error) => Html(render_library_page(
+            Err(error) => Html(app_library_html(
                 &state,
                 &account,
                 None,
@@ -1921,7 +2033,7 @@ async fn retry_app_job(
     };
 
     with_browser_session_cookie(
-        Html(render_library_page(&state, &account, None, Some(notice))).into_response(),
+        Html(app_library_html(&state, &account, None, Some(notice))).into_response(),
         &account,
         &headers,
         &uri,
@@ -1937,21 +2049,27 @@ async fn app_jobs_events(State(state): State<ApiState>, headers: HeaderMap, uri:
         Err(error) => return app_failure_response(&error),
     };
     let account_id = account.account_id().to_owned();
+    // Subscribe before the snapshot so completion during connection setup is
+    // either already visible or queued. Reconnection repeats this readback.
+    let updates = state.subscribe_jobs();
+    let initial = tokio_stream::iter(state.jobs_for_app_account(&account))
+        .map(|job| Event::default().event("job").json_data(job));
     // `tokio_stream::StreamExt::filter_map` is synchronous: the closure returns
     // an `Option` directly, not a future.
-    let stream = BroadcastStream::new(state.subscribe_jobs()).filter_map(move |message| {
+    let stream = BroadcastStream::new(updates).filter_map(move |message| {
         match message {
-            // Full-state snapshots, scoped to this learner. A lagged subscriber
-            // simply skips to the next event — the page reload is authoritative.
-            Ok(update) if update.account_id == account_id => Some(Ok::<Event, Infallible>(
-                Event::default().event("job").data(update.payload),
-            )),
+            Ok(update) if update.account_id == account_id => {
+                Some(Ok(Event::default().event("job").data(update.payload)))
+            }
+            // End a lagged connection rather than silently lose a terminal
+            // event. EventSource reconnects and reads the current snapshot.
+            Err(error) => Some(Err(axum::Error::new(error))),
             _ => None,
         }
     });
 
     with_browser_session_cookie(
-        Sse::new(stream)
+        Sse::new(initial.chain(stream))
             .keep_alive(
                 KeepAlive::new()
                     .interval(Duration::from_secs(15))
@@ -1993,12 +2111,12 @@ async fn keep_app_draft(
         &form.draft_id,
     );
     let response = match result {
-        Ok(view) => Html(render_action_result_html(&state, &account, Ok(view))).into_response(),
+        Ok(view) => Html(app_action_html(&state, &account, Ok(view), None)).into_response(),
         Err(error) => {
             let status = error.status();
             (
                 status,
-                Html(render_action_result_html(&state, &account, Err(error))),
+                Html(app_action_html(&state, &account, Err(error), None)),
             )
                 .into_response()
         }
@@ -2026,12 +2144,12 @@ async fn edit_app_draft(
         &split_draft_choices(&form.choices),
     );
     let response = match result {
-        Ok(view) => Html(render_action_result_html(&state, &account, Ok(view))).into_response(),
+        Ok(view) => Html(app_action_html(&state, &account, Ok(view), None)).into_response(),
         Err(error) => {
             let status = error.status();
             (
                 status,
-                Html(render_action_result_html(&state, &account, Err(error))),
+                Html(app_action_html(&state, &account, Err(error), None)),
             )
                 .into_response()
         }
@@ -2056,12 +2174,12 @@ async fn reject_app_draft(
         &form.draft_id,
     );
     let response = match result {
-        Ok(view) => Html(render_action_result_html(&state, &account, Ok(view))).into_response(),
+        Ok(view) => Html(app_action_html(&state, &account, Ok(view), None)).into_response(),
         Err(error) => {
             let status = error.status();
             (
                 status,
-                Html(render_action_result_html(&state, &account, Err(error))),
+                Html(app_action_html(&state, &account, Err(error), None)),
             )
                 .into_response()
         }
@@ -2085,7 +2203,7 @@ async fn next_app_review(
                 let render_started = Instant::now();
                 let postgres_before_render = postgres;
                 let response = with_browser_session_cookie(
-                    Html(render_action_result_html(&state, &account, view)).into_response(),
+                    Html(app_action_html(&state, &account, view, None)).into_response(),
                     &account,
                     &headers,
                     &uri,
@@ -2242,7 +2360,25 @@ async fn reference_app_review(
             Ok(account) => account,
             Err(error) => return app_failure_response(&error),
         };
-    let result = state.learn_more_app_review(&account, &form.review_unit_id);
+    let response = match state.learn_more_app_review(&account, &form.review_unit_id) {
+        Ok(view) => Html(render_reference_page(&account, &view)).into_response(),
+        Err(error) => app_study_action_result(&state, &account, Err(error), None).into_response(),
+    };
+    with_browser_session_cookie(response, &account, &headers, &uri)
+}
+
+async fn resume_app_review(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(form): Form<AppReviewActionForm>,
+) -> Response {
+    let account =
+        match state.require_browser_session(&headers, csrf_token(form.csrf_token.as_ref())) {
+            Ok(account) => account,
+            Err(error) => return app_failure_response(&error),
+        };
+    let result = state.resume_app_review(&account, &form.review_unit_id);
     with_browser_session_cookie(
         app_study_action_result(&state, &account, result, None).into_response(),
         &account,
@@ -2303,7 +2439,7 @@ async fn edit_app_review(
             Ok(account) => account,
             Err(error) => return app_failure_response(&error),
         };
-    let view = match state.next_app_review(&account) {
+    let view = match state.resume_app_review(&account, &form.review_unit_id) {
         Ok(view) => view,
         Err(error) => {
             return with_browser_session_cookie(
@@ -2314,37 +2450,15 @@ async fn edit_app_review(
             )
         }
     };
-    let Some(current) = view.current.as_ref() else {
-        return with_browser_session_cookie(
-            app_study_action_result(
-                &state,
-                &account,
-                Err(ApiFailure::not_found("Review unit not found.")),
-                None,
-            )
-            .into_response(),
-            &account,
-            &headers,
-            &uri,
-        );
-    };
-    if current.review_unit_id.to_string() != form.review_unit_id {
-        return with_browser_session_cookie(
-            app_study_action_result(
-                &state,
-                &account,
-                Err(ApiFailure::not_found("Review unit not found.")),
-                None,
-            )
-            .into_response(),
-            &account,
-            &headers,
-            &uri,
-        );
-    }
 
     with_browser_session_cookie(
-        Html(render_edit_review_html(&state, &account, &view, None)).into_response(),
+        Html(render_edit_review_html(
+            &account,
+            &view,
+            &state.jobs_for_app_account(&account),
+            None,
+        ))
+        .into_response(),
         &account,
         &headers,
         &uri,
@@ -2435,12 +2549,13 @@ async fn bridge_app_review(
             Err(error) => return app_failure_response(&error),
         };
     let result = state.bridge_app_review(&account, &form.review_unit_id);
-    with_browser_session_cookie(
-        app_study_action_result(&state, &account, result, None).into_response(),
-        &account,
-        &headers,
-        &uri,
-    )
+    let response = match result {
+        // Bridge candidates need a learner decision before entering review.
+        // The active Quiz surface deliberately hides draft triage.
+        Ok(view) => Html(app_library_html(&state, &account, Some(&view), None)).into_response(),
+        Err(error) => app_study_action_result(&state, &account, Err(error), None).into_response(),
+    };
+    with_browser_session_cookie(response, &account, &headers, &uri)
 }
 
 /// Ceiling for a plausible single-answer response time (ten minutes).
@@ -2521,10 +2636,10 @@ async fn submit_app_review(
             let render_started = Instant::now();
             let postgres_before_render = postgres;
             let mut response = with_browser_session_cookie(
-                Html(render_submit_action_result_html(
+                Html(app_submit_html(
                     &state,
                     &account,
-                    result,
+                    &result,
                     &request_id,
                     trace_id.as_deref(),
                     &mut postgres,
@@ -2737,10 +2852,12 @@ async fn record_submit_browser_performance(
     report_submit_browser_performance(BrowserSubmitReceipt {
         request_id: &event.request_id,
         trace_id: &event.trace_id,
+        navigation: event.navigation,
         tap_to_ack_ms: event.tap_to_ack_ms,
         request_to_response_ms: event.request_to_response_ms,
         transfer_ms: event.transfer_ms,
         navigation_ms: event.navigation_ms,
+        dom_swap_ms: event.dom_swap_ms,
         graded_visible_ms: event.graded_visible_ms,
         viewport,
     });
@@ -2753,30 +2870,63 @@ async fn record_submit_browser_performance(
 }
 
 fn valid_browser_submit_performance(event: &BrowserSubmitPerformance) -> bool {
+    use memory_engine_performance::{Navigation, REQUEST_UI_MAX_DURATION_MS};
+
     if event.schema != BROWSER_SUBMIT_PERFORMANCE_SCHEMA
         || !strict_opaque_id(&event.request_id, "req_")
         || !strict_opaque_id(&event.trace_id, "trace_")
+        || !matches!(event.navigation, Navigation::InPlace | Navigation::FullPage)
+        || event.graded_visible_ms > REQUEST_UI_MAX_DURATION_MS
+        || event.tap_to_ack_ms > event.graded_visible_ms
     {
         return false;
     }
-    let durations = [
-        event.tap_to_ack_ms,
+    let phases = [
         event.request_to_response_ms,
         event.transfer_ms,
         event.navigation_ms,
-        event.graded_visible_ms,
+        event.dom_swap_ms,
     ];
-    if durations.iter().any(|duration| *duration > 60_000)
-        || event.tap_to_ack_ms > event.request_to_response_ms
-        || event.request_to_response_ms > event.graded_visible_ms
+    if phases
+        .iter()
+        .flatten()
+        .any(|duration| *duration > event.graded_visible_ms)
+        || event
+            .request_to_response_ms
+            .is_some_and(|duration| event.tap_to_ack_ms > duration)
     {
         return false;
     }
-    let reconstructed = event
-        .request_to_response_ms
-        .saturating_add(event.transfer_ms)
-        .saturating_add(event.navigation_ms);
-    event.graded_visible_ms.abs_diff(reconstructed) <= 4
+    // Navigation and DOM-swap phases describe different transports. Never
+    // accept a synthetic zero navigation phase for an in-place response.
+    match event.navigation {
+        Navigation::InPlace if event.navigation_ms.is_some() => return false,
+        Navigation::FullPage if event.dom_swap_ms.is_some() => return false,
+        _ => {}
+    }
+    let observed_sum: u64 = phases.iter().flatten().sum();
+    let earliest_response = if event.request_to_response_ms.is_none() {
+        event.tap_to_ack_ms
+    } else {
+        0
+    };
+    if observed_sum + earliest_response > event.graded_visible_ms + 4 {
+        return false;
+    }
+    // A complete native-navigation decomposition closes at the visible paint.
+    // Partial phases stay absent; an in-place swap leaves real paint/JS gaps.
+    if let (Navigation::FullPage, Some(response), Some(transfer), Some(navigation)) = (
+        event.navigation,
+        event.request_to_response_ms,
+        event.transfer_ms,
+        event.navigation_ms,
+    ) {
+        return event
+            .graded_visible_ms
+            .abs_diff(response + transfer + navigation)
+            <= 4;
+    }
+    true
 }
 
 pub(crate) fn resolve_content_feedback_recovery_revision(
@@ -2846,8 +2996,10 @@ pub(crate) fn render_content_feedback_persistence_failure(
         &mut message,
     );
     let html = render_content_feedback_recovery_html(
-        state,
         account,
+        state
+            .app_study_view(account)
+            .map_or(0, |view| view.due_count),
         &ContentFeedbackRecovery {
             review_unit_id,
             verdict,
@@ -2897,9 +3049,9 @@ async fn record_app_content_feedback(
                 current.content_feedback_head_id = Some(feedback.id);
             }
             Html(render_content_feedback_result_html(
-                &state,
                 &account,
                 &graded_view,
+                &[],
                 "Saved. This card will help improve future generation.",
             ))
             .into_response()

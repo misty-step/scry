@@ -14,8 +14,8 @@ use std::{
 };
 
 use memory_engine_core::{
-    defer_queue_availability, Prompt, QueueCandidate, ReviewUnitId, ReviewUnitLifecycle,
-    ScheduleState,
+    defer_queue_availability, Prompt, QueueCandidate, Rating, ReviewUnitId, ReviewUnitLifecycle,
+    ScheduleState, Verdict,
 };
 use memory_engine_service::{
     content_feedback_replay_matches, ContentFeedback, ContentFeedbackStore, ContentFeedbackVerdict,
@@ -333,6 +333,36 @@ pub struct AppliedReviewReceipt {
     pub schedule_state: ScheduleState,
 }
 
+/// Answer exposure for one existing schedule occurrence, never inferred from history.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewExposure {
+    pub review_unit_id: ReviewUnitId,
+    pub prior_schedule_state: Option<ScheduleState>,
+    pub revealed_at: i64,
+}
+
+/// Stable identity across requests, tabs, edits, snoozes and process restarts.
+/// Only committing a review advances the schedule occurrence.
+#[must_use]
+pub fn review_occurrence_key(prior: Option<&ScheduleState>) -> String {
+    prior.map_or_else(
+        || "new".to_owned(),
+        |state| format!("{}:{:?}", state.reps, state.last_review),
+    )
+}
+
+fn same_review_occurrence(left: Option<&ScheduleState>, right: Option<&ScheduleState>) -> bool {
+    left.map(|state| (state.reps, state.last_review))
+        == right.map(|state| (state.reps, state.last_review))
+}
+
+/// Normalize only the complete persisted concept key; never match source prefixes.
+#[must_use]
+pub fn normalized_concept_key(key: &str) -> String {
+    key.trim().to_lowercase()
+}
+
 /// A resolved feedback row for the bench calibration label contract.
 ///
 /// The generation configuration fields are deliberately export-only. The
@@ -403,6 +433,8 @@ pub struct BetaStoreSnapshot {
     pub concept_reference_notes: Vec<ConceptReferenceNote>,
     #[serde(default)]
     pub remediation_packs: Vec<RemediationPackRecord>,
+    #[serde(default)]
+    pub review_exposures: Vec<ReviewExposure>,
 }
 
 impl Default for BetaStoreSnapshot {
@@ -420,6 +452,7 @@ impl Default for BetaStoreSnapshot {
             applied_reviews: Vec::new(),
             concept_reference_notes: Vec::new(),
             remediation_packs: Vec::new(),
+            review_exposures: Vec::new(),
         }
     }
 }
@@ -668,7 +701,7 @@ pub struct BetaPersistenceStore {
     fail_next_commit: bool,
 }
 
-enum LearnerDraftDecisionInput<'a> {
+pub enum LearnerDraftDecisionInput<'a> {
     Keep,
     Edit {
         prompt_text: &'a str,
@@ -704,6 +737,39 @@ impl BetaPersistenceStore {
     #[must_use]
     pub fn snapshot(&self) -> BetaStoreSnapshot {
         load_snapshot(&self.path).unwrap_or_else(|_| self.data.clone())
+    }
+
+    /// Mark assisted exposure before returning answer material to the learner.
+    ///
+    /// # Errors
+    /// Returns an error on stale occurrence, unknown unit, or failed durable write.
+    pub fn reveal_review_occurrence(
+        &mut self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<ScheduleState>,
+        revealed_at: i64,
+    ) -> Result<(), BetaStoreError> {
+        self.transact(|snapshot| {
+            assert_known_review_unit(snapshot, review_unit_id)?;
+            let current = find_schedule(snapshot, review_unit_id).map(|row| row.state.clone());
+            if current != prior_schedule {
+                return Err(BetaStoreError::StaleScheduleWrite(review_unit_id.clone()));
+            }
+            if !snapshot.review_exposures.iter().any(|exposure| {
+                exposure.review_unit_id == *review_unit_id
+                    && same_review_occurrence(
+                        exposure.prior_schedule_state.as_ref(),
+                        prior_schedule.as_ref(),
+                    )
+            }) {
+                snapshot.review_exposures.push(ReviewExposure {
+                    review_unit_id: review_unit_id.clone(),
+                    prior_schedule_state: prior_schedule,
+                    revealed_at,
+                });
+            }
+            Ok(())
+        })
     }
 
     /// Copy this account's durable snapshot for a new account scope.
@@ -1112,6 +1178,9 @@ impl BetaPersistenceStore {
                 .applied_reviews
                 .retain(|receipt| !stale_review_unit_ids.contains(&receipt.attempt.review_unit_id));
             snapshot
+                .review_exposures
+                .retain(|exposure| !stale_review_unit_ids.contains(&exposure.review_unit_id));
+            snapshot
                 .review_units
                 .retain(|unit| !stale_review_unit_ids.contains(&unit.review_unit_id));
             snapshot
@@ -1338,12 +1407,20 @@ impl BetaPersistenceStore {
         concept_key: &str,
         snoozed_until: i64,
     ) -> Result<Vec<BetaReviewUnitRecord>, BetaStoreError> {
+        let concept_key = normalized_concept_key(concept_key);
+        assert_non_blank(&concept_key, "Concept key")?;
         self.transact(|snapshot| {
             let snoozed = snapshot
                 .review_units
                 .iter_mut()
                 .filter(|review_unit| review_unit.archived_at.is_none())
-                .filter(|review_unit| review_unit.queue.concept_key.as_deref() == Some(concept_key))
+                .filter(|review_unit| {
+                    review_unit
+                        .queue
+                        .concept_key
+                        .as_deref()
+                        .is_some_and(|key| normalized_concept_key(key) == concept_key)
+                })
                 .map(|review_unit| {
                     review_unit.snoozed_until = Some(snoozed_until);
                     review_unit.clone()
@@ -1454,9 +1531,26 @@ impl MemoryServiceStore for BetaPersistenceStore {
         &self,
         review_unit_id: &ReviewUnitId,
     ) -> Result<Option<ScheduleState>, Self::Error> {
-        assert_known_review_unit(&self.data, review_unit_id)?;
+        let snapshot = load_snapshot(&self.path)?;
+        assert_known_review_unit(&snapshot, review_unit_id)?;
+        Ok(find_schedule(&snapshot, review_unit_id).map(|record| record.state.clone()))
+    }
 
-        Ok(find_schedule(&self.data, review_unit_id).map(|record| record.state.clone()))
+    fn review_was_revealed(
+        &self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<&ScheduleState>,
+    ) -> Result<bool, Self::Error> {
+        Ok(load_snapshot(&self.path)?
+            .review_exposures
+            .iter()
+            .any(|exposure| {
+                exposure.review_unit_id == *review_unit_id
+                    && same_review_occurrence(
+                        exposure.prior_schedule_state.as_ref(),
+                        prior_schedule,
+                    )
+            }))
     }
 
     fn apply_review(
@@ -1490,6 +1584,19 @@ impl MemoryServiceStore for BetaPersistenceStore {
             if current_schedule != expected_prior_schedule_state {
                 return Err(BetaStoreError::StaleScheduleWrite(review_unit_id.clone()));
             }
+            if snapshot.review_exposures.iter().any(|exposure| {
+                exposure.review_unit_id == *review_unit_id
+                    && same_review_occurrence(
+                        exposure.prior_schedule_state.as_ref(),
+                        expected_prior_schedule_state.as_ref(),
+                    )
+            }) && !attempt.grade.as_ref().is_some_and(|grade| {
+                grade.verdict == Verdict::Revealed
+                    && grade.rating == Rating::Again
+                    && !grade.is_correct
+            }) {
+                return Err(BetaStoreError::StaleScheduleWrite(review_unit_id.clone()));
+            }
 
             snapshot.attempts.push(attempt.clone());
             apply_schedule_record(snapshot, review_unit_id, Some(schedule_state.clone()));
@@ -1504,13 +1611,13 @@ impl MemoryServiceStore for BetaPersistenceStore {
     }
 
     fn list_queue_candidates(&self) -> Result<Vec<QueueCandidate>, Self::Error> {
-        Ok(self
-            .data
+        let snapshot = load_snapshot(&self.path)?;
+        Ok(snapshot
             .review_units
             .iter()
             .filter(|review_unit| review_unit.archived_at.is_none())
             .map(|review_unit| {
-                let schedule_state = find_schedule(&self.data, &review_unit.review_unit_id)
+                let schedule_state = find_schedule(&snapshot, &review_unit.review_unit_id)
                     .map(|record| record.state.clone());
                 let mut candidate = review_unit.queue.with_schedule(schedule_state);
                 if let Some(snoozed_until) = review_unit.snoozed_until {
@@ -1822,7 +1929,11 @@ fn temporary_path(path: &Path) -> PathBuf {
     PathBuf::from(temporary)
 }
 
-fn assert_non_blank(value: &str, label: &'static str) -> Result<(), BetaStoreError> {
+/// Validate the shared nonblank persistence field contract.
+///
+/// # Errors
+/// Returns a labeled blank-field error.
+pub fn assert_non_blank(value: &str, label: &'static str) -> Result<(), BetaStoreError> {
     if value.trim().is_empty() {
         Err(BetaStoreError::Blank { label })
     } else {
@@ -1888,7 +1999,11 @@ fn assert_known_review_unit(
     }
 }
 
-fn assert_attempt_contract(
+/// Validate an attempt against its account-scoped review-unit projection.
+///
+/// # Errors
+/// Returns an unknown-unit, blank-answer, or nonpositive-response-time error.
+pub fn assert_attempt_contract(
     snapshot: &BetaStoreSnapshot,
     attempt: &ServiceAttemptRecord,
 ) -> Result<(), BetaStoreError> {
@@ -1903,7 +2018,11 @@ fn assert_attempt_contract(
     Ok(())
 }
 
-fn assert_draft_contract(
+/// Validate generated content against its account-scoped provenance projection.
+///
+/// # Errors
+/// Returns a field, review identity, or missing provenance error.
+pub fn assert_draft_contract(
     snapshot: &BetaStoreSnapshot,
     draft: &GeneratedPromptDraft,
 ) -> Result<(), BetaStoreError> {
@@ -1957,7 +2076,11 @@ fn assert_draft_contract(
     Ok(())
 }
 
-fn assert_review_unit_contract(
+/// Validate a kept review record against its account-scoped provenance.
+///
+/// # Errors
+/// Returns an identity mismatch or missing provenance error.
+pub fn assert_review_unit_contract(
     snapshot: &BetaStoreSnapshot,
     review_unit: &BetaReviewUnitRecord,
 ) -> Result<(), BetaStoreError> {
@@ -1983,7 +2106,11 @@ fn assert_review_unit_contract(
     Ok(())
 }
 
-fn assert_concept_reference_note_contract(
+/// Validate a provider-generated concept note before durable publication.
+///
+/// # Errors
+/// Returns a labeled blank-field error.
+pub fn assert_concept_reference_note_contract(
     note: &ConceptReferenceNote,
 ) -> Result<(), BetaStoreError> {
     assert_non_blank(&note.concept_key, "Concept reference note key")?;
@@ -2014,7 +2141,27 @@ fn record_learner_draft_decision(
         .iter()
         .position(|draft| draft.id == draft_id)
         .ok_or_else(|| BetaStoreError::UnknownGeneratedPromptDraft(draft_id.to_owned()))?;
-    let draft = &mut snapshot.generated_prompt_drafts[index];
+    let draft = &snapshot.generated_prompt_drafts[index];
+    let run = draft
+        .generation_run_id
+        .as_deref()
+        .and_then(|id| find_by_id(&snapshot.generation_runs, id));
+    let decided = transition_learner_draft(draft, run, input, decided_at)?;
+    snapshot.generated_prompt_drafts[index] = decided.clone();
+    Ok(decided)
+}
+
+/// Pure decision policy shared by durable adapters, including idempotent edits
+/// and finalized-generation gating. No mutation escapes a rejected transition.
+///
+/// # Errors
+/// Returns the same validation/decision error for every persistence adapter.
+pub fn transition_learner_draft(
+    draft: &GeneratedPromptDraft,
+    run: Option<&GenerationRun>,
+    input: &LearnerDraftDecisionInput<'_>,
+    decided_at: i64,
+) -> Result<GeneratedPromptDraft, BetaStoreError> {
     if draft.validation.status != GeneratedPromptValidationStatus::Accepted {
         return Err(BetaStoreError::RejectedGeneratedPromptDraft);
     }
@@ -2040,14 +2187,11 @@ fn record_learner_draft_decision(
             return Ok(draft.clone());
         }
         return Err(BetaStoreError::LearnerDraftDecisionAlreadyRecorded(
-            draft_id.to_owned(),
+            draft.id.clone(),
         ));
     }
-    let run_id = draft
-        .generation_run_id
-        .as_ref()
-        .ok_or(BetaStoreError::MissingGenerationRunForAcceptedDraft)?;
-    let run = find_by_id(&snapshot.generation_runs, run_id)
+    let run = run
+        .filter(|run| draft.generation_run_id.as_deref() == Some(run.id.as_str()))
         .ok_or(BetaStoreError::MissingGenerationRunForAcceptedDraft)?;
     if run
         .completed_at
@@ -2055,6 +2199,7 @@ fn record_learner_draft_decision(
     {
         return Err(BetaStoreError::MissingGenerationRunForAcceptedDraft);
     }
+    let mut draft = draft.clone();
     let decision = match *input {
         LearnerDraftDecisionInput::Keep => LearnerDraftDecision::Kept {
             edited: false,
@@ -2088,7 +2233,7 @@ fn record_learner_draft_decision(
         LearnerDraftDecisionInput::Reject => LearnerDraftDecision::Rejected { decided_at },
     };
     draft.learner_decision = Some(decision);
-    Ok(draft.clone())
+    Ok(draft)
 }
 
 fn promote_generated_prompt_draft(
@@ -2102,7 +2247,15 @@ fn promote_generated_prompt_draft(
     {
         return existing.clone();
     }
-    let review_unit = BetaReviewUnitRecord {
+    let review_unit = promoted_review_unit(draft);
+    snapshot.review_units.push(review_unit.clone());
+    review_unit
+}
+
+/// Construct the initial queue record after an accepted keep transition.
+#[must_use]
+pub fn promoted_review_unit(draft: &GeneratedPromptDraft) -> BetaReviewUnitRecord {
+    BetaReviewUnitRecord {
         review_unit_id: draft.review_unit_id.clone(),
         prompt_id: draft.prompt_id.clone(),
         prompt: draft.prompt.clone(),
@@ -2114,9 +2267,7 @@ fn promote_generated_prompt_draft(
         snoozed_until: None,
         remediation_pack_id: draft.remediation_pack_id.clone(),
         created_at: draft.created_at,
-    };
-    snapshot.review_units.push(review_unit.clone());
-    review_unit
+    }
 }
 
 fn prompt_text_for_export(prompt: &Prompt) -> String {
@@ -2134,7 +2285,8 @@ fn prompt_expected_answer_for_export(prompt: &Prompt) -> String {
     }
 }
 
-fn replace_prompt_text(prompt: &mut Prompt, prompt_text: &str) {
+/// Replace learner-visible prompt wording without changing its identity.
+pub fn replace_prompt_text(prompt: &mut Prompt, prompt_text: &str) {
     match prompt {
         Prompt::Mcq { prompt, .. } | Prompt::Boolean { prompt, .. } => {
             prompt_text.clone_into(prompt);
@@ -2145,7 +2297,14 @@ fn replace_prompt_text(prompt: &mut Prompt, prompt_text: &str) {
     }
 }
 
-fn replace_prompt_answer(prompt: &mut Prompt, expected_answer: &str) -> Result<(), BetaStoreError> {
+/// Apply the shared kept-prompt answer edit, retaining MCQ choice order.
+///
+/// # Errors
+/// Returns an invalid Boolean answer error without changing that answer.
+pub fn replace_prompt_answer(
+    prompt: &mut Prompt,
+    expected_answer: &str,
+) -> Result<(), BetaStoreError> {
     match prompt {
         Prompt::Mcq {
             choices,
@@ -2349,7 +2508,9 @@ fn apply_schedule_record(
     }
 }
 
-fn applied_review_key(attempt: &ServiceAttemptRecord) -> String {
+/// Stable account-local receipt key shared by all durable adapters.
+#[must_use]
+pub fn applied_review_key(attempt: &ServiceAttemptRecord) -> String {
     if let Some(idempotency_key) = &attempt.idempotency_key {
         return format!("idempotency:{idempotency_key}");
     }

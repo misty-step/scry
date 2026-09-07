@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Record a failed off-host backup and send a secret-free operator notice."""
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.request
+
+CANDIDATES = (
+    Path("/usr/local/lib/scry"),
+    Path(__file__).resolve().parent.parent / "scripts/lib",
+)
+for candidate in CANDIDATES:
+    if (candidate / "scry_ops.py").is_file():
+        sys.path.insert(0, str(candidate))
+        break
+
+from scry_ops import OperationError, private_env, run  # noqa: E402
+
+STATE_DIR = Path(os.environ.get("SCRY_BACKUP_STATE", "/var/lib/scry-backup"))
+BACKUP_ENV = Path(os.environ.get("SCRY_BACKUP_ENV_FILE", "/etc/public-apps/scry-backup.env"))
+SCRY_ENV = Path(os.environ.get("SCRY_ENV_FILE", "/etc/public-apps/scry.env"))
+RESEND = os.environ.get("RESEND_API_URL", "https://api.resend.com")
+
+
+def record_failure():
+    STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flag = STATE_DIR / "FAILURE"
+    flag.write_text("failed\n")
+    os.chmod(flag, 0o600)
+    try:
+        run(["logger", "-p", "daemon.alert", "-t", "scry-backup", "offhost-backup-failed"])
+    except OperationError:
+        pass
+
+def send_mail(backup, runtime):
+    recipient = backup.get("SCRY_BACKUP_ALERT_EMAIL", "").strip()
+    key = runtime.get("RESEND_API_KEY", "").strip()
+    sender = runtime.get("MEMORY_ENGINE_MAIL_FROM", "").strip()
+    if not recipient or not key or not sender:
+        print("scry-backup-alert: mail boundary not configured; journal alert only", file=sys.stderr)
+        return
+    payload = json.dumps(
+        {
+            "from": sender,
+            "to": [recipient],
+            "subject": "Scry off-host backup failed",
+            "text": "The Scry off-host backup unit failed. Inspect journalctl -u scry-backup-offhost without printing secrets.",
+        }
+    ).encode()
+    request = urllib.request.Request(
+        RESEND.rstrip("/") + "/emails",
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + key,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if 200 <= response.status < 300:
+                print("scry-backup-alert: mail accepted")
+                return
+    except Exception:
+        raise OperationError("mail boundary rejected the backup failure notice")
+    raise OperationError("mail boundary rejected the backup failure notice")
+
+
+def main():
+    try:
+        record_failure()
+        owner = None if os.environ.get("SCRY_ENV_OWNER_SELF") == "1" else 0
+        backup = {}
+        runtime = {}
+        if BACKUP_ENV.is_file():
+            backup = private_env(BACKUP_ENV, owner=owner)
+        if SCRY_ENV.is_file():
+            runtime = private_env(SCRY_ENV, owner=owner)
+        send_mail(backup, runtime)
+        return 0
+    except OperationError as error:
+        print(f"scry-backup-alert: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -143,7 +143,14 @@ impl PerformanceBatch {
     }
 
     pub(crate) fn attributes_for_attempt(&self, attempts: usize, sent: bool) -> Value {
-        let delivery = self.delivery.with_batch_attempt(attempts, sent);
+        let mut delivery = self.delivery.with_batch_attempt(attempts, sent);
+        if !sent {
+            for snapshot in &self.snapshots {
+                delivery.observations_dropped = delivery
+                    .observations_dropped
+                    .saturating_add(snapshot.count());
+            }
+        }
         self.attributes_with_delivery(&delivery)
     }
 
@@ -225,7 +232,7 @@ impl PerformanceBatch {
                 .map_err(|error| PerformanceError::Json(error.to_string()))?;
             if encoded.len() >= MAX_PAYLOAD_BYTES {
                 return Err(PerformanceError::Contract(
-                    "embedded snapshot exceeds the v1 payload bound".to_owned(),
+                    "embedded snapshot exceeds the payload bound".to_owned(),
                 ));
             }
             let snapshot = Snapshot::decode_json(&encoded)
@@ -473,6 +480,7 @@ pub(crate) struct Aggregator {
     boot: Boot,
     series: [BTreeMap<SeriesKey, Snapshot>; NAMESPACE_COUNT],
     accounting: [DeliveryAccounting; NAMESPACE_COUNT],
+    observations_dropped: u64,
 }
 
 impl Aggregator {
@@ -483,11 +491,16 @@ impl Aggregator {
             boot: Boot::new(boot_sequence()),
             series: std::array::from_fn(|_| BTreeMap::new()),
             accounting: std::array::from_fn(|_| DeliveryAccounting::default()),
+            observations_dropped: 0,
         }
     }
 
     pub(crate) const fn active_minute(&self) -> Option<u64> {
         self.active_minute
+    }
+
+    pub(crate) const fn observations_dropped(&self) -> u64 {
+        self.observations_dropped
     }
 
     pub(crate) fn record(&mut self, minute: u64, observation: Observation) {
@@ -499,6 +512,7 @@ impl Aggregator {
             self.accounting[index].observations_invalid = self.accounting[index]
                 .observations_invalid
                 .saturating_add(1);
+            self.observations_dropped = self.observations_dropped.saturating_add(1);
             return;
         }
         self.active_minute = Some(minute);
@@ -512,12 +526,14 @@ impl Aggregator {
             self.accounting[index].observations_invalid = self.accounting[index]
                 .observations_invalid
                 .saturating_add(1);
+            self.observations_dropped = self.observations_dropped.saturating_add(1);
         }
     }
 
     pub(crate) fn note_queue_drop(&mut self, namespace: Namespace, count: u64) {
         let accounting = &mut self.accounting[namespace_index(namespace)];
         accounting.observations_dropped = accounting.observations_dropped.saturating_add(count);
+        self.observations_dropped = self.observations_dropped.saturating_add(count);
     }
 
     pub(crate) fn take_batches(&mut self) -> Vec<PerformanceBatch> {
@@ -542,6 +558,8 @@ impl Aggregator {
                         delivery.observations_invalid = delivery
                             .observations_invalid
                             .saturating_add(snapshot.count());
+                        self.observations_dropped =
+                            self.observations_dropped.saturating_add(snapshot.count());
                         None
                     }
                 })
@@ -569,6 +587,8 @@ impl Aggregator {
                     .delivery
                     .observations_dropped
                     .saturating_add(snapshot.count());
+                self.observations_dropped =
+                    self.observations_dropped.saturating_add(snapshot.count());
             }
             if !batch.snapshots.is_empty() || !batch.delivery.is_empty() {
                 batches.push(batch);
@@ -599,14 +619,18 @@ impl Aggregator {
         batches
     }
 
-    pub(crate) fn note_batch_result(&mut self, namespace: Namespace, retries: u64, sent: bool) {
+    pub(crate) fn note_batch_drop(
+        &mut self,
+        namespace: Namespace,
+        retries: u64,
+        observations: u64,
+    ) {
         let accounting = &mut self.accounting[namespace_index(namespace)];
         accounting.batches_retried = accounting.batches_retried.saturating_add(retries);
-        if sent {
-            accounting.batches_sent = accounting.batches_sent.saturating_add(1);
-        } else {
-            accounting.batches_dropped = accounting.batches_dropped.saturating_add(1);
-        }
+        accounting.batches_dropped = accounting.batches_dropped.saturating_add(1);
+        accounting.observations_dropped =
+            accounting.observations_dropped.saturating_add(observations);
+        self.observations_dropped = self.observations_dropped.saturating_add(observations);
     }
 }
 
@@ -735,6 +759,7 @@ mod tests {
         aggregator.record(minute, observation);
         assert_eq!(aggregator.take_batches().len(), 1);
         aggregator.record(minute, observation);
+        assert_eq!(aggregator.observations_dropped(), 1);
         aggregator.record(minute + 1, observation);
         let batches = aggregator.take_batches();
 
@@ -742,6 +767,7 @@ mod tests {
         assert_eq!(batches[0].snapshots()[0].count(), 1);
         assert_eq!(batches[0].delivery().observations_invalid(), 1);
         assert!(aggregator.take_batches().is_empty());
+        assert_eq!(aggregator.observations_dropped(), 1);
     }
 
     #[test]
@@ -777,5 +803,6 @@ mod tests {
             retained + batch.delivery().observations_dropped(),
             observations
         );
+        assert_eq!(retained + aggregator.observations_dropped(), observations);
     }
 }

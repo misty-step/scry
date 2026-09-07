@@ -28,11 +28,19 @@ crates. The kernel owns deterministic scheduling, grading, progression, queue
 selection, and learning invariants. Boundary crates own persistence, generation,
 sessions, identity, API routes, rendering, deployment, and QA.
 
-The current production proof surface is the native Rust `memory-engine-api`
-process on Misty Step's isolated DigitalOcean public application host, backed
-by Neon Postgres and served at `https://scry.study`. Deployment, environment,
-auth, storage, rollback, and smoke-test details live in
-[docs/runbook.md](./docs/runbook.md).
+The production destination is a Rust WebAssembly Worker on Cloudflare:
+`memory-engine-cloudflare`, one SQLite-backed `Scry` Durable Object, leased
+jobs/reminders driven by alarms, private R2 recovery, and Resend over Worker Fetch.
+The pure learning engine and shared Rust renderer remain the implementation.
+The approved interim origin is `https://scry.misty-step.workers.dev`; registrar
+or custom-domain access is not a prerequisite for that origin.
+**Live cutover is not implied by this source change.** The native
+DigitalOcean/Postgres service remains authoritative until Main records the
+stopped-source-writer barrier, final import/readback, recovery, activation, and
+public proof. Keep the old host and its backups intact until then.
+Preserved browser-session records do not move host-scoped cookies: users need
+a fresh browser sign-in on workers.dev. Resend acceptance is not inbox delivery.
+See [docs/runbook.md](./docs/runbook.md).
 
 ## What It Owns
 
@@ -67,11 +75,18 @@ The Rust migration is complete for the main runtime:
 - service, persistence, generation, study, and local HTTP app hosts
 - Rust QA and benchmark receipt runners
 
-The sole current production dogfood surface is the native
-`memory-engine-api` process on the isolated public application host, backed by
-Neon Postgres and served at `https://scry.study`. Agent-facing deployment,
-environment, auth, storage, rollback, and smoke-test details live in
-[docs/runbook.md](./docs/runbook.md).
+Cloudflare staging (`scry-staging`) and production (`scry`) have separate Durable
+Object namespaces and recovery buckets. No custom-domain route is configured
+before a separately reviewed DNS change. `memory-engine-api` remains a native
+reference/compatibility test surface, not a deployment destination.
+Fresh Worker actors start paused: learner traffic, readiness, and background
+work remain fenced until the fingerprint-guarded `release:traffic --enable`.
+Bootstrap verifies health/assets/schema and the pause, not learner readiness.
+Production requires the same immutable bundle activated and publicly exercised
+in staging, then Main's source barrier, imported-state and recovery evidence.
+Runtime activation does not create another Worker version or rebuild.
+Migration, mail delivery, and public cutover remain pending until actual
+receipts are recorded in the runbook.
 
 Current strategy and verification docs:
 
@@ -173,39 +188,49 @@ use memory_engine::testkit::{grading_fixtures, scheduler_fixtures};
 
 ## Quickstart
 
-Prerequisites: the pinned Rust toolchain from `rust-toolchain.toml` and Bun for
-the fast gate. Dagger is required for the full/ship parity handoff; it uses the
-same Rust 1.94 line through the Dagger image.
+Prerequisites: Rust **1.94.0**, Node **22+**, Python **3.11+**, and Bun. Dagger
+and a container engine are required for the full ship-parity gate.
 
-Set the repository hook and run the local Rust verification loop:
+Install the repository-pinned toolchain, then build and run the exact Worker:
+
+```sh
+bun run worker:tools
+bun run worker:build --out target/cloudflare/bundle
+bun run worker:smoke --artifact target/cloudflare/bundle \
+  --receipt target/cloudflare/workerd-proof.json
+bun run dev:isolated --artifact target/cloudflare/bundle --port 8787
+```
+
+`worker:tools` installs `worker-build 0.8.5`, matching `wasm-bindgen 0.2.125`,
+and the npm lockfile's `Wrangler 4.129.0`/`esbuild 0.28.1`. Builds target
+`wasm32-unknown-unknown` with locked dependencies and no default features.
+The artifact contains exact source/module hashes, revision, tools, configuration,
+and the SQLite migration ledger. Artifact and receipt paths cannot be overwritten.
+
+Local workerd uses a unique private SQLite/R2 directory and local mail outbox,
+never a deployed binding or inherited provider credential. First start reads
+the private actor's fingerprint and activates it through the authenticated
+runtime API before observing readiness. Restarts read the persisted runtime
+state without repeating activation. The smoke creates an allowlisted service
+session, captures LocalOnly material, waits for actual alarm-driven generation,
+explicitly keeps a draft, grades an answer, and checks persistence/idempotency
+over restarts.
+That is runtime evidence when executed, not an email or model-quality claim.
+The signed-out browser accepts `dev@example.test` in this isolated environment.
 
 ```sh
 git config core.hooksPath .githooks
-cargo fmt --all --check
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo doc --workspace --no-deps
-bun run ci
-bun run ci:local # compatibility alias for bun run ci
-```
-
-Run the Dagger-backed full gate before handoff:
-
-```sh
+bun run ci:local
 bun run ci:full
 ```
 
-Run the production-shaped API locally with a file store:
-
-```sh
-MEMORY_ENGINE_ENVIRONMENT=development MEMORY_ENGINE_ENABLE_FILE_STORE=true MEMORY_ENGINE_API_STORE_DIR=.tmp/api-dev MEMORY_ENGINE_AUTH_ALLOWED_EMAILS=owner@example.com MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET=local-dev-secret MEMORY_ENGINE_AUTH_LINK_OUTBOX_PATH=.tmp/api-dev/outbox.tsv HOST=127.0.0.1 PORT=18080 cargo run -p memory-engine-api
-```
-
-From another shell, verify the local health route:
-
-```sh
-curl -fsS http://127.0.0.1:18080/healthz
-```
+The fast gate retains browser/native Rust/recovery contracts, formatting,
+Clippy, rustdoc, and action-latency budgets, then builds and exercises Wasm.
+Dagger adds live Postgres reference tests and Gitleaks and runs the same Worker
+command. Neither gate deploys. Explicit verified staging-to-production version
+promotion, fingerprint-guarded pause/activation, and schema-safe rollback live
+in [the runbook](./docs/runbook.md). Only Main may stop old writers or retire
+the old-host reverse proxy/redirect after live proof.
 
 ## License
 

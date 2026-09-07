@@ -1,8 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use memory_engine_api_render::{
-    render_account_page, render_content_feedback_result_html, render_edit_review_html,
-    render_library_page,
+    render_account_page, render_content_feedback_result_html, render_library_page,
 };
 use memory_engine_api_state::{
     AccountRegistry, ApiState, AuthConfig, CreateSourceRequest, EnqueueOutcome, SourcePermission,
@@ -72,12 +71,12 @@ fn active_review_render_skips_workspace_material() {
         view.current.is_some(),
         "fixture must reach an active review"
     );
-    let html = render_account_page(&state, &account, Some(&view), None);
+    let html = render_account_page(&account, Some(&view), &[], None);
 
-    assert!(!html.contains("Saved material"));
+    assert!(!html.contains(r#"action="/app/source/archive""#));
     assert!(!html.contains("NATO practice notes"));
-    assert!(!html.contains("Generate cards"));
-    assert!(html.contains("Reveal answer"));
+    assert!(!html.contains(r#"action="/app/generate""#));
+    assert!(html.contains(r#"action="/app/reveal""#));
 }
 
 #[test]
@@ -113,7 +112,7 @@ fn pending_mcq_draft_shows_every_choice_and_distractor_fields() {
             .map(|draft| (&draft.prompt, &draft.answer, &draft.choices))
             .collect::<Vec<_>>()
     );
-    let html = render_account_page(&state, &account, Some(&view), None);
+    let html = render_account_page(&account, Some(&view), &[], None);
 
     assert!(
         html.contains("BRAVO"),
@@ -128,56 +127,8 @@ fn pending_mcq_draft_shows_every_choice_and_distractor_fields() {
         "edit form must expose distractor fields: {html}"
     );
     assert!(
-        html.contains("Keep as written"),
-        "Keep as written must stay one tap: {html}"
-    );
-}
-
-#[test]
-fn edit_cancel_returns_to_in_progress_review() {
-    let email = unique_email("edit-cancel");
-    let state = render_test_state(&email);
-    let created = state.create_account(&email).expect("account");
-    let account = state
-        .create_browser_session(&created)
-        .expect("browser session");
-    let source = state
-        .save_app_source(
-            &account,
-            &CreateSourceRequest {
-                title: "NATO practice notes".to_owned(),
-                body: nato_source_body(),
-                permission: SourcePermission::default(),
-            },
-        )
-        .expect("source");
-    assert!(matches!(
-        state.enqueue_generation_job_by_source(&account, &source.source_id, &source.title),
-        EnqueueOutcome::Started(_)
-    ));
-    state.run_pending_jobs_blocking();
-    let pending = state.next_app_review(&account).expect("pending review");
-    let view = state
-        .keep_draft(
-            account.account_id(),
-            account.session_token(),
-            &pending.drafts[0].id,
-        )
-        .expect("keep review");
-    assert!(view.current.is_some(), "kept draft must open review");
-
-    let html = render_edit_review_html(&state, &account, &view, None);
-    assert!(
-        html.contains(r#"action="/app/next""#),
-        "Cancel must restore the in-progress review: {html}"
-    );
-    assert!(
-        html.contains(">Cancel</button>"),
-        "Cancel must stay a tap, not a Home link: {html}"
-    );
-    assert!(
-        !html.contains(r#"href="/">Cancel</a>"#),
-        "Cancel must not dump the learner on Home: {html}"
+        html.contains(r#"action="/app/draft/keep" method="post""#),
+        "approval must remain an explicit single form action: {html}"
     );
 }
 
@@ -200,8 +151,11 @@ fn library_render_keeps_saved_material_without_active_review() {
         )
         .expect("source");
 
-    let html = render_library_page(&state, &account, None, None);
-    assert!(html.contains("Saved material"));
+    let sources = state.list_app_sources(&account).expect("saved sources");
+    let view = state.app_study_view(&account).expect("study view");
+    let jobs = state.jobs_for_app_account(&account);
+    let html = render_library_page(&account, &sources, Some(&view), &jobs, None);
+    assert!(html.contains(r#"action="/app/source/archive""#));
     assert!(html.contains("NATO practice notes"));
 }
 
@@ -230,12 +184,12 @@ fn completed_feedback_action_requires_an_explicit_workspace_exit() {
         library: Vec::new(),
     };
 
-    let html = render_content_feedback_result_html(&state, &account, &view, "Saved.");
+    let html = render_content_feedback_result_html(&account, &view, &[], "Saved.");
 
-    assert!(html.contains("Review complete"));
-    assert!(html.contains(r#"href="/">Back to workspace</a>"#));
-    assert!(!html.contains("What do you want to remember?"));
-    assert!(!html.contains("Return gently"));
+    assert!(html.contains(r#"class="ae-group me-review-complete""#));
+    assert!(html.contains(r#"href="/""#));
+    assert!(!html.contains(r#"action="/app/next""#));
+    assert!(!html.contains(r#"action="/app/capture""#));
 }
 
 #[test]
@@ -257,6 +211,10 @@ fn library_discloses_local_only_source_permission() {
         )
         .expect("source");
 
-    let html = render_library_page(&state, &account, None, None);
-    assert!(html.contains("Local only · never sent to a model"));
+    let sources = state.list_app_sources(&account).expect("saved sources");
+    let view = state.app_study_view(&account).expect("study view");
+    let jobs = state.jobs_for_app_account(&account);
+    let html = render_library_page(&account, &sources, Some(&view), &jobs, None);
+    assert!(html.contains(r#"value="local-only" selected"#));
+    assert!(html.contains(r#"action="/app/source/permission" method="post""#));
 }

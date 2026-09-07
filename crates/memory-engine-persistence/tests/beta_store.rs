@@ -154,6 +154,71 @@ fn persists_sources_drafts_reviews_attempts_and_queue_across_reload() {
 }
 
 #[test]
+fn reveal_between_grade_and_commit_rejects_unassisted_write_atomically() {
+    let directory = TempDirectory::new("reveal-commit-race");
+    let path = directory.path().join("store.json");
+    let other_path = directory.path().join("other-account.json");
+    let unit_id = review_unit_id("same-unit");
+    let prompt = short_answer_prompt(&unit_id, "Translate: Pater noster");
+    let record = review_unit(
+        &unit_id,
+        "prompt",
+        prompt.clone(),
+        queue_candidate(&unit_id, NOW),
+    );
+    let mut revealer = BetaPersistenceStore::open(&path).expect("revealer");
+    revealer.save_review_unit(record.clone()).expect("unit");
+    let mut other = BetaPersistenceStore::open(&other_path).expect("other tenant");
+    other.save_review_unit(record).expect("other unit");
+    let other_before = other.snapshot();
+    let mut stale = BetaPersistenceStore::open(&path).expect("preopened submit");
+    assert!(!stale
+        .review_was_revealed(&unit_id, None)
+        .expect("initial exposure"));
+    let grade = memory_engine_core::Grader::new().grade(
+        &prompt,
+        "Our Father",
+        memory_engine_core::GradeContext {
+            response_time_ms: 1_800,
+            prior_reps: 0,
+        },
+    );
+    let schedule = memory_engine_core::next(None, grade.rating, NOW).expect("schedule");
+    let mut pending = attempt(&unit_id, NOW, "pre-reveal-grade");
+    pending.grade = Some(grade);
+    pending.graded_prompt = Some(prompt.clone());
+    revealer
+        .reveal_review_occurrence(&unit_id, None, NOW)
+        .expect("reveal");
+    let before = revealer.snapshot();
+    assert_eq!(
+        stale.apply_review(&unit_id, pending, schedule, None),
+        Err(BetaStoreError::StaleScheduleWrite(unit_id.clone())),
+    );
+    assert_eq!(stale.snapshot(), before);
+    assert_eq!(other.snapshot(), other_before);
+    let mut service = MemoryService::with_clock(stale, mastered_after_three_reviews, || NOW);
+    let retried = service
+        .grade_apply_review(GradeApplyReviewCommand {
+            prompt,
+            submitted_answer: "Our Father".to_owned(),
+            response_time_ms: 1_800,
+            prompt_id: Some("prompt".to_owned()),
+            occurred_at: Some(NOW),
+            idempotency_key: Some("post-reveal-grade".to_owned()),
+        })
+        .expect("fresh assisted grade");
+    assert_eq!(retried.grade.verdict, memory_engine_core::Verdict::Revealed);
+    assert_eq!(retried.grade.rating, Rating::Again);
+    assert!(!retried.grade.is_correct);
+    assert_eq!(
+        service.into_store().snapshot().attempts,
+        vec![retried.attempt]
+    );
+    assert_eq!(other.snapshot(), other_before);
+}
+
+#[test]
 fn rejects_duplicate_reviews_and_failed_commits_without_corrupting_history() {
     let directory = TempDirectory::new("duplicate-safe");
     let path = directory.path().join("store.json");
@@ -371,7 +436,7 @@ fn concept_snooze_commit_failure_preserves_every_member_and_history() {
 }
 
 #[test]
-fn concept_snooze_preserves_nonblank_whitespace_key_exactly() {
+fn concept_snooze_matches_the_complete_normalized_key_without_rewriting_it() {
     let directory = TempDirectory::new("concept-snooze-whitespace-key");
     let path = directory.path().join("store.json");
     let persisted_key = "  shared-concept  ";
@@ -398,14 +463,42 @@ fn concept_snooze_preserves_nonblank_whitespace_key_exactly() {
             other_queue,
         ))
         .expect("other unit");
+    let prefix_id = review_unit_id("concept-snooze-prefix-neighbor");
+    let mut prefix_queue = queue_candidate(&prefix_id, NOW - 60_000);
+    prefix_queue.concept_key = Some("shared-concept:other".to_owned());
+    store
+        .save_review_unit(review_unit(
+            &prefix_id,
+            "prefix-prompt",
+            short_answer_prompt(&prefix_id, "Unrelated?"),
+            prefix_queue,
+        ))
+        .expect("prefix neighbor");
 
     let snoozed = store
         .snooze_review_units_for_concept_until(persisted_key, NOW + 86_400_000)
         .expect("exact persisted key snooze");
-    assert_eq!(snoozed.len(), 1);
-    assert_eq!(snoozed[0].review_unit_id, matching_id);
+    assert_eq!(
+        snoozed
+            .iter()
+            .map(|unit| &unit.review_unit_id)
+            .collect::<Vec<_>>(),
+        vec![&matching_id, &other_id]
+    );
     assert_eq!(snoozed[0].queue.concept_key.as_deref(), Some(persisted_key));
-    assert_eq!(store.snapshot().review_units[1].snoozed_until, None);
+    assert!(snoozed
+        .iter()
+        .all(|unit| unit.snoozed_until == Some(NOW + 86_400_000)));
+    assert_eq!(
+        store
+            .snapshot()
+            .review_units
+            .iter()
+            .find(|unit| unit.review_unit_id == prefix_id)
+            .expect("neighbor")
+            .snoozed_until,
+        None
+    );
 }
 
 #[test]
@@ -1272,6 +1365,7 @@ fn snapshot_envelope_uses_beta_store_wire_names() {
         concept_reference_notes: Vec::new(),
         applied_reviews: Vec::new(),
         remediation_packs: Vec::new(),
+        review_exposures: Vec::new(),
     };
     let encoded = serde_json::to_value(snapshot).expect("snapshot json");
 
@@ -1670,6 +1764,7 @@ fn attempt(
         occurred_at,
         idempotency_key: Some(idempotency_key.to_owned()),
         grade: None,
+        graded_prompt: None,
     }
 }
 
