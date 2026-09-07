@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fail closed when Scry recovery evidence is missing or stale."""
 import argparse
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -43,16 +44,24 @@ def main(argv):
         last_run = STATE_DIR / "last-run"
         if not last_run.is_file():
             raise OperationError("off-host backup has never recorded a successful run")
-        last = last_run.read_text().strip()
-        if "success" not in last:
+        last = last_run.read_text().split()
+        if len(last) < 2 or last[1] != "success":
             raise OperationError("off-host backup last-run is not a success")
+        try:
+            completed_at = datetime.strptime(last[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            raise OperationError("off-host backup completion timestamp is invalid") from None
+        now = time.time()
+        offhost_age = now - completed_at
+        if not 0 <= offhost_age <= args.max_age_seconds:
+            raise OperationError("successful off-host backup timestamp is future or stale")
         dump = newest(BACKUP_DIR, re.compile(r"^scry-.*\.dump$"))
         if dump is None:
             raise OperationError("no local custom-format dump is present")
-        age = time.time() - dump.stat().st_mtime
-        if age > args.max_age_seconds:
-            raise OperationError("newest local dump is stale")
-        print(f"backup freshness ok age_seconds={int(age)}")
+        age = now - dump.stat().st_mtime
+        if not 0 <= age <= args.max_age_seconds:
+            raise OperationError("newest local dump timestamp is future or stale")
+        print(f"backup freshness ok age_seconds={int(offhost_age)} local_age_seconds={int(age)}")
         return 0
     except OperationError as error:
         print(f"scry-backup-freshness: {error}", file=sys.stderr)

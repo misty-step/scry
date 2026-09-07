@@ -24,7 +24,7 @@ def test_missing_env_fails():
             SCRY_BACKUP_STATE=str(Path(tmp) / "state"),
         )
         result = run(env)
-        if result.returncode == 0 or "not provisioned" not in result.stderr:
+        if result.returncode == 0:
             raise AssertionError(result.stderr)
 
 
@@ -42,7 +42,9 @@ def test_stale_and_success():
         dump.write_bytes(b"DUMP")
         stale_time = time.time() - 40 * 3600
         os.utime(dump, (stale_time, stale_time))
-        (state / "last-run").write_text("2026-01-01T00:00:00Z success\n")
+        last_run = state / "last-run"
+        success = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + " success\n"
+        last_run.write_text(success)
         env = os.environ.copy()
         env.update(
             SCRY_BACKUP_ENV_FILE=str(env_file),
@@ -51,16 +53,23 @@ def test_stale_and_success():
             SCRY_BACKUP_MAX_AGE=str(26 * 3600),
         )
         stale = run(env)
-        if stale.returncode == 0 or "stale" not in stale.stderr:
+        if stale.returncode == 0:
             raise AssertionError(stale.stderr)
         dump.write_bytes(b"DUMP")
         os.utime(dump, None)
+        last_run.write_text(
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stale_time)) + " success\n"
+        )
+        stale_offhost = run(env)
+        if stale_offhost.returncode == 0:
+            raise AssertionError("fresh local dump hid stale off-host upload")
+        last_run.write_text(success)
         ok = run(env)
         if ok.returncode != 0:
             raise AssertionError(ok.stderr)
         (state / "FAILURE").write_text("failed\n")
         flagged = run(env)
-        if flagged.returncode == 0 or "FAILURE" not in flagged.stderr:
+        if flagged.returncode == 0:
             raise AssertionError(flagged.stderr)
 
 

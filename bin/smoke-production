@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base="${SCRY_BASE_URL:-https://scry.misty-step.workers.dev}"
+base="${SCRY_BASE_URL:-https://scry.study}"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
