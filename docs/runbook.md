@@ -378,6 +378,12 @@ immutable version, previous version, and deployment id when returned. Failures
 record `failed-requires-inspection` and any returned version rather than
 silently retrying activation or fabricating success. Inspect a failed operation
 and live versions before taking another action.
+Release and traffic commands hold one private operator-local lock across both
+environments and all worktrees; promotion/rollback also recheck the active
+version immediately before switching traffic. Cloudflare's deployment API does
+not offer compare-and-swap. Keep one authoritative operator host/user and do not
+deploy concurrently from another host or the dashboard: the local lock is not
+a distributed control-plane lock.
 The operator HTTP clients identify themselves as `scry-cloudflare` and
 `scry-cloudflare-data`. Cloudflare ingress can reject Python's generic default
 user-agent with 403/1010 before a request reaches the application; do not

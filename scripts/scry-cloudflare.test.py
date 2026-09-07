@@ -154,6 +154,7 @@ class RollbackFixture:
                             "sha256": hashlib.sha256(b"synthetic durable state").hexdigest()}
         self.ready_status = 200
         self.outgoing_available = False
+        self.preflight_race = False
         self.ci = {"fixture": FIXTURE, "id": 910000001, "name": "ci",
                    "app": {"slug": "github-actions"}, "head_sha": self.revision,
                    "status": "completed", "conclusion": "success"}
@@ -255,6 +256,9 @@ class RollbackFixture:
         if self.active == OUTGOING_VERSION and not self.outgoing_available:
             raise urllib.error.URLError("synthetic outgoing application is unavailable")
         status, body = responses[key]
+        if self.preflight_race and self.active == OUTGOING_VERSION and key == (
+                "POST", "/v1/accounts/anonymous/sources/anonymous/generation-jobs"):
+            self.active = TARGET_VERSION
         headers = {"content-type": "application/json"}
         stream = io.BytesIO(encoded(body))
         if status != 200:
@@ -343,6 +347,31 @@ def test_failed_receipt_cannot_promote_an_unhealthy_current():
         expect_refusal(fixture)
 
 
+def test_promotion_refuses_a_changed_deployment_after_preflight():
+    with rollback_fixture("staging") as fixture:
+        fixture.args.command = "promote"
+        fixture.target.update(status="uploaded", action="upload")
+        fixture.outgoing_available = True
+        fixture.preflight_race = True
+        try:
+            fixture.execute()
+        except fixture.release.OperationError:
+            pass
+        else:
+            raise AssertionError("promotion overwrote a deployment changed during preflight")
+        assert fixture.active == TARGET_VERSION and not fixture.deployments
+        assert not fixture.receipt.exists()
+
+
+def test_operator_lock_releases_after_contention():
+    with rollback_fixture() as fixture:
+        with fixture.release.deployment_lock():
+            expect_refusal(fixture)
+        fixture.execute()
+        assert fixture.active == TARGET_VERSION
+        assert json.loads(fixture.receipt.read_text())["status"] == "verified"
+
+
 def test_unsafe_receipts_never_switch():
     # Each case crosses a different trust boundary, not a command-order contract.
     corruptions = (
@@ -389,6 +418,8 @@ def main():
     test_failed_current_recovers_without_outgoing_http()
     test_failed_receipt_can_promote_after_live_recovery()
     test_failed_receipt_cannot_promote_an_unhealthy_current()
+    test_promotion_refuses_a_changed_deployment_after_preflight()
+    test_operator_lock_releases_after_contention()
     test_unsafe_receipts_never_switch()
     test_real_artifact_source_and_proof_guards_remain_required()
     test_post_switch_schema_failure_is_not_verified()
