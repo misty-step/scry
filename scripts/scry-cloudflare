@@ -591,6 +591,25 @@ def transport_smoke(local, prefix, token):
             require(not upstream.redirect_followed, "Worker followed a model or mail redirect")
 
 
+def recovery_smoke(local, fingerprint):
+    admin_env = local.state / "recovery-admin.env"
+    with admin_env.open("x") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(f"MEMORY_ENGINE_ADMIN_TOKEN={local.admin}\n")
+    backup = local.state / "backup-receipt.json"
+    retrieved = local.state / "retrieved-backup.json"
+    commands = [
+        ["backup", "--target", "app", "--receipt", backup],
+        ["retrieve", "--target", "app", "--receipt", backup, "--output", retrieved],
+        ["restore", "--target", "restore-isolated-smoke", "--receipt", backup],
+    ]
+    for command in commands:
+        result = json.loads(run([sys.executable, REPO / "scripts/scry-cloudflare-data", *command,
+                                 "--base", local.base, "--admin-env", admin_env]).stdout)
+    require(result["fingerprint"]["sha256"] == fingerprint["sha256"],
+            "R2 restore changed the authoritative learning state")
+
+
 def smoke_bundle(artifact, receipt):
     require(not Path(receipt).exists(), "verification receipt already exists")
     artifact = Path(artifact).resolve()
@@ -656,6 +675,7 @@ def smoke_bundle(artifact, receipt):
             fingerprint = request(local.base, "/internal/migration/fingerprint", admin=local.admin)
             require(fingerprint["accountCount"] == 2 and fingerprint["schemaVersions"] ==
                     [item["version"] for item in manifest["schema_ledger"]], "unexpected durable state fingerprint")
+            recovery_smoke(local, fingerprint)
         except Exception as error:
             diagnostic = Path(str(receipt) + ".workerd.log")
             diagnostic.parent.mkdir(parents=True, exist_ok=True)
@@ -674,7 +694,8 @@ def smoke_bundle(artifact, receipt):
                               "anonymous-rejection", "admin-service-session",
                               "alarm-driven-local-only-generation", "explicit-keep", "account-isolation", "durable-resume",
                               "runtime-survives-restart", "durable-assisted-grading", "durable-idempotent-replay",
-                              "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection", "schema-fingerprint"],
+                              "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection",
+                              "schema-fingerprint", "r2-backup-retrieval-isolated-restore"],
                    "mail_delivery": "local-http-fixture-only", "model_network": "external-models-disabled"})
     print(f"workerd proof={Path(receipt).resolve()} bundle_sha256={digest(artifact / 'manifest.json')}")
 

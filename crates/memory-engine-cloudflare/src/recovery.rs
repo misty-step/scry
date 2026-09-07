@@ -994,7 +994,11 @@ fn import(
     db.transaction(|| {
         ensure_empty(db)?;
         restore_import_rows(db, &bundle.tables)?;
-        restore_import_sequences(db, &bundle.source.sequences)?;
+        restore_import_sequences(
+            db,
+            &bundle.source.sequences,
+            bundle.source.engine == "postgresql",
+        )?;
         if !db.query::<Value>("PRAGMA foreign_key_check", &[])?.is_empty() {
             return Err(Failure::conflict("import has unresolved foreign keys"));
         }
@@ -1062,12 +1066,18 @@ fn restore_import_rows(db: &Database, tables: &[TableData]) -> AppResult<()> {
     Ok(())
 }
 
-fn restore_import_sequences(db: &Database, sequences: &[Sequence]) -> AppResult<()> {
+fn restore_import_sequences(
+    db: &Database,
+    sequences: &[Sequence],
+    postgres: bool,
+) -> AppResult<()> {
     for sequence in sequences {
-        let high_water = if sequence.is_called {
-            sequence.value
+        // An uncalled PostgreSQL sequence stores its next value. SQLite stores
+        // the allocated high-water mark, including zero for an unused sequence.
+        let high_water = if postgres && !sequence.is_called {
+            sequence.value - 1
         } else {
-            sequence.value.saturating_sub(1)
+            sequence.value
         };
         let current = db.query::<Value>(
             "SELECT seq FROM sqlite_sequence WHERE name = ?",
