@@ -661,8 +661,9 @@ enabled.
 - Fresh AgentMail magic-link: Resend `last_event: delivered`, inbox
   `received`/`unread`, SPF/DKIM/DMARC pass, consumed on phone-sized
   `workers.dev`, replay HTTP 403. CSRF missing/mismatch both 403. Current
-  browser logout returned the public sign-in form. Logout-all and signed
-  unsubscribe were not exercised.
+  browser logout returned the public sign-in form. Logout-all from that
+  browser revoked a second independent `__Host-memory_engine_session`
+  (GET `/` 401) and left the operator-gated machine session valid.
 - Capture of a public network-reference source produced grounded Library
   drafts (library DOM 17698 ms). Explicit keep scheduled study. Reveal
   graded `Revealed` (assisted). Unassisted MX answer graded `Correct`.
@@ -677,7 +678,9 @@ enabled.
 - Reminders enabled with 1 due quiz. Inbox received
   `You have 1 Scry review` with SPF/DKIM/DMARC pass. Confirmation copy
   correctly said mailbox delivery was not yet verified; the later due-count
-  message is the inbox proof.
+  message is the inbox proof. The signed unsubscribe link in that mail
+  opened the confirmation page, POST turned reminders off, and GET/POST
+  replay of the same token both returned 403.
 - CLI, MCP, and skill faces were not live-exercised against staging.
 
 
