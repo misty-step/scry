@@ -564,11 +564,15 @@ Restore verifies manifest, every chunk, complete bundle, account identity, and
 content fingerprint, commits to a **separate empty** `restore-*` object, then
 performs an independent request-boundary fingerprint readback. It never
 replaces `app`, automatically selects the restored object for learner traffic,
-or shares buckets between environments. For production, run the same commands
-with the production origin/admin file and a new production receipt/restore
-name. Use the `export` command for an additional private SQLite portable bundle;
-`list` exposes complete backup receipts without content. Manual retention is
-explicitly destructive and requires `--target app --days 30 --keep 7 --confirm`.
+or shares buckets between environments. The `restore-drill-20260906` name above
+is a command template: each drill needs a new empty `restore-*` object, never
+reuse of an occupied restore. The executed 2026-09-07 staging drill used
+`restore-qa-20260907` and must not be reused. For production, run the same
+commands with the production origin/admin file and a new production
+receipt/restore name. Use the `export` command for an additional private
+SQLite portable bundle; `list` exposes complete backup receipts without
+content. Manual retention is explicitly destructive and requires
+`--target app --days 30 --keep 7 --confirm`.
 
 Do not configure a coarse bucket lifecycle rule that can delete required
 chunks before their complete manifest. Durable Object PITR is an additional
