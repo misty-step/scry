@@ -10,7 +10,7 @@
   "workers_dev": true,
   "preview_urls": false,
   "send_metrics": false,
-  "observability": { "enabled": true },
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Scry"] }],
   "triggers": { "crons": ["* * * * *"] },
   "durable_objects": { "bindings": [{ "name": "SCRY", "class_name": "Scry" }] },
@@ -23,6 +23,7 @@
   "env": {
     "staging": {
       "name": "scry-staging",
+      "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
       "durable_objects": { "bindings": [{ "name": "SCRY", "class_name": "Scry" }] },
       "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-staging-recovery" }],
       "triggers": { "crons": ["* * * * *"] },
@@ -34,6 +35,7 @@
     },
     "production": {
       "name": "scry",
+      "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
       "durable_objects": { "bindings": [{ "name": "SCRY", "class_name": "Scry" }] },
       "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-recovery" }],
       "triggers": { "crons": ["* * * * *"] },
