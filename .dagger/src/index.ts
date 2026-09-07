@@ -212,8 +212,10 @@ export class MemoryEngine {
   @func()
   async actionLatencyFile(
     @argument({ ignore: SOURCE_EXCLUDES }) source: Directory,
+    gitSha: string,
   ): Promise<string> {
     return rustContainer(source)
+      .withEnvVariable('MEMORY_ENGINE_PERF_GIT_SHA', gitSha)
       .withExec([
         'cargo', 'run', '--locked', '-p', 'memory-engine-qa', '--', 'latency',
         '--backend', 'file', '--iterations', '5', '--out', '/tmp/action-latency-file.json',
@@ -249,7 +251,7 @@ export class MemoryEngine {
       .contents();
     const rustClippy = await this.rustClippy(source);
     const rustDoc = await this.rustDoc(source);
-    const actionLatencyFile = await this.actionLatencyFile(source);
+    const actionLatencyFile = await this.actionLatencyFile(source, gitSha);
     const workerArtifact = await this.worker(source, gitSha);
     const workerProof = await workerArtifact.file('workerd-proof.json').contents();
     const secrets = await this.secrets(source);

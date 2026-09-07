@@ -2,6 +2,8 @@
 """Build, exercise, and explicitly promote immutable Scry Worker bundles."""
 import argparse
 import hashlib
+import html
+import http.cookiejar
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
@@ -557,6 +559,10 @@ def transport_smoke(local, prefix, token):
         })
         (local.state / "wrangler.json").write_bytes(encoded(config) + b"\n")
         local.start()
+        prior_deliveries = {
+            row["delivery_key"]
+            for row in request(local.base, "/internal/mail/receipts", admin=local.admin)["receipts"]
+        }
         for redirect, expected_status in ((False, "succeeded"), (True, "failed")):
             upstream.redirect = redirect
             source = request(local.base, prefix + "/sources", method="POST", token=token, expected=(201,),
@@ -585,10 +591,58 @@ def transport_smoke(local, prefix, token):
             mail = request(local.base, "/internal/mail/receipts", admin=local.admin)
             require(mail["deliveryVerified"] is False and mail["readVerified"] is False,
                     "provider acceptance was mislabeled as mailbox delivery or reading")
-            states = {row["state"] for row in mail["receipts"]}
+            states = {row["state"] for row in mail["receipts"] if row["delivery_key"] not in prior_deliveries}
             require(states == ({"accepted", "unknown"} if redirect else {"accepted"}),
                     "mail receipts did not distinguish accepted and uncertain sends")
             require(not upstream.redirect_followed, "Worker followed a model or mail redirect")
+
+
+def browser_open(client, url, form=None):
+    data = None if form is None else urllib.parse.urlencode(form).encode()
+    req = urllib.request.Request(url, data=data)
+    try:
+        return client.open(req, timeout=10)
+    except urllib.error.HTTPError as error:
+        return error
+
+
+def browser_identity_smoke(local, other_email):
+    class NoFollow(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    client = urllib.request.build_opener(
+        NoFollow(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    with browser_open(client, local.base + "/app/account", {"email": local.email}) as response:
+        require(response.status == 200, "local browser sign-in request failed")
+        link = re.search(r'href="([^"]*/app/login/verify\?[^"]+)"', response.read().decode())
+        require(link is not None, "explicit local outbox omitted the verification link")
+    verify_url = urllib.parse.urljoin(local.base, html.unescape(link[1]))
+    require(verify_url.startswith(local.base + "/app/login/verify?"), "local verification escaped its origin")
+    with browser_open(client, verify_url) as response:
+        require(response.status == 303, "browser magic link did not establish a session")
+    with browser_open(client, local.base + "/app/library") as response:
+        require(response.status == 200, "browser session did not open Library")
+        csrf = re.search(r'name="csrfToken" value="([^"]+)"', response.read().decode())
+        require(csrf is not None, "authenticated Library omitted its form token")
+    with browser_open(client, local.base + "/app/save-account",
+                      {"csrfToken": html.unescape(csrf[1]), "email": other_email}) as response:
+        require(response.status in (400, 404), "a learner could preclaim another invitee's identity")
+    return client
+
+
+def stream_pause_smoke(local, client):
+    with browser_open(client, local.base + "/app/jobs/events") as response:
+        require(response.status == 200 and response.readline(), "authenticated job stream did not open")
+        fingerprint = request(local.base, "/internal/migration/fingerprint", admin=local.admin)
+        paused = request(local.base, "/internal/runtime", method="POST", admin=local.admin,
+                         body={"enabled": False, "expectedFingerprint": fingerprint["sha256"]})
+        require(paused["maintenance"] is True, "traffic did not pause")
+        started = time.monotonic()
+        response.read()
+        require(time.monotonic() - started < 5, "job stream remained active after traffic paused")
+    after = request(local.base, "/internal/migration/fingerprint", admin=local.admin)
+    require(after["sha256"] == fingerprint["sha256"], "completed pause allowed durable learner writes")
 
 
 def recovery_smoke(local, fingerprint):
@@ -640,6 +694,7 @@ def smoke_bundle(artifact, receipt):
             draft_id = generated["drafts"][0]["id"]
             kept = request(local.base, prefix + f"/drafts/{draft_id}/keep", method="POST", token=token)
             review_id = kept["current"]["reviewUnitId"]
+            browser_client = browser_identity_smoke(local, other_email)
             other_session = request(local.base, "/v1/service-sessions", method="POST",
                                     body={"email": other_email}, admin=local.admin, expected=(201,))
             other_prefix = f"/v1/accounts/{other_session['accountId']}"
@@ -676,6 +731,7 @@ def smoke_bundle(artifact, receipt):
             require(fingerprint["accountCount"] == 2 and fingerprint["schemaVersions"] ==
                     [item["version"] for item in manifest["schema_ledger"]], "unexpected durable state fingerprint")
             recovery_smoke(local, fingerprint)
+            stream_pause_smoke(local, browser_client)
         except Exception as error:
             diagnostic = Path(str(receipt) + ".workerd.log")
             diagnostic.parent.mkdir(parents=True, exist_ok=True)
@@ -695,7 +751,8 @@ def smoke_bundle(artifact, receipt):
                               "alarm-driven-local-only-generation", "explicit-keep", "account-isolation", "durable-resume",
                               "runtime-survives-restart", "durable-assisted-grading", "durable-idempotent-replay",
                               "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection",
-                              "schema-fingerprint", "r2-backup-retrieval-isolated-restore"],
+                              "schema-fingerprint", "r2-backup-retrieval-isolated-restore",
+                              "browser-identity-isolation", "stream-pause-fence"],
                    "mail_delivery": "local-http-fixture-only", "model_network": "external-models-disabled"})
     print(f"workerd proof={Path(receipt).resolve()} bundle_sha256={digest(artifact / 'manifest.json')}")
 

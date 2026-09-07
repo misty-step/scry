@@ -563,36 +563,6 @@ fn issue_service(db: &Database, env: &Env, email: &str) -> AppResult<AccountCrea
     })
 }
 
-fn save_account(
-    db: &Database,
-    env: &Env,
-    source: &AppAccount,
-    email: &str,
-) -> AppResult<AppAccount> {
-    let email = account_email(email)?;
-    if !configured_invite(env, &email) {
-        return Err(Failure::forbidden("This email is not allowed to register."));
-    }
-    let target = account_id_for(&email);
-    db.transaction(|| {
-        if target != source.account_id() {
-            if has_account(db, &target)? { return Err(Failure::conflict("Account already exists.")); }
-            let source_store = SqlStudyStore::new(db.clone(), source.account_id());
-            let mut snapshot = source_store.export_snapshot()?;
-            for feedback in &mut snapshot.content_feedback { feedback.account_id.clone_from(&target); }
-            db.execute("INSERT INTO memory_engine_accounts(account_id, created_at_ms) VALUES (?, ?)", &[json!(target), json!(now_ms())])?;
-            SqlStudyStore::new(db.clone(), target.clone()).import_snapshot(snapshot)?;
-            db.execute("UPDATE memory_engine_accounts SET active_graded_review =
-                (SELECT active_graded_review FROM memory_engine_accounts WHERE account_id = ?) WHERE account_id = ?",
-                &[json!(source.account_id()), json!(target)])?;
-        }
-        let token = random_id("sess_")?;
-        let now = now_ms();
-        mint_api(db, &target, &token, now)?;
-        mint_browser(db, &target, &token, now)
-    })
-}
-
 fn audit_waitlist(db: &Database, email: &str, event: &str, now: i64) -> AppResult<()> {
     db.execute("INSERT INTO memory_engine_waitlist_audit_log(email_normalized, event, occurred_at_ms) VALUES (?, ?, ?)",
         &[json!(email), json!(event), json!(now)])
@@ -1088,12 +1058,6 @@ struct AccountAction {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SaveForm {
-    email: String,
-    csrf_token: Option<String>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ReminderForm {
     csrf_token: Option<String>,
     unsubscribe_token: Option<String>,
@@ -1207,19 +1171,6 @@ async fn browser_route(
             clear_cookies(&mut response)?;
             Ok(response)
         }
-        "/app/save-account" => {
-            let form: SaveForm = form_body(req).await?;
-            let source = browser_account(
-                req,
-                db,
-                env,
-                Some(form.csrf_token.as_deref().unwrap_or_default()),
-            )?;
-            match save_account(db, env, &source, &form.email) {
-                Ok(account) => account_response(req, db, &account, None),
-                Err(error) => account_response(req, db, &source, Some(&error.message)),
-            }
-        }
         "/app/return-notifications" if matches!(req.method(), Method::Get | Method::Head) => {
             let token = token_query(req)?;
             if let Some(token) = token {
@@ -1302,9 +1253,7 @@ pub async fn handle(req: &mut Request, db: &Database, env: &Env) -> AppResult<Op
     }
     let path = req.path();
     let expected = match path.as_str() {
-        "/app/account" | "/app/logout" | "/app/logout-all" | "/app/save-account" => {
-            Some(Method::Post)
-        }
+        "/app/account" | "/app/logout" | "/app/logout-all" => Some(Method::Post),
         "/app/login/verify" => Some(Method::Get),
         "/app/return-notifications" => None,
         _ => {

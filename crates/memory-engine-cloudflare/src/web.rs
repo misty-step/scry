@@ -1551,6 +1551,11 @@ fn jobs_events(
             if round != 0 {
                 Delay::from(Duration::from_secs(1)).await;
             }
+            // The response outlives its request's activity guard. Stop before
+            // authentication can renew sessions after a completed traffic pause.
+            if crate::maintenance(&db).unwrap_or(true) {
+                return None;
+            }
             // Recheck expiry, revocation and invitation before every private frame.
             if auth::browser_account(&request, &db, &env, None)
                 .map_or(true, |account| account.account_id() != account_id)
