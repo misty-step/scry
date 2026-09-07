@@ -32,18 +32,21 @@ edit `forest.yaml` to make a check pass.
 
 ## Select one rejected Revision
 
-1. Filter candidate branches by the current operator request or explicit
-   delegation: match the Subject identifier in `forest/<subject>/*`.
+1. Read the current request. Require the explicit Subject and, when supplied,
+   the exact branch and rejected SHA. Do not enumerate unrelated `forest/*`
+   tips or fall through to another eligible revision.
 2. Run `git fetch origin`, then inspect matching refs with
    `git ls-remote origin "refs/heads/forest/$subject/*" 'refs/forest/v1/*'`.
-   Select the branch tip matching the requested Subject with request and
-   `changes` verdict evidence.
-3. Fetch both refs. Require the Verdict committer to be
+3. Select the unique branch tip matching the requested Subject with request and
+   `changes` verdict evidence. If the request named a branch or SHA, they must
+   equal that tip. Ambiguous, stale, or unsupported targets are no-work; do not
+   edit or publish.
+4. Fetch both refs. Require the Verdict committer to be
    `Iron Forest Verifier <verifier@forest.invalid>`, the request committer to be
    `Iron Forest Builder <builder@forest.invalid>` or
    `Iron Forest Fixer <fixer@forest.invalid>`, and both payloads to name the
-   same branch and exact rejected SHA matching the requested Subject.
-4. Check out the exact rejected branch tip; do not start from another Revision
+   same branch, requested Subject, and exact rejected SHA.
+5. Check out the exact rejected branch tip; do not start from another Revision
    or from `master`.
 
 ## Repair and hand off

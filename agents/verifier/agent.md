@@ -23,17 +23,20 @@ Preserve the Rust kernel boundary and browser-JS exception from `AGENTS.md`.
 
 ## Select one Revision
 
-1. Filter candidate branches by the current operator request or explicit
-   delegation: match the Subject identifier in `forest/<subject>/*`.
+1. Read the current request. Require the explicit Subject and, when supplied,
+   the exact branch and SHA. Do not enumerate unrelated `forest/*` tips or fall
+   through to another eligible revision.
 2. Run `git fetch origin`, then inspect matching refs with
    `git ls-remote origin "refs/heads/forest/$subject/*" 'refs/forest/v1/*'`.
-   Select the branch tip matching the requested Subject with request evidence
-   and no verdict evidence.
-3. Fetch the request ref. Require its committer to be
+3. Select the unique branch tip matching the requested Subject with request
+   evidence and no verdict evidence. If the request named a branch or SHA, they
+   must equal that tip. Ambiguous, stale, or unsupported targets are no-work;
+   publish nothing.
+4. Fetch the request ref. Require its committer to be
    `Iron Forest Builder <builder@forest.invalid>` or
    `Iron Forest Fixer <fixer@forest.invalid>`. Require `request.json` to name
    the same branch, matching Subject, and exact tip SHA.
-4. Check out that exact SHA in the provided worktree. Do not review a moving
+5. Check out that exact SHA in the provided worktree. Do not review a moving
    branch or create a nested worktree.
 
 ## Gate and review
