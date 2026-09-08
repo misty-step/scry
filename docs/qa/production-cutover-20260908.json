@@ -1,0 +1,149 @@
+{
+  "activated_at_ms": 1788884491719,
+  "browser": {
+    "cold_correct_and_assisted_revealed": true,
+    "csrf_mismatch_http": 403,
+    "csrf_missing_http": 403,
+    "horizontal_overflow": false,
+    "logout_all_independent_cookie_http": 401,
+    "machine_session_survives_browser_logout": true,
+    "magic_link_replay_http": 403,
+    "signed_unsubscribe": "disabled",
+    "signed_unsubscribe_replay_get_http": 403,
+    "signed_unsubscribe_replay_post_http": 403,
+    "timing": {
+      "captureToLibraryDomMs": 13416,
+      "gradedVisibleP95Ms": 148,
+      "samples": 6,
+      "tapToAckP95Ms": 0
+    },
+    "timing_samples": [
+      {
+        "gradedVisibleMs": 131,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      },
+      {
+        "gradedVisibleMs": 133,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      },
+      {
+        "gradedVisibleMs": 133,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      },
+      {
+        "gradedVisibleMs": 148,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      },
+      {
+        "gradedVisibleMs": 115,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      },
+      {
+        "gradedVisibleMs": 132,
+        "navigation": "in_place",
+        "tapToAckMs": 0,
+        "viewport": "mobile"
+      }
+    ],
+    "timing_scope": "six-sample smoke, not a longitudinal production SLO",
+    "viewport": {
+      "deviceScaleFactor": 1.25,
+      "height": 844,
+      "width": 390
+    }
+  },
+  "bundle_sha256": "b98c307a9aa07e52b850fab13e9ee0eea9693fa7c978f041f0252324b4561fa1",
+  "clients": {
+    "cli_review": "correct",
+    "cross_account_denied": true,
+    "cross_environment_token_denied": true,
+    "imported_native_bearer_read": true,
+    "legacy_get_and_post_without_redirect": true,
+    "legacy_signed_link_consumed": true,
+    "mcp_keep_review_submit": "correct",
+    "standalone_product_skill_exercised": false
+  },
+  "date": "2026-09-08",
+  "generation": {
+    "accepted_drafts": 9,
+    "cost_usd_micros": 8809,
+    "model": "google/gemini-3.7-flash",
+    "native_learner_not_used": true
+  },
+  "legacy_origins": [
+    "https://scry.study",
+    "https://www.scry.study"
+  ],
+  "mail": {
+    "due_count": 1,
+    "due_count_mail_inbox_received": true,
+    "due_mail_authentication": {
+      "dkim": "pass",
+      "dmarc": "pass",
+      "spf": "pass"
+    },
+    "magic_link_authentication": {
+      "dkim": "pass",
+      "dmarc": "pass",
+      "spf": "pass"
+    },
+    "magic_link_inbox_received": true
+  },
+  "migration": {
+    "all_original_columns_and_rows_equal": true,
+    "session_and_learning_records_preserved": true,
+    "source_rows": 65,
+    "source_schema_version": 8,
+    "source_sha256": "a186a6e3692d98c6fa19469888c9128897d67aa5442f93339be95ed9ec36fb3e",
+    "source_tables": 21,
+    "source_tables_unchanged_after_worker_qa": true,
+    "target_rows_before_qa": 66,
+    "target_schema_versions": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "monitoring": {
+    "delivery_drill_run": "https://github.com/misty-step/scry/actions/runs/34250818223",
+    "enabled": true,
+    "operator_inbox_observed": false,
+    "operator_resend_event": "delivered",
+    "scheduled_run": "https://github.com/misty-step/scry/actions/runs/34251233514"
+  },
+  "origin": "https://scry.misty-step.workers.dev",
+  "recovery": {
+    "backup_id": "1788884397695-d94a562148b1cb69c848d33440cd610cab7bbeb97f4003b4099fbf49f7895afe",
+    "bytes": 86409,
+    "chunks": 1,
+    "fingerprint_sha256": "3356dc7718e012f7def9a220485d8e89aa58a7517d0f20973eb3c459b133d136",
+    "independent_full_fingerprint_equal": true,
+    "platform_pitr_exercised": false,
+    "primary_not_replaced": true,
+    "target": "restore-production-20260908"
+  },
+  "retained_native_state": {
+    "database_frozen": true,
+    "listener_closed": true,
+    "offhost_backup_timer": "active",
+    "old_ingress": "reverse proxy to the Worker; no DNS change",
+    "service": "disabled and inactive"
+  },
+  "schema": "scry.production-cutover-receipt.v1",
+  "source_barrier_at_ms": 1788884262733,
+  "source_revision": "f876bf80848159bfc4bf2eaf448e2318f42ab59b",
+  "source_sha256": "93d22a6c7f150ae9b488055195d8b378dec7e084a2c987196dfe709a2806a2ed",
+  "staging_version": "cb483442-eac6-468e-8fdd-81d52b2f486c",
+  "worker_version": "e84de307-9766-45c9-b347-3e16fd25cb74"
+}

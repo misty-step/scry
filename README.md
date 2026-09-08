@@ -28,16 +28,16 @@ crates. The kernel owns deterministic scheduling, grading, progression, queue
 selection, and learning invariants. Boundary crates own persistence, generation,
 sessions, identity, API routes, rendering, deployment, and QA.
 
-The production destination is a Rust WebAssembly Worker on Cloudflare:
+The production runtime is a Rust WebAssembly Worker on Cloudflare:
 `memory-engine-cloudflare`, one SQLite-backed `Scry` Durable Object, leased
 jobs/reminders driven by alarms, private R2 recovery, and Resend over Worker Fetch.
 The pure learning engine and shared Rust renderer remain the implementation.
-The approved interim origin is `https://scry.misty-step.workers.dev`; registrar
-or custom-domain access is not a prerequisite for that origin.
-**Live cutover is not implied by this source change.** The native
-DigitalOcean/Postgres service remains authoritative until Main records the
-stopped-source-writer barrier, final import/readback, recovery, activation, and
-public proof. Keep the old host and its backups intact until then.
+The canonical origin is `https://scry.misty-step.workers.dev`.
+`https://scry.study` and `https://www.scry.study` proxy to that Worker without
+changing DNS. Production cutover completed on 2026-09-08 after the stopped-writer
+export, full-table import/readback, separate-object restore, and live QA.
+The native service is disabled; its frozen database and backups remain recovery
+material, not an alternative live writer.
 Preserved browser-session records do not move host-scoped cookies: users need
 a fresh browser sign-in on workers.dev. Resend acceptance is not inbox delivery.
 See [docs/runbook.md](./docs/runbook.md).
@@ -85,8 +85,8 @@ Bootstrap verifies health/assets/schema and the pause, not learner readiness.
 Production requires the same immutable bundle activated and publicly exercised
 in staging, then Main's source barrier, imported-state and recovery evidence.
 Runtime activation does not create another Worker version or rebuild.
-Migration, mail delivery, and public cutover remain pending until actual
-receipts are recorded in the runbook.
+Isolated staging and completed production cutover evidence are recorded in the
+runbook, including immutable versions, recovery fingerprints, and live receipts.
 
 Current strategy and verification docs:
 
@@ -134,9 +134,9 @@ Resend `provider_accepted` receipts are not inbox-delivery proof.
 Five-minute GitHub cron can be delayed, dropped, or disabled; cached notification
 state can expire or be lost, duplicating alerts or losing recovery context.
 Neither is an availability SLA or durable alert history.
-`SCRY_MONITOR_ENABLED` remains `false` until Main's cutover; an explicit
-`master` dispatch can run a probe or labeled delivery drill before enablement,
-but does not establish scheduled production monitoring.
+`SCRY_MONITOR_ENABLED` has been `true` since the 2026-09-08 cutover; an actual
+scheduled production probe and an operator delivery drill passed. An explicit
+`master` dispatch can also run a probe or labeled delivery drill.
 See [the QA evidence contract](./docs/qa/system.md#observability-and-external-monitor-proof)
 for CLI/workflow entry points and receipt meanings, and
 [the runbook](./docs/runbook.md) for operator setup and cutover proof.

@@ -54,7 +54,7 @@ Boundary crates own orchestration, persistence, source ingestion, generation pro
 
 ## Hosting and Live Proof
 
-Scry's production destination is Cloudflare: a Rust Wasm Worker, one SQLite-backed
+Scry's production runtime is Cloudflare: a Rust Wasm Worker, one SQLite-backed
 Scry Durable Object as the invite-beta transaction owner, alarms for leased
 generation/reminders, private R2 recovery, and Resend over Worker Fetch. There
 is no external production Postgres, D1, Queue, KV consistency cache, or container
@@ -62,14 +62,14 @@ in that architecture. Staging and production isolate namespaces and buckets.
 New actors start paused; fingerprint-guarded activation is durable application
 state, not an environment secret change or another Worker version.
 
-The approved interim origin is `https://scry.misty-step.workers.dev`; registrar
-access is not required to use it. The hosting decision is not a completed-cutover
-claim. The native DigitalOcean/Postgres service remains authoritative until Main
-records the source-bound release, activated same-byte staging proof, stopped
-source writers, final full-history import/readback, restore drill, activation,
-and deployed browser proof. Session records are preserved, but host-scoped
-cookies require a fresh browser sign-in on workers.dev. Resend provider
-acceptance is not proof of inbox placement.
+The canonical origin is `https://scry.misty-step.workers.dev`; registrar access
+is not required to use it. Live cutover completed on 2026-09-08 with a
+source-bound release, activated same-byte staging proof, stopped native writers,
+full-table import/readback, separate-object restore, and deployed browser proof.
+The native service is disabled. `scry.study` and `www.scry.study` proxy to the
+Worker; the old database and backups remain frozen recovery material.
+Session records are preserved, but host-scoped cookies require a fresh browser
+sign-in on workers.dev. Resend provider acceptance is not proof of inbox placement.
 Only Main may stop source writers, change the old-host reverse proxy/redirect,
 or retire the old host after continuity and recovery evidence. Preserve its
 backups. `docs/runbook.md` separates planned operations from proved results and

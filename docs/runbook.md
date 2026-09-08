@@ -1,25 +1,29 @@
 # Scry production runbook — Cloudflare
 
-## Destination versus current live truth
+## Current production
 
-The production destination is `memory-engine-cloudflare`: Rust Wasm on Cloudflare
+The production runtime is `memory-engine-cloudflare`: Rust Wasm on Cloudflare
 Workers, one SQLite-backed `Scry` Durable Object as the invite-beta transaction
 owner, alarms for leased generation/reminders, private R2 recovery, and Resend
 over Worker Fetch. Pure learning policy and the shared Rust renderer remain
 inside the existing Rust capability system. There is no production D1, KV
 consistency cache, Queue, container, external Postgres, or native runtime in
-this destination architecture.
+this architecture.
 
-**A repository change is not a completed cutover.** The approved interim origin
-is `https://scry.misty-step.workers.dev`; registrar/custom-domain access is not
-a prerequisite. The native DigitalOcean application and its host-local
-PostgreSQL database (reported schema 8) remain authoritative until Main records
-the source writer barrier, final import/readback, recovery, activation, and
-public proof. Old references to Neon are not a direction to switch back.
-Keep the old host, ingress, credentials, local dumps, and backup work intact
-until Main explicitly changes or retires them. The commands below are a planned
-run sequence, not receipts of executed operations; a reachable Worker hostname
-alone does not prove imported state, activation, mail delivery, or cutover.
+**Live cutover completed on 2026-09-08.** The canonical origin is
+`https://scry.misty-step.workers.dev`; registrar/custom-domain access is not
+a prerequisite. `https://scry.study` and `https://www.scry.study` now reverse
+proxy to the same Worker, preserving methods and signed-link queries.
+The native `scry.service` is stopped and disabled. Its schema-8 host-local
+Postgres database, credentials, local dumps, and off-host backup timer remain
+retained recovery material; they are not an alternative live writer.
+Do not route back to that frozen database after Worker writes.
+
+The [production evidence below](#production-cutover-evidence-2026-09-08)
+records source quiescence, complete import/readback, recovery, activation,
+and real product proof. Staging remains isolated. Commands below are procedure
+templates: the live production primary is no longer empty, bootstrap has
+already run, and occupied import/restore targets must not be reused.
 
 | Surface | Staging | Production |
 |---|---|---|
@@ -207,7 +211,7 @@ These are required operations, **not a record that they have been executed**:
 
 `MEMORY_ENGINE_POSTGRES_URL`, filesystem store/outbox paths, mailer commands,
 native ports, systemd, and Caddy are not Worker runtime inputs. Keep old-host
-secret/configuration files intact for the authoritative native service.
+secret/configuration files intact for frozen native recovery and retained ingress.
 Bootstrap supplies the initial secrets in its one exact-byte deployment.
 Do not update secrets between bootstrap and activation: traffic control uses
 application state so the verified immutable version remains unchanged.
@@ -562,18 +566,26 @@ Restore verifies manifest, every chunk, complete bundle, account identity, and
 content fingerprint, commits to a **separate empty** `restore-*` object, then
 performs an independent request-boundary fingerprint readback. It never
 replaces `app`, automatically selects the restored object for learner traffic,
-or shares buckets between environments. For production, run the same commands
-with the production origin/admin file and a new production receipt/restore
-name. Use the `export` command for an additional private SQLite portable bundle;
-`list` exposes complete backup receipts without content. Manual retention is
-explicitly destructive and requires `--target app --days 30 --keep 7 --confirm`.
+or shares buckets between environments. The `restore-drill-20260906` name above
+is a command template: each drill needs a new empty `restore-*` object, never
+reuse of an occupied restore. The executed 2026-09-07 staging drill used
+`restore-qa-20260907` and must not be reused. For production, run the same
+commands with the production origin/admin file and a new production
+receipt/restore name. Use the `export` command for an additional private
+SQLite portable bundle; `list` exposes complete backup receipts without
+content. Manual retention is explicitly destructive and requires
+`--target app --days 30 --keep 7 --confirm`.
 
 Do not configure a coarse bucket lifecycle rule that can delete required
 chunks before their complete manifest. Durable Object PITR is an additional
 Cloudflare recovery option; it is not a substitute for the portable R2 restore
 drill. Record the actual platform recovery point and operator procedure before
-claiming PITR proof. No production restore, PITR action, or data drill has been
-executed by this source change.
+claiming PITR proof. Staging R2 backup/retrieve/restore into separate object
+`restore-qa-20260907` was executed 2026-09-07 against live QA state (1 account,
+51 rows; backup/retrieve/restore fingerprints `3da26c5b9ca7e51305e79b3779f48570fec07a89bafe9950fa3fab93e1d5f982`).
+It did not replace `app`. The production R2 restore was subsequently proved on
+2026-09-08 in `restore-production-20260908`, as recorded below. Neither drill
+is a Cloudflare platform PITR action; platform PITR has not been exercised.
 
 ## Auth, learner, generation, and delivery proof
 
@@ -637,6 +649,126 @@ Before public cutover, retain separate actual evidence for:
 7. Complete backup retrieval, separate-object restore, and equality of the
    appropriate private fingerprint/count/hash receipts.
 
+### Isolated staging evidence (2026-09-07)
+
+These receipts are for `scry-staging` only. Native `https://scry.study`
+remained `/readyz` 200 and authoritative. Production Worker traffic was not
+enabled.
+
+- Immutable version `cb483442-eac6-468e-8fdd-81d52b2f486c` from
+  `f876bf80848159bfc4bf2eaf448e2318f42ab59b`, bundle
+  `b98c307a9aa07e52b850fab13e9ee0eea9693fa7c978f041f0252324b4561fa1`,
+  activated with `release:traffic --enable`.
+- Deployed script settings: `redact_query_string: true`,
+  `logs.invocation_logs: false`.
+- Fresh AgentMail magic-link: Resend `last_event: delivered`, inbox
+  `received`/`unread`, SPF/DKIM/DMARC pass, consumed on phone-sized
+  `workers.dev`, replay HTTP 403. CSRF missing/mismatch both 403. Current
+  browser logout returned the public sign-in form. Logout-all from that
+  browser revoked a second independent `__Host-memory_engine_session`
+  (GET `/` 401) and left the operator-gated machine session valid.
+- Capture of a public network-reference source produced grounded Library
+  drafts (library DOM 17698 ms). Explicit keep scheduled study. Reveal
+  graded `Revealed` (assisted). Unassisted MX answer graded `Correct`.
+  Delivered browser contract: `tapToAckMs` 0, `gradedVisibleMs` 176,
+  `viewport: mobile`. Keeping a due draft opened study rather than remaining
+  on editable Library; remaining drafts stayed inspectable on Home/Library.
+- Succeeded generation job `google/gemini-3.7-flash`,
+  `cost_usd_micros` 11216. Operator-gated `POST /v1/service-sessions` 201
+  for the QA email (not mail-derived). That token could not read the native
+  production account id on this object. Native production history lives in
+  the separate rehearsal object, not staging `app`.
+- Reminders enabled with 1 due quiz. Inbox received
+  `You have 1 Scry review` with SPF/DKIM/DMARC pass. Confirmation copy
+  correctly said mailbox delivery was not yet verified; the later due-count
+  message is the inbox proof. The signed unsubscribe link in that mail
+  opened the confirmation page, POST turned reminders off, and GET/POST
+  replay of the same token both returned 403.
+- CLI, MCP, and skill faces were not live-exercised against staging.
+
+### Production cutover evidence (2026-09-08)
+
+The source writer barrier completed at **16:17:42.733 UTC**. Production
+activation completed at **16:21:31.719 UTC**. This is executed evidence,
+not a statement that bootstrap or a reachable origin alone completed migration.
+The [sanitized receipt](qa/production-cutover-20260908.json) contains the
+revision-bound measurements; raw bundles, session material, and full operator
+receipts remain in private storage.
+
+- Source revision `f876bf80848159bfc4bf2eaf448e2318f42ab59b`, source hash
+  `93d22a6c7f150ae9b488055195d8b378dec7e084a2c987196dfe709a2806a2ed`,
+  bundle `b98c307a9aa07e52b850fab13e9ee0eea9693fa7c978f041f0252324b4561fa1`.
+  Production version `e84de307-9766-45c9-b347-3e16fd25cb74` was promoted with
+  the same-byte activated staging proof above, then activated without changing
+  version. The initial bootstrap deployed but its first runtime observation
+  returned 404; the retained failed receipt was recovered through guarded
+  same-byte upload/promotion. A transient control-plane 503 did not authorize
+  a mutation or a fabricated success receipt.
+- Native `scry.service`: disabled, inactive, `MainPID=0`, port 3005 closed.
+  The read-only database census found zero other sessions/transactions before
+  final export and again before activation. The authorized export used
+  `--ssh root@public-apps --sudo --database-user scry`; the default SSH user
+  was not authorized. No database role or authentication change was needed.
+- Final schema-8 export: **21 application tables, 65 rows, one known account**,
+  eight ledger rows and both sequence states. Source checksum
+  `a186a6e3692d98c6fa19469888c9128897d67aa5442f93339be95ed9ec36fb3e`.
+  All source table hashes/counts matched the import receipt. Independent
+  recovered-bundle comparison matched every original column and row, including
+  session/challenge/CSRF hashes, source/draft content, schedules, and available
+  review history; only PostgreSQL boolean-to-SQLite integer representation was
+  normalized for comparison. No consumed-hold repair was needed in this final
+  snapshot. No history or exposure rows were invented.
+- Paused primary import: SQLite schema versions `[1,2,3,4]`, 66 rows including
+  provenance. Import, independent readback, R2 retrieval, separate-object
+  restore, and another independent readback matched fingerprint
+  `3356dc7718e012f7def9a220485d8e89aa58a7517d0f20973eb3c459b133d136`.
+  Backup `1788884397695-d94a562148b1cb69c848d33440cd610cab7bbeb97f4003b4099fbf49f7895afe`
+  contained 86,409 bytes in one checksummed chunk. Restore target
+  `restore-production-20260908` was new and empty; it did not replace or
+  activate `app`. This is the **pre-QA migration fingerprint**, not a current
+  fingerprint to reuse after legitimate production writes.
+- Canonical Worker and both legacy HTTPS origins returned healthy
+  `/healthz`, `/readyz`, and `/statusz`. Caddy now proxies to
+  `https://scry.misty-step.workers.dev`, with the upstream Host set explicitly
+  and the obsolete `do-connecting-ip` header removed. Imported native bearer
+  GETs matched across origins; a QA bearer POST and a fresh signed magic link
+  also traversed legacy ingress. After Worker QA writes, a second native export
+  still matched all 21 frozen source table receipts. The native off-host backup
+  timer remains active; old dumps, credentials, and other host services were
+  not removed.
+- Fresh production AgentMail sign-in and the actual **one-due-quiz reminder**
+  arrived with `received`/`unread` labels and SPF/DKIM/DMARC pass. Magic-link
+  replay returned 403. Missing/mismatched CSRF both returned 403. Phone
+  logout-all signed that browser out and revoked a second independent cookie
+  jar on `scry.study` (401), while machine authority remained valid. The mailed
+  unsubscribe confirmation disabled reminders; GET and POST replay both
+  returned 403.
+- Phone-sized Chromium (390×844) captured public reference material, inspected
+  grounded drafts, explicitly kept quizzes, graded cold answers `Correct`,
+  graded the revealed answer `Revealed`, and continued through varied quizzes
+  without horizontal overflow. See the
+  [correct](qa/production-correct-20260908.webp) and
+  [assisted](qa/production-revealed-20260908.webp) screenshots. Generation
+  produced nine accepted drafts using `google/gemini-3.7-flash`, with recorded
+  cost **8,809 USD micros**. Library DOM was ready **13,416 ms** after capture.
+  Six delivered browser receipts measured smoke-sample p95 acknowledgement
+  **0 ms** and graded-visible **148 ms**. This small controlled sample is not
+  a longitudinal production latency or physical-phone retention claim.
+- Real CLI review returned `correct` / rating 3 and completed its due queue.
+  Real MCP kept a pending draft, selected review, and submitted a correct
+  answer. CLI/MCP also completed live staging reviews on this date. The QA
+  account could not read the imported learner account; a staging token could
+  not access production even though the QA account identifier matched across
+  environments. Machine sessions were operator-issued, not mail-derived.
+  No standalone product-skill run is claimed.
+- Deployed observability still has `redact_query_string: true` and
+  `logs.invocation_logs: false`. `SCRY_MONITOR_ENABLED=true`.
+  [Production delivery drill](https://github.com/misty-step/scry/actions/runs/34250818223)
+  and [actual scheduled monitor](https://github.com/misty-step/scry/actions/runs/34251233514)
+  both passed. Resend reported the operator drill `delivered`; the operator's
+  inbox was not accessed, so inbox placement is not claimed.
+
+
 ## Health observations and operator alerts
 
 The Worker logs bounded, content-free browser, action and recovery observations
@@ -671,10 +803,10 @@ The CLI checks mail configuration even when health is good.
 `.github/workflows/production-health.yml` owns external observation and alerts.
 Its protected `production-monitor` environment permits only `master` and stores
 those three mail-only secrets. Scheduled runs require the repository variable
-`SCRY_MONITOR_ENABLED=true`; leave it false until Main proves live cutover.
-An explicit master-branch dispatch can run before automatic monitoring is
-enabled. Its optional unique `delivery_drill` label sends a clearly identified
-operator drill, not a simulated production incident.
+`SCRY_MONITOR_ENABLED=true`; it was enabled after the 2026-09-08 cutover.
+The actual scheduled-run and delivery-drill receipts are recorded above.
+An explicit master-branch dispatch can also run a unique `delivery_drill`
+label; it sends an operator drill, not a simulated production incident.
 
 The first healthy observation sends no mail. Failure opens one incident;
 continued failure does not resend an accepted notification. Recovery sends one
@@ -705,10 +837,11 @@ that actual HTTPS origin with a fresh browser sign-in and imported machine
 sessions. Record timestamps and evidence; no checklist item is satisfied by
 this runbook's existence.
 
-Old `scry.study`/`www.scry.study` ingress must not keep sending learner writes
-to the frozen native database. Main chooses and proves any temporary
-reverse-proxy/redirect behavior, including existing signed links and client
-methods, then retires it only after destination continuity is accepted.
+`scry.study`/`www.scry.study` ingress now reverse proxies to the Worker, not
+the frozen native database. GET, POST, and signed-link query continuity were
+proved during cutover. Keep that legacy ingress until a separately authorized
+replacement preserves those clients; removing the old host would also remove
+this ingress and retained native recovery material.
 A later direct custom-domain route needs separately reviewed DNS authority,
 TLS/canonical-host, cookie, and client proof; it is not part of the free-origin
 prerequisite or an implicit CLI override.

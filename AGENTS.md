@@ -11,10 +11,12 @@ not a lock or a mandatory first read.
 - Beta access is invite-gated with a visible waitlist and magic-link sign-in;
   there is no OAuth path. Machine faces use operator-gated service sessions.
   Public signup waits for bounded cost, privacy, reliability, and Stripe proof.
-- The selected deployment direction and activation, recovery, and traffic
-  procedure live in `docs/runbook.md`. Its source-writer barrier and observed
-  cutover evidence determine runtime status; this instruction file is not a
-  live host inventory.
+- Production is the Rust Wasm `memory-engine-cloudflare` Worker with one
+  SQLite-backed Scry Durable Object, private R2 recovery, and Resend over Fetch
+  at `https://scry.misty-step.workers.dev`. `scry.study` and `www.scry.study`
+  proxy to that Worker. The native service is disabled; its database and
+  backups are retained recovery material, not a live production store.
+  Detailed procedures live in `docs/runbook.md`.
 - Crate names, Postgres identifiers, wire and telemetry literals, and
   `MEMORY_ENGINE_*` environment variables retain the old name. Renaming a
   storage, network, deployment, or compatibility boundary requires explicit
@@ -68,3 +70,4 @@ not a lock or a mandatory first read.
   hooks, or claim unexercised production proof.
 - Test observable behavior with real repo-owned collaborators; mock only
   external boundaries such as network, clock, and model providers.
+

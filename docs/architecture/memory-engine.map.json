@@ -2,7 +2,7 @@
   "schema": "memory-engine.architecture-map/v1",
   "mapId": "memory-engine.system-visualization",
   "title": "Memory Engine System Visualization Workbench Map",
-  "updatedAt": "2026-09-07",
+  "updatedAt": "2026-09-08",
   "views": [
     {
       "id": "architecture-boundary",
@@ -719,19 +719,19 @@
       "id": "node.runtime.cloudflare",
       "label": "Cloudflare Worker Boundary",
       "kind": "service",
-      "summary": "memory-engine-cloudflare owns the Wasm Worker, SQLite-backed Scry Durable Object, alarms, private R2 recovery, and Resend Fetch boundary. No live Worker is deployed yet; native DigitalOcean/Postgres remains authoritative until Main records cutover proof.",
+      "summary": "Production runs at scry.misty-step.workers.dev on the Wasm Worker, SQLite-backed Scry Durable Object, alarms, private R2 recovery, and Resend Fetch boundary. Both legacy HTTPS origins proxy to the same Worker. Native service is disabled and Postgres is frozen recovery material; never restart it as rollback after Worker writes. Executed cutover proof is recorded in the runbook.",
       "viewTags": ["fleet-integration"],
       "layout": {"fleet-integration": {"x": 940, "y": 360}},
       "refs": [
         {"kind": "source", "path": "crates/memory-engine-cloudflare/src/lib.rs", "label": "Cloudflare runtime boundary"},
-        {"kind": "doc", "path": "docs/runbook.md", "label": "Main-owned cutover and recovery proof"}
+        {"kind": "doc", "path": "docs/runbook.md", "label": "Executed cutover and recovery proof"}
       ]
     },
     {
       "id": "node.fleet.external-monitor",
       "label": "Repository External Monitor",
       "kind": "observability",
-      "summary": "scripts/scry-monitor (bun run ops:monitor) observes public health and sends Resend unhealthy/recovery mail. The master-only production-monitor environment owns mail secrets. GitHub five-minute cron and notification cache are best effort; SCRY_MONITOR_ENABLED remains false until cutover.",
+      "summary": "scripts/scry-monitor (bun run ops:monitor) observes public health and sends Resend unhealthy/recovery mail. The master-only production-monitor environment owns mail secrets. SCRY_MONITOR_ENABLED=true; the production delivery drill and an actual scheduled run passed on 2026-09-08. Resend reported operator-mail delivery, not inspected inbox placement. GitHub five-minute cron and notification cache remain best effort.",
       "viewTags": ["fleet-integration"],
       "layout": {"fleet-integration": {"x": 610, "y": 360}},
       "refs": [
