@@ -35,7 +35,6 @@ MEMORY_ENGINE_ENVIRONMENT=development \
 MEMORY_ENGINE_ENABLE_FILE_STORE=true \
 MEMORY_ENGINE_API_STORE_DIR=.tmp/api-dev \
 MEMORY_ENGINE_AUTH_ALLOWED_EMAILS=owner@example.com \
-MEMORY_ENGINE_ADMIN_TOKEN=local-dev-admin-token \
 MEMORY_ENGINE_AUTH_LINK_OUTBOX_PATH=.tmp/api-dev/outbox.tsv \
 MEMORY_ENGINE_AUTH_EXPOSE_DEBUG_LINKS=true \
 MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET=local-dev-unsubscribe-secret \
@@ -52,20 +51,20 @@ curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/
 curl -fsS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:18080/app/generate
 ```
 
-Provision an allowlisted service session through the operator-gated route,
-using the same **local-only** admin fixture configured above:
+On this loopback instance, the explicit `development` environment above enables
+the local-only account bootstrap; it does not need an operator admin token:
 
 ```sh
 umask 077
-curl -fsS http://127.0.0.1:18080/v1/service-sessions \
+curl -fsS http://127.0.0.1:18080/v1/accounts \
   -H 'content-type: application/json' \
-  -H 'x-admin-token: local-dev-admin-token' \
   --data '{"email":"owner@example.com"}' \
-  --output .tmp/api-dev/service-session.json
+  --output .tmp/api-dev/local-session.json
 ```
 
 The private response contains `accountId` and `sessionToken`; do not print or
-commit it. Never reuse the fixture admin token outside this loopback dev server.
+commit it. This anonymous bootstrap is disabled in production and staging;
+those environments require operator-provisioned service sessions instead.
 Then exercise source capture, queued `POST .../generation-jobs`, bounded polling of
 `GET .../generation-jobs/{jobId}`, and review-next. Walk sign-in via the debug
 link, source capture, generation, `/app/next`, reveal, and submit. The legacy
