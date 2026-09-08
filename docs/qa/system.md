@@ -58,7 +58,7 @@ receipt after each lane:
 | `service.prototype` | `memory-engine-service` command boundary | prove command flow, injected persistence, and failure semantics |
 | `persistence.beta-store` | `memory-engine-persistence` durable beta store | prove persisted snapshots, restart, conflict, and validation semantics |
 | `generation.beta` | `memory-engine-generation` deterministic generation probe | prove source parsing, provenance, draft validation, and promotion behavior |
-| `study.beta-session` | `memory-engine-study` session/API boundary | prove source, generation, approval, reveal, answer, post-answer feedback, concept health, skip/snooze, reference, bridge, queue, and resume flow |
+| `study.beta-session` | `memory-engine-study` session/API boundary | prove source, automatic publication, reveal, answer, feedback, concept health, skip/snooze, reference, bridge, queue, and resume flow |
 | `app.beta-http` | `memory-engine-beta-app` local HTTP routes | prove mobile routes and validation run through the Rust study session |
 | `api.v1-contract` | versioned public JSON contract and consumer proof binary | run the Scry-facing client against a local HTTP API and prove contract fixtures stay executable |
 | `dogfood.rust-receipts` | Rust CLI, import probe, web shell | exercise migrated dogfood clients through the Rust facade and service crates |
@@ -95,7 +95,7 @@ The gate first activates its new private actor through authenticated
 `POST /internal/runtime`, then observes real readiness. On restart it reads the
 persisted active state without another activation. It exercises the shared
 `/static/app.js` asset path, anonymous rejection, service-session auth,
-alarm-driven LocalOnly structured generation, explicit draft acceptance,
+alarm-driven LocalOnly structured generation, automatic publication,
 isolation between two real accounts, review resume, assisted grading across
 restart, durable idempotent replay without extra history/exposure, and the schema
 fingerprint. Its privacy-safe receipt binds observations to

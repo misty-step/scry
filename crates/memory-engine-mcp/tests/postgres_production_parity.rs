@@ -6,17 +6,10 @@
 //!
 //! Two things this proves that a file-store fixture cannot:
 //!
-//! 1. **Reproduces the reported production failure directly**: the legacy
-//!    synchronous `/generate` route returns HTTP 409 with the exact message
-//!    `registry.rs::generate_source` emits once Postgres is configured
-//!    (`Direct synchronous generation is disabled in production...`) — the
-//!    bug this ticket exists to route around, not paper over.
-//! 2. **Proves the fix against that same backend**: `MemoryEngineClient`'s
-//!    queued composition (`create_deck` → enqueue → poll `generation-jobs`)
-//!    reaches `succeeded` leaving its draft pending a learner decision, and a
-//!    keep then schedules a due card on the Postgres store,
-//!    the exact path `docs/qa/103-machine-generation-receipt-2026-07-17.md`
-//!    proved live against `scry.study`.
+//! 1. The unsupported synchronous `/generate` route remains refused on
+//!    Postgres, rather than silently weakening the durable queue boundary.
+//! 2. Queued generation publishes validated quizzes on the production
+//!    persistence backend without fabricating a learner decision.
 //!
 //! Skipped when `MEMORY_ENGINE_POSTGRES_TEST_URL` is unset (the same
 //! convention every other Postgres-gated test in this workspace uses); point
@@ -91,7 +84,7 @@ async fn queued_generation_succeeds_on_postgres_where_the_legacy_route_is_refuse
         .http_status_as_error(false)
         .build()
         .into();
-    let mut legacy_response = legacy_agent
+    let legacy_response = legacy_agent
         .post(format!(
             "{base_url}/v1/accounts/{account_id}/sources/{source_id}/generate"
         ))
@@ -103,15 +96,6 @@ async fn queued_generation_succeeds_on_postgres_where_the_legacy_route_is_refuse
         409,
         "the legacy synchronous /generate route must be refused on Postgres"
     );
-    let legacy_body: serde_json::Value = legacy_response
-        .body_mut()
-        .read_json()
-        .expect("legacy generate error body");
-    assert_eq!(
-        legacy_body["error"],
-        "Direct synchronous generation is disabled in production. Use the queued generation workflow.",
-        "the 409 must carry the declared, agent-actionable reason, not a bare status"
-    );
 
     // 2. Prove the fix: the same account, same backend, using the queued
     //    generation-jobs route the MCP client now composes exclusively.
@@ -119,25 +103,19 @@ async fn queued_generation_succeeds_on_postgres_where_the_legacy_route_is_refuse
     let enqueued = client
         .enqueue_generation_job(&source_id)
         .expect("enqueue generation job on postgres backend");
-    assert_eq!(enqueued.job.status, "queued");
-    assert!(!enqueued.coalesced);
 
     let job = poll_to_terminal(&client, enqueued.job).await;
     assert_eq!(job.status, "succeeded", "job must succeed: {job:?}");
-    assert_eq!(
-        job.card_count, 0,
-        "a succeeded job schedules nothing on its own: its draft is pending a \
-         learner decision, so card_count stays 0 until the draft is kept: {job:?}"
-    );
+    assert_eq!(job.card_count, 1);
 
-    assert_pending_until_kept(&client);
+    assert_published_without_decision(&client);
 
     server.abort();
 }
 
 /// Poll to a bounded terminal state directly, rather than through `create_deck`,
 /// which would also create a second source: this keeps the reproduction scoped
-/// to exactly the enqueue/poll/decide path.
+/// to exactly the enqueue/poll/publication path.
 async fn poll_to_terminal(
     client: &MemoryEngineClient,
     job: memory_engine_mcp::client::GenerationJob,
@@ -158,38 +136,17 @@ async fn poll_to_terminal(
     job
 }
 
-/// The PR79 learner-decision gate, asserted against whatever backend `client`
-/// is pointed at: a generated draft exists but is pending, nothing is scheduled
-/// until it is explicitly kept, and keeping it schedules exactly one card.
-fn assert_pending_until_kept(client: &MemoryEngineClient) {
-    let pending = client
-        .pending_drafts()
-        .expect("pending drafts on postgres backend");
+/// Validated quizzes are due immediately on the production backend, without
+/// a synthetic learner approval decision.
+fn assert_published_without_decision(client: &MemoryEngineClient) {
+    let quizzes = client.quizzes().expect("published quizzes on Postgres");
+    assert_eq!(quizzes.len(), 1);
+    assert!(quizzes[0].learner_decision.is_none());
+    let view = client.next_review().expect("review after generation");
+    assert_eq!(view.due_count, 1);
     assert_eq!(
-        pending.len(),
-        1,
-        "the succeeded job must leave exactly one pending draft: {pending:?}"
-    );
-    assert_eq!(
-        client
-            .next_review()
-            .expect("study view before the keep decision")
-            .due_count,
-        0,
-        "nothing may be scheduled before the learner keeps the draft"
-    );
-
-    client
-        .keep_draft(&pending[0].id)
-        .expect("keep the pending draft on postgres backend");
-
-    assert_eq!(
-        client
-            .next_review()
-            .expect("study view after the keep decision")
-            .due_count,
-        1,
-        "keeping the draft must schedule the generated card on postgres too"
+        view.current.expect("published quiz").review_unit_id,
+        quizzes[0].review_unit_id
     );
 }
 

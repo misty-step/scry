@@ -539,16 +539,20 @@ async fn api_study_route(
             )
         }
         ["review", "next"] => {
-            require_method(
-                req,
-                if versioned {
-                    &Method::Post
-                } else {
-                    &Method::Get
-                },
-            )?;
+            let read = matches!(req.method(), Method::Get | Method::Head);
+            if !read {
+                require_method(req, &Method::Post)?;
+                if !versioned {
+                    return Err(Failure::new(405, "Method not allowed."));
+                }
+            }
             auth::api_account(req, db, env, account_id)?;
-            json_response(&next_review(db, account_id)?, 200)
+            let view = if read && versioned {
+                open_review(db, account_id)?
+            } else {
+                next_review(db, account_id)?
+            };
+            json_response(&view, 200)
         }
         ["review", review_unit_id, "submit"] => {
             require_method(req, &Method::Post)?;
@@ -669,11 +673,15 @@ fn save_source(
     account_id: &str,
     request: &CreateSourceRequest,
 ) -> AppResult<SourceRecord> {
-    let title = required_text(&request.title, "Source title")?;
+    let title = if request.title.trim().is_empty() {
+        infer_capture_title(&request.body)
+    } else {
+        required_text(&request.title, "Source title")?.to_owned()
+    };
     let body = required_text(&request.body, "Source body")?;
     let source = SourceRecord {
-        source_id: stable_id("src", &[account_id, title, body]),
-        title: title.to_owned(),
+        source_id: stable_id("src", &[account_id, &title, body]),
+        title,
         body: body.to_owned(),
         permission: request.permission.clone(),
         project_key: None,
@@ -863,6 +871,27 @@ fn save_graded_hold(
     Ok(())
 }
 
+/// Opening/reloading preserves the graded receipt. Only Continue consumes it.
+fn open_review(db: &Database, account_id: &str) -> AppResult<StudyViewResponse> {
+    db.transaction(|| {
+        let store = SqlStudyStore::new(db.clone(), account_id);
+        if let Some(ActiveGradedReview::Active { view, .. }) = graded_hold(&store)? {
+            let mut fresh = Study::for_review(store, now_ms)
+                .view()
+                .map(StudyViewResponse::from_view)
+                .map_err(study_failure)?;
+            // Only the answered card is historical. Inventory remains live while
+            // its exact question, choices and grade wait for deliberate Continue.
+            fresh.current = view.current;
+            return Ok(fresh);
+        }
+        Study::for_review(store, now_ms)
+            .start()
+            .map(StudyViewResponse::from_view)
+            .map_err(study_failure)
+    })
+}
+
 fn next_review(db: &Database, account_id: &str) -> AppResult<StudyViewResponse> {
     db.transaction(|| {
         let store = SqlStudyStore::new(db.clone(), account_id);
@@ -972,6 +1001,39 @@ fn submit_review(
         save_graded_hold(&mut study.into_store(), review_unit_id, key, &view, false)?;
         Ok(view)
     })
+}
+
+fn reveal_and_submit(
+    db: &Database,
+    account_id: &str,
+    review_unit_id: &str,
+    form: &Form,
+) -> AppResult<StudyViewResponse> {
+    let key = form.required("idempotencyKey")?;
+    // Exposure is durable before grading. A retry can recover the committed
+    // receipt; an interrupted operation can never count as independent recall.
+    let view = review_action(db, account_id, review_unit_id, "reveal")?;
+    let current = view
+        .current
+        .as_ref()
+        .ok_or_else(|| Failure::not_found("Review unit not found."))?;
+    if current.grade.is_some() {
+        return Ok(view);
+    }
+    let answer = current
+        .expected_answer
+        .as_ref()
+        .ok_or_else(|| Failure::internal("Revealed answer is unavailable."))?;
+    submit_review(
+        db,
+        account_id,
+        review_unit_id,
+        &SubmitReviewRequest {
+            answer: answer.clone(),
+            response_time_ms: sanitize_response_time(form.get("responseTimeMs")),
+            idempotency_key: key.to_owned(),
+        },
+    )
 }
 
 fn review_action(
@@ -1103,7 +1165,7 @@ pub fn account_page(
     account: &AppAccount,
     notice: Option<&str>,
 ) -> AppResult<String> {
-    let view = study_view(db, account.account_id())?;
+    let view = open_review(db, account.account_id())?;
     let live_jobs = if notice.is_some_and(|notice| notice.contains("Generating")) {
         jobs::list(db, account.account_id())?
     } else {
@@ -1235,15 +1297,17 @@ async fn browser_route(req: &mut Request, db: &Database, env: &Env) -> AppResult
             html_response(library_page(db, &account, None, Some(&notice))?, status)?
         }
         "/app/jobs/retry" => {
-            let (status, notice) =
-                match jobs::retry(db, env, account.account_id(), form.required("jobId")?) {
-                    Ok(_) => (
-                        200,
-                        "Retrying. Generating again in the background.".to_owned(),
+            let job_id = form.required("jobId")?;
+            match jobs::retry(db, env, account.account_id(), job_id) {
+                Ok(job) => html_response(render::render_capture_waiting_page(&account, &job), 200)?,
+                Err(error) => html_response(
+                    render::render_capture_waiting_page(
+                        &account,
+                        &jobs::get(db, account.account_id(), job_id)?,
                     ),
-                    Err(error) => (error.status, error.message),
-                };
-            html_response(library_page(db, &account, None, Some(&notice))?, status)?
+                    error.status,
+                )?,
+            }
         }
         _ => browser_study_action(db, env, &account, &form, &path).await?,
     };
@@ -1263,6 +1327,17 @@ async fn browser_study_action(
             browser_draft_action(db, account, form, action)
         }
         "/app/next" => browser_next_review(db, account),
+        "/app/reveal" => action_result(
+            db,
+            account,
+            reveal_and_submit(
+                db,
+                account.account_id(),
+                form.required("reviewUnitId")?,
+                form,
+            ),
+            None,
+        ),
         "/app/resume" => action_result(
             db,
             account,
@@ -1288,10 +1363,10 @@ async fn browser_study_action(
         )
         .await
         {
-            Ok(view) => html_response(library_page(db, account, Some(&view), None)?, 200),
+            Ok(view) => action_result(db, account, Ok(view), None),
             Err(error) => action_result(db, account, Err(error), None),
         },
-        "/app/reveal" | "/app/skip" | "/app/snooze" | "/app/snooze-concept" | "/app/delete" => {
+        "/app/skip" | "/app/snooze" | "/app/snooze-concept" | "/app/delete" => {
             let action = path.strip_prefix("/app/").unwrap_or_default();
             let notice = match action {
                 "skip" => Some(render::SKIP_CONFIRM_NOTICE),

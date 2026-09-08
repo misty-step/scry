@@ -192,6 +192,45 @@ impl SqlStudyStore {
         })
     }
 
+    pub(crate) fn publish_generated_content(&self, run_id: Option<&str>) -> AppResult<()> {
+        self.write_transaction(|| {
+            let account = &[json!(self.account_id)];
+            let mut snapshot = BetaStoreSnapshot {
+                source_documents: self.json_rows("SELECT json_set(document, '$.body', '') AS value FROM memory_engine_source_documents WHERE account_id = ?", account)?,
+                reference_spans: self.json_rows("SELECT span AS value FROM memory_engine_reference_spans WHERE account_id = ?", account)?,
+                concept_reference_notes: self.json_rows("SELECT note AS value FROM memory_engine_concept_reference_notes WHERE account_id = ?", account)?,
+                generated_prompt_drafts: self.json_rows("SELECT draft AS value FROM memory_engine_generated_prompt_drafts WHERE account_id = ?", account)?,
+                review_units: self.json_rows("SELECT record AS value FROM memory_engine_review_units WHERE account_id = ?", account)?,
+                remediation_packs: self.json_rows("SELECT pack AS value FROM memory_engine_remediation_packs WHERE account_id = ?", account)?,
+                generation_runs: self.json_rows(
+                    "SELECT run AS value FROM memory_engine_generation_runs AS generation
+                     WHERE account_id = ?1
+                       AND COALESCE(json_extract(run, '$.status'), '') NOT IN ('pending', 'superseded', 'cancelled', 'failed')
+                       AND NOT EXISTS (SELECT 1 FROM memory_engine_generation_job_attempts AS attempt
+                           WHERE attempt.account_id = generation.account_id
+                             AND attempt.generation_run_id = generation.generation_run_id
+                             AND attempt.status <> 'succeeded')", account)?,
+                ..BetaStoreSnapshot::default()
+            };
+            loop {
+                let units = memory_engine_persistence::review_units_for_publication(&snapshot, run_id)
+                    .map_err(|error| policy_error(&error))?;
+                if units.is_empty() { break; }
+                for unit in &units {
+                    self.insert_published_unit(unit)?;
+                }
+                snapshot.review_units.extend(units);
+                if run_id.is_some() { break; }
+            }
+            Ok(())
+        })
+    }
+
+    fn insert_published_unit(&self, unit: &BetaReviewUnitRecord) -> AppResult<()> {
+        self.db.execute("INSERT INTO memory_engine_review_units (account_id, review_unit_id, record, created_at_ms, archived_at_ms) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (account_id, review_unit_id) DO NOTHING",
+            &[json!(self.account_id), json!(unit.review_unit_id.as_str()), encoded(unit)?, json!(unit.created_at)])
+    }
+
     fn provenance(
         &self,
         sources: &[String],
@@ -344,21 +383,28 @@ impl SqlStudyStore {
         self.write_transaction(|| {
             let draft = self.require_draft(id)?;
             let run = draft.generation_run_id.as_deref().map(|id| self.generation_run(id)).transpose()?.flatten();
-            let decided = draft.learner_decision.is_some();
-            let draft = transition_learner_draft(&draft, run.as_ref(), input, decided_at)
+            let transitioned = transition_learner_draft(&draft, run.as_ref(), input, decided_at)
                 .map_err(|error| policy_error(&error))?;
+            let unchanged = transitioned == draft;
+            let draft = transitioned;
             let rejecting = matches!(input, LearnerDraftDecisionInput::Reject);
-            if decided {
+            if unchanged {
                 let unit = if rejecting { None } else { Some(self.review_unit(&draft.review_unit_id)?) };
                 return Ok((draft, unit));
             }
             self.put_draft(&draft)?;
             if rejecting {
+                self.db.execute("UPDATE memory_engine_review_units SET archived_at_ms = ?3, record = json_set(record, '$.archivedAt', ?3) WHERE account_id = ?1 AND json_extract(record, '$.generatedPromptDraftId') = ?2",
+                    &[json!(self.account_id), json!(draft.id), json!(decided_at)])?;
+            } else if matches!(input, LearnerDraftDecisionInput::Edit { .. }) {
+                self.db.execute("UPDATE memory_engine_review_units SET record = json_set(record, '$.prompt', json(?3)) WHERE account_id = ?1 AND json_extract(record, '$.generatedPromptDraftId') = ?2",
+                    &[json!(self.account_id), json!(draft.id), encoded(&draft.prompt)?])?;
+            }
+            if rejecting {
                 return Ok((draft, None));
             }
             let unit = promoted_review_unit(&draft);
-            self.db.execute("INSERT INTO memory_engine_review_units (account_id, review_unit_id, record, created_at_ms, archived_at_ms) VALUES (?, ?, ?, ?, NULL) ON CONFLICT (account_id, review_unit_id) DO NOTHING",
-                &[json!(self.account_id), json!(unit.review_unit_id.as_str()), encoded(&unit)?, json!(unit.created_at)])?;
+            self.insert_published_unit(&unit)?;
             let persisted = self.review_unit(&unit.review_unit_id)?;
             Ok((draft, Some(persisted)))
         })
@@ -371,7 +417,7 @@ impl SqlStudyStore {
         token: &str,
         now: i64,
     ) -> AppResult<Option<LeaseRow>> {
-        let rows = self.db.query("SELECT attempt.job_id, attempt.reservation_cost_usd_micros FROM memory_engine_generation_job_attempts AS attempt JOIN memory_engine_generation_jobs AS job ON job.account_id = attempt.account_id AND job.job_id = attempt.job_id WHERE attempt.account_id = ?1 AND attempt.generation_run_id = ?2 AND attempt.attempt = ?3 AND attempt.lease_token = ?4 AND attempt.status = 'running' AND job.status = 'running' AND job.attempts = attempt.attempt AND job.lease_token = attempt.lease_token AND job.lease_expires_at_ms > ?5 LIMIT 1",
+        let rows = self.db.query("SELECT attempt.job_id, COALESCE(attempt.cost_usd_micros, attempt.reservation_cost_usd_micros) AS reservation_cost_usd_micros FROM memory_engine_generation_job_attempts AS attempt JOIN memory_engine_generation_jobs AS job ON job.account_id = attempt.account_id AND job.job_id = attempt.job_id WHERE attempt.account_id = ?1 AND attempt.generation_run_id = ?2 AND attempt.attempt = ?3 AND attempt.lease_token = ?4 AND attempt.status = 'running' AND job.status = 'running' AND job.attempts = attempt.attempt AND job.lease_token = attempt.lease_token AND job.lease_expires_at_ms > ?5 LIMIT 1",
             &[json!(self.account_id), json!(run_id), json!(attempt), json!(token), json!(now)])?;
         Ok(rows.into_iter().next())
     }
@@ -772,10 +818,24 @@ impl BetaGenerationStore for SqlStudyStore {
     fn save_generation_run(&mut self, run: GenerationRun) -> AppResult<GenerationRun> {
         nonblank(&run.id, "Generation run id")?;
         self.write_transaction(|| {
+            if let Some(existing) = self.generation_run(&run.id)? {
+                if memory_engine_persistence::generation_run_is_published(&existing) {
+                    return Ok(existing);
+                }
+            }
+            let mut run = run;
+            if self.exists("SELECT 1 AS present FROM memory_engine_generation_job_attempts WHERE account_id = ? AND generation_run_id = ? LIMIT 1",
+                &[json!(self.account_id), json!(run.id)])?
+            {
+                run.completed_at = Some(i64::MIN);
+            }
             for id in &run.source_document_ids {
                 self.require_source(id)?;
             }
             self.put_run(&run)?;
+            if memory_engine_persistence::generation_run_is_published(&run) {
+                self.publish_generated_content(Some(&run.id))?;
+            }
             Ok(run)
         })
     }
@@ -813,10 +873,11 @@ impl BetaGenerationStore for SqlStudyStore {
             )?;
             assert_draft_contract(&context, &draft).map_err(|error| policy_error(&error))?;
             if let Some(existing) = self.draft(&draft.id)? {
-                // A regenerated deterministic id cannot erase a learner decision
-                // or claim ownership of another generation's promoted record.
-                if existing.learner_decision.is_some() && existing != draft {
-                    return Err(Failure::conflict("Generated draft was already decided"));
+                if existing.learner_decision.is_some()
+                    || self.exists("SELECT 1 AS present FROM memory_engine_review_units WHERE account_id = ? AND json_extract(record, '$.generatedPromptDraftId') = ? LIMIT 1",
+                        &[json!(self.account_id), json!(draft.id)])?
+                {
+                    return Ok(existing);
                 }
             }
             self.put_draft(&draft)?;
@@ -846,7 +907,7 @@ impl BetaGenerationStore for SqlStudyStore {
 
     fn discard_generation_run(&mut self, run_id: &str) -> AppResult<()> {
         // Rollback is allowed after a lease is lost.
-        self.db.transaction(|| self.remove_run_output(run_id, true))
+        self.db.transaction(|| self.remove_run_output(run_id))
     }
 
     fn finalize_generation_run(
@@ -868,13 +929,14 @@ impl BetaGenerationStore for SqlStudyStore {
                 return Ok(true);
             }
             let Some(lease) = self.lease(run_id, generation_attempt, lease_token, now_ms)? else {
-                self.remove_run_output(run_id, false)?;
+                self.remove_run_output(run_id)?;
                 return Ok(false);
             };
             for id in &run.source_document_ids {
                 let source = self.require_source(id)?;
-                if source.archived_at.is_some() || source.permission != SourcePermission::ModelEligible
-                    || !run.source_permissions.iter().any(|receipt| receipt.source_document_id == *id && receipt.consented && receipt.permission == source.permission)
+                if source.archived_at.is_some()
+                    || !run.source_permissions.iter().any(|receipt| receipt.source_document_id == *id && receipt.permission == source.permission
+                        && (receipt.consented || source.permission == SourcePermission::LocalOnly))
                 {
                     return Err(Failure::conflict("Generation source permission changed"));
                 }
@@ -891,33 +953,46 @@ impl BetaGenerationStore for SqlStudyStore {
                 &[json!(self.account_id), json!(lease.job_id), json!(generation_attempt), json!(lease_token), json!(accounted_cost), json!(reported_cost.is_none()), run.usage.as_ref().map(encoded).transpose()?.unwrap_or(Value::Null), json!(now_ms)],
             )?;
             let job_updated = self.exists(
-                "UPDATE memory_engine_generation_jobs SET status = 'succeeded', card_count = (SELECT count(*) FROM memory_engine_generated_prompt_drafts WHERE account_id = ?1 AND json_extract(draft, '$.generationRunId') = ?7 AND json_extract(draft, '$.validation.status') = 'accepted'), cost_usd_micros = ?5, reserved_cost_usd_micros = 0, error = NULL, retry_at_ms = NULL, lease_owner = NULL, lease_expires_at_ms = NULL, lease_token = NULL, updated_at_ms = ?6 WHERE account_id = ?1 AND job_id = ?2 AND attempts = ?3 AND lease_token = ?4 AND status = 'running' RETURNING 1 AS present",
+                "UPDATE memory_engine_generation_jobs SET status = 'succeeded', card_count = (SELECT count(*) FROM memory_engine_generated_prompt_drafts WHERE account_id = ?1 AND json_extract(draft, '$.generationRunId') = ?7 AND json_extract(draft, '$.validation.status') = 'accepted'), cost_usd_micros = legacy_cost_usd_micros + (SELECT COALESCE(SUM(cost_usd_micros), 0) FROM memory_engine_generation_job_attempts WHERE account_id = ?1 AND job_id = ?2), reserved_cost_usd_micros = 0, retryable = 0, error = NULL, retry_at_ms = NULL, lease_owner = NULL, lease_expires_at_ms = NULL, lease_token = NULL, updated_at_ms = ?6 WHERE account_id = ?1 AND job_id = ?2 AND attempts = ?3 AND lease_token = ?4 AND status = 'running' RETURNING 1 AS present",
                 &[json!(self.account_id), json!(lease.job_id), json!(generation_attempt), json!(lease_token), json!(accounted_cost), json!(now_ms), json!(run_id)],
             )?;
             if !attempt_updated || !job_updated {
                 return Err(Failure::conflict("Generation finalization lost lease"));
             }
+            self.publish_generated_content(Some(run_id))?;
             Ok(true)
         })
     }
 }
 
 impl SqlStudyStore {
-    fn remove_run_output(&self, run_id: &str, preserve_decisions: bool) -> AppResult<()> {
+    fn remove_run_output(&self, run_id: &str) -> AppResult<()> {
+        if self
+            .generation_run(run_id)?
+            .as_ref()
+            .is_some_and(memory_engine_persistence::generation_run_is_published)
+        {
+            return Ok(());
+        }
         let drafts: Vec<GeneratedPromptDraft> = self.json_rows(
-            "SELECT draft AS value FROM memory_engine_generated_prompt_drafts WHERE account_id = ?1 AND json_extract(draft, '$.generationRunId') = ?2 AND (NOT ?3 OR json_extract(draft, '$.learnerDecision') IS NULL)",
-            &[json!(self.account_id), json!(run_id), json!(preserve_decisions)],
+            "SELECT draft AS value FROM memory_engine_generated_prompt_drafts AS draft WHERE account_id = ?1 AND json_extract(draft, '$.generationRunId') = ?2 AND json_extract(draft, '$.learnerDecision') IS NULL AND NOT EXISTS (SELECT 1 FROM memory_engine_review_units AS unit WHERE unit.account_id = draft.account_id AND json_extract(unit.record, '$.generatedPromptDraftId') = draft.draft_id)",
+            &[json!(self.account_id), json!(run_id)],
         )?;
         let mut references = BTreeSet::new();
+        let mut packs = BTreeSet::new();
         for draft in drafts {
             references.extend(draft.reference_span_ids);
-            // The promoted record owns its draft, not the draft's deterministic
-            // review-unit id, which may be reused by a different run.
-            self.db.execute("DELETE FROM memory_engine_review_units WHERE account_id = ? AND json_extract(record, '$.generatedPromptDraftId') = ?", &[json!(self.account_id), json!(draft.id)])?;
+            packs.extend(draft.remediation_pack_id);
             self.db.execute("DELETE FROM memory_engine_generated_prompt_drafts WHERE account_id = ? AND draft_id = ?", &[json!(self.account_id), json!(draft.id)])?;
         }
         if !self.exists("SELECT 1 AS present FROM memory_engine_generated_prompt_drafts WHERE account_id = ? AND json_extract(draft, '$.generationRunId') = ? LIMIT 1", &[json!(self.account_id), json!(run_id)])? {
             self.db.execute("DELETE FROM memory_engine_generation_runs WHERE account_id = ? AND generation_run_id = ?", &[json!(self.account_id), json!(run_id)])?;
+        }
+        for pack in packs {
+            self.db.execute(
+                "DELETE FROM memory_engine_remediation_packs WHERE account_id = ?1 AND pack_id = ?2 AND NOT EXISTS (SELECT 1 FROM memory_engine_generated_prompt_drafts WHERE account_id = ?1 AND json_extract(draft, '$.remediationPackId') = ?2) AND NOT EXISTS (SELECT 1 FROM memory_engine_review_units WHERE account_id = ?1 AND json_extract(record, '$.remediationPackId') = ?2)",
+                &[json!(self.account_id), json!(pack)],
+            )?;
         }
         for reference in references {
             self.db.execute(

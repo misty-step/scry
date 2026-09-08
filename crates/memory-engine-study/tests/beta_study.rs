@@ -31,7 +31,7 @@ fn revealed_occurrence_survives_restart_and_preopened_tabs_without_successful_re
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("drafts");
     let original = study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -137,7 +137,7 @@ fn editing_a_card_cannot_rewrite_the_prompt_or_answer_of_a_committed_grade() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("drafts");
     let original = study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -249,7 +249,7 @@ fn unfinalized_generation_drafts_are_hidden_and_undecidable() {
 }
 
 #[test]
-fn creates_source_generates_keeps_reviews_reveals_and_advances_queue() {
+fn creates_source_generates_reviews_reveals_and_advances_queue() {
     let directory = TempDirectory::new("happy-path");
     let path = directory.path().join("study.json");
     let mut study =
@@ -280,12 +280,7 @@ fn creates_source_generates_keeps_reviews_reveals_and_advances_queue() {
         Some("C is CHARLIE, A is ALFA, and T is TANGO.")
     );
 
-    study
-        .keep_draft("study-run-1-draft-src-nato-2-nato-cat-composition")
-        .expect("keep exercise");
-    let approved = study
-        .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
-        .expect("keep quiz");
+    let approved = generated;
     assert_eq!(approved.status, BetaStudyStatus::Answering);
     assert_eq!(approved.summary.approved_review_unit_count, 2);
     let current = approved.current.expect("current");
@@ -404,7 +399,7 @@ fn duplicate_submit_after_grading_is_view_only() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -450,7 +445,7 @@ fn post_answer_feedback_summarizes_item_and_concept_history() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     let approved = study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -507,7 +502,7 @@ fn multiple_choice_choices_shuffle_between_reviews_without_changing_answer() {
     {
         let mut study =
             BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-        study.add_source(source_input()).expect("source");
+        study.add_source(quiz_source_input()).expect("source");
         study.generate(None).expect("generate");
         study
             .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -572,7 +567,7 @@ fn graded_mcq_recap_keeps_presentation_choice_order() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -649,13 +644,145 @@ fn queue_rotates_due_variants_with_the_same_concept_and_stage() {
 }
 
 #[test]
+fn due_learning_and_review_occurrences_are_not_displaced_by_new_variants() {
+    let directory = TempDirectory::new("variant-due-priority");
+    let path = directory.path().join("study.json");
+    let mut study =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
+    study.add_source(variant_concept_input()).expect("source");
+    let first = study
+        .generate(None)
+        .expect("generate")
+        .current
+        .expect("immediate review");
+    study
+        .submit_answer("ALFA", 2_000)
+        .expect("first occurrence");
+    let mut learning =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(|| NOW + 11 * 60_000))
+            .expect("learning occurrence");
+    assert_eq!(
+        learning
+            .start()
+            .expect("due learning")
+            .current
+            .expect("quiz")
+            .review_unit_id,
+        first.review_unit_id
+    );
+    learning
+        .submit_answer("ALFA", 2_000)
+        .expect("identical answer on later occurrence");
+    let mut review =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(|| NOW + 7 * 86_400_000))
+            .expect("review occurrence");
+    assert_eq!(
+        review
+            .start()
+            .expect("due review")
+            .current
+            .expect("quiz")
+            .review_unit_id,
+        first.review_unit_id
+    );
+    assert_eq!(review.view().expect("view").summary.attempt_count, 2);
+}
+
+#[test]
+fn study_interleaves_recent_concepts_without_new_scheduler_state() {
+    let directory = TempDirectory::new("study-interleaving");
+    let path = directory.path().join("study.json");
+    let mut study =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
+    let mut source = variant_concept_input();
+    source.body.push_str("\n\nConcept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: Which NATO code word represents B?\nAnswer: BRAVO\nDistractors: BAKER, BOSTON\nReference: The NATO phonetic alphabet word for B is BRAVO.");
+    study.add_source(source).expect("source");
+    let first = study
+        .generate(None)
+        .expect("generate")
+        .current
+        .expect("first concept");
+    assert_eq!(first.revision_expected_answer, "ALFA");
+    study
+        .submit_answer("ALFA", 2_000)
+        .expect("first concept recall");
+    let next = study
+        .advance()
+        .expect("interleaved review")
+        .current
+        .expect("second concept");
+    assert_eq!(
+        next.revision_expected_answer, "BRAVO",
+        "the feed must use durable recent-concept history"
+    );
+}
+
+#[test]
+fn superseded_work_is_neither_selected_resumed_nor_counted_as_due() {
+    let directory = TempDirectory::new("superseded-review");
+    let path = directory.path().join("study.json");
+    let mut study =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
+    study.add_source(variant_concept_input()).expect("source");
+    study.generate(None).expect("generate");
+    let mut snapshot = BetaPersistenceStore::open(&path).expect("store").snapshot();
+    let buried = snapshot.review_units[..2]
+        .iter()
+        .map(|unit| unit.review_unit_id.clone())
+        .collect::<Vec<_>>();
+    let mastered = snapshot
+        .review_units
+        .last_mut()
+        .expect("mastered superseder");
+    mastered
+        .queue
+        .progression
+        .as_mut()
+        .expect("progression")
+        .supersedes = buried.clone();
+    let retained = mastered.review_unit_id.clone();
+    snapshot
+        .schedules
+        .push(memory_engine_persistence::ScheduleRecord {
+            review_unit_id: mastered.review_unit_id.clone(),
+            state: memory_engine_core::ScheduleState {
+                due: NOW + 86_400_000,
+                stability: 4.2,
+                difficulty: 3.1,
+                elapsed_days: 1,
+                scheduled_days: 1,
+                reps: 3,
+                lapses: 0,
+                state: ScheduleStatus::Review,
+                last_review: Some(NOW - 86_400_000),
+            },
+        });
+    fs::write(&path, serde_json::to_vec(&snapshot).expect("snapshot"))
+        .expect("persist mastered state");
+    let mut resumed =
+        BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("reopen");
+    let view = resumed.start().expect("select");
+    assert!(view.current.is_none());
+    assert_eq!(view.due_count, 0);
+    assert!(view
+        .queue
+        .iter()
+        .all(|row| !buried.contains(&row.review_unit_id)));
+    assert!(view
+        .queue
+        .iter()
+        .any(|row| row.review_unit_id == retained && row.due > NOW));
+    assert!(resumed.resume_review(buried[0].as_str()).is_err());
+}
+
+#[test]
 fn post_answer_feedback_exposes_item_response_time_and_success_trends() {
     let directory = TempDirectory::new("response-time-trend");
     let path = directory.path().join("study.json");
     {
         let mut study =
             BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-        study.add_source(source_input()).expect("source");
+        study.add_source(quiz_source_input()).expect("source");
         study.generate(None).expect("generate");
         study
             .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -856,7 +983,7 @@ fn inspects_and_edits_active_review_item_without_revealing_answer() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     let started = study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -879,7 +1006,7 @@ fn inspects_and_edits_active_review_item_without_revealing_answer() {
         .reference_text
         .as_deref()
         .expect("source note")
-        .contains(&source_input().body));
+        .contains(&quiz_source_input().body));
 
     let edited = study
         .edit_current_prompt("Name the NATO code word for the letter A.", "ALFA")
@@ -980,10 +1107,13 @@ fn archiving_source_preserves_provider_send_receipt_for_export() {
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
     study.add_source(source_input()).expect("source");
-    study.generate(None).expect("generate");
+    let published = study.generate(None).expect("generate");
 
     let archived = study.archive_source("src-nato").expect("archive source");
-    assert_eq!(archived.1, 0);
+    assert_eq!(archived.1, published.summary.approved_review_unit_count);
+    assert_eq!(archived.0.summary.approved_review_unit_count, 0);
+    assert!(archived.0.queue.is_empty());
+    assert!(archived.0.current.is_none());
 
     let snapshot = BetaPersistenceStore::open(&path).expect("store").snapshot();
     assert!(snapshot.source_documents[0].archived_at.is_some());
@@ -1039,10 +1169,7 @@ fn snoozes_every_card_in_the_current_concept_without_creating_review_history() {
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
     study.add_source(concept_snooze_input()).expect("source");
-    let generated = study.generate(None).expect("generate");
-    for draft in &generated.drafts {
-        study.keep_draft(&draft.id).expect("keep");
-    }
+    study.generate(None).expect("generate");
 
     let started = study.start().expect("start");
     assert_eq!(
@@ -1110,7 +1237,6 @@ fn snoozes_every_card_in_the_current_concept_without_creating_review_history() {
     let mut resumed = BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(after_snooze))
         .expect("resume");
     let resumed = resumed.start().expect("resume start");
-    assert_eq!(resumed.due_count, 3);
     assert!(resumed
         .queue
         .iter()
@@ -1269,11 +1395,6 @@ fn bridge_material_creates_easier_due_items_before_the_parent() {
     let parent_id = approved.current.expect("parent").review_unit_id;
 
     let bridged = study.generate_bridge_material().expect("bridge");
-    if bridged.current.is_some() {
-        study
-            .snooze_current_until(NOW + DEFAULT_BRIDGE_PARENT_DEFER_MS)
-            .expect("defer existing queued sibling");
-    }
     let bridge_draft_ids = bridged
         .drafts
         .iter()
@@ -1282,14 +1403,8 @@ fn bridge_material_creates_easier_due_items_before_the_parent() {
         .collect::<Vec<_>>();
     assert_eq!(bridge_draft_ids.len(), 2);
     assert_eq!(bridged.summary.attempt_count, 0);
-    assert_eq!(bridged.summary.approved_review_unit_count, 2);
+    assert_eq!(bridged.summary.approved_review_unit_count, 4);
 
-    study
-        .keep_draft(&bridge_draft_ids[0])
-        .expect("keep first bridge");
-    let bridged = study
-        .keep_draft(&bridge_draft_ids[1])
-        .expect("keep second bridge");
     let current = bridged.current.expect("kept bridge current");
     assert!(current.review_unit_id.as_str().starts_with("bridge-"));
     assert_eq!(current.activity_stage, "recognition-bridge");
@@ -1348,11 +1463,8 @@ fn wrong_answer_triggers_remediation_pack_before_parent_returns() {
         .expect("open")
         .with_remediation_packs_enabled(true);
     study.add_source(source_input()).expect("source");
-    study.generate(None).expect("generate");
-    let approved = study
-        .keep_draft("study-run-1-draft-src-nato-2-nato-cat-composition")
-        .expect("keep exercise");
-    let parent_id = approved.current.expect("parent").review_unit_id;
+    let published = study.generate(None).expect("generate");
+    let parent_id = published.current.expect("published parent").review_unit_id;
 
     let graded = study
         .submit_answer("wrong answer", 1_800)
@@ -1360,11 +1472,11 @@ fn wrong_answer_triggers_remediation_pack_before_parent_returns() {
     let graded_current = graded.current.expect("graded current");
     assert_eq!(graded_current.grade.expect("grade").verdict, Verdict::Wrong);
     assert!(
-        graded_current
+        !graded_current
             .feedback
             .expect("graded feedback")
             .remediation_drafts_pending,
-        "a miss with an active remediation pack must expose its pending bridge drafts"
+        "published remediation requires no approval step"
     );
 
     let snapshot = BetaPersistenceStore::open(&path).expect("store").snapshot();
@@ -1376,9 +1488,7 @@ fn wrong_answer_triggers_remediation_pack_before_parent_returns() {
         .expect("remediation pack");
     assert_eq!(pack.status, RemediationPackStatus::Active);
     assert_eq!(pack.review_unit_ids.len(), 2);
-    // Accepted pack members remain pending drafts -- not yet review units --
-    // until the learner explicitly decides them, exactly like every other
-    // generated draft.
+    // Remediation members are already due; no learner decision is fabricated.
     let pack_draft_ids = snapshot
         .generated_prompt_drafts
         .iter()
@@ -1394,8 +1504,12 @@ fn wrong_answer_triggers_remediation_pack_before_parent_returns() {
             .expect("pack member draft");
         assert!(
             member.learner_decision.is_none(),
-            "pack members must stay pending until the learner decides"
+            "automatic publication must not fabricate a learner decision"
         );
+        assert!(snapshot
+            .review_units
+            .iter()
+            .any(|unit| unit.review_unit_id == *member_id));
         let progression = member
             .queue
             .progression
@@ -1416,35 +1530,18 @@ fn wrong_answer_triggers_remediation_pack_before_parent_returns() {
         "the failed parent must be deferred while the pack is active"
     );
 
-    for draft_id in &pack_draft_ids {
-        study.keep_draft(draft_id).expect("keep pack member");
-    }
-    for _ in 0..pack.review_unit_ids.len() {
-        let advanced = study.advance().expect("advance");
-        let current = advanced.current.expect("pack member current");
-        assert!(
-            pack.review_unit_ids.contains(&current.review_unit_id),
-            "queue must surface pack members before the deferred parent: {:?}",
-            current.review_unit_id
-        );
-        assert_ne!(current.review_unit_id, parent_id);
-        study
-            .submit_answer("pack-member-answer", 1_000)
-            .expect("submit pack member");
-    }
+    complete_remediation_pack(&mut study, &pack);
 
     let mut resumed_after_pack =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(after_relearn))
             .expect("resume after relearn")
             .with_remediation_packs_enabled(true);
-    let after_pack = resumed_after_pack
+    resumed_after_pack
         .start()
         .expect("start after pack completion");
-    let returned = after_pack.current.expect("parent returns");
-    assert_eq!(
-        returned.review_unit_id, parent_id,
-        "the parent must return as soon as its own schedule allows, not wait out the remediation TTL"
-    );
+    resumed_after_pack
+        .resume_review(parent_id.as_str())
+        .expect("the parent is reviewable on its own schedule before the pack TTL");
 
     let resolved = BetaPersistenceStore::open(&path).expect("store").snapshot();
     let resolved_pack = resolved
@@ -1471,7 +1568,7 @@ fn remediation_pack_generation_with_zero_accepted_drafts_leaves_parent_current()
     let mut study = BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now))
         .expect("open")
         .with_remediation_packs_enabled(true);
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -1541,7 +1638,7 @@ fn correct_answer_never_triggers_a_remediation_pack() {
     let mut study = BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now))
         .expect("open")
         .with_remediation_packs_enabled(true);
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -1626,7 +1723,7 @@ fn remediation_packs_stay_off_until_a_session_opts_in() {
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
     assert!(!study.remediation_packs_enabled());
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -1744,7 +1841,7 @@ fn remediation_pack_state_survives_session_restart() {
         pack_member_drafts
             .iter()
             .all(|draft| draft.learner_decision.is_none()),
-        "restart must not silently decide pending pack members"
+        "restart must not fabricate learner decisions"
     );
 
     let after_restart = BetaPersistenceStore::open(&path).expect("store").snapshot();
@@ -1880,11 +1977,8 @@ fn distinct_later_attempt_creates_a_new_useful_pack_via_injected_provider() {
         .expect("open")
         .with_remediation_packs_enabled(true);
     study.add_source(source_input()).expect("source");
-    study.generate(None).expect("generate");
-    let approved = study
-        .keep_draft("study-run-1-draft-src-nato-2-nato-cat-composition")
-        .expect("keep exercise");
-    let parent_id = approved.current.expect("parent").review_unit_id;
+    let published = study.generate(None).expect("generate");
+    let parent_id = published.current.expect("published parent").review_unit_id;
 
     study
         .submit_answer("wrong answer", 1_800)
@@ -1899,29 +1993,7 @@ fn distinct_later_attempt_creates_a_new_useful_pack_via_injected_provider() {
         .expect("first remediation pack");
     assert_eq!(first_pack.status, RemediationPackStatus::Active);
 
-    // Complete the first pack's members so it resolves to Completed and the
-    // parent returns on its own schedule, exactly like
-    // `wrong_answer_triggers_remediation_pack_before_parent_returns` proves.
-    // Accepted pack members are pending drafts until kept, like every other
-    // generated draft.
-    let first_pack_draft_ids = snapshot
-        .generated_prompt_drafts
-        .iter()
-        .filter(|draft| first_pack.review_unit_ids.contains(&draft.review_unit_id))
-        .map(|draft| draft.id.clone())
-        .collect::<Vec<_>>();
-    assert_eq!(first_pack_draft_ids.len(), first_pack.review_unit_ids.len());
-    for draft_id in &first_pack_draft_ids {
-        study.keep_draft(draft_id).expect("keep first pack member");
-    }
-    for _ in 0..first_pack.review_unit_ids.len() {
-        let advanced = study.advance().expect("advance");
-        let current = advanced.current.expect("pack member current");
-        assert!(first_pack.review_unit_ids.contains(&current.review_unit_id));
-        study
-            .submit_answer("pack-member-answer", 1_000)
-            .expect("submit pack member");
-    }
+    complete_remediation_pack(&mut study, &first_pack);
 
     // Reopen past the relearn interval with a real provider injected
     // through the production-safe seam, so the parent can fail again on a
@@ -1931,11 +2003,10 @@ fn distinct_later_attempt_creates_a_new_useful_pack_via_injected_provider() {
             .expect("reopen for second attempt")
             .with_remediation_provider(Box::new(SecondAttemptRemediationProvider));
     assert!(second_session.remediation_packs_enabled());
-    let resumed = second_session.start().expect("resume for second attempt");
-    assert_eq!(
-        resumed.current.expect("parent returns").review_unit_id,
-        parent_id
-    );
+    second_session.start().expect("resume for second attempt");
+    second_session
+        .resume_review(parent_id.as_str())
+        .expect("parent returns after the first pack resolves");
     second_session
         .submit_answer("still wrong", 1_800)
         .expect("second wrong submit");
@@ -1957,9 +2028,7 @@ fn distinct_later_attempt_creates_a_new_useful_pack_via_injected_provider() {
     );
 
     // Prove the injected provider's content — not the deterministic
-    // fixture the first pack used — actually produced these members. The
-    // second pack's members are still pending drafts, not review units, so
-    // read the prompt straight off the draft.
+    // fixture the first pack used — actually produced the enrolled members.
     for member_id in &second_pack.review_unit_ids {
         let member = second_snapshot
             .generated_prompt_drafts
@@ -1977,31 +2046,16 @@ fn distinct_later_attempt_creates_a_new_useful_pack_via_injected_provider() {
     }
 }
 
-/// Why remediation attempt identity can safely be the grade idempotency key.
-///
-/// That key is answer-derived by default
-/// (`beta-study:{review_unit_id}:{prompt_id}:{answer}`), which looks like it
-/// could collapse a learner who fails the same parent twice with the *same*
-/// wrong answer into one attempt and silently deny them a second pack. It
-/// cannot: the store rejects the repeated key outright, before remediation is
-/// ever consulted, so any attempt that reaches the pack guard necessarily
-/// carries a distinct key.
-///
-/// This pins that reasoning. If duplicate-review rejection is ever relaxed, this
-/// test fails and the attempt-identity derivation must be revisited.
 #[test]
-fn repeat_identical_answer_is_rejected_before_remediation_is_reached() {
+fn identical_answers_on_later_occurrences_create_distinct_reviews_and_packs() {
     let directory = TempDirectory::new("remediation-identical-repeat");
     let path = directory.path().join("study.json");
     let mut study = BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now))
         .expect("open")
         .with_remediation_packs_enabled(true);
     study.add_source(source_input()).expect("source");
-    study.generate(None).expect("generate");
-    let approved = study
-        .keep_draft("study-run-1-draft-src-nato-2-nato-cat-composition")
-        .expect("keep exercise");
-    let parent_id = approved.current.expect("parent").review_unit_id;
+    let published = study.generate(None).expect("generate");
+    let parent_id = published.current.expect("published parent").review_unit_id;
 
     let repeated_answer = "wrong answer";
     study
@@ -2017,56 +2071,50 @@ fn repeat_identical_answer_is_rejected_before_remediation_is_reached() {
         .expect("first remediation pack");
     assert_eq!(first_pack.status, RemediationPackStatus::Active);
 
-    // Resolve the first pack so the parent returns and the Active-pack guard is
-    // no longer what stops a second pack.
-    let first_pack_draft_ids = snapshot
-        .generated_prompt_drafts
-        .iter()
-        .filter(|draft| first_pack.review_unit_ids.contains(&draft.review_unit_id))
-        .map(|draft| draft.id.clone())
-        .collect::<Vec<_>>();
-    for draft_id in &first_pack_draft_ids {
-        study.keep_draft(draft_id).expect("keep first pack member");
-    }
-    for _ in 0..first_pack.review_unit_ids.len() {
-        study.advance().expect("advance");
-        study
-            .submit_answer("pack-member-answer", 1_000)
-            .expect("submit pack member");
-    }
+    complete_remediation_pack(&mut study, &first_pack);
+    let before_repeat = BetaPersistenceStore::open(&path).expect("store").snapshot();
 
     let mut second_session =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(after_relearn))
             .expect("reopen for second attempt")
             .with_remediation_provider(Box::new(SecondAttemptRemediationProvider));
-    let resumed = second_session.start().expect("resume for second attempt");
-    assert_eq!(
-        resumed.current.expect("parent returns").review_unit_id,
-        parent_id
-    );
+    second_session.start().expect("resume for second attempt");
+    second_session
+        .resume_review(parent_id.as_str())
+        .expect("parent returns after the first pack resolves");
 
-    // The identical answer never reaches remediation: the store refuses to
-    // apply the same review twice.
     let repeated = second_session
         .submit_answer(repeated_answer, 1_800)
-        .expect_err("an identical repeat answer must be refused as a duplicate review");
-    let message = format!("{repeated:?}");
-    assert!(
-        message.contains("DuplicateAppliedReview"),
-        "the repeat must be refused by duplicate-review detection, not silently \
-         accepted with no pack: {message}"
+        .expect("the same answer on a new due occurrence must commit");
+    assert_eq!(
+        repeated.summary.attempt_count,
+        before_repeat.attempts.len() + 1
     );
 
-    // And no second pack was fabricated for a review that never applied.
+    // A later occurrence has its own attempt identity and remediation lineage.
     let second_snapshot = BetaPersistenceStore::open(&path).expect("store").snapshot();
+    let parent_attempts = second_snapshot
+        .attempts
+        .iter()
+        .filter(|attempt| attempt.review_unit_id == parent_id)
+        .collect::<Vec<_>>();
+    assert_eq!(parent_attempts.len(), 2);
+    assert_ne!(
+        parent_attempts[0].idempotency_key,
+        parent_attempts[1].idempotency_key
+    );
+    assert_eq!(
+        second_snapshot.applied_reviews.len(),
+        before_repeat.applied_reviews.len() + 1
+    );
     assert_eq!(
         second_snapshot
             .remediation_packs
             .iter()
             .filter(|pack| pack.parent_review_unit_id == parent_id)
             .count(),
-        1,
-        "a refused duplicate review must not create a pack"
+        2,
+        "distinct failed occurrences must create distinct packs"
     );
 }
 
@@ -2115,7 +2163,7 @@ fn local_only_source_blocks_model_bridge_generation() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     let approved = study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -2187,7 +2235,7 @@ fn view_serializes_like_the_mobile_beta_api_contract() {
     let path = directory.path().join("study.json");
     let mut study =
         BetaStudySession::open(BetaStudyOptions::new(&path).with_clock(now)).expect("open");
-    study.add_source(source_input()).expect("source");
+    study.add_source(quiz_source_input()).expect("source");
     study.generate(None).expect("generate");
     study
         .keep_draft("study-run-1-draft-src-nato-1-nato-letter-a")
@@ -2211,6 +2259,14 @@ fn view_serializes_like_the_mobile_beta_api_contract() {
             .len(),
         3
     );
+}
+
+fn quiz_source_input() -> BetaStudySourceInput {
+    let mut source = source_input();
+    source
+        .body
+        .truncate(source.body.find("\n\n").expect("two source activities"));
+    source
 }
 
 #[test]
@@ -2342,6 +2398,40 @@ fn generation_rejects_missing_and_archived_source_ids_instead_of_filtering_them(
             memory_engine_generation::BetaGenerationError::ArchivedSourceDocument(id)
         ) if id == "src-nato"
     ));
+}
+
+fn complete_remediation_pack(
+    study: &mut BetaStudySession,
+    pack: &memory_engine_persistence::RemediationPackRecord,
+) {
+    let mut remaining = pack
+        .review_unit_ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut attempted = std::collections::BTreeSet::new();
+    while !remaining.is_empty() {
+        let current = study
+            .advance()
+            .expect("advance")
+            .current
+            .expect("published pack members remain reachable");
+        assert_ne!(current.review_unit_id, pack.parent_review_unit_id);
+        assert!(
+            attempted.insert(current.review_unit_id.clone()),
+            "an already-attempted occurrence must not displace the remaining pack"
+        );
+        // Other automatically published source quizzes may interleave. Answer
+        // those correctly, while failed pack members must not create nested packs.
+        let answer = if remaining.remove(&current.review_unit_id) {
+            "pack-member-answer".to_owned()
+        } else {
+            current.revision_expected_answer
+        };
+        study
+            .submit_answer(answer, 1_000)
+            .expect("submit queued quiz");
+    }
 }
 
 fn source_input() -> BetaStudySourceInput {

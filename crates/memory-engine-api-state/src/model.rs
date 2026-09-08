@@ -80,6 +80,7 @@ pub struct AccountCreated {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSourceRequest {
+    #[serde(default)]
     pub title: String,
     pub body: String,
     #[serde(default = "default_source_permission")]
@@ -245,6 +246,10 @@ pub struct ContentFeedbackRequest {
 #[serde(rename_all = "camelCase")]
 pub struct StudyViewResponse {
     pub drafts: Vec<BetaStudyDraftRow>,
+    /// Active review inventory, separate from historical generated drafts.
+    /// Older saved graded receipts predate this projection.
+    #[serde(default)]
+    pub queue: Vec<memory_engine_study::BetaStudyQueueRow>,
     pub current: Option<BetaStudyCurrent>,
     pub concept_progress: Vec<BetaStudyConceptProgress>,
     pub summary: BetaStudySummary,
@@ -262,6 +267,7 @@ impl StudyViewResponse {
     pub fn from_view(view: BetaStudyView) -> Self {
         Self {
             drafts: view.drafts,
+            queue: view.queue,
             current: view.current,
             concept_progress: view.concept_progress,
             summary: view.summary,

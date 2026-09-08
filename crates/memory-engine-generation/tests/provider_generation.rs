@@ -740,7 +740,7 @@ fn recitation_cues_do_not_repeat_the_target_line() {
     store
         .save_source_document(source_document(
             "src-refrain",
-            "Sing the river home",
+            "Poem: Sing the river home",
             "Sing the river home.\nSing the river home.\nLet the oars grow still.",
         ))
         .expect("source");
@@ -775,9 +775,10 @@ fn recitation_cues_do_not_repeat_the_target_line() {
     assert!(snapshot.generated_prompt_drafts[..2]
         .iter()
         .all(|draft| draft.activity_stage == "cued-recall"));
-    assert!(
-        snapshot.review_units.is_empty(),
-        "generation is not learner approval"
+    assert_eq!(
+        snapshot.review_units.len(),
+        3,
+        "validated recitation is immediately enrolled"
     );
 }
 

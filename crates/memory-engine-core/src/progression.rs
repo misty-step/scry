@@ -79,6 +79,23 @@ where
     }
 }
 
+/// Supersession hides replaced material without excluding future-due or
+/// prerequisite-gated items from an otherwise active inventory.
+#[must_use]
+pub fn superseded_review_unit_ids<TReview, TCandidate>(
+    population: &[TCandidate],
+    mastery_policy: impl Fn(&TReview) -> bool,
+) -> BTreeSet<ReviewUnitId>
+where
+    TCandidate: ProgressionLike<TReview>,
+{
+    population
+        .iter()
+        .filter(|candidate| is_mastered(candidate.review(), &mastery_policy))
+        .flat_map(|candidate| ProgressionMetadata::normalized(candidate.progression()).supersedes)
+        .collect()
+}
+
 #[derive(Clone, Debug, Default)]
 struct ProgressionContext {
     buried_ids: BTreeSet<ReviewUnitId>,

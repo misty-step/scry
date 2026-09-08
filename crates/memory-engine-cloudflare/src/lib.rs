@@ -179,6 +179,7 @@ pub struct Scry {
     env: Env,
     raw_storage: Result<JsValue, JsValue>,
     initialized: Cell<bool>,
+    content_initialized: Cell<bool>,
     in_flight: Cell<usize>,
 }
 
@@ -191,6 +192,7 @@ impl DurableObject for Scry {
             env,
             raw_storage,
             initialized: Cell::new(false),
+            content_initialized: Cell::new(false),
             in_flight: Cell::new(0),
         }
     }
@@ -246,6 +248,15 @@ impl Scry {
             self.initialized.set(true);
         }
         Ok(database)
+    }
+
+    /// Called only after primary identity and writable-traffic admission.
+    fn initialize_primary_content(&self, db: &Database) -> AppResult<()> {
+        if !self.content_initialized.get() {
+            database::migrate_generated_content(db)?;
+            self.content_initialized.set(true);
+        }
+        Ok(())
     }
 
     fn activity(&self) -> Activity<'_> {
@@ -351,9 +362,13 @@ impl Scry {
                 ));
             }
             let _activity = self.activity();
-            return recovery::handle(req, &db, &self.env)
+            let response = recovery::handle(req, &db, &self.env)
                 .await?
-                .ok_or_else(|| Failure::not_found("Recovery route not found."));
+                .ok_or_else(|| Failure::not_found("Recovery route not found."))?;
+            if path == "/internal/migration/import" && response.status_code() == 200 {
+                self.content_initialized.set(false);
+            }
+            return Ok(response);
         }
         let paused = maintenance(&db)?;
         if paused
@@ -374,6 +389,7 @@ impl Scry {
         // Persist a recovery wake BEFORE any body/network await can enqueue or
         // claim work; request cancellation must not strand a committed job.
         if !paused {
+            self.initialize_primary_content(&db)?;
             self.arm_safety_alarm().await?;
         }
         let result = web::handle(req, &db, &self.env).await;
@@ -429,6 +445,7 @@ impl Scry {
             return Ok(());
         }
         let _activity = self.activity();
+        self.initialize_primary_content(&db)?;
         self.arm_safety_alarm().await?;
         let generation = jobs::run_due(&db, &self.env).await;
         let reminders = auth::run_reminders(&db, &self.env).await;

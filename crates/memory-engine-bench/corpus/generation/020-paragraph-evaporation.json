@@ -1,0 +1,14 @@
+{
+  "id": "paragraph-evaporation",
+  "title": "Evaporation",
+  "category": "paragraph-separated-concept",
+  "body": "Evaporation cools a liquid because higher-energy molecules escape.\n\nLess energy remains in the liquid after these molecules escape.\n\nHumidity slows evaporation because more water vapor returns to the liquid.",
+  "rationale": "Three short paragraphs are causal prose, not verse. Preserve the cooling mechanism and humidity distinction rather than manufacturing one exact-recitation card per line or repeating the same cooling answer twice.",
+  "expect": {
+    "min_drafts": 2,
+    "max_drafts": 3,
+    "key_terms": ["energy", "humidity"],
+    "intent": "concept_understanding",
+    "source_supported": true
+  }
+}

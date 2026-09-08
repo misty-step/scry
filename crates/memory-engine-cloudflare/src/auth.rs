@@ -1265,7 +1265,7 @@ pub async fn handle(req: &mut Request, db: &Database, env: &Env) -> AppResult<Op
     };
     let method_ok = expected.as_ref().map_or_else(
         || matches!(req.method(), Method::Get | Method::Head | Method::Post),
-        |method| req.method() == *method || *method == Method::Get && req.method() == Method::Head,
+        |method| req.method() == *method,
     );
     let result = if method_ok {
         browser_route(req, db, env, &path).await

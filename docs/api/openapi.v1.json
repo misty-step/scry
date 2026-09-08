@@ -3,7 +3,7 @@
   "info": {
     "title": "Memory Engine API",
     "version": "1.0.0",
-    "description": "Scry's versioned learning capabilities. All clients share source permissions, learner approval, durable review evidence, scheduling, and grading."
+    "description": "Scry's versioned learning capabilities. All clients share source permissions, automatic quiz publication, durable review evidence, scheduling, and grading."
   },
   "servers": [
     {
@@ -338,8 +338,8 @@
     },
     "/v1/accounts/{account_id}/sources/{source_id}/generate": {
       "post": {
-        "summary": "Generate pending drafts synchronously for an owned source",
-        "description": "Runs one admitted generation attempt through the same durable ledger, source permissions, model budget, and learner-approval gate as queued generation. Prefer generation-jobs for restart-safe polling. An in-flight claim or exhausted budget can reject admission; no output is automatically scheduled.",
+        "summary": "Generate and publish quizzes synchronously for an owned source",
+        "description": "Runs one admitted generation attempt through the same durable ledger, source permissions, quality gates, and model budget as queued generation. Validated quizzes are published automatically. Prefer generation-jobs for restart-safe polling.",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -350,7 +350,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Study view with inspectable pending drafts or explicit generation notices",
+            "description": "Study view with automatically published quizzes or explicit generation notices",
             "content": {
               "application/json": {
                 "schema": {
@@ -419,7 +419,7 @@
     "/v1/accounts/{account_id}/generation-jobs/{job_id}": {
       "get": {
         "summary": "Observe one account-scoped generation job",
-        "description": "Poll until status is succeeded or failed. cardCount reports scheduled cards created by the job (zero until a learner keeps or edits a draft); generation itself creates no review units or schedules.",
+        "description": "Poll until status is succeeded or failed. cardCount reports published quizzes owned by the completed job. A succeeded job requires no keep or approval call; learnerDecision remains null until an actual learner edit or removal.",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -455,8 +455,25 @@
       }
     },
     "/v1/accounts/{account_id}/review/next": {
+      "get": {
+        "summary": "Open review without consuming a held graded result",
+        "description": "Returns the durable graded result when one is held; otherwise selects current review. Queue inventory includes active future-due quizzes. Only POST consumes the held result and advances.",
+        "parameters": [
+          { "$ref": "#/components/parameters/AccountId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Study view without grading or advancing past a held result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StudyViewResponse" }
+              }
+            }
+          }
+        }
+      },
       "post": {
-        "summary": "Select the next due review",
+        "summary": "Consume the held result and select the next due review",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -654,7 +671,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Study view with easier Bridge drafts awaiting explicit learner approval",
+            "description": "Study view with validated easier Bridge quizzes already scheduled",
             "content": {
               "application/json": {
                 "schema": {
@@ -822,7 +839,7 @@
     },
     "/v1/accounts/{account_id}/drafts/{draft_id}/edit": {
       "post": {
-        "summary": "Edit and keep one generated draft as a review unit",
+        "summary": "Edit a published quiz without resetting its schedule or history",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -1090,12 +1107,12 @@
       "CreateSourceRequest": {
         "type": "object",
         "required": [
-          "title",
           "body"
         ],
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional title. If omitted or blank, inferred from the captured body."
           },
           "body": {
             "type": "string"
@@ -1408,6 +1425,7 @@
         "type": "object",
         "required": [
           "drafts",
+          "queue",
           "current",
           "conceptProgress",
           "summary",
@@ -1420,6 +1438,11 @@
             "items": {
               "$ref": "#/components/schemas/StudyDraft"
             }
+          },
+          "queue": {
+            "type": "array",
+            "description": "Active published inventory, including future-due quizzes but excluding superseded, removed, and inactive-source items. Historical drafts remain separate.",
+            "items": { "$ref": "#/components/schemas/StudyQueueRow" }
           },
           "current": {
             "anyOf": [
@@ -1450,6 +1473,18 @@
               "type": "string"
             }
           }
+        }
+      },
+      "StudyQueueRow": {
+        "type": "object",
+        "required": ["reviewUnitId", "due", "reps", "state", "activityKind", "activityStage"],
+        "properties": {
+          "reviewUnitId": { "type": "string" },
+          "due": { "type": "integer" },
+          "reps": { "type": "integer", "minimum": 0 },
+          "state": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null] },
+          "activityKind": { "type": ["string", "null"] },
+          "activityStage": { "type": ["string", "null"] }
         }
       },
       "StudyDraft": {

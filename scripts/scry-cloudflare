@@ -337,7 +337,13 @@ def request(base, route, *, method="GET", body=None, token=None, admin=None, exp
 
 class LocalWorker:
     """Only the spawned process group and an explicit private persistence directory."""
-    def __init__(self, artifact, state, port=0, email="dev@example.test", additional_emails=()):
+    def __init__(self, artifact, state, port=0, email="dev@example.test", additional_emails=(), provider_env=None):
+        provider = private_env(provider_env) if provider_env else {}
+        if provider_env:
+            require(set(provider) <= {"OPENROUTER_API_KEY", "MEMORY_ENGINE_GENERATION_MODEL"},
+                    "provider env may contain only OPENROUTER_API_KEY and MEMORY_ENGINE_GENERATION_MODEL")
+            require(provider.get("OPENROUTER_API_KEY") and provider.get("MEMORY_ENGINE_GENERATION_MODEL"),
+                    "provider env requires an explicit API key and model")
         self.artifact = Path(artifact).resolve()
         self.manifest = verify_bundle(self.artifact)
         self.state = Path(state).resolve()
@@ -367,6 +373,7 @@ class LocalWorker:
                               "MEMORY_ENGINE_RETURN_UNSUBSCRIBE_SECRET": secrets.token_hex(32),
                               "MEMORY_ENGINE_MAIL_FROM": "scry@example.test",
                               "MEMORY_ENGINE_PUBLIC_BASE_URL": self.base})
+        config["vars"].update(provider)
         save(self.state / "wrangler.json", config)
 
     def start(self):
@@ -574,10 +581,11 @@ def transport_smoke(local, prefix, token):
             job = wait_generation(local, prefix, queued["id"], token, expected_status)
             if not redirect:
                 generated = request(local.base, prefix + "/review/next", method="POST", token=token)
-                require(generated.get("current") is None and
-                        any(draft["answer"] == "Mitochondria" for draft in generated["drafts"]),
-                        "real Worker Fetch did not publish inspectable, unapproved provider material")
-                require(job["cardCount"] == 0, "provider generation silently scheduled a quiz")
+                require(generated.get("current") is not None and
+                        any(draft["answer"] == "Mitochondria" and draft["approved"]
+                            and draft["learnerDecision"] is None for draft in generated["drafts"]),
+                        "validated Worker Fetch material was not automatically ready for review")
+                require(job["cardCount"] > 0, "completed provider generation did not publish review cards")
             form = urllib.parse.urlencode({"email": local.email}).encode()
             sign_in = urllib.request.Request(local.base + "/app/account", data=form, method="POST",
                                              headers={"content-type": "application/x-www-form-urlencoded"})
@@ -697,13 +705,13 @@ def smoke_bundle(artifact, receipt):
                              method="POST", token=token, expected=(202,))
             job_id = queued["id"]
             job = wait_generation(local, prefix, job_id, token)
-            require(job["cardCount"] == 0, "generation must wait for explicit learner acceptance")
+            require(job["cardCount"] > 0, "completed generation did not automatically publish review cards")
             generated = request(local.base, prefix + "/review/next", method="POST", token=token)
-            require(generated["drafts"] and generated.get("current") is None,
-                    "generation must create pending drafts, not silently schedule cards")
-            draft_id = generated["drafts"][0]["id"]
-            kept = request(local.base, prefix + f"/drafts/{draft_id}/keep", method="POST", token=token)
-            review_id = kept["current"]["reviewUnitId"]
+            require(generated["drafts"] and generated.get("current") is not None,
+                    "validated generation was not ready for review without keep")
+            require(all(draft["approved"] and draft["learnerDecision"] is None for draft in generated["drafts"]),
+                    "automatic publication fabricated a learner decision or omitted enrollment")
+            review_id = generated["current"]["reviewUnitId"]
             browser_client = browser_identity_smoke(local, other_email)
             other_session = request(local.base, "/v1/service-sessions", method="POST",
                                     body={"email": other_email}, admin=local.admin, expected=(201,))
@@ -758,7 +766,7 @@ def smoke_bundle(artifact, receipt):
                    "wrangler": WRANGLER, "executed_at_ms": int(time.time() * 1000),
                    "checks": ["fingerprint-guarded-local-activation", "public-assets-and-readiness",
                               "anonymous-rejection", "admin-service-session",
-                              "alarm-driven-local-only-generation", "explicit-keep", "account-isolation", "durable-resume",
+                              "alarm-driven-local-only-generation", "automatic-publication-without-keep", "account-isolation", "durable-resume",
                               "runtime-survives-restart", "durable-assisted-grading", "durable-idempotent-replay",
                               "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection",
                               "schema-fingerprint", "r2-backup-retrieval-isolated-restore",
@@ -876,6 +884,24 @@ def deployment_lock():
 
 @deployment_lock()
 def deploy_operation(args):
+    if args.command != "deploy":
+        return _deploy_operation(args)
+    root = Path(args.out).resolve()
+    require(not root.exists(), "deployment output already exists; inspect its receipts, never blindly retry")
+    root.mkdir(parents=True, mode=0o700)
+    upload_receipt = root / "upload.json"
+    promote_receipt = root / "promote.json"
+    print(f"deploy environment={args.environment} upload_receipt={upload_receipt} promote_receipt={promote_receipt}; "
+          "uploads then switches the active code version; does not enable paused traffic. "
+          "Accept staging product behavior before a separate production invocation.", flush=True)
+    # One operator lock covers both guarded operations. Each rechecks the explicit
+    # current deployment and staging evidence; failure stops without retry or activation.
+    _deploy_operation(argparse.Namespace(**{**vars(args), "command": "upload", "receipt": upload_receipt}))
+    _deploy_operation(argparse.Namespace(**{**vars(args), "command": "promote", "receipt": promote_receipt,
+                                           "version_receipt": upload_receipt}))
+
+
+def _deploy_operation(args):
     artifact = Path(args.artifact).resolve()
     manifest = verify_bundle(artifact)
     proof = verify_proof(artifact, args.verification)
@@ -1107,22 +1133,33 @@ def main():
     command = commands.add_parser("smoke")
     command.add_argument("--artifact", required=True)
     command.add_argument("--receipt", required=True)
-    command = commands.add_parser("dev")
-    command.add_argument("--artifact", required=True)
-    command.add_argument("--state", help="new private state directory; default: a unique temporary directory")
-    command.add_argument("--port", type=int, default=8787)
+    command = commands.add_parser("dev", help="build fresh exact bytes and open a private local Worker")
+    command.add_argument("--artifact", help="use these exact existing bytes instead of building")
+    command.add_argument("--state", help="new private state directory retained after exit; never reused")
+    command.add_argument("--port", type=int, default=0, help="loopback port; default: an available port")
     command.add_argument("--email", default="dev@example.test")
-    for name in ("bootstrap", "upload", "promote", "rollback"):
-        command = commands.add_parser(name)
+    command.add_argument("--provider-env",
+                         help="explicit mode-0600 API key/model file; enables paid model calls for local captures")
+    for name in ("bootstrap", "deploy", "upload", "promote", "rollback"):
+        command = commands.add_parser(name, description=(
+            "Upload and promote only the selected environment. Accept staging product behavior before "
+            "a separate production invocation. Paused traffic is never enabled."
+        ) if name == "deploy" else None)
         command.add_argument("--artifact", required=True)
         command.add_argument("--verification", required=True)
         command.add_argument("--environment", choices=("staging", "production"), required=True)
-        command.add_argument("--receipt", required=True)
+        if name == "deploy":
+            command.add_argument("--out", required=True, help="new private directory for upload/promote receipts")
+        else:
+            command.add_argument("--receipt", required=True)
         command.add_argument("--admin-env", required=True, help="private mode0600 env with MEMORY_ENGINE_ADMIN_TOKEN")
-        command.add_argument("--current", help="last verified deployment receipt for this environment")
-        command.add_argument("--version-receipt", help="explicit uploaded or previously verified target version")
+        command.add_argument("--current", required=name == "deploy",
+                             help="explicit current deployment receipt for this environment")
+        if name != "deploy":
+            command.add_argument("--version-receipt", help="explicit uploaded or previously verified target version")
         command.add_argument("--staging-receipt", help="same-byte staging receipt proving activation and passed public_smoke")
-        command.add_argument("--secrets-file", help="bootstrap only: private literal KEY=value secrets")
+        if name != "deploy":
+            command.add_argument("--secrets-file", help="bootstrap only: private literal KEY=value secrets")
     command = commands.add_parser("traffic", help="pause or activate the primary actor without changing Worker versions")
     command.add_argument("--environment", choices=("staging", "production"), required=True)
     command.add_argument("--artifact", required=True)
@@ -1154,10 +1191,21 @@ def main():
         smoke_bundle(args.artifact, args.receipt)
     elif args.command == "dev":
         with tempfile.TemporaryDirectory(prefix="scry-workerd-dev-") as temporary:
-            local = LocalWorker(args.artifact, args.state or str(Path(temporary) / "runtime"), args.port, args.email)
+            artifact = args.artifact or build_bundle(Path(temporary) / "bundle")
+            local = LocalWorker(artifact, args.state or str(Path(temporary) / "runtime"), args.port, args.email,
+                                provider_env=args.provider_env)
             try:
                 local.start()
-                print(f"local Worker {local.base} state={local.state}; local outbox only, no model credential", flush=True)
+                provider_notice = (
+                    "Live model calls are enabled by your explicit provider file. Captured text is sent to that model."
+                    if args.provider_env else
+                    "No live model credentials are loaded. Browser capture needs --provider-env for AI generation; "
+                    "the API can generate explicit Question:/Answer: sources with permission local_only."
+                )
+                print(f"local Worker {local.base} state={local.state}\n"
+                      f"Sign in at {local.base}/app/account with {local.email}; links appear only in the local outbox.\n"
+                      f"{provider_notice}\nNo live mail or deployment credentials are loaded.",
+                      flush=True)
                 return local.process.wait()
             finally:
                 local.stop()

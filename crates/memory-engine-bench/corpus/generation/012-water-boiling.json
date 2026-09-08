@@ -7,6 +7,6 @@
     "min_drafts": 1,
     "max_drafts": 4,
     "key_terms": ["100 degrees", "3,000 meters"],
-    "requires_variants": true
+    "source_supported": true
   }
 }

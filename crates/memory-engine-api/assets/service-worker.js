@@ -1,5 +1,6 @@
-// Scry public shell worker. Keep CACHE_NAME and shell list in lockstep when shipping updates.
-const CACHE_NAME = "scry-shell-v5";
+// Only public shell assets enter this cache. Mutable app assets revalidate
+// on every load, so a CSS/JS-only release never depends on a manual version bump.
+const CACHE_NAME = "scry-shell-v6";
 const OFFLINE_URL = "/offline.html";
 const IMMUTABLE_SHELL_URLS = Object.freeze([
   OFFLINE_URL,
@@ -13,6 +14,9 @@ const IMMUTABLE_SHELL_URLS = Object.freeze([
   "/icon-192.png",
   "/icon-512.png",
   "/apple-touch-icon.png",
+]);
+const REVALIDATED_SHELL_URLS = new Set([
+  OFFLINE_URL, "/static/ledger.css", "/static/app.js", "/manifest.webmanifest",
 ]);
 
 self.addEventListener("install", (event) => {
@@ -89,6 +93,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (isAuthenticatedOrLearnerRequest(url) || !isImmutableShellRequest(request, url)) return;
+
+  if (REVALIDATED_SHELL_URLS.has(url.pathname)) {
+    event.respondWith(
+      fetch(request, { cache: "no-cache" }).then((response) => {
+        if (response.ok) {
+          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone())));
+        }
+        return response;
+      }).catch(async () => (await caches.match(request)) || Response.error()),
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(request).then((cached) =>

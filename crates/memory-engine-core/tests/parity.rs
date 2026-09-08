@@ -1,48 +1,12 @@
 use std::cmp::Ordering;
 
 use memory_engine_core::{
-    compare_queue_priority, default_rating_policy, pick_next_queue_candidate, ExactPrompt,
-    ExactPromptKind, GradeContext, GradeResult, GraderKind, ProgressionMetadata, Prompt,
-    QueueCandidate, QueueSelectionOptions, Rating, ReviewUnitId, ReviewUnitLifecycle,
-    ScheduleState, ScheduleStatus, Verdict,
+    compare_queue_priority, pick_next_queue_candidate, ExactPrompt, ExactPromptKind, GradeResult,
+    GraderKind, ProgressionMetadata, Prompt, QueueCandidate, QueueSelectionOptions, Rating,
+    ReviewUnitId, ReviewUnitLifecycle, ScheduleState, ScheduleStatus, Verdict,
 };
 
 const NOW: i64 = 1_775_650_400_000;
-
-#[test]
-fn rating_policy_matches_the_typescript_matrix() {
-    for verdict in [
-        Verdict::Correct,
-        Verdict::Close,
-        Verdict::Wrong,
-        Verdict::Revealed,
-    ] {
-        for response_time_ms in [3_000, 10_000] {
-            for prior_reps in [0, 3, 10] {
-                let rating = default_rating_policy(
-                    verdict,
-                    GradeContext {
-                        response_time_ms,
-                        prior_reps,
-                    },
-                );
-                let expected = match verdict {
-                    Verdict::Correct if response_time_ms <= 4_000 && prior_reps >= 3 => {
-                        Rating::Easy
-                    }
-                    Verdict::Correct => Rating::Good,
-                    Verdict::Close => Rating::Hard,
-                    Verdict::Wrong | Verdict::Revealed => Rating::Again,
-                };
-
-                assert_eq!(
-                    rating, expected,
-                    "unexpected rating for {verdict:?}, {response_time_ms}ms, {prior_reps} reps",
-                );
-            }
-        }
-    }
-}
 
 #[test]
 fn queue_priority_matches_review_urgency_and_tie_break_contract() {

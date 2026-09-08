@@ -1,11 +1,9 @@
-//! `memory-engine-review` — the morning-review dogfood client.
+//! `memory-engine-review` — learn material, then review it.
 //!
-//! A brutally thin CLI over the deployed `memory-engine-api` v1 contract: it
-//! authenticates once, then drives `review/next` -> answer -> `review/submit`
-//! in a loop until the account's due queue is empty. It keeps streak and
-//! cold-recall evidence in a local NDJSON log; it does not add any new server
-//! surface. See `docs/dogfood/morning-review-cli.md` for the falsifier this
-//! client exists to serve.
+//! A thin CLI over the deployed `memory-engine-api` v1 contract. `learn`
+//! captures input and waits on durable generation; validated quizzes publish
+//! automatically. The default command reviews due quizzes and keeps streak
+//! and cold-recall evidence in a local NDJSON log.
 
 use std::{
     env,
@@ -23,6 +21,8 @@ use serde_json::json;
 
 const MAX_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const GENERATION_POLL_MAX_ATTEMPTS: u32 = 40;
+const GENERATION_POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// Safety cap on cards reviewed in a single run. A real due queue should
 /// empty out long before this; it exists only to stop a server bug (a queue
 /// that never reaches zero) from looping the CLI forever.
@@ -47,7 +47,11 @@ fn dispatch(
     stdin: &mut impl BufRead,
     stdout: &mut impl Write,
 ) -> Result<(), CliFailure> {
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+    if args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| arg == "--help" || arg == "-h")
+    {
         print_usage();
         return Ok(());
     }
@@ -55,12 +59,13 @@ fn dispatch(
     let (subcommand, rest) = match args.first().map(String::as_str) {
         Some("login") => ("login", &args[1..]),
         Some("streak") => ("streak", &args[1..]),
+        Some("learn") => ("learn", &args[1..]),
         Some("review") => ("review", &args[1..]),
         Some(other) if other.starts_with('-') => ("review", args),
         None => ("review", args),
         Some(_) => {
             return Err(CliFailure(format!(
-                "unknown subcommand {:?}; expected login, review, or streak",
+                "unknown subcommand {:?}; expected login, learn, review, or streak",
                 args[0]
             )));
         }
@@ -69,13 +74,14 @@ fn dispatch(
     match subcommand {
         "login" => run_login(rest),
         "streak" => run_streak(rest, stdout),
+        "learn" => run_learn(rest, stdin, stdout),
         _ => run_review(rest, stdin, stdout).map(|_receipt| ()),
     }
 }
 
 fn print_usage() {
     println!(
-        "usage:\n  memory-engine-review login --account-id ID --session-token TOKEN [--base-url URL]\n  memory-engine-review [review] [--base-url URL] [--max-cards N]\n  memory-engine-review streak [--days N]\n\nCredentials resolve in order: MEMORY_ENGINE_ACCOUNT_ID/MEMORY_ENGINE_SESSION_TOKEN\nenv vars, then the file written by `login` (default {}).",
+        "usage:\n  memory-engine-review login --account-id ID --session-token TOKEN [--base-url URL]\n  memory-engine-review learn WORD_OR_PHRASE [--base-url URL]\n  cat essay.txt | memory-engine-review learn\n  memory-engine-review [review] [--base-url URL] [--max-cards N]\n  memory-engine-review streak [--days N]\n\nlearn also accepts --credentials-path PATH; use -- before input beginning with '-'.\nCredentials resolve in order: MEMORY_ENGINE_ACCOUNT_ID/MEMORY_ENGINE_SESSION_TOKEN\nenv vars, then the file written by `login` (default {}).",
         default_credentials_path().display()
     );
 }
@@ -136,6 +142,115 @@ fn run_login(args: &[String]) -> Result<(), CliFailure> {
         credentials.base_url
     );
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// learn
+// ---------------------------------------------------------------------------
+
+fn run_learn(
+    args: &[String],
+    stdin: &mut impl BufRead,
+    stdout: &mut impl Write,
+) -> Result<(), CliFailure> {
+    let mut base_url_override = None;
+    let mut credentials_path_override = None;
+    let mut words = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--" => {
+                words.extend(args[index + 1..].iter().map(String::as_str));
+                break;
+            }
+            flag @ ("--base-url" | "--credentials-path") => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| CliFailure(format!("{flag} requires a value")))?;
+                if flag == "--base-url" {
+                    base_url_override = Some(value.clone());
+                } else {
+                    credentials_path_override = Some(PathBuf::from(value));
+                }
+                index += 2;
+            }
+            flag if flag.starts_with('-') => {
+                return Err(CliFailure(format!(
+                    "unknown argument {flag}; use -- before learning input beginning with '-'"
+                )));
+            }
+            word => {
+                words.push(word);
+                index += 1;
+            }
+        }
+    }
+
+    let input = if words.is_empty() {
+        let mut input = String::new();
+        stdin.read_to_string(&mut input).map_err(io_failure)?;
+        input
+    } else {
+        words.join(" ")
+    };
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(CliFailure(
+            "learn requires a word, phrase, or material on stdin".to_owned(),
+        ));
+    }
+
+    let session = resolve_session(base_url_override, credentials_path_override)?;
+    let client = ReviewClient::new(
+        build_agent(),
+        session.base_url,
+        session.account_id,
+        session.token,
+    );
+    learn_material(&client, input, stdout)
+}
+
+fn learn_material(
+    client: &ReviewClient,
+    input: &str,
+    stdout: &mut impl Write,
+) -> Result<(), CliFailure> {
+    let source = client.save_source(input)?;
+    writeln!(stdout, "Saved source: {}", source.source_id).map_err(io_failure)?;
+    stdout.flush().map_err(io_failure)?;
+    let enqueued = client
+        .enqueue_generation_job(&source.source_id)
+        .map_err(|error| {
+            CliFailure(format!(
+                "Source {} is saved, but generation admission was not confirmed: {error}. \
+                 Resume with POST /v1/accounts/{}/sources/{}/generation-jobs; do not save it again.",
+                source.source_id, client.account_id, source.source_id
+            ))
+        })?;
+    writeln!(stdout, "Generation job: {}", enqueued.id).map_err(io_failure)?;
+    stdout.flush().map_err(io_failure)?;
+    let job_id = enqueued.id.clone();
+    let job = client.poll_generation_job(enqueued).map_err(|error| {
+        CliFailure(format!(
+            "Source {} remains saved. Generation job {job_id}: {error}. \
+             Inspect GET /v1/accounts/{}/generation-jobs/{job_id}; do not save it again.",
+            source.source_id, client.account_id
+        ))
+    })?;
+    if job.status == "failed" {
+        return Err(CliFailure(format!(
+            "Source {} remains saved. Generation job {} failed: {}",
+            source.source_id,
+            job.id,
+            job.error.as_deref().unwrap_or("no further error details")
+        )));
+    }
+    writeln!(
+        stdout,
+        "Published {} quiz(zes). Run `memory-engine-review` to review.",
+        job.card_count
+    )
+    .map_err(io_failure)
 }
 
 // ---------------------------------------------------------------------------
@@ -647,6 +762,40 @@ impl ReviewClient {
         }
     }
 
+    fn save_source(&self, input: &str) -> Result<SourceReceipt, CliFailure> {
+        self.post_json(
+            &format!("/v1/accounts/{}/sources", self.account_id),
+            &json!({ "body": input }),
+        )
+    }
+
+    fn enqueue_generation_job(&self, source_id: &str) -> Result<GenerationJob, CliFailure> {
+        self.post_empty(&format!(
+            "/v1/accounts/{}/sources/{source_id}/generation-jobs",
+            self.account_id
+        ))
+    }
+
+    fn poll_generation_job(&self, mut job: GenerationJob) -> Result<GenerationJob, CliFailure> {
+        for attempt in 0..GENERATION_POLL_MAX_ATTEMPTS {
+            if matches!(job.status.as_str(), "succeeded" | "failed") {
+                return Ok(job);
+            }
+            if attempt + 1 == GENERATION_POLL_MAX_ATTEMPTS {
+                break;
+            }
+            std::thread::sleep(GENERATION_POLL_INTERVAL);
+            job = self.get(&format!(
+                "/v1/accounts/{}/generation-jobs/{}",
+                self.account_id, job.id
+            ))?;
+        }
+        Err(CliFailure(format!(
+            "still {} after the bounded wait; generation continues on the server",
+            job.status
+        )))
+    }
+
     fn next_review(&self) -> Result<StudyView, CliFailure> {
         self.post_empty(&format!("/v1/accounts/{}/review/next", self.account_id))
     }
@@ -669,6 +818,15 @@ impl ReviewClient {
                 "idempotencyKey": idempotency_key,
             }),
         )
+    }
+    fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliFailure> {
+        let mut response = self
+            .agent
+            .get(&endpoint(&self.base_url, path))
+            .header("Authorization", &self.authorization())
+            .call()
+            .map_err(|error| transport_failure(path, &error))?;
+        read_json(&mut response, path)
     }
 
     fn post_empty<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliFailure> {
@@ -703,6 +861,7 @@ impl ReviewClient {
 fn build_agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(REQUEST_TIMEOUT))
+        .http_status_as_error(false)
         .build()
         .into()
 }
@@ -711,21 +870,30 @@ fn read_json<T: DeserializeOwned>(
     response: &mut ureq::http::Response<ureq::Body>,
     action: &str,
 ) -> Result<T, CliFailure> {
-    response
+    let status = response.status();
+    if status.is_success() {
+        return response
+            .body_mut()
+            .with_config()
+            .limit(MAX_RESPONSE_BYTES)
+            .read_json()
+            .map_err(|error| CliFailure(format!("{action} returned unreadable JSON: {error}")));
+    }
+    let body: Result<ApiError, _> = response
         .body_mut()
         .with_config()
         .limit(MAX_RESPONSE_BYTES)
-        .read_json()
-        .map_err(|error| CliFailure(format!("{action} returned unreadable JSON: {error}")))
+        .read_json();
+    match body {
+        Ok(ApiError { error }) => Err(CliFailure(format!(
+            "{action} failed: {error} (HTTP {status})"
+        ))),
+        Err(_) => Err(CliFailure(format!("{action} failed with HTTP {status}"))),
+    }
 }
 
 fn transport_failure(action: &str, error: &ureq::Error) -> CliFailure {
-    match error {
-        ureq::Error::StatusCode(status) => {
-            CliFailure(format!("{action} failed with HTTP {status}"))
-        }
-        _ => CliFailure(format!("{action} transport failed: {error}")),
-    }
+    CliFailure(format!("{action} transport failed: {error}"))
 }
 
 fn endpoint(base_url: &str, path: &str) -> String {
@@ -791,6 +959,25 @@ fn format_date(year: i64, month: u32, day: u32) -> String {
 // ---------------------------------------------------------------------------
 // API response shapes (thin subset of docs/api/openapi.v1.json)
 // ---------------------------------------------------------------------------
+#[derive(Deserialize)]
+struct ApiError {
+    error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceReceipt {
+    source_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationJob {
+    id: String,
+    status: String,
+    card_count: usize,
+    error: Option<String>,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1179,6 +1366,7 @@ mod tests {
             ),
         );
         let created = state.create_account(&email).expect("pre-provision account");
+        state.start_worker();
         let server = tokio::spawn(async move {
             axum::serve(listener, memory_engine_api::router(state))
                 .await
@@ -1195,47 +1383,9 @@ mod tests {
         );
 
         let fixtures = [
-            (
-                "NATO letter A fixture",
-                "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.",
-                "ALFA",
-            ),
-            (
-                "NATO letter B fixture",
-                "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\nDistractors: ALFA, CHARLIE\nReference: The NATO phonetic alphabet word for B is BRAVO.",
-                "BRAVO",
-            ),
+            "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.",
+            "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\nDistractors: ALFA, CHARLIE\nReference: The NATO phonetic alphabet word for B is BRAVO.",
         ];
-        for (title, body, _answer) in &fixtures {
-            let source: serde_json::Value = client
-                .post_json(
-                    &format!("/v1/accounts/{}/sources", created.account_id),
-                    &json!({ "title": title, "body": body }),
-                )
-                .expect("create source");
-            let source_id = source["sourceId"].as_str().expect("source id").to_owned();
-            let generated: serde_json::Value = client
-                .post_empty(&format!(
-                    "/v1/accounts/{}/sources/{source_id}/generate",
-                    created.account_id
-                ))
-                .expect("generate");
-            let draft_id = generated["drafts"]
-                .as_array()
-                .expect("drafts array")
-                .iter()
-                .find(|draft| draft["learnerDecision"].is_null())
-                .expect("one undecided draft for this source")["id"]
-                .as_str()
-                .expect("draft id")
-                .to_owned();
-            client
-                .post_empty::<serde_json::Value>(&format!(
-                    "/v1/accounts/{}/drafts/{draft_id}/keep",
-                    created.account_id
-                ))
-                .expect("keep draft");
-        }
 
         // Serialized by ENV_LOCK: MEMORY_ENGINE_ACCOUNT_ID/SESSION_TOKEN are
         // process-global and other tests in this file also touch them.
@@ -1247,12 +1397,38 @@ mod tests {
 
         let dir = tempdir();
         let log_path = dir.join("streak.ndjson");
+        let mut learned_output = Vec::new();
+        dispatch(
+            &[
+                "learn".to_owned(),
+                "--base-url".to_owned(),
+                base_url.clone(),
+                fixtures[0].to_owned(),
+            ],
+            &mut Cursor::new(Vec::<u8>::new()),
+            &mut learned_output,
+        )
+        .expect("learn argument input");
+        dispatch(
+            &[
+                "learn".to_owned(),
+                "--base-url".to_owned(),
+                base_url.clone(),
+            ],
+            &mut Cursor::new(fixtures[1].as_bytes()),
+            &mut learned_output,
+        )
+        .expect("learn piped material");
+        assert_eq!(
+            client.next_review().expect("published quizzes").due_count,
+            2
+        );
         // Two due cards, both answered correctly: proves the loop iterates
         // (not just handles one card), accumulates reviewed_count across
         // iterations, and still reaches a natural dueCount == 0 completion.
         let mut stdin = Cursor::new(b"ALFA\nBRAVO\n".to_vec());
         let mut stdout = Vec::new();
-        let receipt = run_review(
+        dispatch(
             &[
                 "--base-url".to_owned(),
                 base_url,
@@ -1268,14 +1444,13 @@ mod tests {
         std::env::remove_var("MEMORY_ENGINE_SESSION_TOKEN");
         server.abort();
 
-        assert_eq!(receipt.reviewed_count, 2);
-        assert_eq!(receipt.due_count_at_start, 2);
-        assert!(receipt.completed);
-
         let transcript = String::from_utf8(stdout).expect("utf8 transcript");
         assert!(transcript.contains("What is the NATO phonetic alphabet word for A?"));
         assert!(transcript.contains("What is the NATO phonetic alphabet word for B?"));
-        assert!(transcript.contains("All caught up. Reviewed 2 card(s)."));
+        assert!(!transcript.contains(&created.session_token));
+        assert!(!String::from_utf8(learned_output)
+            .expect("learning transcript")
+            .contains(&created.session_token));
 
         let events = read_streak_events(&log_path).expect("streak events");
         assert_eq!(events.len(), 3);
@@ -1289,5 +1464,112 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[allow(clippy::too_many_lines)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn learn_phrase_preserves_saved_material_and_safe_admission_error() {
+        use axum::{
+            extract::Request,
+            middleware::{self, Next},
+            response::IntoResponse,
+        };
+
+        let dir = tempdir();
+        let email = format!("review-admission-{}@example.com", unique_suffix());
+        let state = memory_engine_api::ApiState::new(
+            memory_engine_api::AccountRegistry::with_store_root(dir.join("store"))
+                .with_auth_config(
+                    memory_engine_api::AuthConfig::allow_emails([email.clone()])
+                        .with_anonymous_account_creation(true),
+                ),
+        );
+        let created = state.create_account(&email).expect("provision account");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind API");
+        let base_url = format!("http://{}", listener.local_addr().expect("address"));
+        let router = memory_engine_api::router(state).layer(middleware::from_fn(
+            |req: Request, next: Next| async move {
+                if req.method() == "POST" && req.uri().path().ends_with("/generation-jobs") {
+                    return (
+                        axum::http::StatusCode::CONFLICT,
+                        axum::Json(json!({"error": "Generation queue is full for this account."})),
+                    )
+                        .into_response();
+                }
+                next.run(req).await
+            },
+        ));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.expect("serve API");
+        });
+        let path = dir.join("credentials.json");
+        write_credentials(
+            &path,
+            &StoredCredentials {
+                base_url: base_url.clone(),
+                account_id: created.account_id.clone(),
+                session_token: created.session_token.clone(),
+            },
+        )
+        .expect("store private credentials");
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let previous_env = [
+            (
+                "MEMORY_ENGINE_ACCOUNT_ID",
+                env::var_os("MEMORY_ENGINE_ACCOUNT_ID"),
+            ),
+            (
+                "MEMORY_ENGINE_SESSION_TOKEN",
+                env::var_os("MEMORY_ENGINE_SESSION_TOKEN"),
+            ),
+        ];
+        for (key, _) in &previous_env {
+            env::remove_var(key);
+        }
+        let mut stdout = Vec::new();
+        let result = dispatch(
+            &[
+                "learn".to_owned(),
+                "--credentials-path".to_owned(),
+                path.display().to_string(),
+                "spaced".to_owned(),
+                "repetition".to_owned(),
+            ],
+            &mut Cursor::new(Vec::<u8>::new()),
+            &mut stdout,
+        );
+        for (key, value) in previous_env {
+            if let Some(value) = value {
+                env::set_var(key, value);
+            }
+        }
+        let error = result.expect_err("admission failure must not claim publication");
+        let client = ReviewClient::new(
+            build_agent(),
+            base_url,
+            created.account_id.clone(),
+            created.session_token.clone(),
+        );
+        let saved: serde_json::Value = client
+            .get(&format!("/v1/accounts/{}/sources", created.account_id))
+            .expect("saved material");
+        let source = &saved["sources"][0];
+        assert_eq!(source["body"], "spaced repetition");
+        let source_id = source["sourceId"].as_str().expect("source id");
+        let transcript = String::from_utf8(stdout).expect("transcript");
+        assert!(transcript.contains(source_id));
+        assert!(error.to_string().contains(source_id));
+        assert!(error
+            .to_string()
+            .contains("Generation queue is full for this account."));
+        assert!(error.to_string().contains("409"));
+        assert!(!transcript.contains(&created.session_token));
+        assert!(!error.to_string().contains(&created.session_token));
+        assert_eq!(client.next_review().expect("no publication").due_count, 0);
+        server.abort();
     }
 }

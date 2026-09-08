@@ -118,7 +118,7 @@ done
 ```
 
 For authenticated `/v1`, use an operator-provisioned disposable QA account with
-an approved public source and at least one kept, due question. Put its
+an authorized public source and at least one published, due question. Put its
 `baseUrl`, `accountId`, and `sessionToken` in the existing owner-only mode-0600
 `credentials.json` format under a **separate QA home**. Do not use the learner's
 home or put tokens in argv. The following real clients use that credential file;
@@ -153,9 +153,10 @@ For live `/app/*`, open an actual browser at 390×844 or use a physical phone:
 
 1. Request a fresh magic link for the approved QA mailbox; inspect real delivery,
    sign in from that message, and confirm the consumed-link replay is rejected.
-2. Capture a public source, generate, inspect source-grounded drafts, and keep
-   explicitly. Answer a cold question, Continue, reveal another, and submit it;
-   verify correct/revealed grading and narrow-screen layout.
+2. Capture a word, phrase, or public passage and observe automatic publication
+   into review without an approval action. Answer a cold question, choose Next,
+   then “I don’t know yet”; verify Correct/Good and Revealed/Again respectively.
+   Reload must hold the grade; inspect narrow-screen layout and deliberate Next.
 3. Check missing/mismatched CSRF rejection. Use independently scoped cookie jars
    to prove logout-all revokes both browser sessions, not the machine session.
 4. Receive a real due-count reminder, follow its signed unsubscribe link, confirm

@@ -10,11 +10,11 @@ Scry is not a generic agent-memory store, a chat tutor, or a card database that 
 
 ## Product Loop
 
-1. A learner brings a goal or source material, such as available study material or a short prompt.
-2. Scry turns that input into atomic, reviewable quiz material and the context needed to answer it.
-3. The learner starts a quiz quickly, answers, and receives clear graded feedback.
-4. Scry schedules the next review from the result and adapts difficulty from the learner's evidence.
-5. A wrong, close, or revealed attempt produces easier bridge quiz items for prerequisite or atomic concepts before the failed item returns.
+1. Opening Scry enters the next useful quiz directly; a graded result stays until the learner chooses Next.
+2. Add a word, a phrase, or a pasted essay in one field. No project, title, or content-type decision is required.
+3. Scry generates, validates, publishes, and schedules useful quizzes automatically. Quality gates run behind the scenes; there is no approval inbox.
+4. Answer a question or choose “I don’t know yet.” Feedback and the next review schedule are saved together; assisted and incomplete recall never count as successful recall.
+5. Optional easier quizzes, Study notes, editing, removal, and progress stay secondary to review. Source permissions, provenance, cost limits, and durable failure recovery remain enforced.
 
 The near-term bet is a strong quiz loop, not full course generation. More learning material, richer question types, AI-graded free response, and broader remediation can follow evidence from that loop. Anki import is a later roadmap item, not a near-term requirement or the differentiator.
 

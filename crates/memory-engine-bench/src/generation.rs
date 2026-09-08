@@ -541,6 +541,9 @@ impl BenchGenerationStore {
                     .find(|draft| {
                         draft.id == *id
                             && draft.validation.status == GeneratedPromptValidationStatus::Accepted
+                            && self.snapshot.review_units.iter().any(|unit| {
+                                unit.generated_prompt_draft_id.as_deref() == Some(draft.id.as_str())
+                            })
                     })
                     .map(|draft| self.draft_to_candidate(draft))
             })
@@ -612,11 +615,21 @@ impl BenchGenerationStore {
         self.snapshot.reference_spans.push(reference);
     }
 
-    fn upsert_generation_run(&mut self, run: GenerationRun) {
-        self.snapshot
+    fn upsert_generation_run(&mut self, run: GenerationRun) -> Option<GenerationRun> {
+        if let Some(index) = self
+            .snapshot
             .generation_runs
-            .retain(|existing| existing.id != run.id);
-        self.snapshot.generation_runs.push(run);
+            .iter()
+            .position(|existing| existing.id == run.id)
+        {
+            Some(std::mem::replace(
+                &mut self.snapshot.generation_runs[index],
+                run,
+            ))
+        } else {
+            self.snapshot.generation_runs.push(run);
+            None
+        }
     }
 
     fn upsert_concept_note(&mut self, note: ConceptReferenceNote) {
@@ -649,7 +662,22 @@ impl BetaGenerationStore for BenchGenerationStore {
     }
 
     fn save_generation_run(&mut self, run: GenerationRun) -> Result<GenerationRun, Self::Error> {
-        self.upsert_generation_run(run.clone());
+        let previous = self.upsert_generation_run(run.clone());
+        let units = match memory_engine_persistence::review_units_for_publication(
+            &self.snapshot,
+            Some(&run.id),
+        ) {
+            Ok(units) => units,
+            Err(error) => {
+                if let Some(previous) = previous {
+                    let _ = self.upsert_generation_run(previous);
+                } else {
+                    let _ = self.snapshot.generation_runs.pop();
+                }
+                return Err(error.to_string());
+            }
+        };
+        self.snapshot.review_units.extend(units);
         Ok(run)
     }
 
@@ -1208,7 +1236,7 @@ fn render_receipt(
 
 fn render_provenance_and_review_material(receipt: &mut String, scores: &[SourceScore]) {
     let _ = writeln!(receipt, "\n## Provenance and adversarial oracles\n");
-    let _ = writeln!(receipt, "Quote presence verifies attribution, not factual entailment. Model-expanded topic facts have no source evidence and require human review. Key-term coverage excludes distractors. Failures and empty output are not perfect acceptance.\n");
+    let _ = writeln!(receipt, "Quote presence verifies attribution, not factual entailment. Model-expanded topic facts have no source evidence and are not source-verified. Key-term coverage excludes distractors. Failures and empty output are not perfect acceptance.\n");
     let _ = writeln!(receipt, "| source | source-supported | model-expanded | expected grounding | forbidden claims absent |\n| --- | --- | --- | --- | --- |");
     for score in scores {
         let _ = writeln!(

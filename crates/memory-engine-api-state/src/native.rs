@@ -650,7 +650,7 @@ impl ApiState {
             .keep_draft(account_id, session_token, draft_id)
     }
 
-    /// Edit and keep an accepted generated draft.
+    /// Edit an accepted generated quiz while preserving its review history.
     ///
     /// # Errors
     ///
@@ -675,7 +675,7 @@ impl ApiState {
         )
     }
 
-    /// Reject an accepted generated draft without scheduling it.
+    /// Remove an accepted generated quiz from review without deleting its history.
     ///
     /// # Errors
     ///
@@ -689,6 +689,19 @@ impl ApiState {
     ) -> Result<StudyViewResponse, ApiFailure> {
         self.accounts
             .reject_pending_draft(account_id, session_token, draft_id)
+    }
+
+    /// Enter review without consuming a graded answer awaiting Continue.
+    ///
+    /// # Errors
+    ///
+    /// Returns an API failure when authentication or study state rejects the read.
+    pub fn open_review(
+        &self,
+        account_id: &str,
+        session_token: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        self.accounts.open_review(account_id, session_token)
     }
 
     /// Fetch the next due review.
@@ -3263,10 +3276,13 @@ mod tests {
             proxy_socket: None,
         };
 
-        let generated = study.generate(None).expect("generate");
-        let draft_id = generated.drafts.first().expect("draft").id.clone();
-        study.keep_draft(&draft_id).expect("keep");
-        study.start().expect("start reference session");
+        study.generate(None).expect("generate");
+        let parent_id = study
+            .start()
+            .expect("start reference session")
+            .current
+            .expect("published local quiz")
+            .review_unit_id;
 
         let reference = run_reference_generation(&mut study, Some(config.clone()))
             .expect("local reference generation");
@@ -3278,17 +3294,16 @@ mod tests {
         study.start().expect("start bridge session");
         let bridge =
             run_bridge_generation(&mut study, Some(config)).expect("local bridge generation");
-        assert!(
-            bridge.current.is_none(),
-            "local bridge generation must remain pending"
-        );
-        assert!(
-            bridge
-                .drafts
-                .iter()
-                .any(|draft| draft.review_unit_id.as_str().starts_with("bridge-")),
-            "local bridge drafts should remain inspectable"
-        );
+        let current = bridge.current.expect("published local bridge");
+        assert_ne!(current.review_unit_id, parent_id);
+        let bridge_draft = bridge
+            .drafts
+            .iter()
+            .find(|draft| draft.review_unit_id == current.review_unit_id)
+            .expect("local bridge draft remains inspectable");
+        assert!(bridge_draft.review_unit_id.as_str().starts_with("bridge-"));
+        assert!(bridge_draft.approved);
+        assert!(bridge_draft.learner_decision.is_none());
 
         let _ = std::fs::remove_dir_all(directory);
     }

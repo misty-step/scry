@@ -606,7 +606,9 @@ fn account_identity(tables: &[TableData]) -> AppResult<(usize, String)> {
 fn fingerprint(tables: &[TableData], sequence_rows: &[Sequence]) -> AppResult<Fingerprint> {
     let tables_receipt = table_receipts(tables, false);
     let mut hash = Sha256::new();
-    hash.update(format!("{FINGERPRINT_SCHEMA}\n{STORAGE_VERSION}\n").as_bytes());
+    // Version 5 changes enrollment, not the authoritative raw-row envelope.
+    // Keep the v4 digest domain so old backups verify byte-for-byte in quarantine.
+    hash.update(format!("{FINGERPRINT_SCHEMA}\n4\n").as_bytes());
     for table in &tables_receipt {
         hash.update(format!("{}\t{}\t{}\n", table.name, table.rows, table.sha256).as_bytes());
     }
@@ -718,9 +720,8 @@ fn validate_bundle(
     let postgres = bundle.source.engine == "postgresql";
     if bundle.schema != BUNDLE_SCHEMA
         || bundle.source.captured_at_ms < 0
-        || !(postgres && matches!(bundle.source.schema_version, 8 | 9)
-            || bundle.source.engine == "cloudflare-sqlite"
-                && bundle.source.schema_version == STORAGE_VERSION)
+        || !(postgres && matches!(bundle.source.schema_version, 8..=10)
+            || bundle.source.engine == "cloudflare-sqlite" && bundle.source.schema_version == 4)
     {
         return Err(Failure::bad_request("unsupported recovery source schema"));
     }
@@ -744,7 +745,7 @@ fn validate_bundle(
             !postgres
                 || postgres_columns(table).is_some()
                     && (*table != "memory_engine_review_exposures"
-                        || bundle.source.schema_version == 9)
+                        || bundle.source.schema_version >= 9)
         })
         .collect();
     let actual: BTreeSet<&str> = bundle
@@ -1161,8 +1162,9 @@ fn validate_manifest(manifest: &Manifest, id: &str) -> AppResult<()> {
         || !is_hash(&manifest.bundle_sha256)
         || manifest.chunks.len() != manifest.bytes.div_ceil(CHUNK_BYTES)
         || manifest.fingerprint.schema != FINGERPRINT_SCHEMA
-        || manifest.fingerprint.storage_schema_version != STORAGE_VERSION
-        || manifest.fingerprint.schema_versions != (1..=STORAGE_VERSION).collect::<Vec<_>>()
+        || manifest.fingerprint.storage_schema_version != 4
+        || manifest.fingerprint.schema_versions
+            != (1..=manifest.fingerprint.storage_schema_version).collect::<Vec<_>>()
         || !is_hash(&manifest.fingerprint.sha256)
         || !is_hash(&manifest.fingerprint.account_ids_sha256)
     {
@@ -1402,6 +1404,7 @@ async fn restore(
     drop(bytes);
     if bundle.source.engine != "cloudflare-sqlite"
         || bundle.source.instance != manifest.source_instance
+        || bundle.source.schema_version != manifest.fingerprint.storage_schema_version
         || bundle.fingerprint.as_deref() != Some(manifest.fingerprint.sha256.as_str())
     {
         return Err(Failure::conflict(

@@ -74,13 +74,13 @@
     return (
       action === "/app/submit" ||
       action === "/app/next" ||
-      action === "/app/draft/keep" ||
-      action === "/app/draft/reject" ||
       action === "/app/content-feedback" ||
       action === "/app/skip" ||
       action === "/app/snooze" ||
       action === "/app/snooze-concept" ||
       action === "/app/reveal" ||
+      action === "/app/capture" ||
+      action === "/app/jobs/retry" ||
       action === "/app/reference" ||
       action === "/app/bridge"
     );
@@ -259,6 +259,30 @@
     return null;
   }
 
+  function recoverSession(status) {
+    resetState();
+    var root = viewRoot();
+    if (!root || !document.createElement) return;
+    var recovery = root.querySelector("[data-review-recovery]");
+    if (!recovery) {
+      recovery = document.createElement("div");
+      recovery.className = "me-review-recovery";
+      recovery.setAttribute("data-review-recovery", "");
+      recovery.setAttribute("role", "alert");
+      root.insertBefore(recovery, root.firstChild);
+    }
+    recovery.textContent = status === 401
+      ? "Your session ended. Your answer is still on this page."
+      : "This page no longer has permission to submit. Your answer is still here.";
+    var link = document.createElement("a");
+    link.href = "/";
+    link.textContent = status === 401 ? "Sign in again" : "Refresh review";
+    recovery.appendChild(link);
+    var buttons = root.querySelectorAll("form button");
+    for (var i = 0; i < buttons.length; i++) buttons[i].disabled = true;
+    if (typeof link.focus === "function") link.focus();
+  }
+
   function setBusy(form, control) {
     state.busy = true;
     state.control = control;
@@ -435,8 +459,7 @@
     var currentDue = document.querySelector(".me-due");
     var nextDue = doc.querySelector(".me-due");
     if (currentDue && nextDue) currentDue.textContent = nextDue.textContent;
-    // Home uses the four-tab nav footer; review uses the tagline. Crossing
-    // those surfaces without swapping footer leaves the wrong chrome.
+    // Keep navigation consistent when the question or capture replaces a page.
     var currentFooter = document.querySelector("footer.ae-bar");
     var nextFooter = doc.querySelector("footer.ae-bar");
     if (currentFooter && nextFooter) currentFooter.innerHTML = nextFooter.innerHTML;
@@ -500,10 +523,22 @@
         if (state.request !== request) return null;
         responseAtMs = handoff ? absoluteEpochNow() : null;
         if (!response) throw new Error("missing response");
-        if (response.status === 401 || response.status === 403) throw new Error("auth");
+        if (response.status === 401 || response.status === 403) {
+          recoverSession(response.status);
+          return null;
+        }
         // Error pages may omit the learner's input. Keep the original form
         // instead of swapping/reposting an ambiguous failed answer.
         if (action === "/app/submit" && !response.ok) throw new Error("answer unavailable");
+        if ((action === "/app/reveal" || action === "/app/capture") && !response.ok) {
+          return response.text().then(function (html) {
+            var error = new Error("request not completed");
+            var doc = new window.DOMParser().parseFromString(html, "text/html");
+            var notice = doc.querySelector(".me-notice");
+            if (notice) error.safeMessage = notice.textContent;
+            throw error;
+          });
+        }
         var type = response.headers && response.headers.get
           ? response.headers.get("content-type") || ""
           : "";
@@ -524,9 +559,9 @@
           scheduleCompletion(handoff, "in_place", timing, phases, null, request.epoch);
         }
       })
-      .catch(function () {
+      .catch(function (error) {
         if (state.request !== request) return;
-        failRequest("The response could not be loaded. Your answer is still here; retry when ready.");
+        failRequest(error.safeMessage || "The response could not be loaded. Your input is still here; retry when ready.");
       });
     return true;
   }
@@ -562,6 +597,49 @@
     }
     storeHandoff(handoff);
   });
+
+  function nextQuestion(target) {
+    if (state.busy || !document.querySelector(".me-review .me-verdict")) return false;
+    if (target && typeof target.closest === "function" &&
+        target.closest("input, textarea, select, button, a, summary, [contenteditable], details[open]")) return false;
+    if (window.getSelection && String(window.getSelection())) return false;
+    var form = document.querySelector(".me-review .me-next");
+    if (!form) return false;
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else {
+      var button = form.querySelector("button");
+      if (!button) return false;
+      button.click();
+    }
+    return true;
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    if ((event.key === " " || event.key === "ArrowDown") && nextQuestion(event.target)) {
+      event.preventDefault();
+    }
+  });
+
+  var swipe = null;
+  document.addEventListener("touchstart", function (event) {
+    swipe = null;
+    // Never turn an ordinary scroll, zoom, or disclosure interaction into an advance.
+    if (event.touches.length !== 1 || document.documentElement.scrollHeight > window.innerHeight + 1 ||
+        (window.visualViewport && window.visualViewport.scale !== 1)) return;
+    var touch = event.touches[0];
+    swipe = { x: touch.clientX, y: touch.clientY, at: Date.now(), target: event.target };
+  }, { passive: true });
+  document.addEventListener("touchend", function (event) {
+    var start = swipe;
+    swipe = null;
+    if (!start || event.changedTouches.length !== 1) return;
+    var touch = event.changedTouches[0];
+    if (Date.now() - start.at < 700 && start.y - touch.clientY >= 80 &&
+        Math.abs(start.x - touch.clientX) < 40 && nextQuestion(start.target) && event.cancelable) {
+      event.preventDefault();
+    }
+  }, { passive: false });
 
   function metaContent(name, source) {
     var root = source || document;
@@ -868,7 +946,7 @@
       case "retry":
         return "Retrying after a temporary failure…";
       case "succeeded":
-        return "Generation finished. Check Library for drafts and notices.";
+        return "Your quizzes are ready and scheduled.";
       case "failed":
         return job.error || "Generation failed. Try again.";
       default:
@@ -876,10 +954,7 @@
     }
   }
 
-  // Build a minimal row when a job arrives that isn't on the page yet (e.g. a
-  // capture made in another tab). It carries status + meta only — the retry
-  // control needs a server-issued CSRF token, so a job that fails here gets its
-  // Retry button on the next full page load (the list is server-authoritative).
+  // Rows received after load use the current server-issued CSRF token.
   function createRow(job) {
     var li = document.createElement("li");
     li.className = "me-job";
@@ -890,6 +965,7 @@
       '<span class="g-succeeded"></span><span class="g-failed"></span></span>' +
       '<div class="me-job-body"><p class="me-job-title"></p><p class="me-job-meta"></p></div>';
     li.querySelector(".me-job-title").textContent = job.title || "New material";
+    updateRetry(li, job);
     return li;
   }
 
@@ -902,6 +978,24 @@
     li.dataset.status = job.status;
     var meta = li.querySelector(".me-job-meta");
     if (meta) meta.textContent = metaFor(job);
+    updateRetry(li, job);
+  }
+
+  function updateRetry(container, job) {
+    var retry = container.querySelector(".me-job-retry");
+    if (!retry) {
+      var token = document.querySelector('meta[name="memory-engine-csrf-token"]');
+      if (!token || !token.content) return;
+      retry = document.createElement("form");
+      retry.className = "me-job-retry";
+      retry.method = "post";
+      retry.action = "/app/jobs/retry";
+      retry.innerHTML = '<input type="hidden" name="csrfToken"><input type="hidden" name="jobId"><button class="me-job-retry-btn" type="submit">Try again</button>';
+      retry.querySelector('[name="csrfToken"]').value = token.content;
+      retry.querySelector('[name="jobId"]').value = job.id;
+      container.appendChild(retry);
+    }
+    retry.hidden = job.status !== "failed" || job.retryable !== true;
   }
 
   function cssEscape(value) {
@@ -923,9 +1017,16 @@
       if (!waiting || waiting.getAttribute("data-generation-job-id") !== job.id) return;
       var status = waiting.querySelector("[data-generation-status]");
       if (status) status.textContent = metaFor(job);
+      waiting.setAttribute("data-status", job.status);
+      var recovery = waiting.querySelector("[data-generation-recovery]");
+      if (recovery) updateRetry(recovery, job);
+      if (job.status === "failed") {
+        var heading = waiting.querySelector("h1");
+        if (heading) heading.textContent = "Your text is safe";
+      }
       if (
         terminalNavigationStarted ||
-        (job.status !== "succeeded" && job.status !== "failed")
+        job.status !== "succeeded"
       ) return;
       // Only an explicit, job-correlated waiting surface opts into a GET to
       // the server-owned destination. Replayed terminal events cannot repost

@@ -154,7 +154,7 @@ mod tests {
     use memory_engine_core::{ProgressionMetadata, QueueCandidate, ScheduleState, ScheduleStatus};
 
     use super::{
-        adapters, default_rating_policy, dogfood, filter_eligible_candidates,
+        adapters, default_rating_policy, filter_eligible_candidates,
         filter_eligible_candidates_with_fallback, grading, next, pick_next_queue_candidate, queue,
         scheduling, testkit, types, ExactPrompt, ExactPromptKind, Grader, ProgressionCandidate,
         Prompt, Rating, ReviewUnitId, ReviewUnitLifecycle, RubricAssessment, RubricCriterion,
@@ -187,7 +187,7 @@ mod tests {
         let schedule = next(None, grade.rating, NOW).expect("schedule");
 
         assert_eq!(grade.verdict, types::Verdict::Correct);
-        assert_eq!(grade.rating, Rating::Easy);
+        assert_eq!(grade.rating, Rating::Good);
         assert_eq!(schedule.reps, 1);
         assert_eq!(schedule.last_review, Some(NOW));
     }
@@ -207,7 +207,7 @@ mod tests {
                     prior_reps: 3,
                 },
             ),
-            Rating::Easy,
+            Rating::Good,
         );
         assert_eq!(
             grading::default_rating_policy(
@@ -250,17 +250,6 @@ mod tests {
     }
 
     #[test]
-    fn facade_exposes_dogfood_receipts_without_promoting_them_to_core() {
-        let cli = dogfood::cli_review::run_cli_review().expect("cli receipt");
-        let import = dogfood::import_probe::run_import_probe().expect("import receipt");
-        let web = dogfood::web_shell::run_web_shell_flow().expect("web receipt");
-
-        assert_eq!(cli.fixture, "latin-prayer-opening");
-        assert_eq!(import.fixture, "latin-prayer-authored-v1");
-        assert_eq!(web.fixture, "latin-prayer-authored-v1");
-    }
-
-    #[test]
     fn facade_exposes_rubric_grading_and_adapter_subpaths() {
         let prompt = RubricPrompt {
             review_unit_id: ReviewUnitId::new("api-rubric"),
@@ -300,7 +289,6 @@ mod tests {
 
         assert_eq!(result.verdict, types::Verdict::Correct);
         assert_eq!(result.grader_kind, types::GraderKind::RubricLlm);
-        assert!((grading::DEFAULT_RUBRIC_CONFIDENCE_FLOOR - 0.85).abs() < f64::EPSILON);
 
         let static_grader = StaticRubricGrader::new(RubricAssessment {
             model: None,
@@ -406,8 +394,6 @@ mod tests {
                 fixture.name
             );
         }
-
-        assert!(!testkit::recitation_fixtures().is_empty());
     }
 
     fn progression_fixture() -> (

@@ -36,6 +36,7 @@ function browserHarness(options = {}) {
   };
   const nativeStatus = { textContent: "" };
   const generationStatus = { textContent: "" };
+  let recoveryNode = null;
   let jobsList = options.jobsList ?? null;
   let waitingJob = options.waitingJob ?? null;
   let randomSequence = 0;
@@ -124,6 +125,9 @@ function browserHarness(options = {}) {
       if (selector === "[data-review-status]") return reviewStatus;
       if (selector === "[data-generation-job-id][data-terminal-url]") {
         return waitingJob ? {
+          setAttribute(name, value) {
+            if (name === "data-status") waitingJob.status = value;
+          },
           getAttribute(name) {
             if (name === "data-generation-job-id") return waitingJob.id;
             if (name === "data-terminal-url") return waitingJob.destination;
@@ -145,7 +149,10 @@ function browserHarness(options = {}) {
             reviewStatus.textContent = "";
             statusAttributes.clear();
           },
+          insertBefore(child) { recoveryNode = child; },
+          querySelectorAll: (selector) => selector === "form button" ? [control] : [],
           querySelector(inner) {
+            if (inner === "[data-review-recovery]") return recoveryNode;
             if (inner === ".me-verdict" && verdictPresent) return verdictElement;
             if (
               inner ===
@@ -224,6 +231,9 @@ function browserHarness(options = {}) {
         name: "",
         value: "",
         attrs: {},
+        children: [],
+        appendChild(child) { this.children.push(child); },
+        focus() { focused.push(tag); },
         setAttribute(name, value) {
           this.attrs[name] = value;
           if (name === "name") this.name = value;
@@ -403,6 +413,7 @@ function browserHarness(options = {}) {
     controlAttr: (name) => controlAttributes.get(name),
     controlDisabled: () => control.disabled === true,
     viewHtml: () => viewHtml,
+    recovery: () => recoveryNode,
     dueText: () => dueText,
     footerHtml: () => footerHtml,
     focused,
@@ -973,43 +984,6 @@ test("snooze fetches in place and keeps the server tomorrow notice", async () =>
   expect(browser.navigations).toEqual([]);
 });
 
-test("keep draft fetches in place and updates the due count", async () => {
-  const browser = browserHarness({
-    inPlace: true,
-    action: "/app/draft/keep",
-    formClass: "me-keep",
-    controlClasses: ["ae-button-quiet"],
-    controlLabel: "Keep as written",
-    dueText: "0 due",
-    viewHtml: '<article class="me-pending-draft"><p>Draft</p></article>',
-    fetchImpl() {
-      return Promise.resolve({
-        ok: true,
-        headers: { get: () => "text/html; charset=utf-8" },
-        text: () =>
-          Promise.resolve(
-            htmlReviewLanding("Kept card", "1 due").replace(
-              '<p class="me-prompt">Kept card</p>',
-              "<p>Queue ready</p>",
-            ),
-          ),
-      });
-    },
-  });
-
-  browser.dispatchSubmit();
-  expect(browser.prevented()).toBe(1);
-  expect(browser.handoff()).toBeNull();
-  expect(browser.fetches[0].request.headers["Content-Type"]).toBe(
-    "application/x-www-form-urlencoded;charset=UTF-8",
-  );
-  expect(browser.fetches[0].request.body.get("csrfToken")).toBe("csrf-test");
-  await flushMicrotasks();
-  expect(browser.viewHtml()).toContain("Queue ready");
-  expect(browser.viewHtml()).not.toContain("me-pending-draft");
-  expect(browser.dueText()).toBe("1 due");
-  expect(browser.nativeSubmits()).toBe(0);
-});
 
 test("card quality saves in place with the clicked verdict", async () => {
   const browser = browserHarness({
@@ -1056,32 +1030,6 @@ test("card quality saves in place with the clicked verdict", async () => {
   expect(browser.navigations).toEqual([]);
 });
 
-test("keep error HTML swaps without a second POST", async () => {
-  const browser = browserHarness({
-    inPlace: true,
-    action: "/app/draft/keep",
-    formClass: "me-keep",
-    controlClasses: ["ae-button-quiet"],
-    controlLabel: "Keep as written",
-    viewHtml: '<article class="me-pending-draft"><p>Draft</p></article>',
-    fetchImpl() {
-      return Promise.resolve({
-        ok: false,
-        status: 409,
-        headers: { get: () => "text/html; charset=utf-8" },
-        text: () =>
-          Promise.resolve(htmlReviewLanding("", "0 due", "Draft already decided.")),
-      });
-    },
-  });
-
-  browser.dispatchSubmit();
-  await flushMicrotasks();
-  expect(browser.viewHtml()).toContain("Draft already decided.");
-  expect(browser.nativeSubmits()).toBe(0);
-  expect(browser.navigations).toEqual([]);
-  expect(browser.busy()).toBeFalse();
-});
 
 test("skip fetch failure keeps unsent input and permits an intentional retry", async () => {
   const browser = browserHarness({
@@ -1139,7 +1087,8 @@ test("expired-session responses keep the current question instead of replacing u
   expect(browser.viewHtml()).not.toContain("Return to your workspace");
   expect(browser.nativeSubmits()).toBe(0);
   expect(browser.navigations).toEqual([]);
-  expect(browser.statusState()).toBe("failed");
+  expect(browser.recovery().children.some((child) => child.href === "/")).toBeTrue();
+  expect(browser.controlDisabled()).toBeTrue();
   expect(browser.busy()).toBeFalse();
 });
 
@@ -1461,18 +1410,20 @@ test("terminal events cannot act on a jobs list removed by an in-place review na
 test("only the explicit waiting job can complete capture and terminal replay cannot navigate twice", () => {
   const browser = browserHarness({
     eventSource: {},
-    waitingJob: { id: "job-current", destination: "/app/library" },
+    waitingJob: { id: "job-current", destination: "/" },
   });
   browser.emitJob({ id: "job-other", status: "succeeded" });
   browser.emitJob({ id: "job-current", status: "running" });
   expect(browser.navigations).toEqual([]);
   browser.emitJob({ id: "job-current", status: "failed", error: "provider unavailable" });
   expect(browser.generationStatus.textContent).toBe("provider unavailable");
-  expect(browser.navigations).toEqual(["/app/library"]);
+  expect(browser.navigations).toEqual([]);
+  browser.emitJob({ id: "job-current", status: "succeeded" });
+  expect(browser.navigations).toEqual(["/"]);
   browser.dispatchWindow("pagehide");
   browser.dispatchWindow("pageshow", { persisted: true });
-  browser.emitJob({ id: "job-current", status: "failed", error: "provider unavailable" });
-  expect(browser.navigations).toEqual(["/app/library"]);
+  browser.emitJob({ id: "job-current", status: "succeeded" });
+  expect(browser.navigations).toEqual(["/"]);
 });
 
 test("removing the capture waiting surface cancels its future terminal navigation", () => {

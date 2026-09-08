@@ -88,42 +88,38 @@ pub struct EnqueuedGenerationJob {
     pub coalesced: bool,
 }
 
-/// The outcome of `create_deck`'s enqueue-then-poll composition: exactly one
-/// declared shape per bounded-poll result, so a caller can match
-/// exhaustively instead of guessing which fields are populated.
+/// Durable generation receipt, including failures after material was saved.
+/// A succeeded job has already published its validated quizzes for review.
 #[derive(Clone, Debug)]
 pub enum GenerationOutcome {
-    /// The job reached `succeeded`. `drafts` is every currently pending
-    /// (accepted, not yet decided) draft account-wide, since generation
-    /// never schedules a card by itself
-    /// (`memory-engine-api-state::registry::run_generation_job`) — a normal
-    /// `succeeded` job's accepted drafts are the expected, common case
-    /// here, not an edge case. Call `keep_draft`, `edit_draft`, or
-    /// `reject_draft` on each one to resolve it. A source whose material
-    /// yielded no usable cards (`job.card_count == 0`) still lands here:
-    /// zero cards is a valid terminal outcome, not an error.
     Succeeded {
         job: GenerationJob,
         coalesced: bool,
-        drafts: Vec<DraftRow>,
     },
-    /// The job reached `failed`. `job.retryable` tells the caller whether
-    /// calling `create_deck` again for the same material has a chance of
-    /// succeeding (the v1 contract has no dedicated retry route; enqueueing
-    /// again is the supported retry path once the prior job is no longer
-    /// active).
-    Failed { job: GenerationJob, coalesced: bool },
-    /// The job did not reach `succeeded` or `failed` within the bounded
-    /// poll window. The job keeps running server-side; poll
-    /// `generation_job(job.id)` later rather than assuming it died.
-    TimedOut { job: GenerationJob, coalesced: bool },
+    Failed {
+        job: GenerationJob,
+        coalesced: bool,
+    },
+    /// The job keeps running server-side; inspect its id rather than saving
+    /// the same material again.
+    TimedOut {
+        job: GenerationJob,
+        coalesced: bool,
+    },
+    /// The source was saved, but enqueueing could not be confirmed.
+    AdmissionFailed {
+        error: String,
+    },
+    /// The last confirmed job is retained when a status request fails.
+    PollFailed {
+        job: GenerationJob,
+        coalesced: bool,
+        error: String,
+    },
 }
 
-/// One generated draft pending a learner-authority decision (`StudyDraft` in
-/// the `OpenAPI` contract). `approved`/`learner_decision` distinguish
-/// "already decided" from "still pending"; `keep_draft`, `edit_draft`, and
-/// `reject_draft` are the three explicit decisions — there is no implicit
-/// rejection by omission.
+/// One generated quiz (`StudyDraft` on the wire). Publication preserves the
+/// validation and provenance fields without inventing a learner decision.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DraftRow {
@@ -150,6 +146,7 @@ pub struct DraftRow {
 pub struct StudyView {
     #[serde(default)]
     pub drafts: Vec<DraftRow>,
+    pub queue: Vec<StudyQueueRow>,
     pub current: Option<StudyCurrent>,
     #[serde(default)]
     pub concept_progress: Vec<ConceptProgress>,
@@ -158,6 +155,12 @@ pub struct StudyView {
     pub due_count: usize,
     #[serde(default)]
     pub generation_notices: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudyQueueRow {
+    pub review_unit_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -325,21 +328,33 @@ impl MemoryEngineClient {
         &self.account_id
     }
 
-    /// Save a project-scoped deck, enqueue its generation job on the durable
-    /// queue, and poll it to a bounded terminal state. Never calls the
-    /// legacy synchronous generate route (refused with HTTP 409 in every
-    /// production deployment). A succeeded job's accepted draft remains
-    /// pending until an explicit `keep_draft`, `edit_draft`, or
-    /// `reject_draft` decision — generation itself never schedules a card.
-    /// Returns the deck alongside the generation outcome (job status plus
-    /// every draft still pending a decision, so an agent can inspect
-    /// provenance before choosing).
+    /// Save text with an inferred title and generate reviewable quizzes.
+    /// Uses the same source capture and durable queue as the other clients.
     ///
     /// # Errors
     ///
-    /// Returns an error when saving the deck fails, when the job cannot be
-    /// enqueued (e.g. HTTP 409 "queue is full" / budget exhausted), or when
-    /// polling the job's status fails.
+    /// Returns an error only when input is empty or saving fails. Later
+    /// failures retain the saved source in the returned receipt.
+    pub fn learn(&self, input: &str) -> Result<(SourceRecord, GenerationOutcome), String> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err("learning input must not be empty".to_owned());
+        }
+        let source: SourceRecord = self.post_json(
+            &format!("/v1/accounts/{}/sources", self.account_id),
+            &json!({ "body": input }),
+        )?;
+        let outcome = self.generate_saved_source(&source.source_id);
+        Ok((source, outcome))
+    }
+
+    /// Save a project-scoped deck and generate its quizzes on the durable
+    /// queue. Successful generation publishes validated quizzes directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only when saving the deck fails. Admission and
+    /// polling failures retain the saved deck and last confirmed job.
     pub fn create_deck(
         &self,
         project_key: &str,
@@ -360,8 +375,7 @@ impl MemoryEngineClient {
             &request,
         )?;
 
-        let enqueued = self.enqueue_generation_job(&deck.source.source_id)?;
-        let outcome = self.poll_generation_job(enqueued.job, enqueued.coalesced)?;
+        let outcome = self.generate_saved_source(&deck.source.source_id);
 
         Ok((deck, outcome))
     }
@@ -395,59 +409,61 @@ impl MemoryEngineClient {
         ))
     }
 
-    /// Poll one job to a bounded terminal state (`succeeded`/`failed`), or
-    /// declare `TimedOut` after `GENERATION_POLL_MAX_ATTEMPTS`. On success,
-    /// fetches every draft still pending a learner decision so the caller
-    /// can choose to keep, edit, or reject it — this never decides anything
-    /// itself.
-    fn poll_generation_job(
-        &self,
-        mut job: GenerationJob,
-        coalesced: bool,
-    ) -> Result<GenerationOutcome, String> {
+    fn generate_saved_source(&self, source_id: &str) -> GenerationOutcome {
+        match self.enqueue_generation_job(source_id) {
+            Ok(enqueued) => self.poll_generation_job(enqueued.job, enqueued.coalesced),
+            Err(error) => GenerationOutcome::AdmissionFailed { error },
+        }
+    }
+
+    /// Poll the durable job without fetching unrelated account-wide content.
+    fn poll_generation_job(&self, mut job: GenerationJob, coalesced: bool) -> GenerationOutcome {
         for attempt in 0..GENERATION_POLL_MAX_ATTEMPTS {
             if job.is_terminal() {
                 break;
             }
             if attempt + 1 == GENERATION_POLL_MAX_ATTEMPTS {
-                return Ok(GenerationOutcome::TimedOut { job, coalesced });
+                return GenerationOutcome::TimedOut { job, coalesced };
             }
             thread::sleep(GENERATION_POLL_INTERVAL);
-            job = self.generation_job(&job.id)?;
+            match self.generation_job(&job.id) {
+                Ok(updated) => job = updated,
+                Err(error) => {
+                    return GenerationOutcome::PollFailed {
+                        job,
+                        coalesced,
+                        error,
+                    };
+                }
+            }
         }
 
         match job.status.as_str() {
-            "succeeded" => {
-                let drafts = self.pending_drafts()?;
-                Ok(GenerationOutcome::Succeeded {
-                    job,
-                    coalesced,
-                    drafts,
-                })
-            }
-            "failed" => Ok(GenerationOutcome::Failed { job, coalesced }),
-            _ => Ok(GenerationOutcome::TimedOut { job, coalesced }),
+            "succeeded" => GenerationOutcome::Succeeded { job, coalesced },
+            "failed" => GenerationOutcome::Failed { job, coalesced },
+            _ => GenerationOutcome::TimedOut { job, coalesced },
         }
     }
 
-    /// Every currently pending (accepted, not yet decided) draft across the
-    /// account — the "inspect before you decide" read. A draft counts as
-    /// pending when it is validator-accepted and carries neither a legacy
-    /// `approved` flag nor a `learner_decision`, mirroring the server's own
-    /// pending-draft filter (`memory-engine-api-render::render`).
+    /// List active published quizzes with stable ids, validation and provenance.
     ///
     /// # Errors
     ///
     /// Returns an error when the underlying study-view request fails.
-    pub fn pending_drafts(&self) -> Result<Vec<DraftRow>, String> {
-        let view = self.next_review()?;
+    pub fn quizzes(&self) -> Result<Vec<DraftRow>, String> {
+        let view: StudyView = self.get(&format!("/v1/accounts/{}/review/next", self.account_id))?;
+        let active_ids = view
+            .queue
+            .iter()
+            .map(|row| row.review_unit_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
         Ok(view
             .drafts
             .into_iter()
             .filter(|draft| {
-                draft.validation_status == "accepted"
-                    && !draft.approved
-                    && draft.learner_decision.is_none()
+                draft.activity_kind == "quiz"
+                    && draft.approved
+                    && active_ids.contains(draft.review_unit_id.as_str())
             })
             .collect())
     }
@@ -485,22 +501,11 @@ impl MemoryEngineClient {
         )
     }
 
-    /// Keep one generated draft after inspecting its provenance.
+    /// Update one published quiz's wording without changing its schedule.
     ///
     /// # Errors
     /// Returns an error when the request fails.
-    pub fn keep_draft(&self, draft_id: &str) -> Result<StudyView, String> {
-        self.post_empty(&format!(
-            "/v1/accounts/{}/drafts/{draft_id}/keep",
-            self.account_id
-        ))
-    }
-
-    /// Edit one generated draft and keep the edited wording.
-    ///
-    /// # Errors
-    /// Returns an error when the request fails.
-    pub fn edit_draft(
+    pub fn edit_quiz(
         &self,
         draft_id: &str,
         prompt: &str,
@@ -515,11 +520,11 @@ impl MemoryEngineClient {
         )
     }
 
-    /// Reject one generated draft without scheduling it.
+    /// Remove one generated quiz from future review.
     ///
     /// # Errors
     /// Returns an error when the request fails.
-    pub fn reject_draft(&self, draft_id: &str) -> Result<StudyView, String> {
+    pub fn remove_quiz(&self, draft_id: &str) -> Result<StudyView, String> {
         self.post_empty(&format!(
             "/v1/accounts/{}/drafts/{draft_id}/reject",
             self.account_id
@@ -791,34 +796,8 @@ mod tests {
         )
     }
 
-    async fn spawn_local_api(email: &str) -> (String, tokio::task::JoinHandle<()>, String, String) {
-        let state = provisioned_state(email);
-        let created = state
-            .create_account(email)
-            .expect("pre-provision test account");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind local API listener");
-        let address = listener.local_addr().expect("local address");
-        let handle = tokio::spawn(async move {
-            axum::serve(listener, memory_engine_api::router(state))
-                .await
-                .expect("serve local API");
-        });
-        (
-            format!("http://{address}"),
-            handle,
-            created.account_id,
-            created.session_token,
-        )
-    }
-
-    /// Same real local API as `spawn_local_api`, but with its generation-jobs
-    /// worker started (so a queued job actually progresses to a terminal
-    /// state) and a request-capture layer recording every method+path this
-    /// crate's client sends it — the evidence behind
-    /// `create_deck_enqueues_and_polls_without_ever_requesting_generate`
-    /// below, which asserts on the capture instead of scanning source text.
+    /// Real authenticated API with a running durable worker and request capture.
+    /// The capture protects the production-only queue contract.
     async fn spawn_local_api_with_capture(
         email: &str,
     ) -> (
@@ -865,78 +844,79 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_pending_draft_from_the_local_generate_route_can_be_kept() {
-        let (base_url, server, account_id, session_token) =
-            spawn_local_api("mcp-client-recovery-test@example.com").await;
-        let client =
-            MemoryEngineClient::new(base_url.clone(), account_id.clone(), session_token.clone());
-
-        // Seed an accepted draft directly against the local (non-production)
-        // synchronous route: this `ApiState` has no
-        // `MEMORY_ENGINE_POSTGRES_URL`, so the route is not yet refused with
-        // HTTP 409 the way every production deployment refuses it — this
-        // fixture only needs a real pending draft to exist.
-        let source: serde_json::Value = ureq::post(endpoint(
-            &base_url,
-            &format!("/v1/accounts/{account_id}/sources"),
-        ))
-        .header("Authorization", &format!("Bearer {session_token}"))
-        .send_json(json!({
-            "title": "pending-draft fixture",
-            "body": "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\nDistractors: BAKER, BOSTON\nReference: The NATO phonetic alphabet word for B is BRAVO.",
-        }))
-        .expect("create source")
-        .body_mut()
-        .read_json()
-        .expect("source json");
-        let source_id = source["sourceId"].as_str().expect("sourceId").to_owned();
-        ureq::post(endpoint(
-            &base_url,
-            &format!("/v1/accounts/{account_id}/sources/{source_id}/generate"),
-        ))
-        .header("Authorization", &format!("Bearer {session_token}"))
-        .send_empty()
-        .expect("local generate");
-
-        let pending = client.pending_drafts().expect("pending drafts");
-        assert_eq!(pending.len(), 1, "generation must leave its draft pending");
-        assert!(!pending[0].approved);
-        assert!(pending[0].learner_decision.is_none());
-        assert_eq!(pending[0].validation_status, "accepted");
-
-        let due_before = client.next_review().expect("study view before decision");
-        assert_eq!(due_before.due_count, 0, "a pending draft must not be due");
-
-        let kept_view = client
-            .keep_draft(&pending[0].id)
-            .expect("keep the pending draft");
-        assert_eq!(kept_view.due_count, 1, "keeping must schedule the card");
-
-        let remaining = client
-            .pending_drafts()
-            .expect("pending drafts after keeping");
-        assert!(
-            remaining.is_empty(),
-            "the kept draft must no longer be pending"
-        );
-
-        server.abort();
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn errors_surface_the_servers_safe_message_not_a_bare_status_code() {
-        let (base_url, server, account_id, session_token) =
-            spawn_local_api("mcp-client-safe-error-test@example.com").await;
+    async fn learning_publishes_quizzes_that_can_be_edited_and_removed_directly() {
+        let (base_url, server, _requests, account_id, session_token) =
+            spawn_local_api_with_capture("mcp-client-lifecycle-test@example.com").await;
         let client = MemoryEngineClient::new(base_url, account_id, session_token);
-
-        let error = client
-            .keep_draft("draft-does-not-exist")
-            .expect_err("an unknown draft id must fail");
-        assert!(
-            error.contains("Generated draft or review unit not found"),
-            "error must carry the server's safe message, not a bare status code: {error}"
+        let body = "Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\n\
+            Question: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\n\
+            Distractors: BAKER, BOSTON\n\
+            Reference: The NATO phonetic alphabet word for B is BRAVO.";
+        let (source, outcome) = client.learn(body).expect("learn material");
+        let GenerationOutcome::Succeeded { job, .. } = outcome else {
+            panic!("learning must publish the validated fixture: {outcome:?}");
+        };
+        assert_eq!(job.source_id, source.source_id);
+        assert_eq!(job.card_count, 1);
+        let quizzes = client.quizzes().expect("published quizzes");
+        let quiz = &quizzes[0];
+        assert!(quiz.learner_decision.is_none());
+        assert_eq!(quiz.validation_status, "accepted");
+        let due = client.next_review().expect("review after learning");
+        assert_eq!(due.due_count, 1);
+        assert_eq!(
+            due.current.expect("published quiz").review_unit_id,
+            quiz.review_unit_id
         );
 
+        let graded = client
+            .submit_review(&quiz.review_unit_id, "BRAVO", 5000, "before-edit")
+            .expect("grade the published quiz");
+        let graded_current = graded.current.as_ref().expect("held graded quiz");
+        let graded_schedule = graded_current
+            .review_state
+            .as_ref()
+            .expect("saved schedule");
+        for prompt in [
+            "Which NATO word represents B?",
+            "B is represented by which NATO word?",
+        ] {
+            let edited = client
+                .edit_quiz(&quiz.id, prompt, "BRAVO")
+                .expect("edit the published quiz repeatedly");
+            assert_eq!(edited.due_count, 0, "editing must not reset its schedule");
+            assert_eq!(edited.summary.attempt_count, 1);
+            let updated = client.quizzes().expect("edited quizzes");
+            let updated = updated
+                .iter()
+                .find(|row| row.id == quiz.id)
+                .expect("edited quiz");
+            assert_eq!(updated.prompt, prompt);
+            assert_eq!(updated.review_unit_id, quiz.review_unit_id);
+            let held: StudyView = client
+                .get(&format!("/v1/accounts/{}/review/next", client.account_id))
+                .expect("reading inventory must not consume the held grade");
+            let held_current = held.current.expect("held review after management");
+            assert_eq!(held_current.review_unit_id, quiz.review_unit_id);
+            assert_eq!(
+                held_current.grade.expect("preserved grade").verdict,
+                "correct"
+            );
+            let held_schedule = held_current.review_state.expect("preserved schedule");
+            assert_eq!(held_schedule.due, graded_schedule.due);
+            assert_eq!(held_schedule.reps, graded_schedule.reps);
+        }
+        let removed = client.remove_quiz(&quiz.id).expect("remove the quiz");
+        assert_eq!(removed.due_count, 0);
+        assert_eq!(removed.summary.attempt_count, 1);
+        assert!(client.quizzes().expect("remaining quizzes").is_empty());
+        client
+            .edit_quiz(&quiz.id, "Must not resurrect removed content", "BRAVO")
+            .expect_err("removal is terminal");
+        assert_eq!(
+            client.next_review().expect("after rejected edit").due_count,
+            0
+        );
         server.abort();
     }
 
@@ -954,19 +934,17 @@ mod tests {
         let (_deck, outcome) = client
             .create_deck("nato-onboarding", "NATO letter A fixture", deck_body, None)
             .expect("create_deck reaches a terminal outcome against a real worker");
-        let GenerationOutcome::Succeeded { job, drafts, .. } = &outcome else {
+        let GenerationOutcome::Succeeded { job, .. } = &outcome else {
             panic!(
                 "the job must reach succeeded against a real running worker, not time out: {outcome:?}"
             );
         };
+        assert_eq!(job.card_count, 1);
+        let due = client.next_review().expect("review after deck creation");
+        assert_eq!(due.due_count, 1);
         assert_eq!(
-            job.card_count, 0,
-            "generation never auto-schedules a card: {outcome:?}"
-        );
-        assert_eq!(
-            drafts.len(),
-            1,
-            "the fixture body must yield exactly one pending draft: {outcome:?}"
+            due.current.expect("automatically published quiz").prompt,
+            "What is the NATO phonetic alphabet word for A?"
         );
 
         server.abort();
@@ -990,5 +968,159 @@ mod tests {
                 .any(|(method, path)| method == "GET" && path.contains("/generation-jobs/")),
             "create_deck must poll the enqueued job's status; captured: {captured:?}"
         );
+    }
+
+    async fn spawn_api_with_generation_fault(
+        email: &str,
+        fail_poll: bool,
+    ) -> (MemoryEngineClient, tokio::task::JoinHandle<()>) {
+        let state = provisioned_state(email);
+        let created = state.create_account(email).expect("provision account");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind API");
+        let address = listener.local_addr().expect("local address");
+        let router = memory_engine_api::router(state).layer(middleware::from_fn(
+            move |req: Request, next: Next| async move {
+                use axum::response::IntoResponse;
+                let fail = if fail_poll {
+                    req.method() == "GET" && req.uri().path().contains("/generation-jobs/")
+                } else {
+                    req.method() == "POST" && req.uri().path().ends_with("/generation-jobs")
+                };
+                if fail {
+                    return (
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                        axum::Json(json!({"error": "Generation temporarily unavailable."})),
+                    )
+                        .into_response();
+                }
+                next.run(req).await
+            },
+        ));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.expect("serve API");
+        });
+        (
+            MemoryEngineClient::new(
+                format!("http://{address}"),
+                created.account_id,
+                created.session_token,
+            ),
+            server,
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn learn_returns_the_saved_source_when_generation_admission_fails() {
+        let (client, server) =
+            spawn_api_with_generation_fault("mcp-admission-test@example.com", false).await;
+        let response = crate::call_tool(&client, "learn", &json!({"input": "spaced repetition"}))
+            .expect("saved-material receipt");
+        assert_eq!(response["isError"], true);
+        let payload: serde_json::Value =
+            serde_json::from_str(response["content"][0]["text"].as_str().expect("receipt"))
+                .expect("receipt JSON");
+        assert_eq!(payload["generation"]["status"], "admission_failed");
+        let error = payload["generation"]["error"].as_str().expect("safe error");
+        assert!(error.contains("Generation temporarily unavailable."));
+        assert!(error.contains("503"));
+        let saved: SourceList = client
+            .get(&format!("/v1/accounts/{}/sources", client.account_id))
+            .expect("saved sources after failed admission");
+        assert_eq!(saved.sources.len(), 1);
+        assert_eq!(saved.sources[0].source_id, payload["source"]["sourceId"]);
+        assert_eq!(saved.sources[0].body, "spaced repetition");
+        server.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn polling_failure_retains_the_durable_job_and_saved_deck() {
+        let (client, server) =
+            spawn_api_with_generation_fault("mcp-poll-test@example.com", true).await;
+        let (deck, outcome) = client
+            .create_deck("example-project", "Saved deck", "spaced repetition", None)
+            .expect("saved deck receipt");
+        let GenerationOutcome::PollFailed { job, error, .. } = outcome else {
+            panic!("polling must fail with a durable receipt: {outcome:?}");
+        };
+        assert_eq!(job.source_id, deck.source.source_id);
+        assert!(error.contains("503"));
+        let joined = client
+            .enqueue_generation_job(&deck.source.source_id)
+            .expect("join the existing job, without saving again");
+        assert!(joined.coalesced);
+        assert_eq!(joined.job.id, job.id);
+        let saved = client
+            .list_decks(Some("example-project"))
+            .expect("saved deck");
+        assert_eq!(saved[0].source_id, deck.source.source_id);
+        server.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn capture_and_generation_remain_scoped_to_the_credential_owner() {
+        let root = std::env::temp_dir().join(format!("mcp-tenant-{}", unique_suffix()));
+        let state = memory_engine_api::ApiState::new(
+            memory_engine_api::AccountRegistry::with_store_root(root).with_auth_config(
+                memory_engine_api::AuthConfig::allow_emails([
+                    "mcp-owner@example.com".to_owned(),
+                    "mcp-other@example.com".to_owned(),
+                ])
+                .with_anonymous_account_creation(true),
+            ),
+        );
+        let owner = state
+            .create_account("mcp-owner@example.com")
+            .expect("provision owner");
+        let other = state
+            .create_account("mcp-other@example.com")
+            .expect("provision other account");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind API");
+        let base_url = format!("http://{}", listener.local_addr().expect("address"));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, memory_engine_api::router(state))
+                .await
+                .expect("serve API");
+        });
+        let client = MemoryEngineClient::new(
+            base_url.clone(),
+            owner.account_id.clone(),
+            owner.session_token,
+        );
+        let source: SourceRecord = client
+            .post_json(
+                &format!("/v1/accounts/{}/sources", owner.account_id),
+                &json!({"body": "Private spaced repetition notes."}),
+            )
+            .expect("capture owned material");
+        let enqueued = client
+            .enqueue_generation_job(&source.source_id)
+            .expect("enqueue owned material");
+        let mismatched = MemoryEngineClient::new(
+            base_url.clone(),
+            owner.account_id.clone(),
+            other.session_token.clone(),
+        );
+        assert!(mismatched
+            .learn("must not be saved in the owner's account")
+            .expect_err("cross-account capture denied")
+            .contains("403"));
+        let other_client = MemoryEngineClient::new(base_url, other.account_id, other.session_token);
+        assert!(other_client
+            .enqueue_generation_job(&source.source_id)
+            .expect_err("another account's source is hidden")
+            .contains("404"));
+        assert!(other_client
+            .generation_job(&enqueued.job.id)
+            .expect_err("another account's job is hidden")
+            .contains("404"));
+        let saved: SourceList = client
+            .get(&format!("/v1/accounts/{}/sources", owner.account_id))
+            .expect("owner's material");
+        assert_eq!(saved.sources, vec![source]);
+        server.abort();
     }
 }

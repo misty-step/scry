@@ -75,7 +75,7 @@ bun run worker:tools
 bun run worker:build --out target/cloudflare/candidate
 bun run worker:smoke --artifact target/cloudflare/candidate \
   --receipt target/cloudflare/candidate-workerd-proof.json
-bun run dev:isolated --artifact target/cloudflare/candidate --port 8787
+bun run dev --artifact target/cloudflare/candidate --port 8787
 ```
 
 Tool installation has one fixed mode: `npm ci` from `package-lock.json`, the
@@ -115,7 +115,8 @@ reviewed source revision; the script checks its own source hash too.
 
 ### Isolated local workerd
 
-`dev:isolated` starts the exact verified bundle, not `cargo run`. A unique local
+`bun run dev` builds fresh bytes and starts the isolated Worker. Supply
+`--artifact` to run an existing exact verified bundle instead. A unique local
 Worker name, loopback port, inspector port, private home, SQLite/R2 state, and
 private runtime config separate it from every other dev session. `--local`
 disables remote bindings. Model/Cloudflare credentials are not inherited.
@@ -136,9 +137,17 @@ magic link. Admin-only `GET /internal/mail/outbox` returns staged messages with
 the ephemeral admin token. This is **not sent-mail or inbox-delivery proof**.
 The outbox/debug path is unavailable in staging/production mail mode.
 
+Ordinary browser AI capture requires an explicit provider file:
+`bun run dev --provider-env /private/scry-provider.env`. The owner-only
+mode-0600 file must contain only `OPENROUTER_API_KEY` and
+`MEMORY_ENGINE_GENERATION_MODEL`, both populated. This authorizes paid model
+calls for captured text; it does not enable deployed bindings or live mail.
+Without that flag, the API's `local_only` structured Question:/Answer: sources
+can generate, but ordinary browser AI requests report an unconfigured provider.
+
 The finite smoke runs actual public assets (including `/static/app.js`) and
 readiness, anonymous rejection, allowlisted service-session issuance,
-alarm-driven LocalOnly structured generation, explicit draft keep, two real
+alarm-driven LocalOnly structured generation, automatic publication, two real
 accounts' isolation, durable review resume, and assisted grading across restart.
 Idempotent replay must preserve attempts, schedules, exposure, and receipt hashes.
 The smoke finishes with the admin schema fingerprint.
@@ -165,6 +174,21 @@ receives deployment credentials or substitutes a synthetic HTTP server.
 The native API remains a compatibility/test surface. Passing native Cargo tests
 alone does not prove the Worker. Passing workerd alone does not prove browser
 latency, model quality, mail delivery, migration, or production recovery.
+
+### Routine operation
+
+- `bun run dev`: fresh local build, isolated data, and local sign-in outbox.
+- `bun run ops:status --environment production`: read-only public health; no
+  mail credentials or notification-state writes. `ops:monitor` remains the
+  separate incident/recovery delivery operation.
+- `bun run release:deploy --environment staging --artifact BUNDLE
+  --verification PROOF --current CURRENT --admin-env PRIVATE --out NEW_DIR`
+  composes upload and promotion for one environment, preserving both receipts
+  on failure. Accept real staging product behavior before a separate production
+  invocation with `--staging-receipt`. Source, CI, schema, version, and
+  same-byte staging guards are unchanged; it never activates paused traffic.
+- Keep explicit prior artifacts and receipts for `release:rollback`. Health
+  acceptance is not proof of quiz quality, browser latency, or mail placement.
 
 ## Account provisioning — operator only
 
@@ -612,8 +636,8 @@ still fails closed rather than disabling rate limits.
 All five faces retain `/v1` wire identifiers and learning behavior. Preferred
 generation is `POST /v1/accounts/{account_id}/sources/{source_id}/generation-jobs`,
 then account-scoped `GET /v1/accounts/{account_id}/generation-jobs/{job_id}` until
-terminal status. Coalesced admission returns the existing exact job; generated
-drafts do not schedule reviews until explicit learner keep/edit. The synchronous
+terminal status. Coalesced admission returns the existing exact job; validated
+quizzes enter the review schedule automatically. The synchronous
 `/sources/{source_id}/generate` route remains a compatibility capability; do not
 copy the old host-specific claim that every production call returns 409.
 
@@ -625,8 +649,8 @@ running limits 1/4. Admission reserves $0.10 for each potentially dispatched
 unknown-cost call (initial+repair $0.20), with rolling 24-hour account/global
 limits $1/$10. Actual over-allowance cost is charged and blocks further starts;
 unknown costs keep their reservation, never a fictitious zero. LocalOnly
-sources must not reach a model. Cached Notes and manual learner-requested
-Bridge remain explicit, with learner approval before scheduling.
+sources must not reach a model. Cached Notes and learner-requested Bridge remain
+explicit; validated Bridge quizzes publish without a separate approval step.
 
 Before public cutover, retain separate actual evidence for:
 
@@ -634,9 +658,9 @@ Before public cutover, retain separate actual evidence for:
    browser sign-in, allowlist recheck, one-use magic links, CSRF rejection,
    logout-current/all, and signed unsubscribe.
 2. Real account/source/history/graded-hold continuity and account isolation.
-3. Browser Capture → waiting → Library draft decisions → Study → reveal/grade →
-   Next, with exact-job terminal reconciliation that does not navigate away
-   from editable Library. Verify the actual mobile surface, not just HTML text.
+3. Browser Capture → waiting → review → reveal/grade → Next, without draft
+   approval. Exact-job completion must not navigate away from editable Library.
+   Verify the actual mobile surface, not just HTML text.
 4. Real queued generation, lease/replay behavior, provider usage/cost accounting,
    and the current generation quality acceptance bar.
 5. Resend provider acceptance recorded separately from Inbox/Spam placement and

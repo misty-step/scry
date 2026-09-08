@@ -1083,7 +1083,11 @@ impl AccountRegistry {
         request: &CreateSourceRequest,
     ) -> Result<SourceRecord, ApiFailure> {
         let account = self.require_account(account_id, session_token)?;
-        let title = normalize_required_text(&request.title, "Source title")?;
+        let title = if request.title.trim().is_empty() {
+            memory_engine_study::infer_capture_title(&request.body)
+        } else {
+            normalize_required_text(&request.title, "Source title")?
+        };
         let body = normalize_required_text(&request.body, "Source body")?;
         let source = SourceRecord {
             source_id: source_id_for(account_id, &title, &body),
@@ -1247,10 +1251,7 @@ impl AccountRegistry {
             .generate_source(account_id, &account.store_path, source_id)
     }
 
-    /// Runs a queued generation job end to end on a worker thread. Accepted
-    /// drafts remain pending until the learner explicitly keeps or edits them.
-    /// Returns the scheduled review-card count, which is zero until a decision
-    /// promotes a draft.
+    /// Runs a queued generation job and returns its published quiz count.
     ///
     /// Session-free by design — enqueueing was already authorized in the request
     /// that created the job, and the background worker is trusted, so it keys off
@@ -1302,10 +1303,17 @@ impl AccountRegistry {
                 "Generation lease lost before cards could be committed.",
             ));
         }
-        let _view = storage.study_view(account_id, &store_path)?;
-        // card_count is the number of scheduled cards, and generation never
-        // schedules. Pending accepted drafts are visible in the study view.
-        Ok(0)
+        let view = storage.study_view(account_id, &store_path)?;
+        Ok(view
+            .drafts
+            .iter()
+            .filter(|draft| {
+                draft.approved
+                    && draft.provenance.as_ref().is_some_and(|provenance| {
+                        provenance.generation_run_id.as_deref() == Some(run_id)
+                    })
+            })
+            .count())
     }
 
     /// Runs the typed content-feedback command for one authenticated account.
@@ -1428,6 +1436,15 @@ impl AccountRegistry {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.storage()
             .reject_pending_draft(account_id, &account.store_path, draft_id)
+    }
+
+    pub(crate) fn open_review(
+        &self,
+        account_id: &str,
+        session_token: &str,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        let account = self.require_account(account_id, session_token)?;
+        self.storage().open_review(account_id, &account.store_path)
     }
 
     pub(crate) fn next_review(

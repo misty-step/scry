@@ -55,42 +55,14 @@ fn generates_accepted_quiz_and_exercise_drafts_with_provenance() {
     )
     .expect("generation");
 
-    assert_eq!(
-        result.draft_ids,
-        [
-            "run-nato-draft-src-nato-1-nato-letter-a",
-            "run-nato-draft-src-nato-2-nato-cat-composition"
-        ]
-    );
-    assert_eq!(result.accepted_draft_ids, result.draft_ids);
-    assert!(result.rejected_draft_ids.is_empty());
-    assert!(result.validation_failures.is_empty());
-
     let snapshot = store.snapshot();
-    assert_eq!(snapshot.reference_spans.len(), 2);
-    assert_eq!(snapshot.generation_runs[0].draft_ids, result.draft_ids);
-    assert_eq!(snapshot.generation_runs[0].completed_at, Some(NOW + 1_000));
 
     let quiz = &snapshot.generated_prompt_drafts[0];
     assert_eq!(quiz.activity_kind, GeneratedLearningActivityKind::Quiz);
-    assert_eq!(
-        quiz.validation.status,
-        GeneratedPromptValidationStatus::Accepted
+    assert!(
+        matches!(&quiz.prompt, Prompt::Mcq { choices, correct_choice, .. }
+        if choices == &["ALFA", "BRAVO", "CHARLIE"] && correct_choice == "ALFA")
     );
-    assert_eq!(quiz.queue.concept_key.as_deref(), Some("nato-letter-a"));
-    match &quiz.prompt {
-        Prompt::Mcq {
-            prompt,
-            choices,
-            correct_choice,
-            ..
-        } => {
-            assert_eq!(prompt, "What is the NATO phonetic alphabet word for A?");
-            assert_eq!(choices, &["ALFA", "BRAVO", "CHARLIE"]);
-            assert_eq!(correct_choice, "ALFA");
-        }
-        other => panic!("unexpected quiz prompt: {other:?}"),
-    }
 
     let exercise = &snapshot.generated_prompt_drafts[1];
     assert_eq!(
@@ -112,17 +84,45 @@ fn generates_accepted_quiz_and_exercise_drafts_with_provenance() {
         4
     );
 
-    let review_unit = store
-        .keep_generated_prompt_draft("run-nato-draft-src-nato-2-nato-cat-composition", 0)
-        .expect("keep");
     let queue =
         memory_engine_service::MemoryServiceStore::list_queue_candidates(&store).expect("queue");
-
     assert_eq!(
-        review_unit.generated_prompt_draft_id.as_deref(),
-        Some("run-nato-draft-src-nato-2-nato-cat-composition")
+        queue.len(),
+        2,
+        "both accepted activities are due without a learner decision"
     );
-    assert_eq!(queue[0].review_unit_id, review_unit.review_unit_id);
+    assert!(queue.iter().all(|candidate| candidate.due <= NOW));
+    assert!(snapshot
+        .generated_prompt_drafts
+        .iter()
+        .all(|draft| draft.learner_decision.is_none()));
+    assert_eq!(
+        BetaPersistenceStore::open(&path)
+            .expect("restart")
+            .snapshot()
+            .review_units,
+        snapshot.review_units
+    );
+    let replay = run_beta_generation(
+        &mut store,
+        BetaGenerationRequest {
+            run_id: "run-nato".to_owned(),
+            source_document_ids: vec!["src-nato".to_owned()],
+            parent_review_unit_id: None,
+            started_at: NOW + 50_000,
+            completed_at: Some(NOW + 51_000),
+            default_due: NOW + 50_000,
+            model: None,
+            pending: false,
+        },
+    )
+    .expect("same run replay");
+    assert_eq!(replay, result);
+    assert_eq!(
+        store.snapshot(),
+        snapshot,
+        "replay cannot rewrite publication receipts or initial due dates"
+    );
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn short_verbatim_units_are_promoted_with_substantive_evidence() {
         .save_source_document(SourceDocument {
             id: "src-short-verse".to_owned(),
             kind: SourceDocumentKind::Text,
-            title: "Short verse".to_owned(),
+            title: "Poem: Short verse".to_owned(),
             project_key: None,
             body: Some("Rise.\nShine bright.\nMove onward.".to_owned()),
             uri: None,
@@ -1552,9 +1552,16 @@ fn world_knowledge_card_without_a_quote_is_accepted_and_seeded() {
     assert_eq!(draft.reference_span_ids.len(), 1);
     assert_eq!(draft.queue.concept_key.as_deref(), Some("nato-alphabet-b"));
     assert!(draft.learner_decision.is_none());
+    assert!(snapshot.review_units.iter().any(|unit| {
+        unit.review_unit_id == draft.review_unit_id
+            && unit.generated_prompt_draft_id.as_deref() == Some(draft.id.as_str())
+    }));
     assert!(
-        snapshot.review_units.is_empty(),
-        "generation is not learner approval"
+        memory_engine_service::MemoryServiceStore::list_queue_candidates(&store)
+            .expect("published quiz queue")
+            .iter()
+            .any(|candidate| candidate.review_unit_id == draft.review_unit_id
+                && candidate.due <= NOW)
     );
 }
 

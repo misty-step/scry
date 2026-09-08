@@ -502,23 +502,30 @@ pub struct LearningIntentClassification {
 pub fn classify_learning_intent(source: &SourceDocument) -> LearningIntentClassification {
     let body = source.body.as_deref().unwrap_or_default();
     let has_source_body = !body.trim().is_empty();
-    let normalized = format!("{} {}", source.title, body).to_lowercase();
+    let mut normalized = source.title.to_lowercase();
+    // A capture's line wrapping and incidental references to quotations are not
+    // a request to recite it. Only explicit text metadata may force exhaustive
+    // recitation; ambiguous prose remains the model provider's responsibility.
+    let explicit_verbatim = looks_explicit_verbatim(&normalized);
+    normalized.push(' ');
+    normalized.extend(body.chars().flat_map(char::to_lowercase));
     let lines = non_empty_lines(body);
     let list_facts = count_fact_sentences(body);
     let enumerable = looks_enumerable(body, &lines);
     let process = looks_process(&normalized);
-    let explicit_verbatim = looks_explicit_verbatim(&normalized);
     let ordered_process = looks_ordered_process(&normalized, &lines);
-    if has_source_body && explicit_verbatim {
+    if has_source_body
+        && !body.trim().eq_ignore_ascii_case(source.title.trim())
+        && explicit_verbatim
+    {
         return LearningIntentClassification {
             intent: LearningIntent::VerbatimMemorization,
             rationale: "source explicitly calls for exact sequential memorization".to_owned(),
         };
     }
     // A numbered procedure is both list-shaped and process-shaped. Let the
-    // strong ordered-action signal win that overlap, while keeping ordinary
-    // line-broken verse on the verbatim path and finite reference sets
-    // enumerable even when they mention weak process words such as "first".
+    // strong ordered-action signal win that overlap, while finite reference
+    // sets stay enumerable even when they mention weak words such as "first".
     if enumerable && ordered_process {
         return LearningIntentClassification {
             intent: LearningIntent::ProcedureProcess,
@@ -530,12 +537,6 @@ pub fn classify_learning_intent(source: &SourceDocument) -> LearningIntentClassi
             intent: LearningIntent::EnumerableSet,
             rationale: "source contains a finite set of independently recallable entries"
                 .to_owned(),
-        };
-    }
-    if has_source_body && looks_verbatim(&normalized, &lines) {
-        return LearningIntentClassification {
-            intent: LearningIntent::VerbatimMemorization,
-            rationale: "source reads like a quoted passage or line-broken text".to_owned(),
         };
     }
     if process {
@@ -812,21 +813,10 @@ impl BridgeMaterialProvider for FakeModelProvider {
     }
 }
 
-fn looks_verbatim(normalized: &str, lines: &[String]) -> bool {
-    looks_explicit_verbatim(normalized)
-        || (lines.len() >= 3
-            && lines.iter().all(|line| !line.contains(':'))
-            && lines
-                .iter()
-                .filter(|line| line.chars().count() <= 96)
-                .count()
-                >= 3)
-}
-
 /// Checks whether `word` appears as a whole token in `haystack`, splitting on
 /// any non-alphanumeric byte. Plain `str::contains` would let compound words
-/// such as "universe", "diverse", or "quoted" trip on "verse"/"quote" and
-/// silently convert ordinary conceptual prose into a recitation exercise.
+/// such as "universe" or "diverse" trip on "verse" and silently convert
+/// ordinary conceptual prose into a recitation exercise.
 fn contains_word(haystack: &str, word: &str) -> bool {
     haystack
         .split(|character: char| !character.is_alphanumeric())
@@ -835,7 +825,7 @@ fn contains_word(haystack: &str, word: &str) -> bool {
 
 fn looks_explicit_verbatim(normalized: &str) -> bool {
     [
-        "recite", "memorize", "verbatim", "poem", "oath", "creed", "excerpt", "verse", "quote",
+        "recite", "memorize", "verbatim", "poem", "oath", "creed", "verse",
     ]
     .iter()
     .any(|keyword| contains_word(normalized, keyword))
@@ -1099,21 +1089,22 @@ fn enumerable_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandid
 }
 
 fn looks_process(normalized: &str) -> bool {
-    [
-        "to maintain",
-        "first",
-        "then",
-        "finally",
-        "step",
-        "process",
-        "procedure",
-        "always ",
-        " once every ",
-        "if it ",
-        "before ",
-    ]
-    .iter()
-    .any(|needle| normalized.contains(needle))
+    ["procedure", "recipe", "workflow"]
+        .iter()
+        .any(|word| contains_word(normalized, word))
+        || [
+            "to maintain",
+            "how to ",
+            "follow these",
+            "first, ",
+            "then, ",
+            "finally, ",
+            "always ",
+            " once every ",
+            "if it ",
+        ]
+        .iter()
+        .any(|phrase| normalized.contains(phrase))
 }
 
 fn looks_ordered_process(normalized: &str, lines: &[String]) -> bool {
@@ -1178,10 +1169,9 @@ fn looks_concept(normalized: &str) -> bool {
 }
 
 fn looks_like_tiny_fact(normalized: &str) -> bool {
-    normalized.split_whitespace().count() <= 28
-        || normalized.contains(" is ")
-        || normalized.contains(" are ")
-        || normalized.contains(" means ")
+    // Brevity alone identifies a topic seed just as often as a fact. Require
+    // an asserted relationship instead of turning every word/phrase into trivia.
+    normalized.contains(" is ") || normalized.contains(" are ") || normalized.contains(" means ")
 }
 
 fn count_fact_sentences(body: &str) -> usize {
@@ -1354,8 +1344,7 @@ fn fact_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandidate> {
             (question, answer, sentence)
         })
         .collect::<Vec<_>>();
-    let fact_count = fact_rows.len();
-    let mut candidates = fact_rows
+    fact_rows
         .iter()
         .enumerate()
         .map(|(position, (question, answer, sentence))| {
@@ -1373,34 +1362,7 @@ fn fact_candidates(source: &SourceDocument, body: &str) -> Vec<DraftCandidate> {
                 unsupported: false,
             }
         })
-        .collect::<Vec<_>>();
-
-    if (1..=2).contains(&fact_count) {
-        if let Some(first) = candidates.first() {
-            let concept = first.concept.clone();
-            let answer = first.answer.clone();
-            let evidence = first.evidence.clone();
-            let distractors = first.distractors.clone();
-            let activity_stage = first.activity_stage.clone();
-            candidates.push(DraftCandidate {
-                index: fact_count + 1,
-                concept,
-                question: format!(
-                    "Which source fact answers a second wording about \"{}\"?",
-                    source.title
-                ),
-                answer,
-                evidence,
-                distractors,
-                worked_solution: None,
-                activity_kind: GeneratedLearningActivityKind::Quiz,
-                activity_stage,
-                unsupported: false,
-            });
-        }
-    }
-
-    candidates
+        .collect()
 }
 
 fn grounded_fact_distractors(facts: &[(String, String, String)], answer: &str) -> Vec<String> {

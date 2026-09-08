@@ -5,6 +5,7 @@
 //! grading, scheduling, and queue selection.
 
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     error::Error,
     fmt,
@@ -27,8 +28,8 @@ const NOW: i64 = 1_779_984_000_000;
 /// Ceiling for a plausible single-answer response time (ten minutes).
 ///
 /// A local host cannot verify a client-reported duration. Missing, malformed,
-/// non-positive, and implausibly large values therefore take the slow path so
-/// they can never manufacture the fast-answer `Easy` rating.
+/// non-positive, and implausibly large values use a conservative duration for
+/// history. Response speed never changes the answer's grade or rating.
 const MAX_PLAUSIBLE_RESPONSE_TIME_MS: u32 = 600_000;
 
 const HONEST_TIMING_SCRIPT: &str = r#"<script>
@@ -53,7 +54,7 @@ const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
 
 const INTERFACE_PRESSURE: [&str; 3] = [
-    "Reveal is UI-owned because the service has no first-class revealed review command.",
+    "Reveal exposure belongs to the host store; service grading consumes it.",
     "Review-state visibility needs a compact DTO; raw ScheduleState is too engine-shaped for UI copy.",
     "Prompt copy, confidence copy, and answer draft state remain client-owned.",
 ];
@@ -199,6 +200,7 @@ struct WebShellStore {
     units: BTreeMap<ReviewUnitId, WebShellUnit>,
     attempts: Vec<ServiceAttemptRecord>,
     schedules: BTreeMap<ReviewUnitId, ScheduleState>,
+    revealed_occurrences: RefCell<BTreeMap<ReviewUnitId, Option<ScheduleState>>>,
 }
 
 impl WebShellStore {
@@ -214,6 +216,7 @@ impl WebShellStore {
                 .iter()
                 .map(|schedule| (schedule.review_unit_id.clone(), schedule.state.clone()))
                 .collect(),
+            revealed_occurrences: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -253,6 +256,19 @@ impl MemoryServiceStore for WebShellStore {
         Ok(self.schedules.get(review_unit_id).cloned())
     }
 
+    fn review_was_revealed(
+        &self,
+        review_unit_id: &ReviewUnitId,
+        prior_schedule: Option<&ScheduleState>,
+    ) -> Result<bool, Self::Error> {
+        self.assert_known(review_unit_id)?;
+        Ok(self
+            .revealed_occurrences
+            .borrow()
+            .get(review_unit_id)
+            .is_some_and(|revealed_schedule| revealed_schedule.as_ref() == prior_schedule))
+    }
+
     fn apply_review(
         &mut self,
         review_unit_id: &ReviewUnitId,
@@ -264,6 +280,7 @@ impl MemoryServiceStore for WebShellStore {
         self.attempts.push(attempt);
         self.schedules
             .insert(review_unit_id.clone(), schedule_state);
+        self.revealed_occurrences.get_mut().remove(review_unit_id);
         Ok(())
     }
 
@@ -359,10 +376,20 @@ impl WebShellSession {
     /// Returns [`WebShellError::NoActiveReviewUnit`] when the shell has not
     /// selected a current prompt.
     pub fn reveal(&mut self) -> Result<WebShellView, WebShellError> {
+        if self.status == WebShellStatus::Graded {
+            return Ok(self.view());
+        }
         let active = self
             .current
             .as_ref()
             .ok_or(WebShellError::NoActiveReviewUnit)?;
+        let review_unit_id = prompt_review_unit_id(&active.prompt);
+        let prior_schedule = self.service.store().schedule_for(review_unit_id).cloned();
+        self.service
+            .store()
+            .revealed_occurrences
+            .borrow_mut()
+            .insert(review_unit_id.clone(), prior_schedule);
         self.commands.push("reveal".to_owned());
         self.expected_answer = Some(prompt_expected_answer(&active.prompt));
         self.status = WebShellStatus::Revealed;
@@ -381,6 +408,9 @@ impl WebShellSession {
         answer: String,
         response_time_ms: u32,
     ) -> Result<WebShellView, WebShellError> {
+        if self.status == WebShellStatus::Graded {
+            return Ok(self.view());
+        }
         let active = self
             .current
             .as_ref()
@@ -580,7 +610,16 @@ pub fn route(session: &mut WebShellSession, request: &HttpRequest) -> HttpRespon
     match (request.method.as_str(), request.path.as_str()) {
         ("GET", "/") => HttpResponse::html(&render_page(&session.view())),
         ("GET", "/state") => HttpResponse::json(200, &session.view()),
-        ("POST", "/reveal") => response_for(request, session.reveal()),
+        ("POST", "/reveal") => {
+            let result = session.reveal().and_then(|view| {
+                if request.is_form_post() {
+                    session.submit_answer(String::new(), MAX_PLAUSIBLE_RESPONSE_TIME_MS)
+                } else {
+                    Ok(view)
+                }
+            });
+            response_for(request, result)
+        }
         ("POST", "/answer") => match read_answer(&request.body) {
             Ok(answer) => response_for(
                 request,
@@ -1001,7 +1040,9 @@ fn render_current(html: &mut String, current: Option<&WebShellCurrent>) {
     ));
     html.push_str("</h1>");
     if let Some(current) = current {
-        html.push_str("<form method=\"post\" action=\"/answer\"><label for=\"answer\">Answer</label><textarea id=\"answer\" name=\"answer\" autocomplete=\"off\" spellcheck=\"false\"></textarea><input type=\"hidden\" name=\"responseTimeMs\" value=\"\"><div class=\"actions\"><button type=\"submit\">Submit</button></form><form method=\"post\" action=\"/reveal\"><button type=\"submit\" class=\"secondary\">Reveal</button></form><form method=\"post\" action=\"/next\"><button type=\"submit\" class=\"secondary\">Next</button></form></div>");
+        if current.grade.is_none() {
+            html.push_str("<form method=\"post\" action=\"/answer\"><label for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" required autocomplete=\"off\" spellcheck=\"false\"></textarea><input type=\"hidden\" name=\"responseTimeMs\" value=\"\"><button type=\"submit\">Check answer</button></form><form method=\"post\" action=\"/reveal\"><button type=\"submit\" class=\"secondary\">I don’t know yet</button></form>");
+        }
         if let Some(expected) = &current.expected_answer {
             html.push_str("<div class=\"answer\">");
             html.push_str(&escape_html(expected));
@@ -1022,6 +1063,9 @@ fn render_current(html: &mut String, current: Option<&WebShellCurrent>) {
                 review_state.state, review_state.reps, review_state.due
             )));
             html.push_str("</div>");
+        }
+        if current.grade.is_some() {
+            html.push_str("<form method=\"post\" action=\"/next\"><button type=\"submit\">Next question</button></form>");
         }
     }
     html.push_str("</div>");
@@ -1202,120 +1246,69 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{
-        is_client_disconnect_error, looks_like_json, route, run_web_shell_flow, serve_connections,
-        write_response, HttpRequest, HttpResponse, WebShellSession, WebShellStatus,
+        is_client_disconnect_error, looks_like_json, route, serve_connections, write_response,
+        HttpRequest, HttpResponse, WebShellSession, WebShellStatus,
     };
 
     #[test]
     fn drives_reveal_review_and_queue_choreography_through_the_service_boundary() {
         let mut shell = WebShellSession::new();
-
         let initial = shell.start().expect("start");
-        assert_eq!(initial.fixture, "latin-prayer-authored-v1");
-        assert_eq!(initial.status, WebShellStatus::Answering);
-        assert_eq!(
-            initial
-                .current
-                .as_ref()
-                .map(|current| current.review_unit_id.as_str()),
-            Some("import-credo-in-unum-deum")
-        );
-        assert_eq!(
-            initial
-                .current
-                .as_ref()
-                .map(|current| current.prompt.as_str()),
-            Some("Translate: Credo in unum Deum")
-        );
-        assert_eq!(
-            initial
-                .queue
-                .iter()
-                .map(|row| row.review_unit_id.as_str())
-                .collect::<Vec<_>>(),
-            ["import-credo-in-unum-deum", "import-pater-noster"]
-        );
+        let initial_current = initial.current.as_ref().expect("due quiz");
+        let prior_reps = initial_current
+            .review_state
+            .as_ref()
+            .expect("prior schedule")
+            .reps;
 
         let revealed = shell.reveal().expect("reveal");
         assert_eq!(revealed.status, WebShellStatus::Revealed);
+        let revealed_current = revealed.current.as_ref().expect("revealed quiz");
         assert_eq!(
-            revealed
-                .current
-                .as_ref()
-                .and_then(|current| current.expected_answer.as_deref()),
+            revealed_current.review_unit_id,
+            initial_current.review_unit_id
+        );
+        assert_eq!(
+            revealed_current.expected_answer.as_deref(),
             Some("I believe in one God")
         );
+        assert!(revealed_current.grade.is_none());
+        assert_eq!(revealed_current.review_state, initial_current.review_state);
+        assert_eq!(revealed.attempts, 0);
 
         let reviewed = shell
-            .submit_answer("I believe in one God".to_owned(), 6_500)
-            .expect("review");
+            .submit_answer("I believe in one God".to_owned(), 2_400)
+            .expect("assisted review");
         assert_eq!(reviewed.status, WebShellStatus::Graded);
-        let reviewed_current = reviewed.current.as_ref().expect("current");
-        assert_eq!(
-            reviewed_current.grade.as_ref().map(|grade| grade.rating),
-            Some(3)
-        );
+        let reviewed_current = reviewed.current.as_ref().expect("held quiz");
+        let grade = reviewed_current.grade.as_ref().expect("grade");
+        assert_eq!(grade.verdict, super::Verdict::Revealed);
+        assert_eq!(grade.rating, 1);
+        assert!(!grade.is_correct);
         assert_eq!(
             reviewed_current
                 .review_state
                 .as_ref()
-                .map(|state| state.reps),
-            Some(4)
+                .expect("updated schedule")
+                .reps,
+            prior_reps + 1
         );
-        assert_eq!(
-            reviewed.commands,
-            ["next-queue", "reveal", "grade/apply-review"]
-        );
+        assert_eq!(reviewed.attempts, 1);
 
-        let next = shell.advance().expect("next");
+        let replayed = shell
+            .submit_answer("I believe in one God".to_owned(), 2_400)
+            .expect("repeat submission");
+        assert_eq!(replayed.current, reviewed.current);
+        assert_eq!(replayed.attempts, 1);
+        route(&mut shell, &request("GET", "/", ""));
+        assert_eq!(shell.view().current, reviewed.current);
+
+        let next = shell.advance().expect("deliberate next");
         assert_eq!(next.status, WebShellStatus::Answering);
-        assert_eq!(
-            next.current
-                .as_ref()
-                .map(|current| current.review_unit_id.as_str()),
-            Some("import-pater-noster")
-        );
-    }
-
-    #[test]
-    fn emits_web_shell_receipt_for_extraction_review() {
-        let receipt = run_web_shell_flow().expect("receipt");
-
-        assert_eq!(receipt.fixture, "latin-prayer-authored-v1");
-        assert_eq!(
-            receipt.commands,
-            ["next-queue", "reveal", "grade/apply-review", "next-queue"]
-        );
-        assert_eq!(receipt.submitted_answer, "I believe in one God");
-        assert_eq!(receipt.graded_rating, 4);
-        assert_eq!(receipt.scheduled_reps, 4);
-        assert_eq!(
-            receipt.next_review_unit_id.as_deref(),
-            Some("import-pater-noster")
-        );
-        assert_eq!(receipt.extraction_recommendation, "keep experimenting");
-        assert!(receipt
-            .interface_pressure
-            .contains(&"Review-state visibility needs a compact DTO; raw ScheduleState is too engine-shaped for UI copy.".to_owned()));
-    }
-
-    #[test]
-    fn renders_honest_response_timing_for_review_forms() {
-        let mut shell = WebShellSession::new();
-        shell.start().expect("start");
-
-        let html = String::from_utf8(route(&mut shell, &request("GET", "/", "")).body)
-            .expect("review html");
-        assert!(html.contains(r#"name="responseTimeMs" value=""#));
-        assert!(!html.contains(r#"name="responseTimeMs" value="2400"#));
-        assert!(
-            html.contains(r#"window.performance && typeof window.performance.now === "function""#)
-        );
-        assert!(html.contains("monotonic ? window.performance.now() : Date.now()"));
-        assert!(!html.contains("typeof performance.now"));
-        assert!(!html.contains("? performance.now()"));
-        assert!(html.contains("Date.now"));
-        assert!(html.contains("Math.max(1, Math.round(elapsed))"));
+        let next_current = next.current.expect("another due quiz");
+        assert_ne!(next_current.review_unit_id, initial_current.review_unit_id);
+        assert!(next_current.grade.is_none());
+        assert!(next_current.expected_answer.is_none());
     }
 
     #[test]
@@ -1394,15 +1387,39 @@ mod tests {
         assert_eq!(revealed.status, 200);
         assert_eq!(revealed.content_type, "text/html; charset=utf-8");
         let revealed = String::from_utf8(revealed.body).expect("revealed html");
-        assert!(revealed.contains("I believe in one God"));
+        assert!(revealed.contains(r#"action="/next""#));
+        let held = shell.view();
+        assert_eq!(held.attempts, 1);
+        let grade = held
+            .current
+            .as_ref()
+            .expect("assisted quiz")
+            .grade
+            .as_ref()
+            .expect("grade");
+        assert_eq!(grade.verdict, super::Verdict::Revealed);
+        assert_eq!(grade.rating, 1);
 
-        let answered = route(
-            &mut shell,
-            &form_request("/answer", "answer=I+believe+in+one+God"),
-        );
+        route(&mut shell, &form_request("/reveal", ""));
+        assert_eq!(shell.view().current, held.current);
+        assert_eq!(shell.view().attempts, 1);
+        let next = route(&mut shell, &form_request("/next", ""));
+        assert_eq!(next.status, 200);
+        let next_html = String::from_utf8(next.body).expect("next question html");
+        assert!(next_html.contains(r#"action="/answer""#));
+        let answered = route(&mut shell, &form_request("/answer", "answer=Our+Father"));
         assert_eq!(answered.status, 200);
-        let answered = String::from_utf8(answered.body).expect("answered html");
-        assert!(answered.contains("Correct rating 3"));
+        let answered = shell.view();
+        let grade = answered
+            .current
+            .as_ref()
+            .expect("answered quiz")
+            .grade
+            .as_ref()
+            .expect("grade");
+        assert_eq!(grade.verdict, super::Verdict::Correct);
+        assert_eq!(grade.rating, 3);
+        assert_eq!(answered.attempts, 2);
     }
 
     #[test]

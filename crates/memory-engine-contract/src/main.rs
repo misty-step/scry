@@ -22,7 +22,6 @@ const REQUIRED_CONTRACT_PATHS: &[&str] = &[
     "/v1/accounts/{account_id}/sources/{source_id}",
     "/v1/accounts/{account_id}/sources/{source_id}/generation-jobs",
     "/v1/accounts/{account_id}/generation-jobs/{job_id}",
-    "/v1/accounts/{account_id}/drafts/{draft_id}/keep",
     "/v1/accounts/{account_id}/review/next",
     "/v1/accounts/{account_id}/review/{review_unit_id}/reveal",
     "/v1/accounts/{account_id}/review/{review_unit_id}/submit",
@@ -156,27 +155,12 @@ fn drive_review_loop(
         )));
     }
 
-    // A succeeded job leaves its accepted draft pending until an explicit
-    // learner decision — generation never schedules a card by itself
-    // (`registry.rs::run_generation_job`). Fetch the pending draft over
-    // `/review/next` (the same read the client's own `pending_drafts` uses)
-    // and keep it so the review loop below has something due.
-    let generated: StudyView =
-        client.post_empty(&format!("/v1/accounts/{}/review/next", client.account_id))?;
-    let draft_id = generated
-        .drafts
-        .first()
-        .ok_or_else(|| ContractFailure("generation job left no pending draft".to_owned()))?
-        .id
-        .clone();
-
-    client.post_empty::<StudyView>(&format!(
-        "/v1/accounts/{}/drafts/{draft_id}/keep",
-        client.account_id
-    ))?;
-
-    // The draft was explicitly kept just above, so it is now scheduled and
-    // due for review — there is no separate approve step.
+    // Completed generation publishes due quizzes without a learner decision.
+    if job.card_count == 0 {
+        return Err(ContractFailure(
+            "generation job published no quizzes".to_owned(),
+        ));
+    }
     let next: StudyView =
         client.post_empty(&format!("/v1/accounts/{}/review/next", client.account_id))?;
     let review_unit_id = next
@@ -551,14 +535,8 @@ struct GenerationJob {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct StudyView {
-    drafts: Vec<Draft>,
     current: Option<CurrentReview>,
     summary: StudySummary,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-struct Draft {
-    id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]

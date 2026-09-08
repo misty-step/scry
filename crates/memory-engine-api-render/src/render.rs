@@ -9,10 +9,9 @@
 
 use std::fmt::Write as _;
 
-use memory_engine_persistence::GeneratedPromptValidationStatus;
 use memory_engine_study::{
-    BetaStudyConceptProgress, BetaStudyCurrent, BetaStudyDraftRow, BetaStudyFeedback,
-    BetaStudyGrade, LibrarySourceRow, SourcePermission,
+    BetaStudyConceptProgress, BetaStudyCurrent, BetaStudyFeedback, BetaStudyGrade,
+    LibrarySourceRow, SourcePermission,
 };
 
 #[cfg(test)]
@@ -249,31 +248,32 @@ pub fn render_create_page(
     document(&inner)
 }
 
-/// A saved capture follows exactly one generation job. With no editable form
-/// on this surface, its terminal event can safely open Library.
+/// A saved capture follows one durable job directly into review. Failed jobs
+/// stay on this surface with their source intact and an authorized retry.
 #[must_use]
 pub fn render_capture_waiting_page(account: &AppAccount, job: &GenerationJob) -> String {
     let heading = match job.status {
-        JobStatus::Succeeded => "Generation finished",
-        JobStatus::Failed => "Generation needs attention",
+        JobStatus::Succeeded => "Your quizzes are ready",
+        JobStatus::Failed => "Your text is safe",
         JobStatus::Queued | JobStatus::Running | JobStatus::Retry => {
-            "Preparing your study material"
+            "Turning this into something you’ll remember"
         }
     };
     let body = format!(
-        r#"<section class="me-generation-waiting" data-generation-job-id="{id}" data-terminal-url="/app/library" data-status="{status}" aria-labelledby="me-generation-title">
+        r#"<section class="me-generation-waiting" data-generation-job-id="{id}" data-terminal-url="/" data-status="{status}" aria-labelledby="me-generation-title">
 <h1 class="me-display" id="me-generation-title">{heading}</h1>
 <p class="me-generation-source">{title}</p>
 <p class="me-generation-status" data-generation-status role="status" aria-live="polite" aria-atomic="true">{message}</p>
-<p class="ae-lede">Inspect the generated material in Library before choosing which quizzes to keep. Your review queue does not change until you approve a draft.</p>
-<a class="ae-button" href="/app/library">Open Library</a>
-<p class="me-hint me-generation-help">Leave this page open to follow this request, or open Library whenever you are ready.</p>
-<noscript><p class="me-hint">Live updates need JavaScript. Open Library to check the current status.</p></noscript>
+<div data-generation-recovery>{retry}</div>
+<a class="ae-button" href="/">Keep reviewing</a>
+<p class="me-hint me-generation-help">You can leave this open or come back later. Your text is already saved.</p>
+<noscript><p class="me-hint"><a href="/app/capture?jobId={id}">Check progress</a>, then open review when your quizzes are ready.</p></noscript>
 </section>"#,
         id = escape_html(&job.id),
         status = job.status.as_str(),
         title = escape_html(&job.title),
         message = job_meta(job),
+        retry = render_job_retry(account, job),
     );
     // This API has no study view. Keep the enhancement hook without inventing
     // a zero due count or fetching unrelated account state.
@@ -549,8 +549,8 @@ fn render_signed_out(notice: Option<&str>) -> String {
         r#"<div class="me-cover">
 {notice}
 <div class="me-cover-intro">
-<h1 class="me-display">Make room for what you want to remember.</h1>
-<p class="ae-lede ae-dim me-support">Bring a source or an idea. Shape it into quizzes and study notes, then return for a little practice at a time.</p>
+<h1 class="me-display">Remember what matters to you.</h1>
+<p class="ae-lede ae-dim me-support">A word, an idea, a whole essay. We turn it into useful questions and bring them back when you need them.</p>
 </div>
 <section class="ae-group me-capture-hero" aria-label="Sign in or join the waitlist">
 <form class="me-entry-form" action="/app/account" method="post">
@@ -594,12 +594,12 @@ fn render_signed_in(
             render_signed_in_body(account, due, notice, jobs, &body, None)
         }
         SignedInSurface::ReviewComplete => {
-            let body = render_review_complete();
+            let body = render_home_body(account, view);
             render_signed_in_body(account, due, notice, jobs, &body, Some("home"))
         }
         SignedInSurface::Home => {
             if let Some(current) = view.and_then(|view| view.current.as_ref()) {
-                // Draft triage belongs in Library, not underneath an active Quiz.
+                // The question owns the screen; management stays in the menu.
                 let body = render_current_review(account, current);
                 render_signed_in_body(account, due, notice, jobs, &body, None)
             } else {
@@ -626,25 +626,20 @@ fn render_signed_in_body(
     body: &str,
     nav_active: Option<&str>,
 ) -> String {
-    // Account menu lives in the header so the bottom nav stays four equal
-    // view tabs. Review (nav_active = None) keeps the same header menu and
-    // a tagline footer — no sign-out jammed into the bottom bar.
+    // Navigation is secondary to the question. Adding material stays one tap away.
     let header_right = format!(
-        r#"<span class="me-due">{due} due</span>{account_menu}"#,
+        r#"<span class="me-due">{due} due</span><a class="me-add" href="/app/create" aria-label="Learn something new">{ICON_PLUS}<span>Add</span></a>{account_menu}"#,
         account_menu = account_menu(account),
     );
     let footer = match nav_active {
         Some(active) => render_nav(active),
-        None => FOOTER_TAGLINE.to_owned(),
+        None => String::new(),
     };
     let view_inner = format!("{}{}", render_notice(notice, jobs), body);
     screen(&header_right, &view_inner, &footer)
 }
 
-/// Persistent one-tap navigation across standing views (memory-engine-087).
-/// Each view answers one job-to-be-done; the current view carries
-/// `aria-current="page"`. Sign-out lives in the header account menu so the
-/// bar stays four equal tabs with no overflow on phone widths.
+/// Two destinations: practice and add. Management lives in the account menu.
 fn render_nav(active: &str) -> String {
     let item = |label: &str, href: &str, key: &str| {
         let current = if key == active {
@@ -655,21 +650,10 @@ fn render_nav(active: &str) -> String {
         format!(r#"<a class="me-nav-item" href="{href}"{current}>{label}</a>"#)
     };
     format!(
-        r#"<nav class="me-nav" aria-label="Views">{}{}{}{}</nav>"#,
-        item("Home", "/", "home"),
-        item("Create", "/app/create", "create"),
-        item("Library", "/app/library", "library"),
-        item("Progress", "/app/analytics", "analytics"),
+        r#"<nav class="me-nav" aria-label="Study">{}{}</nav>"#,
+        item("Review", "/", "home"),
+        item("Add something", "/app/create", "create"),
     )
-}
-
-fn render_review_complete() -> String {
-    r#"<section class="ae-group me-review-complete">
-<h1 class="me-display">A good place to pause</h1>
-<p class="ae-lede">Nothing else is due right now. Your review is saved.</p>
-<div class="me-actions"><a class="ae-button" href="/">Back to Home</a><a class="ae-button-quiet" href="/app/library">Open Library</a></div>
-</section>"#
-        .to_owned()
 }
 
 fn render_edit_review(account: &AppAccount, current: &BetaStudyCurrent) -> String {
@@ -694,39 +678,16 @@ fn render_edit_review(account: &AppAccount, current: &BetaStudyCurrent) -> Strin
     )
 }
 
-/// The Home view: due hero, caught-up state, and reminders behind a
-/// disclosure. Nothing else — capture, sources, and analytics each own their
-/// own view (memory-engine-087).
 fn render_home_body(account: &AppAccount, view: Option<&StudyViewResponse>) -> String {
     let mut html = String::new();
-    let pending_drafts = render_pending_drafts(account, view);
     if let Some(view) = view {
         html.push_str(&render_review_status(account, view));
     }
-    if view.is_none_or(|v| v.due_count == 0 && v.summary.approved_review_unit_count == 0) {
-        html.push_str(if pending_drafts.is_empty() {
-            r#"<section class="ae-group me-welcome"><h1 class="me-display">Start with something worth remembering</h1><p class="ae-lede">Add a source or a topic. Inspect the generated quizzes before choosing what goes into your review queue.</p><a class="ae-button" href="/app/create">Create your first quizzes</a></section>"#
-        } else {
-            r#"<section class="ae-group me-welcome"><h1 class="me-display">Choose what to practice</h1><p class="ae-lede">Your draft quizzes are ready below. Keep only those you want to review.</p></section>"#
-        });
-    }
-    html.push_str(&render_return_notifications(account));
-    // Generation is non-blocking. Accepted drafts stay pending until the
-    // learner inspects their evidence and explicitly keeps, edits, or rejects
-    // them (memory-engine-079); that decision lives on Home alongside review.
-    html.push_str(&pending_drafts);
+    html.push_str(&render_capture(account));
     html
 }
 
-/// The Library view: saved material with per-source active-card counts and
-/// concept drilldown, generated drafts pending a keep/edit/reject decision,
-/// and the generation activity log (memory-engine-087). Source management is
-/// one job-to-be-done — it never shares a scroll with capture or analytics —
-/// but a pending decision surfaces here too (alongside the activity log that
-/// produced it) as well as on Home, since a learner may look for it in
-/// either place. Generation is non-blocking: accepted drafts stay pending
-/// until the learner inspects their evidence and explicitly keeps, edits, or
-/// rejects them.
+/// Saved topics and source controls, not an approval inbox.
 fn render_library_body(
     account: &AppAccount,
     sources: &[SourceRecord],
@@ -735,7 +696,7 @@ fn render_library_body(
 ) -> String {
     let library = view.map_or(&[][..], |v| v.library.as_slice());
     let mut html = String::from(
-        r#"<header class="me-page-heading"><h1 class="me-display">Library</h1><p class="ae-lede">Your sources, study material, and quizzes. You choose what enters your review queue.</p></header>"#,
+        r#"<header class="me-page-heading"><h1 class="me-display">Your learning</h1><p class="ae-lede">Everything you’ve added. Your quizzes are already in the review schedule.</p></header>"#,
     );
     html.push_str(&render_library_sources(account, sources, library, jobs));
     if let Some(view) = view {
@@ -747,7 +708,6 @@ fn render_library_body(
             );
         }
     }
-    html.push_str(&render_pending_drafts(account, view));
     html.push_str(&render_jobs(account, jobs));
     html
 }
@@ -763,7 +723,7 @@ fn render_library_sources(
     jobs: &[GenerationJob],
 ) -> String {
     if sources.is_empty() {
-        return r#"<section class="ae-group"><h2 class="ae-h">No sources yet</h2><p class="ae-lede">Save a source or a topic to begin building your study material.</p><a class="ae-button" href="/app/create">Add a source</a></section>"#.to_owned();
+        return r#"<section class="ae-group"><h2 class="ae-h">Nothing here yet</h2><p class="ae-lede">Start with a word, an idea, or something you’ve read.</p><a class="ae-button" href="/app/create">Add something to learn</a></section>"#.to_owned();
     }
     let mut rows = String::new();
     for source in sources {
@@ -832,10 +792,10 @@ fn render_library_sources(
             r#"<article class="me-source">
 <header class="me-source-header"><h3 class="me-source-title">{title}</h3>{count_line}</header>
 {concept_detail}
-{permission}
 <details class="me-source-settings">
 <summary>Source settings</summary>
 <div class="me-source-settings-panel">
+{permission}
 {edit_permission}
 <div class="me-row-actions">
 {generate}
@@ -918,38 +878,33 @@ fn generating_notice_is_live(text: &str, jobs: &[GenerationJob]) -> bool {
 
 fn render_review_status(account: &AppAccount, view: &StudyViewResponse) -> String {
     if view.due_count > 0 {
+        // Recovery for callers without a selected occurrence; normal entry
+        // selects the question at the server before rendering.
         return format!(
-            r#"<section class="ae-group me-callout">
-<h1 class="me-display">A little practice, ready for you</h1>
-<p class="me-callout-line"><span class="me-callout-n">{due_count}</span> {items} due. Take them one at a time.</p>
-<form action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Start review</button></form>
-</section>"#,
-            due_count = view.due_count,
-            items = plural(view.due_count, "quiz is", "quizzes are"),
+            r#"<form class="me-next" action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Back to your next question</button></form>"#,
             csrf = hidden_csrf_input(account),
         );
     }
-    // Caught up: only worth saying once the learner actually has reviews.
     if view.summary.approved_review_unit_count > 0 {
         return format!(
-            r#"<section class="ae-group me-caughtup"><p class="me-caughtup-line">{ICON_OK}<span>Review is up to date</span></p><h1 class="me-display">You’re all caught up</h1><p class="ae-lede">Nothing is due right now. Come back when you are ready, or add something new to study.</p><a class="ae-button-quiet" href="/app/create">Create more quizzes</a></section>"#
+            r#"<section class="me-caughtup"><p class="me-caughtup-line">{ICON_OK}<span>You’re caught up.</span></p><p class="ae-lede">Your next review will be here when it’s time. Want to learn something else?</p></section>"#
         );
     }
     String::new()
 }
 
 fn render_capture(account: &AppAccount) -> String {
-    // Capture returns while generation runs. Approval happens in Library.
+    // One input is enough; validated quizzes are scheduled in the background.
     format!(
         r#"<section class="ae-group me-capture">
-<h1 class="me-display">What do you want to remember?</h1>
-<p class="ae-lede">Add a topic, paste your notes, or bring a passage you want to understand.</p>
+<h1 class="me-display">What do you want to know?</h1>
+<p class="ae-lede">One word or a whole essay. We’ll take it from here.</p>
 <form class="me-capture-form" action="/app/capture" method="post">
 {csrf}
-<label class="ae-label me-capture-label" for="me-capture">Source or topic</label>
-<textarea class="ae-input" id="me-capture" name="capture" rows="6" required aria-describedby="me-capture-help" placeholder="Paste a passage, write a topic, or add your own notes."></textarea>
-<p class="me-hint" id="me-capture-help">This uses model help. Check generated material against its source before keeping a quiz. Do not include private information you do not want sent to a model.</p>
-<div class="me-actions"><button class="ae-button" type="submit">Create quizzes</button><span class="ae-dim me-hint me-live-hint" role="status" aria-live="polite">You will inspect the drafts before anything enters review.</span></div>
+<label class="ae-label me-capture-label" for="me-capture">Anything you want to learn</label>
+<textarea class="ae-input" id="me-capture" name="capture" rows="5" required maxlength="65536" aria-describedby="me-capture-help" placeholder="Photosynthesis. First principles thinking. Or paste something you’ve been reading."></textarea>
+<div class="me-actions"><button class="ae-button" type="submit">Learn this</button><span class="me-live-hint" role="status" aria-live="polite"></span></div>
+<p class="me-hint" id="me-capture-help">AI turns your text into quizzes. Don’t include anything you don’t want sent to a model. Up to 64 KB.</p>
 </form>
 </section>"#,
         csrf = hidden_csrf_input(account),
@@ -957,139 +912,13 @@ fn render_capture(account: &AppAccount) -> String {
 }
 
 fn render_create_status(jobs: &[GenerationJob]) -> String {
-    let in_flight = jobs.iter().any(|job| {
-        matches!(
-            job.status,
-            JobStatus::Queued | JobStatus::Running | JobStatus::Retry
-        )
-    });
-    let message = if in_flight {
-        "Your source is saved and quizzes are being prepared. You can leave this page while generation finishes."
-    } else if jobs.iter().any(|job| job.status == JobStatus::Failed) {
-        "A generation request needs attention. Open Library to inspect its status and available recovery."
-    } else {
-        "Saved sources, generation status, and drafts awaiting your decision live in Library."
-    };
-    format!(
-        r#"<section class="me-capture-next"><p class="me-hint">{message}</p><a class="ae-button-quiet" href="/app/library">Open Library</a></section>"#
-    )
-}
-
-fn render_pending_drafts(account: &AppAccount, view: Option<&StudyViewResponse>) -> String {
-    let Some(view) = view else {
+    let Some(job) = jobs.iter().find(|job| job.status != JobStatus::Succeeded) else {
         return String::new();
     };
-    let pending = view.drafts.iter().filter(|draft| {
-        !draft.approved
-            && draft.learner_decision.is_none()
-            && draft.validation_status == GeneratedPromptValidationStatus::Accepted
-    });
-    let mut rows = String::new();
-    for draft in pending {
-        let mut spans = String::new();
-        if draft.source_spans.is_empty() {
-            spans.push_str(r#"<p class="me-hint">No source passage accompanies this draft. Check its accuracy before keeping it.</p>"#);
-        } else {
-            spans.push_str(r#"<ul class="me-provenance-spans">"#);
-            for span in &draft.source_spans {
-                let _ = write!(
-                    spans,
-                    r#"<li><strong>{}</strong><div class="me-reading">{}</div><span class="ae-dim">{}</span></li>"#,
-                    escape_html(&span.label),
-                    escape_html(&span.text),
-                    escape_html(&span.locator),
-                );
-            }
-            spans.push_str("</ul>");
-        }
-        let provenance = draft.provenance.as_ref().map_or_else(String::new, |p| {
-            format!(
-                r#"<details class="me-draft-provenance"><summary>Generation details</summary><p>Provider: {provider}<br>Model: {model}{version}</p></details>"#,
-                provider = escape_html(&p.provider),
-                model = escape_html(&p.model),
-                version = p.prompt_version.as_deref().map_or_else(String::new, |v| {
-                    format!("<br>Prompt version: {}", escape_html(v))
-                }),
-            )
-        });
-        let explanation = draft.worked_solution.as_deref().map_or_else(String::new, |text| {
-            format!(r#"<div class="me-draft-evidence"><h4 class="me-dossier-label">Explanation</h4><div class="me-reading">{}</div></div>"#, escape_html(text))
-        });
-        let id = escape_html(&draft.id);
-        let _ = write!(
-            rows,
-            r#"<article class="me-pending-draft">
-<h3 class="me-draft-concept">Concept: {concept}</h3>
-<p class="me-prompt">{prompt}</p>
-<p class="me-draft-answer"><span class="me-answer-label">Accepted answer</span><br>{answer}</p>
-{choices}
-{explanation}
-<section class="me-draft-evidence"><h4 class="me-dossier-label">Source context</h4>{spans}{provenance}</section>
-<div class="me-row-actions">
-<form action="/app/draft/keep" method="post">{csrf}<input type="hidden" name="draftId" value="{id}"><button class="ae-button" type="submit">Keep as written</button></form>
-<form action="/app/draft/reject" method="post">{csrf}<input type="hidden" name="draftId" value="{id}"><button class="ae-button-quiet" type="submit">Reject draft</button></form>
-</div>
-<details class="me-draft-edit"><summary>Edit before keeping</summary>
-<form action="/app/draft/edit" method="post">{csrf}<input type="hidden" name="draftId" value="{id}">
-<label class="ae-label" for="draft-prompt-{id}">Question</label><textarea class="ae-input" id="draft-prompt-{id}" name="prompt" rows="3" required>{prompt}</textarea>
-<label class="ae-label" for="draft-answer-{id}">Accepted answer</label><input class="ae-input" id="draft-answer-{id}" name="expectedAnswer" value="{answer}" required>
-{choice_fields}
-<div class="me-actions"><button class="ae-button" type="submit">Edit and keep</button></div>
-</form>
-</details>
-</article>"#,
-            concept = escape_html(&draft.concept_label),
-            prompt = escape_html(&draft.prompt),
-            answer = escape_html(&draft.answer),
-            choices = render_draft_choice_list(draft),
-            choice_fields = render_draft_choice_fields(draft),
-            csrf = hidden_csrf_input(account),
-        );
-    }
-    if rows.is_empty() {
-        return String::new();
-    }
     format!(
-        r#"<section class="ae-group me-pending-drafts" id="me-drafts"><h2 class="ae-h">Quizzes ready to inspect</h2><p class="ae-lede">Read the question, answer, and source context. Only quizzes you keep enter your review queue.</p>{rows}</section>"#
-    )
-}
-
-fn render_draft_choice_list(draft: &BetaStudyDraftRow) -> String {
-    if draft.choices.is_empty() {
-        return String::new();
-    }
-    let mut html = String::from("<ul class=\"me-draft-choices\">");
-    for choice in &draft.choices {
-        let mark = if choice == &draft.answer {
-            " <span class=\"ae-dim\">correct</span>"
-        } else {
-            ""
-        };
-        let _ = write!(
-            html,
-            "<li><span class=\"ae-item\">{}</span>{mark}</li>",
-            escape_html(choice)
-        );
-    }
-    html.push_str("</ul>");
-    html
-}
-
-fn render_draft_choice_fields(draft: &BetaStudyDraftRow) -> String {
-    let distractors = draft
-        .choices
-        .iter()
-        .filter(|choice| *choice != &draft.answer)
-        .map(|choice| escape_html(choice))
-        .collect::<Vec<_>>();
-    if distractors.is_empty() {
-        return String::new();
-    }
-    format!(
-        r#"<label class="ae-label" for="draft-choices-{id}">Other answer choices, one per line</label><textarea class="ae-input" id="draft-choices-{id}" name="choices" rows="{rows}">{value}</textarea>"#,
-        id = escape_html(&draft.id),
-        rows = distractors.len().max(2),
-        value = distractors.join("\n"),
+        r#"<p class="me-capture-next me-hint"><a href="/app/capture?jobId={}">Your saved request: {}</a></p>"#,
+        escape_html(&job.id),
+        job_meta(job),
     )
 }
 
@@ -1119,7 +948,7 @@ fn render_jobs(account: &AppAccount, jobs: &[GenerationJob]) -> String {
         rows.push_str(&render_job_row(account, job));
     }
     format!(
-        r#"<section class="ae-group me-jobs"><h2 class="ae-h">Generation activity</h2><ul id="me-jobs" class="me-jobs-list" aria-live="polite" aria-relevant="text">{rows}</ul><p class="me-hint"><a href="/app/library">Refresh Library</a> to see the latest drafts and recovery actions.</p></section>"#
+        r#"<details class="ae-group me-jobs"><summary>Recent activity</summary><ul id="me-jobs" class="me-jobs-list" aria-live="polite" aria-relevant="text">{rows}</ul></details>"#
     )
 }
 
@@ -1141,20 +970,20 @@ fn render_job_row(account: &AppAccount, job: &GenerationJob) -> String {
     )
 }
 
-/// Retry only ever makes sense once a job has actually failed — the
-/// operator's first dogfood session hit an unstyled Retry button rendered
-/// next to a RUNNING job (memory-engine-081). A queued or running job has
-/// nothing to retry, so it renders no control at all; `app.js`'s SSE
-/// enhancement never adds one either (the list is server-authoritative, so a
-/// job that fails live gets its Retry button on the next full page load).
+/// Live updates may reveal this server-authorized control, never invent a token.
 fn render_job_retry(account: &AppAccount, job: &GenerationJob) -> String {
-    if job.status != JobStatus::Failed || !job.retryable {
+    if job.status == JobStatus::Succeeded || (job.status == JobStatus::Failed && !job.retryable) {
         return String::new();
     }
     format!(
-        r#"<form class="me-job-retry" action="/app/jobs/retry" method="post">{csrf}<input type="hidden" name="jobId" value="{id}"><button class="me-job-retry-btn" type="submit">Retry</button></form>"#,
+        r#"<form class="me-job-retry" action="/app/jobs/retry" method="post"{hidden}>{csrf}<input type="hidden" name="jobId" value="{id}"><button class="me-job-retry-btn" type="submit">Try again</button></form>"#,
         csrf = hidden_csrf_input(account),
         id = escape_html(&job.id),
+        hidden = if job.status == JobStatus::Failed {
+            ""
+        } else {
+            " hidden"
+        },
     )
 }
 
@@ -1165,9 +994,7 @@ fn job_meta(job: &GenerationJob) -> String {
         JobStatus::Queued => "Queued for generation.".to_owned(),
         JobStatus::Running => "Generating quizzes…".to_owned(),
         JobStatus::Retry => "Retrying after a temporary failure…".to_owned(),
-        JobStatus::Succeeded => {
-            "Generation finished. Check Library for drafts and notices.".to_owned()
-        }
+        JobStatus::Succeeded => "Your quizzes are ready and scheduled.".to_owned(),
         JobStatus::Failed => escape_html(
             job.error
                 .as_deref()
@@ -1304,7 +1131,7 @@ fn render_bridge_message(card: &GradedReviewCard<'_>) -> String {
     if !feedback.remediation_drafts_pending {
         return String::new();
     }
-    r#"<p class="me-bridge">Easier quizzes are ready for you to inspect. <a href="/app/library#me-drafts">Review the drafts in Library</a> before adding them to practice.</p>"#.to_owned()
+    r#"<p class="me-bridge">We’re making the next practice a little easier.</p>"#.to_owned()
 }
 
 fn render_graded_details(account: &AppAccount, card: &GradedReviewCard<'_>) -> String {
@@ -1507,11 +1334,8 @@ fn review_submit_fields(account: &AppAccount, current: &BetaStudyCurrent) -> Str
     // per-attempt discriminator — stable across an accidental double-submit of
     // one answer (so that stays idempotent), and incremented before the card is
     // shown again — so each attempt gets its own key. Fresh card: reps 0.
-    // The response time ships blank on purpose: app.js fills in the real
-    // presentation-to-submit elapsed milliseconds at the moment of submission,
-    // and the server grades a blank (or otherwise unvouchable) value
-    // conservatively — it can never rate `Easy`. A fabricated constant here
-    // once made every mature correct answer look like fast recall.
+    // The browser fills response time from the actual presentation clock.
+    // Missing timing stays conservative; timing never infers self-assessed ease.
     let reps = current.review_state.as_ref().map_or(0, |state| state.reps);
     format!(
         r#"{csrf}
@@ -1546,11 +1370,9 @@ fn render_verdict(grade: &BetaStudyGrade) -> String {
 }
 
 fn render_next(account: &AppAccount) -> String {
-    // Operator ruling (memory-engine-081, live dogfood): a graded page never
-    // advances on its own. The learner reviews the verdict, answer key, and
-    // dossier until they explicitly advance. Continue is the only way forward.
+    // Feedback remains until one deliberate tap, keypress, or upward swipe.
     format!(
-        r#"<form class="me-next" action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Continue {ICON_ARROW}</button></form>"#,
+        r#"<form class="me-next" action="/app/next" method="post">{csrf}<button class="ae-button" type="submit">Next question</button></form>"#,
         csrf = hidden_csrf_input(account),
     )
 }
@@ -1582,7 +1404,7 @@ fn render_concept_health_surface(
         if has_concepts {
             r#"<p class="me-analytics-empty ae-dim">No concepts match this filter. <a href="/app/analytics">Show all concepts</a>.</p>"#.to_owned()
         } else {
-            r#"<section class="me-analytics-empty"><h2 class="ae-h">Progress starts with practice</h2><p class="ae-lede">Keep a quiz and begin reviewing. Your concept history will appear here as you study.</p><a class="ae-button-quiet" href="/">Go to Home</a></section>"#.to_owned()
+            r#"<section class="me-analytics-empty"><h2 class="ae-h">Progress starts with practice</h2><p class="ae-lede">Add something to learn. Your history will appear here as you review.</p><a class="ae-button-quiet" href="/">Back to review</a></section>"#.to_owned()
         }
     } else {
         format!(
@@ -1834,7 +1656,7 @@ fn render_escape_hatches(account: &AppAccount, current: &BetaStudyCurrent) -> St
     // Only Reveal stays beside the Quiz. Other actions expand into the
     // document with visible, truthful scope descriptions for touch users.
     format!(
-        r#"<details class="me-more"><summary aria-label="More actions">More</summary><div class="me-more-sheet">{reference}{skip}{snooze}{concept_snooze}{bridge}{edit}<a class="me-more-capture" href="/app/create" title="Add a source or topic.">{ICON_PLUS}<span class="me-action-copy"><span class="me-action-label">Create more quizzes</span><span class="me-action-description">Add another source or topic.</span></span></a><details class="me-hatch-delete"><summary>Delete quiz</summary>{delete}</details></div></details>"#,
+        r#"<details class="me-more"><summary aria-label="Question options">Options</summary><div class="me-more-sheet">{reference}{skip}{snooze}{concept_snooze}{bridge}{edit}<details class="me-hatch-delete"><summary>Delete quiz</summary>{delete}</details></div></details>"#,
         reference = render_review_action(
             account,
             current,
@@ -1877,9 +1699,9 @@ fn render_escape_hatches(account: &AppAccount, current: &BetaStudyCurrent) -> St
             account,
             current,
             "/app/bridge",
-            "Bridge to easier practice",
+            "Make this easier",
             ICON_BRIDGE,
-            "Request 2–3 easier quiz drafts to inspect. Revisit this quiz later.",
+            "Practice a simpler part of this idea first.",
         ),
         edit = render_review_action(
             account,
@@ -1923,9 +1745,8 @@ fn render_reveal_form(account: &AppAccount, current: &BetaStudyCurrent) -> Strin
     }
 
     format!(
-        r#"<form class="me-reveal" action="/app/reveal" method="post">{csrf}<input type="hidden" name="reviewUnitId" value="{id}"><button class="ae-button-quiet" type="submit">Reveal answer</button></form>"#,
-        csrf = hidden_csrf_input(account),
-        id = escape_html(&current.review_unit_id.to_string()),
+        r#"<form class="me-reveal" action="/app/reveal" method="post">{fields}<button class="ae-button-quiet" type="submit">I don’t know yet</button></form>"#,
+        fields = review_submit_fields(account, current),
     )
 }
 
@@ -1973,24 +1794,22 @@ fn hidden_csrf_input(account: &AppAccount) -> String {
     )
 }
 
-/// Header account menu for signed-in views: sign out this browser session,
-/// or sign out every browser session via `/app/logout-all`. Machine/service-
-/// session credentials are an independent scope and are unaffected; there is
-/// no PWA control for those today. Lives in the header so the bottom nav
-/// stays four equal view tabs.
+/// Secondary management stays out of the review feed.
 fn account_menu(account: &AppAccount) -> String {
     let csrf = hidden_csrf_input(account);
     format!(
         r#"<details class="me-account">
-<summary class="me-account-summary">Account</summary>
+<summary class="me-account-summary">More</summary>
 <div class="me-account-sheet">
-<p>Manage this browser’s access to your study space.</p>
-<a href="/#me-reminders">Study reminders</a>
+<a href="/app/library">Your learning</a>
+<a href="/app/analytics">Progress</a>
+{reminders}
 <form class="me-foot-form" action="/app/logout" method="post">{csrf}<button class="ae-button-quiet ae-button-compact" type="submit">Sign out</button></form>
 <form class="me-foot-form" action="/app/logout-all" method="post">{csrf}<button class="ae-button-quiet ae-button-compact" type="submit">Sign out all browsers</button></form>
-<p>Operator service sessions are separate and are not changed here.</p>
+<p>Signing out here doesn’t affect service sessions.</p>
 </div>
-</details>"#
+</details>"#,
+        reminders = render_return_notifications(account),
     )
 }
 
@@ -2012,7 +1831,6 @@ const ICON_WARN: &str = r#"<svg class="ae-icon ae-warn" viewBox="0 0 24 24" aria
 const ICON_ERR: &str = r#"<svg class="ae-icon ae-err" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>"#;
 const ICON_REVEALED: &str = r#"<svg class="ae-icon ae-revealed" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>"#;
 const ICON_INFO: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>"#;
-const ICON_ARROW: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>"#;
 const ICON_UP: &str = r#"<svg class="ae-icon ae-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>"#;
 const ICON_DOWN: &str = r#"<svg class="ae-icon ae-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7 17 17"/><path d="M17 7v10H7"/></svg>"#;
 
@@ -2162,6 +1980,7 @@ mod analytics_tests {
         let account: AppAccount = state.create_browser_session(&created).expect("session");
         let view = StudyViewResponse {
             drafts: Vec::new(),
+            queue: Vec::new(),
             current: None,
             concept_progress: Vec::new(),
             summary: BetaStudySummary {
@@ -2218,6 +2037,7 @@ mod analytics_tests {
         let account = state.create_browser_session(&created).expect("session");
         let view = StudyViewResponse {
             drafts: Vec::new(),
+            queue: Vec::new(),
             current: None,
             concept_progress: vec![
                 concept("Needs data", "untried", 0, 0),

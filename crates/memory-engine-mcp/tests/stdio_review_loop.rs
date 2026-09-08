@@ -1,6 +1,6 @@
 //! Cold-agent evidence: spawns the real compiled `memory-engine-mcp` binary
-//! (not a mocked transport) and drives a full deck-create -> inspect ->
-//! keep -> review -> remediation -> feedback -> invalidate loop over its
+//! (not a mocked transport) and drives a full learn -> review -> feedback ->
+//! remove -> project deck invalidation loop over its
 //! actual stdin/stdout JSON-RPC pipes, against a real local
 //! `memory-engine-api` instance (the same Rust binary that runs in
 //! production, an in-process axum server with its background generation
@@ -18,8 +18,7 @@
 //! production additionally refuses `/generate` outright with HTTP 409 once
 //! `MEMORY_ENGINE_POSTGRES_URL` is set —
 //! `memory-engine-api-state::registry::generate_source`). A succeeded job's
-//! accepted draft remains pending until this test explicitly calls
-//! `keep_draft` — generation itself never schedules a card.
+//! validated quizzes are immediately reviewable without an approval call.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -102,132 +101,50 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     );
     assert_eq!(init["result"]["serverInfo"]["name"], "memory-engine");
 
-    // 2. tools/list — seventeen agent-intent tools, not REST-route echoes.
-    let list = rpc(
-        &mut stdin,
-        &rx,
-        &mut transcript,
-        next_id(),
-        "tools/list",
-        &json!({}),
-    );
-    let tool_names = list["result"]["tools"]
-        .as_array()
-        .expect("tools array")
-        .iter()
-        .map(|tool| tool["name"].as_str().unwrap_or_default().to_owned())
-        .collect::<Vec<_>>();
-    assert_eq!(tool_names.len(), 17);
-    for expected in [
-        "create_deck",
-        "keep_draft",
-        "edit_draft",
-        "reject_draft",
-        "list_decks",
-        "invalidate_deck",
-        "list_drafts",
-        "reveal_answer",
-        "record_content_feedback",
-    ] {
-        assert!(
-            tool_names.contains(&expected.to_owned()),
-            "missing {expected}"
-        );
-    }
-
-    // 3. create_deck — saves the source and drives it through the durable
-    //    generation-jobs queue (enqueue + bounded poll), never the legacy
-    //    synchronous /generate route. Generation never auto-schedules
-    //    (`registry.rs::run_generation_job` always returns a zero card
-    //    count), so the accepted draft comes back pending for an explicit
-    //    decision.
-    let deck_body = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\n\
+    // Learn one input string, with no project, title or approval step.
+    let body = "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\n\
          Question: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\n\
          Distractors: ABLE, ADAM\n\
-         Reference: The NATO phonetic alphabet word for A is ALFA.";
-    let created_deck = call_tool(
+         Reference: The NATO phonetic alphabet word for A is ALFA.\n\n\
+         Concept: NATO letter B\nActivity: quiz\nStage: recognition-3\n\
+         Question: What is the NATO phonetic alphabet word for B?\nAnswer: BRAVO\n\
+         Distractors: BAKER, BOSTON\n\
+         Reference: The NATO phonetic alphabet word for B is BRAVO.";
+    let learned = call_tool(
         &mut stdin,
         &rx,
         &mut transcript,
         next_id(),
-        "create_deck",
-        &json!({
-            "project_key": "nato-onboarding",
-            "title": "NATO letter A fixture",
-            "body": deck_body,
-        }),
+        "learn",
+        &json!({"input": body}),
     );
-    let deck_payload = tool_payload(&created_deck);
+    let learned_payload = tool_payload(&learned);
+    assert_eq!(learned["result"]["isError"], false);
+    assert_eq!(learned_payload["generation"]["status"], "succeeded");
+    assert_eq!(learned_payload["generation"]["job"]["cardCount"], 2);
     assert_eq!(
-        deck_payload["generation"]["status"], "succeeded",
-        "queued generation must reach succeeded: {deck_payload}"
+        learned_payload["generation"]["job"]["sourceId"],
+        learned_payload["source"]["sourceId"]
     );
-    assert_eq!(
-        deck_payload["generation"]["job"]["cardCount"], 0,
-        "generation never auto-schedules a card: {deck_payload}"
-    );
-    let pending_draft = deck_payload["generation"]["pendingDrafts"]
-        .as_array()
-        .and_then(|drafts| drafts.first())
-        .expect("pending draft");
-    assert!(pending_draft["sourceSpans"].is_array());
-    assert!(pending_draft["provenance"].is_object());
-    let pending_draft_id = pending_draft["id"]
-        .as_str()
-        .expect("pending draft id")
-        .to_owned();
-    let deck_id = deck_payload["deck"]["deckId"]
-        .as_str()
-        .expect("deckId")
-        .to_owned();
-
-    // 4. list_drafts — the same pending draft is visible account-wide,
-    //    independent of the create_deck response above.
-    let drafts = call_tool(
+    let quizzes = call_tool(
         &mut stdin,
         &rx,
         &mut transcript,
         next_id(),
-        "list_drafts",
+        "list_quizzes",
         &json!({}),
     );
-    let drafts_payload = tool_payload(&drafts)
+    let quizzes_payload = tool_payload(&quizzes);
+    let published = quizzes_payload
         .as_array()
-        .cloned()
-        .unwrap_or_default();
-    assert_eq!(
-        drafts_payload.len(),
-        1,
-        "the fixture's accepted draft must be pending until decided: {drafts_payload:?}"
-    );
-    assert_eq!(drafts_payload[0]["id"], pending_draft_id);
+        .expect("published quiz inventory");
+    for quiz in published {
+        assert!(quiz["sourceSpans"].is_array());
+        assert!(quiz["provenance"].is_object());
+        assert_eq!(quiz["learnerDecision"], Value::Null);
+    }
 
-    // 5. keep_draft — only the explicit keep promotes the accepted draft.
-    let kept = call_tool(
-        &mut stdin,
-        &rx,
-        &mut transcript,
-        next_id(),
-        "keep_draft",
-        &json!({"draft_id": pending_draft_id}),
-    );
-    assert!(tool_payload(&kept)["drafts"].is_array());
-
-    // 6. list_decks — the new deck is visible, scoped to its project_key.
-    let listed_decks = call_tool(
-        &mut stdin,
-        &rx,
-        &mut transcript,
-        next_id(),
-        "list_decks",
-        &json!({"project_key": "nato-onboarding"}),
-    );
-    assert_eq!(
-        tool_payload(&listed_decks).as_array().map(Vec::len),
-        Some(1)
-    );
-
-    // 7. list_due — the card kept above is now due.
+    // Both automatically published quizzes are already due.
     let due = call_tool(
         &mut stdin,
         &rx,
@@ -236,9 +153,9 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         "list_due",
         &json!({}),
     );
-    assert_eq!(tool_payload(&due)["dueCount"], 1);
+    assert_eq!(tool_payload(&due)["dueCount"], 2);
 
-    // 8. review_next — full detail needed to actually answer.
+    // Either independently active quiz may be selected; follow the returned id.
     let next = call_tool(
         &mut stdin,
         &rx,
@@ -252,14 +169,15 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         .as_str()
         .expect("reviewUnitId")
         .to_owned();
-    assert!(next_payload["current"]["prompt"]
-        .as_str()
-        .unwrap_or_default()
-        .contains("NATO phonetic alphabet word for A"));
+    let quiz = published
+        .iter()
+        .find(|quiz| quiz["reviewUnitId"] == review_unit_id)
+        .expect("the selected quiz is published inventory");
+    let quiz_id = quiz["id"].as_str().expect("quiz id").to_owned();
     assert_eq!(next_payload["current"]["expectedAnswer"], Value::Null);
 
-    // 9. reveal_answer — show the answer without grading or advancing, but
-    //    durably mark this occurrence as assisted.
+    // Reveal without grading or advancing, durably marking this occurrence
+    // as assisted.
     let revealed = call_tool(
         &mut stdin,
         &rx,
@@ -270,12 +188,16 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     );
     let revealed_payload = tool_payload(&revealed);
     assert_eq!(revealed_payload["current"]["reviewUnitId"], review_unit_id);
-    assert_eq!(revealed_payload["current"]["expectedAnswer"], "ALFA");
+    let expected_answer = revealed_payload["current"]["expectedAnswer"]
+        .as_str()
+        .expect("revealed expected answer")
+        .to_owned();
+    assert!(["ALFA", "BRAVO"].contains(&expected_answer.as_str()));
     assert_eq!(revealed_payload["current"]["grade"], Value::Null);
     assert_eq!(revealed_payload["summary"]["attemptCount"], 0);
 
-    // 10. submit_answer — an exact answer after exposure is still Again,
-    //     never evidence of unassisted correct recall.
+    // An exact answer after exposure is still Again, never evidence of
+    // unassisted correct recall.
     let submitted = call_tool(
         &mut stdin,
         &rx,
@@ -284,7 +206,7 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         "submit_answer",
         &json!({
             "review_unit_id": review_unit_id,
-            "answer": "ALFA",
+            "answer": expected_answer,
             "idempotency_key": "stdio-assisted-submit",
         }),
     );
@@ -297,7 +219,8 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         submitted_payload["current"]["feedback"]["itemHistory"]["correct"],
         0
     );
-    assert_eq!(submitted_payload["dueCount"], 0);
+    assert_eq!(submitted_payload["current"]["reviewUnitId"], review_unit_id);
+    assert_eq!(submitted_payload["dueCount"], 1);
 
     // A retried submit returns the assisted receipt without adding an attempt.
     let replayed = call_tool(
@@ -308,7 +231,7 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
         "submit_answer",
         &json!({
             "review_unit_id": review_unit_id,
-            "answer": "ALFA",
+            "answer": expected_answer,
             "idempotency_key": "stdio-assisted-submit",
         }),
     );
@@ -319,8 +242,7 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     );
     assert_eq!(replayed_payload["summary"]["attemptCount"], 1);
 
-    // 11. record_content_feedback — a kept/dropped verdict on the content
-    //     itself, distinct from grading the answer.
+    // Content feedback is optional and distinct from grading the answer.
     let feedback = call_tool(
         &mut stdin,
         &rx,
@@ -333,7 +255,111 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     assert_eq!(feedback_payload["verdict"], "kept");
     assert_eq!(feedback_payload["reviewUnitId"], review_unit_id);
 
-    // 12. invalidate_deck — retires the deck; due count stays at 0.
+    // Removal is a direct optional quiz lifecycle operation after review.
+    let removed = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "remove_quiz",
+        &json!({"quiz_id": quiz_id}),
+    );
+    assert_eq!(tool_payload(&removed)["summary"]["attemptCount"], 1);
+    let remaining = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "list_quizzes",
+        &json!({}),
+    );
+    let remaining_payload = tool_payload(&remaining);
+    let remaining_quizzes = remaining_payload
+        .as_array()
+        .expect("remaining quiz inventory");
+    assert!(remaining_quizzes.iter().all(|quiz| quiz["id"] != quiz_id));
+    for unremoved in published.iter().filter(|quiz| quiz["id"] != quiz_id) {
+        assert!(
+            remaining_quizzes
+                .iter()
+                .any(|quiz| quiz["id"] == unremoved["id"]),
+            "removing one quiz must preserve the other published quizzes"
+        );
+    }
+
+    // Only an explicit review_next consumes the previous held review.
+    let next = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "review_next",
+        &json!({}),
+    );
+    let next_payload = tool_payload(&next);
+    let next_review_unit_id = next_payload["current"]["reviewUnitId"]
+        .as_str()
+        .expect("another published quiz is due");
+    assert!(remaining_quizzes
+        .iter()
+        .any(|quiz| quiz["reviewUnitId"] == next_review_unit_id));
+    assert_eq!(next_payload["current"]["grade"], Value::Null);
+    assert_eq!(next_payload["current"]["expectedAnswer"], Value::Null);
+    let unassisted_answer = if expected_answer == "ALFA" {
+        "BRAVO"
+    } else {
+        "ALFA"
+    };
+    let answered = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "submit_answer",
+        &json!({
+            "review_unit_id": next_review_unit_id,
+            "answer": unassisted_answer,
+            "response_time_ms": 1,
+            "idempotency_key": "stdio-unassisted-submit",
+        }),
+    );
+    let answered_payload = tool_payload(&answered);
+    assert_eq!(answered_payload["current"]["grade"]["verdict"], "correct");
+    assert_eq!(answered_payload["current"]["grade"]["rating"], 3);
+    assert_eq!(answered_payload["summary"]["attemptCount"], 2);
+    assert_eq!(answered_payload["dueCount"], 0);
+
+    // Project decks still publish without approval and can be invalidated.
+    let created_deck = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "create_deck",
+        &json!({
+            "project_key": "nato-onboarding",
+            "title": "NATO letter C",
+            "body": "Concept: NATO letter C\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for C?\nAnswer: CHARLIE\nDistractors: CHARLES, CANADA\nReference: The NATO phonetic alphabet word for C is CHARLIE.",
+        }),
+    );
+    let deck_payload = tool_payload(&created_deck);
+    assert_eq!(deck_payload["generation"]["status"], "succeeded");
+    assert_eq!(deck_payload["generation"]["job"]["cardCount"], 1);
+    let deck_id = deck_payload["deck"]["deckId"].as_str().expect("deck id");
+    let listed_decks = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "list_decks",
+        &json!({"project_key": "nato-onboarding"}),
+    );
+    assert_eq!(
+        tool_payload(&listed_decks)[0]["sourceId"],
+        deck_payload["deck"]["source"]["sourceId"]
+    );
+
+    // Invalidating a deck retires its newly published quiz.
     let invalidated = call_tool(
         &mut stdin,
         &rx,
@@ -352,6 +378,12 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     assert!(
         status.success(),
         "MCP must exit successfully at stdin EOF: {status}; transcript: {transcript:#?}"
+    );
+    assert!(
+        transcript
+            .iter()
+            .all(|(_, response)| !response.to_string().contains(&session_token)),
+        "MCP responses must never disclose the session token"
     );
 }
 

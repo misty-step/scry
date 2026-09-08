@@ -1,7 +1,7 @@
 # Scry v1 API handoff
 
-Scry's Rust engine owns memory science: source ingestion, draft generation,
-learner keep/edit/reject decisions, due queue selection, answer reveal, grading,
+Scry's Rust engine owns memory science: source ingestion, validated automatic
+quiz publication, optional editing/removal, due queue selection, reveal, grading,
 scheduling, and source archival. Scry owns the product experience: account UI,
 study layout, navigation, copy, reminders, and client-side state.
 
@@ -56,7 +56,8 @@ cargo run -p memory-engine-contract
 ```
 
 The runner creates a disposable source, enqueues generation, and polls it to a
-bounded terminal state. It explicitly keeps the first pending draft, selects
+bounded terminal state. Successful generation publishes reviewable quizzes without
+an approval request; the runner selects
 a review, reveals and submits the answer, archives the source, and emits a
 redacted receipt with the source absent from the active list. A revealed answer
 records assisted exposure (`Revealed`/`Again`), never successful unaided recall.
@@ -71,9 +72,16 @@ state, but the current due item, projected multiple-choice choices, revealed
 answer, grade, attempt count, post-answer feedback, item history, concept
 health rollup, and schedule result come from the engine response.
 
-Generated drafts expose source spans and provider/model/prompt-version
-provenance before a keep or edit decision. Rejected drafts remain in the
-exported decision receipt but never enter the due queue.
+Generated material exposes source spans and provider/model/prompt-version
+provenance. `approved` means published, not manually endorsed; `learnerDecision`
+stays null until an actual edit or removal. Historical drafts are separate from
+the live `queue` inventory. Rejected quizzes retain their history but leave review.
+Source `title` is optional and inferred when omitted.
+
+`GET .../review/next` inspects live inventory while preserving a held graded
+card. `POST .../review/next` deliberately advances. Reload, listing, capture, and
+editing must not consume feedback or repeat a schedule update. Correct maps to
+Good; Close, Wrong, and Revealed map to Again, independent of response speed.
 
 After a submit, `current.feedback` carries human-language result text, the
 expected answer, this item's attempt history (`lastSeen` plus
