@@ -211,7 +211,7 @@ These are required operations, **not a record that they have been executed**:
 
 `MEMORY_ENGINE_POSTGRES_URL`, filesystem store/outbox paths, mailer commands,
 native ports, systemd, and Caddy are not Worker runtime inputs. Keep old-host
-secret/configuration files intact for the authoritative native service.
+secret/configuration files intact for frozen native recovery and retained ingress.
 Bootstrap supplies the initial secrets in its one exact-byte deployment.
 Do not update secrets between bootstrap and activation: traffic control uses
 application state so the verified immutable version remains unchanged.
