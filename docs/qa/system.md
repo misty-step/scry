@@ -122,16 +122,16 @@ verified PostgreSQL primary-import provenance, and matched imported-state
 fingerprint. Main must exercise pause/activation, busy-operation rejection,
 alarm fencing, and independent recovery readback against the actual Worker.
 
-**Production cutover proof remains pending.** Staging Worker
-`https://scry-staging.misty-step.workers.dev` is live and isolated
-(2026-09-07 receipts in the runbook). The native DigitalOcean/Postgres
-service remains authoritative until Main records the source writer barrier,
-final import, recovery, activation, and public proof. The approved free
-production origin is `https://scry.misty-step.workers.dev`, without a
-registrar prerequisite. Preserved records do not migrate browser cookies
-across hostnames. Never relabel staging smoke, Resend API acceptance, or a
-reachable hostname as deployed production migration or inbox-delivery
-evidence.
+**Production cutover completed on 2026-09-08.** The source-quiesced export,
+all-column/table readback, separate-object R2 restore, activation, and real
+browser/client/mail receipts are in the
+[runbook](../runbook.md#production-cutover-evidence-2026-09-08).
+The canonical origin is `https://scry.misty-step.workers.dev`; `scry.study`
+and `www.scry.study` proxy to it. The native service is disabled and its
+database is frozen. Staging remains an independent Worker, namespace, and bucket.
+Preserved records do not migrate browser cookies across hostnames. Never
+relabel staging smoke, Resend API acceptance, or a reachable hostname as
+production migration or inbox-delivery evidence.
 
 The capture-anything path adds a focused generation receipt:
 
@@ -228,8 +228,9 @@ GitHub environment to `master`; only that environment supplies the three
 operator mail secrets above, not learner, admin, magic-link, or Worker
 deployment keys. A `master` manual dispatch can select staging or production
 and bypasses `SCRY_MONITOR_ENABLED`; automatic five-minute scheduling requires
-that repository variable to be `true`. It remains `false` until Main's
-cutover. A disabled/skipped probe is not production monitoring.
+that repository variable to be `true`. It was enabled on 2026-09-08, and
+[scheduled run 34251233514](https://github.com/misty-step/scry/actions/runs/34251233514)
+executed the monitor successfully. A disabled/skipped probe is not monitoring.
 
 GitHub cron can be delayed, dropped, or disabled and is not an availability
 SLA. Environment-scoped default-branch cache is best effort, not durable alert

@@ -10,9 +10,11 @@ is the product contract.
 - Beta access is invite-gated with a visible waitlist and magic-link sign-in;
   there is no OAuth path. Machine faces use operator-gated service sessions.
   Public signup waits for bounded cost, privacy, reliability, and Stripe proof.
-- Production is the native Rust `memory-engine-api` process on Misty Step's
-  isolated DigitalOcean public application host, backed by Neon Postgres at
-  `https://scry.study`.
+- Production is the Rust Wasm `memory-engine-cloudflare` Worker with one
+  SQLite-backed Scry Durable Object, private R2 recovery, and Resend over Fetch
+  at `https://scry.misty-step.workers.dev`. `scry.study` and `www.scry.study`
+  proxy to that Worker. The native service is disabled; its database and
+  backups are retained recovery material, not a live production store.
 - Crate names, Postgres identifiers, wire and telemetry literals, and
   `MEMORY_ENGINE_*` environment variables retain the old name. Renaming a
   storage, network, deployment, or compatibility boundary requires explicit
@@ -81,9 +83,11 @@ is the product contract.
 - `memory-engine-core`: kernel; `memory-engine`: facade and testkit.
 - `memory-engine-service`, `-persistence`, `-generation`, `-openrouter`, and
   `-study`: service, local persistence, source-backed generation, model HTTP,
-  and study boundaries. Only `-openrouter` talks to a model network.
-- `memory-engine-api` and `-api-state`: production routes, static assets,
-  auth/session state, storage adapters, and generation jobs.
+  and study boundaries. Native model HTTP lives in `-openrouter`.
+- `memory-engine-cloudflare`: production Worker routes, SQLite state, leased
+  alarms, model/mail Fetch, and R2 recovery.
+- `memory-engine-api` and `-api-state`: native compatibility routes, shared
+  static assets/auth/state types, storage adapters, and generation jobs.
 - `memory-engine-api-render`, `-beta-app`, and `-web-shell`: rendered UI and
   local dogfood hosts. `-cli`, `-import`, `-bench`, and `-qa` provide clients,
   import, benchmark, and QA receipts.
