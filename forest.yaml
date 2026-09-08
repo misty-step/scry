@@ -1,6 +1,7 @@
 repo: misty-step/scry
 
-# Factory Manager scope: only jobs groomed ready for the Kernel.
+# Retained Kernel allowlist for explicitly requested Forest runs.
+# It is not an intake queue and must not be expanded without operator direction.
 scope:
   subjects:
     - scry-127-graded-card
@@ -10,21 +11,20 @@ agents:
   verifier: { poll: "./forest poll verifier", interval: 120 }
   fixer:    { poll: "./forest poll fixer",    interval: 300 }
 
-# Mirror of the full hosted delivery gate, command-for-command in order:
-# bun run ci (rust:ci incl. browser contract and perf receipt diff),
-# bun run ci:full (Dagger ship-parity), and the Postgres latency oracle
-# exported by .github/workflows/ci.yml.
+# Named Forest checks. Commands come from repository-owned package scripts
+# except the Postgres latency export, which has no script wrapper. Names and
+# order are the evidence contract; do not reorder without compatibility review.
 checks:
   - name: browser-contract
     run: bun run test:browser-contract
   - name: fmt
-    run: cargo fmt --all --check
+    run: bun run rust:fmt
   - name: test
-    run: cargo test --workspace
+    run: bun run rust:test
   - name: clippy
-    run: cargo clippy --workspace --all-targets -- -D warnings
+    run: bun run rust:clippy
   - name: doc
-    run: cargo doc --workspace --no-deps
+    run: bun run rust:doc
   - name: perf-actions
     run: bun run perf:actions
   - name: ci-full

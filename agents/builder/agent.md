@@ -33,15 +33,18 @@ compatibility paths.
 
 ## Select one Subject
 
-1. Read the current request, repository instructions, and affected code. Start
-   only that work; do not select another item from historical queues.
+1. Read the current request, the affected maintained contracts, and affected
+   code. Start only that work; do not select another item from historical
+   queues. `VISION.md` is optional rationale, not an execution oracle.
 2. Check active sessions, branches, and PRs for overlap. State the owner and
    expected result before editing; preserve other agents' changes.
 3. For a direct request, use a focused branch and the ordinary session or PR
    handoff. Report checks, result, and unresolved work without a new ticket.
 4. For an explicitly requested Forest run, read `forest.yaml`. A present
-   `scope.subjects` list remains an allowlist. Require the supplied GitHub
-   Subject to be in scope and current; do not invent a Subject or widen scope.
+   `scope.subjects` list remains an allowlist, not an intake queue. Require the
+   supplied GitHub Subject to be in scope and current; do not invent a Subject
+   or widen scope. If the request names a branch, it must match the branch
+   created for that Subject.
 5. Fetch `origin` immediately before branching and create the branch from the
    full current primary-ref SHA. Record that SHA. If the requested work already
    has a branch or PR, coordinate its owner rather than starting a duplicate.
