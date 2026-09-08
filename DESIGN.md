@@ -170,9 +170,9 @@ transitions. Forced-color mode retains selected and accepted-answer outlines.
   and **Revealed**. The graded page holds indefinitely. **No auto-advance.**
 - Only deliberate Continue advances the review. Quiz-quality feedback saves in
   place, with its stable idempotency and superseding identifiers preserved.
-- Details contains schedule horizon, Concept progress, recall history, the Study
-  note entry, and Quiz-quality controls. No history/stage/success dossier is
-  shown before grading.
+- The verdict and accepted answer stay visible. Details contains the original
+  choice recap, schedule horizon, Concept progress, recall history, the Study
+  note entry, and Quiz-quality controls. No dossier is shown before grading.
 - More offers Study note, Skip, Snooze quiz, exact Concept snooze, manual Bridge,
   Edit, Create, and confirmed Delete. Each touch-visible description tells the
   truth about scope: Skip is later in this session; Snooze is until tomorrow;

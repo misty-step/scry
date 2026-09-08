@@ -1096,7 +1096,7 @@ fn render_graded_review(account: &AppAccount, card: &GradedReviewCard<'_>) -> St
         r#"<section class="me-review" aria-labelledby="me-question">
 <h1 class="me-prompt" id="me-question">{prompt}</h1>
 {verdict}
-{reveal}
+<p class="me-answer"><span class="me-answer-label">Accepted answer</span><span class="ae-item">{answer}</span></p>
 {reason}
 {bridge}
 {next}
@@ -1105,7 +1105,7 @@ fn render_graded_review(account: &AppAccount, card: &GradedReviewCard<'_>) -> St
 </section>"#,
         prompt = escape_html(&card.current.prompt),
         verdict = render_verdict(card.grade),
-        reveal = render_answer_reveal(card),
+        answer = escape_html(card.accepted_answer),
         reason = render_grading_reason(card.grade),
         bridge = render_bridge_message(card),
         next = render_next(account),
@@ -1139,11 +1139,13 @@ fn render_graded_details(account: &AppAccount, card: &GradedReviewCard<'_>) -> S
         r#"<details class="me-dossier">
 <summary class="me-dossier-summary">Details</summary>
 <div class="me-dossier-panel">
+{choices}
 {history}
 {reference}
 {content_feedback}
 </div>
 </details>"#,
+        choices = render_choice_recap(card),
         history = render_dossier_history(&card.dossier),
         reference = render_reference(account, card.current),
         content_feedback = render_content_feedback(account, card),
@@ -1249,14 +1251,10 @@ fn render_meta_ledger(feedback: &BetaStudyFeedback) -> String {
     format!(r#"<dl class="me-meta-ledger">{rows}</dl>"#)
 }
 
-/// Reveal the accepted answer in place. Multiple-choice keeps presentation
-/// order, marks the correct option, and dims the rest.
-fn render_answer_reveal(card: &GradedReviewCard<'_>) -> String {
+/// Keep the original choice order inspectable without delaying the next quiz.
+fn render_choice_recap(card: &GradedReviewCard<'_>) -> String {
     if card.current.choices.is_empty() {
-        return format!(
-            r#"<p class="me-answer"><span class="me-answer-label">Accepted answer</span><span class="ae-item">{}</span></p>"#,
-            escape_html(card.accepted_answer)
-        );
+        return String::new();
     }
 
     let mut rows = String::new();
