@@ -5,7 +5,7 @@
 //! and service orchestration crates.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt, fs,
     fs::OpenOptions,
@@ -734,6 +734,29 @@ impl BetaPersistenceStore {
         &self.path
     }
 
+    /// Enroll historical accepted output at the account's writable startup boundary.
+    ///
+    /// Reads and projections never migrate. Repeating startup leaves existing
+    /// review units, decisions and schedules untouched.
+    ///
+    /// # Errors
+    /// Returns a provenance or commit error without partially migrating the file.
+    pub fn migrate_generated_content(&mut self) -> Result<(), BetaStoreError> {
+        if review_units_for_publication(&self.data, None)?.is_empty() {
+            return Ok(());
+        }
+        self.transact(|snapshot| {
+            loop {
+                let units = review_units_for_publication(snapshot, None)?;
+                if units.is_empty() {
+                    break;
+                }
+                snapshot.review_units.extend(units);
+            }
+            Ok(())
+        })
+    }
+
     #[must_use]
     pub fn snapshot(&self) -> BetaStoreSnapshot {
         load_snapshot(&self.path).unwrap_or_else(|_| self.data.clone())
@@ -906,10 +929,17 @@ impl BetaPersistenceStore {
     ) -> Result<GenerationRun, BetaStoreError> {
         assert_non_blank(&run.id, "Generation run id")?;
         self.transact(|snapshot| {
+            if let Some(existing) = find_by_id(&snapshot.generation_runs, &run.id) {
+                if generation_run_is_published(existing) {
+                    return Ok(existing.clone());
+                }
+            }
             for source_document_id in &run.source_document_ids {
                 assert_known_source(snapshot, source_document_id)?;
             }
             upsert_by_id(&mut snapshot.generation_runs, run.clone());
+            let units = review_units_for_publication(snapshot, Some(&run.id))?;
+            snapshot.review_units.extend(units);
             Ok(run)
         })
     }
@@ -1048,6 +1078,15 @@ impl BetaPersistenceStore {
     ) -> Result<GeneratedPromptDraft, BetaStoreError> {
         self.transact(|snapshot| {
             assert_draft_contract(snapshot, &draft)?;
+            if let Some(existing) = find_by_id(&snapshot.generated_prompt_drafts, &draft.id) {
+                if existing.learner_decision.is_some()
+                    || snapshot.review_units.iter().any(|unit| {
+                        unit.generated_prompt_draft_id.as_deref() == Some(draft.id.as_str())
+                    })
+                {
+                    return Ok(existing.clone());
+                }
+            }
             upsert_by_id(&mut snapshot.generated_prompt_drafts, draft.clone());
             Ok(draft)
         })
@@ -1061,67 +1100,16 @@ impl BetaPersistenceStore {
     /// Returns [`BetaStoreError`] when the rollback cannot be committed.
     pub fn discard_generation_run(&mut self, run_id: &str) -> Result<(), BetaStoreError> {
         self.transact(|snapshot| {
-            // Keep a draft that was explicitly decided while the worker lease
-            // was being fenced. The learner action committed under this same
-            // file lock, so removing only undecided output cannot orphan its
-            // review unit or provenance.
-            let stale_draft_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .filter(|draft| {
-                    draft.generation_run_id.as_deref() == Some(run_id)
-                        && draft.learner_decision.is_none()
-                })
-                .map(|draft| draft.id.clone())
-                .collect::<BTreeSet<_>>();
-            let stale_reference_span_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .filter(|draft| stale_draft_ids.contains(&draft.id))
-                .flat_map(|draft| draft.reference_span_ids.iter().cloned())
-                .collect::<BTreeSet<_>>();
-            snapshot.review_units.retain(|unit| {
-                unit.generated_prompt_draft_id
-                    .as_ref()
-                    .is_none_or(|draft_id| !stale_draft_ids.contains(draft_id))
-            });
-            snapshot
-                .generated_prompt_drafts
-                .retain(|draft| !stale_draft_ids.contains(&draft.id));
-            let run_still_has_decided_draft = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .any(|draft| draft.generation_run_id.as_deref() == Some(run_id));
-            if !run_still_has_decided_draft {
-                snapshot
-                    .generation_runs
-                    .retain(|run| run.id.as_str() != run_id);
-            }
-            let referenced_span_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .flat_map(|draft| draft.reference_span_ids.iter().cloned())
-                .chain(
-                    snapshot
-                        .review_units
-                        .iter()
-                        .flat_map(|unit| unit.reference_span_ids.iter().cloned()),
-                )
-                .collect::<BTreeSet<_>>();
-            snapshot.reference_spans.retain(|span| {
-                !stale_reference_span_ids.contains(&span.id)
-                    || referenced_span_ids.contains(&span.id)
-            });
+            discard_tentative_generation(snapshot, run_id);
             Ok(())
         })
     }
 
     /// Atomically finalize a generation run at the worker lease fence.
     ///
-    /// A failed fence removes the complete run closure, including any learner
-    /// decision that raced with the stale worker. This keeps file storage
-    /// behavior aligned with the Postgres adapter. The account file lock held by
-    /// `transact` serializes this operation with every learner mutation.
+    /// A failed fence removes only tentative output. Published content and
+    /// learning history survive stale retries. The account file lock serializes
+    /// publication with every learner mutation.
     ///
     /// # Errors
     /// Returns [`BetaStoreError`] when the rollback cannot be committed.
@@ -1132,78 +1120,23 @@ impl BetaPersistenceStore {
         lease_valid: bool,
     ) -> Result<bool, BetaStoreError> {
         self.transact(|snapshot| {
-            if lease_valid {
-                let Some(run) = snapshot
-                    .generation_runs
-                    .iter_mut()
-                    .find(|run| run.id == run_id)
-                else {
-                    return Ok(false);
-                };
-                run.completed_at = Some(now_ms);
+            let Some(run) = snapshot
+                .generation_runs
+                .iter_mut()
+                .find(|run| run.id == run_id)
+            else {
+                return Ok(false);
+            };
+            if generation_run_is_published(run) {
                 return Ok(true);
             }
-            let stale_draft_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .filter(|draft| draft.generation_run_id.as_deref() == Some(run_id))
-                .map(|draft| draft.id.clone())
-                .collect::<BTreeSet<_>>();
-            let stale_review_unit_ids = snapshot
-                .review_units
-                .iter()
-                .filter(|unit| {
-                    unit.generated_prompt_draft_id
-                        .as_ref()
-                        .is_some_and(|draft_id| stale_draft_ids.contains(draft_id))
-                })
-                .map(|unit| unit.review_unit_id.clone())
-                .collect::<BTreeSet<_>>();
-            let stale_reference_span_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .filter(|draft| stale_draft_ids.contains(&draft.id))
-                .flat_map(|draft| draft.reference_span_ids.iter().cloned())
-                .collect::<BTreeSet<_>>();
-            snapshot
-                .schedules
-                .retain(|schedule| !stale_review_unit_ids.contains(&schedule.review_unit_id));
-            snapshot
-                .attempts
-                .retain(|attempt| !stale_review_unit_ids.contains(&attempt.review_unit_id));
-            snapshot
-                .content_feedback
-                .retain(|feedback| !stale_review_unit_ids.contains(&feedback.review_unit_id));
-            snapshot
-                .applied_reviews
-                .retain(|receipt| !stale_review_unit_ids.contains(&receipt.attempt.review_unit_id));
-            snapshot
-                .review_exposures
-                .retain(|exposure| !stale_review_unit_ids.contains(&exposure.review_unit_id));
-            snapshot
-                .review_units
-                .retain(|unit| !stale_review_unit_ids.contains(&unit.review_unit_id));
-            snapshot
-                .generated_prompt_drafts
-                .retain(|draft| !stale_draft_ids.contains(&draft.id));
-            snapshot
-                .generation_runs
-                .retain(|run| run.id.as_str() != run_id);
-            let referenced_span_ids = snapshot
-                .generated_prompt_drafts
-                .iter()
-                .flat_map(|draft| draft.reference_span_ids.iter().cloned())
-                .chain(
-                    snapshot
-                        .review_units
-                        .iter()
-                        .flat_map(|unit| unit.reference_span_ids.iter().cloned()),
-                )
-                .collect::<BTreeSet<_>>();
-            snapshot.reference_spans.retain(|span| {
-                !stale_reference_span_ids.contains(&span.id)
-                    || referenced_span_ids.contains(&span.id)
-            });
+            if lease_valid {
+                run.completed_at = Some(now_ms);
+                let units = review_units_for_publication(snapshot, Some(run_id))?;
+                snapshot.review_units.extend(units);
+                return Ok(true);
+            }
+            discard_tentative_generation(snapshot, run_id);
             Ok(false)
         })
     }
@@ -2147,6 +2080,20 @@ fn record_learner_draft_decision(
         .as_deref()
         .and_then(|id| find_by_id(&snapshot.generation_runs, id));
     let decided = transition_learner_draft(draft, run, input, decided_at)?;
+    if decided == *draft {
+        return Ok(decided);
+    }
+    if let Some(unit) = snapshot
+        .review_units
+        .iter_mut()
+        .find(|unit| unit.generated_prompt_draft_id.as_deref() == Some(draft_id))
+    {
+        match input {
+            LearnerDraftDecisionInput::Reject => unit.archived_at = Some(decided_at),
+            LearnerDraftDecisionInput::Edit { .. } => unit.prompt = decided.prompt.clone(),
+            LearnerDraftDecisionInput::Keep => {}
+        }
+    }
     snapshot.generated_prompt_drafts[index] = decided.clone();
     Ok(decided)
 }
@@ -2166,11 +2113,18 @@ pub fn transition_learner_draft(
         return Err(BetaStoreError::RejectedGeneratedPromptDraft);
     }
     if let Some(recorded) = draft.learner_decision.as_ref() {
-        let matches = match (recorded, input) {
-            (LearnerDraftDecision::Kept { edited: false, .. }, LearnerDraftDecisionInput::Keep)
-            | (LearnerDraftDecision::Rejected { .. }, LearnerDraftDecisionInput::Reject) => true,
+        match (recorded, input) {
+            (LearnerDraftDecision::Kept { .. }, LearnerDraftDecisionInput::Keep)
+            | (LearnerDraftDecision::Rejected { .. }, LearnerDraftDecisionInput::Reject) => {
+                return Ok(draft.clone());
+            }
+            (LearnerDraftDecision::Rejected { .. }, _) => {
+                return Err(BetaStoreError::LearnerDraftDecisionAlreadyRecorded(
+                    draft.id.clone(),
+                ));
+            }
             (
-                LearnerDraftDecision::Kept { edited: true, .. },
+                LearnerDraftDecision::Kept { .. },
                 LearnerDraftDecisionInput::Edit {
                     prompt_text,
                     expected_answer,
@@ -2179,16 +2133,13 @@ pub fn transition_learner_draft(
             ) => {
                 assert_non_blank(prompt_text, "Learner prompt")?;
                 assert_non_blank(expected_answer, "Learner expected answer")?;
-                learner_edit_matches_draft(&draft.prompt, prompt_text, expected_answer, choices)
+                if learner_edit_matches_draft(&draft.prompt, prompt_text, expected_answer, choices)
+                {
+                    return Ok(draft.clone());
+                }
             }
-            _ => false,
-        };
-        if matches {
-            return Ok(draft.clone());
+            (LearnerDraftDecision::Kept { .. }, LearnerDraftDecisionInput::Reject) => {}
         }
-        return Err(BetaStoreError::LearnerDraftDecisionAlreadyRecorded(
-            draft.id.clone(),
-        ));
     }
     let run = run
         .filter(|run| draft.generation_run_id.as_deref() == Some(run.id.as_str()))
@@ -2219,11 +2170,11 @@ pub fn transition_learner_draft(
             if !draft
                 .critique_notes
                 .iter()
-                .any(|note| note == "Learner edited pending wording.")
+                .any(|note| note == "Learner edited kept wording.")
             {
                 draft
                     .critique_notes
-                    .push("Learner edited pending wording.".to_owned());
+                    .push("Learner edited kept wording.".to_owned());
             }
             LearnerDraftDecision::Kept {
                 edited: true,
@@ -2252,7 +2203,7 @@ fn promote_generated_prompt_draft(
     review_unit
 }
 
-/// Construct the initial queue record after an accepted keep transition.
+/// Construct the initial queue record for a successfully published accepted draft.
 #[must_use]
 pub fn promoted_review_unit(draft: &GeneratedPromptDraft) -> BetaReviewUnitRecord {
     BetaReviewUnitRecord {
@@ -2268,6 +2219,175 @@ pub fn promoted_review_unit(draft: &GeneratedPromptDraft) -> BetaReviewUnitRecor
         remediation_pack_id: draft.remediation_pack_id.clone(),
         created_at: draft.created_at,
     }
+}
+
+/// A completed receipt is the durable publication fence, not provider acceptance.
+#[must_use]
+pub fn generation_run_is_published(run: &GenerationRun) -> bool {
+    run.completed_at
+        .is_some_and(|at| at != PENDING_GENERATION_COMPLETION)
+}
+
+/// Construct only missing review units from finalized, accepted generation output.
+///
+/// Adapters commit these records in the same transaction as publication or a
+/// forward data migration. Existing identities (including archived records),
+/// schedules and learner decisions are never overwritten. An absent schedule
+/// retains the service's deterministic first-review FSRS initialization.
+///
+/// # Errors
+/// Returns a provenance or identity error without publishing partial content.
+pub fn review_units_for_publication(
+    snapshot: &BetaStoreSnapshot,
+    run_id: Option<&str>,
+) -> Result<Vec<BetaReviewUnitRecord>, BetaStoreError> {
+    let runs = snapshot
+        .generation_runs
+        .iter()
+        .filter(|run| generation_run_is_published(run))
+        .map(|run| (run.id.as_str(), run))
+        .collect::<BTreeMap<_, _>>();
+    let mut excluded = snapshot
+        .review_units
+        .iter()
+        .map(|unit| &unit.review_unit_id)
+        .collect::<BTreeSet<_>>();
+    excluded.extend(
+        snapshot
+            .generated_prompt_drafts
+            .iter()
+            .filter(|draft| {
+                matches!(
+                    draft.learner_decision,
+                    Some(LearnerDraftDecision::Rejected { .. })
+                )
+            })
+            .map(|draft| &draft.review_unit_id),
+    );
+    let mut latest = BTreeMap::new();
+    for draft in &snapshot.generated_prompt_drafts {
+        if excluded.contains(&draft.review_unit_id)
+            || draft.validation.status != GeneratedPromptValidationStatus::Accepted
+        {
+            continue;
+        }
+        let Some(run) = draft
+            .generation_run_id
+            .as_deref()
+            .and_then(|id| runs.get(id))
+        else {
+            continue;
+        };
+        if !run.draft_ids.contains(&draft.id) {
+            continue;
+        }
+        let entry = latest.entry(&draft.review_unit_id).or_insert((*run, draft));
+        if (run.started_at, run.id.as_str(), draft.id.as_str())
+            > (entry.0.started_at, entry.0.id.as_str(), entry.1.id.as_str())
+        {
+            *entry = (*run, draft);
+        }
+    }
+    let mut units = Vec::new();
+    for (run, draft) in latest.into_values() {
+        if run_id.is_some_and(|id| id != run.id)
+            || draft.source_document_ids.iter().any(|id| {
+                !snapshot
+                    .source_documents
+                    .iter()
+                    .any(|source| source.id == *id && source.archived_at.is_none())
+            })
+            || run.parent_review_unit_id.as_ref().is_some_and(|id| {
+                !snapshot
+                    .review_units
+                    .iter()
+                    .any(|unit| unit.review_unit_id == *id && unit.archived_at.is_none())
+            })
+            || draft.remediation_pack_id.as_ref().is_some_and(|id| {
+                !snapshot
+                    .remediation_packs
+                    .iter()
+                    .any(|pack| pack.id == *id && pack.status == RemediationPackStatus::Active)
+            })
+        {
+            continue;
+        }
+        assert_draft_contract(snapshot, draft)?;
+        units.push(promoted_review_unit(draft));
+    }
+    Ok(units)
+}
+
+fn discard_tentative_generation(snapshot: &mut BetaStoreSnapshot, run_id: &str) {
+    if snapshot
+        .generation_runs
+        .iter()
+        .any(|run| run.id == run_id && generation_run_is_published(run))
+    {
+        return;
+    }
+    let stale_ids = snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter(|draft| {
+            draft.generation_run_id.as_deref() == Some(run_id)
+                && draft.learner_decision.is_none()
+                && !snapshot.review_units.iter().any(|unit| {
+                    unit.generated_prompt_draft_id.as_deref() == Some(draft.id.as_str())
+                })
+        })
+        .map(|draft| draft.id.clone())
+        .collect::<BTreeSet<_>>();
+    let stale_references = snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter(|draft| stale_ids.contains(&draft.id))
+        .flat_map(|draft| draft.reference_span_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let stale_pack_ids = snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter(|draft| stale_ids.contains(&draft.id))
+        .filter_map(|draft| draft.remediation_pack_id.clone())
+        .collect::<BTreeSet<_>>();
+    snapshot
+        .generated_prompt_drafts
+        .retain(|draft| !stale_ids.contains(&draft.id));
+    if !snapshot
+        .generated_prompt_drafts
+        .iter()
+        .any(|draft| draft.generation_run_id.as_deref() == Some(run_id))
+    {
+        snapshot.generation_runs.retain(|run| run.id != run_id);
+    }
+    let referenced_packs = snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter_map(|draft| draft.remediation_pack_id.as_ref())
+        .chain(
+            snapshot
+                .review_units
+                .iter()
+                .filter_map(|unit| unit.remediation_pack_id.as_ref()),
+        )
+        .collect::<BTreeSet<_>>();
+    snapshot
+        .remediation_packs
+        .retain(|pack| !stale_pack_ids.contains(&pack.id) || referenced_packs.contains(&pack.id));
+    let referenced = snapshot
+        .generated_prompt_drafts
+        .iter()
+        .flat_map(|draft| draft.reference_span_ids.iter())
+        .chain(
+            snapshot
+                .review_units
+                .iter()
+                .flat_map(|unit| unit.reference_span_ids.iter()),
+        )
+        .collect::<BTreeSet<_>>();
+    snapshot
+        .reference_spans
+        .retain(|span| !stale_references.contains(&span.id) || referenced.contains(&span.id));
 }
 
 fn prompt_text_for_export(prompt: &Prompt) -> String {

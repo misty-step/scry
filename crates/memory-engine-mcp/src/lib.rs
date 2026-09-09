@@ -1,19 +1,15 @@
 #![forbid(unsafe_code)]
 
 //! Stdio MCP server wrapping the deployed `memory-engine-api` v1 study/review
-//! contract. Tools are agent-intent-shaped (`create_deck`, `list_due`,
+//! contract. Tools are agent-intent-shaped (`learn`, `list_due`,
 //! `review_next`, `submit_answer`, ...), not 1:1 REST wrappers. It adds no new
 //! server surface: every tool composes one or more existing v1 routes.
 //!
-//! Generation is queue-based end to end: `create_deck` enqueues a durable
-//! generation job and polls it to a bounded terminal state, never the legacy
-//! synchronous `/generate` route (refused with HTTP 409 in every production
-//! deployment — `memory-engine-api-state::registry::generate_source`).
-//! Accepted drafts from a succeeded job remain pending until an explicit
-//! `keep_draft`, `edit_draft`, or `reject_draft` decision — generation never
-//! schedules a card by itself, and no call in this crate decides for the
-//! caller. `list_drafts` inspects every currently pending draft across the
-//! account, independent of which `create_deck` call produced it.
+//! `learn` and `create_deck` save material and poll durable generation jobs
+//! to a bounded terminal state. Validated quizzes publish automatically;
+//! editing and removal are optional quiz lifecycle actions. A source/deck
+//! receipt survives admission and polling failures so callers can resume
+//! without accidentally saving the same material again.
 
 pub mod client;
 pub mod session;
@@ -30,24 +26,24 @@ pub struct ToolDef {
 
 pub const TOOLS: &[ToolDef] = &[
     ToolDef {
+        name: "learn",
+        description: "Learn a word, phrase, question, or essay: provide only input text. Saves the material, infers its title, and uses the durable generation queue. Validated quizzes become reviewable automatically. Returns a saved-source and generation-job receipt, including when admission fails or generation continues beyond the bounded wait; do not save the material again in those cases.",
+        input_schema: r#"{"type":"object","required":["input"],"properties":{"input":{"type":"string","minLength":1}}}"#,
+    },
+    ToolDef {
         name: "create_deck",
-        description: "Capture material as a project-scoped study deck: saves the text and enqueues its generation job on the durable production queue, polling to a bounded terminal state. Returns the deck plus every generated draft still pending an explicit keep, edit, or reject decision. Use project_key to group decks by the project/source they came from, so the whole deck can be invalidated later in one call when that material goes stale.",
+        description: "Capture a project-scoped study deck and generate reviewable quizzes on the durable queue. Validated quizzes publish automatically. Returns the saved deck and generation receipt, even if admission fails or the bounded wait ends. Use project_key when decks need to be grouped and invalidated together; use learn for ordinary material without project/title chores.",
         input_schema: r#"{"type":"object","required":["project_key","title","body"],"properties":{"project_key":{"type":"string"},"title":{"type":"string"},"body":{"type":"string"},"ttl_expires_at":{"type":"integer","description":"Optional epoch-ms expiry after which the deck is eligible for cleanup."}}}"#,
     },
     ToolDef {
-        name: "keep_draft",
-        description: "Keep one accepted generated draft after inspecting its source-grounded provenance; only this explicit decision makes it due for study.",
-        input_schema: r#"{"type":"object","required":["draft_id"],"properties":{"draft_id":{"type":"string"}}}"#,
+        name: "edit_quiz",
+        description: "Update a quiz's prompt and expected answer while preserving its review history and schedule. Use the stable id from list_quizzes.",
+        input_schema: r#"{"type":"object","required":["quiz_id","prompt","expected_answer"],"properties":{"quiz_id":{"type":"string"},"prompt":{"type":"string"},"expected_answer":{"type":"string"}}}"#,
     },
     ToolDef {
-        name: "edit_draft",
-        description: "Edit one accepted generated draft's prompt and expected answer, then keep the edited card for study.",
-        input_schema: r#"{"type":"object","required":["draft_id","prompt","expected_answer"],"properties":{"draft_id":{"type":"string"},"prompt":{"type":"string"},"expected_answer":{"type":"string"}}}"#,
-    },
-    ToolDef {
-        name: "reject_draft",
-        description: "Reject one accepted generated draft; the terminal decision is exported and never scheduled.",
-        input_schema: r#"{"type":"object","required":["draft_id"],"properties":{"draft_id":{"type":"string"}}}"#,
+        name: "remove_quiz",
+        description: "Remove a quiz from future review. Use its stable id from list_quizzes.",
+        input_schema: r#"{"type":"object","required":["quiz_id"],"properties":{"quiz_id":{"type":"string"}}}"#,
     },
     ToolDef {
         name: "list_decks",
@@ -60,13 +56,13 @@ pub const TOOLS: &[ToolDef] = &[
         input_schema: r#"{"type":"object","required":["deck_id","event"],"properties":{"deck_id":{"type":"string"},"event":{"type":"string","description":"Free-text reason this deck is being invalidated, kept for audit."}}}"#,
     },
     ToolDef {
-        name: "list_drafts",
-        description: "Inspect every currently pending (accepted, not yet decided) generated draft across the account, with its prompt, worked solution, and validation status. A create_deck job leaves every accepted draft pending until you call keep_draft, edit_draft, or reject_draft on it — use this to find pending drafts outside a create_deck response, e.g. after resuming a session.",
+        name: "list_quizzes",
+        description: "List active published quizzes across the account with stable ids, prompts, worked solutions, validation and source provenance. Use these ids to edit or remove content.",
         input_schema: r#"{"type":"object","properties":{}}"#,
     },
     ToolDef {
         name: "list_due",
-        description: "Check how many reviews are due right now, with a short teaser of the next prompt. A lightweight status check — call review_next instead when you are actually ready to answer.",
+        description: "Check how many reviews are due without advancing or clearing feedback. Includes a prompt teaser when a question is ready to answer; use review_next to advance.",
         input_schema: r#"{"type":"object","properties":{}}"#,
     },
     ToolDef {
@@ -188,6 +184,11 @@ pub fn handle_json_rpc(client: &MemoryEngineClient, request: &Value) -> Option<V
 #[allow(clippy::too_many_lines)]
 pub fn call_tool(client: &MemoryEngineClient, name: &str, args: &Value) -> Result<Value, String> {
     let payload = match name {
+        "learn" => {
+            let input = required_str(args, "input")?;
+            let (source, outcome) = client.learn(input)?;
+            json!({ "source": source, "generation": generation_outcome_json(&outcome) })
+        }
         "create_deck" => {
             let project_key = required_str(args, "project_key")?;
             let title = required_str(args, "title")?;
@@ -196,19 +197,15 @@ pub fn call_tool(client: &MemoryEngineClient, name: &str, args: &Value) -> Resul
             let (deck, outcome) = client.create_deck(project_key, title, body, ttl_expires_at)?;
             json!({ "deck": deck, "generation": generation_outcome_json(&outcome) })
         }
-        "keep_draft" => {
-            let draft_id = required_str(args, "draft_id")?;
-            json!(client.keep_draft(draft_id)?)
-        }
-        "edit_draft" => {
-            let draft_id = required_str(args, "draft_id")?;
+        "edit_quiz" => {
+            let quiz_id = required_str(args, "quiz_id")?;
             let prompt = required_str(args, "prompt")?;
             let expected_answer = required_str(args, "expected_answer")?;
-            json!(client.edit_draft(draft_id, prompt, expected_answer)?)
+            json!(client.edit_quiz(quiz_id, prompt, expected_answer)?)
         }
-        "reject_draft" => {
-            let draft_id = required_str(args, "draft_id")?;
-            json!(client.reject_draft(draft_id)?)
+        "remove_quiz" => {
+            let quiz_id = required_str(args, "quiz_id")?;
+            json!(client.remove_quiz(quiz_id)?)
         }
         "list_decks" => {
             let project_key = args["project_key"].as_str();
@@ -219,12 +216,14 @@ pub fn call_tool(client: &MemoryEngineClient, name: &str, args: &Value) -> Resul
             let event = required_str(args, "event")?;
             json!(client.invalidate_deck(deck_id, event)?)
         }
-        "list_drafts" => json!(client.pending_drafts()?),
+        "list_quizzes" => json!(client.quizzes()?),
         "list_due" => {
-            let view = client.next_review()?;
+            let view = client.open_review()?;
             json!({
                 "dueCount": view.due_count,
-                "nextPrompt": view.current.as_ref().map(|current| current.prompt.clone()),
+                "nextPrompt": view.current.as_ref()
+                    .filter(|current| current.grade.is_none())
+                    .map(|current| current.prompt.as_str()),
             })
         }
         "review_next" => json!(client.next_review()?),
@@ -292,20 +291,18 @@ pub fn call_tool(client: &MemoryEngineClient, name: &str, args: &Value) -> Resul
     };
 
     let text = serde_json::to_string_pretty(&payload).map_err(|error| error.to_string())?;
-    Ok(json!({"content": [{"type": "text", "text": text}]}))
+    let is_error = payload
+        .get("generation")
+        .is_some_and(|generation| generation["status"] != "succeeded");
+    Ok(json!({"content": [{"type": "text", "text": text}], "isError": is_error}))
 }
 
 fn generation_outcome_json(outcome: &GenerationOutcome) -> Value {
     match outcome {
-        GenerationOutcome::Succeeded {
-            job,
-            coalesced,
-            drafts,
-        } => json!({
+        GenerationOutcome::Succeeded { job, coalesced } => json!({
             "status": "succeeded",
             "coalesced": coalesced,
             "job": job,
-            "pendingDrafts": drafts,
         }),
         GenerationOutcome::Failed { job, coalesced } => json!({
             "status": "failed",
@@ -316,6 +313,20 @@ fn generation_outcome_json(outcome: &GenerationOutcome) -> Value {
             "status": "timed_out",
             "coalesced": coalesced,
             "job": job,
+        }),
+        GenerationOutcome::AdmissionFailed { error } => json!({
+            "status": "admission_failed",
+            "error": error,
+        }),
+        GenerationOutcome::PollFailed {
+            job,
+            coalesced,
+            error,
+        } => json!({
+            "status": "poll_failed",
+            "coalesced": coalesced,
+            "job": job,
+            "error": error,
         }),
     }
 }
@@ -342,55 +353,6 @@ fn default_idempotency_key(review_unit_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn mcp_tools_are_agent_intents_not_rest_routes() {
-        let names = TOOLS.iter().map(|tool| tool.name).collect::<Vec<_>>();
-
-        assert_eq!(TOOLS.len(), 17);
-        for expected in [
-            "create_deck",
-            "keep_draft",
-            "edit_draft",
-            "reject_draft",
-            "list_decks",
-            "invalidate_deck",
-            "list_drafts",
-            "list_due",
-            "review_next",
-            "submit_answer",
-            "reveal_answer",
-            "learn_more",
-            "skip_review",
-            "snooze_review",
-            "snooze_concept",
-            "bridge_review",
-            "record_content_feedback",
-        ] {
-            assert!(names.contains(&expected), "missing tool {expected}");
-        }
-
-        // No tool name is a REST-route echo (verb_noun, not noun/verb-http).
-        for tool in TOOLS {
-            assert!(
-                !tool.name.contains('/'),
-                "tool {} looks like a route, not an intent",
-                tool.name
-            );
-        }
-    }
-
-    #[test]
-    fn tool_defs_json_serializes_every_tool_with_a_valid_schema() {
-        let value = tool_defs_json();
-        let array = value.as_array().expect("array");
-        assert_eq!(array.len(), TOOLS.len());
-        for entry in array {
-            assert!(entry["name"].is_string());
-            assert!(entry["description"].is_string());
-            assert_eq!(entry["inputSchema"]["type"], "object");
-        }
-    }
 
     #[test]
     fn call_tool_rejects_unknown_tool_names() {

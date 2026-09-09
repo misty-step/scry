@@ -57,7 +57,7 @@ pub struct BetaGenerationRequest {
     pub completed_at: Option<i64>,
     pub default_due: i64,
     pub model: Option<GeneratedPromptModel>,
-    /// Keep queued output decision-ineligible until the worker lease fence publishes it.
+    /// Keep queued output unscheduled until the worker lease fence publishes it.
     pub pending: bool,
 }
 
@@ -189,7 +189,7 @@ pub trait BetaGenerationStore {
     /// Returns the store error when snapshot reconstruction fails.
     fn snapshot(&self) -> Result<BetaStoreSnapshot, Self::Error>;
 
-    /// Save a generation run receipt.
+    /// Save a run receipt and atomically enroll accepted output when it completes.
     ///
     /// # Errors
     ///
@@ -372,6 +372,34 @@ where
     if enforce_source_permission {
         ensure_model_eligible(&sources)?;
     }
+    if let Some(run) = snapshot.generation_runs.iter().find(|run| {
+        run.id == request.run_id && memory_engine_persistence::generation_run_is_published(run)
+    }) {
+        let drafts = snapshot
+            .generated_prompt_drafts
+            .iter()
+            .filter(|draft| run.draft_ids.contains(&draft.id))
+            .collect::<Vec<_>>();
+        return Ok(BetaGenerationResult {
+            run_id: run.id.clone(),
+            draft_ids: run.draft_ids.clone(),
+            accepted_draft_ids: drafts
+                .iter()
+                .filter(|draft| {
+                    draft.validation.status == GeneratedPromptValidationStatus::Accepted
+                })
+                .map(|draft| draft.id.clone())
+                .collect(),
+            rejected_draft_ids: drafts
+                .iter()
+                .filter(|draft| {
+                    draft.validation.status == GeneratedPromptValidationStatus::Rejected
+                })
+                .map(|draft| draft.id.clone())
+                .collect(),
+            validation_failures: run.validation_failures.clone(),
+        });
+    }
     let model = request.model.clone().unwrap_or_else(|| provider.model());
     let mut validation_failures = Vec::new();
     let mut draft_ids = Vec::new();
@@ -392,7 +420,7 @@ where
         source_permission_receipts(&sources),
     )?;
     let mut seen_signatures =
-        existing_accepted_candidate_signatures(&snapshot.generated_prompt_drafts);
+        existing_accepted_candidate_signatures(&snapshot, Some(&request.run_id));
     for source in &sources {
         let source_usage = process_generation_source(
             store,
@@ -721,7 +749,7 @@ pub fn generation_repair_rejections(
     source: &SourceDocument,
     drafts: &ProviderDrafts,
 ) -> Vec<DraftRejection> {
-    let mut seen = existing_accepted_candidate_signatures(&snapshot.generated_prompt_drafts);
+    let mut seen = existing_accepted_candidate_signatures(snapshot, None);
     let mut rejections = Vec::new();
     for candidate in &drafts.candidates {
         let signature = CandidateSignature::from_candidate(candidate);
@@ -814,22 +842,24 @@ where
             &context.parent,
             enforce_source_permission,
         )?;
+    if let Some(run) = snapshot.generation_runs.iter().find(|run| {
+        run.id == request.run_id && memory_engine_persistence::generation_run_is_published(run)
+    }) {
+        return replay_published_bridge(&snapshot, run, context.concept_key);
+    }
     let provider_request = bridge_material_request(&snapshot, &context, authorization);
     let material = provider
         .generate_bridge_material(&provider_request)
         .map_err(|failure| BetaGenerationError::ProviderFailure(failure.to_string()))?;
-    let model = request
-        .model
-        .clone()
-        .unwrap_or_else(|| material.model.clone());
+    let model = request.model.as_ref().unwrap_or(&material.model);
     let (note, note_body, reference_note_created) =
-        bridge_reference_note(&context, &material, &model, request.started_at);
+        bridge_reference_note(&context, &material, model, request.started_at);
 
     let run_request = bridge_run_request(&request, &source_document_ids);
     store
         .save_generation_run(run_receipt(
             &run_request,
-            &model,
+            model,
             RunProgress::Started,
             source_permissions.clone(),
         ))
@@ -846,7 +876,7 @@ where
             run_id: &request.run_id,
             concept_key: &context.concept_key,
             reference_note_body: &note_body,
-            model: &model,
+            model,
             due: request.default_due,
             created_at: request.started_at,
             parent_review_unit_id: &context.parent.review_unit_id,
@@ -863,7 +893,7 @@ where
     store
         .save_generation_run(run_receipt(
             &run_request,
-            &model,
+            model,
             RunProgress::Completed {
                 draft_ids: bridge_drafts.draft_ids,
                 validation_failures: bridge_drafts.validation_failures.clone(),
@@ -887,6 +917,40 @@ where
         accepted_draft_ids: bridge_drafts.accepted_draft_ids,
         rejected_draft_ids: bridge_drafts.rejected_draft_ids,
         validation_failures: bridge_drafts.validation_failures,
+    })
+}
+
+fn replay_published_bridge<E>(
+    snapshot: &BetaStoreSnapshot,
+    run: &GenerationRun,
+    concept_key: String,
+) -> Result<BridgeGenerationResult, BetaGenerationError<E>> {
+    let mut accepted_draft_ids = Vec::new();
+    let mut rejected_draft_ids = Vec::new();
+    for draft in snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter(|draft| run.draft_ids.contains(&draft.id))
+    {
+        if draft.validation.status == GeneratedPromptValidationStatus::Accepted {
+            accepted_draft_ids.push(draft.id.clone());
+        } else {
+            rejected_draft_ids.push(draft.id.clone());
+        }
+    }
+    if accepted_draft_ids.is_empty() {
+        return Err(BetaGenerationError::ProviderFailure(format!(
+            "Bridge material produced no accepted drafts: {}",
+            run.validation_failures.join("; ")
+        )));
+    }
+    Ok(BridgeGenerationResult {
+        run_id: run.id.clone(),
+        concept_key,
+        reference_note_created: false,
+        accepted_draft_ids,
+        rejected_draft_ids,
+        validation_failures: run.validation_failures.clone(),
     })
 }
 
@@ -919,11 +983,13 @@ where
     S: BetaGenerationStore,
 {
     let snapshot = store.snapshot().map_err(BetaGenerationError::Store)?;
-    if let Some(existing) = snapshot
-        .remediation_packs
-        .iter()
-        .find(|pack| pack.attempt_id == request.attempt_id)
-    {
+    if let Some(existing) = snapshot.remediation_packs.iter().find(|pack| {
+        pack.attempt_id == request.attempt_id
+            && snapshot.generation_runs.iter().any(|run| {
+                run.id == request.run_id
+                    && memory_engine_persistence::generation_run_is_published(run)
+            })
+    }) {
         return Ok(RemediationPackGenerationResult {
             pack: existing.clone(),
             accepted_draft_ids: Vec::new(),
@@ -940,18 +1006,15 @@ where
     let material = provider
         .generate_bridge_material(&provider_request)
         .map_err(|failure| BetaGenerationError::ProviderFailure(failure.to_string()))?;
-    let model = request
-        .model
-        .clone()
-        .unwrap_or_else(|| material.model.clone());
+    let model = request.model.as_ref().unwrap_or(&material.model);
     let (note, note_body, _) =
-        bridge_reference_note(&context, &material, &model, request.started_at);
+        bridge_reference_note(&context, &material, model, request.started_at);
 
     let run_request = remediation_pack_run_request(request, &source_document_ids);
     store
         .save_generation_run(run_receipt(
             &run_request,
-            &model,
+            model,
             RunProgress::Started,
             source_permissions.clone(),
         ))
@@ -968,7 +1031,7 @@ where
             run_id: &request.run_id,
             concept_key: &context.concept_key,
             reference_note_body: &note_body,
-            model: &model,
+            model,
             due: request.default_due,
             created_at: request.started_at,
             parent_review_unit_id: &context.parent.review_unit_id,
@@ -981,19 +1044,6 @@ where
             source_key: context.parent.queue.source_key.as_ref(),
         },
     )?;
-
-    store
-        .save_generation_run(run_receipt(
-            &run_request,
-            &model,
-            RunProgress::Completed {
-                draft_ids: pack_drafts.draft_ids,
-                validation_failures: pack_drafts.validation_failures.clone(),
-                usage: material.usage.as_ref().map(provider_usage_to_run_usage),
-            },
-            source_permissions,
-        ))
-        .map_err(BetaGenerationError::Store)?;
 
     let status = if pack_drafts.accepted_draft_ids.is_empty() {
         RemediationPackStatus::Rejected
@@ -1015,6 +1065,18 @@ where
                 None
             },
         })
+        .map_err(BetaGenerationError::Store)?;
+    store
+        .save_generation_run(run_receipt(
+            &run_request,
+            model,
+            RunProgress::Completed {
+                draft_ids: pack_drafts.draft_ids,
+                validation_failures: pack_drafts.validation_failures.clone(),
+                usage: material.usage.as_ref().map(provider_usage_to_run_usage),
+            },
+            source_permissions,
+        ))
         .map_err(BetaGenerationError::Store)?;
 
     Ok(RemediationPackGenerationResult {
@@ -1227,7 +1289,14 @@ where
         rejected_draft_ids: Vec::new(),
         validation_failures: Vec::new(),
     };
-    let mut seen_signatures = existing_draft_signatures(&snapshot.generated_prompt_drafts);
+    let mut seen_signatures =
+        existing_draft_signatures(snapshot.generated_prompt_drafts.iter().filter(|draft| {
+            draft.generation_run_id.as_deref() != Some(base.run_id)
+                && snapshot.generation_runs.iter().any(|run| {
+                    draft.generation_run_id.as_deref() == Some(run.id.as_str())
+                        && memory_engine_persistence::generation_run_is_published(run)
+                })
+        }));
     seen_signatures.extend(existing_review_unit_signatures(&snapshot.review_units));
     let mut drafts = Vec::new();
 
@@ -1988,8 +2057,7 @@ fn validation_reasons(
     // The quote check applies only to a card that CLAIMS a source quote: it must
     // verify, or the card is rejected — a fabricated citation is the
     // anti-hallucination failure this catches. A world-knowledge card has no
-    // quote to verify; its factual correctness rests on the model and the
-    // human keep-review the card still passes through before study.
+    // quote to verify; the source seed is lineage, not proof of factual correctness.
     if grounded && !quote_verified {
         reasons.push("Evidence quote not found in cited source".to_owned());
     }
@@ -2202,18 +2270,28 @@ fn compound_question(question: &str) -> bool {
 }
 
 fn existing_accepted_candidate_signatures(
-    drafts: &[GeneratedPromptDraft],
+    snapshot: &BetaStoreSnapshot,
+    excluded_run: Option<&str>,
 ) -> Vec<CandidateSignature> {
-    drafts
+    snapshot
+        .generated_prompt_drafts
         .iter()
-        .filter(|draft| draft.validation.status == GeneratedPromptValidationStatus::Accepted)
+        .filter(|draft| {
+            draft.validation.status == GeneratedPromptValidationStatus::Accepted
+                && draft.generation_run_id.as_deref() != excluded_run
+                && snapshot.generation_runs.iter().any(|run| {
+                    draft.generation_run_id.as_deref() == Some(run.id.as_str())
+                        && memory_engine_persistence::generation_run_is_published(run)
+                })
+        })
         .map(CandidateSignature::from_draft)
         .collect()
 }
 
-fn existing_draft_signatures(drafts: &[GeneratedPromptDraft]) -> BTreeSet<String> {
+fn existing_draft_signatures<'a>(
+    drafts: impl Iterator<Item = &'a GeneratedPromptDraft>,
+) -> BTreeSet<String> {
     drafts
-        .iter()
         .map(|draft| {
             [
                 draft.queue.concept_key.clone().unwrap_or_default(),

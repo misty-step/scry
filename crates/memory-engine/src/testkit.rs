@@ -395,7 +395,7 @@ fn boolean_correct_fixture() -> GradingFixture {
         },
         submitted: " true ".to_owned(),
         context: grade_context(3_000, 3),
-        expected: deterministic_grade(Verdict::Correct, Rating::Easy, "true", "True", true),
+        expected: deterministic_grade(Verdict::Correct, Rating::Good, "true", "True", true),
     }
 }
 
@@ -422,7 +422,7 @@ fn short_answer_good_fixture() -> GradingFixture {
 
 fn short_answer_close_fixture() -> GradingFixture {
     GradingFixture {
-        name: "short answer marks near misses as hard".to_owned(),
+        name: "short answer schedules near misses as failed recall".to_owned(),
         prompt: Prompt::Exact(exact_prompt(
             ExactPromptKind::ShortAnswer,
             "short-answer-close",
@@ -433,7 +433,7 @@ fn short_answer_close_fixture() -> GradingFixture {
         context: grade_context(5_100, 0),
         expected: deterministic_grade(
             Verdict::Close,
-            Rating::Hard,
+            Rating::Again,
             "punishmant",
             "punishment",
             false,
@@ -477,7 +477,13 @@ fn short_answer_independent_near_miss_fixture() -> GradingFixture {
         )),
         submitted: "Quebecc".to_owned(),
         context: grade_context(5_100, 0),
-        expected: deterministic_grade(Verdict::Close, Rating::Hard, "Quebecc", "Q / Quebec", false),
+        expected: deterministic_grade(
+            Verdict::Close,
+            Rating::Again,
+            "Quebecc",
+            "Q / Quebec",
+            false,
+        ),
     }
 }
 

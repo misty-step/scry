@@ -1042,15 +1042,31 @@ fn file_feedback_concurrent_instances_are_idempotent_and_do_not_fork_heads() {
 fn dropped_local_only_source_is_redacted_and_fixture_preserves_activity_kind() {
     let directory = TempDirectory::new("content-feedback-privacy");
     let path = directory.path().join("store.json");
-    let (mut store, draft) = lifecycle_store(&path);
-    let mut local = store.snapshot().source_documents[0].clone();
-    local.permission = SourcePermission::LocalOnly;
-    store.save_source_document(local).expect("local source");
-    let mut exercise = draft.clone();
+    let mut store = BetaPersistenceStore::open(&path).expect("store");
+    let mut source = source_document("src-private-exercise");
+    source.permission = SourcePermission::LocalOnly;
+    let source = store.save_source_document(source).expect("local source");
+    let reference = store
+        .save_reference_span(reference_span("ref-private-exercise", &source.id))
+        .expect("reference");
+    let mut exercise = accepted_draft(
+        "draft-private-exercise",
+        "unit-private-exercise",
+        &[source.id.as_str()],
+        &[reference.id.as_str()],
+        Some("run-private-exercise"),
+    );
     exercise.activity_kind = GeneratedLearningActivityKind::Exercise;
-    store
+    let draft = store
         .save_generated_prompt_draft(exercise)
         .expect("exercise draft");
+    store
+        .save_generation_run(generation_run(
+            "run-private-exercise",
+            &[source.id.as_str()],
+            &[draft.id.as_str()],
+        ))
+        .expect("publish exercise");
     store
         .record_content_feedback(feedback(
             "feedback-private",
@@ -1384,13 +1400,183 @@ fn snapshot_envelope_uses_beta_store_wire_names() {
     );
 }
 
+#[test]
+fn publication_is_atomic_and_stale_replays_preserve_review_history() {
+    let directory = TempDirectory::new("automatic-publication");
+    let path = directory.path().join("store.json");
+    let mut store = BetaPersistenceStore::open(&path).expect("store");
+    store
+        .save_source_document(source_document("source"))
+        .expect("source");
+    store
+        .save_reference_span(reference_span("reference", "source"))
+        .expect("reference");
+    let draft = accepted_draft("draft", "unit", &["source"], &["reference"], Some("run"));
+    let mut run = generation_run("run", &["source"], &["draft"]);
+    run.completed_at = Some(i64::MIN);
+    store.save_generation_run(run).expect("pending run");
+    store
+        .save_generated_prompt_draft(draft.clone())
+        .expect("candidate");
+    let pending = store.snapshot();
+    assert!(store.list_queue_candidates().expect("queue").is_empty());
+    store.fail_next_commit_for_test();
+    assert!(matches!(
+        store.finalize_generation_run("run", NOW, true),
+        Err(BetaStoreError::InjectedCommitFailure)
+    ));
+    assert_eq!(
+        BetaPersistenceStore::open(&path)
+            .expect("restart after failed commit")
+            .snapshot(),
+        pending
+    );
+    assert!(store
+        .finalize_generation_run("run", NOW, true)
+        .expect("publish"));
+    assert_eq!(
+        store.list_queue_candidates().expect("published queue")[0].review_unit_id,
+        draft.review_unit_id
+    );
+    let mut service = MemoryService::with_clock(&mut store, mastered_after_three_reviews, || NOW);
+    service
+        .grade_apply_review(GradeApplyReviewCommand {
+            prompt: draft.prompt.clone(),
+            submitted_answer: "Our Father".to_owned(),
+            response_time_ms: 1_800,
+            prompt_id: Some(draft.prompt_id.clone()),
+            occurred_at: Some(NOW),
+            idempotency_key: Some("published-review".to_owned()),
+        })
+        .expect("review without approval");
+    let reviewed = store.snapshot();
+    let mut restarted = BetaPersistenceStore::open(&path).expect("restart");
+    assert!(restarted
+        .finalize_generation_run("run", NOW + 50_000, false)
+        .expect("stale replay"));
+    restarted
+        .discard_generation_run("run")
+        .expect("late cancellation");
+    restarted
+        .migrate_generated_content()
+        .expect("migration replay");
+    assert_eq!(
+        restarted.snapshot(),
+        reviewed,
+        "publication cannot erase or reschedule learning history"
+    );
+}
+
+#[test]
+fn historical_enrollment_preserves_rejections_archives_supersession_and_schedules() {
+    let directory = TempDirectory::new("historical-enrollment");
+    let path = directory.path().join("store.json");
+    let mut snapshot = memory_engine_persistence::BetaStoreSnapshot::default();
+    snapshot.source_documents.push(source_document("source"));
+    let mut archived_source = source_document("archived");
+    archived_source.archived_at = Some(NOW);
+    snapshot.source_documents.push(archived_source);
+    snapshot.reference_spans.extend([
+        reference_span("reference", "source"),
+        reference_span("archived-reference", "archived"),
+    ]);
+    for name in [
+        "eligible",
+        "duplicate",
+        "learner-rejected",
+        "validator-rejected",
+        "pending",
+        "owned",
+        "old",
+        "replacement",
+        "archived",
+    ] {
+        let archived = name == "archived";
+        let sources = [if archived { "archived" } else { "source" }];
+        let references = [if archived {
+            "archived-reference"
+        } else {
+            "reference"
+        }];
+        let unit = match name {
+            "old" | "replacement" => "superseded-unit",
+            "duplicate" => "eligible",
+            _ => name,
+        };
+        let mut draft = accepted_draft(name, unit, &sources, &references, Some(name));
+        if name == "learner-rejected" {
+            draft.learner_decision =
+                Some(memory_engine_persistence::LearnerDraftDecision::Rejected { decided_at: NOW });
+        }
+        if matches!(name, "validator-rejected" | "duplicate") {
+            draft.validation.status = GeneratedPromptValidationStatus::Rejected;
+        }
+        let mut run = generation_run(name, &sources, &[name]);
+        if name == "pending" {
+            run.completed_at = Some(i64::MIN);
+        }
+        if name == "replacement" {
+            run.started_at = NOW + 1;
+        }
+        if name == "owned" {
+            let mut unit = memory_engine_persistence::promoted_review_unit(&draft);
+            unit.archived_at = Some(NOW);
+            unit.snoozed_until = Some(NOW + 100_000);
+            snapshot.review_units.push(unit);
+            snapshot
+                .schedules
+                .push(memory_engine_persistence::ScheduleRecord {
+                    review_unit_id: draft.review_unit_id.clone(),
+                    state: schedule_state(7, ScheduleStatus::Review),
+                });
+        }
+        snapshot.generated_prompt_drafts.push(draft);
+        snapshot.generation_runs.push(run);
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&snapshot).expect("legacy snapshot"),
+    )
+    .expect("legacy file");
+    let mut store = BetaPersistenceStore::open(&path).expect("open is read-only");
+    assert_eq!(store.snapshot(), snapshot);
+    store
+        .migrate_generated_content()
+        .expect("enroll historical content");
+    let migrated = store.snapshot();
+    let enrolled: std::collections::BTreeSet<_> = migrated
+        .review_units
+        .iter()
+        .filter_map(|unit| unit.generated_prompt_draft_id.as_deref())
+        .collect();
+    assert_eq!(
+        enrolled,
+        std::collections::BTreeSet::from(["eligible", "owned", "replacement"])
+    );
+    assert_eq!(migrated.review_units[0], snapshot.review_units[0]);
+    assert_eq!(migrated.schedules, snapshot.schedules);
+    assert_eq!(
+        migrated.generated_prompt_drafts,
+        snapshot.generated_prompt_drafts
+    );
+    assert_eq!(
+        store.list_queue_candidates().expect("queue")[0].review_unit_id,
+        review_unit_id("eligible")
+    );
+    let mut restarted = BetaPersistenceStore::open(&path).expect("restart");
+    restarted
+        .migrate_generated_content()
+        .expect("replay migration");
+    assert_eq!(restarted.snapshot(), migrated);
+}
+
 fn mastered_after_three_reviews(schedule: &ScheduleState) -> bool {
     schedule.state == ScheduleStatus::Review && schedule.reps >= 3
 }
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn learner_trust_driver_keeps_pending_decisions_and_exports_after_reload() {
+fn learner_controls_edit_and_remove_published_content_and_export_after_reload() {
     let directory = TempDirectory::new("learner-trust-driver");
     let path = directory.path().join("store.json");
     let mut store = BetaPersistenceStore::open(&path).expect("open store");
@@ -1432,13 +1618,15 @@ fn learner_trust_driver_keeps_pending_decisions_and_exports_after_reload() {
             Some("stale-run"),
         ))
         .expect("stale draft");
+    let mut stale_run = generation_run(
+        "stale-run",
+        &[source.id.as_str()],
+        &[stale_draft.id.as_str()],
+    );
+    stale_run.completed_at = Some(i64::MIN);
     store
-        .save_generation_run(generation_run(
-            "stale-run",
-            &[source.id.as_str()],
-            &[stale_draft.id.as_str()],
-        ))
-        .expect("stale run");
+        .save_generation_run(stale_run)
+        .expect("tentative stale run");
     assert!(
         !store
             .finalize_generation_run("stale-run", NOW, false)
@@ -1465,15 +1653,16 @@ fn learner_trust_driver_keeps_pending_decisions_and_exports_after_reload() {
         .iter()
         .any(|span| span.id == stale_reference.id));
 
-    let pending = store.snapshot();
-    assert!(
-        pending.review_units.is_empty(),
-        "generation must not promote drafts"
+    let published = store.snapshot();
+    assert_eq!(
+        published.review_units.len(),
+        3,
+        "accepted output is automatically enrolled"
     );
-    assert!(
-        pending.schedules.is_empty(),
-        "generation must not schedule drafts"
-    );
+    assert!(published
+        .generated_prompt_drafts
+        .iter()
+        .all(|draft| draft.learner_decision.is_none()));
 
     let kept = store
         .keep_generated_prompt_draft(draft_ids[0], NOW)
@@ -1490,7 +1679,11 @@ fn learner_trust_driver_keeps_pending_decisions_and_exports_after_reload() {
     assert_decision_retries(&mut store, &draft_ids, &kept, &edited);
 
     let due = store.list_queue_candidates().expect("due queue");
-    assert_eq!(due.len(), 2, "only kept and edited-kept drafts can be due");
+    assert_eq!(
+        due.len(),
+        2,
+        "explicit rejection withdraws the published item"
+    );
     assert_eq!(
         due.iter()
             .map(|candidate| candidate.review_unit_id.clone())
@@ -1552,7 +1745,7 @@ fn assert_decision_retries(
             .expect("idempotent edit"),
         *edited
     );
-    assert!(store
+    let reedited = store
         .edit_and_keep_generated_prompt_draft(
             draft_ids[1],
             "Different trust prompt",
@@ -1560,7 +1753,16 @@ fn assert_decision_retries(
             &[],
             NOW + 5,
         )
-        .is_err());
+        .expect("edit the same published quiz again");
+    assert_eq!(reedited.review_unit_id, edited.review_unit_id);
+    assert!(matches!(&reedited.prompt, Prompt::Exact(prompt)
+        if prompt.prompt == "Different trust prompt"));
+    assert_eq!(
+        store
+            .keep_generated_prompt_draft(draft_ids[1], NOW + 6)
+            .expect("keep after edit"),
+        reedited
+    );
     store
         .reject_generated_prompt_draft(draft_ids[2], NOW + 2)
         .expect("reject");
@@ -1844,13 +2046,15 @@ fn stale_finalizer_preserves_replacement_run_reusing_review_unit_id() {
             Some("owner-old-run"),
         ))
         .expect("old draft");
+    let mut old_run = generation_run(
+        "owner-old-run",
+        &[source.id.as_str()],
+        &[old_draft.id.as_str()],
+    );
+    old_run.completed_at = Some(i64::MIN);
     store
-        .save_generation_run(generation_run(
-            "owner-old-run",
-            &[source.id.as_str()],
-            &[old_draft.id.as_str()],
-        ))
-        .expect("old run");
+        .save_generation_run(old_run)
+        .expect("tentative old run");
     let replacement = store
         .save_generated_prompt_draft(accepted_draft(
             "owner-replacement-draft",

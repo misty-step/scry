@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rollback regression with synthetic fixtures, NEVER real deployment proof.
+"""Release regression with synthetic fixtures, NEVER real deployment proof.
 
 The release implementation, Git history, checksums and guards are real. Worker
 bytes, workerd/operation receipts, GitHub CI/protection and Cloudflare/HTTP state
@@ -24,10 +24,11 @@ import urllib.request
 import urllib.response
 
 
-FIXTURE = "SYNTHETIC rollback regression fixture; NOT deployment/workerd/CI proof"
+FIXTURE = "SYNTHETIC release regression fixture; NOT deployment/workerd/CI proof"
 OUTGOING_VERSION = "00000000-0000-4000-8000-000000000001"
 TARGET_VERSION = "00000000-0000-4000-8000-000000000002"
 DEPLOYMENT = "00000000-0000-4000-8000-000000000003"
+STAGING_VERSION = "00000000-0000-4000-8000-000000000004"
 OTHER_HASH = hashlib.sha256(b"synthetic mismatching fixture identity").hexdigest()
 REAL_RUN = subprocess.run
 REAL_POPEN = subprocess.Popen
@@ -146,13 +147,20 @@ class RollbackFixture:
                         "version_id": OUTGOING_VERSION, "bundle_sha256": outgoing_hash}
         self.target = {**receipt, "status": "verified", "version_id": TARGET_VERSION,
                        "bundle_sha256": bundle_hash}
+        self.staging = {**self.target, "environment": "staging", "action": "traffic",
+                        "version_id": STAGING_VERSION,
+                        "runtime_proof": {"maintenance": False, "readiness": "ready", "public_smoke": "passed"}}
+        self.staging_active = STAGING_VERSION
+        self.staging_hash = bundle_hash
         self.versions = {OUTGOING_VERSION: outgoing_hash, TARGET_VERSION: bundle_hash}
         self.active = OUTGOING_VERSION
+        self.uploads = []
         self.deployments = []
         self.fingerprint = {"fixture": FIXTURE, "schema": "memory_engine.cloudflare_fingerprint.v1",
                             "schemaVersions": [1], "storageSchemaVersion": 1,
                             "sha256": hashlib.sha256(b"synthetic durable state").hexdigest()}
         self.ready_status = 200
+        self.target_ready_status = None
         self.outgoing_available = False
         self.preflight_race = False
         self.ci = {"fixture": FIXTURE, "id": 910000001, "name": "ci",
@@ -172,6 +180,14 @@ class RollbackFixture:
             current=root / "synthetic-current.failed.json", version_receipt=root / "synthetic-target.json",
             staging_receipt=None, secrets_file=None,
         )
+
+    def use_composition(self):
+        self.args.command = "deploy"
+        self.args.out = self.root / "synthetic-release"
+        self.receipt = self.args.out / "promote.json"
+        self.outgoing_available = True
+        if self.args.environment == "production":
+            self.args.staging_receipt = self.root / "synthetic-staging.json"
 
     def git_process(self, argv, **kwargs):
         command = tuple(map(str, argv))
@@ -199,14 +215,23 @@ class RollbackFixture:
                          f"repos/{repository}/commits/{self.revision}/check-runs?per_page=100"):
             value = [{"fixture": FIXTURE, "check_runs": [self.ci]}]
         elif command[:2] == ("node", str(self.repo / "node_modules/wrangler/bin/wrangler.js")):
-            if command[-4] != "--config" or command[-2:] != ("--env", self.args.environment):
+            if command[-4] != "--config" or command[-2] != "--env":
                 raise AssertionError(f"unexpected fixture Wrangler scope: {command}")
-            value = self.cloudflare(command[2:-4], kwargs.get("env", {}))
+            value = self.cloudflare(command[2:-4], kwargs.get("env", {}), command[-1])
         else:
             raise AssertionError(f"unexpected fixture subprocess: {command}")
         return subprocess.CompletedProcess(command, 0, json.dumps(value), "")
 
-    def cloudflare(self, command, environment):
+    def cloudflare(self, command, environment, target_environment):
+        if target_environment != self.args.environment:
+            if target_environment != "staging" or self.args.environment != "production":
+                raise AssertionError("release crossed its explicit deployment environment")
+            if command == ("deployments", "status", "--json"):
+                return {"fixture": FIXTURE, "versions": [{"version_id": self.staging_active, "percentage": 100}]}
+            if command == ("versions", "view", STAGING_VERSION, "--json"):
+                return {"fixture": FIXTURE, "id": STAGING_VERSION,
+                        "annotations": {"workers/message": f"scry bundle sha256:{self.staging_hash}"}}
+            raise AssertionError("production attempted to mutate staging")
         if command == ("deployments", "status", "--json"):
             return {"fixture": FIXTURE, "versions": [{"version_id": self.active, "percentage": 100}]}
         if len(command) == 4 and command[:2] == ("versions", "view") and command[3] == "--json":
@@ -215,6 +240,16 @@ class RollbackFixture:
                 raise AssertionError(f"unknown synthetic Worker version: {version}")
             return {"fixture": FIXTURE, "id": version,
                     "annotations": {"workers/message": f"scry bundle sha256:{self.versions[version]}"}}
+        if len(command) == 8 and command[:5] == (
+                "versions", "upload", "--no-bundle", "--strict", "--message") and command[6] == "--tag":
+            assert command[5] == f"scry bundle sha256:{self.versions[TARGET_VERSION]}"
+            record = {"fixture": FIXTURE, "type": "version-upload", "version": 1,
+                      "worker_name": "scry-staging" if target_environment == "staging" else "scry",
+                      "version_id": TARGET_VERSION}
+            self.uploads.append({"version_id": TARGET_VERSION, "active_version_id": self.active})
+            with Path(environment["WRANGLER_OUTPUT_FILE_PATH"]).open("ab") as stream:
+                stream.write(encoded(record))
+            return record
         if len(command) == 6 and command[:2] == ("versions", "deploy") and command[3:5] == ("--yes", "--message"):
             version, separator, percentage = command[2].partition("@")
             if not separator or percentage != "100" or version not in self.versions:
@@ -237,11 +272,14 @@ class RollbackFixture:
         if route.startswith("/internal/") and request.get_header("X-admin-token") != self.admin_token:
             raise AssertionError("fixture admin request lacks its synthetic token")
         key = (method, route)
+        ready_status = self.ready_status
+        if self.active == TARGET_VERSION and self.target_ready_status is not None:
+            ready_status = self.target_ready_status
         responses = {
             ("GET", "/internal/migration/fingerprint"): (200, self.fingerprint),
             ("GET", "/internal/runtime"): (200, {"fixture": FIXTURE, "maintenance": False}),
             ("GET", "/healthz"): (200, {"fixture": FIXTURE, "status": "ok"}),
-            ("GET", "/readyz"): (self.ready_status, {"fixture": FIXTURE, "status": "ready"}),
+            ("GET", "/readyz"): (ready_status, {"fixture": FIXTURE, "status": "ready"}),
             ("GET", "/manifest.webmanifest"): (200, {"fixture": FIXTURE}),
             ("GET", "/favicon.png"): (200, {"fixture": FIXTURE}),
             ("GET", "/static/app.js"): (200, {"fixture": FIXTURE}),
@@ -269,6 +307,8 @@ class RollbackFixture:
         write_json(self.args.verification, self.proof)
         write_json(self.args.current, self.current)
         write_json(self.args.version_receipt, self.target)
+        if self.args.staging_receipt is not None:
+            write_json(self.args.staging_receipt, self.staging)
         # Do not emit production-looking success output for synthetic receipts.
         with redirect_stdout(io.StringIO()):
             self.release.deploy_operation(self.args)
@@ -414,6 +454,58 @@ def test_post_switch_runtime_failure_is_not_verified():
         expect_refusal(fixture, switched=True)
 
 
+def test_composed_deployment_uploads_then_promotes_one_environment():
+    for environment in ("staging", "production"):
+        with rollback_fixture(environment) as fixture:
+            fixture.use_composition()
+            fixture.execute()
+            uploaded = json.loads((fixture.args.out / "upload.json").read_text())
+            promoted = json.loads(fixture.receipt.read_text())
+            assert fixture.uploads == [{"version_id": TARGET_VERSION, "active_version_id": OUTGOING_VERSION}]
+            assert uploaded["status"] == "uploaded" and uploaded["previous_version_id"] == OUTGOING_VERSION
+            assert fixture.active == TARGET_VERSION
+            assert fixture.deployments == [{"version_id": TARGET_VERSION, "deployment_id": DEPLOYMENT}]
+            assert promoted["status"] == "verified" and promoted["version_id"] == uploaded["version_id"]
+            if environment == "production":
+                assert promoted["staging_version_id"] == STAGING_VERSION
+                assert fixture.staging_active == STAGING_VERSION
+
+
+def test_composed_deployment_preserves_source_staging_version_and_schema_guards():
+    corruptions = (
+        lambda f: (f.artifact / "worker/index.js").write_text("// corrupted synthetic artifact\n"),
+        lambda f: (f.repo / "scripts/scry-cloudflare").write_text("# unreviewed synthetic release tooling\n"),
+        lambda f: f.proof.update(bundle_sha256=OTHER_HASH),
+        lambda f: f.ci.update(conclusion="failure"),
+        lambda f: f.current.update(schema_sha256=OTHER_HASH),
+        lambda f: f.current.update(version_id=TARGET_VERSION),
+        lambda f: setattr(f.args, "staging_receipt", None),
+        lambda f: f.staging.update(bundle_sha256=OTHER_HASH),
+        lambda f: f.staging["runtime_proof"].update(maintenance=True),
+        lambda f: setattr(f, "staging_hash", OTHER_HASH),
+        lambda f: setattr(f, "staging_active", OUTGOING_VERSION),
+    )
+    for corrupt in corruptions:
+        with rollback_fixture("production") as fixture:
+            fixture.use_composition()
+            corrupt(fixture)
+            expect_refusal(fixture)
+            assert fixture.uploads == [], "invalid composition reached an upload"
+
+
+def test_composed_promotion_failure_preserves_evidence_and_refuses_retry():
+    with rollback_fixture("staging") as fixture:
+        fixture.use_composition()
+        fixture.target_ready_status = 503
+        expect_refusal(fixture, switched=True)
+        uploaded = json.loads((fixture.args.out / "upload.json").read_text())
+        assert uploaded["status"] == "uploaded" and uploaded["version_id"] == TARGET_VERSION
+        expect_refusal(fixture, switched=True)
+        assert fixture.uploads == [{"version_id": TARGET_VERSION, "active_version_id": OUTGOING_VERSION}], (
+            "reusing a failed composition's output repeated a remote mutation"
+        )
+
+
 def main():
     test_failed_current_recovers_without_outgoing_http()
     test_failed_receipt_can_promote_after_live_recovery()
@@ -424,7 +516,10 @@ def main():
     test_real_artifact_source_and_proof_guards_remain_required()
     test_post_switch_schema_failure_is_not_verified()
     test_post_switch_runtime_failure_is_not_verified()
-    print("OK scry-cloudflare rollback (synthetic fixtures only; NOT deployment proof)")
+    test_composed_deployment_uploads_then_promotes_one_environment()
+    test_composed_deployment_preserves_source_staging_version_and_schema_guards()
+    test_composed_promotion_failure_preserves_evidence_and_refuses_retry()
+    print("OK scry-cloudflare release/rollback (synthetic fixtures only; NOT deployment proof)")
 
 
 if __name__ == "__main__":

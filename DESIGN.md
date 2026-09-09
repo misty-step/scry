@@ -20,20 +20,20 @@ and decorative motion. The revised emphasis is the material itself: an actual
 question, an actual source passage, or the next deliberate study action.
 
 ```text
-Standing view                    Quiz / Study note
-Scry         Due     Account     Scry         Due     Account
-                                 
-Page title                       Question or reading title
-Next useful action               Readable study content
-Source / draft / evidence        Answer choices or answer field
-                                 Deliberate action
-Home  Create  Library  Progress   Quiet footer
+Review                          Add
+Scry       Due      Add / More   Scry              Review
+
+The current question            Anything you want to learn
+                                A word, phrase, or essay
+Answer / I don’t know yet        Learn this
+
+Feedback, then Next question     Generation opens review
 ```
 
 Left-align content and controls. Center the reading column in the viewport,
 not the text within it. Long material gets vertical space, not extra columns.
-Structure reflects content: Source sections, Quiz answer choices, draft
-inspection, and a dedicated Study note are different surfaces, not identical
+Structure reflects content: saved Sources, Quiz answer choices, feedback,
+and a dedicated Study note are different surfaces, not identical
 cards with different labels.
 
 ## Product vocabulary
@@ -124,12 +124,12 @@ one page-level heading and a visible keyboard focus ring. The skip link targets
 requiring a mouse. Announcements are polite and atomic where the changed
 result needs to be read together.
 
-The standing-view dock sticks to the bottom with a solid surface and respects
-safe-area insets. Review is not a navigation destination: it has no standing
-view dock, no competing analytics, and no draft triage beneath the question.
-Account controls remain available in the header. Disclosures expand into the
-document instead of using a clipped floating action grid. A small account
-menu is bounded to the viewport.
+Review is the default destination and has no standing-view dock, competing
+analytics, or draft triage. The question takes the available viewport and
+answer controls sit within thumb reach. Add and More remain available in the
+header. Secondary pages use a quiet Review/Add dock.
+Disclosures expand in the document instead of a clipped floating action grid.
+The account menu is bounded to the viewport.
 
 There is no ambient animation, loading pulse, celebratory drawing, or timed
 advance. Pending feedback is immediate and still. Small user-triggered color
@@ -143,15 +143,15 @@ transitions. Forced-color mode retains selected and accepted-answer outlines.
 | Signed out | Explain Source → Quiz / Study note → practice; request a magic link with an explicit invite/waitlist explanation. |
 | Request received | Explain the invited-email or waitlist outcome without disclosing account eligibility; use the newest link or return to start. |
 | Recovery | Render the real error safely; provide the correct retry/link action rather than a dead end. Never print a secret. |
-| Home, due | Present the genuine due count in a useful sentence and one Start review action. No filler stats. |
-| Home, new | Explain how to add the first Source/topic and explicitly open Create. |
-| Home, caught up | Say nothing is due and offer a deliberate pause or Create action. |
-| Create | One source/topic field, truthful model-use warning, Create quizzes, pending status, and an explicit Library destination. |
-| Capture waiting | A dedicated, non-editable page follows one saved generation job, shows honest status, and offers an ordinary Library link. Only that job’s terminal event may navigate to Library. |
-| Library | Vertical Source sections, counts, Concept drilldown, source-scoped permission and removal, inspectable drafts, and live generation activity. |
-| Draft inspection | Show question, accepted answer, every choice, available explanation, actual Source context, and optional generation provenance. Keep, reject, or edit-and-keep are explicit decisions. |
-| Quiz | Actual question and one-tap MCQ choices or a labelled free-response field with one submit. Reveal plus a single More disclosure. |
-| Graded Quiz | Hold the result: canonical verdict, accepted answer, concise grading reason, truthful easier-draft notice if present, and Continue. Details stays collapsed. |
+| Home, due | Open the actual next question; preserve an existing graded result until Next. |
+| Home, new | Show the capture field directly. No Start review or Create navigation gate. |
+| Home, caught up | State nothing is due and let the learner add more or leave. |
+| Create | One field accepts a word, phrase, or essay; Learn this saves and generates. Model use is explicit. |
+| Capture waiting | Follow one durable job; keep failed input recoverable and show an authorized retry. Only successful completion navigates to review. |
+| Library | Secondary Source management, published inventory, permission/removal, and generation activity. No approval inbox. |
+| Quiz management | Optional edits/removal preserve identity, attempts, and schedules; provenance remains available. |
+| Quiz | Actual question and one-tap choices or a labelled response field. “I don’t know yet” saves assisted practice in one intent. |
+| Graded Quiz | Hold the canonical verdict, accepted answer, concise feedback, and Next question. Details stays collapsed. |
 | Study note | A dedicated reading surface for `current.reference_text`, escaped and preserving line breaks, returning to the same Quiz. State absence honestly. |
 | Progress | Filterable, bounded Concept evidence list with real recall history and pagination. Distinguish untried from struggling; no invented score. |
 | Account / reminders | Browser sign-out scope is explicit; service sessions remain separate. Reminder actions stay native protected forms behind a Home disclosure. |
@@ -170,16 +170,16 @@ transitions. Forced-color mode retains selected and accepted-answer outlines.
   and **Revealed**. The graded page holds indefinitely. **No auto-advance.**
 - Only deliberate Continue advances the review. Quiz-quality feedback saves in
   place, with its stable idempotency and superseding identifiers preserved.
-- Details contains schedule horizon, Concept progress, recall history, the Study
-  note entry, and Quiz-quality controls. No history/stage/success dossier is
-  shown before grading.
+- The verdict and accepted answer stay visible. Details contains the original
+  choice recap, schedule horizon, Concept progress, recall history, the Study
+  note entry, and Quiz-quality controls. No dossier is shown before grading.
 - More offers Study note, Skip, Snooze quiz, exact Concept snooze, manual Bridge,
   Edit, Create, and confirmed Delete. Each touch-visible description tells the
   truth about scope: Skip is later in this session; Snooze is until tomorrow;
   Concept snooze is the exact Concept only; Source removal affects every Quiz
   generated from that Source.
-- Bridge requests two or three genuinely easier inspectable drafts. It is not
-  an automatic pack rollout. No draft enters review without learner approval.
+- Bridge generates genuinely easier quizzes through the same quality gates and
+  automatic publication path. No learner admission ceremony is required.
 - Study notes reuse durable source-backed material. Never invent quotes or
   render untrusted material as HTML. `render_reference_page(account, view)`
   consumes resolved data, not a loader. Its return form is POST `/app/resume`

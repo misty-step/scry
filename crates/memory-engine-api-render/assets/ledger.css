@@ -94,7 +94,7 @@ form, article, section, details, main, nav, div { min-width: 0; }
   color: var(--lg-ink-2);
   font-size: 14px;
 }
-header.ae-bar { min-height: 76px; }
+header.ae-bar { min-height: 64px; }
 .ae-name {
   display: inline-flex;
   align-items: center;
@@ -105,6 +105,7 @@ header.ae-bar { min-height: 76px; }
   text-decoration: none;
 }
 .me-due { min-width: 0; max-width: 8rem; overflow-wrap: anywhere; margin-left: auto; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.me-add { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px; color: var(--lg-ink); font-weight: 700; text-decoration: none; }
 footer.ae-bar {
   margin-top: auto;
   justify-content: center;
@@ -113,11 +114,12 @@ footer.ae-bar {
   padding-block: 10px max(10px, env(safe-area-inset-bottom, 0px));
 }
 footer.ae-bar:has(.me-nav) { position: sticky; bottom: 0; z-index: 4; padding-block: 4px max(4px, env(safe-area-inset-bottom, 0px)); }
+footer.ae-bar:empty { display: none; }
 .ae-stage { display: grid; align-content: center; flex: 1; }
 .ae-stage-scroll { display: block; }
 .ae-view { width: min(100%, 48rem); margin-inline: auto; padding: clamp(20px, 5vh, 56px) 24px 64px; overflow-wrap: anywhere; }
 .ae-view:has(.me-review, .me-study-note) { max-width: 44rem; }
-.me-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; gap: 4px; }
+.me-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; }
 .me-nav-item {
   display: grid;
   place-items: center;
@@ -131,6 +133,12 @@ footer.ae-bar:has(.me-nav) { position: sticky; bottom: 0; z-index: 4; padding-bl
 }
 .me-nav-item[aria-current='page'] { background: var(--lg-paper-2); color: var(--lg-accent-ink); }
 .me-nav-item:hover { color: var(--lg-ink); }
+.ae-stage:has(.me-review) { display: flex; }
+.ae-view:has(.me-review) { display: flex; padding-block: 24px max(24px, env(safe-area-inset-bottom, 0px)); }
+.me-review { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.me-review > .me-prompt { font-size: clamp(26px, 4.5vw, 35px); line-height: 1.4; font-weight: 500; }
+.me-review > .me-choices-form, .me-review > .me-submit { margin-top: auto; }
+.me-review > .me-next { margin-top: auto; padding-top: 24px; }
 .me-skip-link { position: absolute; inset: 8px auto auto 16px; transform: translateY(-200%); padding: 12px 16px; z-index: 10; background: var(--lg-ink); color: var(--lg-on-ink); border-radius: var(--lg-r); }
 .me-skip-link:focus { transform: none; }
 
@@ -202,18 +210,17 @@ textarea.ae-input { resize: vertical; min-height: 104px; }
 .me-entry-form .ae-button, .me-capture-hero .ae-button { width: 100%; }
 .me-entry-explainer { margin-top: 16px; font-size: 14px; color: var(--lg-ink-2); }
 
-/* Home: the next meaningful action, followed by nothing demanding. */
-.me-callout { padding: clamp(22px, 5vw, 36px); background: var(--lg-paper-2); border-radius: var(--lg-r-lg); }
-.me-callout .me-display { margin-bottom: 16px; }
-.me-callout-line { margin-bottom: 28px; color: var(--lg-ink-2); font-size: 17px; }
-.me-callout-n { color: var(--lg-ink); font-weight: 750; font-variant-numeric: tabular-nums; }
-.me-callout .ae-button { width: 100%; }
+/* No dashboard: caught-up feedback and one capture field. */
 .me-caughtup-line { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
 .me-caughtup-line .ae-icon { width: 28px; height: 28px; }
 .me-welcome { margin-top: 8px; }
-.me-capture textarea { min-height: 240px; font: 400 18px/1.75 var(--lg-reading); }
+.me-capture textarea { min-height: 200px; font: 400 18px/1.75 var(--lg-reading); }
 .me-capture .me-actions { align-items: stretch; }
 .me-capture .me-actions .ae-button { width: 100%; }
+.me-capture .me-live-hint:empty { display: none; }
+.me-capture #me-capture-help { margin-top: 18px; font-size: 13px; }
+.me-capture-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.me-caughtup { margin-bottom: 36px; }
 .me-capture-next { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--lg-line); }
 .me-generation-waiting { padding-top: 12px; }
 .me-generation-source { font: 450 20px/1.6 var(--lg-reading); margin-bottom: 28px; }
@@ -245,20 +252,6 @@ textarea.ae-input { resize: vertical; min-height: 104px; }
 .me-remove-confirm > summary { color: var(--lg-clay); }
 .me-remove-warning { margin: 12px 0; color: var(--lg-ink-2); font-size: 14px; }
 .me-remove-confirm button { border-color: var(--lg-clay); color: var(--lg-clay); }
-.me-pending-drafts { padding-top: 8px; }
-.me-pending-draft { padding: 28px 0; border-top: 1px solid var(--lg-line); }
-.me-pending-draft .me-prompt { margin-bottom: 20px; font-size: 23px; }
-.me-draft-concept { font: 650 15px/1.5 var(--lg-sans); color: var(--lg-ink-2); margin: 0 0 16px; }
-.me-draft-answer { font-family: var(--lg-reading); font-size: 18px; }
-.me-draft-choices { margin: 0 0 20px; padding-left: 24px; font: 400 17px/1.65 var(--lg-reading); }
-.me-draft-choices li { padding: 6px 0; }
-.me-draft-edit { margin: 20px 0; }
-.me-draft-evidence { margin: 24px 0; }
-.me-provenance-spans { padding: 0; list-style: none; }
-.me-provenance-spans li { padding: 12px 0; }
-.me-provenance-spans strong, .me-provenance-spans .ae-dim { display: block; font: 500 13px/1.6 var(--lg-sans); }
-.me-provenance-spans .me-reading { font-size: 16px; }
-.me-draft-provenance { font-size: 13px; }
 .me-jobs-list { margin: 0; padding: 0; list-style: none; }
 .me-job { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 18px 0; border-top: 1px solid var(--lg-line); }
 .me-job-title { margin: 0 0 4px; font-weight: 650; }
@@ -273,13 +266,13 @@ textarea.ae-input { resize: vertical; min-height: 104px; }
 
 /* The question owns the screen. A tap answers; the graded result holds. */
 .me-choices-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-.me-choice { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 64px; padding: 17px 20px; border: 1px solid var(--lg-control-line); border-radius: var(--lg-r); background: var(--lg-field); color: var(--lg-ink); font: 450 18px/1.6 var(--lg-reading); text-align: left; cursor: pointer; touch-action: manipulation; }
+.me-choice { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 68px; padding: 17px 20px; border: 1px solid var(--lg-control-line); border-radius: var(--lg-r); background: var(--lg-field); color: var(--lg-ink); font: 450 18px/1.6 var(--lg-reading); text-align: left; cursor: pointer; touch-action: manipulation; }
 .me-choice:hover { background: var(--lg-paper-2); border-color: var(--lg-accent); }
 .me-choice[data-pressed] { background: var(--lg-paper-2); border: 2px solid var(--lg-accent); padding: 16px 19px; }
 .me-choice[data-dim] { color: var(--lg-ink-2); }
 .me-submit .ae-button { width: 100%; min-height: 52px; }
 .me-answer-input { font: 400 18px/1.65 var(--lg-reading); }
-.me-hatch-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-top: 28px; }
+.me-hatch-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-top: 16px; }
 .me-hatch-row .me-reveal { flex: 1 1 10rem; }
 .me-reveal .ae-button-quiet { width: 100%; }
 .me-more { flex: 0 0 auto; }
@@ -315,6 +308,8 @@ textarea.ae-input { resize: vertical; min-height: 104px; }
 .me-bridge { padding: 16px 18px; margin-bottom: 24px; border-radius: var(--lg-r); background: var(--lg-paper-2); font-size: 15px; }
 .me-next { margin: 32px 0 20px; }
 .me-next .ae-button { width: 100%; min-height: 56px; }
+.me-review-recovery { padding: 18px; margin-block: 20px; background: var(--lg-paper-2); border-radius: var(--lg-r); }
+.me-review-recovery a { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* Native disclosures keep their accessible keyboard semantics and reflow
    into the document rather than overlaying the question or trapping focus. */
@@ -343,10 +338,12 @@ summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 6
 .me-return-enable .ae-label { margin: 0; }
 .me-account { position: relative; flex: none; }
 .me-account-summary { font-size: 13px; padding: 12px 0 12px 8px; }
-.me-account-sheet { position: absolute; right: 0; top: calc(100% + 8px); z-index: 6; display: flex; flex-direction: column; gap: 12px; width: min(280px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--lg-control-line); border-radius: var(--lg-r-lg); background: var(--lg-paper); }
+.me-account-sheet { position: absolute; right: 0; top: calc(100% + 8px); z-index: 6; display: flex; flex-direction: column; gap: 12px; width: min(320px, calc(100vw - 32px)); max-height: calc(100dvh - 100px); overflow-y: auto; padding: 20px; border: 1px solid var(--lg-control-line); border-radius: var(--lg-r-lg); background: var(--lg-paper); }
 .me-account-sheet .ae-button-quiet { width: 100%; }
 .me-account-sheet p { margin: 0; font-size: 13px; color: var(--lg-ink-2); }
 .me-account-sheet a { display: inline-flex; align-items: center; min-height: 44px; }
+.me-account-sheet .me-return-channel { margin: 0; }
+.me-account-sheet .me-return-summary { padding-block: 10px; }
 
 /* Progress is an evidence list, not a score dashboard. */
 .me-analytics-support { max-width: 55ch; }
@@ -390,7 +387,6 @@ html[data-busy] body::before { content: ''; position: fixed; inset: 0 0 auto; he
 @media (max-width: 360px) {
   .ae-view { padding-inline: 16px; }
   .ae-bar { padding-inline: 16px; gap: 10px; }
-  .me-callout { padding: 20px; }
   .me-choice { padding-inline: 16px; }
   .me-choice[data-pressed] { padding-inline: 15px; }
   .me-nav-item { font-size: 12px; }

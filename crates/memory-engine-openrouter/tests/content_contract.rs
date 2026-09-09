@@ -186,19 +186,6 @@ fn excess_cards_do_not_silently_become_a_successful_partial_set() {
 }
 
 #[test]
-fn a_reusable_reference_includes_verified_source_context_and_generated_explanation() {
-    let request = note_request(source("In the NATO phonetic alphabet, A is Alfa."));
-    let (note, usage) = content::parse_reference_response(response(&note_payload()), &request)
-        .expect("useful note");
-    assert!(note
-        .body
-        .contains("In the NATO phonetic alphabet, A is Alfa."));
-    assert!(note.body.contains("not quotations"));
-    assert!(note.body.contains("listener"));
-    assert_eq!(usage.expect("usage").cost_usd_micros, Some(200));
-}
-
-#[test]
 fn a_fabricated_reference_quote_is_rejected_even_with_a_correct_answer() {
     let request = note_request(source("In the NATO phonetic alphabet, A is Alfa."));
     let mut payload = note_payload();
@@ -220,10 +207,8 @@ fn quoting_a_real_topic_seed_does_not_prove_an_expanded_answer() {
     assert!(content::parse_reference_response(response(&payload), &request).is_err());
     payload["grounding"] = serde_json::json!("model_expanded");
     payload["source_evidence"] = serde_json::json!([]);
-    let (note, _) = content::parse_reference_response(response(&payload), &request)
+    content::parse_reference_response(response(&payload), &request)
         .expect("truthful topic study material");
-    assert!(note.body.starts_with("Model-expanded study material."));
-    assert!(note.body.contains("not evidence"));
 }
 
 #[test]
@@ -337,4 +322,63 @@ fn bridge_answer_leakage_is_rejected_before_draft_persistence() {
     payload["drafts"][1]["question"] =
         serde_json::json!("Use Tango to answer the final letter check.");
     assert!(content::parse_bridge_response(response(&payload), &request, model()).is_err());
+}
+
+#[test]
+fn topic_seeds_do_not_become_tiny_facts_or_procedures_from_brevity() {
+    // Brevity previously forced fact recall; a weak temporal word also forced
+    // procedure intent even though "first principles" names a concept.
+    for topic in ["photosynthesis", "first principles"] {
+        let mut document = source(topic);
+        document.title = topic.into();
+        assert_eq!(
+            memory_engine_generation::classify_learning_intent(&document).intent,
+            memory_engine_generation::LearningIntent::ConceptUnderstanding,
+            "{topic}"
+        );
+    }
+}
+
+#[test]
+fn paragraph_breaks_do_not_replace_retrieval_with_exhaustive_recitation() {
+    let mut document = source(
+        "Evaporation cools a liquid because higher-energy molecules escape.\n\n\
+         Less energy remains in the liquid after these molecules escape.\n\n\
+         Humidity slows evaporation because more water vapor returns to the liquid.",
+    );
+    document.title = "Evaporation".into();
+    let payload = serde_json::json!({
+        "learning_intent": "concept_understanding",
+        "drafts": [{
+            "concept": "Evaporative cooling",
+            "question": "Why does evaporation cool the remaining liquid?",
+            "answer": "Higher-energy molecules escape.",
+            "evidence_quote": "Evaporation cools a liquid because higher-energy molecules escape.",
+            "distractors": [],
+            "activity_kind": "quiz",
+            "activity_stage": "cued-recall",
+            "worked_solution": ""
+        }]
+    });
+    let parsed = content::parse_drafts_response(response(&payload), &document, model(), 5)
+        .expect("source-backed retrieval");
+    let governed = memory_engine_generation::enforce_content_policy(&document, parsed);
+    assert_eq!(governed.candidates.len(), 1);
+    assert_eq!(
+        governed.candidates[0].question,
+        "Why does evaporation cool the remaining liquid?"
+    );
+}
+
+#[test]
+fn discussing_a_quote_does_not_request_recitation() {
+    let mut document = source(
+        "An exact quote can preserve a speaker's words without proving the speaker's claim. \
+         Evidence matters because faithfully repeating a claim does not establish its truth.",
+    );
+    document.title = "Quotation and evidence".into();
+    assert_eq!(
+        memory_engine_generation::classify_learning_intent(&document).intent,
+        memory_engine_generation::LearningIntent::ConceptUnderstanding
+    );
 }

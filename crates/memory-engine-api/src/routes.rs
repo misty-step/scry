@@ -259,7 +259,7 @@ impl V1Route {
             Self::Keep => router.route(V1_KEEP_PATH, post(keep_draft)),
             Self::EditDraft => router.route(V1_EDIT_DRAFT_PATH, post(edit_draft)),
             Self::RejectDraft => router.route(V1_REJECT_DRAFT_PATH, post(reject_draft)),
-            Self::Next => router.route(V1_NEXT_PATH, post(next_review)),
+            Self::Next => router.route(V1_NEXT_PATH, get(open_review).post(next_review)),
             Self::Reveal => router.route(V1_REVEAL_PATH, post(reveal_review)),
             Self::Reference => router.route(V1_REFERENCE_PATH, post(reference_review)),
             Self::Skip => router.route(V1_SKIP_PATH, post(skip_review)),
@@ -314,7 +314,16 @@ impl V1Route {
             Self::Keep => single_operation!("POST", V1_KEEP_PATH),
             Self::EditDraft => single_operation!("POST", V1_EDIT_DRAFT_PATH),
             Self::RejectDraft => single_operation!("POST", V1_REJECT_DRAFT_PATH),
-            Self::Next => single_operation!("POST", V1_NEXT_PATH),
+            Self::Next => &[
+                V1ContractOperation {
+                    method: "GET",
+                    path: V1_NEXT_PATH,
+                },
+                V1ContractOperation {
+                    method: "POST",
+                    path: V1_NEXT_PATH,
+                },
+            ],
             Self::Reveal => single_operation!("POST", V1_REVEAL_PATH),
             Self::Reference => single_operation!("POST", V1_REFERENCE_PATH),
             Self::Skip => single_operation!("POST", V1_SKIP_PATH),
@@ -388,7 +397,12 @@ pub fn router(state: ApiState) -> Router {
         .route("/app/create", get(app_create))
         .route("/app/library", get(app_library))
         .route("/app/account", post(create_app_account))
-        .route("/app/login/verify", get(verify_app_login))
+        .route(
+            "/app/login/verify",
+            get(verify_app_login).head(|| async {
+                no_store_response(StatusCode::METHOD_NOT_ALLOWED.into_response())
+            }),
+        )
         .route("/app/logout", post(logout_app_session))
         .route("/app/logout-all", post(logout_all_app_sessions))
         .route(
@@ -397,7 +411,10 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/app/save-account", post(save_app_account))
         .route("/app/source", post(create_app_source))
-        .route("/app/capture", post(capture_app_source))
+        .route(
+            "/app/capture",
+            get(app_capture_progress).post(capture_app_source),
+        )
         .route("/app/source/permission", post(update_app_source_permission))
         .route("/app/source/archive", post(archive_app_source))
         .route("/app/generate", post(generate_app_source))
@@ -447,7 +464,7 @@ pub fn router(state: ApiState) -> Router {
             "/accounts/{account_id}/drafts/{draft_id}/reject",
             post(reject_draft),
         )
-        .route("/accounts/{account_id}/review/next", get(next_review));
+        .route("/accounts/{account_id}/review/next", get(open_review));
     mount_review_routes(router)
         .layer(middleware::from_fn(no_store_dynamic_responses))
         // Outermost: host canonicalization must run before handlers so www
@@ -716,7 +733,10 @@ fn app_account_html(
     notice: Option<&str>,
 ) -> String {
     let fetched = if view.is_none() {
-        state.app_study_view(account).ok()
+        match state.open_review(account.account_id(), account.session_token()) {
+            Ok(view) => Some(view),
+            Err(error) => return render_submit_recovery("Review unavailable", &error.message),
+        }
     } else {
         None
     };
@@ -790,10 +810,8 @@ fn app_submit_html(
 }
 
 async fn app_home(State(state): State<ApiState>, request: Request) -> Response {
-    // The home is the durable entry point, so it must respect an existing
-    // session: a signed-in learner reloading or navigating to "/" lands on their
-    // workspace (with the live due count and Start review CTA), not the
-    // signed-out cover. Read-only session check — a GET carries no CSRF token.
+    // Opening the app selects review without consuming a held graded receipt.
+    // Browser-session authentication does not require a CSRF token on GET.
     let headers = request.headers();
     let uri = request.uri();
     match state.require_browser_session_readonly(headers) {
@@ -852,6 +870,32 @@ async fn app_library(State(state): State<ApiState>, request: Request) -> Respons
         ),
         Err(error) => app_home_auth_failure(headers, &error),
     }
+}
+
+async fn app_capture_progress(
+    State(state): State<ApiState>,
+    Query(query): Query<AppJobQuery>,
+    request: Request,
+) -> Response {
+    let headers = request.headers();
+    let uri = request.uri();
+    let account = match state.require_browser_session_readonly(headers) {
+        Ok(account) => account,
+        Err(error) => return app_home_auth_failure(headers, &error),
+    };
+    let Some(job) = state
+        .jobs_for_app_account(&account)
+        .into_iter()
+        .find(|job| job.id == query.job_id)
+    else {
+        return app_failure_response(&ApiFailure::not_found("Generation job not found."));
+    };
+    html_with_browser_session_for_request(
+        &account,
+        render_capture_waiting_page(&account, &job),
+        headers,
+        uri,
+    )
 }
 
 fn app_home_auth_failure(headers: &HeaderMap, error: &ApiFailure) -> Response {
@@ -1129,6 +1173,15 @@ async fn reject_draft(
     )?))
 }
 
+async fn open_review(
+    State(state): State<ApiState>,
+    Path(account_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<StudyViewResponse>, ApiFailure> {
+    let session_token = read_session_token(&headers)?;
+    Ok(Json(state.open_review(&account_id, session_token)?))
+}
+
 async fn next_review(
     State(state): State<ApiState>,
     Path(account_id): Path<String>,
@@ -1321,6 +1374,12 @@ struct AppJobActionForm {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+struct AppJobQuery {
+    job_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct AppDraftActionForm {
     csrf_token: Option<String>,
     draft_id: String,
@@ -1342,6 +1401,15 @@ struct AppDraftEditForm {
 struct AppReviewActionForm {
     csrf_token: Option<String>,
     review_unit_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct AppRevealForm {
+    csrf_token: Option<String>,
+    review_unit_id: String,
+    response_time_ms: Option<String>,
+    idempotency_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -1530,15 +1598,12 @@ async fn verify_app_login(
     uri: Uri,
 ) -> Response {
     match state.verify_magic_link_for_client(&query.token, &client_rate_limit_key(&headers)) {
-        Ok(account) => {
-            let view = state.app_study_view(&account).ok();
-            no_store_response(html_with_browser_session_for_request(
-                &account,
-                app_account_html(&state, &account, view.as_ref(), None),
-                &headers,
-                &uri,
-            ))
-        }
+        Ok(account) => no_store_response(html_with_browser_session_for_request(
+            &account,
+            app_account_html(&state, &account, None, None),
+            &headers,
+            &uri,
+        )),
         Err(error) if error.is_magic_link_recovery() => {
             let status = error.status();
             let mut response = Html(render_auth_recovery(
@@ -2013,8 +2078,7 @@ async fn update_app_source_permission(
     with_browser_session_cookie(response, &account, &headers, &uri)
 }
 
-/// Retry a failed generation job. Re-queues it for the worker and re-renders
-/// the activity log with the job back in flight.
+/// Retry one saved request and stay on its durable waiting/recovery surface.
 async fn retry_app_job(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -2026,18 +2090,22 @@ async fn retry_app_job(
             Ok(account) => account,
             Err(error) => return app_failure_response(&error),
         };
-    let notice = if state.retry_generation_job(&account, &form.job_id) {
-        "Retrying. Generating again in the background."
-    } else {
-        "That job can't be retried."
+    let retried = state.retry_generation_job(&account, &form.job_id);
+    let job = state
+        .jobs_for_app_account(&account)
+        .into_iter()
+        .find(|job| job.id == form.job_id);
+    let response = match job {
+        Some(job) => {
+            let mut response = Html(render_capture_waiting_page(&account, &job)).into_response();
+            if !retried {
+                *response.status_mut() = StatusCode::CONFLICT;
+            }
+            response
+        }
+        None => app_failure_response(&ApiFailure::not_found("Generation job not found.")),
     };
-
-    with_browser_session_cookie(
-        Html(app_library_html(&state, &account, None, Some(notice))).into_response(),
-        &account,
-        &headers,
-        &uri,
-    )
+    with_browser_session_cookie(response, &account, &headers, &uri)
 }
 
 /// Live job-status stream (SSE). Pushes this account's job updates as they
@@ -2333,14 +2401,44 @@ async fn reveal_app_review(
     State(state): State<ApiState>,
     headers: HeaderMap,
     uri: Uri,
-    Form(form): Form<AppReviewActionForm>,
+    Form(form): Form<AppRevealForm>,
 ) -> Response {
     let account =
         match state.require_browser_session(&headers, csrf_token(form.csrf_token.as_ref())) {
             Ok(account) => account,
             Err(error) => return app_failure_response(&error),
         };
-    let result = state.reveal_app_review(&account, &form.review_unit_id);
+    if form.idempotency_key.trim().is_empty() {
+        return submit_recovery_response(
+            StatusCode::BAD_REQUEST,
+            "Review not submitted",
+            "Reload the app and try again. Your study data is safe.",
+        );
+    }
+    let result = state
+        .reveal_app_review(&account, &form.review_unit_id)
+        .and_then(|view| {
+            let current = view
+                .current
+                .as_ref()
+                .ok_or_else(|| ApiFailure::not_found("Review unit not found."))?;
+            if current.grade.is_some() {
+                return Ok(view);
+            }
+            let answer = current.expected_answer.as_ref().ok_or_else(|| {
+                ApiFailure::internal("Revealed answer is unavailable.".to_owned())
+            })?;
+            state.submit_review(
+                account.account_id(),
+                account.session_token(),
+                &form.review_unit_id,
+                &SubmitReviewRequest {
+                    answer: answer.clone(),
+                    response_time_ms: sanitize_response_time_ms(form.response_time_ms.as_deref()),
+                    idempotency_key: form.idempotency_key,
+                },
+            )
+        });
     with_browser_session_cookie(
         app_study_action_result(&state, &account, result, None).into_response(),
         &account,
@@ -2549,23 +2647,15 @@ async fn bridge_app_review(
             Err(error) => return app_failure_response(&error),
         };
     let result = state.bridge_app_review(&account, &form.review_unit_id);
-    let response = match result {
-        // Bridge candidates need a learner decision before entering review.
-        // The active Quiz surface deliberately hides draft triage.
-        Ok(view) => Html(app_library_html(&state, &account, Some(&view), None)).into_response(),
-        Err(error) => app_study_action_result(&state, &account, Err(error), None).into_response(),
-    };
+    let response = app_study_action_result(&state, &account, result, None).into_response();
     with_browser_session_cookie(response, &account, &headers, &uri)
 }
 
 /// Ceiling for a plausible single-answer response time (ten minutes).
 ///
-/// The browser owns the timer, so the server cannot make the reported value
-/// true — it can only refuse dishonest shapes. Anything missing, blank,
-/// malformed, non-positive, or beyond this ceiling grades as the ceiling
-/// itself: the slowest plausible answer. A broken or lying client can
-/// therefore never manufacture the fast-answer `Easy` rating, and a learner
-/// who walked away mid-card records ten minutes, not an absurd outlier.
+/// The browser owns the timer. Missing or invalid measurements use a bounded
+/// conservative value, never fabricated fast-recall evidence. Rating depends
+/// on the verdict, not response speed.
 pub(crate) const MAX_PLAUSIBLE_RESPONSE_TIME_MS: u32 = 600_000;
 
 /// Sanitize the client-reported response time before it reaches the typed

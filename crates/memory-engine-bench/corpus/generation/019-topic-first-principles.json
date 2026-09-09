@@ -1,0 +1,14 @@
+{
+  "id": "topic-first-principles",
+  "title": "First principles reasoning",
+  "category": "concept-phrase-seed",
+  "body": "first principles reasoning",
+  "rationale": "A short phrase names a concept, not a procedure merely because it contains first. Useful questions retrieve how assumptions constrain an explanation or distinguish deriving a conclusion from copying an analogy; the phrase itself proves none of the expanded claims.",
+  "expect": {
+    "min_drafts": 2,
+    "max_drafts": 4,
+    "key_terms": ["assumptions", "reasoning"],
+    "intent": "concept_understanding",
+    "source_supported": false
+  }
+}

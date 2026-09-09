@@ -791,6 +791,14 @@ impl StudyStorage {
         )
     }
 
+    pub(crate) fn open_review(
+        &self,
+        account_id: &str,
+        store_path: &FsPath,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        self.inner.open_review(account_id, store_path)
+    }
+
     pub(crate) fn study_view(
         &self,
         account_id: &str,
@@ -1307,6 +1315,11 @@ trait StudyStorageAdapter: fmt::Debug + Send + Sync {
         account_id: &str,
         store_path: &FsPath,
         draft_id: &str,
+    ) -> Result<StudyViewResponse, ApiFailure>;
+    fn open_review(
+        &self,
+        account_id: &str,
+        store_path: &FsPath,
     ) -> Result<StudyViewResponse, ApiFailure>;
     fn next_review(
         &self,
@@ -2725,6 +2738,28 @@ impl StudyStorageAdapter for FileStudyStorage {
         })
     }
 
+    fn open_review(
+        &self,
+        _account_id: &str,
+        store_path: &FsPath,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        let _transition_lock = crate::native::file_lock::acquire_blocking(
+            &Self::review_transition_lock_path(store_path),
+        )?;
+        let mut study = crate::native::open_study_session(store_path, self.now)?;
+        if let Some(ActiveGradedReview::Active { view, .. }) =
+            Self::load_active_graded_review(store_path)?
+        {
+            // Freeze the graded evidence, not the learner's mutable inventory.
+            let mut response = StudyViewResponse::from_view(study.view().map_err(study_failure)?);
+            response.current = view.current;
+            return Ok(response);
+        }
+        Ok(StudyViewResponse::from_view(
+            study.start().map_err(study_failure)?,
+        ))
+    }
+
     fn next_review(
         &self,
         _account_id: &str,
@@ -3844,6 +3879,30 @@ impl StudyStorageAdapter for PostgresStudyStorage {
         })
     }
 
+    fn open_review(
+        &self,
+        account_id: &str,
+        _store_path: &FsPath,
+    ) -> Result<StudyViewResponse, ApiFailure> {
+        with_postgres_account(&self.database_url, account_id, self.now_ms(), |account| {
+            let _transition_guard = account.lock_review_transition().map_err(postgres_failure)?;
+            if let Some(ActiveGradedReview::Active { view, .. }) = decode_active_graded_review(
+                account.active_graded_review().map_err(postgres_failure)?,
+            )? {
+                // The receipt owns only the held card; management reads stay current.
+                let study = BetaStudySession::from_store(account, self.now);
+                let mut response =
+                    StudyViewResponse::from_view(study.view().map_err(postgres_study_failure)?);
+                response.current = view.current;
+                return Ok(response);
+            }
+            let mut study = BetaStudySession::for_review(account, self.now);
+            Ok(StudyViewResponse::from_view(
+                study.start().map_err(study_failure)?,
+            ))
+        })
+    }
+
     fn next_review(
         &self,
         account_id: &str,
@@ -4429,12 +4488,12 @@ mod tests {
             body: "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.".to_owned(),
             project_key: None, ttl_expires_at: None, permission: SourcePermission::ModelEligible,
         }).expect("source");
-        let drafts = storage
+        storage
             .generate_source("acct", &path, "source")
-            .expect("drafts");
+            .expect("automatic publication");
         let current = storage
-            .keep_draft("acct", &path, &drafts.drafts[0].id)
-            .expect("keep")
+            .open_review("acct", &path)
+            .expect("open published review without approval")
             .current
             .expect("quiz");
         storage
@@ -4490,6 +4549,19 @@ mod tests {
                 .expect("resume graded"),
             result.view
         );
+        drop(restarted);
+        let reopened = FileStudyStorage {
+            store_root: root.clone(),
+            now: test_now,
+            generation_provider_config: None,
+        };
+        assert_eq!(
+            reopened
+                .open_review("acct", &path)
+                .expect("open preserves graded hold"),
+            result.view
+        );
+        assert_held_review_inventory_refreshes(&reopened, &path, &result.view);
         let snapshot = crate::native::open_persistence_store(&path)
             .expect("committed snapshot")
             .snapshot();
@@ -4497,6 +4569,207 @@ mod tests {
         assert_eq!(snapshot.applied_reviews.len(), 1);
         assert_eq!(snapshot.schedules.len(), 1);
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn assert_held_review_inventory_refreshes(
+        storage: &impl StudyStorageAdapter,
+        path: &FsPath,
+        graded: &StudyViewResponse,
+    ) {
+        let held = graded.current.as_ref().expect("held quiz");
+        let draft_id = &graded
+            .drafts
+            .iter()
+            .find(|draft| draft.review_unit_id == held.review_unit_id)
+            .expect("published draft")
+            .id;
+        let question = "Which NATO word represents B?";
+        let choices = ["BRAVO", "BAKER", "BOSTON"].map(str::to_owned);
+        storage
+            .edit_pending_draft("acct", path, draft_id, question, "BRAVO", &choices)
+            .expect("edit published quiz while its grade is held");
+        let edited = storage
+            .open_review("acct", path)
+            .expect("current inventory");
+        assert_eq!(edited.current, graded.current);
+        let draft = edited
+            .drafts
+            .iter()
+            .find(|draft| &draft.id == draft_id)
+            .expect("edited draft");
+        assert_eq!(draft.prompt, question);
+        assert_eq!(draft.answer, "BRAVO");
+        assert_eq!(draft.choices, choices);
+        let source = SourceRecord {
+            source_id: "new-capture".to_owned(),
+            title: "Another learning source".to_owned(),
+            body: "Concept: NATO letter Z\nQuestion: What word represents Z?\nAnswer: ZULU"
+                .to_owned(),
+            project_key: None,
+            ttl_expires_at: None,
+            permission: SourcePermission::ModelEligible,
+        };
+        storage
+            .save_source("acct", path, &source)
+            .expect("capture during graded hold");
+        let captured = storage
+            .open_review("acct", path)
+            .expect("captured inventory");
+        assert_eq!(captured.current, graded.current);
+        assert_eq!(
+            captured.summary.source_count,
+            graded.summary.source_count + 1
+        );
+        assert!(captured
+            .library
+            .iter()
+            .any(|row| row.source_id == source.source_id && row.active_card_count == 0));
+        storage
+            .generate_source("acct", path, &source.source_id)
+            .expect("publish capture during graded hold");
+        let mut inventory = storage.study_view("acct", path).expect("fresh inventory");
+        assert_eq!(inventory.due_count, graded.due_count + 1);
+        assert_eq!(
+            inventory.summary.approved_review_unit_count,
+            graded.summary.approved_review_unit_count + 1
+        );
+        assert_eq!(
+            inventory.summary.attempt_count,
+            graded.summary.attempt_count
+        );
+        assert!(inventory
+            .queue
+            .iter()
+            .any(|row| row.review_unit_id == held.review_unit_id));
+        assert!(inventory
+            .library
+            .iter()
+            .any(|row| row.source_id == source.source_id && row.active_card_count == 1));
+        inventory.current.clone_from(&graded.current);
+        assert_eq!(
+            storage.open_review("acct", path).expect("fresh held view"),
+            inventory
+        );
+        storage
+            .reject_pending_draft("acct", path, draft_id)
+            .expect("remove quiz without rewriting its historical grade");
+        let removed = storage
+            .open_review("acct", path)
+            .expect("removed inventory");
+        assert_eq!(removed.current, graded.current);
+        assert!(!removed
+            .queue
+            .iter()
+            .any(|row| row.review_unit_id == held.review_unit_id));
+        assert_held_review_can_advance(storage, path, held);
+    }
+
+    fn assert_held_review_can_advance(
+        storage: &impl StudyStorageAdapter,
+        path: &FsPath,
+        held: &memory_engine_study::BetaStudyCurrent,
+    ) {
+        let continued = storage
+            .next_review("acct", path)
+            .expect("deliberate continue");
+        let next = continued.current.as_ref().expect("newly captured quiz");
+        assert_ne!(next.review_unit_id, held.review_unit_id);
+        assert!(next.grade.is_none());
+        assert_eq!(
+            storage
+                .open_review("acct", path)
+                .expect("consumed hold stays consumed"),
+            continued
+        );
+        assert!(
+            storage
+                .submit_review(
+                    "acct",
+                    path,
+                    held.review_unit_id.as_str(),
+                    SubmitReviewRequest {
+                        answer: held.expected_answer.clone().expect("historical answer"),
+                        response_time_ms: 1_800,
+                        idempotency_key: "same-occurrence".to_owned(),
+                    },
+                    None
+                )
+                .is_err(),
+            "a stale submit cannot resurrect a consumed graded receipt"
+        );
+    }
+
+    #[test]
+    fn postgres_open_review_refreshes_inventory_without_consuming_the_held_grade() {
+        let Ok(database_url) = std::env::var("MEMORY_ENGINE_POSTGRES_TEST_URL") else {
+            eprintln!("skipping Postgres graded inventory regression; MEMORY_ENGINE_POSTGRES_TEST_URL is unset");
+            return;
+        };
+        let schema = format!(
+            "memory_engine_held_inventory_{}_{}",
+            std::process::id(),
+            rand::random::<u64>()
+        );
+        let scoped_url = format!(
+            "{}{}options=-csearch_path%3D{}",
+            database_url,
+            if database_url.contains('?') { '&' } else { '?' },
+            schema
+        );
+        let mut admin = memory_engine_persistence_postgres::connect_client(&database_url)
+            .expect("connect admin postgres");
+        admin
+            .batch_execute(&format!(r#"CREATE SCHEMA "{schema}";"#))
+            .expect("create schema");
+        let result = std::panic::catch_unwind(|| {
+            let storage = PostgresStudyStorage {
+                database_url: scoped_url.clone(),
+                now: test_now,
+                generation_provider_config: None,
+            };
+            let path = storage.account_store_path("acct");
+            storage.save_source("acct", &path, &SourceRecord {
+                source_id: "source".to_owned(),
+                title: "NATO notes".to_owned(),
+                body: "Concept: NATO letter A\nActivity: quiz\nStage: recognition-3\nQuestion: What is the NATO phonetic alphabet word for A?\nAnswer: ALFA\nDistractors: BRAVO, CHARLIE\nReference: The NATO phonetic alphabet word for A is ALFA.".to_owned(),
+                project_key: None, ttl_expires_at: None, permission: SourcePermission::ModelEligible,
+            }).expect("source");
+            storage
+                .generate_source("acct", &path, "source")
+                .expect("publication");
+            let current = storage
+                .open_review("acct", &path)
+                .expect("review")
+                .current
+                .expect("quiz");
+            let graded = storage
+                .submit_review(
+                    "acct",
+                    &path,
+                    current.review_unit_id.as_str(),
+                    SubmitReviewRequest {
+                        answer: "ALFA".to_owned(),
+                        response_time_ms: 1_800,
+                        idempotency_key: "same-occurrence".to_owned(),
+                    },
+                    None,
+                )
+                .expect("grade");
+            assert_held_review_inventory_refreshes(&storage, &path, &graded.view);
+            let snapshot = with_postgres_account(&scoped_url, "acct", test_now(), |account| {
+                account.snapshot().map_err(postgres_failure)
+            })
+            .expect("committed snapshot");
+            assert_eq!(snapshot.attempts.len(), 1);
+            assert_eq!(snapshot.applied_reviews.len(), 1);
+            assert_eq!(snapshot.schedules.len(), 1);
+        });
+        admin
+            .batch_execute(&format!(r#"DROP SCHEMA "{schema}" CASCADE;"#))
+            .expect("drop schema");
+        if let Err(error) = result {
+            std::panic::resume_unwind(error);
+        }
     }
 
     #[test]

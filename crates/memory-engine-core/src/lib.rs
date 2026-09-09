@@ -20,7 +20,7 @@ pub use domain::{
 pub use grading::{default_rating_policy, Grader, RatingPolicy};
 pub use progression::{
     filter_eligible_candidates, filter_eligible_candidates_with_fallback, is_mastered,
-    ProgressionCandidate, ProgressionFilterResult, ProgressionLike,
+    superseded_review_unit_ids, ProgressionCandidate, ProgressionFilterResult, ProgressionLike,
 };
 pub use queue::{
     compare_queue_priority, defer_queue_availability, pick_next_queue_candidate,

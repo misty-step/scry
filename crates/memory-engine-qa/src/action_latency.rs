@@ -684,6 +684,7 @@ async fn run_review_mutation(
             &[
                 ("csrfToken", &session.csrf_token),
                 ("reviewUnitId", review_unit_id),
+                ("idempotencyKey", &format!("latency-reveal-{iteration}")),
             ],
         )?,
         ActionKind::ReviewSkip => form_request_with_cookie(

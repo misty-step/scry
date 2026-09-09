@@ -1438,53 +1438,72 @@ mod tests {
                 },
             )
             .expect("source");
+        let account_id = &account.account_id;
+        let source_id = &source.source_id;
 
         let first = registry
-            .run_generation_job(
-                &account.account_id,
-                &source.source_id,
-                "test-run-1",
-                0,
-                "",
-                || true,
-            )
+            .run_generation_job(account_id, source_id, "test-run-1", 0, "", || true)
             .expect("first generation");
-        let second = registry
-            .run_generation_job(
-                &account.account_id,
-                &source.source_id,
-                "test-run-2",
-                0,
-                "",
-                || true,
-            )
-            .expect("replayed generation");
         assert_eq!(
-            first, 0,
-            "successful generation must leave accepted drafts pending"
+            first, 1,
+            "successful generation publishes its accepted quiz"
         );
+        let current = registry
+            .open_review(&account.account_id, &account.session_token)
+            .expect("published quiz")
+            .current
+            .expect("current quiz");
+        registry
+            .submit_review(
+                &account.account_id,
+                &account.session_token,
+                current.review_unit_id.as_str(),
+                &crate::SubmitReviewRequest {
+                    answer: "The job identity.".to_owned(),
+                    response_time_ms: 1_800,
+                    idempotency_key: "published-job-review".to_owned(),
+                },
+            )
+            .expect("review before retry");
+        let path = registry.storage().account_store_path(&account.account_id);
+        let before_retry = memory_engine_persistence::BetaPersistenceStore::open(&path)
+            .expect("reviewed store")
+            .snapshot();
+        let replay = registry
+            .run_generation_job(account_id, source_id, "test-run-1", 0, "", || true)
+            .expect("same job replay");
+        assert_eq!(replay, first);
+        assert_eq!(
+            memory_engine_persistence::BetaPersistenceStore::open(&path)
+                .expect("replayed store")
+                .snapshot(),
+            before_retry,
+            "a published job replay must preserve the grade and schedule exactly"
+        );
+        let second = registry
+            .run_generation_job(account_id, source_id, "test-run-2", 0, "", || true)
+            .expect("duplicate source generation");
         assert_eq!(second, 0, "a replay must not schedule duplicate material");
-        let study = memory_engine_persistence::BetaPersistenceStore::open(
-            registry.storage().account_store_path(&account.account_id),
-        )
-        .expect("study store");
+        let study =
+            memory_engine_persistence::BetaPersistenceStore::open(&path).expect("study store");
         let snapshot = study.snapshot();
-        assert!(
-            snapshot.review_units.is_empty(),
-            "generation must not create review units"
-        );
-        assert!(
-            snapshot.schedules.is_empty(),
-            "generation must not create due schedules"
-        );
-        assert!(
-            snapshot
-                .generated_prompt_drafts
-                .iter()
-                .any(|draft| draft.validation.status
-                    == memory_engine_persistence::GeneratedPromptValidationStatus::Accepted),
-            "accepted generated drafts must remain inspectable"
-        );
+        assert_eq!(snapshot.review_units, before_retry.review_units);
+        assert_eq!(snapshot.schedules, before_retry.schedules);
+        assert_eq!(snapshot.attempts, before_retry.attempts);
+        assert_eq!(snapshot.applied_reviews, before_retry.applied_reviews);
+        assert_eq!(snapshot.attempts.len(), 1);
+        assert_eq!(snapshot.applied_reviews.len(), 1);
+        assert_eq!(snapshot.schedules.len(), 1);
+        let published_draft = snapshot
+            .generated_prompt_drafts
+            .iter()
+            .find(|draft| {
+                draft.review_unit_id == current.review_unit_id
+                    && draft.validation.status
+                        == memory_engine_persistence::GeneratedPromptValidationStatus::Accepted
+            })
+            .expect("published draft remains inspectable");
+        assert!(published_draft.learner_decision.is_none());
     }
 
     #[test]

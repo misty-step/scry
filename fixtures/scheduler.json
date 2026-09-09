@@ -1,5 +1,40 @@
 [
   {
+    "name": "FSRS 5.4.2: initial failure still needs the ten-minute learning step",
+    "initialState": {"due": 1788825660000, "stability": 0.212, "difficulty": 6.4133, "elapsed_days": 0, "scheduled_days": 0, "reps": 1, "lapses": 0, "state": 1, "last_review": 1788825600000},
+    "rating": 3,
+    "now": 1788826200000,
+    "expected": {"due": 1788826800000, "stability": 0.24668919, "difficulty": 6.40211507, "elapsed_days": 0, "scheduled_days": 0, "reps": 2, "lapses": 0, "state": 1, "last_review": 1788826200000}
+  },
+  {
+    "name": "FSRS 5.4.2: delayed learning uses long-term stability",
+    "initialState": {"due": 1788826200000, "stability": 2.3065, "difficulty": 5.28243442, "elapsed_days": 0, "scheduled_days": 0, "reps": 1, "lapses": 0, "state": 1, "last_review": 1788825600000},
+    "rating": 3,
+    "now": 1788912000000,
+    "expected": {"due": 1789430400000, "stability": 5.53082804, "difficulty": 5.27238035, "elapsed_days": 1, "scheduled_days": 6, "reps": 2, "lapses": 0, "state": 2, "last_review": 1788912000000}
+  },
+  {
+    "name": "FSRS 5.4.2: delayed relearning uses long-term stability",
+    "initialState": {"due": 1788826200000, "stability": 2.3, "difficulty": 6, "elapsed_days": 0, "scheduled_days": 0, "reps": 8, "lapses": 1, "state": 3, "last_review": 1788825600000},
+    "rating": 3,
+    "now": 1788912000000,
+    "expected": {"due": 1789344000000, "stability": 5.11969392, "difficulty": 5.98922837, "elapsed_days": 1, "scheduled_days": 5, "reps": 9, "lapses": 1, "state": 2, "last_review": 1788912000000}
+  },
+  {
+    "name": "FSRS 5.4.2: same-day lapse uses short-term stability",
+    "initialState": {"due": 1791417600000, "stability": 30, "difficulty": 5, "elapsed_days": 0, "scheduled_days": 30, "reps": 8, "lapses": 0, "state": 2, "last_review": 1788825600000},
+    "rating": 1,
+    "now": 1788826200000,
+    "expected": {"due": 1788826800000, "stability": 8.51538557, "difficulty": 8.34176237, "elapsed_days": 0, "scheduled_days": 0, "reps": 9, "lapses": 1, "state": 3, "last_review": 1788826200000}
+  },
+  {
+    "name": "FSRS 5.4.2: difficult successful recall cannot reduce short-term stability",
+    "initialState": {"due": 1788826200000, "stability": 2.3065, "difficulty": 5.28243442, "elapsed_days": 0, "scheduled_days": 0, "reps": 1, "lapses": 0, "state": 1, "last_review": 1788825600000},
+    "rating": 2,
+    "now": 1788826200000,
+    "expected": {"due": 1788826560000, "stability": 2.3065, "difficulty": 6.85348849, "elapsed_days": 0, "scheduled_days": 0, "reps": 2, "lapses": 0, "state": 1, "last_review": 1788826200000}
+  },
+  {
     "name": "new",
     "initialState": {
       "due": 0,

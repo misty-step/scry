@@ -170,3 +170,22 @@ pub fn initialize(db: &Database) -> AppResult<()> {
         Ok(())
     })
 }
+
+/// Forward content migration for the primary actor's writable lifecycle only.
+/// Recovery actors must retain imported bytes without enrolling historical drafts.
+pub(crate) fn migrate_generated_content(db: &Database) -> AppResult<()> {
+    #[derive(Deserialize)]
+    struct Account {
+        account_id: String,
+    }
+    db.transaction(|| {
+        for account in db.query::<Account>(
+            "SELECT account_id FROM memory_engine_accounts ORDER BY account_id",
+            &[],
+        )? {
+            crate::store::SqlStudyStore::new(db.clone(), account.account_id)
+                .publish_generated_content(None)?;
+        }
+        Ok(())
+    })
+}

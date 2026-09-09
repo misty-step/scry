@@ -147,7 +147,7 @@ fn rubric_grade_downgrades_low_confidence_or_missing_required_criteria() {
         .expect("rubric grade");
 
     assert_eq!(low_confidence.verdict, Verdict::Close);
-    assert_eq!(low_confidence.rating, Rating::Hard);
+    assert_eq!(low_confidence.rating, Rating::Again);
     assert!(!low_confidence.is_correct);
 
     let missing_required =
@@ -168,7 +168,7 @@ fn rubric_grade_downgrades_low_confidence_or_missing_required_criteria() {
         .expect("rubric grade");
 
     assert_eq!(missing_required.verdict, Verdict::Close);
-    assert_eq!(missing_required.rating, Rating::Hard);
+    assert_eq!(missing_required.rating, Rating::Again);
     assert!(!missing_required.is_correct);
 }
 

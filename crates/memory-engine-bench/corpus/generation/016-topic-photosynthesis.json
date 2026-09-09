@@ -7,6 +7,7 @@
     "min_drafts": 2,
     "max_drafts": 5,
     "key_terms": ["light", "chloroplast", "energy"],
+    "intent": "concept_understanding",
     "source_supported": false
   },
   "reference": {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Content-free external health checks and operator mail; Python standard library only."""
+"""Read-only public status or stateful operator mail; Python standard library only."""
 import argparse
 from datetime import datetime, timezone
 import fcntl
@@ -414,51 +414,65 @@ def main():
         "POSIX only; serialize invocations sharing a state file."
     ))
     parser.add_argument("--environment", choices=tuple(ORIGINS), required=True)
-    parser.add_argument("--state-file", type=Path, required=True, help="private versioned notification state")
-    parser.add_argument("--receipt-file", type=Path, required=True, help="sanitized JSON receipt (also printed)")
+    parser.add_argument("--status", action="store_true",
+                        help="read-only public probes; no credentials, notification state, locks, or mail")
+    parser.add_argument("--state-file", type=Path, help="private notification state; forbidden with --status")
+    parser.add_argument("--receipt-file", type=Path, help="sanitized JSON receipt; optional with --status")
     parser.add_argument("--delivery-drill", type=drill_label, metavar="LABEL",
                         help="send an explicitly labeled drill; repeating the latest accepted label is quiet")
     parser.add_argument("--local-probe-origin", type=local_origin, metavar="ORIGIN",
                         help="isolated numeric HTTP loopback only; does not change the fixed Resend endpoint")
     args = parser.parse_args()
-    if args.state_file.resolve() == args.receipt_file.resolve():
-        parser.error("state and receipt paths must differ")
+    if args.status:
+        if args.state_file is not None or args.delivery_drill is not None:
+            parser.error("--status cannot use notification state or request a delivery drill")
+    else:
+        if args.state_file is None or args.receipt_file is None:
+            parser.error("notification runs require --state-file and --receipt-file")
+        if args.state_file.resolve() == args.receipt_file.resolve():
+            parser.error("state and receipt paths must differ")
     receipt = {"schema": RECEIPT_SCHEMA, "environment": args.environment,
                "origin": args.local_probe_origin or ORIGINS[args.environment],
                "localProbe": args.local_probe_origin is not None, "startedAt": now(),
-               "checks": [], "notifications": [], "errors": [], "state": "not_loaded",
-               "pending": None, "limitations": LIMITATIONS}
+               "mode": "status" if args.status else "notify",
+               "checks": [], "notifications": [], "errors": [],
+               "state": "not_used" if args.status else "not_loaded", "pending": None,
+               "limitations": [
+                   "Point-in-time health is not product acceptance, restore proof, or deployment authorization."
+               ] if args.status else LIMITATIONS}
     for path in ("/healthz", "/readyz", "/statusz"):
         receipt["checks"].append(probe(receipt["origin"], path))
     receipt["observedAt"] = now()
     receipt["status"] = "healthy" if all(check["status"] == "healthy" for check in receipt["checks"]) else "unhealthy"
-    try:
-        mail_configuration()
-    except MonitorError as error:
-        receipt["errors"].append(error.code)
-    try:
-        args.state_file.parent.mkdir(parents=True, exist_ok=True)
-        # GitHub serializes per environment; this protects direct local invocations too.
-        with args.state_file.with_name(args.state_file.name + ".lock").open("a") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise MonitorError("state_locked") from None
-            observe_and_notify(args, receipt)
-    except MonitorError as error:
-        receipt["errors"].append(error.code)
-    except OSError:
-        receipt["errors"].append("state_write_failed")
+    if not args.status:
+        try:
+            mail_configuration()
+        except MonitorError as error:
+            receipt["errors"].append(error.code)
+        try:
+            args.state_file.parent.mkdir(parents=True, exist_ok=True)
+            # GitHub serializes per environment; this protects direct local invocations too.
+            with args.state_file.with_name(args.state_file.name + ".lock").open("a") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise MonitorError("state_locked") from None
+                observe_and_notify(args, receipt)
+        except MonitorError as error:
+            receipt["errors"].append(error.code)
+        except OSError:
+            receipt["errors"].append("state_write_failed")
     receipt["finishedAt"] = now()
     failed = (receipt["status"] != "healthy" or bool(receipt["errors"])
               or any(event["errorCode"] for event in receipt["notifications"]))
     receipt["result"] = "failed" if failed else "ok"
-    try:
-        save_json(args.receipt_file, receipt, 0o644)
-    except OSError:
-        receipt["errors"].append("receipt_write_failed")
-        receipt["result"] = "failed"
-        failed = True
+    if args.receipt_file is not None:
+        try:
+            save_json(args.receipt_file, receipt, 0o644)
+        except OSError:
+            receipt["errors"].append("receipt_write_failed")
+            receipt["result"] = "failed"
+            failed = True
     print(json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False))
     return 1 if failed else 0
 

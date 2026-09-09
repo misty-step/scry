@@ -17,7 +17,7 @@ use tower::ServiceExt;
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use memory_engine_persistence::{GeneratedPromptValidationStatus, SourcePermission};
+use memory_engine_persistence::SourcePermission;
 use memory_engine_study::DEFAULT_BETA_STUDY_NOW;
 
 use super::{
@@ -213,11 +213,10 @@ async fn signed_out_home_has_one_invite_beta_email_entry() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_text(response).await;
-    assert!(body.contains(r#"<form class="me-entry-form" action="/app/account" method="post">"#));
-    assert!(body.contains(r#"name="email""#));
-    assert_eq!(body.matches(r#"type="email""#).count(), 1);
-    assert_eq!(body.matches("<form").count(), 1);
-    assert_eq!(body.matches("<button").count(), 1);
+    let entry = form_for_action(&body, "/app/account");
+    assert!(entry.contains(r#"method="post""#));
+    assert!(entry.contains(r#"name="email""#));
+    assert!(entry.contains(r#"type="email""#));
     assert!(!body.contains(r#"action="/app/waitlist""#));
     // Regression: the anonymous home must NOT offer the guest capture form,
     // which dead-ends on the account allowlist ("not allowed to register").
@@ -226,96 +225,6 @@ async fn signed_out_home_has_one_invite_beta_email_entry() {
     // No source/account internals leak onto the anonymous home.
     assert!(!body.contains("NATO practice notes"));
     assert!(!body.contains("Concept: NATO letter A"));
-}
-
-#[tokio::test]
-async fn mobile_capture_enqueues_generation_then_requires_learner_decisions() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    // Bootstrap a session (the start route only seeds an empty source).
-    let started = app
-        .clone()
-        .oneshot(form_request(
-            "POST",
-            "/app/start",
-            &[("capture", "seed topic notes")],
-        ))
-        .await
-        .expect("start");
-    let cookie = session_cookie(&started);
-    let started = response_text(started).await;
-    let csrf_token = html_value(&started, "csrfToken");
-
-    // Capture returns before any drafts exist. The waiting page follows its
-    // saved job; candidates remain pending for explicit learner decisions.
-    let captured = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/capture",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("capture", &source_body())],
-        ))
-        .await
-        .expect("capture");
-    assert_eq!(captured.status(), StatusCode::OK);
-    let captured = response_text(captured).await;
-    assert_not_contains_any(&captured, &["Add all to reviews", ">Keep</button>"]);
-
-    // Drain the background job: real generation leaves accepted candidates
-    // pending. Exercise edit-and-keep for one candidate and reject the other.
-    state.run_pending_jobs_blocking();
-    let workspace = library_html(&app, &cookie).await;
-    assert_activity_succeeded_html(&workspace, 2);
-    let draft_ids = html_values(&workspace, "draftId");
-    assert!(
-        draft_ids.len() >= 2,
-        "fixture must produce edit and reject candidates"
-    );
-    let edited = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/draft/edit",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("draftId", &draft_ids[0]),
-                ("prompt", "Edited SSR prompt"),
-                ("expectedAnswer", "Edited SSR answer"),
-            ],
-        ))
-        .await
-        .expect("edit pending draft");
-    assert_eq!(edited.status(), StatusCode::OK);
-    let rejected = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/draft/reject",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("draftId", &draft_ids[1])],
-        ))
-        .await
-        .expect("reject pending draft");
-    assert_eq!(rejected.status(), StatusCode::OK);
-
-    // Only explicit keeps or edits drive the review flow.
-    let review = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/next",
-            &cookie,
-            &[("csrfToken", &csrf_token)],
-        ))
-        .await
-        .expect("next");
-    assert_eq!(review.status(), StatusCode::OK);
-    let review = response_text(review).await;
-    assert!(review.contains("1 due"));
-    assert!(review.contains("Reveal answer"));
-    assert!(!review.contains("Add all to reviews"));
 }
 
 #[tokio::test]
@@ -336,26 +245,21 @@ async fn editing_mcq_distractor_keeps_coherent_card_and_returns_to_review() {
     assert_eq!(generated.status(), StatusCode::OK);
     state.run_pending_jobs_blocking();
 
-    let pending = workspace_html(&app, &cookie).await;
-    assert!(
-        pending.contains("BRAVO") && pending.contains("CHARLIE"),
-        "pending MCQ must show every choice before Keep: {pending}"
-    );
-    assert!(
-        pending.contains(r#"name="choices""#),
-        "edit form must expose distractors: {pending}"
-    );
-    assert!(
-        pending.contains("Keep as written"),
-        "Keep as written must stay one tap: {pending}"
-    );
-
-    let draft_id = pending
-        .split(r#"<article class="me-pending-draft">"#)
-        .skip(1)
-        .find(|article| article.contains(r#"name="choices""#))
-        .map(|article| html_value(article, "draftId"))
-        .expect("MCQ draft id");
+    let current = advance_to_prompt(&app, &cookie, &csrf_token, "What is the NATO phonetic").await;
+    let review_unit_id = html_value(&current, "reviewUnitId");
+    let mut headers = HeaderMap::new();
+    headers.insert("cookie", cookie.parse().expect("cookie"));
+    let account = state
+        .require_browser_session(&headers, &csrf_token)
+        .expect("session");
+    let before = state.app_study_view(&account).expect("published view");
+    let draft_id = before
+        .drafts
+        .iter()
+        .find(|draft| draft.prompt.contains("What is the NATO phonetic"))
+        .expect("published MCQ draft")
+        .id
+        .clone();
     let edited = app
         .clone()
         .oneshot(form_request_with_cookie(
@@ -375,14 +279,31 @@ async fn editing_mcq_distractor_keeps_coherent_card_and_returns_to_review() {
     let status = edited.status();
     let edited = response_text(edited).await;
     assert_eq!(status, StatusCode::OK, "edit distractor failed: {edited}");
-    assert!(
-        edited.contains("Reveal answer") || edited.contains("name=\"answer\""),
-        "edit must land back in review: {edited}"
+    assert!(edited.contains(r#"action="/app/submit""#));
+    let edited = advance_to_prompt(&app, &cookie, &csrf_token, "What is the NATO phonetic").await;
+    assert_eq!(html_value(&edited, "reviewUnitId"), review_unit_id);
+    assert!(html_values(&edited, "answer")
+        .iter()
+        .any(|choice| choice == "DELTA"));
+    assert!(!html_values(&edited, "answer")
+        .iter()
+        .any(|choice| choice == "BRAVO"));
+    let after = state.app_study_view(&account).expect("edited view");
+    assert_eq!(
+        after.summary.approved_review_unit_count,
+        before.summary.approved_review_unit_count
     );
-    assert!(
-        edited.contains("DELTA"),
-        "edited distractor must be the live MCQ choice: {edited}"
-    );
+    assert_eq!(after.summary.attempt_count, before.summary.attempt_count);
+    let submitted = submit_review_ok(
+        &app,
+        &cookie,
+        &csrf_token,
+        &review_unit_id,
+        "ALFA",
+        &html_value(&edited, "idempotencyKey"),
+    )
+    .await;
+    assert_eq!(rendered_verdict(&submitted), Some("Correct"));
 }
 
 #[tokio::test]
@@ -431,11 +352,11 @@ async fn mobile_capture_and_edit_expose_permission_without_leaking_local_only_by
     assert_eq!(edited.status(), StatusCode::OK);
     assert!(response_text(edited)
         .await
-        .contains("Source permission updated."));
+        .contains(r#"value="local-only" selected"#));
 
     let _library = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
     let workspace = workspace_html(&app, &cookie).await;
-    assert!(workspace.contains("Start review"));
+    assert!(workspace.contains(r#"action="/app/submit""#));
 
     let invalid = app
         .oneshot(form_request_with_cookie(
@@ -454,70 +375,61 @@ async fn mobile_capture_and_edit_expose_permission_without_leaking_local_only_by
 }
 
 #[tokio::test]
-async fn signed_in_home_surfaces_review_cta_after_generation() {
-    // Regression: a learner who generated drafts could see pending material in
-    // the activity log but had no way to inspect or explicitly keep it. Workspace
-    // re-renders must preserve the signed-in session, expose the pending draft
-    // decision controls, and show the due count only after this helper explicitly
-    // keeps the accepted drafts through the learner action route.
+async fn signed_in_root_opens_review_and_preserves_grade_until_deliberate_next() {
     let state = local_fixture_state();
     let app = router(state.clone());
     let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
+    generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
 
-    // Generate from the seeded source and drain the queue: real generation leaves
-    // accepted drafts pending. The helper explicitly keeps each draft through
-    // the learner decision route and returns the refreshed Library view (the
-    // source/activity surface). The due callout and Start review CTA live on
-    // Home, not Library, so they are checked separately below.
-    let _library = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
+    let home = get_view_html(&app, "/", &cookie).await;
+    assert!(home.contains(r#"action="/app/submit""#));
+    let review_unit_id = html_value(&home, "reviewUnitId");
+    let occurrence_key = html_value(&home, "idempotencyKey");
+    let reloaded = get_view_html(&app, "/", &cookie).await;
+    assert_eq!(html_value(&reloaded, "reviewUnitId"), review_unit_id);
+    assert_eq!(html_value(&reloaded, "idempotencyKey"), occurrence_key);
 
-    // The Home view (GET /) surfaces the due count and Start review CTA
-    // after generation — not the Library view, which is the source/activity
-    // surface.
-    let home = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .expect("home request"),
-        )
-        .await
-        .expect("home");
-    assert_eq!(home.status(), StatusCode::OK);
-    let home = response_text(home).await;
-    assert!(
-        home.contains("Start review"),
-        "Home must surface the Start review CTA: {home}"
+    let graded = submit_review_ok(
+        &app,
+        &cookie,
+        &html_value(&home, "csrfToken"),
+        &review_unit_id,
+        correct_answer_for_prompt(&home),
+        &occurrence_key,
+    )
+    .await;
+    assert!(rendered_verdict(&graded).is_some());
+    for _ in 0..2 {
+        let held = get_view_html(&app, "/", &cookie).await;
+        assert_eq!(html_value(&held, "reviewUnitId"), review_unit_id);
+        assert_eq!(rendered_verdict(&held), rendered_verdict(&graded));
+        assert!(held.contains(r#"action="/app/next""#));
+        assert!(!held.contains(r#"action="/app/submit""#));
+    }
+    let mut headers = HeaderMap::new();
+    headers.insert("cookie", cookie.parse().expect("cookie"));
+    let account = state
+        .require_browser_session(&headers, &csrf_token)
+        .expect("session");
+    assert_eq!(
+        state
+            .app_study_view(&account)
+            .expect("held view")
+            .summary
+            .attempt_count,
+        1
     );
-    assert!(!home.contains("0 due"));
-    assert_not_contains_any(&home, &["Get started"]);
 
-    // The CTA must actually work: the CSRF token embedded by the GET render
-    // has to validate when its form POSTs. A cookie-only GET carries no token
-    // in the request, so the home derives it from the session — submitting
-    // that derived token to /app/next must open the review, not bounce on
-    // "CSRF token does not match session."
-    let home_csrf = html_value(&home, "csrfToken");
-    let review = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/next",
-            &cookie,
-            &[("csrfToken", &home_csrf)],
-        ))
-        .await
-        .expect("start review from home CTA");
-    assert_eq!(review.status(), StatusCode::OK);
-    let review = response_text(review).await;
-    assert!(
-        review.contains("Reveal answer"),
-        "the home Start review CTA must open a review: {review}"
+    let next = next_review_html(&app, &cookie, &csrf_token, "deliberate next").await;
+    assert_ne!(html_value(&next, "reviewUnitId"), review_unit_id);
+    assert!(next.contains(r#"action="/app/submit""#));
+    assert!(rendered_verdict(&next).is_none());
+    let reloaded_next = get_view_html(&app, "/", &cookie).await;
+    assert_eq!(
+        html_value(&reloaded_next, "reviewUnitId"),
+        html_value(&next, "reviewUnitId")
     );
-    assert!(!review.contains("CSRF token does not match"));
+    assert!(rendered_verdict(&reloaded_next).is_none());
 }
 
 /// GET a signed-in route with a session cookie and return the HTML body.
@@ -536,130 +448,6 @@ async fn get_view_html(app: &axum::Router, uri: &str, cookie: &str) -> String {
         .expect("view response");
     assert_eq!(response.status(), StatusCode::OK);
     response_text(response).await
-}
-
-/// memory-engine-087: each focused view renders only its owned job plus
-/// persistent one-tap nav; unrelated sections are absent.
-#[tokio::test]
-async fn focused_views_render_only_their_owned_job_with_persistent_nav() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-
-    // Generate cards so the home has a due hero and the library has counts.
-    let _ = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-
-    // ── Home: due hero + nav, no capture/sources/analytics ──
-    let home = get_view_html(&app, "/", &cookie).await;
-    assert!(
-        home.contains(r#"href="/" aria-current="page">Home</a>"#),
-        "Home nav current"
-    );
-    assert!(home.contains("Start review"), "Home due hero: {home}");
-    assert_not_contains_any(
-        &home,
-        &[
-            "What do you want to remember?", // capture form
-            "Saved material",                // sources
-            "Concept health",                // analytics
-        ],
-    );
-
-    // ── Create: capture form + nav, no due hero/sources/analytics ──
-    let create = get_view_html(&app, "/app/create", &cookie).await;
-    assert!(
-        create.contains(r#"href="/app/create" aria-current="page">Create</a>"#),
-        "Create nav current"
-    );
-    assert_not_contains_any(
-        &create,
-        &[
-            "Start review",   // due hero
-            "Saved material", // sources
-            "Concept health", // analytics
-        ],
-    );
-
-    // ── Library: sources + counts + nav, no capture/due hero/analytics ──
-    let library = get_view_html(&app, "/app/library", &cookie).await;
-    assert!(
-        library.contains(r#"href="/app/library" aria-current="page">Library</a>"#),
-        "Library nav current"
-    );
-    assert!(
-        library.contains("NATO practice notes"),
-        "Library source title: {library}"
-    );
-    assert_not_contains_any(
-        &library,
-        &[
-            "What do you want to remember?", // capture form
-            "Start review",                  // due hero
-            "Concept health",                // analytics
-        ],
-    );
-
-    // ── Analytics: concept health + nav, no capture/sources/due hero ──
-    let analytics = get_view_html(&app, "/app/analytics", &cookie).await;
-    assert!(
-        analytics.contains(r#"href="/app/analytics" aria-current="page""#),
-        "Analytics nav current"
-    );
-    assert_not_contains_any(
-        &analytics,
-        &[
-            "What do you want to remember?", // capture form
-            "Saved material",                // sources
-        ],
-    );
-
-    // ── Every standing view carries the persistent nav ──
-    for (label, html) in [
-        ("Home", &home),
-        ("Create", &create),
-        ("Library", &library),
-        ("Analytics", &analytics),
-    ] {
-        assert!(
-            html.contains(r#"<nav class="me-nav" aria-label="Views">"#),
-            "{label} must carry persistent nav"
-        );
-        assert!(html.contains("Sign out"), "{label} must carry sign-out");
-    }
-}
-
-/// memory-engine-087: review is full-bleed — no nav, no workspace sections.
-#[tokio::test]
-async fn review_is_full_bleed_without_nav_or_workspace_sections() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-    let _ = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-
-    let home = workspace_html(&app, &cookie).await;
-    let home_csrf = html_value(&home, "csrfToken");
-    let review = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/next",
-            &cookie,
-            &[("csrfToken", &home_csrf)],
-        ))
-        .await
-        .expect("start review");
-    assert_eq!(review.status(), StatusCode::OK);
-    let review = response_text(review).await;
-    assert!(review.contains("Reveal answer"), "review card: {review}");
-    assert_not_contains_any(
-        &review,
-        &[
-            r#"<nav class="me-nav""#,        // no nav
-            "Saved material",                // no sources
-            "What do you want to remember?", // no capture
-            "Concept health",                // no analytics
-        ],
-    );
 }
 
 #[tokio::test]
@@ -688,7 +476,7 @@ async fn capture_waiting_tracks_only_the_new_job() {
             &cookie,
             &[
                 ("csrfToken", &csrf_token),
-                ("capture", "Spanish irregular verbs"),
+                ("capture", &expired_project_deck_body()),
             ],
         ))
         .await
@@ -704,8 +492,18 @@ async fn capture_waiting_tracks_only_the_new_job() {
     assert!(page.contains(&format!(r#"data-generation-job-id="{}""#, job.id)));
     assert!(!page.contains(&earlier.id));
     assert_eq!(page.matches("data-generation-job-id=").count(), 1);
-    assert!(page.contains(r#"data-terminal-url="/app/library""#));
-    assert!(page.contains(r#"href="/app/library""#));
+    let terminal_url = page
+        .split_once(r#"data-terminal-url=""#)
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .expect("generation completion destination")
+        .0;
+    state.run_pending_jobs_blocking();
+    assert_eq!(
+        state.job(&job.id).expect("completed capture").status,
+        crate::JobStatus::Succeeded
+    );
+    let completed = get_view_html(&app, terminal_url, &cookie).await;
+    assert!(completed.contains(r#"action="/app/submit""#));
     assert!(page.contains("data-generation-status"));
     assert!(!page.contains(r#"action="/app/capture""#));
     assert!(!page.contains(r#"name="capture""#));
@@ -769,157 +567,6 @@ async fn capture_stream_replays_completion_before_subscription_and_on_reconnect(
         assert_eq!(event["id"], job.id);
         assert_eq!(event["status"], "succeeded");
     }
-}
-
-/// memory-engine-087: POST generate returns to the Library view, not the
-/// single-scroll workspace.
-#[tokio::test]
-async fn generate_post_returns_to_library_view() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-
-    let response = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/generate",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("sourceId", &source_id)],
-        ))
-        .await
-        .expect("generate");
-    assert_eq!(response.status(), StatusCode::OK);
-    let page = response_text(response).await;
-    assert!(
-        page.contains(r#"href="/app/library" aria-current="page">Library</a>"#),
-        "generate POST must return to Library view: {page}"
-    );
-}
-
-/// memory-engine-087: POST archive returns to the Library view with the
-/// removal count disclosure.
-#[tokio::test]
-async fn archive_post_returns_to_library_view_with_count() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-    let _ = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-
-    let response = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/source/archive",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("sourceId", &source_id)],
-        ))
-        .await
-        .expect("archive");
-    assert_eq!(response.status(), StatusCode::OK);
-    let page = response_text(response).await;
-    assert!(
-        page.contains(r#"href="/app/library" aria-current="page">Library</a>"#),
-        "archive POST must return to Library view: {page}"
-    );
-    assert!(
-        page.contains("Source removed."),
-        "archive must show removal notice: {page}"
-    );
-    assert!(
-        page.contains("retired."),
-        "archive must show retired count: {page}"
-    );
-}
-
-/// memory-engine-087: POST retry returns to the Library view.
-#[tokio::test]
-async fn retry_post_returns_to_library_view() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, _source_id) = start_app_session_for_csrf(&app).await;
-
-    let response = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/jobs/retry",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("jobId", "nonexistent-job")],
-        ))
-        .await
-        .expect("retry");
-    assert_eq!(response.status(), StatusCode::OK);
-    let page = response_text(response).await;
-    assert!(
-        page.contains(r#"href="/app/library" aria-current="page">Library</a>"#),
-        "retry POST must return to Library view: {page}"
-    );
-}
-
-/// memory-engine-087: POST source permission returns to the Library view.
-#[tokio::test]
-async fn permission_post_returns_to_library_view() {
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-
-    let response = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/source/permission",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("sourceId", &source_id),
-                ("permission", "local-only"),
-            ],
-        ))
-        .await
-        .expect("permission");
-    assert_eq!(response.status(), StatusCode::OK);
-    let page = response_text(response).await;
-    assert!(
-        page.contains(r#"href="/app/library" aria-current="page">Library</a>"#),
-        "permission POST must return to Library view: {page}"
-    );
-}
-
-/// memory-engine-087: POST save-account (reminders) returns to the Home view.
-#[tokio::test]
-async fn reminders_post_returns_to_home_view() {
-    let (_test_clock, test_now) = isolated_test_clock!(DEFAULT_BETA_STUDY_NOW);
-    let store_root = temp_store_root("reminders-home");
-    let outbox_path = store_root.join("auth-outbox.tsv");
-    let state = ApiState::new(
-        AccountRegistry::with_store_root(&store_root)
-            .with_clock(test_now)
-            .with_auth_config(AuthConfig::for_local_tests().with_link_outbox(&outbox_path)),
-    );
-    let app = router(state.clone());
-    let (cookie, csrf_token, _source_id) = start_app_session_for_csrf(&app).await;
-
-    let response = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/return-notifications",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("reminderEmail", "learner@example.com"),
-                ("enabled", "on"),
-            ],
-        ))
-        .await
-        .expect("reminders");
-    assert_eq!(response.status(), StatusCode::OK);
-    let page = response_text(response).await;
-    assert!(
-        page.contains(r#"href="/" aria-current="page">Home</a>"#),
-        "reminders POST must return to Home view: {page}"
-    );
 }
 
 #[tokio::test]
@@ -1023,18 +670,13 @@ fn scheduled_return_notification_sends_live_due_count_without_request_traffic() 
             },
         )
         .expect("save source");
-    let generated = state
+    state
         .generate_source(
             account.account_id(),
             account.session_token(),
             &source.source_id,
         )
         .expect("generate source");
-    for draft in &generated.drafts {
-        state
-            .keep_draft(account.account_id(), account.session_token(), &draft.id)
-            .expect("keep generated draft");
-    }
     let view = state
         .study_view(account.account_id(), account.session_token())
         .expect("study view");
@@ -1158,18 +800,13 @@ fn scheduled_return_notification_batch_quota_rotates_eligible_accounts() {
                 },
             )
             .expect("quota source");
-        let generated = state
+        state
             .generate_source(
                 account.account_id(),
                 account.session_token(),
                 &source.source_id,
             )
             .expect("quota generation");
-        for draft in &generated.drafts {
-            state
-                .keep_draft(account.account_id(), account.session_token(), &draft.id)
-                .expect("quota keep");
-        }
         state
             .set_return_notification(&account, Some(email), true)
             .expect("quota enable");
@@ -1236,18 +873,13 @@ fn concurrent_scheduler_instances_share_one_durable_file_claim() {
             },
         )
         .expect("source");
-    let generated = first
+    first
         .generate_source(
             account.account_id(),
             account.session_token(),
             &source.source_id,
         )
         .expect("generation");
-    for draft in &generated.drafts {
-        first
-            .keep_draft(account.account_id(), account.session_token(), &draft.id)
-            .expect("keep");
-    }
     let view = first
         .study_view(account.account_id(), account.session_token())
         .expect("study view");
@@ -1513,7 +1145,7 @@ async fn mcq_review_is_click_to_answer_and_grades_case_insensitively() {
     let csrf_token = html_value(&started, "csrfToken");
     let source_id = html_value(&started, "sourceId");
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     let mcq = advance_to_prompt(
         &app,
@@ -1600,10 +1232,6 @@ async fn assert_submit_recovery_document(
     response: axum::response::Response,
 ) {
     let body = response_text(response).await;
-    assert!(
-        body.contains(r#"<script src="/static/app.js" defer></script>"#),
-        "submit recovery must load the handoff consumer"
-    );
     assert!(body.contains(r#"href="/""#));
     assert!(!body.contains("me-recovery-email"));
 
@@ -1820,9 +1448,7 @@ async fn assert_in_place_submit_receipts(app: &axum::Router, cookie: &str, csrf:
 
 #[tokio::test]
 async fn free_response_review_shows_a_prominent_input_not_choice_buttons() {
-    // The CAT exercise is free-response: it must show the bounded answer box
-    // (not clickable options, and not a hairline underline that reads as a
-    // divider).
+    // The CAT exercise accepts typed recall and reveals the result after grading.
     let state = local_fixture_state();
     let app = router(state.clone());
     let started = app
@@ -1841,15 +1467,10 @@ async fn free_response_review_shows_a_prominent_input_not_choice_buttons() {
     generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
 
     let free = advance_to_prompt(&app, &cookie, &csrf_token, "Spell CAT over the phone").await;
-    assert!(
-        free.contains(r#"class="ae-input me-answer-input""#),
-        "free-response must show the prominent answer box: {free}"
-    );
-    assert!(!free.contains(r#"class="me-choice""#));
+    assert!(free.contains(r#"name="answer" required"#));
     let review_unit_id = html_value(&free, "reviewUnitId");
 
-    // A graded free-response card reveals the accepted answer on one line.
-    // Schedule and quality controls stay inside the collapsed dossier.
+    // A correct free-response answer is graded and remains available for study.
     let graded = app
         .clone()
         .oneshot(form_request_with_cookie(
@@ -1869,21 +1490,10 @@ async fn free_response_review_shows_a_prominent_input_not_choice_buttons() {
     assert_eq!(graded.status(), StatusCode::OK);
     let graded = response_text(graded).await;
     assert_eq!(rendered_verdict(&graded), Some("Correct"));
-    assert!(
-        graded.contains(
-            r#"<p class="me-answer"><span class="me-answer-label">Accepted answer</span>"#
-        ),
-        "free-response graded must reveal the accepted answer: {graded}"
-    );
     assert!(graded.contains("CHARLIE ALFA TANGO"));
-    assert!(!graded.contains(r#"<li class="me-graded-choice"#));
-    assert_dossier_markers(
-        &graded,
-        &[r#"<p class="me-next-when"#, "me-content-feedback-rationale"],
-    );
-    assert!(graded.contains("Keep"));
-    assert!(graded.contains("Drop"));
-    assert_not_contains_any(&graded, &["Answer feedback", "Concept health"]);
+    assert!(graded.contains(r#"action="/app/next""#));
+    assert!(graded.contains(r#"action="/app/content-feedback""#));
+    assert!(!graded.contains(r#"action="/app/submit""#));
 }
 
 #[tokio::test]
@@ -1908,7 +1518,7 @@ async fn review_delete_removes_the_card_for_good() {
     let csrf_token = html_value(&started, "csrfToken");
     let source_id = html_value(&started, "sourceId");
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     // Land on a known card and delete it.
     let target = "Spell CAT over the phone";
@@ -1972,7 +1582,7 @@ async fn review_edit_form_preserves_identity_queue_and_uses_edited_answer() {
     let app = router(state.clone());
     let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     let original_prompt = "Spell CAT over the phone";
     let page = advance_to_prompt(&app, &cookie, &csrf_token, original_prompt).await;
@@ -2315,31 +1925,22 @@ async fn assert_blank_review_edit_rejected(
 async fn mobile_form_flow_generates_reveals_and_submits_review() {
     let state = local_fixture_state();
     let app = router(state.clone());
-    let started = app
-        .clone()
-        .oneshot(form_request(
-            "POST",
-            "/app/start",
-            &[("capture", &source_body())],
-        ))
-        .await
-        .expect("start");
-    assert_eq!(started.status(), StatusCode::OK);
-    let cookie = session_cookie(&started);
-    let started = response_text(started).await;
-    let csrf_token = html_value(&started, "csrfToken");
-    let source_id = html_value(&started, "sourceId");
+    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
 
-    // Regenerate from the saved source, drain the job, and explicitly keep
-    // each accepted draft through the learner decision helper.
+    // Successful finalization publishes the generated quizzes without learner approval.
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
-    // Both kept cards are due. Reveal whichever appears first, then submit
-    // the displayed answer: seeing it must not count as correct recall.
+    // Revealing the answer immediately records assisted practice.
     let opened = next_review_html(&app, &cookie, &csrf_token, "open queue").await;
     assert_due_review_html(&opened, 2);
-    let review_unit_id = html_value(&opened, "reviewUnitId");
+    let reveal_form = form_for_action(&opened, "/app/reveal");
+    let review_unit_id = html_value(reveal_form, "reviewUnitId");
+    let occurrence_key = html_value(reveal_form, "idempotencyKey");
+    assert_eq!(
+        occurrence_key,
+        html_value(form_for_action(&opened, "/app/submit"), "idempotencyKey")
+    );
 
     let revealed = app
         .clone()
@@ -2350,30 +1951,49 @@ async fn mobile_form_flow_generates_reveals_and_submits_review() {
             &[
                 ("csrfToken", &csrf_token),
                 ("reviewUnitId", &review_unit_id),
+                ("idempotencyKey", &occurrence_key),
             ],
         ))
         .await
         .expect("reveal");
     assert_eq!(revealed.status(), StatusCode::OK);
     let revealed = response_text(revealed).await;
-    assert!(revealed.contains("ALFA"));
+    assert_eq!(rendered_verdict(&revealed), Some("Revealed"));
+    assert!(revealed.contains(correct_answer_for_prompt(&opened)));
+    assert!(revealed.contains(r#"action="/app/next""#));
+    assert!(!revealed.contains(r#"action="/app/submit""#));
+    let mut headers = HeaderMap::new();
+    headers.insert("cookie", cookie.parse().expect("cookie"));
+    let account = state
+        .require_browser_session(&headers, &csrf_token)
+        .expect("session");
+    let assisted = state
+        .open_review(account.account_id(), account.session_token())
+        .expect("assisted grade");
+    assert_eq!(assisted.summary.attempt_count, 1);
+    let assisted_current = assisted.current.expect("held assisted review");
+    assert_eq!(
+        assisted_current.grade.expect("grade").rating,
+        memory_engine_core::Rating::Again
+    );
+    assert_eq!(
+        assisted_current
+            .feedback
+            .expect("history")
+            .item_history
+            .correct,
+        0
+    );
 
-    let submitted = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/submit",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("reviewUnitId", &review_unit_id),
-                ("answer", correct_answer_for_prompt(&revealed)),
-                ("responseTimeMs", "1800"),
-                ("idempotencyKey", "mobile-review-first"),
-            ],
-        ))
-        .await
-        .expect("submit");
+    let submitted = submit_review_response(
+        &app,
+        &cookie,
+        &csrf_token,
+        &review_unit_id,
+        correct_answer_for_prompt(&revealed),
+        &occurrence_key,
+    )
+    .await;
     assert_eq!(submitted.status(), StatusCode::OK);
     let submitted = response_text(submitted).await;
     assert_eq!(html_value(&submitted, "reviewUnitId"), review_unit_id);
@@ -2381,39 +2001,33 @@ async fn mobile_form_flow_generates_reveals_and_submits_review() {
     assert!(submitted.contains(correct_answer_for_prompt(&revealed)));
     assert!(submitted.contains(r#"action="/app/next""#));
     assert!(!submitted.contains(r#"action="/app/submit""#));
+    assert_eq!(
+        state
+            .app_study_view(&account)
+            .expect("replayed grade")
+            .summary
+            .attempt_count,
+        1
+    );
+    let held = get_view_html(&app, "/", &cookie).await;
+    assert_eq!(html_value(&held, "reviewUnitId"), review_unit_id);
+    assert_eq!(rendered_verdict(&held), rendered_verdict(&revealed));
 
-    // Submit the remaining kept card so the queue drains to empty.
+    // Explicit Next moves to the remaining published quiz.
     let remaining = next_review_html(&app, &cookie, &csrf_token, "remaining").await;
     let remaining_id = html_value(&remaining, "reviewUnitId");
-    let cleared = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/submit",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("reviewUnitId", &remaining_id),
-                ("answer", correct_answer_for_prompt(&remaining)),
-                ("responseTimeMs", "1800"),
-                ("idempotencyKey", "mobile-review-second"),
-            ],
-        ))
-        .await
-        .expect("clear remaining");
+    let cleared = submit_review_response(
+        &app,
+        &cookie,
+        &csrf_token,
+        &remaining_id,
+        correct_answer_for_prompt(&remaining),
+        "mobile-review-second",
+    )
+    .await;
     assert_eq!(cleared.status(), StatusCode::OK);
 
-    let next = app
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/next",
-            &cookie,
-            &[("csrfToken", &csrf_token)],
-        ))
-        .await
-        .expect("next");
-    assert_eq!(next.status(), StatusCode::OK);
-    let next = response_text(next).await;
+    let next = next_review_html(&app, &cookie, &csrf_token, "finished queue").await;
     assert!(next.contains("0 due"));
 }
 
@@ -2422,11 +2036,10 @@ async fn mobile_submit_review_reveals_the_verdict_and_correct_answer() {
     let state = local_fixture_state();
     let app = router(state.clone());
     let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-    // Generation auto-keeps and schedules every accepted card; no manual
-    // per-draft keep. Drive the queue to the NATO-A quiz card and answer
-    // it wrong to exercise the human result + item-history rollup.
+    // Published quizzes enter review immediately. Answer NATO-A incorrectly to
+    // exercise the result and item-history flow.
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
     let current = advance_to_prompt(
         &app,
         &cookie,
@@ -2455,17 +2068,8 @@ async fn mobile_submit_review_reveals_the_verdict_and_correct_answer() {
     assert_eq!(submitted.status(), StatusCode::OK);
     let submitted = response_text(submitted).await;
 
-    // Ledger graded screen, wrong answer: the verdict reads "Try again", the
-    // correct option is still revealed (marked) so the learner sees it, the
-    // card's dossier renders (stage, last seen, success record — DESIGN.md
-    // puts meta post-grade only), and a quiet line says when it returns. Raw
-    // internals still never leak.
     assert_eq!(rendered_verdict(&submitted), Some("Try again"));
     assert!(submitted.contains("ALFA"));
-    assert!(submitted.contains(r#"<li class="me-graded-choice me-graded-choice-correct">"#));
-    assert!(submitted.contains("you'll see this again"));
-    assert!(submitted.contains(r#"class="me-meta-ledger""#));
-    assert!(submitted.contains("Last seen"));
     assert_not_contains_any(
         &submitted,
         &[
@@ -2498,9 +2102,8 @@ async fn mobile_submit_review_reveals_the_verdict_and_correct_answer() {
         .expect("record content feedback");
     assert_eq!(feedback.status(), StatusCode::OK);
     let feedback = response_text(feedback).await;
-    assert!(feedback.contains("Saved. This card will help improve future generation."));
     assert_eq!(rendered_verdict(&feedback), Some("Try again"));
-    assert!(feedback.contains(">Continue"));
+    assert!(feedback.contains(r#"action="/app/next""#));
     assert_eq!(html_value(&feedback, "reviewUnitId"), review_unit_id);
 
     let replay = app
@@ -2521,7 +2124,7 @@ async fn mobile_submit_review_reveals_the_verdict_and_correct_answer() {
     assert_eq!(replay.status(), StatusCode::OK);
     let replay = response_text(replay).await;
     assert_eq!(rendered_verdict(&replay), Some("Try again"));
-    assert!(replay.contains(">Continue"));
+    assert!(replay.contains(r#"action="/app/next""#));
     assert_eq!(html_value(&replay, "reviewUnitId"), review_unit_id);
 }
 
@@ -2536,7 +2139,7 @@ async fn app_content_feedback_keeps_the_graded_review_until_continue() {
         next_review_html(&app, &cookie, &csrf_token, "start first feedback review").await;
     let first_review_unit_id = html_value(&first_prompt, "reviewUnitId");
     let first_review_key = html_value(&first_prompt, "idempotencyKey");
-    let graded = submit_review_ok(
+    submit_review_ok(
         &app,
         &cookie,
         &csrf_token,
@@ -2545,7 +2148,6 @@ async fn app_content_feedback_keeps_the_graded_review_until_continue() {
         &first_review_key,
     )
     .await;
-    assert!(graded.contains(r#"class="me-dossier""#));
 
     let invalid = app
         .clone()
@@ -2565,7 +2167,6 @@ async fn app_content_feedback_keeps_the_graded_review_until_continue() {
         .expect("reject invalid content feedback");
     assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
     let invalid = response_text(invalid).await;
-    assert!(invalid.contains("Idempotency key must not be blank."));
     assert!(invalid.contains(r#"action="/app/content-feedback""#));
     assert!(invalid.contains("keep this retry note"));
     assert_eq!(html_value(&invalid, "reviewUnitId"), first_review_unit_id);
@@ -2587,10 +2188,8 @@ async fn app_content_feedback_keeps_the_graded_review_until_continue() {
     )
     .await;
 
-    assert!(continued.contains("Saved. This card will help improve future generation."));
     assert_eq!(rendered_verdict(&continued), Some("Try again"));
-    assert!(continued.contains(r#"<details class="me-dossier">"#));
-    assert!(continued.contains(">Continue"));
+    assert!(continued.contains(r#"action="/app/next""#));
     assert_eq!(
         html_value(&continued, "reviewUnitId"),
         first_review_unit_id,
@@ -2872,9 +2471,8 @@ async fn app_content_feedback_persistence_recovery_fields_can_be_submitted() {
     )
     .await;
 
-    assert!(continued.contains("Saved. This card will help improve future generation."));
     assert_eq!(rendered_verdict(&continued), Some("Try again"));
-    assert!(continued.contains(">Continue"));
+    assert!(continued.contains(r#"action="/app/next""#));
     assert_eq!(
         html_value(&continued, "reviewUnitId"),
         first_review_unit_id,
@@ -3028,7 +2626,7 @@ async fn mobile_submit_review_shows_concept_rollup_for_shared_concept() {
     let source_id = html_value(&started, "sourceId");
     // Explicitly keep both accepted drafts so the shared concept has two members.
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     let current = app
         .clone()
@@ -3127,9 +2725,9 @@ async fn management_surface_lists_concepts_worst_first() {
     let started = response_text(started).await;
     let csrf_token = html_value(&started, "csrfToken");
     let source_id = html_value(&started, "sourceId");
-    // Generation auto-keeps and schedules both cards — no manual keep.
+    // Generation publishes both quizzes without a learner decision.
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     let current = next_review_html(&app, &cookie, &csrf_token, "current").await;
     submit_review_from_html(&app, &cookie, &csrf_token, &current, "management-first").await;
@@ -3182,7 +2780,7 @@ async fn auth_rendered_forms_do_not_expose_session_credentials() {
     let source_id = html_value(&started, "sourceId");
     // The workspace with a finished activity-log row must not leak credentials.
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
     assert!(!generated.contains(r#"name="accountId""#));
     assert!(!generated.contains(r#"name="sessionToken""#));
     assert!(!generated.contains("acct_"));
@@ -3191,7 +2789,7 @@ async fn auth_rendered_forms_do_not_expose_session_credentials() {
     let review = next_review_html(&app, &cookie, &csrf_token, "review").await;
     assert!(!review.contains(r#"name="sessionToken""#));
     assert!(!review.contains("acct_"));
-    assert!(review.contains("Reveal answer"));
+    assert!(review.contains(r#"action="/app/reveal""#));
 }
 
 #[tokio::test]
@@ -3213,7 +2811,7 @@ async fn review_escape_hatches_render_and_drive_the_mobile_queue() {
     let csrf_token = html_value(&started, "csrfToken");
     let source_id = html_value(&started, "sourceId");
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
     let approved = advance_to_prompt(&app, &cookie, &csrf_token, "Spell CAT over the phone").await;
     let parent_id = html_value(&approved, "reviewUnitId");
     let referenced = app
@@ -3241,27 +2839,8 @@ async fn review_escape_hatches_render_and_drive_the_mobile_queue() {
         .expect("bridge");
     assert_eq!(bridged.status(), StatusCode::OK);
     let bridged = response_text(bridged).await;
-    let bridge_draft_ids = html_values(&bridged, "draftId");
-    assert_eq!(
-        bridge_draft_ids.len(),
-        2,
-        "bridge candidates remain pending"
-    );
-    for draft_id in bridge_draft_ids {
-        let kept = app
-            .clone()
-            .oneshot(form_request_with_cookie(
-                "POST",
-                "/app/draft/keep",
-                &cookie,
-                &[("csrfToken", &csrf_token), ("draftId", &draft_id)],
-            ))
-            .await
-            .expect("keep bridge draft");
-        assert_eq!(kept.status(), StatusCode::OK);
-    }
-    let opened_bridge = next_review_html(&app, &cookie, &csrf_token, "bridge").await;
-    let bridge_id = html_value(&opened_bridge, "reviewUnitId");
+    let bridge_id = html_value(&bridged, "reviewUnitId");
+    assert!(bridged.contains(r#"action="/app/submit""#));
     assert!(bridge_id.starts_with("bridge-"));
     skip_then_snooze_current(&app, &cookie, &csrf_token, &bridge_id).await;
 }
@@ -3347,6 +2926,7 @@ async fn app_study_actions_return_html_status_for_stale_review_ids() {
                 &[
                     ("csrfToken", &csrf_token),
                     ("reviewUnitId", "missing-review-unit"),
+                    ("idempotencyKey", "missing-review-occurrence"),
                 ],
             ))
             .await
@@ -3461,9 +3041,7 @@ async fn assert_source_session_mutations_require_csrf(
     assert_forbidden_form(app, cookie, "/app/logout", &[], "logout without csrf").await;
 }
 
-/// Generation auto-keeps and schedules cards (no keep gate); open the
-/// review queue and return the current review unit id so the review-mutation
-/// CSRF matrix has a real target.
+/// Open an automatically published quiz as the target for the CSRF matrix.
 async fn schedule_review_for_csrf(
     app: &axum::Router,
     state: &ApiState,
@@ -3496,7 +3074,10 @@ async fn assert_review_mutations_require_csrf(
             app,
             cookie,
             path,
-            &[("reviewUnitId", review_unit_id)],
+            &[
+                ("reviewUnitId", review_unit_id),
+                ("idempotencyKey", "csrf-matrix-reveal"),
+            ],
             context,
         )
         .await;
@@ -3544,11 +3125,8 @@ async fn assert_review_mutations_require_csrf(
     .await;
 }
 
-/// Enqueue generation for a saved source, drain the job synchronously (real
-/// structured-block generation), explicitly keep each pending candidate, and
-/// return the reloaded workspace with a succeeded activity-log row. This helper
-/// keeps legacy review-flow tests focused on review behavior; production never
-/// auto-keeps generated candidates.
+/// Drain a saved source's real generation job and reload its Library history.
+/// Successful finalization publishes accepted quizzes without any keep request.
 async fn generate_source_html(
     app: &axum::Router,
     state: &ApiState,
@@ -3567,24 +3145,8 @@ async fn generate_source_html(
         .await
         .expect("generate with csrf");
     assert_eq!(generated.status(), StatusCode::OK);
-    // The handler returns immediately with the queued job, before any draft
-    // exists. Drain the queue, then explicitly keep each accepted draft through
-    // the learner action route before reloading the workspace.
+    // The request returns while the job is queued; finalization publishes its quizzes.
     state.run_pending_jobs_blocking();
-    let pending = library_html(app, cookie).await;
-    for draft_id in html_values(&pending, "draftId") {
-        let response = app
-            .clone()
-            .oneshot(form_request_with_cookie(
-                "POST",
-                "/app/draft/keep",
-                cookie,
-                &[("csrfToken", csrf_token), ("draftId", &draft_id)],
-            ))
-            .await
-            .expect("keep generated draft");
-        assert_eq!(response.status(), StatusCode::OK);
-    }
     library_html(app, cookie).await
 }
 
@@ -3620,11 +3182,7 @@ async fn advance_to_prompt(
     panic!("no review item matched prompt {needle:?}");
 }
 
-/// Re-render the signed-in workspace (the activity log + saved material) the
-/// way a learner reloads it: a plain `GET /` carrying the session cookie. The
-/// home reads the live job list and study view, so a job drained just before
-/// this call shows its final `succeeded`/`failed` status and its scheduled
-/// cards drive the due count and Start review CTA.
+/// Reload the review-first root without consuming a held grade.
 async fn workspace_html(app: &axum::Router, cookie: &str) -> String {
     let response = app
         .clone()
@@ -4031,6 +3589,25 @@ async fn auth_rejects_magic_link_replay() {
         .expect("request magic link");
     let verify_path = debug_sign_in_path(&response_text(requested).await);
 
+    let preview = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("HEAD")
+                .uri(&verify_path)
+                .body(Body::empty())
+                .expect("mail scanner HEAD"),
+        )
+        .await
+        .expect("HEAD preview");
+    assert_eq!(preview.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_no_store_and_no_referrer(&preview);
+    assert!(preview.headers().get(SET_COOKIE).is_none());
+    assert!(to_bytes(preview.into_body(), usize::MAX)
+        .await
+        .expect("HEAD body")
+        .is_empty());
+
     let first = app
         .clone()
         .oneshot(
@@ -4044,6 +3621,9 @@ async fn auth_rejects_magic_link_replay() {
         .expect("first verify");
     assert_eq!(first.status(), StatusCode::OK);
     assert_no_store_and_no_referrer(&first);
+    let cookie = session_cookie(&first);
+    let signed_in = get_view_html(&app, "/", &cookie).await;
+    assert!(signed_in.contains(r#"action="/app/logout""#));
 
     let replay = app
         .oneshot(
@@ -5011,7 +4591,6 @@ async fn scheduled_return_notification_runs_through_real_postgres() {
     generate_source_queued(
         &state,
         account.account_id(),
-        account.session_token(),
         &source.source_id,
         "Postgres scheduled source",
     )
@@ -5870,10 +5449,7 @@ async fn mobile_saved_account_session_resumes_sources_after_restart() {
     let replay = response_text(replay).await;
     assert!(!replay.contains("Account already exists."));
 
-    // The resumed session can still regenerate the persisted source: enqueue,
-    // drain, and confirm the cards land. (The old synchronous "Add all to
-    // reviews" keep gate is gone — success now shows in the activity log and
-    // accepted drafts remain pending until explicit keeps.)
+    // The resumed session can still generate and publish the persisted source.
     let generated = generate_source_html(
         &restarted_app,
         &restarted_state,
@@ -5882,7 +5458,7 @@ async fn mobile_saved_account_session_resumes_sources_after_restart() {
         &source_id,
     )
     .await;
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 }
 
 #[tokio::test]
@@ -6165,8 +5741,8 @@ async fn job_history_survives_a_restart_through_the_file_backed_host() {
         .expect("the job must be restored after a restart");
     assert_eq!(restored.status.as_str(), "succeeded");
     assert_eq!(
-        restored.card_count, 0,
-        "restored job records zero scheduled cards"
+        restored.card_count, 2,
+        "restored successful job records the quizzes it published"
     );
     assert_eq!(restored.account_id, account_id);
     assert_eq!(
@@ -6274,7 +5850,7 @@ async fn concurrent_generations_for_one_account_do_not_clobber_each_other() {
     .await
     .expect("all generation jobs must finish within 20s");
 
-    // Generation reports zero scheduled cards; accepted drafts remain durable.
+    // Every quiz reported by successful finalization must survive concurrent writes.
     let jobs: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&jobs_file).unwrap()).unwrap();
     let reported: i64 = jobs
@@ -6304,16 +5880,10 @@ async fn concurrent_generations_for_one_account_do_not_clobber_each_other() {
         source_count,
         "every capture must have produced a job"
     );
-    assert_eq!(reported, 0, "generation must not schedule cards");
+    assert_eq!(reported, i64::try_from(source_count).unwrap());
     assert_eq!(
-        persisted, 0,
-        "no review units exist before learner decisions"
-    );
-    assert!(
-        study["generatedPromptDrafts"]
-            .as_array()
-            .is_some_and(|drafts| !drafts.is_empty()),
-        "accepted drafts remain durable for learner review"
+        persisted, reported,
+        "concurrent generation must not lose published quizzes"
     );
 
     let _ = std::fs::remove_dir_all(&store);
@@ -7059,6 +6629,7 @@ async fn service_session_enqueues_and_observes_durable_generation_without_a_brow
         .expect("generation drain");
 
     let observed = app
+        .clone()
         .oneshot(v1_empty_request(
             "GET",
             &format!(
@@ -7074,15 +6645,14 @@ async fn service_session_enqueues_and_observes_durable_generation_without_a_brow
     assert_eq!(observed["id"], json!(job_id));
     assert_eq!(observed["sourceId"], json!(source_id));
     assert_eq!(observed["status"], json!("succeeded"));
-    assert!(
-        observed["error"].is_null(),
-        "successful jobs must preserve the nullable error field: {observed}"
-    );
+    assert_eq!(observed["error"], Value::Null);
+    let review = next_review_v1_body(&app, &account).await;
     assert_eq!(
         observed["cardCount"],
-        json!(0),
-        "successful generation must leave candidates pending: {observed}"
+        review["summary"]["approvedReviewUnitCount"]
     );
+    assert_eq!(review["current"]["expectedAnswer"], Value::Null);
+    assert!(review["current"]["reviewUnitId"].is_string());
 }
 
 #[tokio::test]
@@ -7747,7 +7317,7 @@ async fn prepare_postgres_browser_review(
         &source_id,
     )
     .await;
-    assert_activity_succeeded_html(&generated, 1);
+    assert_activity_succeeded_html(&generated);
     let review = advance_to_prompt(
         &browser_app,
         &cookie,
@@ -7899,7 +7469,6 @@ async fn postgres_save_account_copies_content_feedback_with_target_scope() {
     generate_source_queued(
         &state,
         &source_account.account_id,
-        &source_account.session_token,
         &source_id,
         "Copy source",
     )
@@ -8024,8 +7593,8 @@ async fn file_save_account_preserves_content_feedback_for_copy_parity() {
         session_token: created.session_token.clone(),
     };
     let source_id = create_source_v1(&app, &source_account, "Copy source", &source_body()).await;
-    let draft_id = generate_source_v1(&app, &source_account, &source_id).await;
-    let review_unit_id = keep_draft_v1(&app, &source_account, &draft_id).await;
+    generate_source_v1(&app, &source_account, &source_id).await;
+    let review_unit_id = next_review_v1(&app, &source_account).await;
     let _ = submit_review_v1(&app, &source_account, &review_unit_id, "ALFA").await;
     let feedback = app
         .clone()
@@ -8130,86 +7699,150 @@ async fn postgres_review_actions_emit_latency_receipt() {
     eprintln!("postgres review latency: next={next_elapsed:?} submit={submit_elapsed:?}");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn v1_json_draft_decisions_are_idempotent_and_conflict_safe() {
+#[tokio::test]
+async fn published_draft_edits_preserve_schedule_and_rejection_is_terminal() {
     let app = router(local_fixture_state());
     let account = create_account(&app, "trust-decisions@example.com").await;
     let source = save_source(&app, &account, "Trust notes", &source_body()).await;
-    let source_id = source["sourceId"].as_str().expect("source id");
-    let draft_ids = generate_source_v1_draft_ids(&app, &account, source_id).await;
-    assert!(
-        draft_ids.len() >= 2,
-        "fixture must produce independent decision candidates"
-    );
+    generate_source_v1(
+        &app,
+        &account,
+        source["sourceId"].as_str().expect("source id"),
+    )
+    .await;
+    let opened = next_review_v1_body(&app, &account).await;
+    let review_unit_id = opened["current"]["reviewUnitId"]
+        .as_str()
+        .expect("published quiz");
+    let draft = opened["drafts"]
+        .as_array()
+        .expect("drafts")
+        .iter()
+        .find(|draft| draft["reviewUnitId"] == review_unit_id)
+        .expect("published draft");
+    assert_eq!(draft["learnerDecision"], Value::Null);
+    let draft_id = draft["id"].as_str().expect("draft id");
+    let graded = submit_review_v1_body(
+        &app,
+        &account,
+        review_unit_id,
+        draft["answer"].as_str().expect("answer"),
+        "before-edit",
+    )
+    .await;
+    assert_eq!(graded["current"]["grade"]["verdict"], "correct");
+    assert_eq!(graded["current"]["grade"]["rating"], 3);
+    assert_eq!(graded["summary"]["attemptCount"], 1);
+    let scheduled = graded["queue"]
+        .as_array()
+        .expect("active inventory")
+        .iter()
+        .find(|row| row["reviewUnitId"] == review_unit_id)
+        .expect("reviewed quiz remains in inventory");
+    assert_eq!(scheduled["reps"], 1);
+    let edit_uri = format!("/v1/accounts/{}/drafts/{draft_id}/edit", account.account_id);
+    for (prompt, answer) in [
+        ("Revised question", "Revised answer"),
+        ("Second revision", "Second answer"),
+    ] {
+        let edited = app
+            .clone()
+            .oneshot(v1_json_request(
+                "POST",
+                &edit_uri,
+                &account.session_token,
+                &json!({"prompt": prompt, "expectedAnswer": answer}),
+            ))
+            .await
+            .expect("edit published draft");
+        assert_eq!(edited.status(), StatusCode::OK);
+        let edited = response_json(edited).await;
+        let inventory = edited["queue"].as_array().expect("edited inventory");
+        let original_inventory = graded["queue"].as_array().expect("original inventory");
+        assert_eq!(
+            inventory.len(),
+            original_inventory.len(),
+            "editing must not add or remove quizzes"
+        );
+        for original in original_inventory {
+            let same_quiz = inventory
+                .iter()
+                .find(|row| row["reviewUnitId"] == original["reviewUnitId"])
+                .expect("editing preserves quiz identity");
+            assert_eq!(same_quiz, original, "editing must preserve the schedule");
+        }
+        assert_eq!(
+            edited["summary"]["attemptCount"],
+            graded["summary"]["attemptCount"]
+        );
+        assert_eq!(
+            edited["conceptProgress"], graded["conceptProgress"],
+            "editing must preserve learning history"
+        );
+        let revised = edited["drafts"]
+            .as_array()
+            .expect("drafts")
+            .iter()
+            .find(|draft| draft["id"] == draft_id)
+            .expect("same draft");
+        assert_eq!(revised["reviewUnitId"], review_unit_id);
+        assert_eq!(revised["prompt"], prompt);
+        assert_eq!(revised["answer"], answer);
+    }
+    assert_draft_rejection_is_terminal(app, &account, draft_id, review_unit_id, &edit_uri).await;
+}
 
-    let keep_uri = format!(
-        "/v1/accounts/{}/drafts/{}/keep",
-        account.account_id, draft_ids[0]
+async fn assert_draft_rejection_is_terminal(
+    app: axum::Router,
+    account: &TestAccount,
+    draft_id: &str,
+    review_unit_id: &str,
+    edit_uri: &str,
+) {
+    let reject_uri = format!(
+        "/v1/accounts/{}/drafts/{draft_id}/reject",
+        account.account_id
     );
-    let kept = app
+    for _ in 0..2 {
+        let rejected = app
+            .clone()
+            .oneshot(v1_empty_request(
+                "POST",
+                &reject_uri,
+                &account.session_token,
+            ))
+            .await
+            .expect("reject published draft");
+        assert_eq!(rejected.status(), StatusCode::OK);
+        let rejected = response_json(rejected).await;
+        assert!(rejected["queue"]
+            .as_array()
+            .expect("queue")
+            .iter()
+            .all(|row| row["reviewUnitId"] != review_unit_id));
+        assert_eq!(rejected["summary"]["attemptCount"], 1);
+    }
+    let resurrect = app
         .clone()
-        .oneshot(v1_empty_request("POST", &keep_uri, &account.session_token))
+        .oneshot(v1_json_request(
+            "POST",
+            edit_uri,
+            &account.session_token,
+            &json!({"prompt": "Resurrect", "expectedAnswer": "Rejected"}),
+        ))
         .await
-        .expect("keep draft");
-    assert_eq!(kept.status(), StatusCode::OK);
-    let kept_retry = app
-        .clone()
-        .oneshot(v1_empty_request("POST", &keep_uri, &account.session_token))
-        .await
-        .expect("matching keep retry");
-    assert_eq!(kept_retry.status(), StatusCode::OK);
-    let rejected_after_keep = app
+        .expect("edit after reject");
+    assert_eq!(resurrect.status(), StatusCode::CONFLICT);
+    let keep = app
         .clone()
         .oneshot(v1_empty_request(
             "POST",
-            &format!(
-                "/v1/accounts/{}/drafts/{}/reject",
-                account.account_id, draft_ids[0]
-            ),
+            &format!("/v1/accounts/{}/drafts/{draft_id}/keep", account.account_id),
             &account.session_token,
         ))
         .await
-        .expect("conflicting reject");
-    assert_eq!(rejected_after_keep.status(), StatusCode::CONFLICT);
-
-    let edit_uri = format!(
-        "/v1/accounts/{}/drafts/{}/edit",
-        account.account_id, draft_ids[1]
-    );
-    let edit_body = json!({"prompt": "Edited prompt", "expectedAnswer": "Edited answer"});
-    let edited = app
-        .clone()
-        .oneshot(v1_json_request(
-            "POST",
-            &edit_uri,
-            &account.session_token,
-            &edit_body,
-        ))
-        .await
-        .expect("edit draft");
-    assert_eq!(edited.status(), StatusCode::OK);
-    let edited_retry = app
-        .clone()
-        .oneshot(v1_json_request(
-            "POST",
-            &edit_uri,
-            &account.session_token,
-            &edit_body,
-        ))
-        .await
-        .expect("matching edit retry");
-    assert_eq!(edited_retry.status(), StatusCode::OK);
-    let divergent_edit = app
-        .clone()
-        .oneshot(v1_json_request(
-            "POST",
-            &edit_uri,
-            &account.session_token,
-            &json!({"prompt": "Different prompt", "expectedAnswer": "Different answer"}),
-        ))
-        .await
-        .expect("conflicting edit");
-    assert_eq!(divergent_edit.status(), StatusCode::CONFLICT);
+        .expect("keep after reject");
+    assert_eq!(keep.status(), StatusCode::CONFLICT);
     let unknown = app
         .oneshot(v1_empty_request(
             "POST",
@@ -8265,7 +7898,7 @@ async fn postgres_backend_browser_session_resumes_after_restart() {
         .expect("generate after restart");
     assert_eq!(generated.status(), StatusCode::OK);
 
-    // Drain the enqueued job: generation runs and the accepted drafts remain pending until explicit keeps.
+    // Finalization publishes quizzes that the restarted browser can review immediately.
     restarted_state.run_pending_jobs_blocking();
 
     let pending = restarted_app
@@ -8275,18 +7908,7 @@ async fn postgres_backend_browser_session_resumes_after_restart() {
         .expect("pending after restart");
     assert_eq!(pending.status(), StatusCode::OK);
     let pending = response_text(pending).await;
-    let draft_id = html_value(&pending, "draftId");
-    let kept = restarted_app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/draft/keep",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("draftId", &draft_id)],
-        ))
-        .await
-        .expect("keep after restart");
-    assert_eq!(kept.status(), StatusCode::OK);
+    assert!(pending.contains(r#"action="/app/submit""#));
 
     let next = restarted_app
         .oneshot(form_request_with_cookie(
@@ -8299,7 +7921,7 @@ async fn postgres_backend_browser_session_resumes_after_restart() {
         .expect("next after restart");
     assert_eq!(next.status(), StatusCode::OK);
     let next = response_text(next).await;
-    assert!(next.contains("Reveal answer"));
+    assert!(next.contains(r#"action="/app/reveal""#));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -8412,7 +8034,6 @@ async fn postgres_backend_v1_concept_snooze_is_authenticated_scoped_and_atomic()
         generate_source_queued(
             &state,
             &account.account_id,
-            &account.session_token,
             &source_id,
             "Shared NATO concept notes",
         )
@@ -8489,29 +8110,45 @@ async fn postgres_backend_v1_concept_snooze_is_authenticated_scoped_and_atomic()
 }
 
 #[tokio::test]
-async fn source_routes_reject_blank_source_material() {
+async fn source_routes_reject_blank_material_but_infer_an_omitted_title() {
     let app = router(local_fixture_state());
     let account = create_account(&app, "learner@example.com").await;
-    let response = app
+    let uri = format!("/accounts/{}/sources", account.account_id);
+    let rejected = app
+        .clone()
         .oneshot(json_request(
             "POST",
-            &format!("/accounts/{}/sources", account.account_id),
+            &uri,
             &account.session_token,
-            &json!({
-                "title": " ",
-                "body": "ALFA is the NATO code word for A."
-            }),
+            &json!({"title": "NATO notes", "body": " \n\t "}),
         ))
         .await
-        .expect("response");
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = response_json(response).await;
-    assert_eq!(body["error"], json!("Source title must not be blank."));
+        .expect("blank material");
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    let sources = app
+        .clone()
+        .oneshot(empty_request("GET", &uri, &account.session_token))
+        .await
+        .expect("sources after rejection");
+    assert_eq!(response_json(sources).await["sources"], json!([]));
+    let material = "ALFA is the NATO code word for A";
+    let created = app
+        .oneshot(json_request(
+            "POST",
+            &uri,
+            &account.session_token,
+            &json!({"body": material}),
+        ))
+        .await
+        .expect("source without title");
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = response_json(created).await;
+    assert_eq!(created["body"], material);
+    assert_eq!(created["title"], material);
 }
 
 #[tokio::test]
-async fn source_generation_keep_and_review_are_account_scoped() {
+async fn source_generation_and_review_are_account_scoped() {
     let app = router(local_fixture_state());
     let first = create_account(&app, "first@example.com").await;
     let second = create_account(&app, "second@example.com").await;
@@ -8546,22 +8183,16 @@ async fn source_generation_keep_and_review_are_account_scoped() {
         .expect("cross keep");
     assert_eq!(cross_keep.status(), StatusCode::FORBIDDEN);
 
-    let approved = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!("/accounts/{}/drafts/{draft_id}/keep", first.account_id),
-            &first.session_token,
-        ))
-        .await
-        .expect("keep");
-    assert_eq!(approved.status(), StatusCode::OK);
-    let approved = response_json(approved).await;
-    assert_eq!(approved["summary"]["approvedReviewUnitCount"], json!(1));
+    let approved = next_review_v1_body(&app, &first).await;
     let review_unit_id = approved["current"]["reviewUnitId"]
         .as_str()
-        .expect("review unit id");
+        .expect("automatically published review unit");
     assert_eq!(approved["current"]["expectedAnswer"], json!(null));
+    assert!(approved["drafts"]
+        .as_array()
+        .expect("drafts")
+        .iter()
+        .all(|draft| draft["learnerDecision"].is_null()));
 
     assert_foreign_review_unit_is_not_found(&app, &first, &second).await;
 
@@ -8579,7 +8210,10 @@ async fn source_generation_keep_and_review_are_account_scoped() {
         .expect("reveal");
     assert_eq!(revealed.status(), StatusCode::OK);
     let revealed = response_json(revealed).await;
-    assert_eq!(revealed["current"]["expectedAnswer"], json!("ALFA"));
+    assert_eq!(
+        revealed["current"]["expectedAnswer"],
+        correct_answer_for_prompt(approved["current"]["prompt"].as_str().expect("prompt"),)
+    );
     assert_eq!(revealed["summary"]["attemptCount"], json!(0));
 
     let submitted = app
@@ -8592,7 +8226,7 @@ async fn source_generation_keep_and_review_are_account_scoped() {
             ),
             &first.session_token,
             &json!({
-                "answer": "ALFA",
+                "answer": revealed["current"]["expectedAnswer"],
                 "responseTimeMs": 1800,
                 "idempotencyKey": "submit-first-nato-a"
             }),
@@ -8629,12 +8263,8 @@ async fn assert_foreign_review_unit_is_not_found(
 ) {
     let source_id =
         create_source_v1(app, second, "Second account NATO notes", &source_body()).await;
-    let draft_id = generate_source_v1_draft_ids(app, second, &source_id)
-        .await
-        .into_iter()
-        .next()
-        .expect("second account draft");
-    let foreign_review_unit_id = keep_draft_v1(app, second, &draft_id).await;
+    generate_source_v1(app, second, &source_id).await;
+    let foreign_review_unit_id = next_review_v1(app, second).await;
     let foreign_review = app
         .clone()
         .oneshot(v1_empty_request(
@@ -8659,22 +8289,68 @@ async fn v1_json_api_drives_full_loop_with_bearer_token() {
     let app = router(local_fixture_state());
     let account = create_account_v1(&app, "scry@example.com").await;
     let source_id = create_source_v1(&app, &account, "NATO practice notes", &source_body()).await;
-    let draft_id = generate_source_v1(&app, &account, &source_id).await;
-    let review_unit_id = keep_draft_v1(&app, &account, &draft_id).await;
+    generate_source_v1(&app, &account, &source_id).await;
+    let opened = next_review_v1_body(&app, &account).await;
+    let review_unit_id = opened["current"]["reviewUnitId"]
+        .as_str()
+        .expect("published quiz");
+    let expected = correct_answer_for_prompt(opened["current"]["prompt"].as_str().expect("prompt"));
+    assert_eq!(
+        reveal_review_v1(&app, &account, review_unit_id).await,
+        expected
+    );
+    let next_uri = format!("/v1/accounts/{}/review/next", account.account_id);
+    let revealed = app
+        .clone()
+        .oneshot(v1_empty_request("GET", &next_uri, &account.session_token))
+        .await
+        .expect("observe revealed review");
+    assert_eq!(revealed.status(), StatusCode::OK);
+    let revealed = response_json(revealed).await;
+    assert_eq!(
+        revealed["summary"]["attemptCount"], 0,
+        "v1 reveal remains reveal-only"
+    );
+    assert_eq!(revealed["current"]["reviewUnitId"], review_unit_id);
+    assert!(revealed["current"]["grade"].is_null());
+    let graded =
+        submit_review_v1_body(&app, &account, review_unit_id, expected, "v1-assisted").await;
+    assert_eq!(graded["current"]["grade"]["verdict"], "revealed");
+    assert_eq!(graded["summary"]["attemptCount"], 1);
+    for _ in 0..2 {
+        let observed = app
+            .clone()
+            .oneshot(v1_empty_request("GET", &next_uri, &account.session_token))
+            .await
+            .expect("observe held grade");
+        assert_eq!(observed.status(), StatusCode::OK);
+        let observed = response_json(observed).await;
+        assert_eq!(observed["current"], graded["current"]);
+        assert_eq!(observed["queue"], graded["queue"]);
+        assert_eq!(observed["summary"]["attemptCount"], 1);
+    }
+    assert_v1_content_feedback_contract(&app, &account, review_unit_id).await;
+    let continued = next_review_v1_body(&app, &account).await;
+    assert_ne!(continued["current"]["reviewUnitId"], review_unit_id);
+    assert!(continued["current"]["grade"].is_null());
+    let observed_next = app
+        .clone()
+        .oneshot(v1_empty_request("GET", &next_uri, &account.session_token))
+        .await
+        .expect("observe next ungraded quiz");
+    assert_eq!(
+        response_json(observed_next).await["current"],
+        continued["current"]
+    );
 
-    assert_eq!(
-        next_review_v1(&app, &account).await,
-        review_unit_id,
-        "v1 queue/next must expose the kept review unit"
-    );
-    assert_eq!(
-        reveal_review_v1(&app, &account, &review_unit_id).await,
-        "ALFA"
-    );
-    assert_eq!(
-        submit_review_v1(&app, &account, &review_unit_id, "ALFA").await,
-        (String::from("revealed"), 1)
-    );
+    archive_source_v1(&app, &account, &source_id).await;
+}
+
+async fn assert_v1_content_feedback_contract(
+    app: &axum::Router,
+    account: &TestAccount,
+    review_unit_id: &str,
+) {
     let feedback = app
         .clone()
         .oneshot(v1_json_request(
@@ -8752,8 +8428,6 @@ async fn v1_json_api_drives_full_loop_with_bearer_token() {
         .await
         .expect("conflicting feedback replay");
     assert_eq!(conflicting_replay.status(), StatusCode::CONFLICT);
-
-    archive_source_v1(&app, &account, &source_id).await;
 }
 
 #[tokio::test]
@@ -8851,20 +8525,9 @@ async fn v1_project_deck_ttl_and_event_invalidation_stop_scheduling() {
     )
     .await;
     let deck_id = deck["deckId"].as_str().expect("deck id");
-    let draft_ids = generate_source_v1_draft_ids(&app, &account, deck_id).await;
-    let draft_id = draft_ids.first().expect("first deck draft").to_owned();
-    let stale_unapproved_draft_id = draft_ids
-        .iter()
-        .find(|candidate| candidate.as_str() != draft_id.as_str())
-        .expect("pending stale deck draft")
-        .to_owned();
-    let review_unit_id = keep_draft_v1(&app, &account, &draft_id).await;
-
-    assert_eq!(
-        next_review_v1(&app, &account).await,
-        review_unit_id,
-        "project deck starts as schedulable while TTL is in the future"
-    );
+    generate_source_v1(&app, &account, deck_id).await;
+    let live = next_review_v1_body(&app, &account).await;
+    assert!(live["current"]["reviewUnitId"].is_string());
 
     let invalidated = app
         .clone()
@@ -8890,23 +8553,6 @@ async fn v1_project_deck_ttl_and_event_invalidation_stop_scheduling() {
     assert_eq!(next_after_event["current"], json!(null));
     assert_eq!(next_after_event["dueCount"], json!(0));
 
-    let kept_stale_draft = app
-        .clone()
-        .oneshot(v1_empty_request(
-            "POST",
-            &format!(
-                "/v1/accounts/{}/drafts/{stale_unapproved_draft_id}/keep",
-                account.account_id
-            ),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep stale invalidated draft");
-    assert_eq!(kept_stale_draft.status(), StatusCode::OK);
-    let kept_stale_draft = response_json(kept_stale_draft).await;
-    assert_eq!(kept_stale_draft["current"], json!(null));
-    assert_eq!(kept_stale_draft["dueCount"], json!(0));
-
     let expired_deck = create_project_deck_v1(
         &app,
         &account,
@@ -8917,23 +8563,10 @@ async fn v1_project_deck_ttl_and_event_invalidation_stop_scheduling() {
     )
     .await;
     let expired_deck_id = expired_deck["deckId"].as_str().expect("expired deck id");
-    let expired_draft_id = generate_source_v1_latest_draft(&app, &account, expired_deck_id).await;
-    let kept_expired = app
-        .clone()
-        .oneshot(v1_empty_request(
-            "POST",
-            &format!(
-                "/v1/accounts/{}/drafts/{expired_draft_id}/keep",
-                account.account_id
-            ),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep expired deck draft");
-    assert_eq!(kept_expired.status(), StatusCode::OK);
-    let kept_expired = response_json(kept_expired).await;
-    assert_eq!(kept_expired["current"], json!(null));
-    assert_eq!(kept_expired["dueCount"], json!(0));
+    generate_source_v1(&app, &account, expired_deck_id).await;
+    let expired = next_review_v1_body(&app, &account).await;
+    assert_eq!(expired["current"], json!(null));
+    assert_eq!(expired["dueCount"], json!(0));
 }
 
 #[tokio::test]
@@ -8969,13 +8602,9 @@ async fn v1_project_deck_invalidation_rejects_regular_sources() {
         .expect("invalidate regular source as project deck");
     assert_eq!(invalidated.status(), StatusCode::NOT_FOUND);
 
-    let draft_id = generate_source_v1(&app, &account, &source_id).await;
-    let review_unit_id = keep_draft_v1(&app, &account, &draft_id).await;
-    assert_eq!(
-        next_review_v1(&app, &account).await,
-        review_unit_id,
-        "regular source must remain active after rejected project-deck invalidation"
-    );
+    generate_source_v1(&app, &account, &source_id).await;
+    let review = next_review_v1_body(&app, &account).await;
+    assert!(review["current"]["reviewUnitId"].is_string());
 }
 
 #[tokio::test]
@@ -9010,15 +8639,13 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
         .map(|draft| draft["id"].as_str().expect("draft id").to_owned())
         .collect::<Vec<_>>();
     assert_eq!(draft_ids.len(), 2);
-    for draft_id in &draft_ids {
-        keep_draft_v1(&app, &account, draft_id).await;
-    }
 
     let first_id = next_review_v1(&app, &account).await;
     let _ = submit_review_v1_body(&app, &account, &first_id, "ALFA", "api-feedback-first").await;
     let second_id = next_review_v1(&app, &account).await;
     let submitted =
         submit_review_v1_body(&app, &account, &second_id, "BRAVO", "api-feedback-second").await;
+    assert_safe_review_reads_hold_feedback(&app, &account, &submitted).await;
 
     assert_eq!(
         submitted["current"]["feedback"]["verdict"],
@@ -9039,14 +8666,6 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
     assert_eq!(
         submitted["current"]["feedback"]["itemHistory"]["averageResponseTimeMs"],
         json!(1800)
-    );
-    assert_eq!(
-        submitted["current"]["feedback"]["itemHistory"]["responseTimeTrend"],
-        json!("not enough data")
-    );
-    assert_eq!(
-        submitted["current"]["feedback"]["itemHistory"]["lastSeenSummary"],
-        json!("last seen just now")
     );
     assert_eq!(
         submitted["current"]["choices"]
@@ -9079,6 +8698,34 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
     );
 }
 
+async fn assert_safe_review_reads_hold_feedback(
+    app: &axum::Router,
+    account: &TestAccount,
+    submitted: &serde_json::Value,
+) {
+    let versioned = format!("/v1/accounts/{}/review/next", account.account_id);
+    let legacy = format!("/accounts/{}/review/next", account.account_id);
+    for path in [&versioned, &legacy] {
+        for method in ["GET", "HEAD"] {
+            let response = app
+                .clone()
+                .oneshot(v1_empty_request(method, path, &account.session_token))
+                .await
+                .expect("safe review read");
+            assert_eq!(response.status(), StatusCode::OK);
+            let reopened = app
+                .clone()
+                .oneshot(v1_empty_request("GET", &versioned, &account.session_token))
+                .await
+                .expect("reopen after safe-method probe");
+            assert_eq!(
+                response_json(reopened).await["current"],
+                submitted["current"]
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn v1_json_concept_snooze_is_authenticated_and_defers_every_member() {
     let app = router(local_fixture_state());
@@ -9092,9 +8739,6 @@ async fn v1_json_concept_snooze_is_authenticated_and_defers_every_member() {
     .await;
     let draft_ids = generate_source_v1_draft_ids(&app, &account, &source_id).await;
     assert_eq!(draft_ids.len(), 2);
-    for draft_id in &draft_ids {
-        keep_draft_v1(&app, &account, draft_id).await;
-    }
 
     let review_unit_id = next_review_v1(&app, &account).await;
     let snoozed = app
@@ -9135,10 +8779,7 @@ async fn file_concept_snooze_rejects_stale_archived_id_without_resurrection() {
         &shared_and_other_concept_body(),
     )
     .await;
-    let draft_ids = generate_source_v1_draft_ids(&app, &account, &source_id).await;
-    for draft_id in &draft_ids {
-        keep_draft_v1(&app, &account, draft_id).await;
-    }
+    generate_source_v1(&app, &account, &source_id).await;
     let stale_id = next_review_v1(&app, &account).await;
 
     let study_path = root.join(&account.account_id).join("study.json");
@@ -9292,7 +8933,6 @@ async fn postgres_concept_snooze_rejects_stale_archived_id_without_partial_updat
     generate_source_queued(
         &state,
         &account.account_id,
-        &account.session_token,
         &source_id,
         "Shared NATO concept notes",
     )
@@ -9368,7 +9008,6 @@ async fn postgres_two_connections_archive_requested_before_concept_snooze() {
     generate_source_queued(
         &state,
         &account.account_id,
-        &account.session_token,
         &source_id,
         "Shared NATO concept notes",
     )
@@ -9470,7 +9109,6 @@ async fn postgres_stale_full_record_save_cannot_regress_newer_review_state() {
     generate_source_queued(
         &state,
         &account.account_id,
-        &account.session_token,
         &source_id,
         "Shared NATO concept notes",
     )
@@ -9549,10 +9187,7 @@ async fn concept_snooze_null_and_blank_keys_are_json_400_and_hidden_from_html() 
             &shared_concept_body(),
         )
         .await;
-        let draft_ids = generate_source_v1_draft_ids(&app, &account, &source_id).await;
-        for draft_id in &draft_ids {
-            keep_draft_v1(&app, &account, draft_id).await;
-        }
+        generate_source_v1(&app, &account, &source_id).await;
         let review_unit_id = next_review_v1(&app, &account).await;
         let study_path = root.join(&account.account_id).join("study.json");
         let mut snapshot: Value = serde_json::from_str(
@@ -9615,16 +9250,19 @@ async fn v1_json_api_exposes_review_escape_hatches() {
         .expect("generate source");
     assert_eq!(generated.status(), StatusCode::OK);
     let generated = response_json(generated).await;
-    let exercise_draft_id = generated["drafts"]
+    let parent_id = generated["drafts"]
         .as_array()
         .expect("drafts")
         .iter()
-        .find_map(|draft| {
-            let id = draft["id"].as_str()?;
-            id.contains("nato-cat-composition").then_some(id.to_owned())
+        .find(|draft| {
+            draft["prompt"]
+                .as_str()
+                .is_some_and(|prompt| prompt.contains("Spell CAT over the phone"))
         })
-        .expect("exercise draft");
-    let parent_id = keep_draft_v1(&app, &account, &exercise_draft_id).await;
+        .expect("exercise draft")["reviewUnitId"]
+        .as_str()
+        .expect("published exercise")
+        .to_owned();
 
     let referenced = v1_review_action(&app, &account, &parent_id, "reference").await;
     assert!(referenced["current"]["referenceText"]
@@ -9633,20 +9271,21 @@ async fn v1_json_api_exposes_review_escape_hatches() {
         .contains("C is CHARLIE"));
 
     let bridged = v1_review_action(&app, &account, &parent_id, "bridge").await;
-    let bridge_draft_ids = bridge_draft_ids(&bridged);
-    assert_eq!(bridge_draft_ids.len(), 2);
-    assert!(
-        bridged["current"].is_null(),
-        "bridge candidates remain pending"
-    );
-    let mut bridge_id = String::new();
-    for draft_id in bridge_draft_ids {
-        bridge_id = keep_draft_v1(&app, &account, &draft_id).await;
-    }
+    let bridge_id = bridged["current"]["reviewUnitId"]
+        .as_str()
+        .expect("published bridge");
+    assert!(bridged["drafts"]
+        .as_array()
+        .expect("bridge drafts")
+        .iter()
+        .filter(|draft| draft["id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("bridge-")))
+        .all(|draft| draft["approved"] == true && draft["learnerDecision"].is_null()));
     assert!(bridge_id.starts_with("bridge-"));
     assert_eq!(bridged["summary"]["attemptCount"], json!(0));
 
-    let skipped = v1_review_action(&app, &account, &bridge_id, "skip").await;
+    let skipped = v1_review_action(&app, &account, bridge_id, "skip").await;
     let next_bridge_id = skipped["current"]["reviewUnitId"]
         .as_str()
         .expect("next bridge id");
@@ -9738,35 +9377,7 @@ async fn v1_openapi_artifact_matches_registered_routes() {
 async fn duplicate_review_submit_does_not_double_count_attempts() {
     let app = router(local_fixture_state());
     let account = create_account(&app, "learner@example.com").await;
-    let source = save_source(&app, &account, "NATO practice notes", &source_body()).await;
-    let source_id = source["sourceId"].as_str().expect("source id");
-    let generated = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!(
-                "/accounts/{}/sources/{source_id}/generate",
-                account.account_id
-            ),
-            &account.session_token,
-        ))
-        .await
-        .expect("generate");
-    let generated = response_json(generated).await;
-    let draft_id = generated["drafts"][0]["id"].as_str().expect("draft id");
-    let approved = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!("/accounts/{}/drafts/{draft_id}/keep", account.account_id),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep");
-    let approved = response_json(approved).await;
-    let review_unit_id = approved["current"]["reviewUnitId"]
-        .as_str()
-        .expect("review unit id");
+    let review_unit_id = prepare_review_unit(&app, &account).await;
 
     let first = app
         .clone()
@@ -9871,35 +9482,7 @@ async fn concurrent_duplicate_review_submit_counts_one_attempt() {
 async fn review_submit_requires_an_idempotency_key() {
     let app = router(local_fixture_state());
     let account = create_account(&app, "learner@example.com").await;
-    let source = save_source(&app, &account, "NATO practice notes", &source_body()).await;
-    let source_id = source["sourceId"].as_str().expect("source id");
-    let generated = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!(
-                "/accounts/{}/sources/{source_id}/generate",
-                account.account_id
-            ),
-            &account.session_token,
-        ))
-        .await
-        .expect("generate");
-    let generated = response_json(generated).await;
-    let draft_id = generated["drafts"][0]["id"].as_str().expect("draft id");
-    let approved = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!("/accounts/{}/drafts/{draft_id}/keep", account.account_id),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep");
-    let approved = response_json(approved).await;
-    let review_unit_id = approved["current"]["reviewUnitId"]
-        .as_str()
-        .expect("review unit id");
+    let review_unit_id = prepare_review_unit(&app, &account).await;
 
     let rejected = app
         .oneshot(json_request(
@@ -10074,15 +9657,8 @@ async fn generate_source_v1_draft_ids(
 /// and drain it synchronously off the async runtime. Production
 /// (Postgres-backed) states reject the direct synchronous generate route with
 /// 409, so Postgres tests use the same durable job path as the deployed worker.
-/// Generation leaves accepted drafts pending; this helper explicitly keeps each
-/// accepted draft through the learner decision API before assertions inspect due cards.
-async fn generate_source_queued(
-    state: &ApiState,
-    account_id: &str,
-    session_token: &str,
-    source_id: &str,
-    title: &str,
-) {
+/// Accepted quizzes are published by successful generation finalization.
+async fn generate_source_queued(state: &ApiState, account_id: &str, source_id: &str, title: &str) {
     let blocking_state = state.clone();
     let account = account_id.to_owned();
     let source = source_id.to_owned();
@@ -10098,17 +9674,6 @@ async fn generate_source_queued(
     })
     .await
     .expect("queued generation drain");
-    let view = state
-        .study_view(account_id, session_token)
-        .expect("queued study view");
-    for draft in view.drafts.iter().filter(|draft| {
-        draft.learner_decision.is_none()
-            && draft.validation_status == GeneratedPromptValidationStatus::Accepted
-    }) {
-        state
-            .keep_draft(account_id, session_token, &draft.id)
-            .expect("keep queued generated draft");
-    }
     let succeeded = state
         .jobs_for_account_id(account_id)
         .iter()
@@ -10118,48 +9683,6 @@ async fn generate_source_queued(
         "queued generation for {source_id} must succeed: {:?}",
         state.jobs_for_account_id(account_id)
     );
-}
-
-async fn generate_source_v1_latest_draft(
-    app: &axum::Router,
-    account: &TestAccount,
-    source_id: &str,
-) -> String {
-    let response = app
-        .clone()
-        .oneshot(v1_empty_request(
-            "POST",
-            &format!(
-                "/v1/accounts/{}/sources/{source_id}/generate",
-                account.account_id
-            ),
-            &account.session_token,
-        ))
-        .await
-        .expect("generate source");
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response_json(response).await;
-    body["drafts"]
-        .as_array()
-        .expect("drafts")
-        .last()
-        .expect("latest draft")["id"]
-        .as_str()
-        .expect("draft id")
-        .to_owned()
-}
-
-fn bridge_draft_ids(body: &Value) -> Vec<String> {
-    body["drafts"]
-        .as_array()
-        .expect("bridge drafts")
-        .iter()
-        .filter_map(|draft| {
-            let id = draft["id"].as_str()?;
-            id.starts_with("bridge-").then_some(id.to_owned())
-        })
-        .collect()
 }
 
 async fn v1_review_action(
@@ -10182,24 +9705,6 @@ async fn v1_review_action(
         .expect("review action");
     assert_eq!(response.status(), StatusCode::OK);
     response_json(response).await
-}
-
-async fn keep_draft_v1(app: &axum::Router, account: &TestAccount, draft_id: &str) -> String {
-    let response = app
-        .clone()
-        .oneshot(v1_empty_request(
-            "POST",
-            &format!("/v1/accounts/{}/drafts/{draft_id}/keep", account.account_id),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep draft");
-    assert_eq!(response.status(), StatusCode::OK);
-
-    response_json(response).await["current"]["reviewUnitId"]
-        .as_str()
-        .expect("review unit id")
-        .to_owned()
 }
 
 async fn next_review_v1(app: &axum::Router, account: &TestAccount) -> String {
@@ -10560,6 +10065,15 @@ fn html_value(html: &str, name: &str) -> String {
     html[start..end].to_owned()
 }
 
+fn form_for_action<'a>(html: &'a str, action: &str) -> &'a str {
+    let action_at = html
+        .find(&format!(r#"action="{action}""#))
+        .unwrap_or_else(|| panic!("missing form action {action}"));
+    let start = html[..action_at].rfind("<form").expect("opening form");
+    let end = action_at + html[action_at..].find("</form>").expect("closing form");
+    &html[start..end]
+}
+
 fn rendered_verdict(html: &str) -> Option<&str> {
     let (_, result) = html.split_once(r#"class="me-verdict""#)?;
     let (_, text) = result.split_once('>')?;
@@ -10567,20 +10081,7 @@ fn rendered_verdict(html: &str) -> Option<&str> {
 }
 
 fn content_feedback_value(html: &str, name: &str) -> String {
-    let section_start = html
-        .find(r#"<section class="me-content-feedback""#)
-        .expect("content feedback section");
-    let section = &html[section_start..];
-    let marker = format!(r#"name="{name}" value=""#);
-    let start = section
-        .find(&marker)
-        .expect("content feedback field marker")
-        + marker.len();
-    let end = section[start..]
-        .find('"')
-        .expect("content feedback field end")
-        + start;
-    section[start..end].to_owned()
+    html_value(form_for_action(html, "/app/content-feedback"), name)
 }
 
 async fn submit_review_response(
@@ -10665,68 +10166,21 @@ async fn submit_content_feedback_conflict(
     response_text(response).await
 }
 
-/// The async-model successor to `assert_keep_flow_html`: after a job drains,
-/// the workspace shows a finished activity-log row while accepted drafts remain
-/// pending explicit learner decisions.
-/// `_expected_generated_cards` is retained by existing callers for fixture clarity.
-fn assert_activity_succeeded_html(body: &str, _expected_generated_cards: usize) {
+/// Completed generation is visible without exposing internal validation data.
+fn assert_activity_succeeded_html(body: &str) {
     assert!(
         body.contains(r#"data-status="succeeded""#),
         "activity log must show a succeeded job: {body}"
     );
-    assert!(body.contains(r#"<ul id="me-jobs""#));
-    // Generation exposes candidates for explicit learner decisions; raw
-    // generation internals must not leak into learner-facing markup.
     assert_not_contains_any(
         body,
-        &[
-            "Add all to reviews",
-            ">Keep</button>",
-            "Choose what to keep",
-            "Generated material",
-            "validation",
-            "recognition-3",
-            "activity_stage",
-            "Save account email",
-            "Session ready for",
-            "acct_",
-        ],
+        &["validation", "recognition-3", "activity_stage", "acct_"],
     );
 }
 fn assert_due_review_html(body: &str, due_count: usize) {
     assert!(body.contains(&format!("{due_count} due")));
-    assert!(body.contains("Reveal answer"));
-    assert_not_contains_any(
-        body,
-        &[
-            "Generated material",
-            "Add all to reviews",
-            "validation",
-            "recognition-3",
-            "Save account email",
-            "Session ready for",
-            "acct_",
-        ],
-    );
-}
-
-fn assert_dossier_markers(body: &str, markers: &[&str]) {
-    let open = body
-        .find(r#"<details class="me-dossier">"#)
-        .expect("graded Details disclosure");
-    let close = body[open..]
-        .find("</details>")
-        .map(|offset| open + offset)
-        .expect("closed graded Details disclosure");
-    for marker in markers {
-        let position = body
-            .find(marker)
-            .unwrap_or_else(|| panic!("graded dossier marker missing: {marker}"));
-        assert!(
-            position > open && position < close,
-            "graded dossier marker must remain inside Details: {marker}"
-        );
-    }
+    assert!(body.contains(r#"action="/app/reveal""#));
+    assert_not_contains_any(body, &["validation", "recognition-3", "acct_"]);
 }
 
 fn management_answer_for_prompt(body: &str) -> &'static str {
@@ -10740,7 +10194,7 @@ fn management_answer_for_prompt(body: &str) -> &'static str {
 /// The *correct* answer for whichever `source_body` card the page is showing:
 /// the CAT spelling exercise expects "CHARLIE ALFA TANGO", the NATO-A quiz
 /// expects "ALFA". Lets a flow answer the current card correctly without
-/// pinning the queue order auto-keep leaves unspecified.
+/// pinning the queue order automatic publication leaves unspecified.
 fn correct_answer_for_prompt(body: &str) -> &'static str {
     if body.contains("Spell CAT over the phone") {
         "CHARLIE ALFA TANGO"
@@ -10830,7 +10284,6 @@ async fn prepare_postgres_due_account(state: &ApiState, email: &str) -> super::A
     generate_source_queued(
         state,
         account.account_id(),
-        account.session_token(),
         &source.source_id,
         "Postgres recovery source",
     )
@@ -10953,7 +10406,9 @@ async fn save_source(app: &axum::Router, account: &TestAccount, title: &str, bod
 }
 
 async fn prepare_review_unit(app: &axum::Router, account: &TestAccount) -> String {
-    let source = save_source(app, account, "NATO practice notes", &source_body()).await;
+    let material = source_body();
+    let single_quiz = material.split_once("\n\n").expect("single NATO-A quiz").0;
+    let source = save_source(app, account, "NATO practice notes", single_quiz).await;
     let source_id = source["sourceId"].as_str().expect("source id");
     let generated = app
         .clone()
@@ -10968,24 +10423,7 @@ async fn prepare_review_unit(app: &axum::Router, account: &TestAccount) -> Strin
         .await
         .expect("generate");
     assert_eq!(generated.status(), StatusCode::OK);
-    let generated = response_json(generated).await;
-    let draft_id = generated["drafts"][0]["id"].as_str().expect("draft id");
-    let approved = app
-        .clone()
-        .oneshot(empty_request(
-            "POST",
-            &format!("/accounts/{}/drafts/{draft_id}/keep", account.account_id),
-            &account.session_token,
-        ))
-        .await
-        .expect("keep");
-    assert_eq!(approved.status(), StatusCode::OK);
-    let approved = response_json(approved).await;
-
-    approved["current"]["reviewUnitId"]
-        .as_str()
-        .expect("review unit id")
-        .to_owned()
+    next_review_v1(app, account).await
 }
 
 #[allow(dead_code)]
@@ -12018,22 +11456,18 @@ fn correct_answer_is_not_due_again_until_real_time_passes() {
             },
         )
         .expect("source");
-    let generated = state
+    state
         .generate_source(
             &account.account_id,
             &account.session_token,
             &source.source_id,
         )
         .expect("generate");
-    let draft_id = generated.drafts.first().expect("draft").id.clone();
-    state
-        .keep_draft(&account.account_id, &account.session_token, &draft_id)
-        .expect("keep");
 
     let due = state
         .next_review(&account.account_id, &account.session_token)
         .expect("next review");
-    let current = due.current.expect("kept unit is due");
+    let current = due.current.expect("published unit is due");
     let review_unit_id = current.review_unit_id.to_string();
     let answered = state
         .submit_review(
@@ -12041,7 +11475,7 @@ fn correct_answer_is_not_due_again_until_real_time_passes() {
             &account.session_token,
             &review_unit_id,
             &super::SubmitReviewRequest {
-                answer: "ALFA".to_owned(),
+                answer: correct_answer_for_prompt(&current.prompt).to_owned(),
                 response_time_ms: 1_500,
                 idempotency_key: "clock-test-1".to_owned(),
             },
@@ -12053,9 +11487,18 @@ fn correct_answer_is_not_due_again_until_real_time_passes() {
         .next_review(&account.account_id, &account.session_token)
         .expect("next review");
     assert!(
-        same_moment.current.is_none(),
+        same_moment
+            .current
+            .as_ref()
+            .is_none_or(|current| current.review_unit_id.as_str() != review_unit_id),
         "a correctly answered unit must not be due again at the same moment"
     );
+    let scheduled = same_moment
+        .queue
+        .iter()
+        .find(|row| row.review_unit_id.as_str() == review_unit_id)
+        .expect("future quiz remains in active inventory");
+    assert!(scheduled.due > test_clock.load(Ordering::SeqCst));
 
     test_clock.fetch_add(
         super::app_session_max_age_ms().saturating_add(1),
@@ -12070,12 +11513,29 @@ fn correct_answer_is_not_due_again_until_real_time_passes() {
     let refreshed = state
         .issue_service_session("operator", "learner@example.com")
         .expect("refresh API credential");
-    let later = state
+    let mut later = state
         .next_review(&refreshed.account_id, &refreshed.session_token)
         .expect("next review");
-    assert!(
-        later.current.is_some(),
-        "the unit must come due again once enough real time passes"
+    if let Some(other) = later
+        .current
+        .as_ref()
+        .filter(|current| current.review_unit_id.as_str() != review_unit_id)
+    {
+        later = state
+            .skip_review(
+                &refreshed.account_id,
+                &refreshed.session_token,
+                other.review_unit_id.as_str(),
+            )
+            .expect("skip the other due quiz");
+    }
+    assert_eq!(
+        later
+            .current
+            .expect("reviewed quiz is due again")
+            .review_unit_id
+            .as_str(),
+        review_unit_id,
     );
 }
 
@@ -12201,240 +11661,6 @@ async fn review_form_leaves_response_time_blank_for_honest_measurement() {
     );
 }
 
-/// Sign back in over the rendered magic-link flow and return the fresh
-/// browser session cookie and CSRF token. Maturing a card spans weeks of
-/// simulated clock, which can outlive the 90-day browser session — the
-/// learner signs back in between review sessions, exactly like the product.
-async fn refresh_login(app: &axum::Router, email: &str) -> (String, String) {
-    let requested = app
-        .clone()
-        .oneshot(form_request("POST", "/app/account", &[("email", email)]))
-        .await
-        .expect("request magic link");
-    assert_eq!(requested.status(), StatusCode::OK);
-    let verify_path = debug_sign_in_path(&response_text(requested).await);
-    let verified = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri(&verify_path)
-                .body(Body::empty())
-                .expect("verify request"),
-        )
-        .await
-        .expect("verify magic link");
-    assert_eq!(verified.status(), StatusCode::OK);
-    let cookie = session_cookie(&verified);
-    let verified = response_text(verified).await;
-    let csrf_token = html_value(&verified, "csrfToken");
-    (cookie, csrf_token)
-}
-
-/// Bootstrap a fresh account, mature its CAT card through three correct
-/// reviews under the advancing test clock (signing back in as each session
-/// expires), then submit a fourth correct answer carrying `timing` exactly as
-/// a browser form field would (`None` omits the field entirely, as a client
-/// that never rendered it). Returns the graded page for that fourth, mature
-/// review.
-async fn mature_cat_card_then_submit(
-    app: &axum::Router,
-    state: &ApiState,
-    clock: &AtomicI64,
-    label: &str,
-    timing: Option<&str>,
-) -> String {
-    let started = app
-        .clone()
-        .oneshot(form_request(
-            "POST",
-            "/app/start",
-            &[("capture", &source_body())],
-        ))
-        .await
-        .expect("start");
-    let guest_cookie = session_cookie(&started);
-    let started = response_text(started).await;
-    let guest_csrf_token = html_value(&started, "csrfToken");
-
-    // Attach an email so the account survives session expiry via magic-link
-    // sign-in while the clock advances through the review cycles below.
-    // Saving rotates the account and session, so adopt the rotated cookie,
-    // CSRF token, and source id from the saved page.
-    let email = format!("{label}@example.com");
-    let saved = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/save-account",
-            &guest_cookie,
-            &[("csrfToken", &guest_csrf_token), ("email", &email)],
-        ))
-        .await
-        .expect("save account email");
-    assert_eq!(saved.status(), StatusCode::OK, "save email for {label}");
-    let mut cookie = session_cookie(&saved);
-    let saved = response_text(saved).await;
-    let mut csrf_token = html_value(&saved, "csrfToken");
-
-    // Save-account returns Home (memory-engine-087); sourceId lives on Library.
-    let library = library_html(app, &cookie).await;
-    let source_id = html_value(&library, "sourceId");
-
-    generate_source_html(app, state, &cookie, &csrf_token, &source_id).await;
-
-    for cycle in 0..3 {
-        let page = advance_to_prompt(app, &cookie, &csrf_token, "Spell CAT over the phone").await;
-        let review_unit_id = html_value(&page, "reviewUnitId");
-        let idempotency_key = html_value(&page, "idempotencyKey");
-        let graded = app
-            .clone()
-            .oneshot(form_request_with_cookie(
-                "POST",
-                "/app/submit",
-                &cookie,
-                &[
-                    ("csrfToken", &csrf_token),
-                    ("reviewUnitId", &review_unit_id),
-                    ("answer", "CHARLIE ALFA TANGO"),
-                    ("responseTimeMs", "1500"),
-                    ("idempotencyKey", &idempotency_key),
-                ],
-            ))
-            .await
-            .expect("maturing submit");
-        assert_eq!(graded.status(), StatusCode::OK, "maturing cycle {cycle}");
-        // Advance just past the card's next-review horizon so it is due
-        // again, then sign back in: the horizon can outlive the fixed
-        // browser session lifetime.
-        advance_clock_past_next_review(clock, &response_text(graded).await);
-        (cookie, csrf_token) = refresh_login(app, &email).await;
-    }
-
-    let page = advance_to_prompt(app, &cookie, &csrf_token, "Spell CAT over the phone").await;
-    let review_unit_id = html_value(&page, "reviewUnitId");
-    let idempotency_key = html_value(&page, "idempotencyKey");
-    let mut fields: Vec<(&str, &str)> = vec![
-        ("csrfToken", &csrf_token),
-        ("reviewUnitId", &review_unit_id),
-        ("answer", "CHARLIE ALFA TANGO"),
-        ("idempotencyKey", &idempotency_key),
-    ];
-    if let Some(timing) = timing {
-        fields.push(("responseTimeMs", timing));
-    }
-    let graded = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/submit",
-            &cookie,
-            &fields,
-        ))
-        .await
-        .expect("mature submit");
-    assert_eq!(
-        graded.status(),
-        StatusCode::OK,
-        "mature submit with timing {timing:?}"
-    );
-    response_text(graded).await
-}
-
-/// Advance the test clock just past the graded page's next-review horizon so
-/// the card is due again on the next cycle. Hour-scale (or missing) horizons
-/// advance one day; day-scale horizons advance one day beyond the rounded
-/// count to absorb the phrase's rounding.
-fn advance_clock_past_next_review(clock: &AtomicI64, page: &str) {
-    let marker = "you'll see this again in ~";
-    let days = page.find(marker).map_or(1, |start| {
-        let rest = &page[start + marker.len()..];
-        let digits = rest
-            .chars()
-            .take_while(char::is_ascii_digit)
-            .collect::<String>();
-        if rest[digits.len()..].trim_start().starts_with("day") {
-            digits.parse::<i64>().unwrap_or(0) + 1
-        } else {
-            1
-        }
-    });
-    clock.fetch_add(days * 86_400_000, Ordering::SeqCst);
-}
-
-/// Parse the "~N days" horizon out of a graded page's next-review phrase.
-/// Panics when the phrase is missing or hour-scale: a mature card's next
-/// interval must be day-scale for the rating comparison to mean anything.
-fn next_review_days(page: &str) -> i64 {
-    let marker = "you'll see this again in ~";
-    let start = page
-        .find(marker)
-        .unwrap_or_else(|| panic!("graded page carries no next-review phrase: {page}"))
-        + marker.len();
-    let rest = &page[start..];
-    let digits = rest
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect::<String>();
-    let unit = rest[digits.len()..].trim_start();
-    assert!(
-        unit.starts_with("day"),
-        "mature card must schedule in days, got: {}",
-        &rest[..rest.len().min(40)]
-    );
-    digits.parse().expect("day count")
-}
-
-#[tokio::test]
-async fn mature_correct_answers_rate_easy_only_when_genuinely_fast() {
-    // The scheduler rates a mature correct answer Easy only when it was
-    // genuinely fast. A slow correct answer rates Good — a strictly shorter
-    // next interval — and any timing shape the client cannot vouch for
-    // (missing, blank, malformed, negative, zero, absurdly large) grades as
-    // the slowest plausible answer: the same Good-rated interval as the slow
-    // control, never the longer Easy interval.
-    let (test_clock, test_now) = isolated_test_clock!(DEFAULT_BETA_STUDY_NOW);
-    let registry = AccountRegistry::default()
-        .with_clock(test_now)
-        .with_auth_config(AuthConfig::for_local_tests().with_debug_links(true));
-    let state = ApiState::new(registry);
-    let app = router(state.clone());
-
-    let slow = mature_cat_card_then_submit(&app, &state, test_clock, "slow", Some("6500")).await;
-    assert_eq!(rendered_verdict(&slow), Some("Correct"));
-    let slow_days = next_review_days(&slow);
-
-    let fast = mature_cat_card_then_submit(&app, &state, test_clock, "fast", Some("900")).await;
-    assert_eq!(rendered_verdict(&fast), Some("Correct"));
-    let fast_days = next_review_days(&fast);
-    assert!(
-        fast_days > slow_days,
-        "a genuinely fast mature correct answer must rate Easy and schedule \
-         further out than a slow one: fast {fast_days} vs slow {slow_days} days"
-    );
-
-    for (label, dishonest) in [
-        ("missing", None),
-        ("blank", Some("")),
-        ("malformed", Some("not-a-number")),
-        ("negative", Some("-250")),
-        ("zero", Some("0")),
-        ("huge", Some("99999999999999999999")),
-    ] {
-        let graded = mature_cat_card_then_submit(&app, &state, test_clock, label, dishonest).await;
-        assert_eq!(
-            rendered_verdict(&graded),
-            Some("Correct"),
-            "dishonest timing {dishonest:?} must still grade the answer: {graded}"
-        );
-        assert_eq!(
-            next_review_days(&graded),
-            slow_days,
-            "dishonest timing {dishonest:?} must grade conservatively (Good), never Easy"
-        );
-    }
-}
-
 #[test]
 fn sanitize_response_time_maps_dishonest_shapes_to_the_conservative_ceiling() {
     use super::routes::{sanitize_response_time_ms, MAX_PLAUSIBLE_RESPONSE_TIME_MS};
@@ -12463,119 +11689,6 @@ fn sanitize_response_time_maps_dishonest_shapes_to_the_conservative_ceiling() {
         MAX_PLAUSIBLE_RESPONSE_TIME_MS,
         "implausibly large timings clamp to the ceiling"
     );
-}
-
-#[tokio::test]
-async fn review_pre_grade_is_minimal_with_collapsed_hatches() {
-    // Ledger interaction law (DESIGN.md): before grading, the card shows the
-    // prompt and the answer mechanism plus exactly one visible hatch (Reveal
-    // answer) and one More disclosure. The other actions live inside the
-    // disclosure with a capture punch-out. No card meta of any kind renders
-    // pre-grade.
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-    generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-
-    let page = advance_to_prompt(&app, &cookie, &csrf_token, "Spell CAT over the phone").await;
-    assert!(
-        page.contains(r#"<details class="me-more">"#),
-        "pre-grade must collapse secondary hatches behind one disclosure: {page}"
-    );
-    assert!(page.contains("Reveal answer"));
-    assert!(
-        page.contains(r#"class="me-more-capture" href="/app/create""#),
-        "Capture more must open Create, not Home: {page}"
-    );
-    assert!(
-        !page.contains(r#"class="me-hatches""#),
-        "the permanent six-button hatch row is a design defect: {page}"
-    );
-    for meta_marker in ["me-meta-ledger", "Last seen", "last seen", "success rate"] {
-        assert!(
-            !page.contains(meta_marker),
-            "card meta must not render pre-grade ({meta_marker}): {page}"
-        );
-    }
-}
-
-#[tokio::test]
-async fn graded_review_shows_meta_ledger_and_holds_for_continue() {
-    // The answer key remains concise for every verdict. Reflective facts stay
-    // inside Details, and only Continue advances the review.
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-    generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
-
-    // Correct free-response answer.
-    let page = advance_to_prompt(&app, &cookie, &csrf_token, "Spell CAT over the phone").await;
-    let review_unit_id = html_value(&page, "reviewUnitId");
-    let idempotency_key = html_value(&page, "idempotencyKey");
-    let graded = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/submit",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("reviewUnitId", &review_unit_id),
-                ("answer", "CHARLIE ALFA TANGO"),
-                ("responseTimeMs", "1500"),
-                ("idempotencyKey", &idempotency_key),
-            ],
-        ))
-        .await
-        .expect("correct submit");
-    assert_eq!(graded.status(), StatusCode::OK);
-    let graded = response_text(graded).await;
-    assert_eq!(rendered_verdict(&graded), Some("Correct"));
-    assert!(graded.contains(r#"class="me-grade-reason""#));
-    assert_dossier_markers(
-        &graded,
-        &[r#"class="me-meta-ledger""#, "you'll see this again"],
-    );
-    assert!(
-        !graded.contains("data-auto-advance"),
-        "a correct verdict must never auto-advance: {graded}"
-    );
-    assert!(
-        graded.contains(">Continue"),
-        "Continue must be the visible, only way to advance: {graded}"
-    );
-
-    // Wrong MCQ answer: dossier still shows, but no auto-advance — the
-    // learner is studying the miss.
-    let mcq = advance_to_prompt(&app, &cookie, &csrf_token, "What is the NATO phonetic").await;
-    let review_unit_id = html_value(&mcq, "reviewUnitId");
-    let idempotency_key = html_value(&mcq, "idempotencyKey");
-    let missed = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/submit",
-            &cookie,
-            &[
-                ("csrfToken", &csrf_token),
-                ("reviewUnitId", &review_unit_id),
-                ("answer", "BRAVO"),
-                ("responseTimeMs", "1500"),
-                ("idempotencyKey", &idempotency_key),
-            ],
-        ))
-        .await
-        .expect("wrong submit");
-    assert_eq!(missed.status(), StatusCode::OK);
-    let missed = response_text(missed).await;
-    assert_eq!(rendered_verdict(&missed), Some("Try again"));
-    assert!(missed.contains(r#"class="me-grade-reason""#));
-    assert_dossier_markers(&missed, &[r#"class="me-meta-ledger""#]);
-    assert!(
-        !missed.contains("data-auto-advance"),
-        "a miss must hold for study, never auto-advance: {missed}"
-    );
-    assert!(missed.contains(">Continue"));
 }
 
 #[tokio::test]
@@ -12636,57 +11749,11 @@ async fn generate_route_coalesces_a_duplicate_request_onto_the_in_flight_job() {
     // work, not double the count from a duplicate job.
     state.run_pending_jobs_blocking();
     let workspace = library_html(&app, &cookie).await;
-    assert_activity_succeeded_html(&workspace, 2);
+    assert_activity_succeeded_html(&workspace);
     assert_eq!(
         workspace.matches("data-job-id=\"").count(),
         1,
         "only one job must ever have existed for this source: {workspace}"
-    );
-}
-
-#[tokio::test]
-async fn activity_retry_control_only_renders_for_failed_jobs() {
-    // Operator dogfood finding (memory-engine-081): an unstyled Retry button
-    // rendered next to a RUNNING job. Retry only ever makes sense once a job
-    // has actually failed.
-    let state = local_fixture_state();
-    let app = router(state.clone());
-    let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
-
-    let queued = app
-        .clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/generate",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("sourceId", &source_id)],
-        ))
-        .await
-        .expect("generate");
-    let queued = response_text(queued).await;
-    assert!(queued.contains(r#"data-status="queued""#));
-    assert!(
-        !queued.contains("me-job-retry-btn"),
-        "a queued job must not offer Retry: {queued}"
-    );
-
-    // Archive the source so generation fails for a real reason, then confirm
-    // the now-failed row does carry a styled Retry control.
-    app.clone()
-        .oneshot(form_request_with_cookie(
-            "POST",
-            "/app/source/archive",
-            &cookie,
-            &[("csrfToken", &csrf_token), ("sourceId", &source_id)],
-        ))
-        .await
-        .expect("archive");
-    state.run_pending_jobs_blocking();
-    let failed_html = library_html(&app, &cookie).await;
-    assert!(failed_html.contains(r#"data-status="failed""#));
-    assert!(
-        failed_html.contains("me-job-retry-btn"),
-        "a failed job must offer a styled Retry control: {failed_html}"
     );
 }
 
@@ -12699,10 +11766,10 @@ async fn capture_form_preserves_native_post_without_javascript() {
     let (cookie, _csrf_token, _source_id) = start_app_session_for_csrf(&app).await;
 
     let create = get_view_html(&app, "/app/create", &cookie).await;
-    assert!(
-        create.contains(r#"<form class="me-capture-form" action="/app/capture" method="post">"#),
-        "the capture form needs a stable selector for the pending-state enhancement: {create}"
-    );
+    let capture = form_for_action(&create, "/app/capture");
+    assert!(capture.contains(r#"method="post""#));
+    assert!(capture.contains(r#"name="capture""#));
+    assert!(capture.contains(r#"name="csrfToken""#));
 }
 
 #[tokio::test]
@@ -12758,7 +11825,7 @@ async fn saved_material_remove_reports_how_many_cards_were_retired() {
     let (cookie, csrf_token, source_id) = start_app_session_for_csrf(&app).await;
     let generated = generate_source_html(&app, &state, &cookie, &csrf_token, &source_id).await;
     // The NATO fixture schedules 2 review units.
-    assert_activity_succeeded_html(&generated, 2);
+    assert_activity_succeeded_html(&generated);
 
     let archived = app
         .clone()

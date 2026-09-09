@@ -209,10 +209,7 @@ fn graded(verdict: Verdict, rating: Rating, with_feedback: bool) -> BetaStudyCur
                 "slipping",
                 "One more like that lifts this concept above half.",
             )),
-            remediation_drafts_pending: matches!(
-                verdict,
-                Verdict::Close | Verdict::Wrong | Verdict::Revealed
-            ),
+            remediation_drafts_pending: false,
         });
     }
     current
@@ -238,6 +235,7 @@ fn view(
 ) -> StudyViewResponse {
     StudyViewResponse {
         drafts,
+        queue: Vec::new(),
         current,
         concept_progress: concepts,
         summary: summary(),
@@ -302,18 +300,22 @@ fn pages() -> Vec<(&'static str, String)> {
         ),
         (
             "02-capture-queued",
-            render_app_shell(
-                Some(&acct),
-                &sources,
-                Some(&view(vec![], None, vec![], 0, vec![])),
-                &jobs,
-                Some("Generating your cards. They'll appear below as they're ready."),
+            crate::render_capture_waiting_page(
+                &acct,
+                &job(
+                    "preview-queued",
+                    "Spanish vocabulary",
+                    JobStatus::Queued,
+                    0,
+                    None,
+                    100,
+                ),
             ),
         ),
         (
             "03-activity",
-            render_app_shell(
-                Some(&acct),
+            crate::render_library_page(
+                &acct,
                 &sources,
                 Some(&view(vec![], None, concepts.clone(), 8, vec![])),
                 &jobs,
@@ -321,11 +323,17 @@ fn pages() -> Vec<(&'static str, String)> {
             ),
         ),
         (
-            "04-workspace-due",
+            "04-root-question",
             render_app_shell(
                 Some(&acct),
                 &sources,
-                Some(&view(vec![], None, concepts.clone(), 3, vec![])),
+                Some(&view(
+                    vec![],
+                    Some(open.clone()),
+                    concepts.clone(),
+                    3,
+                    vec![],
+                )),
                 &[],
                 None,
             ),
@@ -379,7 +387,7 @@ fn pages() -> Vec<(&'static str, String)> {
                 &sources,
                 Some(&view(
                     vec![],
-                    Some(graded(Verdict::Close, Rating::Hard, true)),
+                    Some(graded(Verdict::Close, Rating::Again, true)),
                     concepts.clone(),
                     3,
                     vec![],
@@ -443,7 +451,7 @@ fn pages() -> Vec<(&'static str, String)> {
                 &sources,
                 Some(&view(
                     vec![],
-                    Some(graded_mcq(Verdict::Close, Rating::Hard)),
+                    Some(graded_mcq(Verdict::Close, Rating::Again)),
                     concepts.clone(),
                     3,
                     vec![],
@@ -532,7 +540,7 @@ fn supplemental_pages() -> Vec<(&'static str, String)> {
         validation_status: memory_engine_persistence::GeneratedPromptValidationStatus::Accepted,
         validation_reasons: vec![],
         worked_solution: Some("Chloroplasts contain the structures for capturing light and fixing carbon. The question asks for the organelle, not one of its internal membranes.".to_owned()),
-        approved: false,
+        approved: true,
         learner_decision: None,
         source_spans: vec![memory_engine_study::BetaStudyReferenceSpanRow {
             id: "preview-span".to_owned(),
@@ -543,22 +551,26 @@ fn supplemental_pages() -> Vec<(&'static str, String)> {
         }],
         provenance: None,
     };
-    let mut library_view = view(vec![draft], None, vec![], 0, vec![]);
+    let mut library_view = view(vec![draft], None, vec![], 1, vec![]);
     library_view.library = vec![memory_engine_study::LibrarySourceRow {
         source_id: source.source_id.clone(),
         title: source.title.clone(),
-        active_card_count: 3,
+        active_card_count: 1,
         concepts: vec![memory_engine_study::LibraryConceptRow {
             concept_label: "Location of photosynthesis".to_owned(),
-            card_count: 3,
+            card_count: 1,
         }],
     }];
     let mut reading = current("Where does photosynthesis take place in a plant cell?");
     reading.reference_text = Some(format!("Source: {}\n\n{source_text}", source.title));
     let reading_view = view(vec![], Some(reading), vec![], 1, vec![]);
-    let mut revealed = current("Which Spanish word means ephemeral?");
-    revealed.expected_answer = Some("efímero".to_owned());
-    let revealed_view = view(vec![], Some(revealed), vec![], 1, vec![]);
+    let revealed_view = view(
+        vec![],
+        Some(graded(Verdict::Revealed, Rating::Again, true)),
+        vec![],
+        1,
+        vec![],
+    );
     let progress = view(
         vec![],
         None,
@@ -589,9 +601,9 @@ fn supplemental_pages() -> Vec<(&'static str, String)> {
         ("18-home-caught-up", render_app_shell(Some(&acct), &[], Some(&view(vec![], None, vec![], 0, vec![])), &[], None)),
         ("19-create", crate::render_create_page(&acct, Some(&create_view), &[], None)),
         ("20-create-recovery", crate::render_create_page(&acct, Some(&create_view), &[], Some("The source could not be saved. Your material has not entered the review queue."))),
-        ("21-library-draft-inspection", crate::render_library_page(&acct, std::slice::from_ref(&source), Some(&library_view), &[], None)),
+        ("21-library-published-quiz", crate::render_library_page(&acct, std::slice::from_ref(&source), Some(&library_view), &[], None)),
         ("22-study-note", crate::render_reference_page(&acct, &reading_view)),
-        ("23-revealed-before-submit", render_app_shell(Some(&acct), &[], Some(&revealed_view), &[], None)),
+        ("23-assisted-practice", render_app_shell(Some(&acct), &[], Some(&revealed_view), &[], None)),
         ("24-progress", crate::render_analytics_page(&acct, &progress, crate::AnalyticsViewOptions::default())),
         ("25-waitlist-or-link", render_entry_requested(None)),
         ("26-link-recovery", crate::render_auth_recovery("This sign-in link has expired", "Request a fresh link to return to your study space.")),
@@ -603,7 +615,7 @@ fn supplemental_pages() -> Vec<(&'static str, String)> {
         ("32-edit-quiz", crate::render_edit_review_html(&acct, &reading_view, &[], None)),
         ("33-capture-waiting", crate::render_capture_waiting_page(&acct, &job("preview-waiting", "Plant physiology", JobStatus::Running, 0, None, 100))),
         ("34-capture-failed", crate::render_capture_waiting_page(&acct, &job("preview-failed", "Plant physiology", JobStatus::Failed, 0, Some("The provider could not complete this request. Open Library to retry."), 100))),
-        ("35-capture-finished", crate::render_capture_waiting_page(&acct, &job("preview-finished", "Plant physiology", JobStatus::Succeeded, 0, None, 100))),
+        ("35-capture-finished", crate::render_capture_waiting_page(&acct, &job("preview-finished", "Plant physiology", JobStatus::Succeeded, 1, None, 100))),
     ]
 }
 
@@ -634,12 +646,13 @@ fn emit_preview_pages() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut pages = pages();
     pages.extend(supplemental_pages());
-    let mut index = String::from(
+    let mut index = format!(
         "<!doctype html><html lang=en><meta charset=utf-8>\
 <meta name=viewport content='width=device-width,initial-scale=1'>\
-<title>Scry design preview</title><link rel=stylesheet href=/static/ledger.css>\
+<title>Scry design preview</title><link rel=stylesheet href='/static/ledger.css?v={css_version:016x}'>\
 <body><main class=ae-view><h1 class=me-display>Scry surface preview</h1>\
 <p class=ae-lede>Each frame is a rendered study surface. Open a frame on its own to inspect phone widths and keyboard focus.</p>",
+        css_version = crate::LEDGER_CSS_VERSION,
     );
     for (name, html) in &pages {
         fs::write(out.join(format!("{name}.html")), html)?;
@@ -659,109 +672,34 @@ fn emit_preview_pages() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn graded_review_holds_with_explicit_continue_and_collapsed_details() {
+fn graded_review_requires_protected_explicit_next() {
     let (_, acct) = account_context();
-    for (verdict, rating, label) in [
-        (Verdict::Correct, Rating::Good, "Correct"),
-        (Verdict::Close, Rating::Hard, "Close"),
-        (Verdict::Wrong, Rating::Again, "Try again"),
-        (Verdict::Revealed, Rating::Again, "Revealed"),
-    ] {
-        let html = render_app_shell(
-            Some(&acct),
-            &[],
-            Some(&view(
-                vec![],
-                Some(graded_mcq(verdict, rating)),
-                vec![],
-                2,
-                vec![],
-            )),
-            &[],
-            None,
-        );
-        assert!(html.contains(&format!(">{label}</span>")));
-        assert!(html.contains("efímero"));
-        assert!(html.contains(r#"class="me-verdict" tabindex="-1""#));
-        let advance = form_for_action(&html, "/app/next");
-        assert!(advance.contains(r#"name="csrfToken""#));
-        assert_eq!(html.matches(r#"action="/app/next""#).count(), 1);
-        assert!(!html.contains(r#"action="/app/submit""#));
-        assert!(!html.contains("data-auto-advance"));
-        assert_dossier_contains(
-            &html,
-            label,
-            &[
-                r#"class="me-next-when"#,
-                r#"class="me-meta-ledger""#,
-                r#"class="me-dossier-concept""#,
-                r#"action="/app/reference""#,
-                r#"action="/app/content-feedback""#,
-            ],
-        );
-        let feedback = form_for_action(&html, "/app/content-feedback");
-        assert!(feedback.contains(r#"name="idempotencyKey""#));
-        assert!(feedback.contains(r#"value="kept""#));
-        assert!(feedback.contains(r#"value="dropped""#));
-    }
-    let no_history = render_app_shell(
+    let html = render_app_shell(
         Some(&acct),
         &[],
         Some(&view(
             vec![],
-            Some(graded(Verdict::Revealed, Rating::Again, false)),
+            Some(graded_mcq(Verdict::Correct, Rating::Good)),
             vec![],
-            1,
+            2,
             vec![],
         )),
         &[],
         None,
     );
-    assert_dossier_contains(
-        &no_history,
-        "history unavailable",
-        &[
-            r#"action="/app/reference""#,
-            r#"action="/app/content-feedback""#,
-        ],
-    );
-    assert!(!no_history.contains(r#"class="me-meta-ledger""#));
-    let answering = render_app_shell(
-        Some(&acct),
-        &[],
-        Some(&view(
-            vec![],
-            Some(current("Translate ephemeral.")),
-            vec![],
-            1,
-            vec![],
-        )),
-        &[],
-        None,
-    );
-    assert!(!answering.contains(r#"class="me-dossier""#));
-    assert!(answering.contains(r#"<details class="me-more">"#));
-    assert!(!answering.contains(r#"<details class="me-more" open"#));
-    assert!(answering.contains(r#"class="me-more-capture" href="/app/create""#));
-}
-
-fn assert_dossier_contains(html: &str, name: &str, markers: &[&str]) {
-    let open = html
-        .find(r#"<details class="me-dossier">"#)
-        .unwrap_or_else(|| panic!("{name}: Details disclosure missing"));
-    let close = html[open..].find("</details>").map_or_else(
-        || panic!("{name}: Details disclosure is not closed"),
-        |offset| open + offset,
-    );
-    for marker in markers {
-        let position = html
-            .find(marker)
-            .unwrap_or_else(|| panic!("{name}: dossier item {marker} missing"));
-        assert!(
-            position > open && position < close,
-            "{name}: dossier item {marker} must stay inside Details"
-        );
-    }
+    assert!(html.contains("efímero"));
+    let advance = form_for_action(&html, "/app/next");
+    assert!(advance.contains(r#"method="post""#));
+    assert!(advance.contains(&format!(
+        r#"name="csrfToken" value="{}""#,
+        acct.csrf_token()
+    )));
+    assert!(!html.contains(r#"action="/app/submit""#));
+    assert!(!html.contains(r#"action="/app/reveal""#));
+    let feedback = form_for_action(&html, "/app/content-feedback");
+    assert!(feedback.contains(r#"name="idempotencyKey""#));
+    assert!(feedback.contains(r#"value="kept""#));
+    assert!(feedback.contains(r#"value="dropped""#));
 }
 
 /// A scheduled retry remains in flight; completed jobs cannot leave a stale
@@ -804,38 +742,35 @@ fn conformance_generating_notice_only_shows_while_a_job_is_actually_in_flight() 
     assert!(removed.contains("Source removed."));
 }
 
-/// Standing views expose one-tap navigation and browser-scoped protected
-/// account forms. Active review omits navigation and preserves answer focus.
+/// Account and study mutations remain protected on every signed-in surface.
 #[test]
-fn standing_view_navigation_and_account_forms_preserve_scope() {
+fn signed_in_forms_preserve_session_scope() {
     let (_, acct) = account_context();
     let empty = view(vec![], None, vec![], 0, vec![]);
-    for (href, html) in [
-        ("/", render_app_shell(Some(&acct), &[], None, &[], None)),
-        (
-            "/app/create",
-            crate::render_create_page(&acct, Some(&empty), &[], None),
-        ),
-        (
-            "/app/library",
-            crate::render_library_page(&acct, &[], Some(&empty), &[], None),
-        ),
-        (
-            "/app/analytics",
-            crate::render_analytics_page(&acct, &empty, crate::AnalyticsViewOptions::default()),
+    for html in [
+        render_app_shell(Some(&acct), &[], None, &[], None),
+        crate::render_create_page(&acct, Some(&empty), &[], None),
+        crate::render_library_page(&acct, &[], Some(&empty), &[], None),
+        crate::render_analytics_page(&acct, &empty, crate::AnalyticsViewOptions::default()),
+        render_app_shell(
+            Some(&acct),
+            &[],
+            Some(&view(
+                vec![],
+                Some(current("What do plants need?")),
+                vec![],
+                1,
+                vec![],
+            )),
+            &[],
+            None,
         ),
     ] {
-        let start = html.find(r#"<nav class="me-nav""#).expect("navigation");
-        let end = start + html[start..].find("</nav>").expect("closed navigation");
-        let nav = &html[start..end];
-        assert!(nav.contains(&format!(r#"href="{href}" aria-current="page""#)));
-        assert_eq!(nav.matches(r#"aria-current="page""#).count(), 1);
-        for target in ["/", "/app/create", "/app/library", "/app/analytics"] {
-            assert!(nav.contains(&format!(r#"href="{target}""#)));
-        }
-        assert!(!nav.contains("<form"));
-        assert!(html.contains("id=\"me-main\""));
-        for action in ["/app/logout", "/app/logout-all"] {
+        for action in [
+            "/app/logout",
+            "/app/logout-all",
+            "/app/return-notifications",
+        ] {
             let form = form_for_action(&html, action);
             assert!(form.contains(r#"method="post""#));
             assert!(form.contains(&format!(
@@ -843,21 +778,7 @@ fn standing_view_navigation_and_account_forms_preserve_scope() {
                 acct.csrf_token()
             )));
         }
-        if href == "/app/create" {
-            let capture = form_for_action(&html, "/app/capture");
-            assert!(capture.contains(r#"name="capture""#));
-            assert!(capture.contains(r#"name="csrfToken""#));
-            assert!(!capture.contains(r#"name="permission""#));
-        }
-        if href == "/" {
-            assert!(html.contains(r#"<details class="me-return-details">"#));
-            assert!(!html.contains(r#"<details class="me-return-details" open"#));
-            let reminders = form_for_action(&html, "/app/return-notifications");
-            assert!(reminders.contains(r#"name="csrfToken""#));
-            assert!(reminders.contains(r#"name="reminderEmail" type="email""#));
-            assert!(html.contains(r#"name="enabled" value="on""#));
-            assert!(html.contains(r#"name="enabled" value="off""#));
-        }
+        assert!(!html.contains(acct.session_token()));
     }
     let review = render_app_shell(
         Some(&acct),
@@ -872,10 +793,16 @@ fn standing_view_navigation_and_account_forms_preserve_scope() {
         &[],
         None,
     );
-    assert!(!review.contains(r#"<nav class="me-nav""#));
     let submit = form_for_action(&review, "/app/submit");
-    assert!(submit.contains(r#"name="responseTimeMs" value="""#));
-    assert!(submit.contains(r#"name="idempotencyKey""#));
+    let reveal = form_for_action(&review, "/app/reveal");
+    for form in [submit, reveal] {
+        assert!(form.contains(r#"name="responseTimeMs" value="""#));
+        assert!(form.contains(r#"name="idempotencyKey""#));
+        assert!(form.contains(&format!(
+            r#"name="csrfToken" value="{}""#,
+            acct.csrf_token()
+        )));
+    }
     assert!(review.contains(r#"data-review-status role="status" aria-live="polite""#));
 }
 

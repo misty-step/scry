@@ -956,6 +956,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "memory-engine-generation",
+ "memory-engine-persistence",
  "memory-engine-study",
  "serde",
  "serde_json",

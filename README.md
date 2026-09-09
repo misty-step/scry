@@ -7,6 +7,17 @@ memorize anything through a quiz-driven review loop. This repository contains
 Scry's Rust engine, not a separate product category or a generic agent-memory
 store.
 
+Open Scry and start reviewing. Add a word, a phrase, or an essay; useful quizzes
+are generated and scheduled automatically. No draft inbox or approval step.
+Answers receive immediate feedback; Next question advances deliberately.
+Library, progress, and settings stay behind More.
+
+The machine equivalent is `memory-engine-review learn "photosynthesis"` (or
+pipe text into `memory-engine-review learn`). Run `memory-engine-review` to review;
+choose a displayed option number or type your answer.
+MCP exposes `learn`, `list_quizzes`, `edit_quiz`, and `remove_quiz` over the same
+publication, account, and scheduling rules.
+
 The product has five faces over one capability system:
 
 - **PWA** — the primary, phone-first human surface
@@ -119,7 +130,8 @@ This means runtime logging, not remote ingest acceptance or durable readback.
 Canary is retired; no replacement telemetry-ingest endpoint is deployed.
 
 The repository-owned external witness is `scripts/scry-monitor`, exposed as
-`bun run ops:monitor`. It observes public `GET /healthz`, `/readyz`, and
+`bun run ops:status` for read-only health, or `bun run ops:monitor` for alert delivery.
+It observes public `GET /healthz`, `/readyz`, and
 `/statusz` without learner, admin, or Worker deployment keys; these routes
 neither schedule nor wake background work. `/statusz` reports
 `memory_engine.runtime_health.v1` and is healthy only when the actor is active
@@ -230,8 +242,14 @@ bun run worker:tools
 bun run worker:build --out target/cloudflare/bundle
 bun run worker:smoke --artifact target/cloudflare/bundle \
   --receipt target/cloudflare/workerd-proof.json
-bun run dev:isolated --artifact target/cloudflare/bundle --port 8787
+bun run dev --artifact target/cloudflare/bundle --port 8787
 ```
+
+Or use `bun run dev` to build fresh bytes and start the isolated Worker in one
+command. For real browser AI capture, explicitly provide a private mode-0600
+file containing only `OPENROUTER_API_KEY` and `MEMORY_ENGINE_GENERATION_MODEL`:
+`bun run dev --provider-env /private/scry-provider.env`. This permits paid model
+calls and sends captured text to that model; mail remains in the local outbox.
 
 `worker:tools` installs `worker-build 0.8.5`, matching `wasm-bindgen 0.2.125`,
 and the npm lockfile's `Wrangler 4.129.0`/`esbuild 0.28.1`. Builds target
@@ -245,7 +263,7 @@ the private actor's fingerprint and activates it through the authenticated
 runtime API before observing readiness. Restarts read the persisted runtime
 state without repeating activation. The smoke creates an allowlisted service
 session, captures LocalOnly material, waits for actual alarm-driven generation,
-explicitly keeps a draft, grades an answer, and checks persistence/idempotency
+automatically publishes quizzes, grades an answer, and checks persistence/idempotency
 over restarts.
 That is runtime evidence when executed, not an email or model-quality claim.
 The signed-out browser accepts `dev@example.test` in this isolated environment.

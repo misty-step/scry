@@ -12,6 +12,7 @@ use std::{
 };
 
 use memory_engine_generation::{FakeModelProvider, FallbackProvider};
+use memory_engine_persistence::BetaStoreError;
 use memory_engine_study::{
     infer_capture_title, BetaStudyCurrent, BetaStudyOptions, BetaStudySession,
     BetaStudySourceInput, BetaStudyView, SourcePermission,
@@ -27,8 +28,8 @@ pub struct BetaAppConfig {
 /// Ceiling for a plausible single-answer response time (ten minutes).
 ///
 /// A local host cannot verify a client-reported duration. Missing, malformed,
-/// non-positive, and implausibly large values therefore take the slow path so
-/// they can never manufacture the fast-answer `Easy` rating.
+/// non-positive, and implausibly large values use a conservative duration for
+/// history. Response speed never changes the answer's grade or rating.
 const MAX_PLAUSIBLE_RESPONSE_TIME_MS: u32 = 600_000;
 const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
@@ -156,14 +157,16 @@ fn route(session: &mut BetaStudySession, request: &HttpRequest) -> HttpResponse 
         ("GET", "/") => page_response(session.view()),
         ("GET", "/state") => view_response(session.view()),
         ("POST", "/source") => match read_source(&request.body) {
-            Ok(source) => response_for(request, session.add_source(source)),
+            Ok(source) => {
+                let source_id = source.id.clone();
+                let result = session
+                    .add_source(source)
+                    .and_then(|_| generate_sources(session, Some(&source_id)));
+                response_for(request, result)
+            }
             Err(error) => HttpResponse::bad_request(&error),
         },
-        ("POST", "/generate") => response_for(request, generate_all_sources(session)),
-        ("POST", "/keep" | "/draft/keep") => match read_required_string(&request.body, "draftId") {
-            Ok(draft_id) => response_for(request, session.keep_draft(&draft_id)),
-            Err(error) => HttpResponse::bad_request(&error),
-        },
+        ("POST", "/generate") => response_for(request, generate_sources(session, None)),
         ("POST", "/draft/edit") => match read_draft_revision(&request.body) {
             Ok(revision) => response_for(
                 request,
@@ -195,7 +198,25 @@ fn route(session: &mut BetaStudySession, request: &HttpRequest) -> HttpResponse 
             Ok(snoozed_until) => response_for(request, session.snooze_current_until(snoozed_until)),
             Err(error) => HttpResponse::bad_request(&error),
         },
-        ("POST", "/reveal") => response_for(request, session.reveal()),
+        ("POST", "/reveal") => {
+            let result = session.reveal().and_then(|view| {
+                if request.is_form_post() {
+                    if let Some(answer) = view
+                        .current
+                        .as_ref()
+                        .filter(|current| current.grade.is_none())
+                        .and_then(|current| current.expected_answer.as_ref())
+                    {
+                        session.submit_answer(answer, MAX_PLAUSIBLE_RESPONSE_TIME_MS)
+                    } else {
+                        Ok(view)
+                    }
+                } else {
+                    Ok(view)
+                }
+            });
+            response_for(request, result)
+        }
         ("POST", "/answer") => match read_answer(&request.body) {
             Ok(answer) => response_for(
                 request,
@@ -211,7 +232,7 @@ fn route(session: &mut BetaStudySession, request: &HttpRequest) -> HttpResponse 
     }
 }
 
-/// Generate drafts for every active source, routing each by permission.
+/// Generate and publish quizzes for the selected source, or every active source.
 ///
 /// `LocalOnly` sources always go through the pure deterministic path
 /// (`BetaStudySession::generate`), which never references a model provider,
@@ -221,8 +242,9 @@ fn route(session: &mut BetaStudySession, request: &HttpRequest) -> HttpResponse 
 /// batch by permission keeps one `LocalOnly` source from blocking generation
 /// for unrelated eligible sources — previously a single `LocalOnly` capture
 /// failed the whole all-sources run before any drafts were produced.
-fn generate_all_sources(
+fn generate_sources(
     session: &mut BetaStudySession,
+    source_id: Option<&str>,
 ) -> Result<BetaStudyView, memory_engine_study::BetaStudyError> {
     let model = FakeModelProvider;
     let provider = FallbackProvider::new(&model);
@@ -231,6 +253,9 @@ fn generate_all_sources(
     let mut local_only_ids = Vec::new();
     let mut model_eligible_ids = Vec::new();
     for source in &view.sources {
+        if source_id.is_some_and(|id| id != source.id) {
+            continue;
+        }
         if source.permission == SourcePermission::LocalOnly {
             local_only_ids.push(source.id.clone());
         } else {
@@ -268,7 +293,7 @@ fn view_response(
 ) -> HttpResponse {
     match result {
         Ok(view) => HttpResponse::json(200, &view),
-        Err(error) => HttpResponse::plain(500, &error.to_string()),
+        Err(error) => HttpResponse::plain(study_error_status(&error), &error.to_string()),
     }
 }
 
@@ -277,7 +302,22 @@ fn page_response(
 ) -> HttpResponse {
     match result {
         Ok(view) => HttpResponse::html(&render_page(&view, None)),
-        Err(error) => HttpResponse::html(&render_page_error(&error.to_string())),
+        Err(error) => HttpResponse {
+            status: study_error_status(&error),
+            ..HttpResponse::html(&render_page_error(&error.to_string()))
+        },
+    }
+}
+
+fn study_error_status(error: &memory_engine_study::BetaStudyError) -> u16 {
+    match error {
+        memory_engine_study::BetaStudyError::Store(
+            BetaStoreError::LearnerDraftDecisionAlreadyRecorded(_),
+        ) => 409,
+        memory_engine_study::BetaStudyError::Store(
+            BetaStoreError::UnknownGeneratedPromptDraft(_),
+        ) => 404,
+        _ => 500,
     }
 }
 
@@ -778,11 +818,13 @@ fn render_page(view: &BetaStudyView, error: Option<&str>) -> String {
     html.push_str("</span></header>");
     render_current(&mut html, view.current.as_ref(), error);
     html.push_str("</section><aside>");
+    render_source_form(&mut html);
+    html.push_str("<details><summary>More</summary>");
     render_summary(&mut html, view);
     render_generation_notices(&mut html, view);
-    render_source_form(&mut html);
     render_drafts(&mut html, view);
     render_queue(&mut html, view);
+    html.push_str("</details>");
     html.push_str("</aside></main>");
     if view.current.is_some() {
         html.push_str(HONEST_TIMING_SCRIPT);
@@ -812,7 +854,7 @@ fn render_current(html: &mut String, current: Option<&BetaStudyCurrent>, error: 
     ));
     html.push_str("</span></div><h1>");
     html.push_str(&current.map_or_else(
-        || "Add source material to begin.".to_owned(),
+        || "Nothing due right now.".to_owned(),
         |current| escape_html(&current.prompt),
     ));
     html.push_str("</h1>");
@@ -823,14 +865,19 @@ fn render_current(html: &mut String, current: Option<&BetaStudyCurrent>, error: 
     }
     if let Some(current) = current {
         render_choices(html, current);
-        html.push_str("<form method=\"post\" action=\"/answer\"><label for=\"answer\">Answer or worked solution</label><textarea id=\"answer\" name=\"answer\" autocomplete=\"off\" spellcheck=\"false\"></textarea><input type=\"hidden\" name=\"responseTimeMs\" value=\"\"><div class=\"actions\"><button type=\"submit\">Submit</button></form><form method=\"post\" action=\"/reveal\"><button type=\"submit\" class=\"secondary\">Reveal</button></form><form method=\"post\" action=\"/current/learn-more\"><button type=\"submit\" class=\"secondary\">Learn more</button></form><form method=\"post\" action=\"/current/snooze\"><input type=\"hidden\" name=\"snoozedUntil\" value=\"");
+        if current.grade.is_none() {
+            html.push_str("<form method=\"post\" action=\"/answer\"><label for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" required autocomplete=\"off\" spellcheck=\"false\"></textarea><input type=\"hidden\" name=\"responseTimeMs\" value=\"\"><button type=\"submit\">Check answer</button></form><form method=\"post\" action=\"/reveal\"><button type=\"submit\" class=\"secondary\">I don’t know yet</button></form>");
+        }
+        html.push_str("<details><summary>Options</summary><div class=\"actions\"><form method=\"post\" action=\"/current/learn-more\"><button type=\"submit\" class=\"secondary\">Study note</button></form><form method=\"post\" action=\"/current/snooze\"><input type=\"hidden\" name=\"snoozedUntil\" value=\"");
         html.push_str(&snooze_until().to_string());
-        html.push_str("\"><button type=\"submit\" class=\"secondary\">Snooze</button></form><form method=\"post\" action=\"/current/delete\"><button type=\"submit\" class=\"secondary danger\">Delete</button></form><form method=\"post\" action=\"/next\"><button type=\"submit\" class=\"secondary\">Next</button></form></div>");
+        html.push_str("\"><button type=\"submit\" class=\"secondary\">Snooze</button></form><form method=\"post\" action=\"/current/delete\"><button type=\"submit\" class=\"secondary danger\">Delete</button></form></div>");
         html.push_str("<form class=\"edit\" method=\"post\" action=\"/current/edit\"><label for=\"prompt-edit\">Edit prompt</label><textarea id=\"prompt-edit\" name=\"prompt\">");
         html.push_str(&escape_html(&current.prompt));
         html.push_str("</textarea><label for=\"answer-edit\">Edit expected answer</label><input id=\"answer-edit\" name=\"expectedAnswer\" value=\"");
         html.push_str(&escape_html(&current.revision_expected_answer));
-        html.push_str("\"><button type=\"submit\" class=\"secondary\">Save prompt</button></form>");
+        html.push_str(
+            "\"><button type=\"submit\" class=\"secondary\">Save prompt</button></form></details>",
+        );
         if let Some(reference_text) = &current.reference_text {
             html.push_str("<div class=\"reference\">");
             html.push_str(&escape_html(reference_text));
@@ -855,6 +902,9 @@ fn render_current(html: &mut String, current: Option<&BetaStudyCurrent>, error: 
             html.push_str("</div>");
         }
         render_feedback(html, current);
+        if current.grade.is_some() {
+            html.push_str("<form method=\"post\" action=\"/next\"><button type=\"submit\">Next question</button></form>");
+        }
     }
     html.push_str("</div>");
 }
@@ -894,7 +944,7 @@ fn render_feedback(html: &mut String, current: &BetaStudyCurrent) {
 fn render_summary(html: &mut String, view: &BetaStudyView) {
     html.push_str("<section class=\"panel\"><h2>State</h2><dl><dt>Sources</dt><dd>");
     html.push_str(&view.summary.source_count.to_string());
-    html.push_str("</dd><dt>Kept review units</dt><dd>");
+    html.push_str("</dd><dt>Published quizzes</dt><dd>");
     html.push_str(&view.summary.approved_review_unit_count.to_string());
     html.push_str("</dd><dt>Attempts</dt><dd>");
     html.push_str(&view.summary.attempt_count.to_string());
@@ -902,7 +952,7 @@ fn render_summary(html: &mut String, view: &BetaStudyView) {
 }
 
 fn render_source_form(html: &mut String) {
-    html.push_str("<section class=\"panel\"><h2>Add</h2><form class=\"composer\" method=\"post\" action=\"/source\"><label for=\"source-capture\">Paste anything</label><textarea id=\"source-capture\" name=\"capture\" placeholder=\"Word, phrase, notes, or article\"></textarea><button type=\"submit\">Save capture</button></form></section>");
+    html.push_str("<section class=\"panel\"><h2>Add</h2><form class=\"composer\" method=\"post\" action=\"/source\"><label for=\"source-capture\">Anything you want to learn</label><textarea id=\"source-capture\" name=\"capture\" required placeholder=\"Word, phrase, notes, or article\"></textarea><button type=\"submit\">Learn this</button></form></section>");
 }
 
 fn render_generation_notices(html: &mut String, view: &BetaStudyView) {
@@ -923,8 +973,16 @@ fn snooze_until() -> i64 {
 }
 
 fn render_drafts(html: &mut String, view: &BetaStudyView) {
-    html.push_str("<section class=\"panel\"><h2>Drafts</h2><ul>");
+    html.push_str("<section class=\"panel\"><details><summary>Library</summary><ul>");
     for draft in &view.drafts {
+        if !draft.approved
+            || !view
+                .queue
+                .iter()
+                .any(|row| row.review_unit_id == draft.review_unit_id)
+        {
+            continue;
+        }
         html.push_str("<li class=\"draft\"><strong>");
         html.push_str(&escape_html(&draft.prompt));
         html.push_str("</strong><p>Concept: ");
@@ -937,31 +995,25 @@ fn render_drafts(html: &mut String, view: &BetaStudyView) {
             draft.activity_kind, draft.activity_stage
         )));
         html.push_str("</p>");
-        if draft.learner_decision.is_some() {
-            html.push_str("<p class=\"decision\">Learner decision recorded; this draft is no longer awaiting review.</p>");
-        } else {
-            html.push_str("<div class=\"actions\"><form method=\"post\" action=\"/draft/keep\"><input type=\"hidden\" name=\"draftId\" value=\"");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\"><button type=\"submit\" class=\"secondary\">Keep</button></form><form method=\"post\" action=\"/draft/reject\"><input type=\"hidden\" name=\"draftId\" value=\"");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\"><button type=\"submit\" class=\"secondary danger\">Reject</button></form></div><form class=\"edit\" method=\"post\" action=\"/draft/edit\"><input type=\"hidden\" name=\"draftId\" value=\"");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\"><label for=\"draft-prompt-");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\">Edit prompt</label><textarea id=\"draft-prompt-");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\" name=\"prompt\">");
-            html.push_str(&escape_html(&draft.prompt));
-            html.push_str("</textarea><label for=\"draft-answer-");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\">Edit expected answer</label><input id=\"draft-answer-");
-            html.push_str(&escape_html(&draft.id));
-            html.push_str("\" name=\"expectedAnswer\" value=\"");
-            html.push_str(&escape_html(&draft.answer));
-            html.push_str(
-                "\"><button type=\"submit\" class=\"secondary\">Edit and keep</button></form>",
-            );
-        }
+        html.push_str("<form method=\"post\" action=\"/draft/reject\"><input type=\"hidden\" name=\"draftId\" value=\"");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\"><button type=\"submit\" class=\"secondary danger\">Remove quiz</button></form><form class=\"edit\" method=\"post\" action=\"/draft/edit\"><input type=\"hidden\" name=\"draftId\" value=\"");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\"><label for=\"draft-prompt-");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\">Edit prompt</label><textarea id=\"draft-prompt-");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\" name=\"prompt\">");
+        html.push_str(&escape_html(&draft.prompt));
+        html.push_str("</textarea><label for=\"draft-answer-");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\">Edit expected answer</label><input id=\"draft-answer-");
+        html.push_str(&escape_html(&draft.id));
+        html.push_str("\" name=\"expectedAnswer\" value=\"");
+        html.push_str(&escape_html(&draft.answer));
+        html.push_str(
+            "\"><button type=\"submit\" class=\"secondary\">Save changes</button></form>",
+        );
         if !draft.source_spans.is_empty() {
             html.push_str("<details><summary>Source spans</summary><ul>");
             for span in &draft.source_spans {
@@ -988,7 +1040,7 @@ fn render_drafts(html: &mut String, view: &BetaStudyView) {
         }
         html.push_str("</li>");
     }
-    html.push_str("</ul></section>");
+    html.push_str("</ul></details></section>");
 }
 fn render_queue(html: &mut String, view: &BetaStudyView) {
     html.push_str("<section class=\"panel\"><h2>Queue</h2><ol>");
@@ -1059,6 +1111,7 @@ fn reason_phrase(status: u16) -> &'static str {
     match status {
         400 => "Bad Request",
         404 => "Not Found",
+        409 => "Conflict",
         500 => "Internal Server Error",
         _ => "OK",
     }
@@ -1123,24 +1176,14 @@ mod tests {
         );
         assert_eq!(source.status, 200);
 
-        let generated = route(&mut session, &request("POST", "/generate", "{}"));
-        let generated: Value = serde_json::from_slice(&generated.body).expect("generated");
+        let generated: Value = serde_json::from_slice(&source.body).expect("published source");
         let draft = &generated["drafts"][0];
         assert_eq!(draft["validationStatus"], json!("accepted"));
-        assert_eq!(draft["approved"], json!(false));
+        assert_eq!(draft["approved"], json!(true));
         assert_eq!(draft["learnerDecision"], json!(null));
-        assert_eq!(generated["dueCount"], json!(0));
-
-        let kept = route(
-            &mut session,
-            &request(
-                "POST",
-                "/keep",
-                &json!({"draftId": draft["id"]}).to_string(),
-            ),
-        );
-        let kept: Value = serde_json::from_slice(&kept.body).expect("kept");
-        assert_eq!(kept["status"], json!("answering"));
+        assert_eq!(generated["dueCount"], json!(1));
+        assert_eq!(generated["status"], json!("answering"));
+        assert_eq!(generated["current"]["reviewUnitId"], draft["reviewUnitId"]);
 
         let revealed = route(&mut session, &request("POST", "/reveal", "{}"));
         let revealed: Value = serde_json::from_slice(&revealed.body).expect("revealed");
@@ -1183,7 +1226,6 @@ mod tests {
             let directory = TempDirectory::new(&format!("json-timing-{index}"));
             let mut session = session(directory.path().join("study.json"));
             seed_nato_source_and_generate(&mut session);
-            keep_draft(&mut session, "study-run-1-draft-src-nato-1-nato-letter-a");
 
             let answered = route(
                 &mut session,
@@ -1209,10 +1251,6 @@ mod tests {
         let directory = TempDirectory::new("lifecycle");
         let mut lifecycle_session = session(directory.path().join("study.json"));
         seed_nato_source_and_generate(&mut lifecycle_session);
-        keep_draft(
-            &mut lifecycle_session,
-            "study-run-1-draft-src-nato-1-nato-letter-a",
-        );
         let before = route(&mut lifecycle_session, &request("GET", "/state", ""));
         let before: Value = serde_json::from_slice(&before.body).expect("before learning");
 
@@ -1264,10 +1302,6 @@ mod tests {
 
         let mut snooze_session = session(directory.path().join("snooze-study.json"));
         seed_nato_source_and_generate(&mut snooze_session);
-        keep_draft(
-            &mut snooze_session,
-            "study-run-1-draft-src-nato-1-nato-letter-a",
-        );
         let snoozed = route(
             &mut snooze_session,
             &request(
@@ -1296,17 +1330,63 @@ mod tests {
         assert_eq!(saved.status, 200);
         assert_eq!(saved.content_type, "text/html; charset=utf-8");
         let saved_html = String::from_utf8(saved.body).expect("saved html");
-        assert!(saved_html.contains(r#"name="capture""#));
-        assert!(!saved_html.contains(r#"name="title""#));
-        assert!(!saved_html.contains(r#"name="body""#));
-        assert!(!saved_html.contains("Source title"));
-        assert!(!saved_html.contains("Source blocks"));
-        assert!(!saved_html.contains("<script"));
+        assert!(saved_html.contains(r#"action="/answer""#));
+        assert!(saved_html.contains(r#"action="/reveal""#));
+        let current = session
+            .view()
+            .expect("published review")
+            .current
+            .expect("quiz");
+        assert_eq!(
+            current.prompt,
+            "What is the NATO phonetic alphabet word for A?"
+        );
+        assert!(current.grade.is_none());
 
-        let generated = route(&mut session, &form_request("/generate", ""));
-        let generated_html = String::from_utf8(generated.body).expect("generated html");
-        assert!(generated_html.contains("What is the NATO phonetic alphabet word for A?"));
-        assert!(!generated_html.contains("<script"));
+        // A native form carries the whole assisted-practice intent; no script
+        // or second answer submission is needed to save the attempt.
+        let revealed = route(&mut session, &form_request("/reveal", ""));
+        assert_eq!(revealed.status, 200);
+        assert_eq!(revealed.content_type, "text/html; charset=utf-8");
+        let revealed_html = String::from_utf8(revealed.body).expect("assisted review html");
+        assert!(revealed_html.contains(r#"action="/next""#));
+        let graded = session.view().expect("graded view");
+        let graded_current = graded.current.as_ref().expect("held quiz");
+        assert_eq!(graded_current.review_unit_id, current.review_unit_id);
+        assert_eq!(graded_current.expected_answer.as_deref(), Some("ALFA"));
+        let grade = graded_current.grade.as_ref().expect("assisted grade");
+        let encoded_grade = serde_json::to_value(grade).expect("grade json");
+        assert_eq!(encoded_grade["verdict"], json!("revealed"));
+        assert_eq!(encoded_grade["rating"], json!(1));
+        assert!(!grade.is_correct);
+        assert_eq!(graded.summary.attempt_count, 1);
+
+        route(&mut session, &request("GET", "/", ""));
+        route(&mut session, &form_request("/reveal", ""));
+        let held = session.view().expect("held grade after reload and retry");
+        assert_eq!(held.current, graded.current);
+        assert_eq!(held.summary.attempt_count, 1);
+
+        let next = route(&mut session, &form_request("/next", ""));
+        assert_eq!(next.status, 200);
+        assert!(session
+            .view()
+            .expect("after deliberate next")
+            .current
+            .is_none());
+        drop(session);
+        let reopened = super::BetaStudySession::open(
+            BetaStudyOptions::new(directory.path().join("study.json")).with_clock(now),
+        )
+        .expect("reopen saved study");
+        assert_eq!(
+            reopened
+                .view()
+                .expect("durable review")
+                .summary
+                .attempt_count,
+            1
+        );
     }
 
     #[test]
@@ -1317,7 +1397,6 @@ mod tests {
             .expect("capture html");
         assert!(html.contains(r#"name="capture""#));
         assert!(!html.contains(r#"name="permission""#));
-        assert!(!html.contains("Keep local / Never send to a model"));
 
         let saved = route(
             &mut session,
@@ -1382,23 +1461,29 @@ mod tests {
         let generated: Value = serde_json::from_slice(&generated.body).expect("generated");
         let drafts = generated["drafts"].as_array().expect("drafts array");
 
-        // Explicit source-grounded material proves permission routing and the
-        // learner-decision gate, not the fake provider's prose quality.
-        assert_eq!(drafts.len(), 2, "both sources must produce a pending draft");
+        // Both permission paths publish usable quizzes without a human gate.
         for source_id in ["src-local", "src-eligible"] {
             let draft = drafts
                 .iter()
                 .find(|draft| {
-                    draft["id"]
-                        .as_str()
-                        .is_some_and(|id| id.contains(source_id))
+                    draft["approved"] == json!(true)
+                        && draft["sourceSpans"]
+                            .as_array()
+                            .expect("source provenance")
+                            .iter()
+                            .any(|span| span["sourceDocumentId"] == source_id)
                 })
                 .expect("source draft");
             assert_eq!(draft["validationStatus"], json!("accepted"));
-            assert_eq!(draft["approved"], json!(false));
+            assert_eq!(draft["approved"], json!(true));
             assert_eq!(draft["learnerDecision"], json!(null));
+            assert!(generated["queue"]
+                .as_array()
+                .expect("active inventory")
+                .iter()
+                .any(|row| row["reviewUnitId"] == draft["reviewUnitId"]));
         }
-        assert_eq!(generated["dueCount"], json!(0));
+        assert_eq!(generated["dueCount"], json!(2));
     }
 
     #[test]
@@ -1474,27 +1559,12 @@ mod tests {
                 .to_string(),
             ),
         );
-        route(&mut session, &request("POST", "/generate", "{}"));
-        route(
-            &mut session,
-            &request(
-                "POST",
-                "/keep",
-                &json!({"draftId": "study-run-1-draft-src-nato-1-nato-letter-a"}).to_string(),
-            ),
-        );
 
-        let answered = route(
-            &mut session,
-            &request(
-                "POST",
-                "/answer",
-                &json!({"answer": "ALFA", "responseTimeMs": 0}).to_string(),
-            ),
-        );
+        let answered = route(&mut session, &form_request("/answer", "answer=ALFA"));
 
         assert_eq!(answered.status, 200);
-        let answered: Value = serde_json::from_slice(&answered.body).expect("answered");
+        let state = route(&mut session, &request("GET", "/state", ""));
+        let answered: Value = serde_json::from_slice(&state.body).expect("answered");
         assert_eq!(answered["current"]["grade"]["verdict"], json!("correct"));
         assert_eq!(answered["current"]["grade"]["rating"], json!(3));
         assert_eq!(answered["summary"]["attemptCount"], json!(1));
@@ -1810,126 +1880,148 @@ mod tests {
                 .to_string(),
             ),
         );
-        route(session, &request("POST", "/generate", "{}"));
     }
 
     #[test]
-    fn draft_decision_routes_keep_edit_reject_and_render_provenance() {
-        let directory = TempDirectory::new("draft-decisions");
-        let mut study_session = session(directory.path().join("study.json"));
-        let source = route(
-            &mut study_session,
-            &request(
-                "POST",
-                "/source",
-                &json!({
-                    "id": "src-trust",
-                    "title": "Trust notes",
-                    "body": source_body()
-                })
-                .to_string(),
-            ),
+    fn published_quiz_edits_and_removal_preserve_history_and_provenance() {
+        let directory = TempDirectory::new("published-quiz-lifecycle");
+        let study_path = directory.path().join("study.json");
+        let mut study_session = session(study_path.clone());
+        seed_nato_source_and_generate(&mut study_session);
+        let generated = route(&mut study_session, &request("GET", "/state", ""));
+        let generated: Value = serde_json::from_slice(&generated.body).expect("published source");
+        let draft = &generated["drafts"][0];
+        let draft_id = draft["id"].as_str().expect("stable quiz id");
+        assert_eq!(
+            draft["sourceSpans"][0]["sourceDocumentId"],
+            json!("src-nato")
         );
-        assert_eq!(source.status, 200);
-        let generated = route(&mut study_session, &request("POST", "/generate", "{}"));
-        let generated: Value = serde_json::from_slice(&generated.body).expect("generated");
-        let drafts = generated["drafts"].as_array().expect("draft array");
-        assert!(
-            !drafts.is_empty(),
-            "fixture must produce a decision candidate"
-        );
-        assert!(drafts[0]["sourceSpans"].as_array().is_some());
-        assert!(drafts[0]["provenance"].is_object());
+        let source_text = draft["sourceSpans"][0]["text"]
+            .as_str()
+            .expect("source excerpt");
+        let provider = draft["provenance"]["provider"]
+            .as_str()
+            .expect("generation provenance");
         let html = route(&mut study_session, &request("GET", "/", ""));
         let html = String::from_utf8(html.body).expect("html");
-        for marker in [
-            "Source spans",
-            "Generated by",
-            "/draft/keep",
-            "/draft/edit",
-            "/draft/reject",
+        assert!(html.contains(&super::escape_html(source_text)));
+        assert!(html.contains(&super::escape_html(provider)));
+
+        let answered = route(&mut study_session, &form_request("/answer", "answer=ALFA"));
+        assert_eq!(answered.status, 200);
+        let graded = route(&mut study_session, &request("GET", "/state", ""));
+        let graded: Value = serde_json::from_slice(&graded.body).expect("graded quiz");
+        assert_eq!(graded["current"]["grade"]["verdict"], json!("correct"));
+        for prompt in [
+            "Which NATO word represents A?",
+            "A is represented by which NATO word?",
         ] {
-            assert!(
-                html.contains(marker),
-                "draft trust marker missing: {marker}"
+            let edited = route(
+                &mut study_session,
+                &form_request(
+                    "/draft/edit",
+                    &format!(
+                        "draftId={}&prompt={}&expectedAnswer=ALFA",
+                        url_escape(draft_id),
+                        url_escape(prompt),
+                    ),
+                ),
             );
+            assert_eq!(edited.status, 200);
+            let state = route(&mut study_session, &request("GET", "/state", ""));
+            let state: Value = serde_json::from_slice(&state.body).expect("edited inventory");
+            let updated = state["drafts"]
+                .as_array()
+                .expect("quizzes")
+                .iter()
+                .find(|row| row["id"] == draft["id"])
+                .expect("stable edited quiz");
+            assert_eq!(updated["prompt"], json!(prompt));
+            assert_eq!(updated["reviewUnitId"], draft["reviewUnitId"]);
+            assert_eq!(updated["sourceSpans"], draft["sourceSpans"]);
+            assert_eq!(updated["provenance"], draft["provenance"]);
+            assert_eq!(
+                state["queue"], graded["queue"],
+                "editing preserves the schedule"
+            );
+            assert_eq!(state["summary"]["attemptCount"], json!(1));
         }
 
-        let edited = route(
-            &mut study_session,
-            &request(
-                "POST",
-                "/draft/edit",
-                &json!({
-                    "draftId": drafts[0]["id"],
-                    "prompt": "Edited trust prompt",
-                    "expectedAnswer": "Edited trust answer"
-                })
-                .to_string(),
-            ),
-        );
-        assert_eq!(edited.status, 200);
-        let state = route(&mut study_session, &request("GET", "/state", ""));
-        let state: Value = serde_json::from_slice(&state.body).expect("state");
-        assert!(state["drafts"]
-            .as_array()
-            .expect("state drafts")
-            .iter()
-            .any(|draft| draft["learnerDecision"]["kind"] == json!("kept")));
-        assert_eq!(state["dueCount"], json!(1));
-
-        assert_reject_route();
-    }
-
-    fn assert_reject_route() {
-        let reject_directory = TempDirectory::new("draft-reject");
-        let mut reject_session = session(reject_directory.path().join("study.json"));
-        let rejected_source = route(
-            &mut reject_session,
-            &request(
-                "POST",
-                "/source",
-                &json!({
-                    "id": "src-reject",
-                    "title": "Reject notes",
-                    "body": source_body()
-                })
-                .to_string(),
-            ),
-        );
-        assert_eq!(rejected_source.status, 200);
-        let rejected_generated = route(&mut reject_session, &request("POST", "/generate", "{}"));
-        let rejected_generated: Value =
-            serde_json::from_slice(&rejected_generated.body).expect("rejected generated");
-        let rejected_drafts = rejected_generated["drafts"]
-            .as_array()
-            .expect("rejected drafts");
         let rejected = route(
-            &mut reject_session,
-            &request(
-                "POST",
+            &mut study_session,
+            &form_request(
                 "/draft/reject",
-                &json!({"draftId": rejected_drafts[0]["id"]}).to_string(),
+                &format!("draftId={}", url_escape(draft_id)),
             ),
         );
         assert_eq!(rejected.status, 200);
-        let rejected_state = route(&mut reject_session, &request("GET", "/state", ""));
-        let rejected_state: Value =
-            serde_json::from_slice(&rejected_state.body).expect("rejected state");
-        assert!(rejected_state["drafts"]
-            .as_array()
-            .expect("rejected state drafts")
-            .iter()
-            .any(|draft| draft["learnerDecision"]["kind"] == json!("rejected")));
-        assert_eq!(rejected_state["dueCount"], json!(0));
+        for rejected_edit_request in [
+            request(
+                "POST",
+                "/draft/edit",
+                &json!({
+                    "draftId": draft_id,
+                    "prompt": "Do not resurrect this quiz",
+                    "expectedAnswer": "ALFA"
+                })
+                .to_string(),
+            ),
+            form_request(
+                "/draft/edit",
+                &format!(
+                    "draftId={}&prompt=Do+not+resurrect+this+quiz&expectedAnswer=ALFA",
+                    url_escape(draft_id)
+                ),
+            ),
+        ] {
+            assert_eq!(
+                route(&mut study_session, &rejected_edit_request).status,
+                409
+            );
+        }
+        drop(study_session);
+        let reopened = session(study_path);
+        let state = reopened.view().expect("durable removal and history");
+        assert!(state.queue.is_empty());
+        assert_eq!(state.summary.attempt_count, 1);
+        assert!(state.current.is_none());
     }
 
-    fn keep_draft(session: &mut BetaStudySession, draft_id: &str) {
-        let response = route(
-            session,
-            &request("POST", "/keep", &json!({"draftId": draft_id}).to_string()),
-        );
-        assert_eq!(response.status, 200, "keep failed for {draft_id}");
+    #[test]
+    fn draft_routes_distinguish_unknown_drafts_from_durable_store_failures() {
+        let directory = TempDirectory::new("draft-error-status");
+        let study_path = directory.path().join("study.json");
+        let mut study_session = session(study_path.clone());
+        let draft_requests = [
+            request(
+                "POST",
+                "/draft/edit",
+                &json!({
+                    "draftId": "missing-draft",
+                    "prompt": "Which NATO word represents A?",
+                    "expectedAnswer": "ALFA"
+                })
+                .to_string(),
+            ),
+            form_request(
+                "/draft/edit",
+                "draftId=missing-draft&prompt=Which+NATO+word+represents+A%3F&expectedAnswer=ALFA",
+            ),
+            request(
+                "POST",
+                "/draft/reject",
+                &json!({"draftId": "missing-draft"}).to_string(),
+            ),
+            form_request("/draft/reject", "draftId=missing-draft"),
+        ];
+        for request in &draft_requests {
+            assert_eq!(route(&mut study_session, request).status, 404);
+        }
+
+        fs::write(&study_path, b"{").expect("corrupt durable snapshot");
+        for request in &draft_requests {
+            assert_eq!(route(&mut study_session, request).status, 500);
+        }
     }
 
     fn now() -> i64 {

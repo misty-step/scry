@@ -363,7 +363,7 @@ def export_postgres(args):
     require(len(catalogs) == 1 and catalogs[0]["schema"] == args.schema, "source schema does not match the selected PostgreSQL schema")
     catalog = catalogs[0]
     migrations = [row["row"] for row in records if row.get("kind") == "migration"]
-    require(len(migrations) in (8, 9), "only complete PostgreSQL schema8/schema9 ledgers are supported")
+    require(len(migrations) in (8, 9, 10), "only complete PostgreSQL schema8/schema9/schema10 ledgers are supported")
     for version, row in enumerate(migrations, 1):
         require(set(row) == {"version", "applied_at_ms"} and row["version"] == version and type(row["applied_at_ms"]) is int,
                 "unknown, gapped, or malformed PostgreSQL migration ledger")
@@ -454,7 +454,7 @@ def check_bundle(data, expected_ids=None):
     source = bundle["source"]
     require(set(source) == {"engine", "schemaVersion", "schemaName", "instance", "capturedAtMs", "migrations", "sequences", "recoveryState"}, "unknown source metadata")
     postgres = source["engine"] == "postgresql"
-    require(postgres and source["schemaVersion"] in (8, 9)
+    require(postgres and source["schemaVersion"] in (8, 9, 10)
             or source["engine"] == "cloudflare-sqlite" and source["schemaVersion"] == 4, "unknown storage schema")
     if postgres:
         require(source["recoveryState"] is None, "unexpected PostgreSQL recovery control state")

@@ -637,7 +637,7 @@ fn publish_claim(
         let request = BetaGenerationRequest {
             run_id: claim.run_id.clone(), source_document_ids: vec![claim.row.source_id.clone()],
             parent_review_unit_id: None, started_at: claim.row.updated_at_ms, completed_at: Some(now_ms()),
-            default_due: now_ms(), model: None, pending: false,
+            default_due: now_ms(), model: None, pending: true,
         };
         let result = match prepared {
             Some(provider) => run_beta_generation_with_provider(&mut store, provider, request),
@@ -650,6 +650,15 @@ fn publish_claim(
                 &[json!(serde_json::to_string(usage)?), json!(claim.row.account_id), json!(claim.run_id)])?;
         }
         let succeeded = !result.accepted_draft_ids.is_empty();
+        check_claim(db, claim)?;
+        if succeeded {
+            if !store.finalize_generation_run(&claim.run_id, i32::try_from(claim.row.attempts)
+                .map_err(|_| Failure::internal("Invalid generation attempt"))?, &claim.token, now_ms(), true)?
+            {
+                return Err(Failure::conflict("Generation publication lost its lease"));
+            }
+            return Ok(());
+        }
         let error = if succeeded { None } else { Some(provider_message.unwrap_or("No drafts passed the quality checks. Review the generation notices and revise this source before generating again.")) };
         finish_claim(db, claim, succeeded, transient, error)
     })

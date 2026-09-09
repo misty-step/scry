@@ -206,15 +206,13 @@ impl Grader {
     }
 }
 
+/// Automatic grading distinguishes successful recall from assisted or incomplete
+/// recall. Response speed alone cannot establish an Easy/Hard self-assessment.
 #[must_use]
-pub fn default_rating_policy(verdict: Verdict, context: GradeContext) -> Rating {
+pub fn default_rating_policy(verdict: Verdict, _context: GradeContext) -> Rating {
     match verdict {
-        Verdict::Correct if context.prior_reps >= 3 && context.response_time_ms <= 4_000 => {
-            Rating::Easy
-        }
         Verdict::Correct => Rating::Good,
-        Verdict::Close => Rating::Hard,
-        Verdict::Wrong | Verdict::Revealed => Rating::Again,
+        Verdict::Close | Verdict::Wrong | Verdict::Revealed => Rating::Again,
     }
 }
 
@@ -408,27 +406,23 @@ mod tests {
     }
 
     #[test]
-    fn default_rating_policy_matches_current_typescript_contract() {
-        assert_eq!(
-            default_rating_policy(Verdict::Correct, context(3_000, 3)),
-            Rating::Easy
+    fn opposite_meaning_near_miss_is_failed_recall() {
+        let grade = Grader::new().grade(
+            &short_answer(vec!["hypotension"]),
+            "hypertension",
+            context(3_000, 8),
         );
-        assert_eq!(
-            default_rating_policy(Verdict::Correct, context(5_100, 3)),
-            Rating::Good
-        );
-        assert_eq!(
-            default_rating_policy(Verdict::Close, context(5_100, 0)),
-            Rating::Hard
-        );
-        assert_eq!(
-            default_rating_policy(Verdict::Wrong, context(5_100, 0)),
-            Rating::Again
-        );
-        assert_eq!(
-            default_rating_policy(Verdict::Revealed, context(5_100, 0)),
-            Rating::Again
-        );
+        assert_eq!(grade.verdict, Verdict::Close);
+        assert!(!grade.is_correct);
+        assert_eq!(grade.rating, Rating::Again);
+    }
+
+    #[test]
+    fn rapid_mature_recall_does_not_infer_an_easy_self_assessment() {
+        let grade =
+            Grader::new().grade(&short_answer(vec!["increase"]), "increase", context(500, 8));
+        assert_eq!(grade.verdict, Verdict::Correct);
+        assert_eq!(grade.rating, Rating::Good);
     }
 
     #[test]
@@ -498,7 +492,7 @@ mod tests {
             context(5_100, 0),
         );
         assert_eq!(close.verdict, Verdict::Close);
-        assert_eq!(close.rating, Rating::Hard);
+        assert_eq!(close.rating, Rating::Again);
     }
 
     #[test]

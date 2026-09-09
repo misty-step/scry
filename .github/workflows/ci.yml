@@ -27,6 +27,18 @@ jobs:
       - name: Run full repo CI gate
         run: bun run ci:full
 
+      - name: Export tested Worker bundle and workerd proof
+        run: |
+          dagger call worker --source=. --git-sha="$GITHUB_SHA" export --path="target/cloudflare/worker-${GITHUB_SHA}"
+
+      - name: Upload tested Worker release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: worker-${{ github.sha }}
+          path: target/cloudflare/worker-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Export Postgres action latency receipt
         run: |
           mkdir -p "target/perf/action-latency-postgres-${GITHUB_SHA}"

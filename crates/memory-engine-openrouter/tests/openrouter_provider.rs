@@ -738,16 +738,17 @@ fn reference_payload() -> serde_json::Value {
 enum Grounding {
     /// A bare topic: every card expands from world knowledge (no quote).
     Knowledge,
-    /// A passage: at least some cards cite a verbatim quote from it.
+    /// A passage: every card must retain source support.
     Source,
 }
 
-/// Live generation eval (opt-in; hits `OpenRouter`, so `#[ignore]`d in CI). This
-/// is the acceptance oracle for the model-judged generation harness: across
-/// topic, passage, and large-enumerable inputs, every card must stand alone, and
-/// every card that CLAIMS a source quote must quote the input verbatim (no
-/// fabricated citations — the anti-hallucination guarantee). It prints a
-/// scorecard so the prompt can be iterated against live reality. Run it with:
+/// Live provider-content eval (opt-in; hits `OpenRouter`, so `#[ignore]`d in CI).
+/// Exercises word, phrase, prose, and enumerable inputs before persistence.
+/// Deterministic checks cover bounded counts, intent, standalone quality,
+/// duplicate suppression, and truthful grounding. The generation benchmark's
+/// independent model judge evaluates mechanisms, applications, and distractor
+/// plausibility; passing this scorecard alone does not establish model quality.
+/// Run this explicitly authorized live lane with:
 ///
 /// ```text
 /// set -a; . ./.env; set +a
@@ -758,7 +759,18 @@ enum Grounding {
 #[ignore = "hits the live OpenRouter API; requires OPENROUTER_API_KEY"]
 #[allow(clippy::too_many_lines)]
 fn live_generation_eval() {
-    use memory_engine_generation::evidence_quote_matches;
+    use memory_engine_generation::{
+        candidate_quality_reasons, candidates_duplicateish, evidence_quote_matches,
+    };
+    struct Scenario<'a> {
+        name: &'a str,
+        title: &'a str,
+        body: &'a str,
+        min_cards: usize,
+        max_cards: usize,
+        grounding: Grounding,
+        intent: LearningIntent,
+    }
 
     let config = OpenRouterConfig::from_env().expect("OPENROUTER_API_KEY must be set");
     let model = config.model.clone();
@@ -770,49 +782,101 @@ fn live_generation_eval() {
         most animals. The endosymbiotic theory proposes that mitochondria descended from \
         free-living alpha-proteobacteria engulfed by an ancestral eukaryotic cell.";
 
-    // (name, title, body, min_cards, expected grounding)
-    let scenarios: [(&str, &str, &str, usize, Grounding); 4] = [
-        (
-            "topic / NATO alphabet",
-            "NATO phonetic alphabet",
-            "nato phonetic alphabet",
-            24,
-            Grounding::Knowledge,
-        ),
-        (
-            "topic / planets",
-            "the eight planets in order from the sun",
-            "the eight planets in order from the sun",
-            8,
-            Grounding::Knowledge,
-        ),
-        (
-            "passage / mitochondria",
-            "Mitochondria",
-            mitochondria,
-            2,
-            Grounding::Source,
-        ),
-        (
-            "large enumerable / months",
-            "the twelve months of the year and how many days each has",
-            "the twelve months of the year and how many days each has",
-            12,
-            Grounding::Knowledge,
-        ),
+    let essay = "Retrieval practice means trying to produce an answer from memory rather than \
+        rereading the answer. Rereading can make an explanation feel familiar without showing \
+        whether the learner can reproduce its decisive idea. A learner who can recognize a \
+        completed solution may still be unable to solve a similar problem unaided.\n\n\
+        Spacing practice across separate sessions introduces a delay before the next attempt. \
+        Successful retrieval after a delay can strengthen later retention, but a delay so long \
+        that retrieval repeatedly fails may require a smaller prompt or explanatory feedback. \
+        Difficulty is useful when it supports successful effort, not when it merely prevents \
+        an answer. Feedback should explain the missing distinction after the attempt rather \
+        than reveal it inside the next question.\n\n\
+        A practical study session therefore combines concise retrieval questions, time between \
+        attempts, and feedback on errors. A question about a mechanism should require the \
+        learner to recover the relationship, not identify an author or repeat a sentence's \
+        first few words. To check transfer, change the scenario while preserving the deciding \
+        rule and supplying all necessary conditions. A novel problem that requires untaught \
+        facts does not isolate understanding of that rule.";
+
+    let scenarios = [
+        Scenario {
+            name: "word / photosynthesis",
+            title: "Photosynthesis",
+            body: "photosynthesis",
+            min_cards: 2,
+            max_cards: 5,
+            grounding: Grounding::Knowledge,
+            intent: LearningIntent::ConceptUnderstanding,
+        },
+        Scenario {
+            name: "phrase / first principles",
+            title: "First principles reasoning",
+            body: "first principles reasoning",
+            min_cards: 2,
+            max_cards: 4,
+            grounding: Grounding::Knowledge,
+            intent: LearningIntent::ConceptUnderstanding,
+        },
+        Scenario {
+            name: "topic / NATO alphabet",
+            title: "NATO phonetic alphabet",
+            body: "nato phonetic alphabet",
+            min_cards: 26,
+            max_cards: 26,
+            grounding: Grounding::Knowledge,
+            intent: LearningIntent::EnumerableSet,
+        },
+        Scenario {
+            name: "topic / planets",
+            title: "The eight planets in order from the sun",
+            body: "the eight planets in order from the sun",
+            min_cards: 8,
+            max_cards: 8,
+            grounding: Grounding::Knowledge,
+            intent: LearningIntent::EnumerableSet,
+        },
+        Scenario {
+            name: "passage / mitochondria",
+            title: "Mitochondria",
+            body: mitochondria,
+            min_cards: 2,
+            max_cards: 5,
+            grounding: Grounding::Source,
+            intent: LearningIntent::ConceptUnderstanding,
+        },
+        Scenario {
+            name: "essay / retrieval practice",
+            title: "Retrieval practice and transfer",
+            body: essay,
+            min_cards: 3,
+            max_cards: 5,
+            grounding: Grounding::Source,
+            intent: LearningIntent::ConceptUnderstanding,
+        },
+        Scenario {
+            name: "large enumerable / months",
+            title: "The twelve months of the year and how many days each has",
+            body: "the twelve months of the year and how many days each has",
+            min_cards: 12,
+            max_cards: 12,
+            grounding: Grounding::Knowledge,
+            intent: LearningIntent::EnumerableSet,
+        },
     ];
 
-    let banned = [
-        "source text",
-        "the passage",
-        "presented as",
-        "the text above",
-        "the list above",
-        "the subject of",
-    ];
     let mut failures: Vec<String> = Vec::new();
 
-    for (name, title, body, min_cards, grounding) in scenarios {
+    for Scenario {
+        name,
+        title,
+        body,
+        min_cards,
+        max_cards,
+        grounding,
+        intent,
+    } in scenarios
+    {
         let source = eval_source(title, body);
         let drafts = match provider.generate_drafts(&source) {
             Ok(drafts) => drafts,
@@ -822,9 +886,9 @@ fn live_generation_eval() {
             }
         };
 
-        let (mut source_cards, mut knowledge_cards, mut fabricated, mut meta) = (0, 0, 0, 0);
+        let (mut source_cards, mut knowledge_cards, mut fabricated) = (0, 0, 0);
         eprintln!("\n=== {name} — {} cards ===", drafts.candidates.len());
-        for candidate in &drafts.candidates {
+        for (index, candidate) in drafts.candidates.iter().enumerate() {
             let tag = if let Some(quote) = candidate.evidence.as_deref() {
                 source_cards += 1;
                 if !evidence_quote_matches(body, quote) {
@@ -835,25 +899,47 @@ fn live_generation_eval() {
                 knowledge_cards += 1;
                 "know"
             };
-            let lowered = candidate.question.to_lowercase();
-            if banned.iter().any(|phrase| lowered.contains(phrase)) {
-                meta += 1;
+            let defects = candidate_quality_reasons(candidate);
+            if !defects.is_empty() {
+                failures.push(format!(
+                    "{name}: card {}: {}",
+                    index + 1,
+                    defects.join("; ")
+                ));
+            }
+            if drafts.candidates[..index]
+                .iter()
+                .any(|other| candidates_duplicateish(candidate, other))
+            {
+                failures.push(format!(
+                    "{name}: card {} repeats an earlier learning target",
+                    index + 1
+                ));
             }
             eprintln!("  [{tag}] {} => {}", candidate.question, candidate.answer);
         }
         eprintln!(
-            "  source={source_cards} knowledge={knowledge_cards} fabricated_quotes={fabricated} meta={meta}"
+            "  source={source_cards} knowledge={knowledge_cards} fabricated_quotes={fabricated}"
         );
 
-        if drafts.candidates.len() < min_cards {
+        if !(min_cards..=max_cards).contains(&drafts.candidates.len()) {
             failures.push(format!(
-                "{name}: {} cards < expected {min_cards}",
+                "{name}: {} cards outside expected {min_cards}..={max_cards}",
                 drafts.candidates.len()
             ));
         }
-        if meta > 0 {
-            failures.push(format!("{name}: {meta} non-standalone (meta) questions"));
+        if drafts.learning_intent != Some(intent) {
+            failures.push(format!(
+                "{name}: expected {intent}, received {:?}",
+                drafts.learning_intent
+            ));
         }
+        failures.extend(
+            drafts
+                .failures
+                .iter()
+                .map(|failure| format!("{name}: {failure}")),
+        );
         // The anti-hallucination guarantee: a card that claims a source quote
         // must quote the input verbatim.
         if fabricated > 0 {
@@ -865,8 +951,8 @@ fn live_generation_eval() {
             Grounding::Knowledge if source_cards > 0 => failures.push(format!(
                 "{name}: {source_cards} cards cited a quote for a bare topic with nothing to quote"
             )),
-            Grounding::Source if source_cards == 0 => failures.push(format!(
-                "{name}: no card grounded in the passage (expected source extraction)"
+            Grounding::Source if knowledge_cards > 0 => failures.push(format!(
+                "{name}: {knowledge_cards} passage-based cards silently substituted world knowledge"
             )),
             _ => {}
         }

@@ -1,7 +1,7 @@
 //! Beta-study session orchestration.
 //!
 //! This crate owns the repo-local beta-study workflow: source intake,
-//! deterministic draft generation, draft approval, reveal state, grading, and
+//! deterministic generation and enrollment, reveal state, grading, and
 //! queue advancement. It composes the generation, persistence, and service
 //! crates without moving filesystem, HTTP, or UI concerns into the pure core.
 
@@ -696,7 +696,10 @@ impl BetaStudySession<BetaPersistenceStore> {
     ///
     /// Returns [`BetaStudyError`] when the beta store cannot be opened.
     pub fn open(options: BetaStudyOptions) -> Result<Self, BetaStudyError> {
-        let store = BetaPersistenceStore::open(options.path).map_err(BetaStudyError::Store)?;
+        let mut store = BetaPersistenceStore::open(options.path).map_err(BetaStudyError::Store)?;
+        store
+            .migrate_generated_content()
+            .map_err(BetaStudyError::Store)?;
         let snapshot = store.snapshot();
         let status = if snapshot.source_documents.is_empty() {
             BetaStudyStatus::Empty
@@ -851,16 +854,19 @@ where
             .list_queue_candidates()
             .map_err(BetaStudyError::Store)?;
         let now = (self.now)();
-        let active_sources = active_source_ids(&snapshot);
-        self.current = candidates
+        let candidates = learner_queue_candidates(&snapshot, &candidates);
+        let reviewable = reviewable_queue_candidates(
+            &candidates,
+            mastered_after_three_reviews,
+            &QueueSelectionOptions {
+                now,
+                ..QueueSelectionOptions::default()
+            },
+        );
+        self.current = reviewable
             .iter()
-            .filter(|candidate| {
-                candidate.review_unit_id.as_str() == review_unit_id
-                    && candidate.lifecycle.is_schedulable(now)
-                    && candidate.due <= now
-            })
-            .find_map(|candidate| find_approved_draft(&snapshot, candidate))
-            .filter(|draft| draft_has_active_source(draft, &active_sources));
+            .find(|candidate| candidate.review_unit_id.as_str() == review_unit_id)
+            .and_then(|candidate| find_approved_draft(&snapshot, candidate));
         self.current = self
             .current
             .take()
@@ -950,7 +956,9 @@ where
                 archived_at: None,
             })
             .map_err(BetaStudyError::Store)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.status = BetaStudyStatus::Drafting;
+        }
         self.view()
     }
 
@@ -1115,7 +1123,9 @@ where
         let request = self.generation_request(&snapshot, source_document_ids)?;
         self.invalidate_snapshot();
         run_beta_generation(&mut self.store, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.select_next()?;
+        }
         self.view()
     }
 
@@ -1140,7 +1150,9 @@ where
         )?;
         self.invalidate_snapshot();
         run_beta_generation(&mut self.store, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.select_next()?;
+        }
         self.view()
     }
 
@@ -1163,7 +1175,9 @@ where
         )?;
         self.invalidate_snapshot();
         run_beta_generation(&mut self.store, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.status = BetaStudyStatus::Drafting;
+        }
         self.view()
     }
 
@@ -1185,7 +1199,9 @@ where
         let request = self.generation_request(&snapshot, source_document_ids)?;
         self.invalidate_snapshot();
         run_beta_generation_with_provider(&mut self.store, provider, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.select_next()?;
+        }
         self.view()
     }
 
@@ -1209,7 +1225,9 @@ where
         )?;
         self.invalidate_snapshot();
         run_beta_generation_with_provider(&mut self.store, provider, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        if self.current.is_none() {
+            self.status = BetaStudyStatus::Drafting;
+        }
         self.view()
     }
 
@@ -1221,6 +1239,7 @@ where
         &mut self,
         run_id: &str,
     ) -> Result<(), BetaStudyError<<S as MemoryServiceStore>::Error>> {
+        self.invalidate_snapshot();
         self.store
             .discard_generation_run(run_id)
             .map_err(BetaStudyError::Store)
@@ -1239,6 +1258,7 @@ where
         now_ms: i64,
         lease_valid: bool,
     ) -> Result<bool, BetaStudyError<<S as MemoryServiceStore>::Error>> {
+        self.invalidate_snapshot();
         self.store
             .finalize_generation_run(run_id, generation_attempt, lease_token, now_ms, lease_valid)
             .map_err(BetaStudyError::Store)
@@ -1264,7 +1284,7 @@ where
         )?;
         self.invalidate_snapshot();
         run_beta_generation_with_provider(&mut self.store, provider, request)?;
-        self.status = BetaStudyStatus::Drafting;
+        self.select_next()?;
         self.view()
     }
 
@@ -1831,7 +1851,6 @@ where
         } else {
             run_bridge_generation(&mut self.store, bridge_request)?
         };
-        // Accepted bridge drafts remain pending for learner review.
         self.store
             .snooze_review_unit_until(&active.review_unit_id, now + DEFAULT_BRIDGE_PARENT_DEFER_MS)
             .map_err(BetaStudyError::Store)?;
@@ -1884,27 +1903,33 @@ where
         if snapshot.remediation_packs.iter().any(|pack| {
             pack.status == RemediationPackStatus::Active
                 && pack.parent_review_unit_id == *review_unit_id
+                && pack.review_unit_ids.iter().any(|id| {
+                    snapshot
+                        .review_units
+                        .iter()
+                        .any(|unit| unit.review_unit_id == *id)
+                })
         }) {
             return Ok(());
         }
-        // The grade idempotency key is the attempt's identity here. It is
-        // answer-derived by default
-        // (`beta-study:{review_unit_id}:{prompt_id}:{answer}`), which cannot
-        // collapse two genuinely distinct attempts: the store rejects a repeat
-        // of the same key outright with `DuplicateAppliedReview`, so a second
-        // attempt that reaches this point always carries a different key. See
-        // `repeat_identical_answer_is_rejected_before_remediation_is_reached`.
+        // The occurrence-scoped grading key also owns remediation lineage:
+        // retries reuse it, while later recalls (even identical answers) do not.
         let attempt_id = review.attempt.idempotency_key.clone().unwrap_or_else(|| {
             format!(
                 "remediation-attempt:{review_unit_id}:{}",
                 review.attempt.occurred_at
             )
         });
-        if snapshot
-            .remediation_packs
-            .iter()
-            .any(|pack| pack.attempt_id == attempt_id)
-        {
+        if snapshot.remediation_packs.iter().any(|pack| {
+            pack.attempt_id == attempt_id
+                && (pack.status != RemediationPackStatus::Active
+                    || pack.review_unit_ids.iter().any(|id| {
+                        snapshot
+                            .review_units
+                            .iter()
+                            .any(|unit| unit.review_unit_id == *id)
+                    }))
+        }) {
             return Ok(());
         }
 
@@ -1950,9 +1975,6 @@ where
                 model: None,
             },
         )?;
-        // Accepted remediation drafts remain pending for an explicit learner
-        // decision (keep/edit/reject) — the boundary never auto-schedules
-        // generated material, remediation packs included.
         if outcome.pack.status == RemediationPackStatus::Active {
             self.store
                 .snooze_review_unit_until(
@@ -2001,6 +2023,12 @@ where
             .filter(|pack| {
                 pack.status == RemediationPackStatus::Active
                     && now.saturating_sub(pack.created_at) >= DEFAULT_REMEDIATION_PACK_TTL_MS
+                    && pack.review_unit_ids.iter().any(|id| {
+                        snapshot
+                            .review_units
+                            .iter()
+                            .any(|unit| unit.review_unit_id == *id)
+                    })
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -2119,8 +2147,11 @@ where
                     idempotency_key: Some(idempotency_key.map_or_else(
                         || {
                             format!(
-                                "beta-study:{}:{}:{answer}",
-                                active.review_unit_id, active.prompt_id
+                                "beta-study:{}:{}",
+                                active.review_unit_id,
+                                memory_engine_persistence::review_occurrence_key(
+                                    prior_schedule.as_ref()
+                                )
                             )
                         },
                         Into::into,
@@ -2195,24 +2226,28 @@ where
             })
             .collect::<Vec<_>>();
         let now = (self.now)();
-        let active_queue = queue
-            .iter()
-            .filter(|candidate| {
-                candidate.lifecycle.is_schedulable(now)
-                    && queue_candidate_has_active_source(
-                        &snapshot.generated_prompt_drafts,
-                        candidate,
-                        &active_source_ids,
-                    )
-            })
+        let learner_queue = learner_queue_candidates(&snapshot, &queue)
+            .into_iter()
+            .filter(|candidate| candidate.lifecycle.is_schedulable(now))
             .collect::<Vec<_>>();
-        let next_review_unit_id = active_queue
-            .first()
-            .map(|candidate| candidate.review_unit_id.clone());
-        let due_count = active_queue
+        let superseded = memory_engine_core::superseded_review_unit_ids(
+            &learner_queue,
+            mastered_after_three_reviews,
+        );
+        let active_queue = learner_queue
             .iter()
-            .filter(|candidate| candidate.due <= now)
-            .count();
+            .filter(|candidate| !superseded.contains(&candidate.review_unit_id))
+            .collect::<Vec<_>>();
+        let next_review_unit_id = select_current_review_unit(&snapshot, &queue, now);
+        let due_count = reviewable_queue_candidates(
+            &learner_queue,
+            mastered_after_three_reviews,
+            &QueueSelectionOptions {
+                now,
+                ..QueueSelectionOptions::default()
+            },
+        )
+        .len();
         let concept_progress = concept_progress(&snapshot, &active_source_ids);
         let library = library_projection(&snapshot, &active_source_ids);
         let current =
@@ -2418,46 +2453,58 @@ pub fn select_current_review_unit(
     candidates: &[QueueCandidate],
     now: i64,
 ) -> Option<ReviewUnitId> {
+    let candidates = learner_queue_candidates(snapshot, candidates);
+    let defaults = QueueSelectionOptions::default();
+    let history_window = defaults
+        .recent_concept_window
+        .max(defaults.recent_source_window)
+        .max(defaults.recent_domain_window);
+    let recent = snapshot
+        .attempts
+        .iter()
+        .rev()
+        .filter_map(|attempt| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.review_unit_id == attempt.review_unit_id)
+        })
+        .take(history_window)
+        .cloned()
+        .collect::<Vec<_>>();
     let selected = pick_next_queue_candidate(
-        candidates,
+        &candidates,
         mastered_after_three_reviews,
         &QueueSelectionOptions {
             now,
-            ..QueueSelectionOptions::default()
+            recent_candidates: &recent,
+            ..defaults
         },
-    );
-    let active_source_ids = active_source_ids(snapshot);
-    let mut current = select_due_variant(
-        snapshot,
-        candidates,
-        &active_source_ids,
-        now,
-        selected.as_ref(),
-    );
-    if current.is_none() {
-        current = selected
-            .as_ref()
-            .filter(|candidate| candidate.due <= now)
-            .and_then(|candidate| find_approved_draft(snapshot, candidate));
-    }
-    if current
-        .as_ref()
-        .is_some_and(|draft| !draft_has_active_source(draft, &active_source_ids))
-    {
-        current = None;
-    }
-    if current.is_none() {
-        let mut queue = candidates.to_vec();
-        queue.sort_by_key(|candidate| candidate.due);
-        current = queue
-            .iter()
-            .filter(|candidate| candidate.lifecycle.is_schedulable(now) && candidate.due <= now)
-            .find_map(|candidate| {
-                find_approved_draft(snapshot, candidate)
-                    .filter(|draft| draft_has_active_source(draft, &active_source_ids))
-            });
-    }
-    current.map(|draft| draft.review_unit_id)
+    )?;
+    let active_sources = active_source_ids(snapshot);
+    select_due_variant(snapshot, &candidates, &active_sources, now, Some(&selected))
+        .or_else(|| find_approved_draft(snapshot, &selected))
+        .map(|draft| draft.review_unit_id)
+}
+
+fn learner_queue_candidates(
+    snapshot: &BetaStoreSnapshot,
+    candidates: &[QueueCandidate],
+) -> Vec<QueueCandidate> {
+    let sources = active_source_ids(snapshot);
+    candidates
+        .iter()
+        .filter(|candidate| {
+            find_approved_draft(snapshot, candidate).is_some_and(|draft| {
+                draft_has_active_source(&draft, &sources)
+                    && draft.validation.status == GeneratedPromptValidationStatus::Accepted
+                    && !matches!(
+                        draft.learner_decision,
+                        Some(LearnerDraftDecision::Rejected { .. })
+                    )
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 impl BetaStudyGrade {
@@ -2633,17 +2680,6 @@ fn draft_has_active_source(
         .any(|source_id| active_source_ids.contains(source_id))
 }
 
-fn queue_candidate_has_active_source(
-    drafts: &[GeneratedPromptDraft],
-    candidate: &QueueCandidate,
-    active_source_ids: &BTreeSet<String>,
-) -> bool {
-    drafts
-        .iter()
-        .find(|draft| draft.review_unit_id == candidate.review_unit_id)
-        .is_none_or(|draft| draft_has_active_source(draft, active_source_ids))
-}
-
 fn review_unit_has_active_source(
     drafts: &[GeneratedPromptDraft],
     review_unit: &memory_engine_persistence::BetaReviewUnitRecord,
@@ -2785,6 +2821,12 @@ fn feedback_for_current(
     let remediation_drafts_pending = snapshot.remediation_packs.iter().any(|pack| {
         pack.status == RemediationPackStatus::Active
             && pack.parent_review_unit_id == draft.review_unit_id
+            && pack.review_unit_ids.iter().any(|id| {
+                !snapshot
+                    .review_units
+                    .iter()
+                    .any(|unit| unit.review_unit_id == *id)
+            })
     });
 
     BetaStudyFeedback {
@@ -3241,6 +3283,15 @@ fn select_due_variant(
     if !draft_has_active_source(&selected_draft, active_source_ids) {
         return None;
     }
+    // Rotation is a novelty tie-break for new material, never an override of
+    // the kernel's due learning/relearning or reviewed-item priority.
+    if selected
+        .schedule_state
+        .as_ref()
+        .is_some_and(|state| state.state != ScheduleStatus::New)
+    {
+        return Some(selected_draft);
+    }
     let group = variant_group(&selected_draft)?;
     let options = QueueSelectionOptions {
         now,
@@ -3248,6 +3299,12 @@ fn select_due_variant(
     };
     let variants = reviewable_queue_candidates(candidates, mastered_after_three_reviews, &options)
         .iter()
+        .filter(|candidate| {
+            candidate
+                .schedule_state
+                .as_ref()
+                .is_none_or(|state| state.state == ScheduleStatus::New)
+        })
         .filter_map(|candidate| find_approved_draft(snapshot, candidate))
         .filter(|draft| draft_has_active_source(draft, active_source_ids))
         .filter(|draft| variant_group(draft).as_ref() == Some(&group))
@@ -3537,7 +3594,7 @@ fn generation_notices(snapshot: &BetaStoreSnapshot) -> Vec<String> {
 
 fn api_pressure() -> Vec<String> {
     [
-        "Beta study still owns source creation, draft approval, reveal state, and mobile UI state.",
+        "Beta study owns source creation, automatic enrollment, reveal state, and mobile UI state.",
         "The service boundary is usable for queue selection and grade/apply-review without promoting persistence into the pure kernel.",
         "Worked-solution display is activity metadata, not a kernel scheduling concern yet.",
     ]

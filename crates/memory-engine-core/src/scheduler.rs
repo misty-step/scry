@@ -132,9 +132,10 @@ impl FsrsTransition {
     }
 
     fn learning_state(&self, rating: Rating) -> Card {
-        let mut next = self.current.clone();
-        next.difficulty = next_difficulty(self.last.difficulty, rating);
-        next.stability = next_short_term_stability(self.last.stability, rating);
+        let mut next = self.next_memory_state(
+            rating,
+            forgetting_curve(self.elapsed_days, self.last.stability),
+        );
         self.apply_learning_steps(&mut next, rating, self.last.state);
 
         next
@@ -142,24 +143,13 @@ impl FsrsTransition {
 
     fn review_state(&self, rating: Rating) -> Card {
         let interval = self.elapsed_days;
-        let difficulty = self.last.difficulty;
         let stability = self.last.stability;
         let retrievability = forgetting_curve(interval, stability);
 
-        let mut next_again = self.current.clone();
-        let mut next_hard = self.current.clone();
-        let mut next_good = self.current.clone();
-        let mut next_easy = self.current.clone();
-
-        Self::next_difficulty_stability(
-            &mut next_again,
-            &mut next_hard,
-            &mut next_good,
-            &mut next_easy,
-            difficulty,
-            stability,
-            retrievability,
-        );
+        let mut next_again = self.next_memory_state(Rating::Again, retrievability);
+        let mut next_hard = self.next_memory_state(Rating::Hard, retrievability);
+        let mut next_good = self.next_memory_state(Rating::Good, retrievability);
+        let mut next_easy = self.next_memory_state(Rating::Easy, retrievability);
         self.next_interval(&mut next_hard, &mut next_good, &mut next_easy, interval);
         Self::set_review_state(&mut next_hard, &mut next_good, &mut next_easy);
         self.apply_learning_steps(&mut next_again, Rating::Again, ScheduleStatus::Relearning);
@@ -173,32 +163,21 @@ impl FsrsTransition {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn next_difficulty_stability(
-        next_again: &mut Card,
-        next_hard: &mut Card,
-        next_good: &mut Card,
-        next_easy: &mut Card,
-        difficulty: f64,
-        stability: f64,
-        retrievability: f64,
-    ) {
-        next_again.difficulty = next_difficulty(difficulty, Rating::Again);
-        let next_s_min = stability / f64::exp(W[17] * W[18]);
-        let s_after_fail = next_forget_stability(difficulty, stability, retrievability);
-        next_again.stability = clamp(round8(next_s_min), S_MIN, s_after_fail);
-
-        next_hard.difficulty = next_difficulty(difficulty, Rating::Hard);
-        next_hard.stability =
-            next_recall_stability(difficulty, stability, retrievability, Rating::Hard);
-
-        next_good.difficulty = next_difficulty(difficulty, Rating::Good);
-        next_good.stability =
-            next_recall_stability(difficulty, stability, retrievability, Rating::Good);
-
-        next_easy.difficulty = next_difficulty(difficulty, Rating::Easy);
-        next_easy.stability =
-            next_recall_stability(difficulty, stability, retrievability, Rating::Easy);
+    fn next_memory_state(&self, rating: Rating, retrievability: f64) -> Card {
+        let stability = self.last.stability;
+        let mut next = self.current.clone();
+        next.difficulty = next_difficulty(self.last.difficulty, rating);
+        next.stability = if self.elapsed_days == 0 {
+            next_short_term_stability(stability, rating)
+        } else if rating == Rating::Again {
+            let next_s_min = stability / f64::exp(W[17] * W[18]);
+            let s_after_fail =
+                next_forget_stability(self.last.difficulty, stability, retrievability);
+            clamp(round8(next_s_min), S_MIN, s_after_fail)
+        } else {
+            next_recall_stability(self.last.difficulty, stability, retrievability, rating)
+        };
+        next
     }
 
     fn next_interval(
@@ -299,7 +278,15 @@ impl From<&ScheduleState> for Card {
             lapses: state.lapses,
             state: state.state,
             last_review: state.last_review,
-            learning_steps: 0,
+            // The wire state predates explicit step counters. Recover completion
+            // of the ten-minute step from its scheduled gap, not elapsed lateness.
+            // An ambiguous Hard gap conservatively repeats the ten-minute step.
+            learning_steps: usize::from(
+                state.state == ScheduleStatus::Learning
+                    && state.last_review.is_some_and(|last| {
+                        state.due - last >= LEARNING_STEPS_MINUTES[1] * MINUTE_MS
+                    }),
+            ),
         }
     }
 }
@@ -332,12 +319,6 @@ fn learning_info(state: ScheduleStatus, current_step: usize, rating: Rating) -> 
     } else {
         &LEARNING_STEPS_MINUTES[..]
     };
-    let current_step =
-        if state == ScheduleStatus::Learning && rating != Rating::Again && rating != Rating::Hard {
-            current_step + 1
-        } else {
-            current_step
-        };
 
     if learning_steps.is_empty() || current_step >= learning_steps.len() {
         return LearningInfo {
@@ -466,7 +447,7 @@ fn next_forget_stability(difficulty: f64, stability: f64, retrievability: f64) -
 
 fn next_short_term_stability(stability: f64, rating: Rating) -> f64 {
     let sinc = stability.powf(-W[19]) * f64::exp(W[17] * (rating_value(rating) - 3.0 + W[18]));
-    let masked_sinc = if rating_value(rating) >= 3.0 {
+    let masked_sinc = if rating_value(rating) >= 2.0 {
         sinc.max(1.0)
     } else {
         sinc
