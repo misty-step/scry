@@ -646,12 +646,13 @@ fn emit_preview_pages() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut pages = pages();
     pages.extend(supplemental_pages());
-    let mut index = String::from(
+    let mut index = format!(
         "<!doctype html><html lang=en><meta charset=utf-8>\
 <meta name=viewport content='width=device-width,initial-scale=1'>\
-<title>Scry design preview</title><link rel=stylesheet href=/static/ledger.css>\
+<title>Scry design preview</title><link rel=stylesheet href='/static/ledger.css?v={css_version:016x}'>\
 <body><main class=ae-view><h1 class=me-display>Scry surface preview</h1>\
 <p class=ae-lede>Each frame is a rendered study surface. Open a frame on its own to inspect phone widths and keyboard focus.</p>",
+        css_version = crate::LEDGER_CSS_VERSION,
     );
     for (name, html) in &pages {
         fs::write(out.join(format!("{name}.html")), html)?;

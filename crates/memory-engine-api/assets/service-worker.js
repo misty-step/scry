@@ -1,5 +1,6 @@
-// Only public shell assets enter this cache. Mutable app assets revalidate
-// on every load, so a CSS/JS-only release never depends on a manual version bump.
+// Only public shell assets enter this cache. Unversioned mutable assets
+// revalidate on every load. Content-tagged CSS/JS URLs bypass Cache Storage;
+// their URLs change with the bytes, so the browser HTTP cache is safe.
 const CACHE_NAME = "scry-shell-v6";
 const OFFLINE_URL = "/offline.html";
 const IMMUTABLE_SHELL_URLS = Object.freeze([

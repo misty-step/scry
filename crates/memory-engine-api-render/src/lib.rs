@@ -16,6 +16,23 @@ pub const PWA_ICON_512: &[u8] = include_bytes!("../assets/icons/icon-512.png");
 pub const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../assets/icons/apple-touch-icon.png");
 pub const FAVICON: &[u8] = include_bytes!("../assets/icons/favicon.png");
 
+// Compile-time FNV-1a cache tags, not integrity checks: no dependency,
+// per-render hashing, or manual version to forget when CSS or JS changes.
+pub(crate) const LEDGER_CSS_VERSION: u64 = asset_content_tag(LEDGER_CSS.as_bytes());
+pub(crate) const APP_JS_VERSION: u64 =
+    asset_content_tag(include_bytes!("../../memory-engine-api/assets/app.js"));
+
+const fn asset_content_tag(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut index = 0;
+    while index < bytes.len() {
+        hash ^= bytes[index] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        index += 1;
+    }
+    hash
+}
+
 pub use render::{
     is_generating_notice, render_account_page, render_analytics_page, render_app_shell,
     render_auth_recovery, render_capture_waiting_page, render_content_feedback_recovery_html,

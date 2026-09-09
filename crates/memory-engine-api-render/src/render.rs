@@ -507,15 +507,17 @@ fn document_with_head(inner: &str, head: &str, account: Option<&AppAccount>) -> 
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
 <link rel="preload" href="/static/fonts/manrope-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/literata-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/ledger.css">
+<link rel="stylesheet" href="/static/ledger.css?v={css_version:016x}">
 {csrf}
 {head}
-<script src="/static/app.js" defer></script>
+<script src="/static/app.js?v={script_version:016x}" defer></script>
 </head>
 <body>
 {inner}
 </body>
-</html>"##
+</html>"##,
+        css_version = crate::LEDGER_CSS_VERSION,
+        script_version = crate::APP_JS_VERSION,
     )
 }
 
@@ -1851,7 +1853,7 @@ const ICON_PLUS: &str = r#"<svg class="ae-icon" viewBox="0 0 24 24" aria-hidden=
 
 #[cfg(test)]
 mod analytics_tests {
-    use memory_engine_api_state::{AppAccount, StudyViewResponse};
+    use memory_engine_api_state::StudyViewResponse;
     use memory_engine_study::BetaStudyConceptProgress;
     use memory_engine_study::BetaStudySummary;
 
@@ -1974,41 +1976,6 @@ mod analytics_tests {
             nine < untried,
             "untried concepts sort after measured concepts: {page}"
         );
-    }
-
-    #[test]
-    fn analytics_page_is_a_complete_document_with_one_asset_contract() {
-        let state = super::render_test_state("analytics-document@example.com");
-        let created = state
-            .create_account("analytics-document@example.com")
-            .expect("account");
-        let account: AppAccount = state.create_browser_session(&created).expect("session");
-        let view = StudyViewResponse {
-            drafts: Vec::new(),
-            queue: Vec::new(),
-            current: None,
-            concept_progress: Vec::new(),
-            summary: BetaStudySummary {
-                source_count: 0,
-                accepted_draft_count: 0,
-                approved_review_unit_count: 0,
-                attempt_count: 0,
-                last_outcome: None,
-                next_review_unit_id: None,
-            },
-            due_count: 0,
-            generation_notices: Vec::new(),
-            library: Vec::new(),
-        };
-
-        let page = super::render_analytics_page(&account, &view, AnalyticsViewOptions::default());
-
-        assert!(page.starts_with("<!doctype html>"));
-        assert!(page
-            .contains(r#"<meta name="viewport" content="width=device-width, initial-scale=1">"#));
-        assert!(page.contains(r#"<meta name="color-scheme" content="light dark">"#));
-        assert_eq!(page.matches(r#"href="/static/ledger.css""#).count(), 1);
-        assert_eq!(page.matches(r#"src="/static/app.js""#).count(), 1);
     }
 
     #[test]

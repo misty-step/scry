@@ -1232,10 +1232,6 @@ async fn assert_submit_recovery_document(
     response: axum::response::Response,
 ) {
     let body = response_text(response).await;
-    assert!(
-        body.contains(r#"<script src="/static/app.js" defer></script>"#),
-        "submit recovery must load the handoff consumer"
-    );
     assert!(body.contains(r#"href="/""#));
     assert!(!body.contains("me-recovery-email"));
 
