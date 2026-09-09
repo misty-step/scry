@@ -25,7 +25,8 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
-.pi/
+.pi/*
+!.pi/settings.json
 *.swp
 
 # Logs
