@@ -1,7 +1,7 @@
 {
   "schema": "scry.frictionless-review-proof.v1",
   "date": "2026-09-08",
-  "scope": "Pre-deployment proof: real local Worker/native browser and client journeys, live generator and judge, and independent scheduler comparison. This receipt does not assert production rollout.",
+  "scope": "Local browser/client, live generator, and independent scheduler evidence from 2026-09-08, plus the staged production rollout and live Worker/browser/client proof from 2026-09-09. Surface-specific limits remain explicit.",
   "generation": {
     "generator": "google/gemini-3.7-flash",
     "judge": "openai/gpt-5.4",
@@ -59,8 +59,13 @@
   },
   "operations": {
     "read_only_production_status": "healthz/readyz/statusz HTTP 200 and healthy",
-    "ship_parity_gate": "PASS: bun run ci:full; real Postgres, workerd, Clippy/rustdoc, action latency and Gitleaks; session artifact://1240",
-    "host_gate": "PASS: bun run ci; final integrated working tree committed as 2e401ea1158e3b494e37b4053559145bea982c98; session artifact://1237"
+    "ship_parity_gate": "PASS: bun run ci:full on fa9502544f4724051dfcea5aa8e02b183f0329ac; session artifact://1292.",
+    "host_gate": "PASS: bun run ci after content-versioned assets; session artifact://1272. Working tree committed as fa9502544f4724051dfcea5aa8e02b183f0329ac.",
+    "source_packaging_fix": {
+      "before": "CI inventory omitted the tracked settings file; release rejected before mutation",
+      "after": "Actual Dagger gitignore filter includes the 183-byte tracked settings file; local provider state remains ignored",
+      "guards": "unchanged"
+    }
   },
   "postgres_consumed_hold": "Real Postgres held-inventory regression passes; SQL now reads and writes the existing snake_case idempotency key.",
   "browser": {
@@ -98,6 +103,20 @@
       "empty_footer_hidden": true,
       "horizontal_overflow": false,
       "url_wait_note": "The helper timed out; direct subsequent browser inspection confirmed the expected root and held grade. No latency claim is inferred."
+    },
+    "asset_delivery": {
+      "reason": "Uncontrolled browser sessions otherwise receive one-hour-cached unversioned CSS/JS. Service-worker-controlled unversioned requests already revalidate.",
+      "mechanism": "Compile-time content tags in shared rendered asset URLs; no dependency or runtime hashing.",
+      "stylesheet_version": "3485ec33ae1ff070",
+      "script_version": "985f831da2d25134",
+      "native_http_statuses": [
+        200,
+        200
+      ],
+      "tags_match_served_bytes": true,
+      "horizontal_overflow": false,
+      "screenshot": "frictionless-assets-20260909.webp",
+      "staging_cached_session_upgrade": "Verified separately in staging_after.warm_session_assets; production warm-session proof is also recorded below."
     }
   },
   "staging_before": {
@@ -125,7 +144,309 @@
       "transport": "actual stdio binary using the same isolated credential file as CLI",
       "submitted_verdict": "correct",
       "list_due_preserved_held_grade": true
+    },
+    "production_mcp": {
+      "transport": "actual stdio binary",
+      "list_due_is_error": false,
+      "next_prompt_while_grade_held": null,
+      "preserved_revealed_grade": true
+    },
+    "production_cli": {
+      "transport": "actual interactive terminal binary",
+      "selected_choice_number": 1,
+      "verdict": "correct",
+      "rating": 3,
+      "max_cards": 1,
+      "exit_code": 0,
+      "proof": "terminal output; no claim that the CLI holds browser-style feedback after advancing its own loop"
     }
   },
-  "verified_code_revision": "2e401ea1158e3b494e37b4053559145bea982c98"
+  "production_before": {
+    "real_magic_link_received": true,
+    "signed_in_before_upgrade": true,
+    "qa_identity_only": true
+  },
+  "merge": {
+    "pull_request": 159,
+    "status": "merged",
+    "branch_restored": "master",
+    "review_head": "fa9502544f4724051dfcea5aa8e02b183f0329ac",
+    "required_pr_ci": "https://github.com/misty-step/scry/actions/runs/34308897679",
+    "revision": "37a5a3d3089365c6a1144256e8a8eb01f0096c84",
+    "release_ci": "https://github.com/misty-step/scry/actions/runs/34309808546"
+  },
+  "release_artifact": {
+    "revision": "37a5a3d3089365c6a1144256e8a8eb01f0096c84",
+    "bundle_sha256": "af5134bd364c94390c8011761144ed284ffc8650373fcae58898069c1cede29e",
+    "source_sha256": "e69b300cff2885ed8d693ae8eaf920ad96412a57a4ff2f9666f0fcb16ce3fa76",
+    "build": "supported local gate from complete reviewed Git source",
+    "exact_workerd_proof": "passed",
+    "required_merge_ci": "https://github.com/misty-step/scry/actions/runs/34309808546",
+    "ci_artifact_rejected_before_mutation": {
+      "missing_from_ci": [
+        ".pi/settings.json"
+      ],
+      "extra_in_ci": [],
+      "changed_in_ci": []
+    },
+    "ci_ignore_correction": "Dagger now includes tracked settings; private state remains ignored",
+    "preflight_wrapper_timeout": "No operation journal or active-version change; used the mise-resolved GitHub CLI without weakening release checks"
+  },
+  "staging_after": {
+    "version_id": "298d88cb-42f2-438f-bcbd-2b5cc404fe33",
+    "runtime_proof": {
+      "maintenance": false,
+      "public_smoke": "passed",
+      "readiness": "ready"
+    },
+    "continuity": {
+      "accounts": {
+        "before": 1,
+        "after": 1,
+        "existing_rows_unchanged": true
+      },
+      "source_documents": {
+        "before": 1,
+        "after": 1,
+        "existing_rows_unchanged": true
+      },
+      "reference_spans": {
+        "before": 11,
+        "after": 11,
+        "existing_rows_unchanged": true
+      },
+      "generation_runs": {
+        "before": 1,
+        "after": 1,
+        "existing_rows_unchanged": true
+      },
+      "concept_reference_notes": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "generated_prompt_drafts": {
+        "before": 11,
+        "after": 11,
+        "existing_rows_unchanged": true
+      },
+      "review_units": {
+        "before": 2,
+        "after": 8,
+        "existing_rows_unchanged": true
+      },
+      "schedules": {
+        "before": 2,
+        "after": 2,
+        "existing_rows_unchanged": true
+      },
+      "attempts": {
+        "before": 4,
+        "after": 4,
+        "existing_rows_unchanged": true
+      },
+      "applied_reviews": {
+        "before": 4,
+        "after": 4,
+        "existing_rows_unchanged": true
+      },
+      "content_feedback": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "remediation_packs": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "review_exposures": {
+        "before": 1,
+        "after": 1,
+        "existing_rows_unchanged": true
+      }
+    },
+    "warm_session_assets": {
+      "assets": [
+        {
+          "path": "/static/ledger.css",
+          "version": "3485ec33ae1ff070",
+          "status": 200,
+          "tag_matches_served_bytes": true
+        },
+        {
+          "path": "/static/app.js",
+          "version": "985f831da2d25134",
+          "status": 200,
+          "tag_matches_served_bytes": true
+        }
+      ],
+      "horizontal_overflow": false,
+      "loaded_stylesheets": 1,
+      "manual_approval_buttons": 0,
+      "path": "/"
+    },
+    "capture": {
+      "input": "photosynthesis",
+      "published_quizzes": 4,
+      "manual_approval": false,
+      "unassisted_verdict": "correct",
+      "rating": 3,
+      "reload_holds_grade": true
+    },
+    "date": "2026-09-09",
+    "screenshots": [
+      "frictionless-staging-question-20260909.webp"
+    ]
+  },
+  "production_after": {
+    "revision": "37a5a3d3089365c6a1144256e8a8eb01f0096c84",
+    "version_id": "10f30a64-c3f2-4023-a780-8b0606c3279c",
+    "bundle_sha256": "af5134bd364c94390c8011761144ed284ffc8650373fcae58898069c1cede29e",
+    "runtime_proof": {
+      "maintenance": false,
+      "public_smoke": "passed",
+      "readiness": "ready"
+    },
+    "continuity": {
+      "accounts": {
+        "before": 2,
+        "after": 2,
+        "existing_rows_unchanged": true
+      },
+      "source_documents": {
+        "before": 2,
+        "after": 2,
+        "existing_rows_unchanged": true
+      },
+      "reference_spans": {
+        "before": 36,
+        "after": 36,
+        "existing_rows_unchanged": true
+      },
+      "generation_runs": {
+        "before": 2,
+        "after": 2,
+        "existing_rows_unchanged": true
+      },
+      "concept_reference_notes": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "generated_prompt_drafts": {
+        "before": 36,
+        "after": 36,
+        "existing_rows_unchanged": true
+      },
+      "review_units": {
+        "before": 7,
+        "after": 35,
+        "existing_rows_unchanged": true
+      },
+      "schedules": {
+        "before": 7,
+        "after": 7,
+        "existing_rows_unchanged": true
+      },
+      "attempts": {
+        "before": 8,
+        "after": 8,
+        "existing_rows_unchanged": true
+      },
+      "applied_reviews": {
+        "before": 8,
+        "after": 8,
+        "existing_rows_unchanged": true
+      },
+      "content_feedback": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "remediation_packs": {
+        "before": 0,
+        "after": 0,
+        "existing_rows_unchanged": true
+      },
+      "review_exposures": {
+        "before": 1,
+        "after": 1,
+        "existing_rows_unchanged": true
+      }
+    },
+    "backup_before_promotion": "created, retrieved, and checksum verified",
+    "warm_session_assets": {
+      "assets": [
+        {
+          "path": "/static/ledger.css",
+          "version": "3485ec33ae1ff070",
+          "status": 200,
+          "tag_matches_served_bytes": true
+        },
+        {
+          "path": "/static/app.js",
+          "version": "985f831da2d25134",
+          "status": 200,
+          "tag_matches_served_bytes": true
+        }
+      ],
+      "horizontal_overflow": false,
+      "loaded_stylesheets": 1,
+      "manual_approval_buttons": 0,
+      "path": "/"
+    },
+    "capture": {
+      "input": "first principles reasoning",
+      "published_quizzes": 3,
+      "manual_approval": false
+    },
+    "grading": {
+      "unassisted_verdict": "correct",
+      "unassisted_rating": 3,
+      "reload_holds_grade": true,
+      "assisted_verdict": "revealed",
+      "assisted_rating": 1
+    },
+    "public_health": {
+      "canonical": [
+        "healthz",
+        "readyz",
+        "statusz"
+      ],
+      "legacy_apex": [
+        "healthz",
+        "readyz",
+        "statusz"
+      ],
+      "legacy_www": [
+        "healthz",
+        "readyz",
+        "statusz"
+      ],
+      "all_healthy": true
+    },
+    "date": "2026-09-09",
+    "screenshots": [
+      "frictionless-production-question-20260909.webp",
+      "frictionless-production-correct-20260909.webp",
+      "frictionless-production-revealed-20260909.webp"
+    ],
+    "scheduled_monitor": {
+      "status": "passed",
+      "url": "https://github.com/misty-step/scry/actions/runs/34313087393",
+      "created_at": "2026-09-09T04:59:25Z"
+    }
+  },
+  "cleanup": {
+    "machine_sessions": {
+      "staging": "disposable machine credential revoked; subsequent authenticated read rejected with HTTP 403",
+      "production": "disposable machine credential revoked; subsequent authenticated read rejected"
+    },
+    "proof_browsers": "released",
+    "temporary_services": "stopped",
+    "recovery_material": "retained privately"
+  },
+  "rollout_date": "2026-09-09",
+  "verified_code_revision": "37a5a3d3089365c6a1144256e8a8eb01f0096c84"
 }

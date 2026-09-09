@@ -792,6 +792,37 @@ receipts remain in private storage.
   both passed. Resend reported the operator drill `delivered`; the operator's
   inbox was not accessed, so inbox placement is not claimed.
 
+### Review-first production release (2026-09-09)
+
+- [PR #159](https://github.com/misty-step/scry/pull/159) shipped revision
+  `37a5a3d3089365c6a1144256e8a8eb01f0096c84`. The protected
+  [merge-commit CI](https://github.com/misty-step/scry/actions/runs/34309808546)
+  passed. The complete reviewed source was built and exercised through
+  `scripts/scry-cloudflare gate`; its bundle hash is
+  `af5134bd364c94390c8011761144ed284ffc8650373fcae58898069c1cede29e`.
+  The CI-exported candidate had omitted a tracked, gitignored settings file and
+  was rejected before mutation. The ignore rule now retains that source file;
+  no source, CI, schema, or staging guard was relaxed.
+- `release:deploy` promoted the same verified bundle to staging version
+  `298d88cb-42f2-438f-bcbd-2b5cc404fe33`, then production version
+  `10f30a64-c3f2-4023-a780-8b0606c3279c`. Both remained active and passed
+  public smoke. A fresh production R2 backup was retrieved and checksum-verified
+  before promotion. SQLite schema versions remain 1–4.
+- Exact-row comparisons preserved all prior records in 13 protected identity,
+  source, quiz, schedule, and history tables. Production review units grew
+  from 7 to 35 through automatic publication; the existing 7 schedules and
+  8 attempts were unchanged before disposable QA activity.
+- Existing signed-in phone-sized browsers loaded the content-tagged CSS/JS
+  without clearing cookies or caches. Staging word capture published 4 quizzes;
+  production phrase capture published 3, without approval. Correct/Good,
+  Revealed/Again, deliberate Next, refresh-held feedback, numbered CLI answers,
+  and non-destructive MCP status reads were exercised. Canonical and both
+  legacy origins passed health, readiness, and recovery-health checks.
+- [Dated receipt and screenshots](qa/frictionless-review-20260908.json) separate
+  the earlier local/generator/scheduler evidence from this live rollout.
+  Disposable machine credentials were revoked after proof. This is not
+  physical-phone persistence, long-term latency, or learning-outcome proof.
+
 
 ## Health observations and operator alerts
 
