@@ -1,98 +1,97 @@
 # Scry Product Vision
 
-Status: Canonical consumer-product vision. Scry is the product, and this repository is its Rust engine. Revise this file when that product premise, the shared capability boundary, or the proof bar materially changes.
+Status: adopted personal Go/SQLite/HTMX product direction. The operator approved
+the initial phone flow on 2026-09-09. [SPEC.md](SPEC.md) owns stories and
+acceptance; [the runbook](docs/runbook.md) owns deployed origins and recovery.
 
 ## The Product
 
-Scry helps a person learn and memorize anything they want to know. Its promise is **Remember everything.** The experience should feel effortless: bring a goal or source, answer a useful quiz, and let the system turn each attempt into the next best review. Quiz-driven memorization is the heart of Scry. Learning material exists to make the quiz loop better, especially when a learner misses or is close.
+Scry is a personal, quiz-first learning app. It turns something I want to know
+into useful questions and brings those questions back when reviewing them is
+worthwhile. AI helps create and improve the material; my attempts drive the
+learning history and next review.
 
-Scry is not a generic agent-memory store, a chat tutor, or a card database that makes the learner design scheduling policy by hand. The product earns trust by making good learning decisions visible: what to review, why an answer was graded, and what easier bridge quiz comes before a missed item returns.
+The desired outcome is knowledge I can recall, not a larger card collection,
+a longer session, or a reusable learning platform. The interface should take
+almost no effort to operate while leaving room for the effort of remembering.
 
-## Product Loop
+At the rewrite decision, the operator reported no active users, including the
+operator. That is the adoption baseline. Phone acceptance, generated fixtures,
+passing checks, and historical production receipts are not evidence of sustained
+use or learning gains.
 
-1. Opening Scry enters the next useful quiz directly; a graded result stays until the learner chooses Next.
-2. Add a word, a phrase, or a pasted essay in one field. No project, title, or content-type decision is required.
-3. Scry generates, validates, publishes, and schedules useful quizzes automatically. Quality gates run behind the scenes; there is no approval inbox.
-4. Answer a question or choose “I don’t know yet.” Feedback and the next review schedule are saved together; assisted and incomplete recall never count as successful recall.
-5. Optional easier quizzes, Study notes, editing, removal, and progress stay secondary to review. Source permissions, provenance, cost limits, and durable failure recovery remain enforced.
+## Experience Direction
 
-The near-term bet is a strong quiz loop, not full course generation. More learning material, richer question types, AI-graded free response, and broader remediation can follow evidence from that loop. Anki import is a later roadmap item, not a near-term requirement or the differentiator.
+The operator's bar is **TikTok-level smoothness**, with a simple interface and
+intentional aesthetics. Borrow immediacy, clear focus, and continuity, not
+engagement-maximizing mechanics.
 
-## Five Faces, One Capability System
+The accepted initial experience has one learning moment at a time:
 
-Scry's capability boundary serves five faces:
+1. Open directly into something useful to review, or one clear way to add it.
+2. Add a word, a goal, or pasted material without configuring a project or deck.
+3. Receive useful AI-generated quizzes with honest progress and recoverable
+   failure, rather than manage a generation pipeline.
+4. Answer or ask for help. Understand the result without losing the question.
+5. Continue deliberately; return later without losing committed progress.
+6. Fix, remove, or inspect material without making maintenance the main product.
 
-- **PWA** — the primary human surface, designed for a fast phone-first study flow.
-- **CLI** — a direct operator and power-user interface.
-- **Skill** — a product-facing agent workflow over the same capabilities.
-- **MCP** — a typed tool surface for agents and applications.
-- **API** — the service boundary for the PWA and other clients.
+The initial phone flow is approved, not a permanent freeze on design. Changes
+to question styles, gestures, visual direction, or ambiguous-answer behavior
+should follow real use and renewed operator review.
 
-The faces must agree on the same identifiers, quiz semantics, grading verdicts, scheduling behavior, and lifecycle states. The PWA is primary; the other faces are not separate products with separate learning rules.
+## What Must Remain True
 
-## Access and Business Model
+- Generated knowledge is not falsely presented as a quotation or verified fact.
+- Revealed or otherwise answer-assisted work is not recorded as unaided recall.
+- An answer, its recorded result, and its schedule change agree durably.
+- Retried requests do not manufacture additional learning events.
+- Content correction does not silently rewrite what was previously presented.
+- Failed generation does not lose captured input, invent success, or spend
+  without a bound.
+- Learning material remains private and recoverable.
+- UI responsiveness, content quality, voluntary use, and delayed recall are
+  different claims requiring different evidence.
 
-Beta access is invite-gated. The entry path makes the waitlist visible instead of pretending that public access is open. Human sign-in uses magic links only; Scry does not add OAuth as a hidden second path. Machine faces use operator-gated service sessions instead of email.
+Carry these lessons forward without treating the old implementation's exact
+policies, public APIs, crate boundaries, or fixtures as a parity requirement.
 
-Subscription is the intended business model. Public signup remains closed until generation costs are bounded and privacy, reliability, and Stripe billing behavior are proven. Beta access must not create commitments that the production cost and trust boundaries cannot support.
+## Scope
 
-## Fast and Smooth Are Product Bars
+The initial audience is the operator. The phone web experience is primary.
+Agent capture or a CLI can be added when an actual personal workflow needs it;
+five independent product faces are not a launch obligation.
 
-Fast and smooth describes the user experience, not a benchmark vanity metric. These are explicit product acceptance bars:
+The current scope is capture, generation, review, correction, library,
+learning history, private access, and recovery. Public signup, waitlists,
+billing, collaboration, generalized import, full course generation, a chat
+product, and an offline synchronization engine are not initial requirements.
+Their exclusion is not a permanent ban if later use justifies them.
 
-- Every interaction is acknowledged within **p95 < 100 ms**.
-- A quiz tap reaches graded-visible feedback within **p95 < 300 ms**.
-- The first quiz becomes visible within **p95 < 20 s** from the learner's start action.
+## Technical Direction and Current Runtime
 
-Optimistic UI may acknowledge input before slower work completes, but it must not hide a lost answer or misrepresent grading. Benchmark buckets and performance campaigns are evidence for these bars; they are not substitutes for the bars or for a usable study flow.
+One Go application owns SQLite on persistent disk, server-rendered HTML with
+HTMX, and a small browser-side interaction layer on exe.dev. Cloudflare provides
+private off-VM R2 recovery through a narrow append/read gateway; it is not the
+interactive application runtime.
 
-## Engine and Boundary Architecture
+The old Rust application and five-face implementation are retired. Its Worker
+stores, frozen native Postgres, backups, and compatible historical source remain
+recovery material, not alternative live writers. Current operation and proof
+belong in [the runbook](docs/runbook.md) and [QA guide](docs/qa/system.md).
 
-Scry's Rust engine keeps the pure kernel framework-free and persistence-free. `crates/memory-engine-core` owns deterministic learning behavior: scheduling, grading, queue selection, progression, difficulty, interleaving, opaque review-unit identity, and domain invariants. It does not know about the filesystem, network, auth, analytics, UI state, logging, model vendors, React, Hono, Node, or Bun.
+No old QA data is imported and unused APIs have no compatibility requirement.
+The operator chose to preserve old data and historical recovery separately.
+New-app snapshots use the approved daily/pre-release, 30-day retention policy.
 
-Boundary crates own orchestration, persistence, source ingestion, generation providers, sessions, identity, API routes, rendering, clients, deployment, and QA. AI may generate, explain, adapt, or grade material through an explicit boundary; deterministic Rust owns policy and state transitions. Keep the boundary explicit instead of moving service complexity into the kernel.
+## Specification and Proof
 
-## Hosting and Live Proof
+[SPEC.md](SPEC.md) owns accepted user stories, stable acceptance identifiers,
+experience budgets, architecture decisions, delivery slices, and the independent
+QA contract. Linear owns accepted work, priorities, and execution state, not a
+second copy of product truth.
 
-Scry's production runtime is Cloudflare: a Rust Wasm Worker, one SQLite-backed
-Scry Durable Object as the invite-beta transaction owner, alarms for leased
-generation/reminders, private R2 recovery, and Resend over Worker Fetch. There
-is no external production Postgres, D1, Queue, KV consistency cache, or container
-in that architecture. Staging and production isolate namespaces and buckets.
-New actors start paused; fingerprint-guarded activation is durable application
-state, not an environment secret change or another Worker version.
-
-The canonical origin is `https://scry.misty-step.workers.dev`; registrar access
-is not required to use it. Live cutover completed on 2026-09-08 with a
-source-bound release, activated same-byte staging proof, stopped native writers,
-full-table import/readback, separate-object restore, and deployed browser proof.
-The native service is disabled. `scry.study` and `www.scry.study` proxy to the
-Worker; the old database and backups remain frozen recovery material.
-Session records are preserved, but host-scoped cookies require a fresh browser
-sign-in on workers.dev. Resend provider acceptance is not proof of inbox placement.
-Only Main may stop source writers, change the old-host reverse proxy/redirect,
-or retire the old host after continuity and recovery evidence. Preserve its
-backups. `docs/runbook.md` separates planned operations from proved results and
-owns the explicit promotion, pause/activation, and rollback contract.
-
-## Proof Bar
-
-The first real outcome gate is a 30-day retention proof, not a seeded fixture, a planning document, or a green aggregate check. It must use production evidence from the quiz-driven learning loop, and product claims stay bounded by what that evidence establishes. The 30-day protocol is a proof of a working learner workflow and retention signal, not a claim of market fit.
-
-## What Scry Refuses
-
-- Generic agent memory as the product category.
-- A quiz loop that hides why an answer was graded or what to do after a miss.
-- Prompt-only learning science where scheduling, grading, progression, and remediation have no explicit domain model or testable invariant.
-- OAuth or public signup before the invite, cost, privacy, reliability, and billing gates are ready.
-- Native-first expansion before the PWA and retention proof justify it.
-- Runtime dependencies in the pure Rust kernel.
-
-## Where the Depth Lives
-
-- `AGENTS.md` is the repository operating contract and kernel boundary map.
-- `README.md` explains Scry's product, Rust workspace, production surface, and current usage.
-- `SPEC.md` and `docs/rust-migration.md` retain technical strategy and cutover context; this vision governs product positioning.
-- `docs/runbook.md`, `docs/qa/system.md`, `docs/dogfood/`, and `docs/beta/` hold operational and executable evidence.
-- Work starts from the current operator request; ownership and proof live in the session or PR. GitHub Issues preserves historical context and optional issue attribution.
-- `bun run ci:local` is the host Cargo plus real Wasm/workerd fast gate; `bun run ci:full` is the Dagger ship-parity gate with live Postgres reference tests and Gitleaks. Native compatibility tests are retained, but native hosting is not the deployment destination.
+The first product decision is whether the operator wants to keep using the
+actual experience. A polished demo and green tests cannot answer that. Repeated
+personal use and later unassisted recall should inform the next revision; do
+not promise efficacy from a scheduler setting or a short smoke run.

@@ -1,0 +1,72 @@
+{{define "review"}}
+{{if .Review.Current}}
+{{$root := .}}{{$p := .Review.Current}}
+<section class="review-stage" data-presentation="{{$p.ID}}" data-graded="{{$p.Graded}}">
+  <div class="review-context"><span>{{kind $p.Quiz.Kind}}</span><span>{{.Review.Due}} due</span></div>
+  <h1 class="question" {{if not $p.Graded}}tabindex="-1" data-focus{{end}}>{{$p.Quiz.Prompt}}</h1>
+  {{if $p.Graded}}
+    <div class="feedback {{if eq $p.Outcome "correct"}}feedback-correct{{else}}feedback-retry{{end}}" role="status" aria-live="polite">
+      <h2 tabindex="-1" data-focus>{{outcome $p.Outcome}}</h2>
+      {{if $p.Assisted}}<p class="feedback-detail">Helped, not unaided recall. You will see this again.</p>{{end}}
+      {{if $p.Answer}}<div class="response-pair"><span class="field-caption">Your answer</span><p class="preserve">{{$p.Answer}}</p></div>{{end}}
+      <div class="response-pair"><span class="field-caption">Expected answer</span><p class="expected-answer preserve">{{$p.Quiz.Answer}}</p></div>
+      {{if $p.Quiz.Explanation}}<p class="explanation preserve">{{$p.Quiz.Explanation}}</p>{{end}}
+      <div class="next-row">
+        <form action="/review/next" method="post" hx-post="/review/next" data-next>
+          {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
+          <button type="submit" class="primary" data-pending="Confirming the next question…">Next</button>
+        </form>
+        <a href="/reviews/{{$p.ReviewID}}/dispute">Flag a problem</a>
+      </div>
+      <p class="small muted">This result stays until you choose Next. Scheduled <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>.</p>
+      {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
+    </div>
+    <details class="inspection">
+      <summary>Inspect the question</summary>
+      <p>{{if eq $p.Quiz.Basis "source"}}Based on your saved source. A matching quotation is attribution, not independent fact-checking.{{else}}Generated topic knowledge, not evidence supplied by your input. Check factual claims when they matter.{{end}}</p>
+      {{if $p.Quiz.Evidence}}<blockquote class="preserve">{{$p.Quiz.Evidence}}</blockquote>{{end}}
+      <div class="actions"><a href="/quizzes/{{$p.Quiz.ID}}/edit">Edit future wording</a><a href="/sources/{{$p.Quiz.SourceID}}">Open saved material</a></div>
+    </details>
+  {{else}}
+    {{if $p.Answer}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Not graded</h2><p>Your answer was not a clear match. The schedule has not changed. Try the supported wording, or reveal the answer and record this attempt as helped.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>{{end}}
+    <form class="answer-form" action="/review/answer" method="post" hx-post="/review/answer">
+      {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
+      {{if eq $p.Quiz.Kind "choice"}}
+        <fieldset class="choice-fieldset"><legend class="sr-only">Choose one answer</legend><div class="choices">
+        {{range $p.Quiz.Choices}}<button class="choice" type="submit" name="answer" value="{{.}}" data-pending="Saving your answer…">{{.}}</button>{{end}}
+        </div></fieldset>
+      {{else}}
+        <label class="field-caption" for="recall-answer">Your answer</label>
+        <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Answer}}</textarea>
+        <p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you answer.</p>
+        <button type="submit" class="primary" data-pending="Saving your answer…">Check answer</button>
+      {{end}}
+    </form>
+    <div class="review-secondary">
+      <form action="/review/reveal" method="post" hx-post="/review/reveal">
+        {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
+        <button type="submit" class="quiet" data-pending="Recording help before revealing…">I don't know yet</button>
+      </form>
+      <a href="/quizzes/{{$p.Quiz.ID}}/edit" class="quiet-link">Fix or inspect</a>
+    </div>
+    <details class="inspection"><summary>Stop reviewing this question</summary><p>Archive it without recording an answer. Past reviews stay in history.</p>
+      <form action="/quizzes/{{$p.Quiz.ID}}/archive" method="post" hx-post="/quizzes/{{$p.Quiz.ID}}/archive">
+        {{template "tokens" $root}}<input type="hidden" name="return_to" value="/">
+        <button type="submit" class="danger">Archive question</button>
+      </form>
+    </details>
+  {{end}}
+</section>
+{{if and $p.Graded .Review.Preview}}<template id="next-preview" data-after="{{$p.ID}}">
+  <section class="preview-stage" aria-busy="true"><p class="pending-label" role="status">Confirming next question…</p><h1 class="question">{{.Review.Preview.Quiz.Prompt}}</h1>
+    {{if eq .Review.Preview.Quiz.Kind "choice"}}<div class="choices">{{range .Review.Preview.Quiz.Choices}}<div class="choice preview-choice">{{.}}</div>{{end}}</div>{{else}}<p class="muted">The answer control opens when the server confirms this question.</p>{{end}}
+  </section>
+</template>{{end}}
+{{else}}
+<section class="empty-stage">
+  {{if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>What do you want to remember?</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Already added material? <a href="/library">Check generation in your library.</a></p>
+  {{else}}<h1 class="question" tabindex="-1" data-focus>Nothing due right now.</h1><p>Your available questions are scheduled for later. There is no need to turn a quiet queue into extra work.</p>{{if .Review.NextDueAt}}<p>Next due <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions"><a class="button primary" href="/add">Add something new</a><a href="/library">Browse your material</a></div>{{end}}
+  <a class="quiet-link" href="/">Check again</a>
+</section>
+{{end}}
+{{end}}

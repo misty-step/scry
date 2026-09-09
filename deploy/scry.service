@@ -1,0 +1,47 @@
+# Install with deploy/install.sh; never run the application as root.
+# The exe ingress must reach 127.0.0.1:8080 and overwrite owner identity headers.
+# Prove the exact ingress source IPs before filling SCRY_TRUSTED_PROXY_IPS.
+[Unit]
+Description=Scry personal learning application
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=scry
+Group=scry
+WorkingDirectory=/var/lib/scry
+EnvironmentFile=/etc/scry/scry.env
+ExecStart=/opt/scry/current/scry serve --db /var/lib/scry/scry.sqlite --addr 127.0.0.1:8080
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=35
+KillSignal=SIGTERM
+KillMode=mixed
+UMask=0077
+StateDirectory=scry
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/scry
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
