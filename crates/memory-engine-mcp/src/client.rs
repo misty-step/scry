@@ -451,7 +451,7 @@ impl MemoryEngineClient {
     ///
     /// Returns an error when the underlying study-view request fails.
     pub fn quizzes(&self) -> Result<Vec<DraftRow>, String> {
-        let view: StudyView = self.get(&format!("/v1/accounts/{}/review/next", self.account_id))?;
+        let view = self.open_review()?;
         let active_ids = view
             .queue
             .iter()
@@ -531,7 +531,16 @@ impl MemoryEngineClient {
         ))
     }
 
-    /// Fetch the next due review card.
+    /// Read the current review without consuming held feedback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the request fails.
+    pub fn open_review(&self) -> Result<StudyView, String> {
+        self.get(&format!("/v1/accounts/{}/review/next", self.account_id))
+    }
+
+    /// Deliberately advance past held feedback to the next due review card.
     ///
     /// # Errors
     ///
@@ -893,8 +902,8 @@ mod tests {
                 .expect("edited quiz");
             assert_eq!(updated.prompt, prompt);
             assert_eq!(updated.review_unit_id, quiz.review_unit_id);
-            let held: StudyView = client
-                .get(&format!("/v1/accounts/{}/review/next", client.account_id))
+            let held = client
+                .open_review()
                 .expect("reading inventory must not consume the held grade");
             let held_current = held.current.expect("held review after management");
             assert_eq!(held_current.review_unit_id, quiz.review_unit_id);

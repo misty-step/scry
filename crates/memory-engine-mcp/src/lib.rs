@@ -62,7 +62,7 @@ pub const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "list_due",
-        description: "Check how many reviews are due right now, with a short teaser of the next prompt. A lightweight status check — call review_next instead when you are actually ready to answer.",
+        description: "Check how many reviews are due without advancing or clearing feedback. Includes a prompt teaser when a question is ready to answer; use review_next to advance.",
         input_schema: r#"{"type":"object","properties":{}}"#,
     },
     ToolDef {
@@ -218,10 +218,12 @@ pub fn call_tool(client: &MemoryEngineClient, name: &str, args: &Value) -> Resul
         }
         "list_quizzes" => json!(client.quizzes()?),
         "list_due" => {
-            let view = client.next_review()?;
+            let view = client.open_review()?;
             json!({
                 "dueCount": view.due_count,
-                "nextPrompt": view.current.as_ref().map(|current| current.prompt.clone()),
+                "nextPrompt": view.current.as_ref()
+                    .filter(|current| current.grade.is_none())
+                    .map(|current| current.prompt.as_str()),
             })
         }
         "review_next" => json!(client.next_review()?),

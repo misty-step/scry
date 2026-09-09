@@ -539,15 +539,15 @@ async fn api_study_route(
             )
         }
         ["review", "next"] => {
+            if !versioned {
+                return Err(Failure::new(405, "Method not allowed."));
+            }
             let read = matches!(req.method(), Method::Get | Method::Head);
             if !read {
                 require_method(req, &Method::Post)?;
-                if !versioned {
-                    return Err(Failure::new(405, "Method not allowed."));
-                }
             }
             auth::api_account(req, db, env, account_id)?;
-            let view = if read && versioned {
+            let view = if read {
                 open_review(db, account_id)?
             } else {
                 next_review(db, account_id)?

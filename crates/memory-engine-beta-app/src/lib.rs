@@ -12,6 +12,7 @@ use std::{
 };
 
 use memory_engine_generation::{FakeModelProvider, FallbackProvider};
+use memory_engine_persistence::BetaStoreError;
 use memory_engine_study::{
     infer_capture_title, BetaStudyCurrent, BetaStudyOptions, BetaStudySession,
     BetaStudySourceInput, BetaStudyView, SourcePermission,
@@ -292,7 +293,7 @@ fn view_response(
 ) -> HttpResponse {
     match result {
         Ok(view) => HttpResponse::json(200, &view),
-        Err(error) => HttpResponse::plain(500, &error.to_string()),
+        Err(error) => HttpResponse::plain(study_error_status(&error), &error.to_string()),
     }
 }
 
@@ -301,7 +302,22 @@ fn page_response(
 ) -> HttpResponse {
     match result {
         Ok(view) => HttpResponse::html(&render_page(&view, None)),
-        Err(error) => HttpResponse::html(&render_page_error(&error.to_string())),
+        Err(error) => HttpResponse {
+            status: study_error_status(&error),
+            ..HttpResponse::html(&render_page_error(&error.to_string()))
+        },
+    }
+}
+
+fn study_error_status(error: &memory_engine_study::BetaStudyError) -> u16 {
+    match error {
+        memory_engine_study::BetaStudyError::Store(
+            BetaStoreError::LearnerDraftDecisionAlreadyRecorded(_),
+        ) => 409,
+        memory_engine_study::BetaStudyError::Store(
+            BetaStoreError::UnknownGeneratedPromptDraft(_),
+        ) => 404,
+        _ => 500,
     }
 }
 
@@ -1095,6 +1111,7 @@ fn reason_phrase(status: u16) -> &'static str {
     match status {
         400 => "Bad Request",
         404 => "Not Found",
+        409 => "Conflict",
         500 => "Internal Server Error",
         _ => "OK",
     }
@@ -1874,6 +1891,7 @@ mod tests {
         let generated = route(&mut study_session, &request("GET", "/state", ""));
         let generated: Value = serde_json::from_slice(&generated.body).expect("published source");
         let draft = &generated["drafts"][0];
+        let draft_id = draft["id"].as_str().expect("stable quiz id");
         assert_eq!(
             draft["sourceSpans"][0]["sourceDocumentId"],
             json!("src-nato")
@@ -1904,7 +1922,7 @@ mod tests {
                     "/draft/edit",
                     &format!(
                         "draftId={}&prompt={}&expectedAnswer=ALFA",
-                        url_escape(draft["id"].as_str().expect("stable quiz id")),
+                        url_escape(draft_id),
                         url_escape(prompt),
                     ),
                 ),
@@ -1933,33 +1951,77 @@ mod tests {
             &mut study_session,
             &form_request(
                 "/draft/reject",
-                &format!(
-                    "draftId={}",
-                    url_escape(draft["id"].as_str().expect("quiz id"))
-                ),
+                &format!("draftId={}", url_escape(draft_id)),
             ),
         );
         assert_eq!(rejected.status, 200);
-        let rejected_edit = route(
-            &mut study_session,
-            &request(
+        for rejected_edit_request in [
+            request(
                 "POST",
                 "/draft/edit",
                 &json!({
-                    "draftId": draft["id"],
+                    "draftId": draft_id,
                     "prompt": "Do not resurrect this quiz",
                     "expectedAnswer": "ALFA"
                 })
                 .to_string(),
             ),
-        );
-        assert_eq!(rejected_edit.status, 500);
+            form_request(
+                "/draft/edit",
+                &format!(
+                    "draftId={}&prompt=Do+not+resurrect+this+quiz&expectedAnswer=ALFA",
+                    url_escape(draft_id)
+                ),
+            ),
+        ] {
+            assert_eq!(
+                route(&mut study_session, &rejected_edit_request).status,
+                409
+            );
+        }
         drop(study_session);
         let reopened = session(study_path);
         let state = reopened.view().expect("durable removal and history");
         assert!(state.queue.is_empty());
         assert_eq!(state.summary.attempt_count, 1);
         assert!(state.current.is_none());
+    }
+
+    #[test]
+    fn draft_routes_distinguish_unknown_drafts_from_durable_store_failures() {
+        let directory = TempDirectory::new("draft-error-status");
+        let study_path = directory.path().join("study.json");
+        let mut study_session = session(study_path.clone());
+        let draft_requests = [
+            request(
+                "POST",
+                "/draft/edit",
+                &json!({
+                    "draftId": "missing-draft",
+                    "prompt": "Which NATO word represents A?",
+                    "expectedAnswer": "ALFA"
+                })
+                .to_string(),
+            ),
+            form_request(
+                "/draft/edit",
+                "draftId=missing-draft&prompt=Which+NATO+word+represents+A%3F&expectedAnswer=ALFA",
+            ),
+            request(
+                "POST",
+                "/draft/reject",
+                &json!({"draftId": "missing-draft"}).to_string(),
+            ),
+            form_request("/draft/reject", "draftId=missing-draft"),
+        ];
+        for request in &draft_requests {
+            assert_eq!(route(&mut study_session, request).status, 404);
+        }
+
+        fs::write(&study_path, b"{").expect("corrupt durable snapshot");
+        for request in &draft_requests {
+            assert_eq!(route(&mut study_session, request).status, 500);
+        }
     }
 
     fn now() -> i64 {

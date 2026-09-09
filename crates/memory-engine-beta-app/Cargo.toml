@@ -7,6 +7,7 @@ description = "Rust HTTP host for the memory-engine beta study app."
 
 [dependencies]
 memory-engine-generation = { path = "../memory-engine-generation" }
+memory-engine-persistence = { path = "../memory-engine-persistence" }
 memory-engine-study = { path = "../memory-engine-study" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

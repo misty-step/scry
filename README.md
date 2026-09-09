@@ -13,7 +13,8 @@ Answers receive immediate feedback; Next question advances deliberately.
 Library, progress, and settings stay behind More.
 
 The machine equivalent is `memory-engine-review learn "photosynthesis"` (or
-pipe text into `memory-engine-review learn`); no subcommand opens review.
+pipe text into `memory-engine-review learn`). Run `memory-engine-review` to review;
+choose a displayed option number or type your answer.
 MCP exposes `learn`, `list_quizzes`, `edit_quiz`, and `remove_quiz` over the same
 publication, account, and scheduling rules.
 

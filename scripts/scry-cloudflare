@@ -744,6 +744,19 @@ def smoke_bundle(artifact, receipt):
             after_learning = {row["name"]: row for row in fingerprint["tables"] if row["name"] in learning_tables}
             require(set(before_learning) == learning_tables and before_learning == after_learning,
                     "answer replay changed durable attempts, schedules, exposures, or receipts")
+            for review_route, expected in ((f"/accounts/{account}/review/next", (405,)),
+                                           (prefix + "/review/next", (200,))):
+                for method in ("GET", "HEAD"):
+                    request(local.base, review_route, method=method, token=token, expected=expected)
+                    held = request(local.base, prefix + "/review/next", token=token)
+                    require(held["current"] == replayed["current"],
+                            f"{method} {review_route} consumed or changed the held graded feedback")
+            continued = request(local.base, prefix + "/review/next", method="POST", token=token)
+            require(continued.get("current") is None or continued["current"].get("grade") is None,
+                    "explicit review advancement retained the held graded feedback")
+            reopened = request(local.base, prefix + "/review/next", token=token)
+            require(reopened["current"] == continued["current"],
+                    "opening review after Continue restored the consumed graded feedback")
             transport_smoke(local, other_prefix, other_session["sessionToken"])
             fingerprint = request(local.base, "/internal/migration/fingerprint", admin=local.admin)
             require(fingerprint["accountCount"] == 2 and fingerprint["schemaVersions"] ==
@@ -768,6 +781,7 @@ def smoke_bundle(artifact, receipt):
                               "anonymous-rejection", "admin-service-session",
                               "alarm-driven-local-only-generation", "automatic-publication-without-keep", "account-isolation", "durable-resume",
                               "runtime-survives-restart", "durable-assisted-grading", "durable-idempotent-replay",
+                              "safe-review-methods-preserve-held-feedback", "explicit-review-advancement",
                               "worker-fetch-generation", "worker-mail-acceptance", "provider-redirect-rejection",
                               "schema-fingerprint", "r2-backup-retrieval-isolated-restore",
                               "browser-identity-isolation", "stream-pause-fence", "public-recovery-health"],

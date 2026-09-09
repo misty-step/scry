@@ -8649,6 +8649,7 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
     let second_id = next_review_v1(&app, &account).await;
     let submitted =
         submit_review_v1_body(&app, &account, &second_id, "BRAVO", "api-feedback-second").await;
+    assert_safe_review_reads_hold_feedback(&app, &account, &submitted).await;
 
     assert_eq!(
         submitted["current"]["feedback"]["verdict"],
@@ -8669,14 +8670,6 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
     assert_eq!(
         submitted["current"]["feedback"]["itemHistory"]["averageResponseTimeMs"],
         json!(1800)
-    );
-    assert_eq!(
-        submitted["current"]["feedback"]["itemHistory"]["responseTimeTrend"],
-        json!("not enough data")
-    );
-    assert_eq!(
-        submitted["current"]["feedback"]["itemHistory"]["lastSeenSummary"],
-        json!("last seen just now")
     );
     assert_eq!(
         submitted["current"]["choices"]
@@ -8707,6 +8700,34 @@ async fn v1_json_api_returns_post_answer_feedback_and_concept_progress() {
         submitted["conceptProgress"][0]["averageResponseTimeMs"],
         json!(1800)
     );
+}
+
+async fn assert_safe_review_reads_hold_feedback(
+    app: &axum::Router,
+    account: &TestAccount,
+    submitted: &serde_json::Value,
+) {
+    let versioned = format!("/v1/accounts/{}/review/next", account.account_id);
+    let legacy = format!("/accounts/{}/review/next", account.account_id);
+    for path in [&versioned, &legacy] {
+        for method in ["GET", "HEAD"] {
+            let response = app
+                .clone()
+                .oneshot(v1_empty_request(method, path, &account.session_token))
+                .await
+                .expect("safe review read");
+            assert_eq!(response.status(), StatusCode::OK);
+            let reopened = app
+                .clone()
+                .oneshot(v1_empty_request("GET", &versioned, &account.session_token))
+                .await
+                .expect("reopen after safe-method probe");
+            assert_eq!(
+                response_json(reopened).await["current"],
+                submitted["current"]
+            );
+        }
+    }
 }
 
 #[tokio::test]

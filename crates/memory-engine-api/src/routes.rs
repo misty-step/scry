@@ -411,7 +411,10 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/app/save-account", post(save_app_account))
         .route("/app/source", post(create_app_source))
-        .route("/app/capture", post(capture_app_source))
+        .route(
+            "/app/capture",
+            get(app_capture_progress).post(capture_app_source),
+        )
         .route("/app/source/permission", post(update_app_source_permission))
         .route("/app/source/archive", post(archive_app_source))
         .route("/app/generate", post(generate_app_source))
@@ -461,7 +464,7 @@ pub fn router(state: ApiState) -> Router {
             "/accounts/{account_id}/drafts/{draft_id}/reject",
             post(reject_draft),
         )
-        .route("/accounts/{account_id}/review/next", get(next_review));
+        .route("/accounts/{account_id}/review/next", get(open_review));
     mount_review_routes(router)
         .layer(middleware::from_fn(no_store_dynamic_responses))
         // Outermost: host canonicalization must run before handlers so www
@@ -867,6 +870,32 @@ async fn app_library(State(state): State<ApiState>, request: Request) -> Respons
         ),
         Err(error) => app_home_auth_failure(headers, &error),
     }
+}
+
+async fn app_capture_progress(
+    State(state): State<ApiState>,
+    Query(query): Query<AppJobQuery>,
+    request: Request,
+) -> Response {
+    let headers = request.headers();
+    let uri = request.uri();
+    let account = match state.require_browser_session_readonly(headers) {
+        Ok(account) => account,
+        Err(error) => return app_home_auth_failure(headers, &error),
+    };
+    let Some(job) = state
+        .jobs_for_app_account(&account)
+        .into_iter()
+        .find(|job| job.id == query.job_id)
+    else {
+        return app_failure_response(&ApiFailure::not_found("Generation job not found."));
+    };
+    html_with_browser_session_for_request(
+        &account,
+        render_capture_waiting_page(&account, &job),
+        headers,
+        uri,
+    )
 }
 
 fn app_home_auth_failure(headers: &HeaderMap, error: &ApiFailure) -> Response {
@@ -1340,6 +1369,12 @@ struct AppSourcePermissionForm {
 #[serde(rename_all = "camelCase")]
 struct AppJobActionForm {
     csrf_token: Option<String>,
+    job_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct AppJobQuery {
     job_id: String,
 }
 
@@ -2374,9 +2409,11 @@ async fn reveal_app_review(
             Err(error) => return app_failure_response(&error),
         };
     if form.idempotency_key.trim().is_empty() {
-        return app_failure_response(&ApiFailure::bad_request(
-            "Idempotency key must not be blank.",
-        ));
+        return submit_recovery_response(
+            StatusCode::BAD_REQUEST,
+            "Review not submitted",
+            "Reload the app and try again. Your study data is safe.",
+        );
     }
     let result = state
         .reveal_app_review(&account, &form.review_unit_id)

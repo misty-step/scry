@@ -57,7 +57,7 @@ pub fn render_content_feedback_result_html(
             Some(notice),
             SignedInSurface::ReviewComplete,
         );
-        document_with_head(&inner, "")
+        document_with_head(&inner, "", Some(account))
     } else {
         render_account_page(account, Some(view), jobs, Some(notice))
     }
@@ -129,10 +129,8 @@ pub fn render_submit_action_result_html(
         )
     });
     let head = format!(
-        r#"<meta name="memory-engine-csrf-token" content="{}">
-<meta name="memory-engine-submit-request" content="{}">
+        r#"<meta name="memory-engine-submit-request" content="{}">
 {}"#,
-        escape_html(account.csrf_token()),
         escape_html(request_id),
         trace,
     );
@@ -231,7 +229,7 @@ fn render_app_shell_with_head(
         }
         None => render_signed_out(notice),
     };
-    document_with_head(&inner, head)
+    document_with_head(&inner, head, account)
 }
 
 /// The Create view: the capture form alone, with persistent nav
@@ -245,7 +243,7 @@ pub fn render_create_page(
     notice: Option<&str>,
 ) -> String {
     let inner = render_signed_in(account, &[], view, jobs, notice, SignedInSurface::Create);
-    document(&inner)
+    document_with_head(&inner, "", Some(account))
 }
 
 /// A saved capture follows one durable job directly into review. Failed jobs
@@ -253,6 +251,7 @@ pub fn render_create_page(
 #[must_use]
 pub fn render_capture_waiting_page(account: &AppAccount, job: &GenerationJob) -> String {
     let heading = match job.status {
+        JobStatus::Succeeded if job.card_count == 0 => "Your text is safe",
         JobStatus::Succeeded => "Your quizzes are ready",
         JobStatus::Failed => "Your text is safe",
         JobStatus::Queued | JobStatus::Running | JobStatus::Retry => {
@@ -301,7 +300,7 @@ pub fn render_library_page(
         notice,
         SignedInSurface::Library,
     );
-    document(&inner)
+    document_with_head(&inner, "", Some(account))
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -479,10 +478,16 @@ pub fn render_return_notification_recovery(title: &str, message: &str) -> String
 
 /// Wrap a `.ae-screen` body in the full document, linking the design system.
 fn document(inner: &str) -> String {
-    document_with_head(inner, "")
+    document_with_head(inner, "", None)
 }
 
-fn document_with_head(inner: &str, head: &str) -> String {
+fn document_with_head(inner: &str, head: &str, account: Option<&AppAccount>) -> String {
+    let csrf = account.map_or_else(String::new, |account| {
+        format!(
+            r#"<meta name="memory-engine-csrf-token" content="{}">"#,
+            escape_html(account.csrf_token())
+        )
+    });
     format!(
         r##"<!doctype html>
 <html lang="en">
@@ -503,6 +508,7 @@ fn document_with_head(inner: &str, head: &str) -> String {
 <link rel="preload" href="/static/fonts/manrope-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/literata-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/ledger.css">
+{csrf}
 {head}
 <script src="/static/app.js" defer></script>
 </head>
@@ -537,9 +543,7 @@ fn screen_with(stage: &str, header_right: &str, view: &str, footer: &str) -> Str
 {view}
 </div>
 </main>
-<footer class="ae-bar">
-{footer}
-</footer>
+<footer class="ae-bar">{footer}</footer>
 </div>"##
     )
 }
@@ -994,6 +998,9 @@ fn job_meta(job: &GenerationJob) -> String {
         JobStatus::Queued => "Queued for generation.".to_owned(),
         JobStatus::Running => "Generating quizzes…".to_owned(),
         JobStatus::Retry => "Retrying after a temporary failure…".to_owned(),
+        JobStatus::Succeeded if job.card_count == 0 => {
+            "No quizzes were created. Add more detail or try different material.".to_owned()
+        }
         JobStatus::Succeeded => "Your quizzes are ready and scheduled.".to_owned(),
         JobStatus::Failed => escape_html(
             job.error

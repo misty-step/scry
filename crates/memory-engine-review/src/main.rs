@@ -266,6 +266,15 @@ struct ReviewSessionReceipt {
     stopped_reason: Option<String>,
 }
 
+fn review_answer<'a>(input: &'a str, choices: &'a [String]) -> &'a str {
+    input
+        .parse::<usize>()
+        .ok()
+        .and_then(|number| number.checked_sub(1))
+        .and_then(|position| choices.get(position))
+        .map_or(input, String::as_str)
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_review(
     args: &[String],
@@ -336,7 +345,16 @@ fn run_review(
                 writeln!(stdout, "  {}. {choice}", position + 1).map_err(io_failure)?;
             }
         }
-        write!(stdout, "> ").map_err(io_failure)?;
+        write!(
+            stdout,
+            "{}> ",
+            if current.choices.is_empty() {
+                "Answer"
+            } else {
+                "Choice number or answer"
+            }
+        )
+        .map_err(io_failure)?;
         stdout.flush().map_err(io_failure)?;
 
         let started_at = Instant::now();
@@ -346,7 +364,7 @@ fn run_review(
             receipt.stopped_reason = Some("stdin closed before the due queue reached 0".to_owned());
             break;
         }
-        let answer = answer.trim().to_owned();
+        let answer = review_answer(answer.trim(), &current.choices);
         let response_time_ms = clamp_response_time_ms(started_at.elapsed());
 
         let idempotency_key = format!(
@@ -357,7 +375,7 @@ fn run_review(
         );
         let submitted = client.submit_review(
             &current.review_unit_id,
-            &answer,
+            answer,
             response_time_ms,
             &idempotency_key,
         )?;
@@ -1039,6 +1057,15 @@ mod tests {
     // serialize against every other test that does. This lock is that
     // serialization point.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn choice_numbers_resolve_to_values_without_reinterpreting_free_answers() {
+        let choices = ["2".to_owned(), "1".to_owned()];
+        assert_eq!(review_answer("2", &choices), "1");
+        assert_eq!(review_answer("0", &choices), "0");
+        assert_eq!(review_answer("two", &choices), "two");
+        assert_eq!(review_answer("2", &[]), "2");
+    }
 
     #[test]
     fn civil_from_days_matches_known_reference_dates() {

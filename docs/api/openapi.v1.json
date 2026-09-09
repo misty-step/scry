@@ -419,7 +419,7 @@
     "/v1/accounts/{account_id}/generation-jobs/{job_id}": {
       "get": {
         "summary": "Observe one account-scoped generation job",
-        "description": "Poll until status is succeeded or failed. cardCount reports published quizzes owned by the completed job. A succeeded job requires no keep or approval call; learnerDecision remains null until an actual learner edit or removal.",
+        "description": "Poll until status is succeeded or failed. cardCount reports published quizzes owned by the completed job. A succeeded job requires no keep or approval call; learnerDecision remains null until an explicit learner decision.",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"
@@ -764,7 +764,8 @@
     },
     "/v1/accounts/{account_id}/drafts/{draft_id}/keep": {
       "post": {
-        "summary": "Keep one generated draft as a review unit",
+        "summary": "Record an optional explicit keep decision on a published quiz",
+        "description": "Records LearnerDraftDecision::Kept for an accepted draft from a completed generation run. Automatic publication has already made the quiz reviewable; this call is not required for learning. Returns the existing review unit without duplicating it or resetting its schedule. A rejected or removed draft cannot be resurrected.",
         "parameters": [
           {
             "$ref": "#/components/parameters/AccountId"

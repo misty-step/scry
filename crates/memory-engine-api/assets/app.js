@@ -903,7 +903,7 @@
     button.disabled = true;
     button.textContent = "Creating quizzes…";
     var status = form.querySelector(".me-live-hint");
-    if (status) status.textContent = "Creating drafts for you to inspect before adding quizzes.";
+    if (status) status.textContent = "Generating quizzes…";
   });
 })();
 
@@ -946,7 +946,9 @@
       case "retry":
         return "Retrying after a temporary failure…";
       case "succeeded":
-        return "Your quizzes are ready and scheduled.";
+        return job.cardCount > 0
+          ? "Your quizzes are ready and scheduled."
+          : "No quizzes were created. Add more detail or try different material.";
       case "failed":
         return job.error || "Generation failed. Try again.";
       default:
@@ -1020,13 +1022,14 @@
       waiting.setAttribute("data-status", job.status);
       var recovery = waiting.querySelector("[data-generation-recovery]");
       if (recovery) updateRetry(recovery, job);
-      if (job.status === "failed") {
+      if (job.status === "failed" || (job.status === "succeeded" && !(job.cardCount > 0))) {
         var heading = waiting.querySelector("h1");
         if (heading) heading.textContent = "Your text is safe";
       }
       if (
         terminalNavigationStarted ||
-        job.status !== "succeeded"
+        job.status !== "succeeded" ||
+        !(job.cardCount > 0)
       ) return;
       // Only an explicit, job-correlated waiting surface opts into a GET to
       // the server-owned destination. Replayed terminal events cannot repost

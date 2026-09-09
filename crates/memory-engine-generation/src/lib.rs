@@ -845,28 +845,7 @@ where
     if let Some(run) = snapshot.generation_runs.iter().find(|run| {
         run.id == request.run_id && memory_engine_persistence::generation_run_is_published(run)
     }) {
-        let mut drafts = BridgeDraftPersistence {
-            draft_ids: Vec::new(),
-            accepted_draft_ids: Vec::new(),
-            accepted_review_unit_ids: Vec::new(),
-            rejected_draft_ids: Vec::new(),
-            validation_failures: run.validation_failures.clone(),
-        };
-        for draft in snapshot
-            .generated_prompt_drafts
-            .iter()
-            .filter(|draft| run.draft_ids.contains(&draft.id))
-        {
-            record_bridge_draft(&mut drafts, draft);
-        }
-        return Ok(BridgeGenerationResult {
-            run_id: run.id.clone(),
-            concept_key: context.concept_key,
-            reference_note_created: false,
-            accepted_draft_ids: drafts.accepted_draft_ids,
-            rejected_draft_ids: drafts.rejected_draft_ids,
-            validation_failures: run.validation_failures.clone(),
-        });
+        return replay_published_bridge(&snapshot, run, context.concept_key);
     }
     let provider_request = bridge_material_request(&snapshot, &context, authorization);
     let material = provider
@@ -938,6 +917,40 @@ where
         accepted_draft_ids: bridge_drafts.accepted_draft_ids,
         rejected_draft_ids: bridge_drafts.rejected_draft_ids,
         validation_failures: bridge_drafts.validation_failures,
+    })
+}
+
+fn replay_published_bridge<E>(
+    snapshot: &BetaStoreSnapshot,
+    run: &GenerationRun,
+    concept_key: String,
+) -> Result<BridgeGenerationResult, BetaGenerationError<E>> {
+    let mut accepted_draft_ids = Vec::new();
+    let mut rejected_draft_ids = Vec::new();
+    for draft in snapshot
+        .generated_prompt_drafts
+        .iter()
+        .filter(|draft| run.draft_ids.contains(&draft.id))
+    {
+        if draft.validation.status == GeneratedPromptValidationStatus::Accepted {
+            accepted_draft_ids.push(draft.id.clone());
+        } else {
+            rejected_draft_ids.push(draft.id.clone());
+        }
+    }
+    if accepted_draft_ids.is_empty() {
+        return Err(BetaGenerationError::ProviderFailure(format!(
+            "Bridge material produced no accepted drafts: {}",
+            run.validation_failures.join("; ")
+        )));
+    }
+    Ok(BridgeGenerationResult {
+        run_id: run.id.clone(),
+        concept_key,
+        reference_note_created: false,
+        accepted_draft_ids,
+        rejected_draft_ids,
+        validation_failures: run.validation_failures.clone(),
     })
 }
 

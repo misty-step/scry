@@ -52,6 +52,7 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     let created = state.create_account(&email).expect("pre-provision account");
     let account_id = created.account_id.clone();
     let session_token = created.session_token.clone();
+    let read_state = state.clone();
     let server = tokio::spawn(async move {
         axum::serve(listener, memory_engine_api::router(state))
             .await
@@ -221,6 +222,26 @@ async fn cold_agent_completes_a_full_review_loop_over_stdio() {
     );
     assert_eq!(submitted_payload["current"]["reviewUnitId"], review_unit_id);
     assert_eq!(submitted_payload["dueCount"], 1);
+
+    // A lightweight status read must not consume the learner's held feedback.
+    let status = call_tool(
+        &mut stdin,
+        &rx,
+        &mut transcript,
+        next_id(),
+        "list_due",
+        &json!({}),
+    );
+    assert_eq!(tool_payload(&status)["dueCount"], 1);
+    assert_eq!(tool_payload(&status)["nextPrompt"], Value::Null);
+    let held = serde_json::to_value(
+        read_state
+            .open_review(&account_id, &session_token)
+            .expect("read held review"),
+    )
+    .expect("held review JSON");
+    assert_eq!(held["current"]["reviewUnitId"], review_unit_id);
+    assert_eq!(held["current"]["grade"]["verdict"], "revealed");
 
     // A retried submit returns the assisted receipt without adding an attempt.
     let replayed = call_tool(

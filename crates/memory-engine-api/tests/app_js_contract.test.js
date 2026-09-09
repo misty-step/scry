@@ -1373,7 +1373,7 @@ test("SSE updates Library activity without navigating over editable drafts", () 
   expect(list.row.dataset.status).toBe("running");
   expect(browser.navigations).toEqual([]);
 
-  browser.emitJob({ id: "job-1", status: "succeeded" });
+  browser.emitJob({ id: "job-1", status: "succeeded", cardCount: 1 });
   expect(list.row.dataset.status).toBe("succeeded");
   expect(browser.navigations).toEqual([]);
 });
@@ -1392,7 +1392,7 @@ test("SSE terminal events never navigate away from pages without the jobs surfac
   const eventSource = {};
   const browser = browserHarness({ eventSource, jobsList: null });
 
-  browser.emitJob({ id: "job-1", status: "succeeded" });
+  browser.emitJob({ id: "job-1", status: "succeeded", cardCount: 1 });
   browser.emitJob({ id: "job-1", status: "failed", error: "provider unavailable" });
   expect(browser.navigations).toEqual([]);
 });
@@ -1402,8 +1402,17 @@ test("terminal events cannot act on a jobs list removed by an in-place review na
   const browser = browserHarness({ eventSource: {}, jobsList: list });
   browser.emitJob({ id: "job-1", status: "running" });
   browser.setJobsList(null);
-  browser.emitJob({ id: "job-1", status: "succeeded" });
+  browser.emitJob({ id: "job-1", status: "succeeded", cardCount: 1 });
   expect(list.row.dataset.status).toBe("running");
+  expect(browser.navigations).toEqual([]);
+});
+
+test("empty generation stays on its recovery surface instead of navigating into review", () => {
+  const browser = browserHarness({
+    eventSource: {},
+    waitingJob: { id: "job-empty", destination: "/" },
+  });
+  browser.emitJob({ id: "job-empty", status: "succeeded", cardCount: 0 });
   expect(browser.navigations).toEqual([]);
 });
 
@@ -1412,17 +1421,17 @@ test("only the explicit waiting job can complete capture and terminal replay can
     eventSource: {},
     waitingJob: { id: "job-current", destination: "/" },
   });
-  browser.emitJob({ id: "job-other", status: "succeeded" });
+  browser.emitJob({ id: "job-other", status: "succeeded", cardCount: 1 });
   browser.emitJob({ id: "job-current", status: "running" });
   expect(browser.navigations).toEqual([]);
   browser.emitJob({ id: "job-current", status: "failed", error: "provider unavailable" });
   expect(browser.generationStatus.textContent).toBe("provider unavailable");
   expect(browser.navigations).toEqual([]);
-  browser.emitJob({ id: "job-current", status: "succeeded" });
+  browser.emitJob({ id: "job-current", status: "succeeded", cardCount: 1 });
   expect(browser.navigations).toEqual(["/"]);
   browser.dispatchWindow("pagehide");
   browser.dispatchWindow("pageshow", { persisted: true });
-  browser.emitJob({ id: "job-current", status: "succeeded" });
+  browser.emitJob({ id: "job-current", status: "succeeded", cardCount: 1 });
   expect(browser.navigations).toEqual(["/"]);
 });
 
@@ -1432,6 +1441,6 @@ test("removing the capture waiting surface cancels its future terminal navigatio
     waitingJob: { id: "job-current", destination: "/app/library" },
   });
   browser.setWaitingJob(null);
-  browser.emitJob({ id: "job-current", status: "succeeded" });
+  browser.emitJob({ id: "job-current", status: "succeeded", cardCount: 1 });
   expect(browser.navigations).toEqual([]);
 });

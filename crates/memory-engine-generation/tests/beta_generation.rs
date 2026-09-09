@@ -798,26 +798,23 @@ fn bridge_generation_rejects_duplicate_of_manual_parent_review_unit() {
     let mut store = BetaPersistenceStore::open(&path).expect("store");
     let parent = save_manual_parent(&mut store);
 
+    let request = BridgeGenerationRequest {
+        run_id: "bridge-run-manual-parent".to_owned(),
+        parent_review_unit_id: parent,
+        started_at: NOW,
+        completed_at: Some(NOW + 1_000),
+        default_due: NOW - 10_000,
+        model: None,
+    };
+    let parent_review_units = store.snapshot().review_units;
     let failure = run_bridge_generation_with_provider(
         &mut store,
         &DuplicateParentBridgeProvider,
-        BridgeGenerationRequest {
-            run_id: "bridge-run-manual-parent".to_owned(),
-            parent_review_unit_id: parent,
-            started_at: NOW,
-            completed_at: Some(NOW + 1_000),
-            default_due: NOW - 10_000,
-            model: None,
-        },
+        request.clone(),
     )
     .expect_err("duplicate manual parent bridge should have no accepted drafts");
 
-    assert!(
-        failure
-            .to_string()
-            .contains("Duplicate-ish generated draft"),
-        "unexpected failure: {failure}"
-    );
+    assert!(matches!(&failure, BetaGenerationError::ProviderFailure(_)));
     let snapshot = store.snapshot();
     let bridge_draft = snapshot
         .generated_prompt_drafts
@@ -828,10 +825,23 @@ fn bridge_generation_rejects_duplicate_of_manual_parent_review_unit() {
         bridge_draft.validation.status,
         GeneratedPromptValidationStatus::Rejected
     );
-    assert_eq!(
-        bridge_draft.validation.reasons,
-        ["Duplicate-ish generated draft"]
-    );
+    let run = snapshot
+        .generation_runs
+        .iter()
+        .find(|run| run.id == request.run_id)
+        .expect("completed bridge run");
+    assert!(memory_engine_persistence::generation_run_is_published(run));
+    assert_eq!(run.validation_failures, bridge_draft.validation.reasons);
+    assert_eq!(snapshot.review_units, parent_review_units);
+    drop(store);
+
+    let mut reopened = BetaPersistenceStore::open(&path).expect("restart");
+    let provider = CountingBridgeProvider::default();
+    let replay_failure = run_bridge_generation_with_provider(&mut reopened, &provider, request)
+        .expect_err("replaying a bridge run without accepted drafts remains a failure");
+    assert_eq!(replay_failure, failure);
+    assert_eq!(provider.calls.get(), 0);
+    assert_eq!(reopened.snapshot(), snapshot);
 }
 
 #[test]
