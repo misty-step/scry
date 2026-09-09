@@ -1,0 +1,131 @@
+{
+  "schema": "scry.frictionless-review-proof.v1",
+  "date": "2026-09-08",
+  "scope": "Pre-deployment proof: real local Worker/native browser and client journeys, live generator and judge, and independent scheduler comparison. This receipt does not assert production rollout.",
+  "generation": {
+    "generator": "google/gemini-3.7-flash",
+    "judge": "openai/gpt-5.4",
+    "sources": 20,
+    "provider_failures": 0,
+    "all_counts_in_range": true,
+    "intent_shape_matches": 16,
+    "runtime_acceptance_source_mean_percent": 85.7,
+    "judge_keep_source_mean_percent": 85,
+    "p50_ms": 8562,
+    "p95_ms": 17008,
+    "reported_generation_cost_usd": 0.1602,
+    "judge_cost_usd": 0.1712,
+    "receipt": "../evals/frictionless-generation-20260908.json",
+    "limitations": [
+      "Small 20-source smoke, not efficacy or universal quality proof.",
+      "Judge penalized exhaustive NATO/presidents sets as repetition although coverage was complete.",
+      "Topic-seed answers were model-expanded rather than source-verified."
+    ]
+  },
+  "scheduler": {
+    "oracle": "ts-fsrs@5.4.2",
+    "transitions": 85,
+    "differing_before": 43,
+    "differing_after": 0,
+    "retained_regressions": 5,
+    "limitations": [
+      "85 selected transitions, not full equivalence.",
+      "Ambiguous legacy Hard gaps conservatively repeat the ten-minute step.",
+      "No learning-outcome or personalized-retention claim."
+    ]
+  },
+  "local_browser": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "word": {
+      "input": "photosynthesis",
+      "published_quizzes": 4
+    },
+    "phrase": {
+      "input": "first principles reasoning",
+      "published_quizzes": 3
+    },
+    "essay": {
+      "input": "three-paragraph retrieval-practice passage",
+      "published_quizzes": 5
+    },
+    "manual_approval": false,
+    "cold_answer": "correct",
+    "assisted_answer": "revealed",
+    "reload_holds_graded_result": true,
+    "bundle": "frictionless-preview"
+  },
+  "operations": {
+    "read_only_production_status": "healthz/readyz/statusz HTTP 200 and healthy",
+    "ship_parity_gate": "PASS: bun run ci:full; real Postgres, workerd, Clippy/rustdoc, action latency and Gitleaks; session artifact://1240",
+    "host_gate": "PASS: bun run ci; final integrated working tree committed as 2e401ea1158e3b494e37b4053559145bea982c98; session artifact://1237"
+  },
+  "postgres_consumed_hold": "Real Postgres held-inventory regression passes; SQL now reads and writes the existing snake_case idempotency key.",
+  "browser": {
+    "compact_feedback": {
+      "viewport": [
+        390,
+        844
+      ],
+      "next_button_bottom_px": 739.296875,
+      "horizontal_overflow": false,
+      "original_four_choices_in_collapsed_details": true,
+      "reload_holds_grade": true,
+      "screenshot": "frictionless-feedback-20260908.webp",
+      "source_sha256": "482a157c35fab3ce9b4909e88212816a6368d8b178affa1241e7936da3e076ec"
+    },
+    "native_authenticated_shell": {
+      "csrf_metadata": true,
+      "empty_footer_hidden": true,
+      "horizontal_overflow": false,
+      "live_retry_form_post_status": 409,
+      "retry_scope": "A dynamically inserted activity form passed authentication and reached the completed-job domain conflict; no transient provider failure was simulated."
+    },
+    "empty_generation": {
+      "native_no_js_progress_before_status": 405,
+      "native_no_js_progress_after": "authenticated saved-job recovery page; no false quiz-ready claim",
+      "horizontal_overflow": false,
+      "progress_and_review_exits": true,
+      "screenshot": "frictionless-empty-20260908.webp",
+      "regression": "empty generation incorrectly navigated to / before the fix; all 42 browser contracts pass afterward",
+      "live_sse_remained_on_recovery": true
+    },
+    "positive_generation": {
+      "live_sse_opened_review": true,
+      "held_mcp_grade_survived_restart_and_navigation": true,
+      "empty_footer_hidden": true,
+      "horizontal_overflow": false,
+      "url_wait_note": "The helper timed out; direct subsequent browser inspection confirmed the expected root and held grade. No latency claim is inferred."
+    }
+  },
+  "staging_before": {
+    "real_magic_link_received": true,
+    "signed_in": true,
+    "home_manual_keep_buttons": 6,
+    "production_backup_before_promotion": "production-before-review-backup.json"
+  },
+  "review_fixes": {
+    "mcp_status_read_regression": "failed before fix: held ALFA advanced to BRAVO; 14 MCP tests passed after fix",
+    "native_safe_read_regression": "failed before fix: current became null after a safe-method probe",
+    "worker_safe_reads": "real-workerd GET/HEAD hold and explicit POST advancement checks added",
+    "bridge_replay": "zero-accepted replay retains provider failure",
+    "local_conflicts": "typed 409/404/500 mapping for JSON and form responses",
+    "rendering": "authenticated job pages receive CSRF metadata; empty footer no longer reserves space"
+  },
+  "clients": {
+    "native_cli": {
+      "learn_published": 2,
+      "numeric_selection_before": "ALFA selected by displayed number was graded wrong",
+      "numeric_selection_after": "ALFA selected by displayed number was graded correct, rating 3",
+      "package_tests": "15 passed; artifact://1216"
+    },
+    "native_mcp": {
+      "transport": "actual stdio binary using the same isolated credential file as CLI",
+      "submitted_verdict": "correct",
+      "list_due_preserved_held_grade": true
+    }
+  },
+  "verified_code_revision": "2e401ea1158e3b494e37b4053559145bea982c98"
+}
