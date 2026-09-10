@@ -18,11 +18,80 @@ and model-backed generation need their own runs.
 | Changed area | Surface and proof |
 |---|---|
 | `crates/memory-engine-core/**`, `crates/memory-engine/**` | `cargo test -p memory-engine-core` / `-p memory-engine`; facade composes without private-crate imports |
-| `crates/memory-engine-cloudflare/**` | Run the exact-bundle `bun run worker:smoke` proof against the isolated Worker, then the live production procedure below; follow `docs/runbook.md` for release and recovery gates |
+| `crates/memory-engine-cloudflare/**` | Run the exact-bundle local Worker procedure below; live production proof is separate and requires explicit authority. Follow `docs/runbook.md` for release and recovery gates |
 | `crates/memory-engine-api/**` | Run the native compatibility API and affected shared assets; verify production-facing behavior against the Worker |
 | `crates/memory-engine-generation/**`, `-openrouter/**` | `cargo run -p memory-engine-bench -- generation`; live quality needs a dated `docs/evals/` receipt |
 | `crates/memory-engine-web-shell/**`, `-cli`, `-import` | `cargo run -p memory-engine-web-shell -- --receipt`; inspect the JSON receipt |
 | persistence, service, study crates | Targeted crate tests; Postgres paths run under `bun run ci:full` |
+
+## Isolated production-runtime verification
+
+Read [`docs/qa/system.md`](../../../docs/qa/system.md#cloudflare-runtime-proof)
+for the existing executable oracle; do not substitute the native compatibility
+server for the Worker. From the repository root, require Python 3, Node 22+,
+Bun, Rust/rustup, and network access to the pinned package registries.
+`bun run worker:tools` installs npm dependencies in this checkout, tools under
+`target/cloudflare-tools`, and the pinned Wasm target in the user's rustup
+installation. Reuse installed tools; obtain approval before changing a shared
+toolchain. No Cloudflare login, `.env`, provider key, or production account is
+needed. Do not source `.env` for ordinary verification.
+
+Use a new run directory (never overwrite another run):
+
+```sh
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/scry-qa.XXXXXX")
+bun run worker:build --out "$run_dir/bundle"
+bun run worker:smoke --artifact "$run_dir/bundle" --receipt "$run_dir/workerd-proof.json"
+bun run dev --artifact "$run_dir/bundle" --state "$run_dir/browser" --port 0
+```
+
+With harness tools, launch the final command through a supervised process
+handle, not a detached shell. Wait for `local Worker http://127.0.0.1:<port>`
+and inspect `/readyz` for `status: "ready"` before opening that exact origin.
+Startup is bounded to 60 seconds. State must not already exist; an occupied
+fixed port is a failure, not permission to reuse a different application.
+
+At 390×844, use a fresh isolated browser profile (not the user's logged-in
+browser), open `/app/account`, submit `dev@example.test`, and follow the
+local-outbox link rendered by this instance. Confirm Library opens; replay
+the consumed link in a separate fresh browser context and require rejection.
+Keep tokens, links, cookies, and the private Worker log out of screenshots.
+Inspect the actual mobile layout and reload the authenticated Library.
+This establishes rendered local sign-in/session behavior, not inbox delivery.
+Without an explicitly authorized provider file, browser AI capture cannot
+establish successful generation: do not claim otherwise or enable a paid
+provider to make the run green.
+
+The smoke command separately exercises real workerd with its own disposable
+accounts and structured NATO/ALFA source: alarm-driven publication, cross-account
+403 rejection, reveal followed by restart and submission yielding
+`revealed`/rating 1, and idempotent replay without new learning history.
+It also exercises provider redirect rejection through a local HTTP boundary
+fixture. Inspect the JSON receipt's `status`, `checks`, `revision`,
+`source_sha256`, and `bundle_sha256` against this run's manifest; exit zero or
+an old receipt alone is not proof. These assertions already reject plausible
+identity leaks, assisted answers graded as correct recall, and duplicate
+review writes. They do not establish external model quality.
+
+Stop the dev process with Ctrl-C through its owning handle and close only the
+browser contexts opened for this run. The helper stops its child process
+group (10-second grace, then kill) but `--state` deliberately retains private
+state and logs. Smoke removes its temporary state automatically and retains a
+private diagnostic log beside the receipt on failure. Inspect/sanitize required
+evidence before removing only the recorded `run_dir` with
+`rm -rf -- "$run_dir"`; do not remove shared caches, `.env`, or other worktrees.
+For a failed run, start with a new directory, not retained credentials/state.
+
+## Skill discovery
+
+The canonical entry point is `.agents/skills/scry-qa/SKILL.md`; existing
+`.pi/settings.json` loads `.agents/skills/*`. For runners with ambient skills
+disabled, explicitly read this file from the candidate checkout before
+choosing proof. `AGENTS.md` and the verifier's gate instructions point here;
+this requires only existing read authority, not additional tools or secrets.
+Discovery proof is a fresh intended-runner session that locates this skill
+and identifies the local Worker command, its no-provider boundary, and cleanup
+without conversation-only setup. A file listing is not runner-loading proof.
 
 ## Native compatibility API (not production)
 
@@ -70,8 +139,9 @@ Then exercise source capture, queued `POST .../generation-jobs`, bounded polling
 link, source capture, generation, `/app/next`, reveal, and submit. The legacy
 synchronous generate route returns HTTP 409 when Postgres is configured.
 
-Generation without `OPENROUTER_API_KEY` silently uses structured-block parsing;
-source the key from `.env` without printing or committing it. The fixture
+Generation without `OPENROUTER_API_KEY` uses structured-block parsing. Keep
+ordinary verification credential-free; live model proof requires explicit
+authorization for the key, model, source disclosure, and spend. The fixture
 receipt cannot prove model quality.
 
 ## Gates and production
