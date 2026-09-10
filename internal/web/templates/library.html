@@ -1,0 +1,96 @@
+{{define "add"}}<section class="capture-stage">
+  <h1 tabindex="-1" data-focus>Make it something you remember.</h1>
+  <p class="lede">A word you're learning. A question you keep asking. A passage worth keeping.</p>
+  <form action="/add" method="post" hx-post="/add" data-capture>
+    {{template "tokens" .}}
+    <label for="capture-text">What do you want to learn?</label>
+    <textarea id="capture-text" name="text" rows="7" required aria-describedby="capture-help" placeholder="A topic, a goal, or your own pasted material…">{{.Text}}</textarea>
+    <p id="capture-help" class="small muted">Up to 32 KiB. Your exact input is saved before generation begins. Longer passages work best as self-contained sections.</p>
+    <button class="primary" type="submit" data-pending="Saving your input…">Save and generate</button>
+  </form>
+  <p class="quiet-note">Generation can take a moment. You can leave after the saved state appears; your existing review stays available.</p>
+</section>{{end}}
+
+{{define "library"}}<section>
+  <h1 tabindex="-1" data-focus>Your library</h1>
+  <form class="search-form" action="/library" method="get" hx-get="/library" hx-push-url="true">
+    <label for="library-search" class="sr-only">Search source and question text</label>
+    <input id="library-search" type="search" name="q" value="{{.Query}}" placeholder="Search source and question text" maxlength="1024">
+    <button type="submit">Search</button>
+  </form>
+  {{if .Query}}<p class="small">Results for “{{.Query}}”. <a href="/library">Clear search</a></p>{{end}}
+  {{if .Sources}}<ul class="library-list">
+    {{range .Sources}}<li><a href="/sources/{{.ID}}" class="library-item"><span class="library-title">{{excerpt .Text}}</span><span class="library-meta">{{if .Archived}}Archived{{else}}{{jobLabel .Status}}{{end}}<span>{{if eq .Kind "source"}}Saved source{{else}}Topic input{{end}}</span></span></a></li>{{end}}
+  </ul>
+  {{else}}<div class="empty-stage compact">{{if .Query}}<h2>No matching material.</h2><p>Try a shorter phrase, or look for a word from the source or question.</p><a href="/library">Show all material</a>{{else}}<h2>A little input goes a long way.</h2><p>Add something you want to learn. The original and its generated questions will live here.</p><a href="/add" class="button primary">Add something</a>{{end}}</div>{{end}}
+</section>{{end}}
+
+{{define "source"}}<article>
+  <a class="back-link" href="/library">Library</a>
+  <h1 tabindex="-1" data-focus>{{excerpt .Source.Text}}</h1>
+  <p class="small muted">Saved <time datetime="{{timeISO .Source.CreatedAt}}" data-local-time>{{timeText .Source.CreatedAt}}</time>. Input revision {{.Source.Revision}}.</p>
+  {{if .Source.Archived}}<div class="message"><h2>Archived</h2><p>This source no longer creates new questions or appears in future review. Your original material and past reviews remain available.</p></div>{{end}}
+  {{template "job" .}}
+  <details class="source-text"><summary>Read the original input</summary><div class="preserve prose">{{.Source.Text}}</div></details>
+  <p class="provenance">{{if eq .Source.Kind "source"}}Source-based questions retain quoted evidence. Exact quotation checks attribution, not whether the source is true.{{else}}Questions expand on a topic using generated knowledge. Your input is not cited as proof of those claims.{{end}}</p>
+  <section class="question-library" aria-labelledby="questions-heading"><h2 id="questions-heading">Questions</h2>
+    {{if .Source.Quizzes}}<ul class="question-list">{{$root := .}}{{range .Source.Quizzes}}<li>
+      <div class="question-heading"><h3>{{.Prompt}}</h3><span class="status-label">{{if .Archived}}Archived{{else}}{{kind .Kind}}{{end}}</span></div>
+      <p class="small muted">Version {{.Version}}{{if not .Archived}}. Due <time datetime="{{timeISO .DueAt}}" data-local-time>{{timeText .DueAt}}</time>{{end}}.</p>
+      <details><summary>Answer and explanation</summary>
+        {{if .Choices}}<ul class="plain-choices">{{range .Choices}}<li>{{.}}</li>{{end}}</ul>{{end}}
+        <p class="preserve"><strong>Expected answer:</strong> {{.Answer}}</p>
+        <p class="preserve">{{.Explanation}}</p>
+        {{if .Variants}}<p class="small">Accepted variants:</p><ul>{{range .Variants}}<li>{{.}}</li>{{end}}</ul>{{end}}
+        {{if .Evidence}}<blockquote class="preserve">{{.Evidence}}</blockquote>{{end}}
+        <p class="small muted">{{if eq .Basis "source"}}Quoted from your saved source.{{else}}Generated topic knowledge.{{end}}</p>
+      </details>
+      {{if not .Archived}}<div class="actions"><a href="/quizzes/{{.ID}}/edit">Edit question</a></div>{{end}}
+    </li>{{end}}</ul>{{else}}<p>No questions are available from this input yet. The saved generation status above explains what happens next.</p>{{end}}
+  </section>
+  {{if not .Source.Archived}}
+    <details class="maintenance"><summary>Edit as new input</summary><p>Save a revised input as a separate source. The original, its questions, and its review history stay unchanged. Archive the original separately if it should stop appearing.</p>
+      <form action="/add" method="post" hx-post="/add">{{template "tokens" .}}<label for="revised-source">Revised input</label><textarea id="revised-source" name="text" rows="7" required maxlength="32768">{{.Source.Text}}</textarea><button type="submit" data-pending="Saving the revised input…">Save as new input</button></form>
+    </details>
+    <details class="maintenance"><summary>Archive this source</summary><p>Stop future review and cancel unfinished generation for this source. Archiving is not erasure; original material and history remain in your export.</p>
+      <form action="/sources/{{.Source.ID}}/archive" method="post" hx-post="/sources/{{.Source.ID}}/archive">{{template "tokens" .}}<button type="submit" class="danger">Archive source and questions</button></form>
+    </details>
+  {{end}}
+</article>{{end}}
+
+{{define "job"}}<section id="job-status" class="job-status" aria-label="Saved generation status" {{if and .JobPending (gt .PollRemaining 0) (not .Source.Archived)}}hx-get="/sources/{{.Source.ID}}?status=1&amp;remaining={{.PollRemaining}}" hx-trigger="every 3s" hx-target="this" hx-select="#job-status" hx-swap="outerHTML"{{end}}>
+  {{if .Source.Job}}{{$job := .Source.Job}}
+    <h2>{{jobLabel $job.Status}}</h2>
+    <p>Your input is saved. {{if gt $job.Published 0}}{{$job.Published}} questions published.{{else}}No questions published from this attempt.{{end}}</p>
+    {{if eq $job.Status "partial"}}<p>Only part of the requested material was usable. Inspect the questions, edit them, or save revised input; a partial result is not a claim of complete coverage.</p>{{end}}
+    {{if $job.Error}}<p class="job-error preserve">{{$job.Error}}</p>{{end}}
+    <p class="small muted">{{$job.Attempts}} generation attempts. {{if $job.Model}}Recorded model: {{$job.Model}}.{{else}}No model recorded for this job.{{end}}</p>
+    <p class="small muted">Accounted usage {{money $job.CostMicros}}.{{if $job.CostUnknown}} <strong>This includes allowance retained for unknown usage, not a confirmed invoice total.</strong>{{end}}{{if gt $job.ReservedMicros 0}} Another {{money $job.ReservedMicros}} is reserved for in-flight work, not confirmed billed usage.{{end}}</p>
+    {{if and (retryable $job.Status) (eq $job.Published 0) (not .Source.Archived)}}
+      {{if eq $job.Status "paused"}}<p>Restored or uncertain work stays paused. Retrying is an explicit decision to allow another attempt, which may incur new provider cost. Check prior provider activity first.</p>{{end}}
+      <form action="/sources/{{.Source.ID}}/retry" method="post" hx-post="/sources/{{.Source.ID}}/retry" hx-target="#main" hx-select="#main" hx-swap="outerHTML">{{template "tokens" .}}<button type="submit" data-pending="Saving your retry request…">Retry generation</button></form>
+    {{end}}
+    {{if .JobPending}}<p class="small">{{if gt .PollRemaining 0}}Checking automatically for up to one minute. You can leave this page.{{else}}Automatic checks have paused. Your saved job keeps its server-side status.{{end}}</p>{{end}}
+    <a class="quiet-link" href="/sources/{{.Source.ID}}" hx-target="#main" hx-select="#main" hx-swap="outerHTML">{{if gt $job.Published 0}}View current questions{{else}}Refresh saved status{{end}}</a>
+  {{else}}<h2>Input saved</h2><p>No generation job is recorded for this source. Your original input remains available.</p>{{end}}
+</section>{{end}}
+
+{{define "edit"}}<section>
+  <a class="back-link" href="/sources/{{.Quiz.SourceID}}">Saved material</a>
+  <h1 tabindex="-1" data-focus>Edit the next occurrence.</h1>
+  <p>Past questions and results keep their original wording. This saves a new version for future review.</p>
+  {{if .Quiz.Archived}}<p class="message">This question is archived and no longer appears in review.</p>{{else}}
+  <form action="/quizzes/{{.Quiz.ID}}/edit" method="post" hx-post="/quizzes/{{.Quiz.ID}}/edit" class="edit-form">
+    {{template "tokens" .}}<input type="hidden" name="version" value="{{.Quiz.Version}}">
+    <label for="quiz-kind">Response style</label><select id="quiz-kind" name="kind"><option value="choice" {{if eq .Quiz.Kind "choice"}}selected{{end}}>Tap a choice</option><option value="recall" {{if eq .Quiz.Kind "recall"}}selected{{end}}>Short cued recall</option></select>
+    <label for="quiz-prompt">Question</label><textarea id="quiz-prompt" name="prompt" rows="4" required>{{.Quiz.Prompt}}</textarea>
+    <label for="quiz-answer">Expected answer</label><textarea id="quiz-answer" name="answer" rows="2" required>{{.Quiz.Answer}}</textarea>
+    <label for="quiz-choices">Choices, one per line</label><textarea id="quiz-choices" name="choices" rows="5" aria-describedby="choices-help">{{joinLines .Quiz.Choices}}</textarea><p id="choices-help" class="small muted">For tap-choice questions only. Include distinct alternatives and the exact expected answer as one choice.</p>
+    <label for="quiz-variants">Accepted variants, one per line</label><textarea id="quiz-variants" name="variants" rows="3" aria-describedby="variants-help">{{joinLines .Quiz.Variants}}</textarea><p id="variants-help" class="small muted">For short recall only. Add equivalent answers deliberately; broad spelling or case changes can alter meaning.</p>
+    <label for="quiz-explanation">Explanation</label><textarea id="quiz-explanation" name="explanation" rows="5" required>{{.Quiz.Explanation}}</textarea>
+    {{if eq .Quiz.Basis "source"}}<label for="quiz-evidence">Exact quotation from the saved source</label><textarea id="quiz-evidence" name="evidence" rows="4" required>{{.Quiz.Evidence}}</textarea><p class="small muted">Keep qualifications intact. The quotation must exist in the unchanged saved source.</p>{{else}}<p class="small muted">This is generated topic knowledge. Editing does not turn the original topic into cited evidence.</p>{{end}}
+    <div class="actions"><button class="primary" type="submit" data-pending="Saving the new question version…">Save new version</button><a href="/sources/{{.Quiz.SourceID}}">Cancel</a></div>
+  </form>
+  <details class="maintenance"><summary>Archive this question instead</summary><p>Stop future review without erasing historical results.</p><form action="/quizzes/{{.Quiz.ID}}/archive" method="post" hx-post="/quizzes/{{.Quiz.ID}}/archive">{{template "tokens" .}}<button type="submit" class="danger">Archive question</button></form></details>
+  {{end}}
+</section>{{end}}

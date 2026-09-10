@@ -1,12 +1,25 @@
 # Learning Science Doctrine
 
 
-This is the living bibliography for decisions that belong in
-`memory-engine` rather than in one client experiment. A principle is adopted
-only when it names the source evidence, the product or kernel decision it
-drives, and an executable oracle that can fail when the behavior drifts.
+This bibliography distinguishes learning evidence from Scry's product policy.
+Current behavior belongs to `internal/learning`, `internal/store`, and `SPEC.md`.
+The retained Rust comparisons below describe the historical implementation;
+they are not parity or efficacy evidence for the Go application.
 
-## Adopted Principles
+## Current Go policy
+
+| Principle | Evidence and decision | Executable check |
+| --- | --- | --- |
+| Retrieval, not mere exposure, is the learning event. | [Roediger and Karpicke (2006)](https://pubmed.ncbi.nlm.nih.gov/16507066/) supports retrieval practice. Scry records exact supported answers as Good and wrong short factual answers or reveal as Again. Close or unsupported semantic judgments remain unresolved rather than manufacturing success. | `go test ./internal/learning ./internal/store` protects grading, assistance, and atomic event/schedule transitions. |
+| Spacing is useful; a particular schedule remains policy. | [Cepeda et al. (2006)](https://pubmed.ncbi.nlm.nih.gov/16719566/) supports distributed practice. `internal/learning.Algorithm` names the pinned Go FSRS dependency and policy: default parameters, 90% requested retention, no fuzz, and explicit learning/relearning steps. The complete upstream card state is retained. | `go test ./internal/learning ./internal/store` protects scheduler state, durable retries, and portable history. |
+
+The Go adapter does not inherit the Rust scheduler's parity claims. Neither
+synthetic histories nor passing checks establish personal learning gains.
+Recognition and recall remain distinguishable in history; speed alone does
+not establish mastery. Personalization requires a separate supported decision,
+not an unannounced parameter change.
+
+## Historical Rust adoption evidence
 
 | Principle | Source evidence | Engine decision | Executable oracle |
 | --- | --- | --- | --- |
@@ -17,7 +30,7 @@ drives, and an executable oracle that can fail when the behavior drifts.
 | Retrieval variability fights prompt memorization. | Brunmair and Richter (2019) supports conditional interleaving benefits, especially when learners must discriminate between materials; teaching-science summaries in `docs/research/learning-science-references.md` connect retrieval, spacing, interleaving, elaboration, examples, and exercises as complementary strategies. | The beta study boundary treats same-concept same-stage prompts as separate item variants, rotates due variants before repeating the same phrasing, projects MCQ choices in a deterministic changing order, and exposes response-time plus success trends from the existing attempt log. | `cargo test -p memory-engine-study --test beta_study queue_rotates_due_variants_with_the_same_concept_and_stage -- --exact`, `cargo test -p memory-engine-study --test beta_study multiple_choice_choices_rotate_between_reviews_without_changing_answer -- --exact`, and `cargo test -p memory-engine-bench generation::tests::variant_quality_requires_distinct_same_concept_stage_phrasings_without_answer_leakage -- --exact` protect the behavior and eval. |
 | FSRS personalization needs history, versioning, and simulation before promotion. | The official `fsrs4anki` README says the optimizer fits parameters to review history, [GitHub](https://github.com/open-spaced-repetition/fsrs4anki). The Rust FSRS project documents optimizer input as review-history items, [fsrs-rs](https://github.com/open-spaced-repetition/fsrs-rs). | `memory-engine-core` keeps fixed default parameters until the boundary has enough persisted review history and an explicit scheduler-version contract. Per-user optimization belongs behind a shaped analytics or boundary-crate slice, not as a silent kernel mutation. | `cargo run -p memory-engine-bench` prints `scheduling.fsrs.synthetic_histories`; future optimizer work must extend this into versioned replay fixtures before replacing defaults. |
 
-## Policy and evidence boundaries
+## Historical Rust policy and evidence boundaries
 
 FSRS-6 retains its published 21 default weights and a 90% requested-retention
 baseline; see the [official equations](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm).

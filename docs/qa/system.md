@@ -1,294 +1,140 @@
-# Scry QA System
+# Scry verification
 
+The current application is Go/SQLite/HTMX on private exe.dev ingress. Choose
+proof for the changed behavior; a build, a fixture, a browser observation, a
+live provider result, and physical-phone acceptance establish different things.
+`SPEC.md` owns acceptance. The runbook owns live authority and recovery.
 
-## Purpose
-
-The QA system is the repeatable proof path for Scry. It is designed
-to answer two questions:
-
-1. Does the public API still execute the learning semantics consumers depend on?
-2. Where can quality improve beyond pass/fail bug finding?
-
-The executable entrypoint is:
+## Repository gate and release artifact
 
 ```sh
-cargo run -p memory-engine-qa -- --local
-cargo run -p memory-engine-qa -- --full
+bun run ci
+bun run ci:full -- --out target/ci-release --require-committed
 ```
 
-`cargo run -p memory-engine-qa -- --local` is the inner loop.
-`cargo run -p memory-engine-qa -- --full` is the handoff path and ends with the
-full `bun run ci:full` Dagger gate.
+`ci` and `ci:local` run `scripts/scry-ci local` with host tools. `ci:full` uses
+pinned Dagger tooling and the same shared gate over a frozen source snapshot.
+The host requires Go 1.27.1 Linux/amd64, Node 22+, and Gitleaks 8.30.1. Use the
+full gate when those tools are not available locally. Both gates check:
 
-## Quality Model
+- Go formatting, tests, and vet with dependency updates forbidden.
+- Syntax of browser/gateway JavaScript and current deployment shell scripts.
+- Retained historical backup/recovery contracts, separately from the Go app.
+- Redacted Gitleaks over admitted source, excluding ignored local secrets/state.
+- The exact Linux amd64, CGO-disabled binary: real HTML and embedded assets,
+  grading, exact retry, persisted feedback after restart, consistent backup,
+  isolated restore, and full restored learning-state equality.
 
-QA evidence is organized around product quality, not implementation folders:
+The artifact contains the tested binary, checksums, revision, source inventory
+and archive, proof, build information, and smoke logs/exports. No second build
+follows smoke. Synthetic smoke has loopback development identity and no remote
+model or backup authority. It does not prove remote backup or live AI quality.
 
-- API integrity: Rust facade exports compose without private crate imports.
-- Learning semantics: scheduling, grading, progression, and queue behavior stay
-  stable against fixtures and regression corpus cases.
-- Contract usefulness: testkit fixtures and adapter doubles remain valid
-  consumer-facing contracts.
-- Boundary clarity: the Rust service boundary and dogfood clients keep persistence,
-  UI, authored content, confidence, and session choreography outside the kernel.
-- Drift detection: evals and benchmark receipts expose behavior and performance
-  changes before clients absorb them.
-- Science traceability: adopted learning-science principles remain tied to
-  cited doctrine plus executable tests or benchmark receipts in
-  `docs/science/README.md`.
-- Handoff confidence: the Bun browser lifecycle contract, retained recovery
-  boundaries, Rust formatting/tests/Clippy/rustdoc, latency budgets, the exact
-  Wasm build, actual local workerd smoke, and Gitleaks all pass. `bun run ci:local`
-  runs the local lanes plus Worker build/smoke; `bun run ci:full` repeats them
-  under Dagger and binds Postgres 16 with `MEMORY_ENGINE_POSTGRES_TEST_URL`.
-  Native Postgres remains a consequential compatibility/migration reference,
-  not the production destination. Neither gate has deployment credentials.
+Committed source receives its Git revision. Dirty/untracked source is labeled
+`worktree-...`; hosted `--require-committed` refuses it. Destinations are
+exclusive-create. A successful process launch is not release evidence: inspect
+`proof.json`, the checksums, and `scry version`, then stage only those bytes.
 
-## Executable Lanes
+## Focused checks
 
-`crates/memory-engine-qa` runs these lanes in a fixed order and prints a
-receipt after each lane:
-
-| Lane | Surface | Purpose |
-|---|---|---|
-| `static.rustfmt` | all Rust crates | keep checked-in Rust in canonical format |
-| `static.clippy` | all Rust targets | catch correctness, maintainability, and API-shape warnings |
-| `api.facade` | `memory-engine` facade crate | prove consumers can compose root, modular, testkit, and dogfood surfaces |
-| `kernel.core` | `memory-engine-core` | protect pure learning semantics, queue deferral semantics, and adapter contracts |
-| `service.prototype` | `memory-engine-service` command boundary | prove command flow, injected persistence, and failure semantics |
-| `persistence.beta-store` | `memory-engine-persistence` durable beta store | prove persisted snapshots, restart, conflict, and validation semantics |
-| `generation.beta` | `memory-engine-generation` deterministic generation probe | prove source parsing, provenance, draft validation, and promotion behavior |
-| `study.beta-session` | `memory-engine-study` session/API boundary | prove source, automatic publication, reveal, answer, feedback, concept health, skip/snooze, reference, bridge, queue, and resume flow |
-| `app.beta-http` | `memory-engine-beta-app` local HTTP routes | prove mobile routes and validation run through the Rust study session |
-| `api.v1-contract` | versioned public JSON contract and consumer proof binary | run the Scry-facing client against a local HTTP API and prove contract fixtures stay executable |
-| `dogfood.rust-receipts` | Rust CLI, import probe, web shell | exercise migrated dogfood clients through the Rust facade and service crates |
-| `docs.rustdoc` | all public Rust crates | prove public API documentation compiles |
-| `performance.benchmarks` | Rust facade, scheduler, queue, service, science receipts | expose migrated-runtime and learning-policy drift without brittle thresholds |
-| `ci.full` | Dagger CI | prove browser/recovery contracts, native file/Postgres tests, Rust fmt/Clippy/doc, action-latency budgets, actual Wasm/workerd, and Gitleaks together |
-
-All lanes are gating except `performance.benchmarks`, which is receipt-only
-until the project has enough historical data to define stable budgets.
-
-### Cloudflare runtime proof
-
-The production destination is `memory-engine-cloudflare`, not an Axum process.
-A green native suite cannot establish Worker/SQLite/alarm/R2/mail behavior.
-The repo-owned executable gate is:
-
-```sh
-bun run worker:tools
-bun run worker:gate
-# Or retain an explicitly named immutable candidate and proof:
-bun run worker:build --out target/cloudflare/candidate
-bun run worker:smoke --artifact target/cloudflare/candidate \
-  --receipt target/cloudflare/candidate-workerd-proof.json
-```
-
-The same `scripts/scry-cloudflare gate` runs in Dagger's `worker` function.
-`worker-build 0.8.5`, `wasm-bindgen 0.2.125`, `esbuild 0.28.1`, and
-`Wrangler 4.129.0` are pinned; Cargo and npm dependency graphs are locked.
-No synthetic server or substitute provider stands in for the application.
-The exact packaged JS/Wasm runs in local workerd with isolated Durable Object
-SQLite and R2 state, local mail mode, and no inherited model/Cloudflare secrets.
-The gate first activates its new private actor through authenticated
-`GET /internal/migration/fingerprint` and fingerprint-guarded
-`POST /internal/runtime`, then observes real readiness. On restart it reads the
-persisted active state without another activation. It exercises the shared
-`/static/app.js` asset path, anonymous rejection, service-session auth,
-alarm-driven LocalOnly structured generation, automatic publication,
-isolation between two real accounts, review resume, assisted grading across
-restart, durable idempotent replay without extra history/exposure, and the schema
-fingerprint. Its privacy-safe receipt binds observations to
-the exact artifact hash and source revision. It does not prove mail inbox
-placement, paid model quality, production data continuity, or browser timing.
-
-Export the Dagger-built bundle and its workerd proof when needed:
-
-```sh
-dagger call worker --source=. --git-sha="$(git rev-parse HEAD)" \
-  export --path=target/cloudflare/dagger-proof
-```
-
-Remote bootstrap has a different acceptance boundary: health/static assets,
-authenticated schema access, `maintenance: true`, and 503 learner/readiness
-fences. A paused bootstrap receipt cannot authorize production. Staging must
-first run `release:traffic --enable`; its verified receipt must record
-`runtime_proof.maintenance: false`, `readiness: "ready"`, and
-`public_smoke: "passed"` for the exact bundle and still-deployed staging version.
-Traffic receipts check the immutable version before/after the application-state
-mutation; no secret update, rebuild, or version deployment implements activation.
-Production additionally requires the explicit source-quiesced declaration,
-verified PostgreSQL primary-import provenance, and matched imported-state
-fingerprint. Main must exercise pause/activation, busy-operation rejection,
-alarm fencing, and independent recovery readback against the actual Worker.
-
-**Production cutover completed on 2026-09-08.** The source-quiesced export,
-all-column/table readback, separate-object R2 restore, activation, and real
-browser/client/mail receipts are in the
-[runbook](../runbook.md#production-cutover-evidence-2026-09-08).
-The canonical origin is `https://scry.misty-step.workers.dev`; `scry.study`
-and `www.scry.study` proxy to it. The native service is disabled and its
-database is frozen. Staging remains an independent Worker, namespace, and bucket.
-Preserved records do not migrate browser cookies across hostnames. Never
-relabel staging smoke, Resend API acceptance, or a reachable hostname as
-production migration or inbox-delivery evidence.
-
-The capture-anything path adds a focused generation receipt:
-
-```sh
-cargo run -p memory-engine-bench -- generation
-```
-
-That receipt is still local and deterministic, but it is not a raw performance
-benchmark: its `shape` column must stay green for the intent fixtures that
-cover verbatim memorization, concept understanding, fact recall, and
-procedure/process capture, its `variants` column scores same-concept same-stage
-phrasing variety without answer leakage, its `dup` column uses the same
-near-duplicate predicate as source generation, and its bridge fixture must stay
-green for lower-stage, same-concept, non-duplicate bridge material. Live model
-quality comparisons stay explicit and write dated receipts under `docs/evals/`:
-
-```sh
-cargo run -p memory-engine-bench -- generation \
-  --model google/gemini-3.7-flash \
-  --prompt principled \
-  --judge anthropic/claude-sonnet-4.6 \
-  --out docs/evals/generation-gemini-3.7-flash-judged-$(date +%F).md
-```
-
-### Observability and external monitor proof
-
-Canary was retired by Estate ADR 0003's 2026-08-30 amendment; no live
-replacement telemetry-ingest endpoint exists. The supported implementation is
-Worker-native logging in `crates/memory-engine-cloudflare/src/telemetry.rs`
-and the independent repository-owned `scripts/scry-monitor`. Neither points
-at the service prototype as a production runtime.
-
-Worker logging reconstructs allowlisted, content-free browser receipts,
-bounded performance aggregates, and observed actor/recovery health. Account,
-cookie, CSRF, source, answer, and feedback content do not enter these telemetry
-records. A valid authenticated `POST /app/performance/submit` returns an empty
-**202** response with `x-scry-telemetry-delivery: runtime_logged` and
-`x-scry-telemetry-attempts: 0`: the receipt was logged by the runtime, with zero
-external delivery attempts. Isolate-local aggregation is best effort. This is
-not remote ingest acceptance, durable telemetry storage, or external readback.
-
-The external monitor observes three public GET witnesses without learner,
-admin, or Worker deployment credentials:
-
-| Witness | Healthy observation | Boundary |
+| Changed area | Useful existing checks | Additional real proof |
 | --- | --- | --- |
-| `/healthz` | 2xx JSON with `status: "ok"` | SQLite accessibility; can remain healthy while paused. |
-| `/readyz` | 2xx JSON with `status: "ready"` | Learner readiness; a paused actor returns 503. |
-| `/statusz` | 200 JSON with `schema: "memory_engine.runtime_health.v1"`, `status: "healthy"`, `maintenance: false`, and integer `backupAgeMs` from 0 through 90,000,000 ms (25 hours), inclusive | Active actor plus recovery freshness. Paused, missing, future-dated, or stale backup evidence yields 503 with `status: "degraded"`; `backupAgeMs` is an integer or null. |
+| Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
+| Generation | `go test ./internal/generation` | One bounded, authorized live request on representative material; inspect provenance, coverage, rejections, and actual spend |
+| HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
+| Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |
+| Deployment | Current shell syntax plus exact-binary gate | Actual unprivileged process/readiness after protected activation |
+| Historical recovery | `bun run test:recovery` | Use the corresponding historical store/tooling; never reinterpret old formats as Go snapshots |
 
-All three routes are observational: they do not schedule alarms, wake jobs, or
-repair the backup being checked. The monitor rejects redirects, malformed
-health responses, and missing or invalid recovery freshness rather than
-treating an HTTP response alone as health.
+Do not add permanent tests for wiring or source text. Keep regressions for
+observable boundaries, races, precedence, and failure transitions. Mock only
+external boundaries; repository-owned storage and learning collaborators stay
+real.
 
-The POSIX CLI below observes the canonical staging Worker and may send real
-operator mail. `bun run ops:monitor` is the same entry point. Supply
-`RESEND_API_KEY`, `MEMORY_ENGINE_MAIL_FROM`, and `MEMORY_ENGINE_ALERT_TO`
-through the operator environment, never committed values:
+## Browser and private ingress
 
-```sh
-python3 scripts/scry-monitor --environment staging \
-  --state-file target/scry-monitor/staging/state.json \
-  --receipt-file target/scry-monitor/staging/receipt.json
-# Explicit master-only workflow invocation; the label requests a real mail drill:
-gh workflow run production-health.yml --ref master \
-  -f environment=staging -f delivery_drill=staging-mail-proof
-```
-
-`--environment production` selects the canonical production origin. State and
-receipt paths must differ; state is private notification bookkeeping and the
-`scry.monitor.receipt.v1` receipt is sanitized JSON. Local mail configuration
-is validated on every invocation, even an initially healthy run with no mail.
-An initial healthy observation is quiet; a sustained unhealthy incident and
-its recovery each send once while notification state survives. Unaccepted
-mail retains its original payload and idempotency key for retry; the old
-observation is delivered before current health is reconciled.
-The optional CLI `--delivery-drill LABEL` or workflow `delivery_drill` input
-labels a mail drill without asserting an incident. Repeating the latest
-accepted drill label is quiet while its state survives.
-
-| Receipt | What it establishes |
-| --- | --- |
-| `status: "healthy"` | All three public health checks passed; it says nothing about mail. |
-| `result: "ok"` | Health checks and local configuration/state/notification processing completed without a recorded error. A quiet run is not provider-acceptance proof. |
-| `delivery: "provider_accepted"` with `receiptId` | A Resend 2xx JSON response contained a valid acceptance ID; not inbox delivery. |
-| `delivery: "already_provider_accepted"` | The latest drill's earlier acceptance was found in notification state; no new provider request or inbox observation. |
-| `delivery: "acceptance_unconfirmed"` | A mail request was attempted but no valid provider-acceptance receipt was obtained; acceptance or delivery must not be inferred. |
-| `delivery: "not_attempted"` | Notification failed before a provider request, such as invalid local configuration or a changed pending envelope. |
-
-`.github/workflows/production-health.yml` checks out `master` only and
-serializes runs per target environment. Restrict its `production-monitor`
-GitHub environment to `master`; only that environment supplies the three
-operator mail secrets above, not learner, admin, magic-link, or Worker
-deployment keys. A `master` manual dispatch can select staging or production
-and bypasses `SCRY_MONITOR_ENABLED`; automatic five-minute scheduling requires
-that repository variable to be `true`. It was enabled on 2026-09-08, and
-[scheduled run 34251233514](https://github.com/misty-step/scry/actions/runs/34251233514)
-executed the monitor successfully. A disabled/skipped probe is not monitoring.
-
-GitHub cron can be delayed, dropped, or disabled and is not an availability
-SLA. Environment-scoped default-branch cache is best effort, not durable alert
-history: expiry/loss can duplicate alerts or lose recovery context, and
-Resend idempotency expires after 24 hours. Delayed retries describe the
-original observation, not necessarily current health. Workflow artifacts
-retain sanitized receipts for 14 days; neither a green workflow nor provider
-acceptance establishes inbox delivery or continuous monitoring.
-
-Current evidence is local: real workerd exercised browser identity isolation,
-paused SSE fencing, R2 retrieval/separate-object restore, and `/statusz`
-recovery health. The loopback HTTP checks in `scripts/scry-monitor.test.py`
-passed missing-backup, failed-acceptance stable-retry, sustained-incident and
-recovery deduplication, and redirect-refusal scenarios. These are not live
-Worker, external telemetry readback, or real mail-delivery receipts.
-Final full gates for this revision and deployed logging, alert acceptance,
-separate inbox proof, and scheduled production observations remain Main-owned
-evidence to record in [the runbook](../runbook.md), not claims made here.
-
-## Operating Procedure
-
-Use this sequence for QA work:
+Run an isolated development app with synthetic data:
 
 ```sh
-cargo run -p memory-engine-qa -- --local
-cargo run -p memory-engine-qa -- --full
+go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
 ```
 
-For a focused change, run the affected surface first, then finish with the QA
-harness. Examples:
+Use an actual browser. Check answer → held feedback → deliberate Next, capture
+and saved generation status, library/correction, and interrupted access. Exercise
+real pointer/keyboard events and inspect the screen. A DOM `.click()` bypass is
+not evidence of working touch. If a browser harness stalls, diagnose or replace
+that isolated browser rather than count a bypass as product proof.
 
-```sh
-cargo test -p memory-engine-core
-cargo test -p memory-engine
-cargo test -p memory-engine-study
-cargo test -p memory-engine-api review_escape_hatches
-cargo test -p memory-engine-api post_answer_feedback
-cargo test -p memory-engine-openrouter
-cargo run -p memory-engine-bench -- generation
-```
+Keep pending, committed, rejected, and unknown outcomes distinguishable. Lose a
+response after commit and retry the identical operation: one event/schedule
+transition, same feedback. Background/reconnect must preserve an unsaved draft;
+privacy/access failure must hide content until access is revalidated.
 
-Report QA evidence with exact commands, final status, surfaces exercised, and
-any unrun ticket-required proof oracle. Do not claim beta/product proof from
-local package tests alone.
+For capture bounds, use native typing/paste for both ASCII and multibyte input,
+not DOM value assignment that bypasses browser limits. Verify exact draft bytes
+before submission and after a 422, no source/job on rejection, and successful
+exact storage at 32,768 bytes. Opening an ungraded dispute must neither reveal
+answers nor require assistance; reset-off must preserve its event and schedule.
+After archiving, held feedback describes the recorded schedule and the empty
+screen explains that archived questions are unavailable.
 
-## Improvement Review
+On the deployed private origin, use an approved exe login or separately scoped
+VM token; do not put tokens in URLs, argv, captures, or public receipts. Verify
+anonymous/forged access is denied, exact owner access succeeds, stale/cross-site
+mutations are rejected, and alternate hosts cannot replay writes. Account or
+provider-access loss must not expose private history/cache on return. VM API
+authority is independent of browser logout; never claim logout revokes a token.
 
-After every full QA pass, update `docs/qa/quality-register.md` when the run
-reveals a quality opportunity. A register item does not need to be a bug. Good
-items include missing scenario coverage, unclear API ergonomics, weak fixture
-corpora, benchmark gaps, consumer-proof gaps, or dogfood friction.
+`/healthz` and `/readyz` return plain text `ok` and `ready`. They prove liveness
+and database readiness, not fresh off-VM recovery or question quality. Inspect
+Settings for the last completed backup and visible stale/error state. There is
+no current `/statusz` contract or public service-session API.
 
-Register entries should name:
+## Independent recovery
 
-- quality dimension
-- current evidence
-- improvement
-- trigger for creating a shaped GitHub issue
+Use the approved daily/pre-release, 30-day new-app retention policy and
+RPO 24h/RTO 60m targets. Recover a completed R2 archive using independently
+retained operator capability and compatible binary/configuration. Restore only
+into an unused path on an isolated environment. Do not copy live integrations
+or duplicate scheduler ownership into a preview.
 
-Do not use the register for vague wishes. If an item is actionable now and
-blocks the active work, fix it instead of recording it.
+Compare the recovered export to the snapshot's acknowledged state. Keep
+uncertain jobs paused. When claiming service recovery, also activate the
+unprivileged service, exercise private HTTPS and the actual UI, and record
+elapsed time and excluded steps. An existing VM, copied files, or successful
+SQLite integrity check alone is not a complete disaster-recovery proof.
+
+`--allow-local-backup` is only for an explicitly synthetic rehearsal. It does
+not establish production remote-backup success. Never use it for live cutover.
+
+## Evidence and historical material
+
+[The earlier Go acceptance receipt](personal-go-acceptance-20260909.json) records
+bounded live generation, trusted touch, interrupted-response/access recovery,
+and independent data restoration. Its original observation predates subsequent
+operator phone approval and full service recovery; do not rewrite history into
+an unobserved claim.
+
+[The cutover receipt](personal-go-cutover-20260910.json) reconciles all 32
+criteria, names the immutable browser/release artifacts, and records corrected
+capture/dispute/availability paths, live generation, and private activation.
+S09.2 remains unverified for a different exe account. Global logout kept private
+content hidden; history return encountered an upstream authentication redirect
+loop, while fresh navigation reached sign-in. Do not substitute a VM token,
+local owner-header fixture, or global logout for a second-account observation.
+S04.2/AI1 also await operator material-usefulness review. The receipt enumerates
+all seven candidate quality contracts, including unmeasured p95 and full
+text-zoom/accessibility coverage; functional checks do not silently pass them.
+
+Dated Rust/Cloudflare, beta, dogfood, performance, and generation receipts remain
+historical evidence. Their old commands require the corresponding historical
+revision, not the current Go tree. `fixtures/legacy-generation` preserves the
+old generation corpus; science/research remain useful without implying parity.
+The retired Worker monitor is disabled, not repointed to an incompatible Go
+health contract. Native backup monitoring belongs to retained recovery.
+
+Every report names the source/artifact, environment, data provenance, actions,
+observed result, and limitations. Distinguish PASS, FAIL, and UNVERIFIED. Owner
+phone acceptance is separate from automation; neither establishes sustained
+use, learning efficacy, inbox delivery, an availability SLA, or unmeasured
+provisioning/DNS recovery time.

@@ -1,102 +1,93 @@
 # Scry
 
-Scry is the quiz-first consumer product: **Remember everything** across a
-phone-first PWA, CLI, skill, MCP, and API over one capability system. `VISION.md`
-is the product contract.
+Scry is a personal, quiz-first learning app. `VISION.md` owns product direction;
+`SPEC.md` owns behavior, acceptance, and architecture. The application is one Go
+process, SQLite, server-rendered HTML, HTMX, and a small browser controller on
+exe.dev. The operator approved the phone flow and daily recovery policy.
 
 ## Product and runtime
 
-- All faces share typed capabilities and learning/grading semantics.
-- Beta access is invite-gated with a visible waitlist and magic-link sign-in;
-  there is no OAuth path. Machine faces use operator-gated service sessions.
-  Public signup waits for bounded cost, privacy, reliability, and Stripe proof.
-- Production is the Rust Wasm `memory-engine-cloudflare` Worker with one
-  SQLite-backed Scry Durable Object, private R2 recovery, and Resend over Fetch
-  at `https://scry.misty-step.workers.dev`. `scry.study` and `www.scry.study`
-  proxy to that Worker. The native service is disabled; its database and
-  backups are retained recovery material, not a live production store.
-- Crate names, Postgres identifiers, wire and telemetry literals, and
-  `MEMORY_ENGINE_*` environment variables retain the old name. Renaming a
-  storage, network, deployment, or compatibility boundary requires explicit
-  current scope and migration proof.
+- One private application instance owns learning writes and background work.
+  exe.dev provides HTTPS and identity; Scry checks the exact owner UserID,
+  canonical Host, and explicitly trusted ingress peer. No public signup,
+  waitlist, billing, or five-face compatibility is implied.
+- `docs/runbook.md` owns current origins, activation, recovery, and retirement
+  evidence. Never infer a deployment from source changes or a green gate.
+- The old production/staging Rust Workers are paused and their cron triggers
+  are removed. Worker SQLite/R2, exact historical source/artifacts, and frozen
+  native Postgres/backups remain recovery material. Do not reactivate, import,
+  rename, or delete these stores without explicit scope and migration proof.
+  Native backup schedules are retained recovery, not an old application writer.
 
 ## Architecture and boundaries
 
-- This is a Rust workspace; `Cargo.toml` owns the crate graph.
-- `crates/memory-engine-core` is framework-free and persistence-free. It has no
-  Convex, React, Hono, Node/Bun APIs, filesystem, network, logging, auth,
-  analytics, UI state, vendor SDK, or model-client dependency. Boundary crates
-  own storage, ingestion, sessions, UI, identity, analytics, and model clients.
-- `.dagger/src/index.ts` is the only retained TypeScript surface. Browser JS
-  under `crates/memory-engine-api/assets/` (service worker and page bootstrap)
-  is the deliberate plain-JS exception; it has no build step and is covered by
-  Rust route/render tests plus the `app.js` contract test.
-
-## Sources of truth
-
-- `VISION.md` governs product promise, quiz loop, five faces, product bars,
-  Rust boundaries, and production surface.
-- `SPEC.md` and `docs/rust-migration.md` provide strategy and cutover history;
-  use `VISION.md` when positioning conflicts.
-- `SLICE-*.md` and `exemplars.md` are historical extraction context, not
-  delivery oracles.
-- Work from the operator's current request. Check current code and overlapping
-  work; record ownership and verification evidence in the session or PR.
-  Historical issues are context, not a required queue. If a current request
-  explicitly names an issue, link it and close it only after its acceptance
-  criteria are satisfied and verified.
-- `.dagger/src/index.ts` owns CI behavior. `docs/qa/system.md`,
-  `docs/dogfood/`, and `docs/beta/` hold executable QA and dogfood evidence.
-  `docs/runbook.md` is the production runtime and smoke contract.
-- Resolve conflicts in this order: tests, type system, code, docs, lore.
+- `cmd/scry` composes `serve`, `check`, `backup`, `restore`, `export`, and the
+  explicitly synthetic `seed-fixture` command. It is an operator CLI, not the
+  retired public API/CLI/MCP product contract.
+- `internal/learning` is pure grading and the pinned Go FSRS adapter. No
+  persistence, HTTP, authentication, UI, logging, or model-client dependency.
+- `internal/store` owns SQLite transactions, immutable content/history,
+  occurrence/session identity, schedules, idempotency, leases, and spend records.
+- `internal/generation` makes bounded model requests outside transactions and
+  rechecks ownership/source revision before publishing. Never call a model in
+  the answer-grading path or hide unknown paid outcomes.
+- `internal/web` owns authentication, CSRF, routes, templates, and embedded
+  assets. Browser JS is presentation/reconciliation, not durable state or an
+  offline mutation queue. Alternate hosts redirect reads only; never replay a
+  mutation across origins or broaden identity trust for convenience.
+- `internal/recovery` produces complete SQLite archives and requires exact
+  remote readback for off-VM success. `deploy/backup-gateway` is the current
+  append/read-only Cloudflare Worker over private R2, not the old application.
+- `.dagger/src/index.ts` is the only TypeScript surface. Browser JS and the
+  small recovery gateway are deliberate plain-JS exceptions. No frontend build
+  step, general hosting framework, or new runtime dependency without need.
 
 ## Runtime contracts
 
-- The scheduler receives `ScheduleState` and returns the next state; consumers
-  own persistence. `ScheduleState` is JSON-safe snake_case with
-  `state: 0 | 1 | 2 | 3` and `last_review: number | null`. `ReviewUnitId` is
-  opaque; the kernel does not infer concept or phrasing meaning.
-- Prompt enum and grader dispatch changes require exhaustive Rust matches and
-  grader tests in the same change. `Grader::grade()` returns one `GradeResult`
-  with `rating` populated by the injected rating policy.
-- Verdicts are `correct`, `close`, `wrong`, or `revealed`; other names map to
-  these four and need a spec update.
-- Do not add runtime dependencies without shaped scope and docs. Do not lower
-  gates, bypass hooks, or claim unrun canaries as proof.
-- No TypeScript runtime or tests belong outside `.dagger/`; the QA crate enforces
-  this by extension, while the browser-JS exception above remains permitted.
+- Preserve one atomic answer/event/schedule transition and durable exact retry.
+  Assistance cannot become unaided success; unsupported grading remains honest
+  uncertainty. Content edits/disputes do not rewrite historical presentations.
+- Preserve the full scheduler state and `internal/learning.Algorithm` identity.
+  No Rust parity, personalized retention, or learning-gain claim is inherited.
+- Review feedback remains until deliberate Next. Offline work pauses; unknown
+  responses reconcile by the same operation ID rather than inventing success.
+- Keep new-app daily and pre-release off-VM snapshots with 30-day remote
+  retention. Approved targets are RPO 24 hours / RTO 60 minutes, not guarantees.
+  Retain compatible binaries and private configuration independently of the VM.
+- Restore into an unused path. Uncertain jobs stay paused; never clone live
+  integrations or scheduler ownership into a development/recovery instance.
+- `.env` is ignored private operator material, not a deployment input to copy
+  wholesale. Production `/etc/scry/scry.env` is root-owned mode 0600 and is
+  parsed by systemd, never sourced as shell. Do not expose credentials.
 
 ## Gates and proof
 
-- `bun run ci` is the fast host gate: format, workspace tests, Clippy, and
-  rustdoc. `bun run ci:full` is the Dagger-backed ship-parity gate with
-  containerized Postgres, the pinned Rust image, and Gitleaks.
-- `bun run ci:local` and `bun run rust:ci` are fast-gate aliases. `bun run qa`
-  is the full QA sweep and ends with `bun run ci:full`; it does not replace the
-  fast gate. Use the request's named proof oracle and the current Scry surface
-  for live-product decisions.
-- Test observable behavior with real repo-owned collaborators; mock only
-  external boundaries such as network, clock, and model providers.
+- `bun run ci` / `bun run ci:local` run the host source-snapshot gate.
+  `bun run ci:full` runs the same gate in pinned Dagger tooling and exports the
+  exact smoke-tested Linux amd64 binary, source inventory/archive, and proof.
+  `scripts/scry-ci` owns this contract; no deployment credentials enter it.
+- Use `--require-committed` for release artifacts. Worktree-labeled output is
+  development evidence, not production source provenance. Stage only tested
+  bytes; never rebuild between proof and activation.
+- `deploy/install.sh` stages immutable releases. `deploy/activate.sh` drains,
+  verifies remote backup and schema compatibility, switches the release, and
+  verifies the actual process/readiness. Never bypass these guards or overwrite
+  the live database during rollback.
+- Exercise the changed real surface. Existing Go tests protect behavior; model
+  quality, private ingress, physical-phone acceptance, and independent restore
+  need their own evidence. Reuse valid receipts; unverified is not passed.
+- Historical recovery tools under `bin/`, `scripts/scry-cloudflare-data`, and
+  `scripts/lib/scry_ops.py` retain their old formats and names intentionally.
+  Their checks remain separate from the Go application contract.
 
-## Layout
+## Sources of truth and work
 
-- `memory-engine-core`: kernel; `memory-engine`: facade and testkit.
-- `memory-engine-service`, `-persistence`, `-generation`, `-openrouter`, and
-  `-study`: service, local persistence, source-backed generation, model HTTP,
-  and study boundaries. Native model HTTP lives in `-openrouter`.
-- `memory-engine-cloudflare`: production Worker routes, SQLite state, leased
-  alarms, model/mail Fetch, and R2 recovery.
-- `memory-engine-api` and `-api-state`: native compatibility routes, shared
-  static assets/auth/state types, storage adapters, and generation jobs.
-- `memory-engine-api-render`, `-beta-app`, and `-web-shell`: rendered UI and
-  local dogfood hosts. `-cli`, `-import`, `-bench`, and `-qa` provide clients,
-  import, benchmark, and QA receipts.
-- `.dagger/` is owned CI code and receives normal review.
+Use the operator-approved specification for acceptance and current code/tests
+for implemented behavior. `docs/qa/system.md` owns verification entrypoints.
+Dated Rust/beta/dogfood/research receipts, `docs/rust-migration.md`, `SLICE-*.md`,
+and `exemplars.md` are history, not current deployment instructions.
 
-## Current pressure
-
-Keep the Rust cutover complete and operator docs pointed at Rust, Cargo, Dagger,
-and the production runbook. Prefer repeated phone-sized Rust dogfood receipts
-over speculative client architecture; keep boundary complexity out of the pure
-kernel. General-purpose hosting/auth frameworks, chat tutoring, and generalized
-content import are outside the product.
+Work from the current request, preserve overlapping work, and keep ownership
+and evidence in the session/PR. Linear owns operational state, not a duplicate
+product specification. Close a named issue only after its accepted scope and
+required proof are satisfied. Do not lower gates or claim unrun canaries.

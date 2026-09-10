@@ -1,0 +1,77 @@
+{{define "document"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#3155D9">
+  <meta name="htmx-config" content='{"historyCacheSize":0,"refreshOnHistoryMiss":true,"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"selfRequestsOnly":true,"timeout":20000,"scrollIntoViewOnBoost":false}'>
+  <title>{{.Title}} · Scry</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/htmx-2.0.10.min.js" defer></script>
+  <script src="/assets/app.js" defer></script>
+</head>
+<body hx-history="false" hx-boost="true" hx-target="#main" hx-select="#main" hx-swap="outerHTML" data-private="true">
+  <a class="skip-link" href="#content" hx-boost="false">Skip to content</a>
+  {{template "main" .}}
+  <div id="request-state" class="request-state" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <p id="request-message"></p>
+    <div id="request-recovery" class="actions" hidden>
+      <button type="button" id="retry-request">Retry same request</button>
+      <a id="recover-request" href="/" hx-boost="false" data-recover>Check saved state</a>
+    </div>
+  </div>
+  <div id="session-cover" class="session-cover" role="status" aria-live="polite" hidden>
+    <p>Checking private access…</p>
+    <div class="actions">
+      <button type="button" id="retry-session" hidden>Retry private access</button>
+      <a href="/" hx-boost="false" class="button">Reload Scry</a>
+    </div>
+  </div>
+  <noscript><p class="noscript-note">All actions work without JavaScript. Generation status updates when you refresh the page.</p></noscript>
+</body>
+</html>{{end}}
+
+{{define "main"}}<div id="main" data-view="{{.View}}" data-title="{{.Title}}" data-http-status="{{.Status}}" hx-history="false">
+  <header class="masthead">
+    <a class="wordmark" href="/" aria-label="Scry review">scry<span class="wordmark-dot" aria-hidden="true"></span></a>
+    {{if ne .View "access"}}<nav class="utility-nav" aria-label="Account and history">
+      <a href="/history" {{if eq .Active "history"}}aria-current="page"{{end}}>History</a>
+      <a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a>
+    </nav>{{end}}
+  </header>
+  <main id="content" class="content {{if eq .View "review"}}review-content{{end}}" tabindex="-1">
+    {{if .Error}}<div class="message error-message" role="alert" tabindex="-1" data-focus><h2>Check before continuing</h2><p>{{.Error}}</p><a href="{{if eq .View "review"}}/{{else if eq .View "add"}}/add{{else}}/library{{end}}" hx-boost="false" data-recover>Reload saved state</a></div>{{end}}
+    {{if .Notice}}<p class="message" role="status">{{.Notice}}</p>{{end}}
+    {{if eq .View "review"}}{{template "review" .}}
+    {{else if eq .View "add"}}{{template "add" .}}
+    {{else if eq .View "library"}}{{template "library" .}}
+    {{else if eq .View "source"}}{{template "source" .}}
+    {{else if eq .View "edit"}}{{template "edit" .}}
+    {{else if eq .View "history"}}{{template "history" .}}
+    {{else if eq .View "dispute"}}{{template "dispute" .}}
+    {{else if eq .View "settings"}}{{template "settings" .}}
+    {{else if eq .View "gate"}}{{template "gate" .}}
+    {{else if eq .View "access"}}<section class="empty-stage"><h1 tabindex="-1" data-focus>Private access required</h1><p>Open the private application address and sign in with the approved exe account. This page does not grant access to your learning material.</p><a href="/" class="button" hx-boost="false">Check access again</a></section>
+    {{else}}<section class="empty-stage"><h1 tabindex="-1" data-focus>{{.Title}}</h1><div class="actions"><a class="button" href="/">Return to review</a><a href="/library">Open library</a></div></section>{{end}}
+  </main>
+  {{if ne .View "access"}}<nav class="dock" aria-label="Main navigation">
+    <a href="/" {{if eq .Active "review"}}aria-current="page"{{end}}>Review</a>
+    <a href="/add" {{if eq .Active "add"}}aria-current="page"{{end}}>Add</a>
+    <a href="/library" {{if eq .Active "library"}}aria-current="page"{{end}}>Library</a>
+  </nav>{{end}}
+</div>{{end}}
+
+{{define "tokens"}}<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="operation_id" value="{{.Operation}}">{{end}}
+
+{{define "gate"}}<section class="empty-stage">
+  <h1 tabindex="-1" data-focus>Look it up, without calling it recall.</h1>
+  <p>This material contains the answer to your current question. Opening it will record that question as <strong>helped</strong> and schedule it for another try, not count it as an unaided success.</p>
+  <form action="/review/reveal" method="post" hx-post="/review/reveal">
+    {{template "tokens" .}}
+    <input type="hidden" name="presentation_id" value="{{.Gate.ID}}">
+    <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+    <button class="primary" type="submit" data-pending="Recording help before opening…">Mark helped and open</button>
+  </form>
+  <a class="quiet-link" href="/">Return to the question</a>
+</section>{{end}}

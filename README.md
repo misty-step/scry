@@ -1,287 +1,94 @@
 # Scry
 
-[![CI](https://github.com/misty-step/scry/actions/workflows/ci.yml/badge.svg)](https://github.com/misty-step/scry/actions/workflows/ci.yml)
+Scry is a personal, quiz-first learning app. Add something to remember, answer
+useful questions, and return when review is worthwhile. One Go process owns
+SQLite, the phone-first HTML/HTMX interface, bounded AI generation, and recovery.
 
-Scry is the consumer product: **Remember everything.** It helps people learn and
-memorize anything through a quiz-driven review loop. This repository contains
-Scry's Rust engine, not a separate product category or a generic agent-memory
-store.
+[Product direction](VISION.md) · [Behavior and architecture](SPEC.md) ·
+[Operations](docs/runbook.md) · [Verification](docs/qa/system.md)
 
-Open Scry and start reviewing. Add a word, a phrase, or an essay; useful quizzes
-are generated and scheduled automatically. No draft inbox or approval step.
-Answers receive immediate feedback; Next question advances deliberately.
-Library, progress, and settings stay behind More.
+## Access and scope
 
-The machine equivalent is `memory-engine-review learn "photosynthesis"` (or
-pipe text into `memory-engine-review learn`). Run `memory-engine-review` to review;
-choose a displayed option number or type your answer.
-MCP exposes `learn`, `list_quizzes`, `edit_quiz`, and `remove_quiz` over the same
-publication, account, and scheduling rules.
+The private application is at **https://scry.study**, behind exe.dev login and
+an exact owner-identity check. The operator approved the phone flow.
+`www.scry.study` and `scry-app.exe.xyz` redirect reads to the canonical origin;
+alternate-host mutations are rejected, not replayed. Old production/staging
+Workers are paused and their recovery material is preserved, not imported.
 
-The product has five faces over one capability system:
+There is no public signup, billing, separate frontend service, or public
+CLI/MCP/API compatibility requirement. The old Rust workspace and clients are
+retired. Historical learning-science research and recovery tools remain.
 
-- **PWA** — the primary, phone-first human surface
-- **CLI** — direct operator and power-user access
-- **skill** — a product-facing agent workflow
-- **MCP** — typed tools for agents and applications
-- **API** — the service boundary used by the PWA and other clients
-
-Beta access is invite-gated with a visible waitlist. Human sign-in uses magic
-links only; there is no OAuth path. Machine faces use operator-gated service
-sessions. Subscription is the intended business model. Public
-signup remains closed until generation costs are bounded and privacy, reliability,
-and Stripe billing are proven. Fast and smooth are product bars: p95 acknowledgement
-below 100 ms, p95 graded-visible feedback below 300 ms, and first quiz visible below
-20 s. See [VISION.md](./VISION.md) for the canonical product contract.
-
-Scry keeps a pure Rust learning kernel and explicit boundary
-crates. The kernel owns deterministic scheduling, grading, progression, queue
-selection, and learning invariants. Boundary crates own persistence, generation,
-sessions, identity, API routes, rendering, deployment, and QA.
-
-The production runtime is a Rust WebAssembly Worker on Cloudflare:
-`memory-engine-cloudflare`, one SQLite-backed `Scry` Durable Object, leased
-jobs/reminders driven by alarms, private R2 recovery, and Resend over Worker Fetch.
-The pure learning engine and shared Rust renderer remain the implementation.
-The canonical origin is `https://scry.misty-step.workers.dev`.
-`https://scry.study` and `https://www.scry.study` proxy to that Worker without
-changing DNS. Production cutover completed on 2026-09-08 after the stopped-writer
-export, full-table import/readback, separate-object restore, and live QA.
-The native service is disabled; its frozen database and backups remain recovery
-material, not an alternative live writer.
-Preserved browser-session records do not move host-scoped cookies: users need
-a fresh browser sign-in on workers.dev. Resend acceptance is not inbox delivery.
-See [docs/runbook.md](./docs/runbook.md).
-
-## What It Owns
-
-- Canonical learning-domain types
-- FSRS state transitions
-- Deterministic grading
-- Progression and queue primitives
-- Recitation grading
-- Async rubric grading contracts
-- Vendor-neutral rubric adapter interfaces
-- Fixture corpora for contract and interface tests
-- Evals and benchmarks for learning-behavior regressions
-- Experimental clients that consume the API outside the reusable kernel
-
-The core runtime in `crates/memory-engine-core` stays framework-free: no
-filesystem, network, UI, logging, model clients, or persistence. Service,
-storage, UI, auth, content parsing, and deployment experiments live in dedicated
-boundary crates until dogfood evidence proves a stable reusable contract.
-
-## Status
-
-The Rust migration is complete for the main runtime:
-
-- canonical types
-- FSRS scheduler wrapper
-- deterministic grader
-- progression metadata and eligibility helpers
-- queue candidate filtering and selection
-- deterministic recitation grading
-- async rubric grading surface
-- facade adapter/testkit modules
-- service, persistence, generation, study, and local HTTP app hosts
-- Rust QA and benchmark receipt runners
-
-The Cloudflare configuration separates staging (`scry-staging`) and production
-(`scry`) Durable Object namespaces and recovery buckets. No custom-domain route
-is configured before a separately reviewed DNS change. `memory-engine-api`
-remains a native reference/compatibility test surface, not a deployment destination.
-Fresh Worker actors start paused: learner traffic, readiness, and background
-work remain fenced until the fingerprint-guarded `release:traffic --enable`.
-Bootstrap verifies health/assets/schema and the pause, not learner readiness.
-Production requires the same immutable bundle activated and publicly exercised
-in staging, then Main's source barrier, imported-state and recovery evidence.
-Runtime activation does not create another Worker version or rebuild.
-Isolated staging and completed production cutover evidence are recorded in the
-runbook, including immutable versions, recovery fingerprints, and live receipts.
-
-Current strategy and verification docs:
-
-- [SPEC.md](./SPEC.md)
-- [docs/qa/system.md](./docs/qa/system.md)
-- [docs/runbook.md](./docs/runbook.md)
-- [docs/rust-migration.md](./docs/rust-migration.md)
-
-Historical extraction packets, retained as boundary evidence rather than
-active delivery oracles:
-
-- [SLICE-1-KERNEL.md](./SLICE-1-KERNEL.md)
-- [SLICE-2-PROGRESSION.md](./SLICE-2-PROGRESSION.md)
-- [SLICE-3-RUBRIC.md](./SLICE-3-RUBRIC.md)
-- [SLICE-4-SERVICE-PROTOTYPE.md](./SLICE-4-SERVICE-PROTOTYPE.md)
-- [exemplars.md](./exemplars.md)
-
-Work starts from the current operator request, checked against live code and
-overlapping work. [GitHub Issues](https://github.com/misty-step/scry/issues)
-preserve historical context and evidence; an issue is optional for direct work.
-Record ownership, the result, and verification evidence in the session or PR.
-
-## Observability and External Monitoring
-
-`memory-engine-cloudflare` owns bounded, content-free browser, performance,
-and health records in Worker-native logs. A browser receipt accepted by
-`POST /app/performance/submit` returns **202** with
-`x-scry-telemetry-delivery: runtime_logged` and `x-scry-telemetry-attempts: 0`.
-This means runtime logging, not remote ingest acceptance or durable readback.
-Canary is retired; no replacement telemetry-ingest endpoint is deployed.
-
-The repository-owned external witness is `scripts/scry-monitor`, exposed as
-`bun run ops:status` for read-only health, or `bun run ops:monitor` for alert delivery.
-It observes public `GET /healthz`, `/readyz`, and
-`/statusz` without learner, admin, or Worker deployment keys; these routes
-neither schedule nor wake background work. `/statusz` reports
-`memory_engine.runtime_health.v1` and is healthy only when the actor is active
-and its recovery backup age is an integer from **0 through 90,000,000 ms
-(25 hours)**. Missing, future-dated, or older recovery evidence is degraded.
-
-`.github/workflows/production-health.yml` runs the witness from `master` using
-the `production-monitor` environment's `RESEND_API_KEY`,
-`MEMORY_ENGINE_MAIL_FROM`, and `MEMORY_ENGINE_ALERT_TO` for unhealthy/recovery
-mail. Local mail configuration is checked even on a quiet healthy run.
-Resend `provider_accepted` receipts are not inbox-delivery proof.
-Five-minute GitHub cron can be delayed, dropped, or disabled; cached notification
-state can expire or be lost, duplicating alerts or losing recovery context.
-Neither is an availability SLA or durable alert history.
-`SCRY_MONITOR_ENABLED` has been `true` since the 2026-09-08 cutover; an actual
-scheduled production probe and an operator delivery drill passed. An explicit
-`master` dispatch can also run a probe or labeled delivery drill.
-See [the QA evidence contract](./docs/qa/system.md#observability-and-external-monitor-proof)
-for CLI/workflow entry points and receipt meanings, and
-[the runbook](./docs/runbook.md) for operator setup and cutover proof.
-
-## Usage
-
-Rust consumers should use the facade crate:
-
-```rust
-use memory_engine::{next, ExactPrompt, ExactPromptKind, GradeContext, Grader, Prompt, ReviewUnitId};
-
-let prompt = Prompt::Exact(ExactPrompt {
-    kind: ExactPromptKind::ShortAnswer,
-    review_unit_id: ReviewUnitId::new("latin-1"),
-    prompt: "Translate poena".to_owned(),
-    accepted_answers: vec!["punishment".to_owned()],
-    equivalence_groups: Vec::new(),
-    ignored_tokens: Vec::new(),
-});
-
-let grade = Grader::new().grade(
-    &prompt,
-    "Punishment",
-    GradeContext {
-        response_time_ms: 3_200,
-        prior_reps: 3,
-    },
-);
-
-let next_state = next(None, grade.rating, 1_779_465_600_000).expect("schedule");
-```
-
-Rubric grading stays adapter-backed; the Rust core owns normalization and
-dispatch, while callers own any model client:
-
-```rust
-use memory_engine::{
-    AsyncGrader, GradeContext, GradeablePrompt, RubricAssessment, RubricCriterion,
-    RubricCriterionResult, RubricCriterionVerdict, RubricDefinition, RubricPrompt,
-    ReviewUnitId, StaticRubricGrader,
-};
-
-let prompt = RubricPrompt {
-    review_unit_id: ReviewUnitId::new("rubric-1"),
-    prompt: "Continue the prayer.".to_owned(),
-    rubric: RubricDefinition {
-        answer_guide: vec!["Continue with the next line.".to_owned()],
-        passing_score: 1,
-        criteria: vec![RubricCriterion {
-            name: "continuation".to_owned(),
-            description: "Gives the next line.".to_owned(),
-            required: true,
-        }],
-    },
-};
-let grader = AsyncGrader::with_rubric_grader(StaticRubricGrader::new(RubricAssessment {
-    model: Some("fixture".to_owned()),
-    confidence: 1.0,
-    feedback: "Strong answer.".to_owned(),
-    criterion_results: vec![RubricCriterionResult {
-        name: "continuation".to_owned(),
-        verdict: RubricCriterionVerdict::Pass,
-        evidence: "Supplied the continuation.".to_owned(),
-    }],
-}));
-let grade = grader.grade_prompt(
-    GradeablePrompt::Rubric(&prompt),
-    "Strong answer.",
-    GradeContext {
-        response_time_ms: 6_000,
-        prior_reps: 0,
-    },
-).expect("rubric grade");
-```
-
-Test fixtures for contract and interface tests:
-
-```rust
-use memory_engine::testkit::{grading_fixtures, scheduler_fixtures};
-```
-
-## Quickstart
-
-Prerequisites: Rust **1.94.0**, Node **22+**, Python **3.11+**, and Bun. Dagger
-and a container engine are required for the full ship-parity gate.
-
-Install the repository-pinned toolchain, then build and run the exact Worker:
+## Develop
 
 ```sh
-bun run worker:tools
-bun run worker:build --out target/cloudflare/bundle
-bun run worker:smoke --artifact target/cloudflare/bundle \
-  --receipt target/cloudflare/workerd-proof.json
-bun run dev --artifact target/cloudflare/bundle --port 8787
+go test ./...
+go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
 ```
 
-Or use `bun run dev` to build fresh bytes and start the isolated Worker in one
-command. For real browser AI capture, explicitly provide a private mode-0600
-file containing only `OPENROUTER_API_KEY` and `MEMORY_ENGINE_GENERATION_MODEL`:
-`bun run dev --provider-env /private/scry-provider.env`. This permits paid model
-calls and sends captured text to that model; mail remains in the local outbox.
+Development identity is explicitly loopback-only. `data/`, build outputs, and
+private `.env` files are ignored. Do not attach production model or recovery
+capabilities to a development workspace by default.
 
-`worker:tools` installs `worker-build 0.8.5`, matching `wasm-bindgen 0.2.125`,
-and the npm lockfile's `Wrangler 4.129.0`/`esbuild 0.28.1`. Builds target
-`wasm32-unknown-unknown` with locked dependencies and no default features.
-The artifact contains exact source/module hashes, revision, tools, configuration,
-and the SQLite migration ledger. Artifact and receipt paths cannot be overwritten.
+The UI is embedded in the binary. There is no frontend build step. Vendored
+HTMX and its license live in `internal/web/assets/`; browser JavaScript handles
+presentation and interrupted-request reconciliation, not durable storage.
 
-Local workerd uses a unique private SQLite/R2 directory and local mail outbox,
-never a deployed binding or inherited provider credential. First start reads
-the private actor's fingerprint and activates it through the authenticated
-runtime API before observing readiness. Restarts read the persisted runtime
-state without repeating activation. The smoke creates an allowlisted service
-session, captures LocalOnly material, waits for actual alarm-driven generation,
-automatically publishes quizzes, grades an answer, and checks persistence/idempotency
-over restarts.
-That is runtime evidence when executed, not an email or model-quality claim.
-The signed-out browser accepts `dev@example.test` in this isolated environment.
+## Check and build
 
 ```sh
-git config core.hooksPath .githooks
-bun run ci:local
-bun run ci:full
+bun run ci
+bun run ci:full -- --out target/ci-release --require-committed
 ```
 
-The fast gate retains browser/native Rust/recovery contracts, formatting,
-Clippy, rustdoc, and action-latency budgets, then builds and exercises Wasm.
-Dagger adds live Postgres reference tests and Gitleaks and runs the same Worker
-command. Neither gate deploys. Explicit verified staging-to-production version
-promotion, fingerprint-guarded pause/activation, and schema-safe rollback live
-in [the runbook](./docs/runbook.md). Only Main may stop old writers or retire
-the old-host reverse proxy/redirect after live proof.
+The host gate requires Go 1.27.1 on Linux amd64, Node 22+, and Gitleaks 8.30.1.
+The full gate supplies pinned tooling through Dagger. Both snapshot the actual
+non-ignored source, check Go and retained recovery contracts, scan for secrets,
+and exercise the exact built binary against isolated synthetic data.
 
-## License
+The exported artifact contains `scry`, `SHA256SUMS`, `source.json`,
+`source.tar.gz`, `proof.json`, and command/smoke evidence. Worktree output is
+explicitly labeled; `--require-committed` rejects it. Artifact destinations must
+be unused. Deploy those tested bytes rather than rebuilding them.
 
-MIT
+`bun run test` runs Go tests; `bun run test:recovery` checks the retained
+historical recovery tools. `.github/workflows/ci.yml`, Buildkite, and the
+pre-push hook use the same current gate.
+
+## Deployment and recovery
+
+`deploy/install.sh` stages an immutable binary. `deploy/activate.sh` drains the
+service, verifies an off-VM backup and schema compatibility, switches the active
+release, and checks the actual process and readiness. Incompatible rollback
+never overwrites the live database. `deploy/restore.sh` restores only into an
+unused path, leaving uncertain jobs paused and activation explicit.
+
+Production configuration is a private systemd environment file, not a sourced
+shell script. See `deploy/scry.env.example` and the [runbook](docs/runbook.md).
+The Scry-only OpenRouter key is retained in ignored `.env` as
+`OPENROUTER_API_KEY` (mode `0600`). The app receives its model capability through
+the private `scry-model` exe integration, not a VM-held provider key. Limits are
+$1/day UTC at the provider and $1 rolling 24 hours in the app, with $0.20
+conservative per-attempt reservations.
+
+The approved recovery policy is daily and pre-release off-VM snapshots with
+30-day new-app retention, targeting RPO 24 hours and RTO 60 minutes. These are
+objectives, not an availability guarantee. Old Worker/native recovery material
+is preserved separately; do not reactivate or import a frozen store.
+
+## Source boundaries
+
+- `internal/learning`: pure grading and pinned FSRS policy.
+- `internal/store`: SQLite, atomic review/history, leases, and spend accounting.
+- `internal/generation`: bounded model calls and validated publication.
+- `internal/web`: private routes, CSRF, HTML, and embedded browser assets.
+- `internal/recovery`: consistent archives, remote readback, and safe restore.
+- `deploy/backup-gateway`: narrow append/read-only Worker over private R2.
+- `scripts/scry-ci` and `.dagger/`: source-bound checks and release evidence.
+- `bin/`, `scripts/scry-cloudflare-data`, and `etc/`: retained historical
+  Postgres/Worker recovery tools, not current application deployment paths.
+
+[The private acceptance receipt](docs/qa/personal-go-acceptance-20260909.json)
+records the earlier live generation, touch/interruption, and data-restore
+observations. Passing checks and an approved phone flow do not establish
+longitudinal learning gains.
