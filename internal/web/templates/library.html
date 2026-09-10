@@ -4,7 +4,7 @@
   <form action="/add" method="post" hx-post="/add" data-capture>
     {{template "tokens" .}}
     <label for="capture-text">What do you want to learn?</label>
-    <textarea id="capture-text" name="text" rows="7" required maxlength="32768" aria-describedby="capture-help" placeholder="A topic, a goal, or your own pasted material…">{{.Text}}</textarea>
+    <textarea id="capture-text" name="text" rows="7" required aria-describedby="capture-help" placeholder="A topic, a goal, or your own pasted material…">{{.Text}}</textarea>
     <p id="capture-help" class="small muted">Up to 32 KiB. Your exact input is saved before generation begins. Longer passages work best as self-contained sections.</p>
     <button class="primary" type="submit" data-pending="Saving your input…">Save and generate</button>
   </form>

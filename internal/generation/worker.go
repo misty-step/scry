@@ -20,7 +20,7 @@ const (
 	requestTimeout   = 60 * time.Second
 	jobLease         = 90 * time.Second
 	settleTimeout    = 10 * time.Second
-	promptVersion    = "scry-go-quiz-v2"
+	promptVersion    = "scry-go-quiz-v3"
 	maxSourceBytes   = 32 << 10
 	maxRequestBytes  = 128 << 10
 	maxResponseBytes = 1 << 20

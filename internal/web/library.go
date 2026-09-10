@@ -254,8 +254,8 @@ func (s *server) disputePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if current != nil && current.Quiz.ID == event.Quiz.ID {
-			s.gate(w, r, current)
-			return
+			event.Quiz = withoutAnswer(event.Quiz)
+			event.Answer = ""
 		}
 		if wantsJSON(r) {
 			jsonResponse(w, http.StatusOK, map[string]any{"review": event, "csrf": r.Context().Value(csrfKey{})})

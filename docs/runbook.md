@@ -3,11 +3,12 @@
 ## Current authority
 
 Scry is one private Go process and SQLite database on **`scry-app.exe.xyz`**.
-The application is currently reachable at **https://scry-app.exe.xyz**. The
-operator approved the phone flow and daily-backup policy. Canonical-domain
-cutover is in progress; do not mistake the old Worker for the live learner
-store. `scry-dev.exe.xyz` is an isolated development/recovery environment, not a
-second production writer; its restored rehearsal service is stopped/disabled.
+The canonical application is **https://scry.study**. The operator approved the
+phone flow and daily-backup policy. `www.scry.study` and `scry-app.exe.xyz`
+redirect reads to that origin; mutations on aliases are rejected, not replayed.
+The old Worker is not the live learner store. `scry-dev.exe.xyz` remains an
+isolated development/recovery environment, not a second production writer; its
+restored rehearsal service is stopped/disabled.
 
 | Boundary | Authority |
 | --- | --- |
@@ -138,6 +139,9 @@ retention. The app/gateway cannot delete, overwrite, or change bucket policy.
 Use only the dedicated new-app bucket for this lifecycle policy, never the
 historical recovery buckets. Keep independently recoverable gateway capability,
 compatible release artifact, and required configuration outside the VM.
+The dedicated bucket's enabled `scry-go-recovery-retention` rule was read back
+with an object age of 2,592,000 seconds (30 days). This is configured retention,
+not an observation of a month of successful backups.
 
 `GET /healthz` returns `ok`; `GET /readyz` returns `ready`. These are plaintext
 liveness/readiness checks, not backup freshness. Settings exposes the last

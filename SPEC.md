@@ -2,11 +2,12 @@
 
 Status: implemented private Go/SQLite/HTMX application; initial phone flow and
 daily recovery policy approved by the operator on 2026-09-09. The active app is
-at `https://scry-app.exe.xyz`, with append-only R2 recovery through
-`scry-go-backups`. The old production/staging Workers are verified paused, with
-cron triggers removed and final backups retrieved. The source-bound Go release
-and canonical-domain switch remain in progress; historical data is preserved,
-not imported or deleted.
+at `https://scry.study`, with append-only R2 recovery through `scry-go-backups`.
+The committed source-bound Go release and canonical-domain cutover are active.
+Alternate-host reads redirect; mutations are rejected rather than replayed.
+The old production/staging Workers remain paused with no cron triggers and
+final verified recovery copies. Historical data is preserved, not imported or
+deleted. Final criterion-level acceptance evidence is being reconciled.
 
 [Product direction](VISION.md) is upstream. Historical extraction strategy
 remains in Git and [the Rust migration record](docs/rust-migration.md).
@@ -38,7 +39,7 @@ exactly and the restored Review UI rendered. Approximately 117 seconds elapsed
 through private HTTPS on an existing recovery VM; provisioning and DNS recovery
 were not timed, and the synthetic rehearsal received no production integrations.
 
-**Still in progress / unverified:** source-bound canonical-domain cutover;
+**Still in progress / unverified:** final criterion-level evidence reconciliation;
 generation quality across future owner-selected material; longitudinal learning
 outcome. The initial phone flow is approved. Old data will remain preserved
 separately without import; future deletion would require a new decision.
@@ -595,10 +596,10 @@ passing a half-specified task sequentially between many agents.
   not efficacy; a seven-day personal-use observation is a useful proposed review
   point, not a statistically valid retention study or a required daily streak.
 
-Initial candidate verification for executable Go changes is ordinary formatting,
-Go tests/vet, and the affected browser/runtime scenarios. Add other machinery
-only for a demonstrated gap. These are future-target proposals, not replacements
-for the current Rust application's commands while that application is maintained.
+Executable Go verification uses formatting, Go tests/vet, affected real
+browser/runtime scenarios, and the source-bound exact-binary release smoke.
+`bun run ci` is the host gate; `bun run ci:full` supplies pinned Dagger tooling.
+The retired Rust application no longer owns current build or release commands.
 Specification-only changes need semantic/link/traceability review, not model
 runs, provisioned VMs, or simulated product acceptance.
 

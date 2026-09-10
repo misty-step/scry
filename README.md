@@ -9,10 +9,11 @@ SQLite, the phone-first HTML/HTMX interface, bounded AI generation, and recovery
 
 ## Access and scope
 
-The private application is at **https://scry-app.exe.xyz**, behind exe.dev
-login and an exact owner-identity check. The operator approved the phone flow.
-Canonical-domain cutover is in progress; the old production/staging Workers
-are paused and their recovery material is preserved, not imported.
+The private application is at **https://scry.study**, behind exe.dev login and
+an exact owner-identity check. The operator approved the phone flow.
+`www.scry.study` and `scry-app.exe.xyz` redirect reads to the canonical origin;
+alternate-host mutations are rejected, not replayed. Old production/staging
+Workers are paused and their recovery material is preserved, not imported.
 
 There is no public signup, billing, separate frontend service, or public
 CLI/MCP/API compatibility requirement. The old Rust workspace and clients are

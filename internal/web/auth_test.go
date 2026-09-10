@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/misty-step/scry/internal/store"
 )
@@ -194,6 +195,91 @@ func TestOversizedCapturePreservesInputWithoutSavingOrTruncating(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatal("oversized capture was saved or silently truncated")
+	}
+}
+
+func TestUngradedDisputeDoesNotRequireHelpOrChangeSchedule(t *testing.T) {
+	s, app := privateApp(t)
+	ctx := context.Background()
+	if _, err := s.Capture(ctx, "Synthetic semantic recall fixture", randomToken()); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := s.ClaimJob(ctx, time.Minute, 100, 10000)
+	if err != nil || claim == nil {
+		t.Fatalf("claim fixture: %v %v", claim, err)
+	}
+	const expected = "A process that releases stored chemical energy for cellular work"
+	const explanation = "The authored explanation must remain hidden during an unresolved attempt."
+	cost := int64(70)
+	err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
+		Quizzes: []store.GeneratedQuiz{{Kind: "recall", Prompt: "Explain the synthetic process.", Answer: expected, Explanation: explanation, Basis: "topic"}},
+		Model:   "authored-test-fixture", PromptVersion: "fixture-v1",
+	}, &cost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.Review(ctx)
+	if err != nil || state.Current == nil {
+		t.Fatalf("open fixture review: %+v %v", state, err)
+	}
+	attempt, err := s.Submit(ctx, state.Current.ID, randomToken(), "Cells convert the energy they have stored into usable work", false)
+	if err != nil || attempt.Outcome != "ungraded" || attempt.Graded {
+		t.Fatalf("expected unresolved semantic attempt: %+v %v", attempt, err)
+	}
+	schedules := func() string {
+		t.Helper()
+		raw, err := s.Export(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var exported struct {
+			Schedules json.RawMessage `json:"schedules"`
+		}
+		if err := json.Unmarshal(raw, &exported); err != nil {
+			t.Fatal(err)
+		}
+		return string(exported.Schedules)
+	}
+	before := schedules()
+	cookie, csrf, _ := bootstrapForm(t, app)
+	path := "/reviews/" + attempt.ReviewID + "/dispute"
+	for _, accept := range []string{"text/html", "application/json"} {
+		r := ownerRequest(http.MethodGet, path, nil)
+		r.AddCookie(cookie)
+		r.Header.Set("Accept", accept)
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s dispute requires an extra transition: %d", accept, w.Code)
+		}
+		if strings.Contains(w.Body.String(), expected) || strings.Contains(w.Body.String(), explanation) {
+			t.Fatalf("%s dispute exposed answer-bearing material", accept)
+		}
+		if accept == "text/html" && !strings.Contains(w.Body.String(), `name="note"`) {
+			t.Fatal("unresolved dispute did not offer a problem-note field")
+		}
+	}
+	r := ownerRequest(http.MethodPost, path, url.Values{"csrf": {csrf}, "note": {"My semantic answer cannot be graded reliably."}})
+	r.AddCookie(cookie)
+	r.Header.Set("Origin", "https://scry.example")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("record unresolved dispute: %d", w.Code)
+	}
+	history, err := s.History(ctx, 100)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("dispute manufactured a review: %+v %v", history, err)
+	}
+	if history[0].ID != attempt.ReviewID || history[0].Outcome != "ungraded" || history[0].Assisted || history[0].Rating != 0 || !history[0].Disputed {
+		t.Fatalf("dispute changed the original unresolved attempt: %+v", history[0])
+	}
+	if after := schedules(); after != before {
+		t.Fatal("dispute without reset changed the schedule")
+	}
+	current, err := s.Current(ctx)
+	if err != nil || current == nil || current.ID != state.Current.ID || current.Graded || current.Assisted {
+		t.Fatalf("dispute consumed or helped the unresolved occurrence: %+v %v", current, err)
 	}
 }
 

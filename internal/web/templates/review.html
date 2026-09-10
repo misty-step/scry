@@ -7,7 +7,7 @@
   {{if $p.Graded}}
     <div class="feedback {{if eq $p.Outcome "correct"}}feedback-correct{{else}}feedback-retry{{end}}" role="status" aria-live="polite">
       <h2 tabindex="-1" data-focus>{{outcome $p.Outcome}}</h2>
-      {{if $p.Assisted}}<p class="feedback-detail">Helped, not unaided recall. You will see this again.</p>{{end}}
+      {{if $p.Assisted}}<p class="feedback-detail">Helped, not unaided recall.</p>{{end}}
       {{if $p.Answer}}<div class="response-pair"><span class="field-caption">Your answer</span><p class="preserve">{{$p.Answer}}</p></div>{{end}}
       <div class="response-pair"><span class="field-caption">Expected answer</span><p class="expected-answer preserve">{{$p.Quiz.Answer}}</p></div>
       {{if $p.Quiz.Explanation}}<p class="explanation preserve">{{$p.Quiz.Explanation}}</p>{{end}}
@@ -18,7 +18,7 @@
         </form>
         <a href="/reviews/{{$p.ReviewID}}/dispute">Flag a problem</a>
       </div>
-      <p class="small muted">This result stays until you choose Next. Scheduled <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>.</p>
+      <p class="small muted">This result stays until you choose Next. This attempt scheduled a review for <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>; later edits, resets, or archiving can change future review.</p>
       {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
     </div>
     <details class="inspection">
@@ -64,7 +64,7 @@
 </template>{{end}}
 {{else}}
 <section class="empty-stage">
-  {{if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>What do you want to remember?</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Already added material? <a href="/library">Check generation in your library.</a></p>
+  {{if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>No active questions.</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Saved material may still need generation. Archived questions do not appear in review. <a href="/library">Inspect your material and generation status.</a></p>
   {{else}}<h1 class="question" tabindex="-1" data-focus>Nothing due right now.</h1><p>Your available questions are scheduled for later. There is no need to turn a quiet queue into extra work.</p>{{if .Review.NextDueAt}}<p>Next due <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions"><a class="button primary" href="/add">Add something new</a><a href="/library">Browse your material</a></div>{{end}}
   <a class="quiet-link" href="/">Check again</a>
 </section>
