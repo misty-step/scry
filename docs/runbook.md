@@ -20,6 +20,13 @@ restored rehearsal service is stopped/disabled.
 | DNS | Existing DigitalOcean `scry.study` zone; exe.dev handles custom-domain TLS and private ingress |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
+The active release is `mis48-e0274bc916de`, from committed revision
+`e0274bc916de8bf686160d4068fdb6f3befa540f`. The staged, smoke-tested binary's
+SHA-256 is `773911fc83ae07e09774cb7c32ae3e71914435e3b95d6913c6a37d10e587863d`.
+Protected activation verified a pre-release remote backup and preserved the
+acknowledged learning export exactly. The actual process is active/enabled as
+`scry`, bound to loopback port 8080; the deployed checksum matches that artifact.
+
 There is no public signup, magic-link mail, separate frontend, public service
 session, maintained legacy CLI/MCP contract, or second application database.
 The backend listener is `127.0.0.1:8080`. Do not open it publicly or trust an
@@ -214,6 +221,9 @@ Private cutover archives and compatible binaries live under the operator's
 
 - [Earlier private Go acceptance](qa/personal-go-acceptance-20260909.json): live
   generation, trusted touch, interrupted access/response recovery, data restore.
+- [September 9–10 cutover acceptance](qa/personal-go-cutover-20260910.json):
+  criterion-level browser corrections, generation, canonical activation, and
+  explicit remaining identity-switch evidence.
 - Current exported `proof.json`: source-bound exact-binary gate; synthetic and
   without production model/recovery capability.
 - Dated September 8 Rust receipts remain historical. Do not reinterpret them
@@ -222,3 +232,12 @@ Private cutover archives and compatible binaries live under the operator's
 Phone approval establishes the operator's initial experience acceptance. It
 does not establish sustained use, delayed recall, availability, or unmeasured
 DNS/provisioning recovery time.
+
+Global exe sign-out was exercised without an independent VM token. Private
+content stayed absent on history return, but that return encountered an upstream
+authentication redirect loop; a fresh canonical navigation reached sign-in.
+Switching to a different exe account remains unverified. Keep S09.2/MIS-48 open
+for that observation rather than broadening trust or assuming logout covers it.
+Operator material-usefulness acceptance also remains open under S04.2/AI1.
+The receipt records candidate performance/accessibility budgets separately;
+initial phone-flow approval is not a measured p95 or general AI-quality claim.

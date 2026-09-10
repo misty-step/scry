@@ -7,7 +7,8 @@ The committed source-bound Go release and canonical-domain cutover are active.
 Alternate-host reads redirect; mutations are rejected rather than replayed.
 The old production/staging Workers remain paused with no cron triggers and
 final verified recovery copies. Historical data is preserved, not imported or
-deleted. Final criterion-level acceptance evidence is being reconciled.
+deleted. [Criterion-level evidence](docs/qa/personal-go-cutover-20260910.json)
+records the cutover, corrected browser paths, and open S04.2/S09.2 evidence.
 
 [Product direction](VISION.md) is upstream. Historical extraction strategy
 remains in Git and [the Rust migration record](docs/rust-migration.md).
@@ -39,10 +40,14 @@ exactly and the restored Review UI rendered. Approximately 117 seconds elapsed
 through private HTTPS on an existing recovery VM; provisioning and DNS recovery
 were not timed, and the synthetic rehearsal received no production integrations.
 
-**Still in progress / unverified:** final criterion-level evidence reconciliation;
-generation quality across future owner-selected material; longitudinal learning
-outcome. The initial phone flow is approved. Old data will remain preserved
-separately without import; future deletion would require a new decision.
+**Still unverified:** operator review of generated-material usefulness (S04.2)
+and switching to another exe account with private-history return (S09.2).
+Global sign-out hid private content, but history return hit an upstream
+authentication redirect loop; fresh navigation reached sign-in. MIS-48 remains
+open. Proposed p95/accessibility budgets and held-out AI acceptance are recorded
+separately in the receipt, not inferred from phone-flow approval. Future material
+quality and longitudinal learning outcomes are not established by the examples.
+Old data remains preserved separately; import or deletion needs a new decision.
 
 Resolve these decisions as the relevant slice becomes ready. Record the decision
 and reason here; remove obsolete alternatives rather than retaining two designs.
@@ -86,7 +91,7 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-Proposed surface:
+Implemented surface:
 
 ```text
 Review                         Add / Library
@@ -116,21 +121,19 @@ Next                         Fix / Inspect
   motion settings. Question length may require scrolling; small screens must
   not clip content merely to imitate a fixed-height feed.
 
-Candidate art direction for the first visual study, not an approved theme:
-white reading surface (#FFFFFF), deep ink (#172334), cobalt action (#3155D9),
-quiet sky surface (#EAF0FA), restrained success (#237553), and error (#B94243).
-Use one highly readable text family, an expressive prompt scale, and quiet
-controls; choose and license the actual font during the visual study. The
-memorable element is the learning stage, not a branded dashboard. Compare this
-with the existing Scry identity using real questions before settling tokens;
-review against the brief, not whether it resembles a fashionable template.
+The initial phone experience is approved: a white reading surface, deep ink,
+cobalt actions, restrained feedback, local system typography, and a prominent
+question stage rather than a branded dashboard. `internal/web/assets/app.css`
+owns exact visual tokens. Approval is not a permanent freeze; review subsequent
+changes against the brief with real questions and actual phone interaction.
 
 ## User stories and acceptance criteria
 
-All stories below are **proposed**, with implementation and live verification
-**UNVERIFIED**. IDs are specification identifiers, not invented Linear issues.
-Quality contracts apply across stories; each primary ticket links the relevant
-criteria instead of duplicating their authoritative text.
+These are the accepted implementation criteria. Their source/environment-bound
+**PASS**, **FAIL**, and **UNVERIFIED** observations belong to the
+[acceptance receipt](docs/qa/personal-go-cutover-20260910.json), not this prose.
+IDs are specification identifiers, not invented Linear issues. Quality contracts
+apply across stories; the owning issue links here rather than copying the spec.
 
 ### S01 — Open into useful learning
 
@@ -222,10 +225,10 @@ punished for it so that I can trust the app and keep learning.
   generation attribution, and recorded result. Future occurrences use the new
   version; changing content does not silently rewrite review history.
 - **S05.3:** A grading dispute is distinct from learner failure and from a new
-  successful recall. Proposed policy: retain the original event, mark it
+  successful recall. Retain the original event, mark it
   disputed, and offer an explicit recorded schedule reset for faulty material;
   do not silently recompute all subsequent history or assert that the learner
-  knew the answer. D3 must settle this interaction before implementation.
+  knew the answer. This is the adopted D3 policy.
 
 Proof: edit/flag after grading, inspect old and new occurrences, and confirm
 that lifecycle/correction actions do not manufacture recall evidence.
@@ -243,7 +246,7 @@ so that I do not have to remember which answers actually saved.
 - **S06.3:** Pending is distinguishable from saved. A definite rejection and an
   unknown network outcome offer safe recovery without losing the in-page
   answer. Offline review pauses; there is no invisible queue of uncommitted
-  answers. Proposed first implementation permits one unresolved mutation.
+  answers. Only one unresolved browser mutation is permitted.
 
 Proof: network interruption/reordering, two browser tabs, and real restart with
 SQLite state inspected through consumer-visible history/results.
@@ -345,7 +348,7 @@ repeatable browser emulation is not evidence of the owner's physical-phone feel.
 The owner approves aesthetics and usefulness; QA agents can surface defects and
 measure contracts but cannot manufacture that approval.
 
-## Proposed architecture
+## Implemented architecture
 
 ### One application and one state authority
 
@@ -360,16 +363,16 @@ One Go binary, supervised by systemd
        |                         |
 Local SQLite (WAL)          Model provider over HTTPS
        |
-Consistent snapshot -> private off-VM storage (R2 candidate)
+Consistent snapshot -> append/read gateway -> private Cloudflare R2
 ```
 
-One Go module and ordinary internal packages, not a service framework. Start
-with net/http, html/template, embedded templates/assets/migrations, a SQLite
-adapter, a small deterministic learning package, and one model HTTP boundary.
+One Go module uses ordinary internal packages: net/http, html/template,
+embedded templates/assets/migrations, SQLite, a small deterministic learning
+package, and one model HTTP boundary. There is no service framework.
 Use one implementation of each workflow. Interfaces should isolate real external
 boundaries, not mirror every table with a repository/service/controller stack.
 No React runtime, client build step, Redis, Postgres, event bus, vector database,
-Cloudflare Worker/Durable Object, or orchestration platform is implied.
+application Worker/Durable Object, or orchestration platform is required.
 
 HTMX handles HTML forms, fragments, ordinary navigation and bounded job polling.
 Initial rich content is escaped text/controlled formatting, not model-generated
@@ -432,19 +435,18 @@ connection. Begin with serialized short writes and FULL synchronous durability;
 weaken acknowledged-write durability only through an explicit decision. Close
 read cursors promptly. No model HTTP or streaming inside a SQL transaction.
 
-Driver selection is a bounded technical decision: modernc avoids CGO;
-mattn/go-sqlite3 uses CGO and supports native builds. Choose against actual
-transaction, cancellation, backup, engine-fix and target-build requirements,
-not a generic benchmark. Verify the embedded SQLite engine includes the official
-WAL-reset corruption fix (3.51.3 or a documented fixed backport), independently
-of the Go module's version.
+`modernc.org/sqlite` v1.58.0 is the selected pure-Go driver; the release gate
+exercises a CGO-disabled Linux amd64 binary. Preserve transaction, cancellation,
+backup, engine-fix, and target-build requirements on upgrades. The embedded
+SQLite engine must include the official WAL-reset corruption fix (3.51.3 or a
+documented fixed backport); a Go module version alone is not that evidence.
 
-Use an established Go FSRS implementation behind a small pure adapter rather
-than porting the Rust framework. go-fsrs v4.0.0 is a researched candidate, not an
-accepted dependency: it requires Go 1.26 and its constructor can silently fall
-back for invalid parameters. Validate configuration and chosen reference
-trajectories explicitly. Version scheduler parameters; do not promise old-engine
-parity or personalized retention without the corresponding requirement/proof.
+`go-fsrs/v4` v4.0.0 is pinned behind the pure adapter in `internal/learning`.
+The constructor can silently fall back for invalid parameters, so the adapter
+validates pinned configuration first. Versioned reference trajectories, including
+misses/relearning and equivalent-time replay, are exercised by the Go gate.
+`internal/learning.Algorithm` identifies policy. No old-engine parity or
+personalized-retention claim is inherited.
 
 ### Generation and learning policy
 
@@ -485,12 +487,12 @@ agents live data or production authority by default. Do not clone an active
 scheduler, credentials, or attached integrations into a second writing owner.
 A single production instance is sufficient; no HA or automatic failover claim.
 
-Use exe's private HTTPS and stable owner UserID as the proposed identity boundary.
+Exe's private HTTPS and exact stable owner UserID form the identity boundary.
 Keep the backend private/loopback as supported; before use, prove that spoofed
 identity headers cannot enter through alternate routes. Header presence alone
 is not authentication. Application ownership checks and CSRF protection remain.
 Do not add Cloudflare Access in front of exe auth without a reason to maintain
-two access systems. Domain decisions come after private preview acceptance.
+two access systems. The runbook owns approved domains and observed ingress.
 
 systemd owns restart/startup. On shutdown stop job claims, drain HTTP with a
 bound, join/cancel the job worker, then close the database. Mutable data and
@@ -498,11 +500,12 @@ secrets live outside immutable release directories. Migrations finish before
 readiness; a prior binary is a rollback option only if compatible with the
 current schema. Do not run the build directly over the active release.
 
-Cloudflare R2 is a candidate for private off-VM backups, not a live SQLite
-filesystem or a second primary. Use SQLite's backup API or completed VACUUM INTO,
-check integrity/checksum and schema/binary metadata, upload under a unique key,
-and publish completion only after success. Never copy only the live .db while
-WAL writes continue. Include any separately stored assets in the recovery set.
+Cloudflare R2 owns private off-VM archives, not a live SQLite filesystem or a
+second primary. The append/read-only recovery gateway provides the application
+no delete or bucket-policy authority. Recovery uses completed VACUUM INTO,
+checks integrity/checksum and schema/binary metadata, uploads under a unique key,
+and marks off-VM completion only after exact remote readback. Never copy only the
+live .db while WAL writes continue. Include separately stored assets in recovery.
 
 Recovery credentials/material must remain available without the lost VM. Restore
 into a fresh isolated environment and reconcile uncertain jobs before enabling
@@ -513,9 +516,9 @@ retention and recovery time; no provider SLA is asserted here.
 
 ## Delivery slices and Linear mapping
 
-No new Linear issues were created for this proposal. The Scry project was empty
-when inspected on 2026-09-09; MIS-42 belongs to Estate's current inventory repair,
-not this rewrite. Use real MIS identifiers only after work is accepted.
+MIS-48 owns the accepted rewrite and its execution evidence. The Scry project
+was empty at the initial September 9 assessment; no speculative backlog was
+generated. MIS-42 remains Estate's separate inventory repair, not this rewrite.
 
 The first deliverable is an experience to judge, not a repository scaffold.
 Ticket only the next ready slice and its real dependencies. A primary story
@@ -660,9 +663,8 @@ Primary technical references, consulted for feasibility rather than runtime proo
   [identity](https://exe.dev/docs/login-with-exe.md),
   [machine tokens](https://exe.dev/docs/https-tokens-for-vms.md), and
   [migration/listener guidance](https://exe.dev/docs/migrating-to-exe.md).
-- [Go FSRS candidate release](https://github.com/open-spaced-repetition/go-fsrs/releases/tag/v4.0.0),
-  [CGO SQLite driver](https://github.com/mattn/go-sqlite3), and
-  [pure-Go SQLite driver](https://gitlab.com/cznic/sqlite).
+- [Pinned Go FSRS release](https://github.com/open-spaced-repetition/go-fsrs/releases/tag/v4.0.0)
+  and [selected pure-Go SQLite driver](https://gitlab.com/cznic/sqlite).
 - [R2 consistency](https://developers.cloudflare.com/r2/reference/consistency/)
   and [S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/):
   unique completed snapshots, not assumptions about object lock or replication.

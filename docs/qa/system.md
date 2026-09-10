@@ -70,6 +70,14 @@ response after commit and retry the identical operation: one event/schedule
 transition, same feedback. Background/reconnect must preserve an unsaved draft;
 privacy/access failure must hide content until access is revalidated.
 
+For capture bounds, use native typing/paste for both ASCII and multibyte input,
+not DOM value assignment that bypasses browser limits. Verify exact draft bytes
+before submission and after a 422, no source/job on rejection, and successful
+exact storage at 32,768 bytes. Opening an ungraded dispute must neither reveal
+answers nor require assistance; reset-off must preserve its event and schedule.
+After archiving, held feedback describes the recorded schedule and the empty
+screen explains that archived questions are unavailable.
+
 On the deployed private origin, use an approved exe login or separately scoped
 VM token; do not put tokens in URLs, argv, captures, or public receipts. Verify
 anonymous/forged access is denied, exact owner access succeeds, stale/cross-site
@@ -106,6 +114,17 @@ bounded live generation, trusted touch, interrupted-response/access recovery,
 and independent data restoration. Its original observation predates subsequent
 operator phone approval and full service recovery; do not rewrite history into
 an unobserved claim.
+
+[The cutover receipt](personal-go-cutover-20260910.json) reconciles all 32
+criteria, names the immutable browser/release artifacts, and records corrected
+capture/dispute/availability paths, live generation, and private activation.
+S09.2 remains unverified for a different exe account. Global logout kept private
+content hidden; history return encountered an upstream authentication redirect
+loop, while fresh navigation reached sign-in. Do not substitute a VM token,
+local owner-header fixture, or global logout for a second-account observation.
+S04.2/AI1 also await operator material-usefulness review. The receipt enumerates
+all seven candidate quality contracts, including unmeasured p95 and full
+text-zoom/accessibility coverage; functional checks do not silently pass them.
 
 Dated Rust/Cloudflare, beta, dogfood, performance, and generation receipts remain
 historical evidence. Their old commands require the corresponding historical

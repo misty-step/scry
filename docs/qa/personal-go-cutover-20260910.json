@@ -1,0 +1,994 @@
+{
+  "format": "scry-personal-cutover-v1",
+  "issue": "MIS-48",
+  "pull_request": "https://github.com/misty-step/scry/pull/161",
+  "observed_at_utc": "2026-09-10T01:21:29Z",
+  "scope": "Executed private Go cutover and bounded acceptance observations; no full acceptance, adoption, efficacy or p95 claim.",
+  "cleanup": {
+    "observed_at_utc": "2026-09-10T01:30:37Z",
+    "temporary_qa_capability": {
+      "label": "scry-mis48-cutover",
+      "namespace": "v0@scry-app.exe.xyz",
+      "revoked": true,
+      "subsequent_get_session_http_status": 401,
+      "production_model_and_backup_capabilities_changed": false
+    },
+    "isolated_provider_logout_returned_to": "https://exe.dev/",
+    "owned_main_browsers_stopped": [
+      "scry-provider-lifecycle",
+      "scry-final-browser"
+    ],
+    "owned_main_browser_profiles_removed": 3,
+    "transient_qa_directories_removed": 4,
+    "retained_receipt_archives_readable": 4,
+    "disposable_chromium_profiles_excluded_from_archives": true,
+    "production_service_stopped": false,
+    "historical_recovery_data_deleted": false,
+    "private_proof": "/home/phaedrus/.local/share/scry/ops/qa-e0274bc916de/cleanup-proof.json"
+  },
+  "screenshots": [
+    {
+      "path": "personal-go-archived-exit-20260910.png",
+      "caption": "Actual corrected mobile-width browser: archived questions are unavailable; deliberate Add/Library exits remain.",
+      "revision": "e0274bc916de8bf686160d4068fdb6f3befa540f"
+    },
+    {
+      "path": "personal-go-capture-boundary-20260910.png",
+      "caption": "Actual native ASCII overflow submission: visible HTTP 422 remedy and preserved END-SENTINEL; zero saved sources/jobs.",
+      "revision": "e0274bc916de8bf686160d4068fdb6f3befa540f"
+    }
+  ],
+  "summary": {
+    "functional_criteria": 32,
+    "PASS": 30,
+    "FAIL": 0,
+    "UNVERIFIED": [
+      "S04.2",
+      "S09.2"
+    ],
+    "candidate_quality_contracts": 7,
+    "issue_state": "In Progress"
+  },
+  "release": {
+    "release": "mis48-e0274bc916de",
+    "revision": "e0274bc916de8bf686160d4068fdb6f3befa540f",
+    "binary_sha256": "773911fc83ae07e09774cb7c32ae3e71914435e3b95d6913c6a37d10e587863d",
+    "elapsed_seconds": 1.91,
+    "learning_state_preserved": true,
+    "pre_release_backup_remote": true,
+    "activation_output": "Activated release mis48-e0274bc916de; loopback readiness passed and boot startup is enabled.",
+    "origin": "https://scry.study",
+    "process": {
+      "user": "scry",
+      "group": "scry",
+      "active": "active",
+      "startup": "enabled",
+      "listen": "127.0.0.1:8080",
+      "deployed_sha256_matches": true
+    },
+    "gate_command": "bun run ci:full -- --out target/mis48-final-release --require-committed",
+    "checks": [
+      "gofmt",
+      "go test",
+      "go vet",
+      "browser/gateway JavaScript syntax",
+      "deploy shell syntax",
+      "retained recovery contracts",
+      "redacted Gitleaks",
+      "exact-binary smoke"
+    ],
+    "retained_artifact": "/home/phaedrus/.local/share/scry/ops/releases/mis48-e0274bc916de"
+  },
+  "evidence_runs": {
+    "core-browser": {
+      "revision": "97855c72856b8b6e34c99c66bb603613ab7777f0",
+      "sha256": "e0f9ad582596da97c4a1b4bd90f1b79589b4d4d93b020ba0d3a4e0cb020665f7",
+      "scope": "Isolated synthetic Chromium; native touch/keyboard plus explicitly labeled due adjustments; pre-fix findings retained."
+    },
+    "recovery-browser": {
+      "revision": "97855c72856b8b6e34c99c66bb603613ab7777f0",
+      "sha256": "e0f9ad582596da97c4a1b4bd90f1b79589b4d4d93b020ba0d3a4e0cb020665f7",
+      "scope": "Isolated synthetic Chromium and controlled local provider; lost responses, stale tabs/HTML, offline, archive/restart, incompatible startup and concurrent backup."
+    },
+    "corrected-core-qa": {
+      "revision": "e0274bc916de8bf686160d4068fdb6f3befa540f",
+      "sha256": "773911fc83ae07e09774cb7c32ae3e71914435e3b95d6913c6a37d10e587863d",
+      "scope": "Native mouse/keyboard on exact corrected binary; dispute, historical feedback and archived exit with durable comparisons."
+    },
+    "corrected-capture-qa": {
+      "revision": "e0274bc916de8bf686160d4068fdb6f3befa540f",
+      "sha256": "773911fc83ae07e09774cb7c32ae3e71914435e3b95d6913c6a37d10e587863d",
+      "scope": "Native input, exact byte bounds, user injection and explicit authored model-field canaries; controlled provider rejection distinguished from rendering."
+    },
+    "live-generation": {
+      "earlier_receipt": "personal-go-acceptance-20260909.json",
+      "exact_text_release": "97855c72856b8b6e34c99c66bb603613ab7777f0",
+      "qualified_source_release": "e0274bc916de8bf686160d4068fdb6f3befa540f",
+      "scope": "Restricted real OpenRouter generation through the private app; assistant inspection, not operator usefulness acceptance."
+    },
+    "private-ingress": {
+      "origin": "https://scry.study",
+      "scope": "Actual owner HTTPS, anonymous/forged/alias/cross-site/alternate-port negatives plus observed loopback listener and private VM sharing."
+    },
+    "provider-lifecycle-and-inert-content": {
+      "logout_revision": "97855c72856b8b6e34c99c66bb603613ab7777f0",
+      "content_revision": "e0274bc916de8bf686160d4068fdb6f3befa540f",
+      "scope": "Actual isolated exe cookies/global logout/history; no independent VM token. Local exact-binary injection canaries. No second account."
+    },
+    "release-and-recovery": {
+      "release_proof": "/home/phaedrus/.local/share/scry/ops/releases/mis48-e0274bc916de/proof.json",
+      "scope": "Pinned source-bound gate and independently restored earlier app; no production authority in synthetic smoke."
+    },
+    "independent-restore": {
+      "receipt": "~/.local/share/scry/ops/legacy-freeze-20260909T224459Z/go-service-restore-proof.json",
+      "scope": "Fresh app installation on existing scry-dev; off-VM snapshot, service, HTTPS, export and UI, then stopped. Provisioning/DNS excluded."
+    }
+  },
+  "criteria": [
+    {
+      "id": "S01.1",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Eligible material opened directly into Recognition question with four actionable choice buttons and 2 due; no dashboard or deck choice."
+      ],
+      "durable_postconditions": [
+        "One unfinished presentation 817af6359eaee04e3884f51df5ce98d8 was persisted before any answer; review_events remained empty."
+      ]
+    },
+    {
+      "id": "S01.2",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "durable_postconditions": [
+        "Natural not-due state had null current_id and future schedules, with no fixture adjustment used for that observation.",
+        "Final archive state retained 1 source, 2 archived quizzes, 7 review events and unchanged schedules; no due work or reset was fabricated."
+      ],
+      "corrected_evidence_run": "corrected-core-qa",
+      "baseline_status": "FAIL",
+      "baseline_observed": [
+        "Fresh empty entry offered Add something and Library. Natural not-yet-due exit said Nothing due right now, explained later schedules, showed next due, and offered Add/Library/Check again.",
+        "With source retained but both questions archived, Review instead reused fresh-empty wording and suggested checking generation; it did not explain that retained questions were unavailable/archived."
+      ],
+      "observed": [
+        "All archived questions are excluded after Next, including after their due dates. The screen explains no active questions and offers working Add/Library exits."
+      ]
+    },
+    {
+      "id": "S01.3",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Unfinished presentation id remained 817af6359eaee04e3884f51df5ce98d8 on each Review return. The same original DNS A question and wrong IPv6/expected IPv4 feedback remained after held navigation and refresh."
+      ],
+      "durable_postconditions": [
+        "Unfinished navigation left seeded schedules unchanged and no review events.",
+        "Held navigation/status reads left presentations, review_events, and schedules byte-for-value equal to the original wrong export."
+      ]
+    },
+    {
+      "id": "S02.1",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Original IPv6 selection produced Not yet, submitted IPv6, expected IPv4. Future reordered IPv6 selection produced Correct, submitted/expected IPv6; observed native click events had isTrusted=true and exact value IPv6 address.",
+        "Transport Layer Security produced Correct with expected TLS.",
+        "polish versus Polish produced Not graded, not success."
+      ],
+      "durable_postconditions": [
+        "Old DNS wrong event remains unchanged at content version 1; new DNS correct event uses content version 2 and reordered choices.",
+        "TLS correct event is cued recall, unassisted, rating 3.",
+        "Case-only near-match event outcome=close, rating=0, schedule versions unchanged."
+      ]
+    },
+    {
+      "id": "S02.2",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Graded screens showed question, submitted answer, expected answer, understandable outcome and concise explanation; result persisted through navigation/refresh until Next.",
+        "Semantic response remained visibly Not graded with the unchanged-schedule explanation, submitted text and editable response field; refresh kept the same occurrence and text rather than auto-grading or advancing."
+      ],
+      "durable_postconditions": [
+        "Semantic event outcome=ungraded, rating=0, assisted=false, schedule_version_before=2 and after=2.",
+        "All schedules equal the export before near-match and semantic answers; original near-match and semantic events both remain in final export."
+      ]
+    },
+    {
+      "id": "S02.3",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Help gate warned that opening answer-bearing material would record help rather than unaided success. Stale second-page correct answer received HTTP 409 and displayed conflict plus retained Answer revealed / Helped, not unaided recall feedback.",
+        "Returning to Review kept assisted held result. History separately labeled assisted Recognition and assisted Cued recall."
+      ],
+      "durable_postconditions": [
+        "Help committed outcome=revealed, assisted=true, rating=1 before late answer.",
+        "Before/after late submission exports had exactly equal events, schedules and presentations; no late success was created.",
+        "Recognition and recall remained different snapshot.kind values."
+      ]
+    },
+    {
+      "id": "S02.4",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Canceled gesture emitted trusted touchstart and touchcancel but no click. Unfinished occurrence stayed unchanged.",
+        "Actual browser Back and refresh preserved presentation d4ffab097fcf31dd4966d2d58def2735 and its unanswered Polish prompt.",
+        "Only Next moved from held DNS v1 to TLS then DNS v2. Natural not-due exit offered deliberate Add/Library/Check again actions."
+      ],
+      "durable_postconditions": [
+        "Back/History/Settings/refresh did not add or alter review events, corrections or schedules.",
+        "Archiving final unfinished question cleared the current occurrence without adding an answer; no unavailable item was invented."
+      ]
+    },
+    {
+      "id": "S03.1",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Only one required editable text field plus Save and generate; no title/deck/taxonomy/prompt-type decisions.",
+        "Saved original text matched all supplied characters for the supported-size input."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S03.2",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Initial exact capture retry left exactly one source and one generation job, before any explicit generation retry.",
+        "Original input was retained/frozen during unknown outcome and second action was blocked.",
+        "Acknowledged source/job, review result and all 12 compared durable learning tables survived restart unchanged. Subsequent explicit generation retries are separate deliberate jobs, not capture duplicates."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S03.3",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "durable_postconditions": [],
+      "corrected_evidence_run": "corrected-capture-qa",
+      "baseline_status": "FAIL",
+      "baseline_observed": [
+        "34,000-byte input returned HTTP 422 with the specific 32 KiB/split remedy; all 17,000 characters remained available.",
+        "Zero usable output published no quizzes and never appeared Ready. Original input survived; explicit retries ran and revised input saved separately.",
+        "DEFECT: native maxlength=32768 silently clipped the ASCII input to 32,768 characters. END-SENTINEL disappeared, tooLong=false/valid=true, no rejection or warning, and Save committed exactly the truncated input as source 9dc35e9462f88a5502405ce31049e73c."
+      ],
+      "observed": [
+        "Native 32806-byte ASCII and 33012-byte multibyte input remain exact through HTTP 422; neither saves a source/job. Exactly 32768 bytes saves intact. Earlier failed-generation/retry remedies remain observed."
+      ]
+    },
+    {
+      "id": "S04.1",
+      "status": "PASS",
+      "evidence_run": "live-generation",
+      "observed": [
+        "Topic/source distinction was retained in earlier live material. Final qualified-source generation and native private source inspection preserved the exact passage, evidence quotations, population and uncertainty; no causal strengthening."
+      ]
+    },
+    {
+      "id": "S04.2",
+      "status": "UNVERIFIED",
+      "evidence_run": "live-generation",
+      "observed": [
+        "Earlier live DNS complete-set task published 3/3 in order. Live exact-text task published all three original lines in order, with punctuation intact and no variants. Final qualified-source MCQs each have one defensible answer and distinct non-overlapping alternatives. Bounded assistant content review, not future-material quality assurance."
+      ],
+      "missing": [
+        "Operator review of the representative generated material for usefulness; assistant inspection is not a human content-quality sign-off."
+      ]
+    },
+    {
+      "id": "S04.3",
+      "status": "PASS",
+      "evidence_run": "live-generation",
+      "observed": [
+        "Live partial publication/rejection costs were visible in the earlier receipt. Final source is immediately reviewable with two published quizzes, two settled attempts, one bounded repair and all USD 0.011490 accounted; no unknown cost erased."
+      ]
+    },
+    {
+      "id": "S04.4",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Existing review showed Correct and persisted while the generation job was running with $0.200 reserved.",
+        "Original plus two explicit retry jobs each failed with one attempt and zero publication; another retry returned HTTP 409 bounded-limit remedy.",
+        "Archived in-flight job remained canceled with published=0; late completion settled cost=0 with finish_code=conflict; no source resurrection or quizzes."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S05.1",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "No administration UI was needed. Source view identified archived DNS question; held historical feedback remained until Next; future queue excluded archived question.",
+        "Direct unfinished-question archive led to no active Review question without a help/answer step."
+      ],
+      "durable_postconditions": [
+        "DNS version 2 and archive flags persisted. Archive operations left review_events and schedules unchanged.",
+        "Final source and both old/new quiz versions were retained; current_id became null and both quizzes archived=true."
+      ]
+    },
+    {
+      "id": "S05.2",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Old held question, choices/answer snapshot and wrong result remained original; future occurrence displayed new prompt/order and correct expected IPv6.",
+        "Portable downloaded JSON contained source text, both original and manual-edit content versions, original recorded result, future occurrence and schedule data."
+      ],
+      "durable_postconditions": [
+        "Original review event and presentation remained equal after content edit.",
+        "Original version retained model=authored-test-fixture and prompt_version=fixture-v1; new version retained model empty with prompt_version=manual-edit. Origin job/source and original attributed version remain in export.",
+        "Stopped-service CLI export matched downloaded browser export across all checked learning/content/source/job fields."
+      ]
+    },
+    {
+      "id": "S05.3",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Wrong history stayed Not yet / Recognition and was marked Disputed; original result retained. Ungraded history stayed Not graded / Cued recall and was separately marked disputed; no dispute was displayed as Correct.",
+        "Reset checkbox was explicitly selected; explanatory text said reset is a recorded correction, not new recall."
+      ],
+      "durable_postconditions": [
+        "Reset off added one correction with reset=0 and null schedule_before/after; original events and schedule exactly unchanged.",
+        "Reset on added one correction with reset=1 and complete schedule before/after; the original ungraded event and all existing events remained equal across the dispute POST. Reset produced a new empty card and schedule version 4, not a successful event.",
+        "Final record: 7 review events, 2 correction records; original wrong, close, ungraded, recall success, recognition success and helped records remain distinct."
+      ]
+    },
+    {
+      "id": "S06.1",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Exactly one review event 8324f69a9ca2a4675ffe9708bc0d6ea7 and schedule transition 1 to 2 for the occurrence.",
+        "Review events, schedules, presentations and operation receipts were byte-for-byte equal as JSON values before/after retry; identical Correct/TLS feedback recovered.",
+        "Different payload under original operation ID produced HTTP 409 explicit current-saved-state conflict and retained original Correct/TLS result."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S06.2",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Competing stale answer returned 409 with original saved feedback, without another event.",
+        "Stale Next returned 200 with the newer current presentation unchanged; it did not consume or replace it.",
+        "After late response, newer presentation remained graded=true with exactly the same Correct feedback; screenshot confirmed current rendered result, not old question form."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S06.3",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Pending said Saving your answer; textarea was readonly and other mutation buttons disabled. Unknown offered exact retry/check saved state and blocked another action; TLS remained present.",
+        "Definite rejection showed Nothing changed, copy/reload remedy; TLS was retained and editable, without unknown-outcome retry UI.",
+        "Offline attempts emitted zero POST requests. Durable session/events/schedules/presentations/operations stayed equal; reconnect emitted no replay and changed no durable state. localStorage was empty; the sole sessionStorage entry was HTMX current path, not an answer queue."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S07.1",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Source-only term found the exact captured source. IPv4, absent from source titles/text, found both authored sources through quiz content.",
+        "Opened source showed original-input access, generated-topic provenance caveat, recorded authored-test-fixture model, question versions, response style, due dates and answer/explanation."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S07.2",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "UI explicitly said Archived, no future questions/review, and history remains; both old source questions displayed Archived.",
+        "After restart current/next occurrence came from active second authored source, not archived source; original source remained archived in export.",
+        "Original source text, question versions, schedules and historical reviews remained exportable. Pending source stayed canceled with no quizzes after late response, settled as conflict."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S07.3",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Portable scry-personal-export version 1 contains sources/source_revisions, current quiz references and all quiz_versions, presentations, review_events, schedules/algorithm/version, jobs, operations and corrections.",
+        "All durable values including review_session were unchanged by export. Source/question/history records persisted after archive.",
+        "Browser remained on Settings; incidental exact main.outerHTML equality was false, but there was no durable review/session mutation."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S08.1",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "durable_postconditions": [
+        "Wrong/new-learning and help-in-learning events scheduled 60,000 ms later under the declared 1m/10m learning steps; supported Good events scheduled 600,000 ms later. Exact algorithm string was exported and shown in History.",
+        "All pure-read comparisons were equal. However required pre-dispute explicit help added revealed/assisted/rating=1 event f03442cc78f41ba4aac33820ab32605d and changed schedule before user reached the reset-off/on choice. The flag GET itself did not mutate."
+      ],
+      "corrected_evidence_run": "corrected-core-qa",
+      "baseline_status": "FAIL",
+      "baseline_observed": [
+        "Wrong and help were rating Again, not success. Refresh/Back/History/Settings/canceled gesture did not create events. Flag form for already graded wrong result was read-only until dispute POST.",
+        "Unresolved Flag a problem or reset was forced through Mark helped and open before the actual dispute form despite that form displaying only the already-visible prompt, not the expected answer. A flag-only workflow was therefore unavailable."
+      ],
+      "observed": [
+        "Ungraded dispute is editable without help or answer exposure. Reset-off adds one correction with identical original event, schedule and unresolved occurrence. Only deliberate reveal subsequently records assistance."
+      ]
+    },
+    {
+      "id": "S08.2",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "Due selection respected availability; old v1 remained only as held/history evidence, and future DNS occurrence used v2 rather than superseded v1.",
+        "Archived DNS was excluded while recall remained scheduled for later. After both were archived there was no invented occurrence and Add/Library exits remained usable."
+      ],
+      "durable_postconditions": [
+        "Natural not-due observation preceded any fixture adjustment. FA1/FA2 changed only own synthetic schedule due fields and matching card.Due; no real days elapsed claim.",
+        "Final archived quizzes remained archived; no postarchive review events were created, current_id null."
+      ]
+    },
+    {
+      "id": "S08.3",
+      "status": "PASS",
+      "evidence_run": "core-browser",
+      "observed": [
+        "History visibly differentiated Not yet Recognition, Correct Recognition, Correct Cued recall, Answer revealed Recognition Helped, Answer revealed Cued recall Helped, Not quite matched Cued recall, and Not graded Cued recall Disputed; original result retained.",
+        "History said attempts and assistance are practice records, not proof of lasting knowledge. Settings showed counts for recorded reviews/helped/disputed and explicitly said counts are not mastery, predicted retention or learning gains."
+      ],
+      "durable_postconditions": [
+        "Export snapshot.kind, outcome, assisted, rating and separate corrections agree with these distinctions. Final browser-export/CLI-export comparison and postshutdown comparison were equal for all checked state fields."
+      ]
+    },
+    {
+      "id": "S09.1",
+      "status": "PASS",
+      "evidence_run": "private-ingress",
+      "observed": [
+        "Owner private HTTPS succeeds. Anonymous and forged-header exports redirect to provider authentication; anonymous alternate port 8080 ends at provider 401. Actual backend listens only on 127.0.0.1:8080. VM sharing is private with no users, links or team grants. Actual /add alias mutations return 409 without replay; canonical cross-site /add returns 403. Different/duplicate owner and untrusted peer negatives also pass in the Go gate; an actual second-account session is not claimed."
+      ]
+    },
+    {
+      "id": "S09.2",
+      "status": "UNVERIFIED",
+      "evidence_run": "provider-lifecycle-and-inert-content",
+      "observed": [
+        "Real canonical cross-site mutation is rejected. Native source injection and authored model-field renderer canaries remained inert; controlled provider script/handler/HTMX candidates were rejected before publication. Global exe logout without a VM token exposed no Scry content on actual history return, but reached a browser authentication redirect-loop error. Fresh canonical navigation reached the provider sign-in page."
+      ],
+      "missing": [
+        "An operator-approved second exe account and its Back/history/cache behavior."
+      ],
+      "limitations": [
+        "Do not count owner-header fixtures, VM tokens or logout as account-switch proof. The upstream authentication history-return loop remains a user-visible limitation."
+      ]
+    },
+    {
+      "id": "S09.3",
+      "status": "PASS",
+      "evidence_run": "release-and-recovery",
+      "observed": [
+        "Dagger smoke and all browser mutation fixtures used isolated synthetic state without production model/backup/deployment authority. Independent restore used a fresh configuration and no live integrations; rehearsal stopped. Temporary operator QA authority is not an application machine-access feature."
+      ]
+    },
+    {
+      "id": "S10.1",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Restart preserved captures/reviews, failed/canceled jobs, operations and schedules exactly.",
+        "Incompatible startup exited 1 before readiness after 51ms: application/schema 1396920921/2, require 1396920921/1.",
+        "TCP connect returned ECONNREFUSED; queued sentinel was unchanged with attempts=0, no lease and no publication."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S10.2",
+      "status": "PASS",
+      "evidence_run": "recovery-browser",
+      "observed": [
+        "Settings visibly showed more-than-24h stale warning AND no completed archive warning plus real filesystem error, while /healthz=ok and /readyz=ready.",
+        "Backup process 1788999746423..1788999746512ms overlapped answer request at 1788999746434 and displayed saved feedback by 1788999746452.",
+        "Completed local archive SHA256 c56535c960ca5cb5876c06131e2ba190ca1c4476a86875635795480ca9468a54 matched its receipt; database hash matched manifest, integrity_check=ok and exact binary check reported compatible=true.",
+        "Snapshot contained all 12 learning tables equal to coherent pre-answer state (3 reviews); live state had complete fourth review. Manifest carried exact binary checksum, embedded-assets ownership, configuration variable names and restore policy."
+      ],
+      "durable_postconditions": []
+    },
+    {
+      "id": "S10.3",
+      "status": "PASS",
+      "evidence_run": "independent-restore",
+      "observed": [
+        "Independently retrieved R2 snapshot restored into an unused installation on scry-dev. Unprivileged service activation, private HTTPS export equality and restored Review UI passed; about 117 seconds through private HTTPS on the existing VM. Uncertain jobs remain paused; no production integrations copied."
+      ],
+      "limitations": [
+        "VM provisioning and DNS restoration were not timed. Zero observed loss is relative to the compared snapshot, not a future RPO guarantee."
+      ]
+    }
+  ],
+  "candidate_quality_contracts": [
+    {
+      "id": "UX1",
+      "status": "UNVERIFIED",
+      "reason": "Initial physical-phone flow was approved, but no declared p95 sampling run on that phone with induced 300 ms RTT is claimed."
+    },
+    {
+      "id": "UX2",
+      "status": "UNVERIFIED",
+      "reason": "Real committed feedback and individual latency observations exist; they do not establish the proposed end-to-end p95 budget."
+    },
+    {
+      "id": "UX3",
+      "status": "UNVERIFIED",
+      "reason": "Real Next, first review and generation work were exercised; warm/cold latency distributions and proposed p95 budgets were not measured."
+    },
+    {
+      "id": "UX4",
+      "status": "UNVERIFIED",
+      "reason": "320/390 CSS-pixel and keyboard/native-input observations exist. Full 200-percent text-zoom, long-content, contrast and target-size acceptance is not established by those samples."
+    },
+    {
+      "id": "UX5",
+      "status": "PASS",
+      "reason": "Native cancellation, held results, stale/late response fencing, unknown-result exact retry and offline no-queue behavior were exercised with durable state comparisons."
+    },
+    {
+      "id": "AI1",
+      "status": "UNVERIFIED",
+      "reason": "Bounded real topic/qualified-source/complete-set/exact-text outputs were reviewed, with costs and defects recorded. No operator-selected held-out corpus or general material-quality acceptance is claimed; the qualified source was used for prompt repair."
+    },
+    {
+      "id": "OPS1",
+      "status": "UNVERIFIED",
+      "reason": "Approved recovery/spend policy, actual private ingress and independent recovery are recorded. Full privacy acceptance remains open under S09.2."
+    }
+  ],
+  "regressions": {
+    "ungraded_dispute": "Focused regression observed failing before the gate fix and passing after it; kept as TestUngradedDisputeDoesNotRequireHelpOrChangeSchedule.",
+    "ascii_capture": "Native 32806-byte input silently truncated and saved before fix; corrected native 32806-byte and 33012-byte submissions preserve full drafts, return 422, save nothing. Exact 32768-byte capture succeeds.",
+    "archive_copy": "Corrected held historical schedule wording and zero-active exit verified in browser and exported state."
+  },
+  "generation": {
+    "qualified_source": {
+      "case": "qualified_source",
+      "prompt_version": "scry-go-quiz-v3-repair1",
+      "provider_model": "google/gemini-3.7-flash",
+      "attempts": 2,
+      "published": 2,
+      "cost_usd": 0.01149,
+      "cost_unknown": false,
+      "bounded_quality_repair_used": true,
+      "provenance": "Every evidence quote is an exact substring of the supplied synthetic passage. Small/24 adults/observational/tendency/may qualifications remain; no causal strengthening.",
+      "quality": "First question distinguishes positive, negative, and absent association with three non-overlapping alternatives. Second asks the explicitly unsupported causal claim, distinct from association and possible confounding. One defensible answer each; no answer leakage or redundant inverse distractors.",
+      "limits": "Assistant content review of this bounded supplied-source example, not independent fact checking or future-material quality assurance.",
+      "source_id": "bd203f6534a982195635b10888142cad",
+      "source_text": "Learn only what this supplied passage says, preserving its uncertainty.\nIn a small observational study of 24 adults, participants who reported longer sleep also tended to score higher on a memory task. This association may reflect other differences between participants; it does not show that sleeping longer caused the higher scores.",
+      "quizzes": [
+        {
+          "id": "367fce480b6d9eb835c2bb318d80c49d",
+          "source_id": "bd203f6534a982195635b10888142cad",
+          "kind": "choice",
+          "prompt": "In the small observational study of 24 adults, how did participants who reported longer sleep perform on the memory task?",
+          "answer": "They tended to score higher",
+          "explanation": "The passage states that participants reporting longer sleep tended to score higher on the memory task, establishing an observed association.",
+          "evidence": "In a small observational study of 24 adults, participants who reported longer sleep also tended to score higher on a memory task.",
+          "basis": "source",
+          "choices": [
+            "They tended to score higher",
+            "They tended to score lower",
+            "They showed no difference in scores"
+          ],
+          "variants": [],
+          "version": 1,
+          "archived": false,
+          "due_at": 1789001762675
+        },
+        {
+          "id": "a543a4207aa707f9d03d1cd050cc71a7",
+          "source_id": "bd203f6534a982195635b10888142cad",
+          "kind": "choice",
+          "prompt": "What claim does the observational study explicitly state it does NOT show regarding longer sleep and memory scores?",
+          "answer": "That sleeping longer caused the higher scores",
+          "explanation": "The author cautions that the observed association could stem from other differences between participants and does not demonstrate that sleeping longer caused higher scores.",
+          "evidence": "This association may reflect other differences between participants; it does not show that sleeping longer caused the higher scores.",
+          "basis": "source",
+          "choices": [
+            "That sleeping longer caused the higher scores",
+            "That an association was present among participants",
+            "That other differences between participants may exist"
+          ],
+          "variants": [],
+          "version": 1,
+          "archived": false,
+          "due_at": 1789001762675
+        }
+      ],
+      "attempts_detail": [
+        {
+          "cost_micros": 6495,
+          "finish_code": "",
+          "finished_at": 1789001745888,
+          "job_id": "6f29977a573d926867f2bc3d6cee6847",
+          "number": 1,
+          "reserved_micros": 200000,
+          "started_at": 1789001736980,
+          "state": "settled"
+        },
+        {
+          "cost_micros": 4995,
+          "finish_code": "",
+          "finished_at": 1789001762675,
+          "job_id": "6f29977a573d926867f2bc3d6cee6847",
+          "number": 2,
+          "reserved_micros": 200000,
+          "started_at": 1789001755897,
+          "state": "settled"
+        }
+      ],
+      "published_versions": [
+        {
+          "quiz_id": "367fce480b6d9eb835c2bb318d80c49d",
+          "model": "google/gemini-3.7-flash",
+          "prompt_version": "scry-go-quiz-v3-repair1",
+          "version": 1
+        },
+        {
+          "quiz_id": "a543a4207aa707f9d03d1cd050cc71a7",
+          "model": "google/gemini-3.7-flash",
+          "prompt_version": "scry-go-quiz-v3-repair1",
+          "version": 1
+        }
+      ]
+    },
+    "exact_text": {
+      "source_id": "635b1dc2b2e1e7286a475471ce72552b",
+      "source_text": "Memorize the complete exact text below in order. Do not paraphrase:\n\nCalm water mirrors the moon.\nSmall ripples scatter its light.\nStillness returns before dawn.",
+      "status": "complete",
+      "attempts": 1,
+      "cost_micros": 3850,
+      "quizzes": [
+        {
+          "id": "96ba718d9498b34db8188ebfea2a5c4e",
+          "source_id": "635b1dc2b2e1e7286a475471ce72552b",
+          "kind": "recall",
+          "prompt": "Recite the first line of the poem verbatim.",
+          "answer": "Calm water mirrors the moon.",
+          "explanation": "The opening line of the text is 'Calm water mirrors the moon.'",
+          "evidence": "Calm water mirrors the moon.",
+          "basis": "source",
+          "choices": [],
+          "variants": [],
+          "version": 1,
+          "archived": false,
+          "due_at": 1788999198308
+        },
+        {
+          "id": "fd682b849236bc132a888ba3a20de9c1",
+          "source_id": "635b1dc2b2e1e7286a475471ce72552b",
+          "kind": "recall",
+          "prompt": "Recite the second line of the poem verbatim, following 'Calm water mirrors the moon.'",
+          "answer": "Small ripples scatter its light.",
+          "explanation": "The second line of the text is 'Small ripples scatter its light.'",
+          "evidence": "Small ripples scatter its light.",
+          "basis": "source",
+          "choices": [],
+          "variants": [],
+          "version": 1,
+          "archived": false,
+          "due_at": 1788999198308
+        },
+        {
+          "id": "d329050cd5da87c9b868e5124b36ca61",
+          "source_id": "635b1dc2b2e1e7286a475471ce72552b",
+          "kind": "recall",
+          "prompt": "Recite the third line of the poem verbatim, following 'Small ripples scatter its light.'",
+          "answer": "Stillness returns before dawn.",
+          "explanation": "The third line of the text is 'Stillness returns before dawn.'",
+          "evidence": "Stillness returns before dawn.",
+          "basis": "source",
+          "choices": [],
+          "variants": [],
+          "version": 1,
+          "archived": false,
+          "due_at": 1788999198308
+        }
+      ],
+      "complete_order_and_exact_wording_observed": true
+    },
+    "superseded_defective_qa_source_archived": "cad78c3b47dc22a2f7bcade4b98b4555",
+    "source_deletions": 0
+  },
+  "ingress": {
+    "alias_reads": "308 canonical redirects preserve path/query",
+    "actual_alias_capture_mutations": [
+      {
+        "origin": "https://scry-app.exe.xyz",
+        "path": "/add",
+        "method": "POST",
+        "cross_site": false,
+        "status": 409,
+        "redirect": null
+      },
+      {
+        "origin": "https://www.scry.study",
+        "path": "/add",
+        "method": "POST",
+        "cross_site": false,
+        "status": 409,
+        "redirect": null
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/add",
+        "method": "POST",
+        "cross_site": true,
+        "status": 403,
+        "redirect": null
+      }
+    ],
+    "anonymous_export": 307,
+    "forged_anonymous_export": 307,
+    "anonymous_alternate_port_export": "Provider sign-in HTTP 401 on scry-app.exe.xyz:8080/export",
+    "sharing": {
+      "status": "private",
+      "port": 8080,
+      "users": [],
+      "links": [],
+      "team_access": false
+    }
+  },
+  "provider_logout": {
+    "scenario": "Provider global logout alone, then native browser history return; no local logout or cookie manipulation",
+    "independent_vm_token": false,
+    "before": {
+      "origin": "https://scry.study",
+      "path": "/add",
+      "privateCapture": true
+    },
+    "logoutURL": "https://exe.dev/logout",
+    "providerAfter": {
+      "origin": "https://exe.dev",
+      "path": "/"
+    },
+    "after": {
+      "origin": "null",
+      "path": "/",
+      "title": "scry.study",
+      "privateCapture": false,
+      "privateReview": false,
+      "privateHidden": false,
+      "canaryVisible": false,
+      "loginInput": false
+    },
+    "responses": [
+      {
+        "origin": "https://scry.study",
+        "path": "/add",
+        "status": 307
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/login",
+        "status": 307
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth/confirm",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/add",
+        "status": 307
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/login",
+        "status": 307
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth/confirm",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/add",
+        "status": 307
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/login",
+        "status": 307
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth/confirm",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/add",
+        "status": 307
+      },
+      {
+        "origin": "https://scry.study",
+        "path": "/__exe.dev/login",
+        "status": 307
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth",
+        "status": 303
+      },
+      {
+        "origin": "https://exe.dev",
+        "path": "/auth/confirm",
+        "status": 303
+      }
+    ],
+    "fresh_navigation": {
+      "result": {
+        "origin": "https://exe.dev",
+        "path": "/auth",
+        "title": "Access required",
+        "privateCapture": false,
+        "privateReview": false,
+        "loginInput": true
+      },
+      "responses": [
+        {
+          "origin": "https://scry.study",
+          "path": "/add",
+          "status": 307,
+          "cached": false,
+          "cacheControl": null
+        },
+        {
+          "origin": "https://scry.study",
+          "path": "/__exe.dev/login",
+          "status": 307,
+          "cached": false,
+          "cacheControl": null
+        },
+        {
+          "origin": "https://exe.dev",
+          "path": "/auth",
+          "status": 401,
+          "cached": false,
+          "cacheControl": null
+        },
+        {
+          "origin": "https://exe.dev",
+          "path": "/static/common.css",
+          "status": 200,
+          "cached": false,
+          "cacheControl": "no-cache"
+        },
+        {
+          "origin": "https://exe.dev",
+          "path": "/static/simple.css",
+          "status": 200,
+          "cached": false,
+          "cacheControl": "no-cache"
+        },
+        {
+          "origin": "https://exe.dev",
+          "path": "/static/passkey.js",
+          "status": 200,
+          "cached": false,
+          "cacheControl": "no-cache"
+        },
+        {
+          "origin": "https://exe.dev",
+          "path": "/passkey/login/start",
+          "status": 200,
+          "cached": false,
+          "cacheControl": null
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "policy": "Daily and pre-release off-VM snapshots, 30-day dedicated-bucket retention; RPO 24h / RTO 60m targets.",
+    "latest_observed_backup": {
+      "remote": true,
+      "created_at": 1789001709960,
+      "sha256": "0ab73992371037d2b27aae1f6eb6a8e7d96615d1aa71b8c12d5db5e3a99d2592",
+      "error": ""
+    },
+    "retention_rule": "Enabled scry-go-recovery-retention, age 2592000 seconds, read back; not an observed month of backups.",
+    "restore_private_https_seconds": 116.67,
+    "restored_export_matched": true,
+    "rehearsal_stopped_disabled": true,
+    "provisioning_dns_timed": false
+  },
+  "legacy_retirement": {
+    "production_and_staging_workers": "Paused; fingerprints unchanged; final backups retrieved and verified; cron triggers removed.",
+    "native_application": "Stopped/disabled; separate native off-host recovery timer remains active.",
+    "caddy": "Only obsolete Scry reverse-proxy blocks removed; other routes preserved; configuration validated and reload completed.",
+    "old_data_imported": false,
+    "old_data_deleted": false
+  },
+  "operator_acceptance": {
+    "initial_phone_flow": "Approved by operator on 2026-09-09, distinct from browser emulation.",
+    "daily_recovery_policy": "Approved by operator.",
+    "generated_material_usefulness": "Not inferred from initial phone-flow approval; remains S04.2/AI1 observation."
+  },
+  "raw_evidence": {
+    "directory": "/home/phaedrus/.local/share/scry/ops/qa-e0274bc916de",
+    "archives": [
+      {
+        "original_root": ".tmp/core-browser-acceptance",
+        "archive": "core-browser-acceptance.tar.gz",
+        "sha256": "2b88ccc0e1bc639b239efc0a81d87e9a6fce1ac31f96cf9b09ffab819d061389",
+        "bytes": 2905838,
+        "excluded": "disposable chromium/ profile"
+      },
+      {
+        "original_root": ".tmp/recovery-browser-acceptance",
+        "archive": "recovery-browser-acceptance.tar.gz",
+        "sha256": "83d0fa640256dfcfd587965c60744213ea34034c43573f4cde5eef88e13ee829",
+        "bytes": 2401081,
+        "excluded": "disposable chromium/ profile"
+      },
+      {
+        "original_root": ".tmp/corrected-core-qa",
+        "archive": "corrected-core-qa.tar.gz",
+        "sha256": "88b6c5640bf4b529e390a35e5020185a3d96065d7785f9b72dd407deb6889d17",
+        "bytes": 904260,
+        "excluded": "disposable chromium/ profile"
+      },
+      {
+        "original_root": ".tmp/corrected-capture-qa",
+        "archive": "corrected-capture-qa.tar.gz",
+        "sha256": "bb86b71672ea67d1719504130e2bcdddf95b6405858c0034a72728ff61152ae3",
+        "bytes": 2305150,
+        "excluded": "disposable chromium/ profile"
+      }
+    ],
+    "excluded": "Disposable browser profiles/caches; application fixtures and raw observations retained."
+  },
+  "limitations": [
+    "Functional PASS rows apply only to their named observed scope and artifact, not every future input.",
+    "Unchanged earlier-revision browser evidence is reused explicitly; corrected paths were re-exercised on e0274bc.",
+    "Operator content-quality review and a second exe account are unavailable; MIS-48 remains open.",
+    "Candidate p95, full 200-percent-text-zoom/long-content accessibility, and held-out AI quality are not claimed.",
+    "No sustained-use, delayed-recall, provider availability, full provisioning/DNS RTO, or ongoing 30-day-history guarantee."
+  ]
+}
