@@ -68,6 +68,10 @@ is the product contract.
 
 ## Gates and proof
 
+- Start focused verification with `.agents/skills/scry-qa/SKILL.md`. It owns
+  isolated Worker setup, real-surface proof boundaries, and run-owned cleanup;
+  read it explicitly when the runner disables ambient skill discovery.
+
 - `bun run ci` is the fast host gate: format, workspace tests, Clippy, and
   rustdoc. `bun run ci:full` is the Dagger-backed ship-parity gate with
   containerized Postgres, the pinned Rust image, and Gitleaks.
