@@ -50,9 +50,7 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 	if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM sources WHERE archived=0").Scan(&result.Sources); err != nil {
 		return result, err
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(sc.due_at<=?),0),COALESCE(min(CASE WHEN sc.due_at>? THEN sc.due_at END),0)
-	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN schedules sc ON sc.quiz_id=q.id WHERE q.archived=0 AND src.archived=0`, now, now).
-		Scan(&result.Quizzes, &result.Due, &result.NextDueAt); err != nil {
+	if err = tx.QueryRowContext(ctx, availabilityCountsSQL, now, now).Scan(&result.Quizzes, &result.Due, &result.NextDueAt); err != nil {
 		return result, err
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(assisted),0),COALESCE(sum(EXISTS(SELECT 1 FROM corrections c WHERE c.review_id=e.id)),0)
@@ -108,6 +106,13 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"jobs", "SELECT id,source_id,source_revision,status,error,model,prompt_version,attempts,created_at,updated_at,available_at,lease_until,published,result_json FROM jobs ORDER BY created_at,id"},
 		{"job_attempts", "SELECT job_id,number,started_at,finished_at,reserved_micros,cost_micros,state,finish_code FROM job_attempts ORDER BY started_at,job_id,number"},
 		{"backups", "SELECT id,sha256,error,created_at,bytes,remote FROM backups ORDER BY created_at,id"},
+		{"foundation_requests", "SELECT * FROM foundation_requests ORDER BY job_id"},
+		{"foundation_bundles", "SELECT * FROM foundation_bundles ORDER BY id"},
+		{"foundation_units", "SELECT * FROM foundation_units ORDER BY id,version"},
+		{"foundation_materials", "SELECT * FROM foundation_materials ORDER BY id,version"},
+		{"foundation_links", "SELECT * FROM foundation_links ORDER BY material_id,material_version,unit_id,unit_version,role"},
+		{"foundation_bridges", "SELECT * FROM foundation_bridges ORDER BY id"},
+		{"foundation_interactions", "SELECT * FROM foundation_interactions ORDER BY created_at,id"},
 	} {
 		data, err := exportRows(ctx, tx, section.query)
 		if err != nil {

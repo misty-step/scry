@@ -41,6 +41,9 @@ type completion struct {
 }
 
 func (w *Worker) generate(ctx context.Context, job *store.Job) (store.GenerationResult, *int64, *generationFailure) {
+	if job.FoundationTarget != nil {
+		return w.generateFoundation(ctx, job)
+	}
 	zero := int64(0)
 	plan, err := planTask(job.SourceText, job.SourceKind)
 	if err != nil {

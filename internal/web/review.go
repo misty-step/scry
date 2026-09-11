@@ -130,6 +130,7 @@ func (s *server) reviewFailure(w http.ResponseWriter, r *http.Request, err error
 	// different occurrence after a competing tab moved the session forward.
 	if state.Current != nil && state.Current.ID == r.PostForm.Get("presentation_id") && !state.Current.Graded {
 		state.Current.Answer = answer
+		state.Current.Draft = answer
 	}
 	if state.Current == nil || state.Current.ID != r.PostForm.Get("presentation_id") {
 		op = ""

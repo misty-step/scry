@@ -1,0 +1,50 @@
+{
+  "format": "scry-mis59-foundation-acceptance-v1",
+  "issue": "MIS-59",
+  "status": "In Progress; not deployed",
+  "baseline": "edf12eaaeb4eea0deeb9cfa6be096e4e7ef19a19",
+  "scope": "Exact-version saved foundation material, warm practice, held feedback and deliberate same-target return; no planner/estimator or capability increase",
+  "initial_focused_proof": {
+    "command": "go test ./internal/store ./internal/generation ./internal/web ./internal/recovery -count=1",
+    "result": "PASS",
+    "candidate_sha256": "7997798007243f10891eb4d10e8d439fcdb77575644f510f6ccb2764ea2d2842",
+    "migration": "Populated schema1 read-only check and startup migration; old rows preserved; old binary rejects schema2; isolated compatible-v1 recovery",
+    "recovery": "Local complete schema2 backup/unused-path restore and restored service; not off-VM proof"
+  },
+  "corrections": [
+    {
+      "defect": "Warm availability starvation/reload resurrection",
+      "before": "TestFoundationWarmConsumptionDoesNotStarveQueue failed: warm A/B starved C, Due=3. TestFoundationSoleWarmConsumptionSurvivesReloadAndRestart failed: reload resurrected consumed warm quiz, Due=1.",
+      "after": "Both pass. Native exact-candidate A and B warm completion selects C with Due=1 and no preview. Sole warm completion gives Current=null, Due=0, stable next availability after reload and restart. All FSRS schedule bytes and jobs remain equal.",
+      "policy": "Existing persisted warm assisted rating-zero completion +24h, bound to exact content and current schedule version. New schedule reset/real Reveal wins; dedicated regressions pass."
+    },
+    {
+      "defect": "Historical graded target answer disclosure in bridge JSON",
+      "before": "TestOldFoundationJSONCannotExposeLaterColdTarget failed at actual GET /foundations/:id JSON with old graded target answer/explanation/variant/submitted answer present while phase=ready.",
+      "after": "Passes, including old practice answer. Exact-candidate actual JSON withholds all named fields. Every section except runtime backups and exported_at remains equal; immutable original answer remains ATP and NADPH.",
+      "boundary": "Synthetic future presentation +25h for cold-occurrence transport boundary, not elapsed-time learning evidence."
+    },
+    {
+      "defect": "Repeated help loses acknowledged latest draft",
+      "before": "TestFoundationRepeatedHelpAcknowledgesLatestDraft failed: acknowledged revised draft was lost; Current.Draft stayed first draft. Additional real HTML regression failed: earlier ungraded nadph hid revised acknowledged draft. Native empty-help action also halted validation without an HTTP request.",
+      "after": "All pass. Expected bridge revision is required; accepted requests persist revised or cleared draft; exact old retry does not revert newer draft/progress, stale new op returns409. Editable text follows latest help/submit operation, including clearing after older ungraded input. Native exact-candidate repeated/cleared drafts survive return and restart. Help alone accepts empty input; empty Check answer remains invalid."
+    }
+  ],
+  "focused_correction_command": "go test ./internal/store ./internal/web ./internal/generation ./internal/recovery -run \"Foundation|OldFoundationJSON|Review|Ungraded|Replay|Submit|Answer\" -count=1",
+  "focused_correction_result": "PASS",
+  "independent_review": {
+    "FoundationStateReview": "Read-only targeted closure accepted: warm availability fence, precedence, migration/recovery; no remaining finding",
+    "FoundationBoundaryReview": "Read-only targeted closure accepted: historical JSON answer gate and latest acknowledged draft; no remaining finding"
+  },
+  "private_receipts": "~/.local/share/scry/ops/releases/<source-bound-release>/supplemental/prior/",
+  "release_gate": "Pending committed exact-binary gate; post-gate receipt will name compiled source separately from evidence-only HEAD",
+  "limitations": [
+    "All current fixtures synthetic/local; zero paid calls",
+    "Actual selected-provider quality, spend and latency UNVERIFIED",
+    "Actual private ingress and physical-phone path UNVERIFIED for MIS-59",
+    "Operator material usefulness UNVERIFIED",
+    "Fresh off-VM pre-release backup and protected activation NOT RUN",
+    "No elapsed-time retention or sustained-learning claim"
+  ],
+  "schema_risk": "Additive schema2 startup migration; candidate check accepts complete known1/2 without migration; schema1 binary cannot roll back schema2; preserve backup/check/fail-closed activation guards."
+}

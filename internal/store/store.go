@@ -123,8 +123,17 @@ func (s *Store) initialize(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, schemaV1); err != nil {
 			return fmt.Errorf("migration 1: %w", err)
 		}
-	} else if version != SchemaVersion || app != ApplicationID {
+		version, app = 1, ApplicationID
+	} else if (version != 1 && version != SchemaVersion) || app != ApplicationID {
 		return fmt.Errorf("%w: incompatible database application/schema (%d/%d), require %d/%d", ErrInvalid, app, version, ApplicationID, SchemaVersion)
+	}
+	if err = CheckSchema(ctx, tx, version); err != nil {
+		return err
+	}
+	if version == 1 {
+		if _, err = tx.ExecContext(ctx, schemaV2); err != nil {
+			return fmt.Errorf("migration 2: %w", err)
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err

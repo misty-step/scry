@@ -74,6 +74,34 @@ executable and `/readyz`. Startup/rollback failure is not success. The previous
 binary is restored only if it independently accepts the current schema. Never
 restore an old database over acknowledged live writes as a release rollback.
 
+### Schema 2 foundation release boundary
+
+The MIS-59 candidate reads known complete schemas 1 and 2. Candidate
+`check --db PATH` is a read-only migratability preflight: it validates the full
+schema, integrity, and foreign keys, without creating a file, claiming jobs, or
+upgrading v1. Startup `store.Open` atomically adds the schema-2 foundation tables
+before traffic/claims. No historical v1 rows, snapshots, schedules, corrections,
+operation receipts, or accounting are rewritten.
+
+Keep the existing activation guard: old-binary check and verified remote
+pre-release backup, then candidate read-only check, then switch/start. Do not
+bypass it to migrate. After schema 2 commits, a schema-1 binary is deliberately
+incompatible; the failure trap must not restart it against the upgraded DB.
+There is no down-migration. A rollback is either a reviewed schema-2-compatible
+binary or an explicitly authorized snapshot-recovery operation into an UNUSED
+path with the snapshot's compatible binary. Preserve the upgraded database and
+post-snapshot writes; quantify and obtain acknowledgment of any loss before
+switching a restored instance into service. Never overwrite the live DB or allow
+two writers.
+
+For a rehearsal, preserve a populated v1 snapshot and its exact compatible
+binary, run candidate `check` and verify the v1 schema/data remain unchanged,
+start the candidate on an isolated copy, compare every historical export section,
+and verify the old binary now refuses schema 2. Separately restore the preserved
+snapshot into another unused path with its compatible binary and exercise its
+service. This proves a recovery path, not production activation or fresh off-VM
+backup.
+
 `--allow-local-backup` exists only for explicitly synthetic rehearsals. It is
 not a production bypass. Initial installation with no database has nothing to
 back up; existing SQLite sidecars without the main database fail closed.
@@ -125,6 +153,28 @@ labeled as model knowledge. Structural/provenance checks are not independent
 fact-checking. Rejected candidates and incomplete coverage remain visible as
 partial/failure, not invented completion. The private acceptance receipt
 records representative live generation; it is not a longitudinal efficacy claim.
+
+Too advanced foundation requests share the existing serial worker and spending
+authority. Reuse is exact source revision plus quiz ID/version; saved material
+does not become a scheduled quiz. Inspect `/foundations` for saved progress,
+instruction, safe URL-only references, ordered diagrams and warm practice.
+Producer/prompt attribution is retained; nothing is fetched from reference URLs.
+Known-cost failed foundation work can retry within the SAME job's three attempts.
+Expired/unknown foundation outcomes and restored jobs stay paused; prior
+reservations remain accounted. There is no automated provider reconciliation or
+UI action to discard an unknown charge. Keep ordinary review available, inspect
+the provider outcome, and obtain separate operator authority before any manual
+reconciliation. Source/quiz revision changes or archive prevent stale publication.
+
+Warm target completion consumes practice availability for 24 hours from its
+persisted rating-zero assisted completion, only while content and schedule
+versions still match. This is not an FSRS change. Library shows availability
+separately from scheduled due; queue counts and next availability use that same
+fence across restarts. A deliberate reset or newer real review supersedes it.
+Repeated help saves the latest acknowledged draft using the observed bridge
+revision; stale new requests reload rather than overwriting saved progress.
+Old bridge JSON withholds historical answer-bearing fields during a later cold
+occurrence until exposure is acknowledged; immutable past records remain intact.
 
 ## Recovery policy and observation
 
@@ -181,6 +231,15 @@ archive checksum, schema, and integrity, publishes without replacing an existing
 path, and pauses all nonterminal jobs. It does not start a service or replay
 uncertain paid work. Compare recovered export/acknowledged history, inspect
 those jobs, and reconcile only after checking provider outcomes.
+
+Schema-2 exports/backups include foundation request-to-target bindings, bundle
+and material/unit versions, coverage roles/provenance, bridge revision/progress,
+saved target drafts, and immutable read/practice/return observations. Compare
+these sections along with ALL pre-existing history and spend, not just quiz
+counts. The archive contains the whole SQLite state; no remote reference content
+or external diagram assets exist. A schema-2 candidate may restore a schema-1
+archive into an unused path and migrate it before publication; use the retained
+schema-1 binary instead when rehearsing recovery to the pre-upgrade state.
 
 Activate separately when ready. Synthetic rehearsals without remote backup
 capability may explicitly use `--allow-local-backup`; real recovery must restore

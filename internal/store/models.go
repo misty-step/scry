@@ -11,7 +11,7 @@ var (
 )
 
 const (
-	SchemaVersion       = 1
+	SchemaVersion       = 2
 	ApplicationID       = 0x53435259 // SCRY
 	MaxSourceBytes      = 32 * 1024
 	MaxGeneratedQuizzes = 60
@@ -31,6 +31,7 @@ type Quiz struct {
 	Version     int      `json:"version"`
 	Archived    bool     `json:"archived"`
 	DueAt       int64    `json:"due_at"`
+	AvailableAt int64    `json:"available_at"`
 }
 
 type Source struct {
@@ -46,17 +47,19 @@ type Source struct {
 }
 
 type Presentation struct {
-	ID         string `json:"id"`
-	Quiz       Quiz   `json:"quiz"`
-	Answer     string `json:"answer"`
-	Outcome    string `json:"outcome"`
-	Assisted   bool   `json:"assisted"`
-	Graded     bool   `json:"graded"`
-	Disputed   bool   `json:"disputed"`
-	Rating     int    `json:"rating"`
-	DueAt      int64  `json:"due_at"`
-	ReviewedAt int64  `json:"reviewed_at"`
-	ReviewID   string `json:"review_id"`
+	ID             string `json:"id"`
+	Quiz           Quiz   `json:"quiz"`
+	Answer         string `json:"answer"`
+	Draft          string `json:"draft,omitempty"`
+	BridgeRevision int    `json:"bridge_revision"`
+	Outcome        string `json:"outcome"`
+	Assisted       bool   `json:"assisted"`
+	Graded         bool   `json:"graded"`
+	Disputed       bool   `json:"disputed"`
+	Rating         int    `json:"rating"`
+	DueAt          int64  `json:"due_at"`
+	ReviewedAt     int64  `json:"reviewed_at"`
+	ReviewID       string `json:"review_id"`
 }
 
 type ReviewState struct {
@@ -82,22 +85,24 @@ type ReviewEvent struct {
 }
 
 type Job struct {
-	ID             string `json:"id"`
-	SourceID       string `json:"source_id"`
-	Status         string `json:"status"`
-	Error          string `json:"error"`
-	Model          string `json:"model"`
-	LeaseToken     string `json:"-"`
-	SourceText     string `json:"source_text"`
-	SourceKind     string `json:"source_kind"`
-	SourceRevision int    `json:"source_revision"`
-	Attempts       int    `json:"attempts"`
-	CreatedAt      int64  `json:"created_at"`
-	UpdatedAt      int64  `json:"updated_at"`
-	CostMicros     int64  `json:"cost_micros"`
-	ReservedMicros int64  `json:"reserved_micros"`
-	Published      int    `json:"published"`
-	CostUnknown    bool   `json:"cost_unknown"`
+	ID               string `json:"id"`
+	SourceID         string `json:"source_id"`
+	Status           string `json:"status"`
+	Error            string `json:"error"`
+	Model            string `json:"model"`
+	LeaseToken       string `json:"-"`
+	SourceText       string `json:"source_text"`
+	SourceKind       string `json:"source_kind"`
+	SourceRevision   int    `json:"source_revision"`
+	Attempts         int    `json:"attempts"`
+	CreatedAt        int64  `json:"created_at"`
+	UpdatedAt        int64  `json:"updated_at"`
+	CostMicros       int64  `json:"cost_micros"`
+	ReservedMicros   int64  `json:"reserved_micros"`
+	Published        int    `json:"published"`
+	CostUnknown      bool   `json:"cost_unknown"`
+	Foundation       bool   `json:"foundation"`
+	FoundationTarget *Quiz  `json:"-"`
 }
 
 type GeneratedQuiz struct {
@@ -112,11 +117,12 @@ type GeneratedQuiz struct {
 }
 
 type GenerationResult struct {
-	Quizzes       []GeneratedQuiz `json:"quizzes"`
-	Partial       bool            `json:"partial"`
-	Note          string          `json:"note"`
-	Model         string          `json:"model"`
-	PromptVersion string          `json:"prompt_version"`
+	Quizzes       []GeneratedQuiz    `json:"quizzes"`
+	Partial       bool               `json:"partial"`
+	Note          string             `json:"note"`
+	Model         string             `json:"model"`
+	PromptVersion string             `json:"prompt_version"`
+	Foundation    *FoundationContent `json:"foundation,omitempty"`
 }
 
 type BackupRecord struct {

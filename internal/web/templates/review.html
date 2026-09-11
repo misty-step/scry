@@ -3,6 +3,11 @@
 {{$root := .}}{{$p := .Review.Current}}
 <section class="review-stage" data-presentation="{{$p.ID}}" data-graded="{{$p.Graded}}">
   <div class="review-context"><span>{{kind $p.Quiz.Kind}}</span><span>{{.Review.Due}} due</span></div>
+  <form action="/review/foundation" method="post" novalidate hx-post="/review/foundation" hx-include="#recall-answer">
+    {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
+    <input type="hidden" name="bridge_revision" value="{{$p.BridgeRevision}}">
+    <button type="submit" class="quiet" data-pending="Saving your foundation request…">Too advanced</button>
+  </form>
   <h1 class="question" {{if not $p.Graded}}tabindex="-1" data-focus{{end}}>{{$p.Quiz.Prompt}}</h1>
   {{if $p.Graded}}
     <div class="feedback {{if eq $p.Outcome "correct"}}feedback-correct{{else}}feedback-retry{{end}}" role="status" aria-live="polite">
@@ -18,7 +23,7 @@
         </form>
         <a href="/reviews/{{$p.ReviewID}}/dispute">Flag a problem</a>
       </div>
-      <p class="small muted">This result stays until you choose Next. This attempt scheduled a review for <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>; later edits, resets, or archiving can change future review.</p>
+      {{if eq $p.Rating 0}}<p class="small muted">Warm practice after instruction. No FSRS schedule changed. This question becomes available for practice again 24 hours after this attempt, unless a newer review or schedule reset replaces that schedule version. This result stays until you choose Next.</p>{{else}}<p class="small muted">This result stays until you choose Next. This attempt scheduled a review for <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>; later edits, resets, or archiving can change future review.</p>{{end}}
       {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
     </div>
     <details class="inspection">
@@ -37,7 +42,7 @@
         </div></fieldset>
       {{else}}
         <label class="field-caption" for="recall-answer">Your answer</label>
-        <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Answer}}</textarea>
+        <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Draft}}</textarea>
         <p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you answer.</p>
         <button type="submit" class="primary" data-pending="Saving your answer…">Check answer</button>
       {{end}}
@@ -64,9 +69,11 @@
 </template>{{end}}
 {{else}}
 <section class="empty-stage">
-  {{if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>No active questions.</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Saved material may still need generation. Archived questions do not appear in review. <a href="/library">Inspect your material and generation status.</a></p>
-  {{else}}<h1 class="question" tabindex="-1" data-focus>Nothing due right now.</h1><p>Your available questions are scheduled for later. There is no need to turn a quiet queue into extra work.</p>{{if .Review.NextDueAt}}<p>Next due <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions"><a class="button primary" href="/add">Add something new</a><a href="/library">Browse your material</a></div>{{end}}
+  {{if gt .Review.Due 0}}<h1 class="question" tabindex="-1" data-focus>Questions are available.</h1><p>Choose Check again to open your next question.</p>
+  {{else if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>No active questions.</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Saved material may still need generation. Archived questions do not appear in review. <a href="/library">Inspect your material and generation status.</a></p>
+  {{else}}<h1 class="question" tabindex="-1" data-focus>Nothing available right now.</h1><p>Your saved questions become available later. There is no need to turn a quiet queue into extra work.</p>{{if .Review.NextDueAt}}<p>Next available <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions"><a class="button primary" href="/add">Add something new</a><a href="/library">Browse your material</a></div>{{end}}
   <a class="quiet-link" href="/">Check again</a>
 </section>
+<a href="/foundations">Saved foundations</a>
 {{end}}
 {{end}}

@@ -192,6 +192,9 @@ func (w *Worker) process(ctx context.Context, job *store.Job) error {
 			if job.Attempts == 2 && strings.HasPrefix(job.Error, repairMarker) {
 				version += "-repair1"
 			}
+			if job.FoundationTarget != nil {
+				version = foundationPromptVersion
+			}
 			failure.message += " Requested model: " + w.cfg.Model + "; prompt: " + version + "."
 		}
 		err = w.store.FailJob(settleCtx, job.ID, job.LeaseToken, failure.message, failure.retry, cost)
