@@ -1,7 +1,8 @@
 {
   "format": "scry-mis59-foundation-acceptance-v1",
   "issue": "MIS-59",
-  "status": "In Progress; not deployed",
+  "status": "In Progress; protected deployment passed; authenticated private/provider and human acceptance remain unverified",
+  "protected_rollout_receipt": "foundation-rollout-20260911.json",
   "baseline": "edf12eaaeb4eea0deeb9cfa6be096e4e7ef19a19",
   "scope": "Exact-version saved foundation material, warm practice, held feedback and deliberate same-target return; no planner/estimator or capability increase",
   "initial_focused_proof": {
@@ -51,11 +52,11 @@
     "evidence_only_commit": "This record is added after the compiled-source commit; it does not relabel the binary."
   },
   "limitations": [
-    "All current fixtures synthetic/local; zero paid calls",
-    "Actual selected-provider quality, spend and latency UNVERIFIED",
-    "Actual private ingress and physical-phone path UNVERIFIED for MIS-59",
+    "Initial and exact-foundation smoke below used synthetic/local fixtures; zero paid calls",
+    "Actual selected-provider quality, spend, latency and reuse UNVERIFIED: existing private login/VM-token authority unavailable",
+    "Anonymous/forged private denial observed; authenticated changed-route and physical-phone path UNVERIFIED",
     "Operator material usefulness UNVERIFIED",
-    "Fresh off-VM pre-release backup and protected activation NOT RUN",
+    "Fresh off-VM/readback backup, protected schema2 activation and isolated data/process restore PASS in the separate rollout receipt; new foundation records remain unexercised",
     "No elapsed-time retention or sustained-learning claim"
   ],
   "schema_risk": "Additive schema2 startup migration; candidate check accepts complete known1/2 without migration; schema1 binary cannot roll back schema2; preserve backup/check/fail-closed activation guards.",
