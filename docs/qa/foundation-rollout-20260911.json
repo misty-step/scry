@@ -1,0 +1,311 @@
+{
+  "format": "scry-mis59-protected-rollout-v1",
+  "date": "2026-09-11",
+  "issue": "MIS-59",
+  "status": "In Progress: deployed; authenticated private/provider and human acceptance blocked/unverified",
+  "release": "mis59-4e13cafef7c3",
+  "compiled_source_revision": "4e13cafef7c3e7eac1c6f6fbd1fa8e5bfbc087df",
+  "binary_sha256": "79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08",
+  "source_inventory_sha256": "d4264288ef0b6d85272ae5a1ae84f52c835dc7e3f31b0e7ed560ea0da6e40fdd",
+  "prior_evidence_revision": "e3c80fbceb7d71ae46bd6a7e04b82d05970c99f1",
+  "publication": "Evidence-only commit; no source rebuild or substitute artifact. Required normal pre-push and hosted gates recorded in PR163 and MIS-59 scratchpad after publication.",
+  "production": {
+    "origin": "https://scry.study",
+    "host": "scry-app.exe.xyz",
+    "prior_release": "mis48-e0274bc916de",
+    "schema_before": 1,
+    "schema_after": 2,
+    "install": "Frozen source.tar.gz deploy scripts + exact retained scry; install --release mis59-4e13cafef7c3 --binary ./scry; no --env",
+    "activate": "activate --release mis59-4e13cafef7c3; no --allow-local-backup",
+    "guard_result": "PASS: serialized drain/stop, previous schema check, previous-binary --require-remote backup and matching GET, candidate read-only check, atomic release switch, start and executable/readiness verification",
+    "process": {
+      "pid": 3049,
+      "user": "scry",
+      "group": "scry",
+      "active": true,
+      "enabled": true,
+      "executable": "/opt/scry/releases/mis59-4e13cafef7c3/scry",
+      "listener": "127.0.0.1:8080",
+      "readyz": "ready"
+    },
+    "unchanged_preexisting_sections": {
+      "algorithm": true,
+      "corrections": true,
+      "format": true,
+      "format_version": true,
+      "job_attempts": true,
+      "jobs": true,
+      "operations": true,
+      "presentations": true,
+      "quiz_versions": true,
+      "quizzes": true,
+      "review_events": true,
+      "review_session": true,
+      "schedules": true,
+      "source_revisions": true,
+      "sources": true
+    },
+    "before_counts": {
+      "backups": 16,
+      "corrections": 0,
+      "job_attempts": 15,
+      "jobs": 13,
+      "operations": 18,
+      "presentations": 5,
+      "quiz_versions": 29,
+      "quizzes": 29,
+      "review_events": 5,
+      "review_session": 1,
+      "schedules": 29,
+      "source_revisions": 13,
+      "sources": 13
+    },
+    "backup_counts": {
+      "before": 16,
+      "after_activation": 18,
+      "after_explicit_fresh": 19
+    },
+    "schema2_foundation_section_counts": {
+      "foundation_bridges": 0,
+      "foundation_bundles": 0,
+      "foundation_interactions": 0,
+      "foundation_links": 0,
+      "foundation_materials": 0,
+      "foundation_requests": 0,
+      "foundation_units": 0
+    },
+    "rollback": "Not invoked; schema1 cannot accept upgraded live DB. Never restored or overwrote production paths."
+  },
+  "backups": {
+    "pre_release": {
+      "id": "scry-20260911T055440.852964949Z-63132ba995157e7ee5ff1b17bdd03102",
+      "sha256": "a5d5a83bc8421af5913c666e30448c8fc59e66e9986b490a9cc1318038477057",
+      "bytes": 243300,
+      "created_at": 1789106080852,
+      "remote": true,
+      "error": ""
+    },
+    "fresh_schema2": {
+      "id": "scry-20260911T055713.794902757Z-bfbe3a6c3bf31f4299efdb86244cb0cc",
+      "sha256": "9d057372818f59ec83f866c5caddbf632b3c8ee4e57a370b14b8313d57aaef08",
+      "bytes": 321124,
+      "created_at": 1789106233794,
+      "remote": true,
+      "error": ""
+    },
+    "independent_retrieval": {
+      "authority": "Existing separately retained append/read gateway capability, not copied from VM",
+      "origin": "Dedicated scry-go-backups Worker / scry-go-recovery R2 only",
+      "http_status": 200,
+      "schema1_archive_sha256": "a5d5a83bc8421af5913c666e30448c8fc59e66e9986b490a9cc1318038477057",
+      "schema2_archive_sha256": "9d057372818f59ec83f866c5caddbf632b3c8ee4e57a370b14b8313d57aaef08",
+      "schema2_database_sha256": "18af10192061304e2483a69f188934232f9174acce2989845df1033eb7291e94",
+      "manifest_binary_sha256": "79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08"
+    },
+    "receipt_boundary": "Snapshot export has 18 backups; subsequent live export has 19 because the completed snapshot receipt is written after its snapshot. All other acknowledged export sections equal."
+  },
+  "private_access": {
+    "result": "Anonymous/forged denial PASS; authenticated changed surface UNVERIFIED",
+    "http_checks": [
+      {
+        "origin": "https://scry.study",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://scry.study",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": true,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://scry.study",
+        "method": "POST",
+        "path": "/review/foundation",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://www.scry.study",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://www.scry.study",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": true,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://www.scry.study",
+        "method": "POST",
+        "path": "/review/foundation",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://scry-app.exe.xyz",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://scry-app.exe.xyz",
+        "method": "GET",
+        "path": "/foundations",
+        "forged_identity": true,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      },
+      {
+        "origin": "https://scry-app.exe.xyz",
+        "method": "POST",
+        "path": "/review/foundation",
+        "forged_identity": false,
+        "status": 307,
+        "private_content": false,
+        "location_kind": "exe-auth"
+      }
+    ],
+    "browser": "Actual canonical /foundations reached exe.dev Access required; screenshot showed Sign in to continue, no app content. Relay request returned a headless blank tab, reported as tool inconsistency; desktop windows list empty. No existing authenticated browser authority was available.",
+    "existing_token": "Prior retained temporary Scry VM token was explicitly revoked; no active retained token found in scoped workstation authority locations. No token minted or login initiated.",
+    "not_proven": [
+      "Owner GET/POST new routes",
+      "Authenticated CSRF rejection",
+      "Authenticated alias mutation rejection",
+      "Safe rendering of live foundation model/source material",
+      "Actual restored private UI",
+      "Different exe account/access-loss boundary"
+    ],
+    "denial_limit": "Observed 307 is upstream access gating, not evidence of app CSRF or alias-write rejection."
+  },
+  "generation": {
+    "result": "NOT RUN: existing authenticated private owner/VM-token authority unavailable",
+    "calls": 0,
+    "incremental_spend_micros": 0,
+    "latency_ms": null,
+    "material_id": null,
+    "reuse": "UNVERIFIED; no foundation bundle generated",
+    "current_target": "Retained original Calvin-cycle question about two high-energy molecules from light-dependent reactions",
+    "target_state": "Current presentation already graded and assisted; preserved without advancing learner state, fabricating answers/grades, or resetting history",
+    "preservation": "Jobs, attempts, operations, current presentation, complete history and schedules unchanged; no new reservations or unknown outcomes. Existing accounting preserved.",
+    "coverage_provenance": "No new live records to inspect. Exact local authored-fixture proof remains separate, not live selected-provider or usefulness proof."
+  },
+  "restore": {
+    "result": "PASS independent schema2 data restore and actual isolated loopback service; private owner UI UNVERIFIED",
+    "host": "scry-dev.exe.xyz",
+    "destination": "/var/lib/scry/mis59-rehearsal-20260911.sqlite",
+    "compatible_binary_sha256": "79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08",
+    "all_snapshot_export_sections_equal": {
+      "algorithm": true,
+      "backups": true,
+      "corrections": true,
+      "format": true,
+      "format_version": true,
+      "foundation_bridges": true,
+      "foundation_bundles": true,
+      "foundation_interactions": true,
+      "foundation_links": true,
+      "foundation_materials": true,
+      "foundation_requests": true,
+      "foundation_units": true,
+      "job_attempts": true,
+      "jobs": true,
+      "operations": true,
+      "presentations": true,
+      "quiz_versions": true,
+      "quizzes": true,
+      "review_events": true,
+      "review_session": true,
+      "schedules": true,
+      "schema_version": true,
+      "source_revisions": true,
+      "sources": true
+    },
+    "uncertain_jobs": "Restore pause guard executed; no nonterminal jobs required changes, so full jobs/attempt equality held. No job retries.",
+    "service": "Bounded transient scry-mis59-rehearsal.service: actual scry:scry PID1891, exact retained executable/hash, loopback ready; canonical scry.service stayed inactive/disabled.",
+    "environment": {
+      "production_mode": true,
+      "owner_present": true,
+      "secret_present": true,
+      "canonical_is_dev": true,
+      "model_endpoint_present": false,
+      "model_key_present": false,
+      "backup_remote_present": false,
+      "backup_token_present": false
+    },
+    "scheduler": "No production integrations or scheduler ownership attached; transient app produced one isolated local-only startup backup, then was stopped before any scheduled interval. No additional permanent timer/service enabled.",
+    "service_state_equal_except_new_local_backup": {
+      "algorithm": true,
+      "corrections": true,
+      "format": true,
+      "format_version": true,
+      "foundation_bridges": true,
+      "foundation_bundles": true,
+      "foundation_interactions": true,
+      "foundation_links": true,
+      "foundation_materials": true,
+      "foundation_requests": true,
+      "foundation_units": true,
+      "job_attempts": true,
+      "jobs": true,
+      "operations": true,
+      "presentations": true,
+      "quiz_versions": true,
+      "quizzes": true,
+      "review_events": true,
+      "review_session": true,
+      "schedules": true,
+      "schema_version": true,
+      "source_revisions": true,
+      "sources": true
+    },
+    "elapsed_restore_through_service_verification_seconds": 71.13,
+    "rto_exclusions": [
+      "VM provisioning",
+      "DNS/ingress restoration",
+      "Independently retained private login recovery",
+      "Authenticated HTTPS/UI activation"
+    ],
+    "final_state": "Transient service stopped/collected, MainPID0; scry.service stopped/disabled, MainPID0; no listener on :8080. Existing dev live DB/release link untouched.",
+    "limitations": "All schema2 foundation sections empty because live generation was inaccessible. This does NOT prove off-VM recovery of newly generated foundation material; local exact-binary synthetic nonempty recovery remains separate."
+  },
+  "cleanup": {
+    "production_running": true,
+    "rehearsal_stopped": true,
+    "managed_browser_released": true,
+    "original_dirty_checkout_and_index": "Untouched",
+    "production_capabilities": "No copied/created credentials, grants, model/recovery integrations, paid previews or budget changes",
+    "retained_private_evidence": "~/.local/share/scry/ops/releases/mis59-4e13cafef7c3/supplemental/rollout-20260911/",
+    "scope": "No source edits, merge, successor work, MIS-48/MIS-42 closure, old recovery-store operation, or live overwrite"
+  },
+  "unverified": [
+    "Authenticated canonical owner foundation walkthrough and CSRF/alias boundary",
+    "ONE real selected-provider foundation generation, actual consumption/provenance/coverage, latency/cost and revisit/reuse",
+    "Off-VM snapshot/isolated restore containing newly generated foundation records",
+    "Operator usefulness and physical phone foundation path",
+    "Delayed retention, sustained learning, availability SLA or full end-to-end RTO"
+  ]
+}
