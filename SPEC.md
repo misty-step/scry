@@ -470,10 +470,10 @@ provenance claims. Initial grading stays deterministic for supported formats;
 semantic model grading is a distinct, slower product decision, not a hidden
 network call in the fast review path.
 
-Start with reusable explanations and an optional simpler question after a miss
-only when genuinely helpful. A universal prerequisite graph, recursive tutor,
-fixed activity ladder, automatic curriculum, and personalization optimizer do
-not follow from needing spaced review.
+Too advanced can request reusable foundation instruction and warm practice
+without first recording a miss. The bounded MIS-59 detour below does not imply
+a universal prerequisite graph, recursive tutor, automatic curriculum,
+cross-item estimator, or personalization optimizer.
 
 Use durable job status with bounded HTMX polling. SSE is optional only after
 proving useful incremental delivery through exe's actual proxy; streaming and
@@ -513,6 +513,86 @@ external effects. VM persistence, VM copying, R2 availability and a recent
 backup timestamp each fall short of a tested restore. Backup failures should
 be visible without disabling ordinary review. D5 owns data-loss tolerance,
 retention and recovery time; no provider SLA is asserted here.
+
+## Foundation detour: MIS-59
+
+This bounded implementation follows accepted knowledge-centered direction:
+durable instructional/reference material, exact material/unit coverage, and a
+retained target with a useful bridge back. It is not the remaining knowledge
+engine. MIS-60–63 (capture-time preparation, cross-item evidence, estimates, and
+broader planning) remain separate unimplemented work. The original S01–S10
+criteria and historical observations are unchanged. Local implementation is not
+a claim of shipped capability, usefulness, private-ingress acceptance, or learning
+gain.
+
+### Durable contract
+
+- **KC03/KC04, scoped:** immutable foundation bundles bind an exact source ID and
+  revision plus quiz ID/version. Materials and independently meaningful units
+  have immutable version identities; many-to-many coverage records distinguish
+  teaches, directly-assesses, assumes, and mentions with provenance. New units
+  start at version 1; this slice does not expose a knowledge editor. Historical
+  quiz coverage remains unmapped rather than invented.
+- Instruction, reference text, an ordered plain-text process diagram when
+  appropriate, and warm practice are saved separately from quiz feedback.
+  Inspect producer/prompt/source lineage and exact coverage in Saved foundations.
+  HTTPS references are unfetched pointers: no verified citation, retrieved body,
+  quotation, transcript, generated video, or external asset is implied.
+- **KC11, scoped:** Too advanced saves a request without grading, assistance,
+  Again, or schedule change. The exact current presentation remains the target;
+  a typed in-page target draft is included by the enhanced browser and retained
+  separately from submitted answers. A repeated request saves the latest
+  acknowledged draft (including clearing it), guarded by the observed bridge
+  revision. Exact old operation retries cannot revert newer drafts or progress;
+  stale new requests must reload before changing either. An empty draft never
+  prevents asking for help. Opening instruction explicitly acknowledges
+  exposure. A finite bridge has 1–6 units, 2–12 materials, instruction before
+  1–4 warm practice questions, held feedback, and deliberate Next/return.
+- Reading and bridge practice append observations, never FSRS reviews. An
+  original-target response after instruction is marked warm and held without
+  changing its schedule. The explicit conservative warmth policy is 24 hours
+  across new occurrences of the same quiz version; an already-exposed retained
+  occurrence stays warm. This is an assistance fence, not an efficacy estimate.
+  Explicit Reveal keeps its existing durable assisted/Again behavior.
+- A completed warm target is unavailable for practice until 24 hours after its
+  persisted completion time. This derives from existing warm, assisted,
+  rating-zero history for the exact content and schedule version; it never
+  changes FSRS or asserts mastery. Selection, preview, counts, empty state,
+  next availability and Library share this fence. A newer real review or
+  deliberate schedule reset supersedes an old version's warm consumption.
+- Returning never changes the global current occurrence. If another tab already
+  advanced review, the bridge says Return to current review; it cannot replace
+  the newer target. Opening an old material URL during a later cold occurrence
+  requires a fresh exposure acknowledgment. That transport gate also withholds
+  historical graded target answers, explanations, variants and submitted answers,
+  plus old warm feedback; it does not rewrite immutable history or explicit past
+  records. Compatible bundles are reused without new paid jobs.
+
+### Jobs, recovery, and remaining proof
+
+- **KC13/KC14, scoped:** foundation work uses the existing serial job queue,
+  lease, provider boundary, token/request limits, conservative reservation,
+  rolling daily allowance and settlement records. No model call occurs while
+  grading or holding a write transaction. A target revision/archive fence runs
+  before claims and publication. Exact publication and operation retries cannot
+  duplicate content or observations.
+- Pending/failed work leaves ordinary review and saved drafts available. A
+  known-cost failed foundation job can be deliberately retried within its
+  existing three-attempt maximum. Unknown/expired foundation outcomes and restored
+  work stay paused with allowance retained; this slice has no automatic
+  reconciliation or authority to discard uncertain cost. Inspect provider
+  outcomes before any separately authorized operator intervention.
+- **KC15/KC16, scoped:** schema 2 adds foundation records atomically without
+  rewriting v1 history, content versions, FSRS, corrections, receipts, or spend.
+  Read-only `check` validates the complete known v1/v2 schema; startup alone
+  migrates v1. Export and SQLite archives include all new records. Restore only
+  into an unused path, pause nonterminal work, and verify restored service use.
+  See the runbook for the irreversible schema boundary and guarded rollback.
+- **KC17/KC18, scoped:** local authored/provider-boundary fixtures and local
+  browser tests are not actual private-ingress, real selected-provider quality,
+  operator usefulness, independent review, exact-binary release-gate, or protected
+  activation proof. Those remain UNVERIFIED until separately exercised. There is
+  no authorization here to start successors, increase spending, or deploy.
 
 ## Delivery slices and Linear mapping
 

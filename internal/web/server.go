@@ -72,6 +72,8 @@ type page struct {
 	PollRemaining  int
 	RecordedModels []string
 	Status         int
+	Bridge         store.FoundationBridge
+	Bridges        []store.FoundationBridge
 }
 
 // New validates the private boundary before exposing any application route.
@@ -165,6 +167,10 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("POST /reviews/{id}/dispute", app.dispute)
 	mux.HandleFunc("GET /settings", app.settings)
 	mux.HandleFunc("GET /export", app.export)
+	mux.HandleFunc("POST /review/foundation", app.requestFoundation)
+	mux.HandleFunc("GET /foundations", app.foundations)
+	mux.HandleFunc("GET /foundations/{id}", app.foundation)
+	mux.HandleFunc("POST /foundations/{id}", app.advanceFoundation)
 	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]bool{"authenticated": true})
 	})
@@ -380,6 +386,10 @@ func kindText(kind string) string {
 
 func outcomeText(p string) string {
 	switch p {
+	case "warm_correct":
+		return "Correct with foundations"
+	case "warm_wrong", "warm_close", "warm_ungraded":
+		return "Keep practicing with foundations"
 	case "correct":
 		return "Correct"
 	case "close":

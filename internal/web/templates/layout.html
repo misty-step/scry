@@ -46,6 +46,8 @@
     {{if eq .View "review"}}{{template "review" .}}
     {{else if eq .View "add"}}{{template "add" .}}
     {{else if eq .View "library"}}{{template "library" .}}
+    {{else if eq .View "foundation"}}{{template "foundation" .}}
+    {{else if eq .View "foundations"}}{{template "foundations" .}}
     {{else if eq .View "source"}}{{template "source" .}}
     {{else if eq .View "edit"}}{{template "edit" .}}
     {{else if eq .View "history"}}{{template "history" .}}

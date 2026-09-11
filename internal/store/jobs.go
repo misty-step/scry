@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,6 +28,20 @@ func job(ctx context.Context, tx *sql.Tx, id string) (Job, error) {
 	 FROM jobs j JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision WHERE j.id=?`, id).
 		Scan(&j.ID, &j.SourceID, &j.Status, &j.Error, &j.Model, &j.LeaseToken, &j.SourceText, &j.SourceKind, &j.SourceRevision,
 			&j.Attempts, &j.CreatedAt, &j.UpdatedAt, &j.Published, &j.CostMicros, &j.ReservedMicros, &j.CostUnknown)
+	if err == nil {
+		var encoded string
+		target := Quiz{SourceID: j.SourceID}
+		targetErr := tx.QueryRowContext(ctx, `SELECT f.quiz_id,f.quiz_version,v.content FROM foundation_requests f JOIN quiz_versions v ON v.quiz_id=f.quiz_id AND v.version=f.quiz_version WHERE f.job_id=?`, id).Scan(&target.ID, &target.Version, &encoded)
+		if targetErr == nil {
+			if targetErr = json.Unmarshal([]byte(encoded), &target); targetErr != nil {
+				return j, targetErr
+			}
+			j.FoundationTarget = &target
+			j.Foundation = true
+		} else if !errors.Is(targetErr, sql.ErrNoRows) {
+			return j, targetErr
+		}
+	}
 	return j, notFound(err, "generation job")
 }
 
@@ -56,6 +71,7 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	var id string
 	err = tx.QueryRowContext(ctx, `SELECT j.id FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status IN ('queued','retry')
 	 AND j.available_at<=? AND j.attempts<3 AND src.archived=0 AND src.revision=j.source_revision
+	 AND NOT EXISTS(SELECT 1 FROM foundation_requests f JOIN quizzes q ON q.id=f.quiz_id WHERE f.job_id=j.id AND (q.archived=1 OR q.version<>f.quiz_version))
 	 ORDER BY j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
@@ -99,7 +115,19 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	return &j, nil
 }
 
+func cancelSupersededFoundations(ctx context.Context, tx *sql.Tx, now int64) error {
+	const stale = `SELECT f.job_id FROM foundation_requests f JOIN quizzes q ON q.id=f.quiz_id WHERE q.archived=1 OR q.version<>f.quiz_version`
+	if _, err := tx.ExecContext(ctx, "UPDATE job_attempts SET state='unknown',finished_at=? WHERE state='active' AND job_id IN ("+stale+")", now); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "UPDATE jobs SET status='canceled',error='Foundation target changed; prior usage retained',lease_token='',lease_until=0,updated_at=? WHERE status IN ('queued','running','retry','paused') AND id IN ("+stale+")", now)
+	return err
+}
+
 func expireJobs(ctx context.Context, tx *sql.Tx, now int64) error {
+	if err := cancelSupersededFoundations(ctx, tx, now); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, `UPDATE job_attempts SET state='unknown',finished_at=? WHERE state='active' AND job_id IN
 	 (SELECT j.id FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status='running'
 	 AND (j.lease_until<=? OR src.archived=1 OR src.revision<>j.source_revision))`, now, now)
@@ -111,7 +139,7 @@ func expireJobs(ctx context.Context, tx *sql.Tx, now int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN attempts>=3 THEN 'failed' ELSE 'retry' END,
+	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN id IN (SELECT job_id FROM foundation_requests) THEN 'paused' WHEN attempts>=3 THEN 'failed' ELSE 'retry' END,
 	 error='Previous attempt expired; usage unknown and reserved allowance retained',lease_token='',lease_until=0,updated_at=?,
 	 available_at=?+CASE WHEN attempts=1 THEN 10000 ELSE 60000 END WHERE status='running' AND lease_until<=?`, now, now, now)
 	return err
@@ -137,7 +165,8 @@ func claimAttempt(ctx context.Context, tx *sql.Tx, jobID, token string, now int6
 		return a, err
 	}
 	var eligible bool
-	err = tx.QueryRowContext(ctx, `SELECT (j.status='running' AND j.lease_token=? AND j.lease_until>? AND src.archived=0 AND src.revision=j.source_revision)
+	err = tx.QueryRowContext(ctx, `SELECT (j.status='running' AND j.lease_token=? AND j.lease_until>? AND src.archived=0 AND src.revision=j.source_revision
+	 AND NOT EXISTS(SELECT 1 FROM foundation_requests f JOIN quizzes q ON q.id=f.quiz_id WHERE f.job_id=j.id AND (q.archived=1 OR q.version<>f.quiz_version)))
 	 FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.id=?`, token, now, jobID).Scan(&eligible)
 	if err != nil {
 		return a, err
@@ -176,7 +205,8 @@ func finishStale(ctx context.Context, tx *sql.Tx, jobID, token string, now int64
 	// Do not touch a successor claim. If nobody has swept this expired claim
 	// yet, recover it now; its already-settled actual/unknown cost remains.
 	_, err := tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN EXISTS(SELECT 1 FROM sources src WHERE src.id=jobs.source_id AND (src.archived=1 OR src.revision<>jobs.source_revision))
-	 THEN 'canceled' WHEN attempts>=3 THEN 'failed' ELSE 'retry' END,
+	 OR EXISTS(SELECT 1 FROM foundation_requests f JOIN quizzes q ON q.id=f.quiz_id WHERE f.job_id=jobs.id AND (q.archived=1 OR q.version<>f.quiz_version))
+	 THEN 'canceled' WHEN id IN (SELECT job_id FROM foundation_requests) THEN 'paused' WHEN attempts>=3 THEN 'failed' ELSE 'retry' END,
 	 error='Expired or stale completion discarded; usage recorded',lease_token='',lease_until=0,updated_at=?,available_at=?+60000
 	 WHERE id=? AND status='running' AND lease_token=?`, now, now, jobID, token)
 	return err
@@ -216,8 +246,20 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		}
 		return finishError("conflict")
 	}
-	src := Source{Text: a.job.SourceText, Kind: a.job.SourceKind}
-	validation := validateGeneration(result, src)
+	var validation error
+	if a.job.FoundationTarget != nil {
+		validation = ValidateFoundation(result.Foundation)
+		if len(result.Quizzes) != 0 {
+			validation = fmt.Errorf("%w: foundation jobs cannot publish scheduled quizzes", ErrInvalid)
+		}
+		if validText("model attribution", result.Model, 200, true) != nil || validText("prompt version", result.PromptVersion, 200, true) != nil || validText("generation note", result.Note, 4096, result.Partial) != nil {
+			validation = ErrInvalid
+		}
+	} else if result.Foundation != nil {
+		validation = fmt.Errorf("%w: unexpected foundations in capture job", ErrInvalid)
+	} else {
+		validation = validateGeneration(result, Source{Text: a.job.SourceText, Kind: a.job.SourceKind})
+	}
 	if validation != nil {
 		if err = settleAttempt(ctx, tx, leaseToken, hash, "invalid", costMicros, now); err != nil {
 			return err
@@ -254,6 +296,13 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 			return err
 		}
 	}
+	published := len(result.Quizzes)
+	if a.job.FoundationTarget != nil {
+		published, err = publishFoundation(ctx, tx, a.job, result, now)
+		if err != nil {
+			return err
+		}
+	}
 	status := "complete"
 	if result.Partial {
 		status = "partial"
@@ -263,7 +312,7 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,model=?,prompt_version=?,published=?,result_json=?,
-	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, result.Note, result.Model, result.PromptVersion, len(result.Quizzes), encoded, now, jobID)
+	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, result.Note, result.Model, result.PromptVersion, published, encoded, now, jobID)
 	if err != nil {
 		return err
 	}
@@ -345,6 +394,9 @@ func (s *Store) FailJob(ctx context.Context, jobID, leaseToken, message string, 
 			if a.job.Attempts > 1 {
 				delay = int64(time.Minute / time.Millisecond)
 			}
+		}
+		if a.job.FoundationTarget != nil && costMicros == nil {
+			status = "paused"
 		}
 		_, err = tx.ExecContext(ctx, "UPDATE jobs SET status=?,error=?,lease_token='',lease_until=0,updated_at=?,available_at=? WHERE id=?", status, message, now, now+delay, jobID)
 		if err != nil {
