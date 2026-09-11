@@ -1,0 +1,38 @@
+{{define "foundation"}}{{$root := .}}{{$b := .Bridge}}
+<section class="review-stage" data-bridge="{{$b.ID}}" data-revision="{{$b.Revision}}" data-phase="{{$b.Phase}}">
+  <p class="small muted">Foundations for your saved question</p>
+  <details class="inspection"><summary>{{$b.Target.Quiz.Prompt}}</summary><p>Exact question version {{$b.Target.Quiz.Version}} · source revision {{$b.SourceRevision}}. The original presentation is retained, not regenerated.</p><a href="/sources/{{$b.Target.Quiz.SourceID}}">Inspect source lineage</a></details>
+  {{if not $b.Available}}<p class="message">The source or target version changed or was archived. This historical bridge cannot publish new work or replace your current question.</p>{{end}}
+  {{if eq $b.Phase "waiting"}}
+    <h1 class="question" tabindex="-1" data-focus>Foundations requested.</h1>
+    <p>The request is saved. It is not an answer, a failed review, or evidence of recall.</p>
+    {{with $b.Job}}<p role="status">{{jobLabel .Status}}</p>{{if .Error}}<p class="message">{{.Error}}</p>{{end}}<p class="small muted">{{money .CostMicros}} accounted{{if .CostUnknown}}; provider usage is uncertain{{end}}. Pending reservations: {{money .ReservedMicros}}.</p>{{end}}
+    {{if and $b.Available $b.Job}}{{if and (eq $b.Job.Status "failed") (not $b.Job.CostUnknown) (lt $b.Job.Attempts 3)}}<form action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<p>Retry permits one more bounded provider attempt, with a new reservation. Check the failure first.</p><button name="action" value="retry">Retry foundation generation</button></form>{{end}}{{end}}
+    <div class="actions"><a class="button" href="/foundations/{{$b.ID}}">Check saved progress</a><a href="/">Keep reviewing</a></div>
+  {{else if eq $b.Phase "ready"}}
+    <h1 class="question" tabindex="-1" data-focus>Your foundations are saved.</h1><p>Read a short explanation, then try a finite set of warm practice questions. Reading is exposure, not demonstrated recall. Your target stays available.</p>
+    {{if $b.Available}}<form action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<button class="primary" name="action" value="open">Open foundations</button></form>{{end}}
+  {{else if eq $b.Phase "return"}}
+    <h1 class="question" tabindex="-1" data-focus>Back to your question.</h1><p>This bridge is saved for later. Instruction and warm practice did not create a cold success or change an FSRS schedule.</p>
+    {{if $b.Available}}<form action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<button class="primary" name="action" value="return">{{if $b.TargetCurrent}}Return to original question{{else}}Return to current review{{end}}</button><button class="quiet" name="action" value="open">Read foundations again</button></form>{{end}}
+  {{else}}
+    {{with $b.Current}}
+      <p class="small muted">{{if eq .Kind "practice"}}Warm practice · no FSRS review{{else}}Saved {{.Kind}} · reading is not recall{{end}}</p>
+      <h1 class="question" tabindex="-1" data-focus>{{.Title}}</h1>
+      {{if .Body}}<p class="explanation preserve">{{.Body}}</p>{{end}}
+      {{if .Steps}}<ol class="foundation-diagram" aria-label="Ordered process diagram">{{range .Steps}}<li class="preserve">{{.}}</li>{{end}}</ol>{{end}}
+      {{if .URL}}<p><a href="{{.URL}}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hx-boost="false">Open external reference</a></p><p class="small muted">Stored URL only. Scry has not fetched or verified this article/video, its body, or a transcript. Opening it contacts another site.</p>{{end}}
+      {{with .Quiz}}<h2>{{.Prompt}}</h2>
+        {{if eq $b.Phase "feedback"}}<div class="feedback" role="status"><h2>{{outcome $b.Outcome}}</h2><p>Your answer: {{$b.Answer}}</p><p>Expected answer: {{.Answer}}</p><p class="preserve">{{.Explanation}}</p><p>Instruction-exposed practice, not cold assessment. No schedule changed.</p></div>
+        {{else if $b.Available}}<form class="answer-form" action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<input type="hidden" name="action" value="answer">{{if eq .Kind "choice"}}<div class="choices">{{range .Choices}}<button class="choice" name="answer" value="{{.}}">{{.}}</button>{{end}}</div>{{else}}<label for="foundation-answer">Your answer</label><textarea id="foundation-answer" name="answer" maxlength="1024" required>{{$root.Text}}</textarea><button class="primary">Check warm practice</button>{{end}}</form>{{end}}
+      {{end}}
+      <details class="inspection"><summary>Inspect material and coverage</summary><p>Material {{.ID}}, version {{.Version}}. Recorded producer: {{$b.Model}}, prompt {{$b.PromptVersion}}. Source lineage is not independent verification.</p>{{range .Links}}<p><strong>{{.Role}}</strong> unit {{.Unit}}, version 1: {{.Provenance}}</p>{{end}}{{range $b.Units}}<p>{{.Key}}: {{.Definition}} ({{.Kind}})</p>{{end}}</details>
+    {{end}}
+    {{if and $b.Available (ne $b.Phase "practice")}}<form action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<button class="primary" name="action" value="next">Next</button></form>{{end}}
+  {{end}}
+  {{if $b.Note}}<p class="message">{{$b.Note}}</p>{{end}}
+  {{if $b.Available}}<form action="/foundations/{{$b.ID}}" method="post" hx-post="/foundations/{{$b.ID}}">{{template "bridgeTokens" $root}}<button class="quiet" name="action" value="return">{{if $b.TargetCurrent}}Return to original question now{{else}}Return to current review{{end}}</button></form>{{end}}
+  <div class="actions"><a href="/">Current review</a><a href="/foundations">Saved foundations</a></div>
+</section>{{end}}
+{{define "bridgeTokens"}}{{template "tokens" .}}<input type="hidden" name="revision" value="{{.Bridge.Revision}}">{{end}}
+{{define "foundations"}}<section><h1 class="page-title" tabindex="-1" data-focus>Saved foundations</h1><p>Target-bound instruction and warm practice. These records do not establish mastery or an exhaustive learning map.</p>{{range .Bridges}}<article class="library-item"><h2><a href="/foundations/{{.ID}}">{{.Target.Quiz.Prompt}}</a></h2><p>Saved progress: {{.Phase}}. Exact question version {{.Target.Quiz.Version}}.</p></article>{{else}}<p>Choose Too advanced on a question to request useful foundations without recording a failed answer.</p>{{end}}</section>{{end}}

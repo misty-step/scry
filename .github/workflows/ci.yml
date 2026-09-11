@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+    branches: [master, phaedrus/mis-48-personal-go-rewrite]
 
 permissions:
   contents: read

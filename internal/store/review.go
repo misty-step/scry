@@ -11,6 +11,21 @@ import (
 	"github.com/misty-step/scry/internal/learning"
 )
 
+// Warm completion consumes this exact content/schedule version for one day.
+// This is practice availability, not an FSRS transition. A newer review or
+// explicit schedule reset wins because its schedule version no longer matches.
+const quizAvailableAtSQL = `max(sc.due_at,COALESCE((SELECT max(e.reviewed_at)+86400000
+ FROM review_events e JOIN presentations consumed ON consumed.id=e.presentation_id
+ WHERE consumed.quiz_id=q.id AND consumed.content_version=q.version
+ AND e.schedule_version_after=sc.version AND e.rating=0 AND e.assisted=1
+ AND substr(e.outcome,1,5)='warm_'),0))`
+
+const availabilityCountsSQL = `SELECT count(*),COALESCE(sum(available_at<=?),0),
+ COALESCE(min(CASE WHEN available_at>? THEN available_at END),0)
+ FROM (SELECT ` + quizAvailableAtSQL + ` AS available_at FROM quizzes q
+ JOIN sources src ON src.id=q.source_id JOIN schedules sc ON sc.quiz_id=q.id
+ WHERE q.archived=0 AND src.archived=0)`
+
 // Review may establish the one current occurrence, but never clears feedback,
 // grades an answer, or advances a schedule. A preview has no submission token.
 func (s *Store) Review(ctx context.Context) (ReviewState, error) {
@@ -19,7 +34,7 @@ func (s *Store) Review(ctx context.Context) (ReviewState, error) {
 		return ReviewState{}, err
 	}
 	defer tx.Rollback()
-	state, err := reviewState(ctx, tx, s.now())
+	state, err := reviewState(ctx, tx, s.now(), true)
 	if err != nil {
 		return ReviewState{}, err
 	}
@@ -66,12 +81,16 @@ func (s *Store) Next(ctx context.Context, presentationID string) (ReviewState, e
 	defer tx.Rollback()
 	// The predicate is the entire advancement authority. Repeated/stale Next
 	// cannot consume a new prompt, an ungraded response, or another held result.
-	_, err = tx.ExecContext(ctx, `UPDATE review_session SET current_id=NULL WHERE singleton=1 AND current_id=?
+	advance, err := tx.ExecContext(ctx, `UPDATE review_session SET current_id=NULL WHERE singleton=1 AND current_id=?
 	 AND EXISTS(SELECT 1 FROM presentations WHERE id=? AND graded=1)`, presentationID, presentationID)
 	if err != nil {
 		return ReviewState{}, err
 	}
-	state, err := reviewState(ctx, tx, s.now())
+	advanced, err := advance.RowsAffected()
+	if err != nil {
+		return ReviewState{}, err
+	}
+	state, err := reviewState(ctx, tx, s.now(), advanced == 1)
 	if err != nil {
 		return ReviewState{}, err
 	}
@@ -81,7 +100,7 @@ func (s *Store) Next(ctx context.Context, presentationID string) (ReviewState, e
 	return state, nil
 }
 
-func reviewState(ctx context.Context, tx *sql.Tx, now int64) (ReviewState, error) {
+func reviewState(ctx context.Context, tx *sql.Tx, now int64, allowNew bool) (ReviewState, error) {
 	var state ReviewState
 	var current sql.NullString
 	if err := tx.QueryRowContext(ctx, "SELECT current_id FROM review_session WHERE singleton=1").Scan(&current); err != nil {
@@ -93,7 +112,7 @@ func reviewState(ctx context.Context, tx *sql.Tx, now int64) (ReviewState, error
 			return state, err
 		}
 		state.Current = &p
-	} else {
+	} else if allowNew {
 		q, scheduleVersion, err := candidate(ctx, tx, now, "")
 		if err != nil {
 			return state, err
@@ -115,9 +134,7 @@ func reviewState(ctx context.Context, tx *sql.Tx, now int64) (ReviewState, error
 			state.Current = &p
 		}
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(sc.due_at<=?),0),COALESCE(min(CASE WHEN sc.due_at>? THEN sc.due_at END),0)
-	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN schedules sc ON sc.quiz_id=q.id
-	 WHERE q.archived=0 AND src.archived=0`, now, now).Scan(&state.Total, &state.Due, &state.NextDueAt); err != nil {
+	if err := tx.QueryRowContext(ctx, availabilityCountsSQL, now, now).Scan(&state.Total, &state.Due, &state.NextDueAt); err != nil {
 		return state, err
 	}
 	if state.Current != nil {
@@ -147,8 +164,8 @@ func candidate(ctx context.Context, tx *sql.Tx, now int64, exclude string) (*Qui
 	var id string
 	var scheduleVersion int
 	err := tx.QueryRowContext(ctx, `SELECT q.id,sc.version FROM quizzes q JOIN schedules sc ON sc.quiz_id=q.id
-	 JOIN sources src ON src.id=q.source_id WHERE q.archived=0 AND src.archived=0 AND sc.due_at<=? AND q.id<>?
-	 ORDER BY sc.due_at,q.created_at,q.rowid LIMIT 1`, now, exclude).Scan(&id, &scheduleVersion)
+	 JOIN sources src ON src.id=q.source_id WHERE q.archived=0 AND src.archived=0 AND `+quizAvailableAtSQL+`<=? AND q.id<>?
+	 ORDER BY `+quizAvailableAtSQL+`,q.created_at,q.rowid LIMIT 1`, now, exclude).Scan(&id, &scheduleVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, 0, nil
 	}
@@ -170,6 +187,28 @@ func presentation(ctx context.Context, tx *sql.Tx, id string) (Presentation, err
 	}
 	if err = json.Unmarshal([]byte(snapshot), &p.Quiz); err != nil {
 		return p, fmt.Errorf("decode presented quiz: %w", err)
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT draft FROM foundation_bridges WHERE presentation_id=?),''),
+	 COALESCE((SELECT revision FROM foundation_bridges WHERE presentation_id=?),0)`, p.ID, p.ID).Scan(&p.Draft, &p.BridgeRevision); err != nil {
+		return p, err
+	}
+	if p.Graded {
+		p.Draft = ""
+	} else if p.Answer != "" {
+		// An acknowledged help draft (even empty) wins over an older ungraded
+		// answer. A later submit wins back the editable text. Immutable operation
+		// order distinguishes those actions without inventing another draft clock.
+		var helpIsLatest bool
+		if p.BridgeRevision != 0 {
+			if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT kind='foundation-request' FROM operations
+			 WHERE (kind='submit' AND result_id=?) OR (kind='foundation-request' AND result_id=
+			 (SELECT id FROM foundation_bridges WHERE presentation_id=?)) ORDER BY rowid DESC LIMIT 1),0)`, p.ID, p.ID).Scan(&helpIsLatest); err != nil {
+				return p, err
+			}
+		}
+		if !helpIsLatest {
+			p.Draft = p.Answer
+		}
 	}
 	return p, nil
 }
@@ -252,10 +291,29 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	now := s.now()
 	p.Answer, p.Outcome, p.Rating = answer, outcome, rating
 	p.Assisted, p.Graded = reveal, rating != 0
+	// Exposure makes this occurrence warm, but does not turn help into Again
+	// or manufacture an FSRS success. Explicit Reveal retains its old contract.
+	var exposed bool
+	// The first 24 hours after instruction remain warm across new occurrences.
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM foundation_interactions i
+	 JOIN foundation_bridges b ON b.id=i.bridge_id JOIN presentations target ON target.id=b.presentation_id,
+	 presentations current WHERE current.id=? AND target.quiz_id=current.quiz_id
+	 AND target.content_version=current.content_version AND i.action='read' AND i.created_at>=current.created_at-86400000)`, p.ID).Scan(&exposed); err != nil {
+		return Presentation{}, err
+	}
+	if exposed && !reveal {
+		p.Assisted, p.Graded, p.Rating = true, true, 0
+		p.Outcome = "warm_" + outcome
+	}
+	if p.Graded {
+		p.Draft = ""
+	} else {
+		p.Draft = answer
+	}
 	p.ReviewedAt, p.ReviewID = now, newID()
 	afterJSON := cardJSON
 	afterVersion := scheduleVersion
-	if p.Graded {
+	if p.Rating != 0 {
 		var card learning.Card
 		if err = json.Unmarshal([]byte(cardJSON), &card); err != nil {
 			return Presentation{}, err
