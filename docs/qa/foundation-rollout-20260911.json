@@ -2,7 +2,7 @@
   "format": "scry-mis59-protected-rollout-v1",
   "date": "2026-09-11",
   "issue": "MIS-59",
-  "status": "In Progress: deployed; authenticated private/provider and human acceptance blocked/unverified",
+  "status": "In Progress: deployed; authorized real provider/browser/new-record recovery functional proof passed; appropriate practice and human acceptance remain unverified",
   "release": "mis59-4e13cafef7c3",
   "compiled_source_revision": "4e13cafef7c3e7eac1c6f6fbd1fa8e5bfbc087df",
   "binary_sha256": "79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08",
@@ -302,10 +302,96 @@
     "scope": "No source edits, merge, successor work, MIS-48/MIS-42 closure, old recovery-store operation, or live overwrite"
   },
   "unverified": [
-    "Authenticated canonical owner foundation walkthrough and CSRF/alias boundary",
-    "ONE real selected-provider foundation generation, actual consumption/provenance/coverage, latency/cost and revisit/reuse",
-    "Off-VM snapshot/isolated restore containing newly generated foundation records",
+    "Appropriate foundation practice/operator usefulness: live warm question repeats original multiple-choice answer and same four options, not a simpler prerequisite",
+    "Optional reference material path absent/unexercised in the actual provider bundle; no invented URL or fetched-source claim",
+    "Operator login/global logout and different-account proof are not established by scoped QA-token access/revocation",
     "Operator usefulness and physical phone foundation path",
     "Delayed retention, sustained learning, availability SLA or full end-to-end RTO"
-  ]
+  ],
+  "earlier_observation_scope": "production/backups/private_access/generation/restore/cleanup above retain the initial rollout observation before new QA authorization; authorized_live_followup below supersedes its authentication/provider/new-record blockers without rewriting history.",
+  "authorized_live_followup": {
+    "observed_utc": "Temporary-token exercise began 2026-09-11T14:28:44Z; app/dev credentials revoked at 14:37:42Z/14:37:43Z, followed by denial and production postcondition verification.",
+    "authorization": "Operator explicitly approved temporary VM-scoped QA tokens for scry-app and scry-dev only, then revocation. Existing private sharing, owner/trusted-peer/CSRF boundaries, provider key, signing secrets, integrations and limits unchanged.",
+    "release": "Same accepted mis59-4e13cafef7c3, compiled source and binary checksum at receipt root; no build/redeploy/source hotpatch.",
+    "private_receipt_directory": "~/.local/share/scry/ops/releases/mis59-4e13cafef7c3/supplemental/live-qa-20260911/",
+    "privacy": "Raw target/material/source identities, full exports and restored screenshot retained privately; no private question/history or credential value in this public receipt. Tokens existed in protected process memory only, never URL/argv/files/screenshots. Header injection restricted to exact corresponding approved HTTPS VM origins; redirects never inherited credentials across origins.",
+    "access": {
+      "authority": "Vendor-supported ssh-key generate-api-key --vm with 1h bounded expiry, followed by ssh-key remove of each newly generated fingerprint. Scope is VM HTTPS, not general exe API.",
+      "app_expires_at": "2026-09-11T15:28:44Z",
+      "dev_expires_at": "2026-09-11T15:28:45Z",
+      "owner": "PASS canonical foundations list and bridge HTTP200; native Chromium actual private surface.",
+      "anonymous_and_forged": "Both list and bridge upstream307, no private bridge markup.",
+      "authenticated_invalid_csrf": 403,
+      "authenticated_cross_site": 403,
+      "authenticated_alias_mutation": 409,
+      "denial_state": "Every full export section equal before/after denied writes; exported_at metadata excluded, not application state.",
+      "rendered_content": "Actual instruction and six-step diagram rendered as inert text/list; zero script/iframe/object/inline event nodes in content region. No external references fetched. Earlier adversarial generated/source fixtures remain separately labeled synthetic, not this benign live-content observation.",
+      "limits": "Token access/revocation is not operator login, global logout or second-account acceptance. No physical-phone claim."
+    },
+    "generation": {
+      "model": "google/gemini-3.7-flash",
+      "prompt_version": "foundation-bridge-1",
+      "new_jobs": 1,
+      "actual_attempts": 1,
+      "retries": 0,
+      "outcome": "complete",
+      "partial": false,
+      "attempt_latency_seconds": 11.855,
+      "request_to_publication_seconds": 11.891,
+      "actual_cost_micros": 6600,
+      "actual_cost_usd": "0.006600",
+      "reservation_micros_per_attempt": 200000,
+      "attempt_state": "settled",
+      "outstanding_unknown_or_reserved_micros": 0,
+      "rolling_24h_accounted_micros_observed": 6600,
+      "provider_cap": "$1/day UTC unchanged",
+      "app_allowance": "$1 rolling24h unchanged",
+      "published_materials": {"instruction": 1, "diagram": 1, "practice": 1, "reference": 0},
+      "units": 2,
+      "coverage_links": 6,
+      "machine_review": "Instruction and diagram substantively describe stage coupling and the two carriers. Producer/prompt/unit/material/version/coverage provenance saved, not independent verification. Practice repeats the original multiple-choice answer and same four options rather than isolating a simpler prerequisite; appropriate practice and usefulness NOT accepted. Optional reference absent/unexercised, not a parser failure or invented source.",
+      "no_second_call": "Library revisit/read-again and repeated Too advanced reused the same bridge/materials; jobs and settled attempts stayed unchanged."
+    },
+    "native_walkthrough": {
+      "input": "Original real current target already graded/assisted. No editable draft on held feedback; Too advanced accepted no draft, without Next/reset, new cold answer or grade.",
+      "observed": [
+        "Native pointer Too advanced -> saved waiting/queued-or-running state -> later ready after one actual provider attempt",
+        "Open instruction -> reload retained phase -> ordered six-step diagram -> warm practice",
+        "One explicitly agent-exercised choice -> correct warm held feedback -> reload retained feedback -> deliberate Next within bridge",
+        "Deliberate return to exact original presentation, without review Next",
+        "Later Library -> saved bridge -> read again -> deliberate return",
+        "Repeated Too advanced reused same saved bridge -> deliberate return"
+      ],
+      "warm_practice": "One functional agent exercise, not learner capability or recall evidence. Three read, one practice and three return interactions saved.",
+      "target_preservation": "Exact original occurrence ID and complete presentation bytes unchanged; all 5 presentations, 5 review events and 29 schedules unchanged, along with current session, source/quiz versions and corrections. All prior operations/jobs/attempts preserved; 11 new acknowledged operations belong to this QA path.",
+      "interruption": "Actual reload/revisit retained instruction and held feedback. No new lost-POST-response experiment, stale-bridge race or adversarial source fixture was injected into real learner history; existing synthetic proofs remain separate."
+    },
+    "new_record_recovery": {
+      "backup_result": "Completed schema2 --require-remote backup with exact app authenticated remote readback, then independent dedicated recovery-authority HTTP200 GET and matching SHA256.",
+      "archive_sha256": "0570ca1a312b14506e50d0b5ceafb5acd4d4c7b4845330c8e9272437f890816b",
+      "archive_bytes": 329316,
+      "database_sha256": "86884acec05b0067c93c849de98d601d1d47f816c45b3c65e7cc8b7d678a26cb",
+      "retained_off_vm": "Independently downloaded complete archive and exact compatible binary/source/checksums.",
+      "foundation_counts": {"requests": 1, "bundles": 1, "bridges": 1, "materials": 3, "units": 2, "links": 6, "interactions": 7},
+      "restore_destination": "scry-dev:/var/lib/scry/mis59-liveqa-20260911.sqlite (previously unused)",
+      "snapshot_equality": "ALL 24 exported non-clock sections equal, including every foundation row plus all source/quiz/history/schedule/operation/job/attempt/backup/accounting state. Only exported_at differs.",
+      "pause_policy": "Restore pause guard executed. No nonterminal/unknown job required changes and no retry occurred.",
+      "service": "Actual bounded transient scry-mis59-liveqa-rehearsal.service, scry:scry PID2375, exact accepted binary SHA256, 127.0.0.1:8080 readiness; private scoped-token HTTPS200 and native browser rendered saved instruction/bridge.",
+      "service_equality": "All snapshot state sections stayed equal except one separate isolated local startup-backup receipt. Production snapshot likewise precedes its own one completed backup receipt.",
+      "elapsed_restore_through_private_ui_seconds": 58.33,
+      "timing_limit": "Already-provisioned approved VM; excludes provisioning, DNS and operator-login recovery. Not a full RTO claim. Initial wrapper-path lookup failed before restore and was corrected to existing staged reviewed scripts.",
+      "isolation": "Existing private dev config only; no production model/backup integration, key/signing-secret changes or normal recovery writer. Existing dev DB size/mtime and current-release link unchanged.",
+      "stopped": "Transient stopped/collected; MainPID0/inactive, no8080 listener. Normal scry.service MainPID0/inactive/disabled."
+    },
+    "cleanup": {
+      "app_token": "Actual authority revocation exit0; prior credential HTTP401 on intended origin; fingerprint absent from authority list.",
+      "dev_token": "Actual authority revocation exit0; prior credential HTTP401 on intended origin; fingerprint absent from authority list.",
+      "secret_material": "No temporary credential file created; temporary memory references removed; managed Chromium closed/released after evidence.",
+      "production": "Final actual /proc executable is accepted release, matching root binary SHA256, PID3049 scry:scry active/enabled and ready.",
+      "original_dirty_checkout_index": "Untouched; evidence edits only in clean feature worktree.",
+      "scope": "No source edits, deployment, merge, new infrastructure/accounts/sharing/integrations/spend limits, recurring work, learner reset/advance, synthetic production seed or successor work."
+    },
+    "operator_handoff": "Use normal owner login at https://scry.study/foundations; exact private saved-bridge URL supplied only in private handoff. Review explanation/diagram and whether warm practice genuinely supplies missing foundations; report the repeated-target concern. Physical-phone foundation path remains human-only. MIS-59 stays In Progress.",
+    "publication": "Evidence-only PR163 update with Refs MIS-59. Required publication hook and hosted CI recorded in PR and the single existing Linear scratchpad after this commit; no verification binary is deployed."
+  }
 }

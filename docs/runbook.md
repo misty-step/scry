@@ -32,13 +32,30 @@ as `scry`, bound to loopback port 8080, with that executable checksum and readin
 The prior `mis48-e0274bc916de` binary is retained but cannot run the upgraded DB.
 Evidence-only documentation commits do not relabel or replace the compiled binary.
 
-See [the protected rollout receipt](qa/foundation-rollout-20260911.json).
-Authenticated canonical owner access was unavailable: the actual browser reached
-exe sign-in and the previously retained temporary VM token was revoked. Anonymous
-and forged requests exposed no app content. No new token/login authority was
-created, no paid foundation request was sent, and no learner state was advanced.
-Live foundation generation/reuse, authenticated new-route/CSRF/alias proof,
-operator usefulness and the physical-phone walkthrough remain unverified.
+See [the protected rollout and authorized live QA receipt](qa/foundation-rollout-20260911.json).
+After the initial sign-in blocker, the operator authorized temporary VM-scoped
+QA tokens for `scry-app` and `scry-dev`. One native-browser foundation request
+used `google/gemini-3.7-flash`: 11.855 seconds, $0.006600 settled, one $0.20
+reservation, no retry or outstanding reservation. Saved instruction, a six-step
+diagram and one agent-exercised warm question survived reload, deliberate return
+to the exact original occurrence, and later Library/repeated-help reuse without
+another call. All original presentations, review events and FSRS state remained
+identical; this was functional QA, not learner performance.
+
+Authenticated changed routes succeeded; anonymous/forged requests were gated,
+authenticated invalid-CSRF/cross-site writes returned 403 and alias writes 409,
+with every exported state section unchanged. Both temporary credentials were
+revoked through exe authority; each prior token then returned 401 and its
+fingerprint was absent from the authority list. No login/global-logout or
+different-account acceptance is implied.
+
+Machine review found substantive instruction/diagram, but warm practice repeats
+the original multiple-choice answer and four options rather than isolating a
+simpler prerequisite. Appropriate practice and operator usefulness are NOT
+accepted. The optional reference path was absent, not invented or fetched.
+Physical-phone foundation acceptance remains unverified. The operator can open
+the saved real material from canonical `https://scry.study/foundations` using
+their normal private login; no QA token is needed or retained.
 
 There is no public signup, magic-link mail, separate frontend, public service
 session, maintained legacy CLI/MCP contract, or second application database.
@@ -275,6 +292,24 @@ Provisioning, DNS, login recovery and authenticated private UI were not measured
 private ingress returned sign-in. Foundation tables were empty because real
 generation access was unavailable: this is not off-VM proof for newly generated
 foundation records or a complete end-to-end RTO claim.
+
+A later authorized drill retrieved archive
+`0570ca1a312b14506e50d0b5ceafb5acd4d4c7b4845330c8e9272437f890816b`
+(329,316 bytes) with the independently retained recovery authority and exact
+authenticated readback. It contains one foundation request/bundle/bridge, three
+materials, two units, six links and seven interactions. Restore into unused
+`/var/lib/scry/mis59-liveqa-20260911.sqlite` matched every snapshot export section,
+including all history, operations and spend; no uncertain jobs needed changes.
+The exact binary ran as an isolated transient `scry` service, passed readiness,
+and rendered the saved instruction through private HTTPS using the dev-scoped
+QA token. Service state stayed equal except one isolated local startup-backup
+receipt. Restore through private UI observation took 58.33 seconds on the
+existing VM, excluding provisioning, DNS and operator-login recovery; this is
+not a complete RTO claim. The transient service was stopped/collected, MainPID
+zero and no port-8080 listener; normal dev service remains stopped/disabled and
+its original DB metadata/current-release link remained unchanged. No production
+integration or recurring recovery writer was attached. Both QA tokens were
+revoked and denied afterward; production still runs the exact accepted release.
 
 The September 9 drill restored the independently retrieved R2 archive on
 `scry-dev`, activated the unprivileged service, matched the private HTTPS export,
