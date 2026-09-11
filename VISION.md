@@ -20,6 +20,22 @@ operator. That is the adoption baseline. Phone acceptance, generated fixtures,
 passing checks, and historical production receipts are not evidence of sustained
 use or learning gains.
 
+## Approved knowledge-centered direction and bounded delivery
+
+The operator approved a future personal learning map: chosen goals, durable
+instruction/reference material alongside quizzes, explicit coverage and
+foundations, and uncertain context-dependent evidence rather than a single
+mastery score. That broader direction is not a shipped engine or an authorization
+to silently widen goals, spending, access, or historical-data changes.
+
+MIS-59 implements only the Too advanced detour: useful saved foundations and warm
+practice, a deliberate return to the identical retained question, and later reuse.
+Requesting help is not a failed answer; reading is not cold recall. Direct
+quiz-owned FSRS remains the scheduler baseline. Capture-time foundation planning,
+cross-item evidence/estimates, autonomous planning and suggestions remain
+unimplemented successor scope. See [SPEC.md](SPEC.md#foundation-detour-mis-59) for
+the exact bounded contract and proof still required before release.
+
 ## Experience Direction
 
 The operator's bar is **TikTok-level smoothness**, with a simple interface and

@@ -80,12 +80,15 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 		return Source{}, err
 	}
 	if !found {
+		if result.Job != nil && result.Job.FoundationTarget != nil {
+			return Source{}, fmt.Errorf("%w: retry foundation work from its saved bridge", ErrConflict)
+		}
 		if result.Archived || result.Job == nil || result.Job.Published != 0 ||
 			(result.Job.Status != "failed" && result.Job.Status != "canceled" && result.Job.Status != "paused") {
 			return Source{}, fmt.Errorf("%w: only unpublished failed or explicitly reconciled paused work can be retried", ErrConflict)
 		}
 		var jobs int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=?", id).Scan(&jobs); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=? AND id NOT IN (SELECT job_id FROM foundation_requests)", id).Scan(&jobs); err != nil {
 			return Source{}, err
 		}
 		if jobs >= 3 {
@@ -250,9 +253,9 @@ func (s *Store) Quiz(ctx context.Context, id string) (Quiz, error) {
 func quiz(ctx context.Context, tx *sql.Tx, id string) (Quiz, error) {
 	var q Quiz
 	var content string
-	err := tx.QueryRowContext(ctx, `SELECT q.id,q.source_id,q.version,(q.archived OR src.archived),v.content,sc.due_at
+	err := tx.QueryRowContext(ctx, `SELECT q.id,q.source_id,q.version,(q.archived OR src.archived),v.content,sc.due_at,`+quizAvailableAtSQL+`
 	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN quiz_versions v ON v.quiz_id=q.id AND v.version=q.version
-	 JOIN schedules sc ON sc.quiz_id=q.id WHERE q.id=?`, id).Scan(&q.ID, &q.SourceID, &q.Version, &q.Archived, &content, &q.DueAt)
+	 JOIN schedules sc ON sc.quiz_id=q.id WHERE q.id=?`, id).Scan(&q.ID, &q.SourceID, &q.Version, &q.Archived, &content, &q.DueAt, &q.AvailableAt)
 	if err != nil {
 		return q, notFound(err, "quiz")
 	}

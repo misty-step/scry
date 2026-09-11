@@ -4,7 +4,8 @@
 
 Scry is one private Go process and SQLite database on **`scry-app.exe.xyz`**.
 The canonical application is **https://scry.study**. The operator approved the
-phone flow and daily-backup policy. `www.scry.study` and `scry-app.exe.xyz`
+earlier phone flow and daily-backup policy; the MIS-59 foundation phone flow and
+material usefulness remain unverified. `www.scry.study` and `scry-app.exe.xyz`
 redirect reads to that origin; mutations on aliases are rejected, not replayed.
 The old Worker is not the live learner store. `scry-dev.exe.xyz` remains an
 isolated development/recovery environment, not a second production writer; its
@@ -20,12 +21,41 @@ restored rehearsal service is stopped/disabled.
 | DNS | Existing DigitalOcean `scry.study` zone; exe.dev handles custom-domain TLS and private ingress |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-The active release is `mis48-e0274bc916de`, from committed revision
-`e0274bc916de8bf686160d4068fdb6f3befa540f`. The staged, smoke-tested binary's
-SHA-256 is `773911fc83ae07e09774cb7c32ae3e71914435e3b95d6913c6a37d10e587863d`.
-Protected activation verified a pre-release remote backup and preserved the
-acknowledged learning export exactly. The actual process is active/enabled as
-`scry`, bound to loopback port 8080; the deployed checksum matches that artifact.
+The active release is `mis59-4e13cafef7c3`, compiled from committed revision
+`4e13cafef7c3e7eac1c6f6fbd1fa8e5bfbc087df`. The retained, smoke-tested binary's
+SHA-256 is `79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08`.
+September 11 protected activation required the previous binary's fresh off-VM
+backup and matching readback, then migrated schema 1 to 2. Every pre-existing
+learning/history/schedule/operation/job export section remained equal; new
+backup receipts are accounted separately. The actual process is active/enabled
+as `scry`, bound to loopback port 8080, with that executable checksum and readiness.
+The prior `mis48-e0274bc916de` binary is retained but cannot run the upgraded DB.
+Evidence-only documentation commits do not relabel or replace the compiled binary.
+
+See [the protected rollout and authorized live QA receipt](qa/foundation-rollout-20260911.json).
+After the initial sign-in blocker, the operator authorized temporary VM-scoped
+QA tokens for `scry-app` and `scry-dev`. One native-browser foundation request
+used `google/gemini-3.7-flash`: 11.855 seconds, $0.006600 settled, one $0.20
+reservation, no retry or outstanding reservation. Saved instruction, a six-step
+diagram and one agent-exercised warm question survived reload, deliberate return
+to the exact original occurrence, and later Library/repeated-help reuse without
+another call. All original presentations, review events and FSRS state remained
+identical; this was functional QA, not learner performance.
+
+Authenticated changed routes succeeded; anonymous/forged requests were gated,
+authenticated invalid-CSRF/cross-site writes returned 403 and alias writes 409,
+with every exported state section unchanged. Both temporary credentials were
+revoked through exe authority; each prior token then returned 401 and its
+fingerprint was absent from the authority list. No login/global-logout or
+different-account acceptance is implied.
+
+Machine review found substantive instruction/diagram, but warm practice repeats
+the original multiple-choice answer and four options rather than isolating a
+simpler prerequisite. Appropriate practice and operator usefulness are NOT
+accepted. The optional reference path was absent, not invented or fetched.
+Physical-phone foundation acceptance remains unverified. The operator can open
+the saved real material from canonical `https://scry.study/foundations` using
+their normal private login; no QA token is needed or retained.
 
 There is no public signup, magic-link mail, separate frontend, public service
 session, maintained legacy CLI/MCP contract, or second application database.
@@ -73,6 +103,34 @@ read-only, switches the immutable release link, and checks both the process
 executable and `/readyz`. Startup/rollback failure is not success. The previous
 binary is restored only if it independently accepts the current schema. Never
 restore an old database over acknowledged live writes as a release rollback.
+
+### Schema 2 foundation release boundary
+
+The active MIS-59 binary reads known complete schemas 1 and 2. Candidate
+`check --db PATH` is a read-only migratability preflight: it validates the full
+schema, integrity, and foreign keys, without creating a file, claiming jobs, or
+upgrading v1. Startup `store.Open` atomically adds the schema-2 foundation tables
+before traffic/claims. No historical v1 rows, snapshots, schedules, corrections,
+operation receipts, or accounting are rewritten.
+
+Keep the existing activation guard: old-binary check and verified remote
+pre-release backup, then candidate read-only check, then switch/start. Do not
+bypass it to migrate. After schema 2 commits, a schema-1 binary is deliberately
+incompatible; the failure trap must not restart it against the upgraded DB.
+There is no down-migration. A rollback is either a reviewed schema-2-compatible
+binary or an explicitly authorized snapshot-recovery operation into an UNUSED
+path with the snapshot's compatible binary. Preserve the upgraded database and
+post-snapshot writes; quantify and obtain acknowledgment of any loss before
+switching a restored instance into service. Never overwrite the live DB or allow
+two writers.
+
+For a rehearsal, preserve a populated v1 snapshot and its exact compatible
+binary, run candidate `check` and verify the v1 schema/data remain unchanged,
+start the candidate on an isolated copy, compare every historical export section,
+and verify the old binary now refuses schema 2. Separately restore the preserved
+snapshot into another unused path with its compatible binary and exercise its
+service. This proves a recovery path, not production activation or fresh off-VM
+backup.
 
 `--allow-local-backup` exists only for explicitly synthetic rehearsals. It is
 not a production bypass. Initial installation with no database has nothing to
@@ -125,6 +183,28 @@ labeled as model knowledge. Structural/provenance checks are not independent
 fact-checking. Rejected candidates and incomplete coverage remain visible as
 partial/failure, not invented completion. The private acceptance receipt
 records representative live generation; it is not a longitudinal efficacy claim.
+
+Too advanced foundation requests share the existing serial worker and spending
+authority. Reuse is exact source revision plus quiz ID/version; saved material
+does not become a scheduled quiz. Inspect `/foundations` for saved progress,
+instruction, safe URL-only references, ordered diagrams and warm practice.
+Producer/prompt attribution is retained; nothing is fetched from reference URLs.
+Known-cost failed foundation work can retry within the SAME job's three attempts.
+Expired/unknown foundation outcomes and restored jobs stay paused; prior
+reservations remain accounted. There is no automated provider reconciliation or
+UI action to discard an unknown charge. Keep ordinary review available, inspect
+the provider outcome, and obtain separate operator authority before any manual
+reconciliation. Source/quiz revision changes or archive prevent stale publication.
+
+Warm target completion consumes practice availability for 24 hours from its
+persisted rating-zero assisted completion, only while content and schedule
+versions still match. This is not an FSRS change. Library shows availability
+separately from scheduled due; queue counts and next availability use that same
+fence across restarts. A deliberate reset or newer real review supersedes it.
+Repeated help saves the latest acknowledged draft using the observed bridge
+revision; stale new requests reload rather than overwriting saved progress.
+Old bridge JSON withholds historical answer-bearing fields during a later cold
+occurrence until exposure is acknowledged; immutable past records remain intact.
 
 ## Recovery policy and observation
 
@@ -182,12 +262,54 @@ path, and pauses all nonterminal jobs. It does not start a service or replay
 uncertain paid work. Compare recovered export/acknowledged history, inspect
 those jobs, and reconcile only after checking provider outcomes.
 
+Schema-2 exports/backups include foundation request-to-target bindings, bundle
+and material/unit versions, coverage roles/provenance, bridge revision/progress,
+saved target drafts, and immutable read/practice/return observations. Compare
+these sections along with ALL pre-existing history and spend, not just quiz
+counts. The archive contains the whole SQLite state; no remote reference content
+or external diagram assets exist. A schema-2 candidate may restore a schema-1
+archive into an unused path and migrate it before publication; use the retained
+schema-1 binary instead when rehearsing recovery to the pre-upgrade state.
+
 Activate separately when ready. Synthetic rehearsals without remote backup
 capability may explicitly use `--allow-local-backup`; real recovery must restore
 the approved production recovery capability before normal operation. Prove the
 actual unprivileged process, private HTTPS, export equality, and UI; record
 elapsed time and omitted steps. Do not clone active scheduler ownership. Stop
 and disable the rehearsal service afterwards.
+
+The September 11 drill independently downloaded the fresh schema-2 archive
+`9d057372818f59ec83f866c5caddbf632b3c8ee4e57a370b14b8313d57aaef08` using retained
+off-VM recovery authority and restored it to the unused
+`/var/lib/scry/mis59-rehearsal-20260911.sqlite` on `scry-dev`. Every snapshot export
+section matched, including all history/accounting. The exact MIS-59 binary ran
+as an isolated bounded transient `scry` service and passed executable/checksum
+and loopback readiness checks; one local startup-backup receipt was separate.
+No production integrations or scheduler ownership were attached. The transient
+service was stopped/collected; the existing service remains stopped/disabled.
+Restore through process verification took about 71 seconds on the existing VM.
+Provisioning, DNS, login recovery and authenticated private UI were not measured;
+private ingress returned sign-in. Foundation tables were empty because real
+generation access was unavailable: this is not off-VM proof for newly generated
+foundation records or a complete end-to-end RTO claim.
+
+A later authorized drill retrieved archive
+`0570ca1a312b14506e50d0b5ceafb5acd4d4c7b4845330c8e9272437f890816b`
+(329,316 bytes) with the independently retained recovery authority and exact
+authenticated readback. It contains one foundation request/bundle/bridge, three
+materials, two units, six links and seven interactions. Restore into unused
+`/var/lib/scry/mis59-liveqa-20260911.sqlite` matched every snapshot export section,
+including all history, operations and spend; no uncertain jobs needed changes.
+The exact binary ran as an isolated transient `scry` service, passed readiness,
+and rendered the saved instruction through private HTTPS using the dev-scoped
+QA token. Service state stayed equal except one isolated local startup-backup
+receipt. Restore through private UI observation took 58.33 seconds on the
+existing VM, excluding provisioning, DNS and operator-login recovery; this is
+not a complete RTO claim. The transient service was stopped/collected, MainPID
+zero and no port-8080 listener; normal dev service remains stopped/disabled and
+its original DB metadata/current-release link remained unchanged. No production
+integration or recurring recovery writer was attached. Both QA tokens were
+revoked and denied afterward; production still runs the exact accepted release.
 
 The September 9 drill restored the independently retrieved R2 archive on
 `scry-dev`, activated the unprivileged service, matched the private HTTPS export,

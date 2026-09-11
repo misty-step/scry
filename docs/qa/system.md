@@ -90,6 +90,82 @@ and database readiness, not fresh off-VM recovery or question quality. Inspect
 Settings for the last completed backup and visible stale/error state. There is
 no current `/statusz` contract or public service-session API.
 
+## Foundation detour (MIS-59)
+
+Use a fresh isolated schema-2 app and clearly labeled synthetic authored content
+for local mechanics. The changed route family is `POST /review/foundation`,
+`GET /foundations`, and `GET/POST /foundations/{id}`. The Library links to saved
+foundations; requests do not invoke Reveal. Relevant focused commands:
+
+```sh
+go test ./internal/store -run 'Foundation|PopulatedV1' -count=1
+go test ./internal/generation -run Foundation -count=1
+go test ./internal/web -run Foundation -count=1
+go test ./internal/recovery
+```
+
+Walk through a retained Calvin-cycle-style question, including a typed draft:
+Too advanced → pending/failed saved job → ordinary review still available →
+explicit bounded retry → saved explanation → ordered diagram/reference →
+warm foundation practice → held feedback/Next → deliberate identical-target
+return. Save the original presentation ID and exact prompt, not merely a similar
+question. Restart the app; revisit from Library and reuse without another job.
+Use native browser pointer/keyboard events. If a headless harness loses focus,
+restore browser focus rather than bypassing the DOM with `.click()`; record
+any focus emulation separately from real-device acceptance.
+
+Drop a POST response AFTER commit, observe unknown status, and retry the identical
+operation ID/payload. Expect one read/practice observation and current committed
+progress, not a replayed transition. Test a stale bridge revision and an old tab
+after newer review advancement. It must not overwrite the newer target. Check
+that request-only creates no negative event, read/practice changes no FSRS card,
+and the exposed target cannot report cold success. Complete warm A and B with
+cold C due: C must appear next, not an A/B loop. A sole warm target must remain
+unavailable after Next, reload and restart; selection, preview, counts, empty
+state, next availability and Library must agree on completion plus 24 hours.
+Compare all FSRS bytes before/after warm work. A deliberate reset or newer real
+review must override old consumption; explicit Reveal retains assisted/Again.
+A paused unknown foundation job retains allowance and never auto-retries.
+
+Repeat Too advanced on the same occurrence with an edited draft; reload/restart
+must retain the latest acknowledgment. Replay an older exact operation and send
+a stale new operation after bridge advancement: neither may revert draft or
+progress. Clear the draft and ask for help; required answer validation must not
+block help, while an empty Check answer still must not submit.
+Include an older ungraded answer: it must not hide a later saved draft or an
+acknowledged clearing. A newer ungraded submission must become the editable text
+again, while its immutable prior attempt remains visible separately.
+
+During a later cold occurrence of the same quiz version, GET an old graded
+bridge with Accept: application/json. Before acknowledgment, its target's answer,
+explanation, evidence, variants, submitted answer and saved draft, plus old warm
+feedback, must be withheld, not merely its materials. Compare immutable history
+and original snapshots before/after that GET. A synthetic future occurrence can
+exercise this boundary, but is not evidence of elapsed-time retention.
+
+Inspect exact material/unit versions and separate coverage roles/provenance.
+Rendered markup must stay inert; references must be safe URL-only pointers,
+never fetched/verified source claims. Exercise denied owner/peer/Host and CSRF
+on the new reads/mutations, with no-store/CSP and session-loss behavior.
+
+For migration, use a populated v1 DB containing old presentations, assistance,
+reviews, full FSRS cards, corrections, content versions, receipts, queued and
+unknown paid work. Read-only candidate `check` must leave v1 bytes unchanged;
+startup migration must preserve every old row and leave historical knowledge
+unmapped. Reject incomplete/forged/newer schemas before readiness or claims.
+Compare all foundation export sections after a complete backup/unused-path
+restore and exercise the restored service, not only its tables. Account separately
+for intentional restored-job pauses and new service-start backup receipts.
+Prove the retained v1 snapshot/compatible-binary recovery path described in the
+runbook; never overwrite a live DB to demonstrate rollback.
+
+Local provider-boundary fixtures prove serialization, publication, failure,
+reservation and retry mechanics ONLY. Live selected-provider material quality,
+operator usefulness, actual private ingress/phone access, independent review,
+final exact-binary gate, fresh off-VM backup and protected activation remain
+UNVERIFIED until their separate authorized exercises. This slice does not test
+or claim MIS-60–63's unimplemented planner/estimator behavior.
+
 ## Independent recovery
 
 Use the approved daily/pre-release, 30-day new-app retention policy and

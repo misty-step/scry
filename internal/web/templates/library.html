@@ -13,6 +13,7 @@
 
 {{define "library"}}<section>
   <h1 tabindex="-1" data-focus>Your library</h1>
+  <p><a href="/foundations">Saved foundations and bridge progress</a></p>
   <form class="search-form" action="/library" method="get" hx-get="/library" hx-push-url="true">
     <label for="library-search" class="sr-only">Search source and question text</label>
     <input id="library-search" type="search" name="q" value="{{.Query}}" placeholder="Search source and question text" maxlength="1024">
@@ -36,7 +37,7 @@
   <section class="question-library" aria-labelledby="questions-heading"><h2 id="questions-heading">Questions</h2>
     {{if .Source.Quizzes}}<ul class="question-list">{{$root := .}}{{range .Source.Quizzes}}<li>
       <div class="question-heading"><h3>{{.Prompt}}</h3><span class="status-label">{{if .Archived}}Archived{{else}}{{kind .Kind}}{{end}}</span></div>
-      <p class="small muted">Version {{.Version}}{{if not .Archived}}. Due <time datetime="{{timeISO .DueAt}}" data-local-time>{{timeText .DueAt}}</time>{{end}}.</p>
+      <p class="small muted">Version {{.Version}}{{if not .Archived}}. Available for practice <time datetime="{{timeISO .AvailableAt}}" data-local-time>{{timeText .AvailableAt}}</time>{{if gt .AvailableAt .DueAt}}. Warm practice changed availability, not FSRS; scheduled due <time datetime="{{timeISO .DueAt}}" data-local-time>{{timeText .DueAt}}</time>{{end}}{{end}}.</p>
       <details><summary>Answer and explanation</summary>
         {{if .Choices}}<ul class="plain-choices">{{range .Choices}}<li>{{.}}</li>{{end}}</ul>{{end}}
         <p class="preserve"><strong>Expected answer:</strong> {{.Answer}}</p>
@@ -61,12 +62,12 @@
 {{define "job"}}<section id="job-status" class="job-status" aria-label="Saved generation status" {{if and .JobPending (gt .PollRemaining 0) (not .Source.Archived)}}hx-get="/sources/{{.Source.ID}}?status=1&amp;remaining={{.PollRemaining}}" hx-trigger="every 3s" hx-target="this" hx-select="#job-status" hx-swap="outerHTML"{{end}}>
   {{if .Source.Job}}{{$job := .Source.Job}}
     <h2>{{jobLabel $job.Status}}</h2>
-    <p>Your input is saved. {{if gt $job.Published 0}}{{$job.Published}} questions published.{{else}}No questions published from this attempt.{{end}}</p>
+    <p>Your input is saved. {{if $job.Foundation}}{{$job.Published}} foundation materials published. <a href="/foundations">Open saved foundations</a>.{{else if gt $job.Published 0}}{{$job.Published}} questions published.{{else}}No questions published from this attempt.{{end}}</p>
     {{if eq $job.Status "partial"}}<p>Only part of the requested material was usable. Inspect the questions, edit them, or save revised input; a partial result is not a claim of complete coverage.</p>{{end}}
     {{if $job.Error}}<p class="job-error preserve">{{$job.Error}}</p>{{end}}
     <p class="small muted">{{$job.Attempts}} generation attempts. {{if $job.Model}}Recorded model: {{$job.Model}}.{{else}}No model recorded for this job.{{end}}</p>
     <p class="small muted">Accounted usage {{money $job.CostMicros}}.{{if $job.CostUnknown}} <strong>This includes allowance retained for unknown usage, not a confirmed invoice total.</strong>{{end}}{{if gt $job.ReservedMicros 0}} Another {{money $job.ReservedMicros}} is reserved for in-flight work, not confirmed billed usage.{{end}}</p>
-    {{if and (retryable $job.Status) (eq $job.Published 0) (not .Source.Archived)}}
+    {{if and (not $job.Foundation) (retryable $job.Status) (eq $job.Published 0) (not .Source.Archived)}}
       {{if eq $job.Status "paused"}}<p>Restored or uncertain work stays paused. Retrying is an explicit decision to allow another attempt, which may incur new provider cost. Check prior provider activity first.</p>{{end}}
       <form action="/sources/{{.Source.ID}}/retry" method="post" hx-post="/sources/{{.Source.ID}}/retry" hx-target="#main" hx-select="#main" hx-swap="outerHTML">{{template "tokens" .}}<button type="submit" data-pending="Saving your retry request…">Retry generation</button></form>
     {{end}}

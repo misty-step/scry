@@ -102,8 +102,11 @@ func inspectDatabase(ctx context.Context, path string, immutable bool) (database
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&info.Schema); err != nil {
 		return info, fmt.Errorf("read database schema: %w", err)
 	}
-	if info.ApplicationID != store.ApplicationID || info.Schema != store.SchemaVersion {
+	if info.ApplicationID != store.ApplicationID || (info.Schema != 1 && info.Schema != store.SchemaVersion) {
 		return info, fmt.Errorf("incompatible Scry database: application %d, schema %d; binary requires application %d, schema %d", info.ApplicationID, info.Schema, store.ApplicationID, store.SchemaVersion)
+	}
+	if err = store.CheckSchema(ctx, tx, info.Schema); err != nil {
+		return info, err
 	}
 	if err = tx.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&info.SQLite); err != nil {
 		return info, fmt.Errorf("read SQLite version: %w", err)
@@ -273,7 +276,7 @@ func decodeManifest(encoded []byte, metadata *manifest) error {
 	if metadata.Format != 1 || metadata.Integrity != "ok" || metadata.Bytes <= 0 || metadata.Bytes >= (1<<63)-1 || metadata.CreatedAt <= 0 || !validID(metadata.ID) || err != nil || len(digest) != sha256.Size {
 		return errors.New("recovery manifest is incomplete or has an unsupported format")
 	}
-	if metadata.Database.ApplicationID != store.ApplicationID || metadata.Database.Schema != store.SchemaVersion {
+	if metadata.Database.ApplicationID != store.ApplicationID || (metadata.Database.Schema != 1 && metadata.Database.Schema != store.SchemaVersion) {
 		return errors.New("recovery manifest requires a different application or schema version")
 	}
 	return nil
