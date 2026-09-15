@@ -38,6 +38,10 @@ Preserve the Rust kernel boundary and browser-JS exception from `AGENTS.md`.
 
 ## Gate and review
 
+Read `.agents/skills/scry-qa/SKILL.md` from the selected Revision before choosing
+real-surface proof. This explicit read also works when ambient skills are
+disabled; it grants no production, provider, or additional tool authority.
+
 1. Read `forest.yaml` from the Revision and run every `checks:` command in
    listed order, recording each name and numeric exit code.
 2. Read the current request. Treat every Acceptance and Proof item as part of

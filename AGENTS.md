@@ -62,6 +62,9 @@ exe.dev. The operator approved the phone flow and daily recovery policy.
 
 ## Gates and proof
 
+- Start focused verification with `.agents/skills/scry-qa/SKILL.md`. It owns
+  real-surface proof boundaries and run-owned cleanup; read it explicitly when
+  the runner disables ambient skill discovery.
 - `bun run ci` / `bun run ci:local` run the host source-snapshot gate.
   `bun run ci:full` runs the same gate in pinned Dagger tooling and exports the
   exact smoke-tested Linux amd64 binary, source inventory/archive, and proof.
