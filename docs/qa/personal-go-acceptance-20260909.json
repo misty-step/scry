@@ -1,0 +1,242 @@
+{
+  "issue": "MIS-48",
+  "observed_at": "2026-09-09T21:57:49Z",
+  "scope": "Private candidate acceptance evidence; not public cutover or owner phone approval",
+  "release": "mis48-20260909T213603Z",
+  "binary_sha256": "de20fd63c1b51be2686e234b682b0249735c810df0ff317ace78cf586a506718",
+  "origin": "https://scry-app.exe.xyz",
+  "credentials": {
+    "provider": "OpenRouter",
+    "key_name": "Scry personal (exe.dev)",
+    "storage": ".env:OPENROUTER_API_KEY",
+    "file_mode": "0600",
+    "git_ignored": true,
+    "provider_limit_usd": 1,
+    "provider_limit_reset": "daily UTC",
+    "app_limit": "USD 1 rolling 24 hours with USD 0.20 per-attempt reservation",
+    "integration": "scry-model",
+    "integration_attachment": "vm:scry-app",
+    "management_key_transferred": false,
+    "total_new_key_usage_usd": 0.05130525,
+    "prior_unknown_usage_retained": true
+  },
+  "checks": {
+    "go test ./...": "passed",
+    "go vet ./...": "passed",
+    "node --check internal/web/assets/app.js": "passed",
+    "TestSingleLetterIdentifierDoesNotLeakThroughAnArticle": "observed failing before fix, passing after fix; explicitly named identifier still rejected"
+  },
+  "browser": {
+    "engine": "Fresh isolated Chromium, mobile touch emulation",
+    "widths_checked": [
+      320,
+      390
+    ],
+    "physical_phone": false,
+    "native_events": "pointerType=touch, isTrusted=true",
+    "private_https_grade": {
+      "first": {
+        "elapsedMs": 77,
+        "touch": "touch:true",
+        "feedback": "Recognition 8 due In eukaryotic plant cells, where do the light-dependent reactions of photosynthesis take place? Correct Your answer Thylakoid membrane Expected answer Thylakoid membrane The light-dependent reactions occur within the thylakoid membranes of chloroplasts where chlorophyll pigments absorb light. The light-independent Calvin cycle takes place in the stroma. Next Flag a problem This result stays until you choose Next. Scheduled Sep 9, 2026, 4:52 PM CDT. Inspect the question"
+      },
+      "afterReload": {
+        "graded": "true",
+        "hasNext": true,
+        "question": "In eukaryotic plant cells, where do the light-dependent reactions of photosynthesis take place?"
+      }
+    },
+    "private_https_recovery": {
+      "offline": {
+        "hidden": true,
+        "draft": "Private phone recovery draft — do not save"
+      },
+      "online": {
+        "hidden": false,
+        "draft": "Private phone recovery draft — do not save"
+      },
+      "denied": {
+        "status": null,
+        "hidden": true,
+        "mainVisibility": "hidden"
+      },
+      "reauthorized": {
+        "hidden": false,
+        "draft": "Private phone recovery draft — do not save"
+      }
+    },
+    "anonymous_session_status": 307,
+    "horizontal_overflow": false,
+    "session_check_timeout_observed_ms": 10014,
+    "local_lost_response": {
+      "drop_stage": "response after server commit",
+      "reviews_before": 4,
+      "reviews_after_commit": 5,
+      "reviews_after_exact_retry": 5,
+      "occurrence_events": 1,
+      "draft_preserved": true
+    },
+    "prior_touch_timeout": "Shared two-day-old Chromium stalled native touch dispatch; a fresh isolated Chromium passed without DOM click bypass. Reported to harness QA."
+  },
+  "generation": {
+    "provider_model": "google/gemini-3.7-flash",
+    "first_batch": [
+      {
+        "case": "topic",
+        "http": 200,
+        "kind": "topic",
+        "status": "partial",
+        "attempts": 1,
+        "published": 4,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 5871,
+        "cost_unknown": false,
+        "error": "4 quiz(es) passed structural and provenance checks; this is not independent fact-checking. 1 candidate(s) rejected; their paid usage is included. Checks: invalid_recall_variant."
+      },
+      {
+        "case": "source",
+        "http": 200,
+        "kind": "source",
+        "status": "partial",
+        "attempts": 1,
+        "published": 1,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 6030,
+        "cost_unknown": false,
+        "error": "1 quiz(es) passed structural and provenance checks; this is not independent fact-checking. 2 candidate(s) rejected; their paid usage is included. Checks: invalid_recall_variant, invalid_recall_variant."
+      },
+      {
+        "case": "complete_set",
+        "http": 200,
+        "kind": "source",
+        "status": "partial",
+        "attempts": 2,
+        "published": 1,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 8276,
+        "cost_unknown": false,
+        "error": "1 quiz(es) passed structural and provenance checks; this is not independent fact-checking. 2 candidate(s) rejected; their paid usage is included. Checks: answer_leakage_or_vague_prompt, unsupported_source_answer. Source-unit coverage: 1/3, in the supplied order. Partial: some requested material is missing or uncertain. Inspect the source and clarify or split the task before retrying."
+      }
+    ],
+    "candidate_batch": [
+      {
+        "case": "topic",
+        "http": 200,
+        "status": "partial",
+        "attempts": 1,
+        "published": 3,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 3489,
+        "cost_unknown": false,
+        "note": "3 quiz(es) passed structural and provenance checks; this is not independent fact-checking. 1 candidate(s) rejected; their paid usage is included. Checks: invalid_recall_variant.",
+        "prompt_version": "scry-go-quiz-v2"
+      },
+      {
+        "case": "source",
+        "http": 200,
+        "status": "partial",
+        "attempts": 1,
+        "published": 3,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 9232,
+        "cost_unknown": false,
+        "note": "3 quiz(es) passed structural and provenance checks; this is not independent fact-checking. 1 candidate(s) rejected; their paid usage is included. Checks: invalid_recall_variant.",
+        "prompt_version": "scry-go-quiz-v2"
+      },
+      {
+        "case": "complete_set",
+        "http": 200,
+        "status": "complete",
+        "attempts": 1,
+        "published": 3,
+        "model": "google/gemini-3.7-flash",
+        "cost_micros": 4910,
+        "cost_unknown": false,
+        "note": "3 quiz(es) passed structural and provenance checks; this is not independent fact-checking. Source-unit coverage: 3/3, in the supplied order.",
+        "prompt_version": "scry-go-quiz-v2"
+      }
+    ],
+    "candidate_inputs": [
+      {
+        "case": "topic",
+        "text": "photosynthesis",
+        "source_id": "f1d9c3a55de1e5bb8a9f9a24a0d00eaa"
+      },
+      {
+        "case": "source",
+        "text": "HTTP cache validation\nAn origin server can attach an ETag to a response as an opaque identifier for that version of the resource. A cache sends the saved ETag in If-None-Match when validating the resource. If the selected representation still matches, the server can return 304 Not Modified without a response body, and the cache reuses its stored body. An ETag is not necessarily a content hash. Cache freshness determines whether a stored response can be reused without validation; validation checks whether a stored representation is still usable.",
+        "source_id": "e84500c02318c5034a81f6835fabbad3"
+      },
+      {
+        "case": "complete_set",
+        "text": "Learn the complete set:\n- A: maps a hostname to an IPv4 address.\n- AAAA: maps a hostname to an IPv6 address.\n- CNAME: aliases one DNS name to another DNS name.",
+        "source_id": "503a8c51597e73861ae9e752d14b00d5"
+      }
+    ],
+    "candidate_published_total": 9,
+    "candidate_cost_usd": 0.017631,
+    "human_review_scope": "Assistant inspected published synthetic-topic and supplied-source material; not owner acceptance or independent scientific fact-checking",
+    "remaining_quality_limit": "Topic and source jobs each rejected one invalid recall-variant candidate and remain partial. Complete DNS inventory published 3/3 in supplied order in one attempt."
+  },
+  "recovery": {
+    "snapshot_key": "scry-20260909T214614.256214387Z-e8919cb4077b06a4c5b1d643385b7f87.scry-backup.zip",
+    "snapshot_sha256": "a1328a42c45b8cdd84ad6dd0cb303db8bc121468f06a23486c06bbc2fa07ecef",
+    "snapshot_bytes": 206528,
+    "download_origin": "https://scry-go-backups.misty-step.workers.dev",
+    "download_user_agent": "scry-recovery/1",
+    "download_note": "Default Python urllib user agent received Cloudflare 1010; named recovery client succeeded without changing gateway policy.",
+    "independent_restore_host": "scry-dev.exe.xyz",
+    "application_environment_transferred": false,
+    "credentials_transferred_to_restore_host": false,
+    "application_activated": false,
+    "restored_state": {
+      "sha256": "eabb8c3afca77da69f0a18d17f6cdfbebc024eea750ad5a55a0873448e7fed4f",
+      "counts": {
+        "corrections": 0,
+        "job_attempts": 10,
+        "jobs": 9,
+        "operations": 12,
+        "presentations": 3,
+        "quiz_versions": 17,
+        "quizzes": 17,
+        "review_events": 3,
+        "review_session": 1,
+        "schedules": 17,
+        "source_revisions": 9,
+        "sources": 9
+      },
+      "job_states": [
+        "complete",
+        "failed",
+        "partial"
+      ],
+      "matches_source": true,
+      "staging_restore_and_comparison_ms": 37107
+    },
+    "comparison_excludes": [
+      "backups",
+      "exported_at"
+    ],
+    "compatible_binary_retained": "~/.local/share/scry/ops/releases/mis48-20260909T213603Z/scry",
+    "rto_claim": "Measured staging, isolated data restore and comparison only; not full service activation or disaster RTO."
+  },
+  "handoff": {
+    "active_sources": 3,
+    "active_quizzes": 9,
+    "fresh_ungraded_review": true,
+    "superseded_qa_sources_archived": 6,
+    "source_deletions": 0,
+    "public_dns_changed": false,
+    "old_worker_retired": false
+  },
+  "unverified": [
+    "Owner physical-phone feel and visual acceptance",
+    "Question quality on owner-selected material",
+    "Full latency-distribution and accessibility/device-matrix acceptance",
+    "Actual exe browser logout/account switching beyond revoked machine access checks",
+    "Full service recovery activation and approved RPO/RTO/retention policy",
+    "Public DNS cutover and old runtime retirement",
+    "Old learner data import or deletion",
+    "Delayed recall and longitudinal learning outcomes"
+  ]
+}

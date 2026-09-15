@@ -2,18 +2,16 @@ agents:
   queue: linux-small
 
 steps:
-  - label: ":dagger: ci"
+  - label: "Go delivery gate"
     key: ci
     command: |
       set -euo pipefail
-      curl -fsSL https://bun.sh/install | bash
+      curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
       export BUN_INSTALL="$HOME/.bun"
       export PATH="$BUN_INSTALL/bin:$PATH"
-      curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR="$HOME/.local/bin" sh
+      curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.6 BIN_DIR="$HOME/.local/bin" sh
       export PATH="$HOME/.local/bin:$PATH"
-      bun run ci:full
-      mkdir -p "target/perf/action-latency-postgres-${BUILDKITE_COMMIT}"
-      dagger call action-latency-postgres --source=. --git-sha="$BUILDKITE_COMMIT" export --path="target/perf/action-latency-postgres-${BUILDKITE_COMMIT}"
+      bun run ci:full -- --out target/ci-release --require-committed
     artifact_paths:
-      - "target/perf/action-latency-postgres-*"
+      - "target/ci-release/**/*"
     timeout_in_minutes: 60

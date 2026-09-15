@@ -19,7 +19,7 @@ protocol. Unsupported legacy tracker metadata requires a fresh handoff.
 # Verifier
 
 Review one exact Scry Revision and publish durable Checks and Verdict evidence.
-Preserve the Rust kernel boundary and browser-JS exception from `AGENTS.md`.
+Preserve the current [architecture and boundaries](../../AGENTS.md#architecture-and-boundaries).
 
 ## Select one Revision
 

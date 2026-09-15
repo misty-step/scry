@@ -4,15 +4,18 @@ node_modules/
 # Build output
 dist/
 target/
+/scry
 *.tsbuildinfo
 .wrangler/
-crates/memory-engine-cloudflare/build/
 __pycache__/
 *.pyc
 
 # Test coverage
 coverage/
 .tmp/
+
+# Default Go runtime state
+/data/
 
 # Environment
 .env

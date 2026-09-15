@@ -18,35 +18,21 @@ jobs:
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
 
-      - name: Install Dagger
+      - name: Install pinned Dagger
         run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=$HOME/.local/bin sh
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.6 BIN_DIR=$HOME/.local/bin sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Run full repo CI gate
-        run: bun run ci:full
+      - name: Check and export exact Go release
+        run: bun run ci:full -- --out target/ci-release --require-committed
 
-      - name: Export tested Worker bundle and workerd proof
-        run: |
-          dagger call worker --source=. --git-sha="$GITHUB_SHA" export --path="target/cloudflare/worker-${GITHUB_SHA}"
-
-      - name: Upload tested Worker release artifact
+      - name: Upload tested binary, source and proof
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: worker-${{ github.sha }}
-          path: target/cloudflare/worker-${{ github.sha }}
+          name: scry-linux-amd64-${{ github.sha }}
+          path: target/ci-release/
           if-no-files-found: error
-          retention-days: 14
-
-      - name: Export Postgres action latency receipt
-        run: |
-          mkdir -p "target/perf/action-latency-postgres-${GITHUB_SHA}"
-          dagger call action-latency-postgres --source=. --git-sha="$GITHUB_SHA" export --path="target/perf/action-latency-postgres-${GITHUB_SHA}"
-
-      - name: Upload Postgres action latency receipt
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: action-latency-postgres-${{ github.sha }}
-          path: target/perf/action-latency-postgres-${{ github.sha }}
           retention-days: 14

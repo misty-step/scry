@@ -1,17 +1,18 @@
 # Architecture Workbench
 
-This folder is the repo-local system visualization workbench for Scry.
-It is intentionally static and diffable:
+This folder preserves the historical Rust architecture workbench. It is not
+the current Go application's architecture or fleet authority; use `SPEC.md`
+and current source for those. The historical artifact is static and diffable:
 
-- `memory-engine.map.json` is the canonical graph model.
+- `memory-engine.map.json` is the retained Rust graph model.
 - `workbench.html` is a dependency-free local viewer for that model.
 
-The map is also the current project-map authority for fleet onboarding. Landmark
-owns release intelligence and reads `.landmark.yml`; it does not replace this
-architecture map or generate it. The onboarding decisions and external-boundary
-limits are recorded in [`../fleet-onboarding.md`](../fleet-onboarding.md).
+Landmark owns separate release intelligence and reads `.landmark.yml`; it does
+not generate this map. Current integration boundaries are recorded in
+[`../fleet-onboarding.md`](../fleet-onboarding.md). Resolve old source links
+against the historical revision rather than recreating retired crates.
 
-## Update Workflow
+## Historical Viewer Workflow
 
 1. Edit `docs/architecture/memory-engine.map.json` directly.
 2. Keep IDs stable:
@@ -31,7 +32,7 @@ limits are recorded in [`../fleet-onboarding.md`](../fleet-onboarding.md).
 ## Invariants
 
 - The map is a decision aid, not runtime truth.
-- Runtime behavior is still defined by the Rust crates and tests.
+- This map describes the retired Rust implementation, not current Go behavior.
 - No code generation, no workflow DSL, and no dependency additions for this artifact.
 
 ## When To Use Other Diagram Tools
