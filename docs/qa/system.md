@@ -53,11 +53,72 @@ real.
 
 ## Browser and private ingress
 
-Run an isolated development app with synthetic data:
+### Local authored fixture
+
+From the repository root, use a POSIX shell, `mktemp`, `env`, and the Go toolchain
+selected by `go.mod` (Go 1.27.1). The first build may download that toolchain and
+Go modules; this is not a provider call. No Bun, frontend build, model key, exe
+login, or production environment file is needed for this local recipe.
+
+Build once into a new private temporary directory, seed its unused database,
+then run those bytes in the foreground. Run the whole block in one shell; the
+`&&` chain stops if allocation, build, or seeding fails.
 
 ```sh
-go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
+qa_dir=$(mktemp -d /tmp/scry-qa.XXXXXXXX) &&
+printf 'Disposable QA directory: %s\n' "$qa_dir" &&
+go build -mod=readonly -o "$qa_dir/scry" ./cmd/scry &&
+env -i PATH=/usr/bin:/bin HOME="$qa_dir" LANG=C.UTF-8 \
+  "$qa_dir/scry" seed-fixture --db "$qa_dir/synthetic.sqlite" &&
+env -i PATH=/usr/bin:/bin HOME="$qa_dir" LANG=C.UTF-8 \
+  SCRY_BACKUP_DIR="$qa_dir/backups" \
+  "$qa_dir/scry" serve --dev --db "$qa_dir/synthetic.sqlite" --addr 127.0.0.1:8080
 ```
+
+`seed-fixture` publishes an authored DNS/TLS bundle without calling a model or
+fetching its reference link. Its JSON reports `synthetic: true`, model
+`authored-test-fixture`, and `provider_cost_micros: 0`; it includes authored
+content, so reading it is not a cold-recall observation. It refuses an existing
+database or any SQLite sidecar (`-wal`, `-shm`, `-journal`), never replaces them,
+and does not import production data. This is the fixture command also used by
+the exact-binary smoke in `scripts/lib/scry_smoke.py`, reached through the
+repository gate above.
+
+`--dev` supplies loopback development identity, **not** capability isolation:
+`serve` still reads inherited `SCRY_*` configuration and starts generation and
+recovery workers. The `env -i` allowlist above removes that inheritance,
+including model endpoints/keys and remote-backup URLs/tokens. Do not source a
+production environment file or add live integrations. With no model endpoint,
+new generation jobs become saved, zero-cost configuration failures rather than
+producing questions. Recovery still creates local snapshots in the disposable
+`backups` directory at startup and on its interval; none are off-VM proof.
+
+Wait for `Scry ready`, then open **http://127.0.0.1:8080/** in a local browser.
+The fixture supplies real persisted materials and assessments for the embedded
+review UI. To select the same recall path used by smoke, open the fixture
+goal's `/goals/<goal.id>/plan` path using `goal.id` from the seed JSON. Set
+**Time for this goal plan** to `3600`, **New assessments per day** to `100`,
+**Learning focus** to **Deliberately choose more practice**, enter a synthetic
+QA reason, and save. Return to learning to exercise answer → held feedback →
+Next. These are disposable QA pacing values, not recommended learning settings.
+If port 8080 is occupied, choose another unused loopback port in `--addr` and
+the browser URL; do not stop an unrelated service.
+
+Stop with **Ctrl-C** in the serving terminal and wait for the process to exit
+before manipulating files. To resume saved state, rerun only the final
+`env -i ... serve` command in that shell, then refresh the browser (the
+development session secret is regenerated). To reset, rerun the whole block
+for a fresh directory, not `seed-fixture` against the old database. Keep the
+printed directory for evidence or remove only that verified disposable
+directory after stopping; never delete `data/` or an existing SQLite database
+to make seeding succeed.
+
+This exercises local authored-data UI and persistence, not live generation,
+provider quality/spend controls, private HTTPS ingress, owner authorization,
+physical-phone touch, or independent recovery. Use the separately authorized
+proof below for those claims.
+
+### Browser interaction and private ingress
 
 Use an actual browser. Check answer → held feedback → deliberate Next, capture
 and saved generation status, library/correction, and interrupted access. Exercise

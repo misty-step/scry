@@ -38,11 +38,10 @@ between smoke and deployment or bypass protected activation/remote backup.
 
 ## UI and private production
 
-Use an isolated app with synthetic data for mutation experiments:
-
-```sh
-go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
-```
+For mutation experiments, follow the authoritative
+[local authored-fixture recipe](../../../docs/qa/system.md#local-authored-fixture).
+It seeds a fresh isolated database and strips inherited model/remote-backup
+capabilities before serving; `--dev` alone does not provide that isolation.
 
 Open a real browser. Exercise answer → held feedback → deliberate Next, Add and
 saved generation state, Library/correction, refresh/background/reconnect, and

@@ -21,14 +21,20 @@ retired. Historical learning-science research and recovery tools remain.
 
 ## Develop
 
+For an empty-state development start, use a shell without production Scry
+configuration (an existing database at this path is reused):
+
 ```sh
 go test ./...
 go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
 ```
 
-Development identity is explicitly loopback-only. `data/`, build outputs, and
-private `.env` files are ignored. Do not attach production model or recovery
-capabilities to a development workspace by default.
+Development identity is explicitly loopback-only; `--dev` does **not** clear
+inherited model or backup configuration. For reviewable authored data without
+provider spend or production recovery authority, follow the
+[isolated synthetic QA recipe](docs/qa/system.md#local-authored-fixture).
+`data/`, build outputs, and private `.env` files are ignored; do not attach
+production capabilities to a development workspace.
 
 The UI is embedded in the binary. There is no frontend build step. Vendored
 HTMX and its license live in `internal/web/assets/`; browser JavaScript handles
