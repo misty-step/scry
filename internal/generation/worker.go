@@ -1,4 +1,4 @@
-// Package generation turns durable source jobs into bounded, inspectable quizzes.
+// Package generation turns durable learning jobs into bounded knowledge bundles.
 // No model call is made on the review or grading path.
 package generation
 
@@ -20,12 +20,19 @@ const (
 	requestTimeout   = 60 * time.Second
 	jobLease         = 90 * time.Second
 	settleTimeout    = 10 * time.Second
-	promptVersion    = "scry-go-quiz-v3"
-	maxSourceBytes   = 32 << 10
+	promptVersion    = "scry-go-knowledge-v1"
+	maxSourceBytes   = store.MaxSourceBytes
 	maxRequestBytes  = 128 << 10
 	maxResponseBytes = 1 << 20
 	maxContentBytes  = 512 << 10
-	maxQuizzes       = 60
+	maxQuizzes       = store.MaxGeneratedQuizzes
+	maxUnits         = store.MaxGeneratedUnits
+	maxRelations     = store.MaxGeneratedRelations
+	maxMaterials     = store.MaxGeneratedMaterials
+	maxSuggestions   = store.MaxGeneratedSuggestions
+	maxLinks         = store.MaxMaterialLinks
+	maxContextBytes  = 64 << 10
+	maxOutputTokens  = 27_500
 	repairMarker     = "Generation quality repair pending: "
 )
 
@@ -48,7 +55,7 @@ type Config struct {
 }
 
 // Worker is deliberately serial: one claimed attempt, one HTTP transmission.
-// Store fences source revisions, leases, publication, and attempt accounting.
+// Store fences source/goal/target revisions, leases, publication, and accounting.
 type Worker struct {
 	store       *store.Store
 	cfg         Config
@@ -58,7 +65,7 @@ type Worker struct {
 }
 
 // New does not start goroutines or access the network. Configuration failures are
-// persisted against queued captures by Run rather than replaced with fake quizzes.
+// persisted against queued work by Run rather than replaced with fake material.
 func New(s *store.Store, cfg Config) *Worker {
 	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
 	cfg.Model = strings.TrimSpace(cfg.Model)

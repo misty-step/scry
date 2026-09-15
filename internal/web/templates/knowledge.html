@@ -1,0 +1,120 @@
+{{define "coverage-summary"}}<div class="coverage-summary">
+  {{if or (eq .Kind "") (eq .Kind "unmapped")}}<p><strong>Not mapped yet.</strong> Saved history remains real; missing historical coverage has not been invented.</p>{{else if .Complete}}<p><strong>Requested coverage prepared.</strong> This describes a bounded content request, not an exhaustive map or a claim that you know it.</p>{{else}}<p><strong>Coverage is still partial.</strong> Missing material is a content gap, not a failure of your memory.</p>{{end}}
+  {{if .Missing}}<ul>{{range .Missing}}<li class="preserve">{{.}}</li>{{end}}</ul>{{end}}
+</div>{{end}}
+
+{{define "goal"}}<article>
+  {{template "open" (openLink . "library" "" "Library")}}
+  <h1 tabindex="-1" data-focus>{{.Goal.Title}}</h1>
+  <p class="small muted">Chosen goal, revision {{.Goal.Revision}}. {{if .Goal.Archived}}Archived; retained for inspection.{{else}}Available material is not automatically due work.{{end}}</p>
+  {{template "coverage-summary" .Goal.Coverage}}
+  <div class="actions"><a class="button primary" href="/">Continue learning</a><a href="/goals/{{.Goal.ID}}/plan">Set your pace</a>{{template "open" (openLink . "source" .Goal.SourceID "Original input")}}</div>
+  <section class="knowledge-section" aria-labelledby="goal-units"><h2 id="goal-units">What this goal covers</h2>
+    <p class="small muted">Foundations remain visible at every level. Open a unit to distinguish unknown knowledge, inferred support and actual task evidence.</p>
+    {{if .Goal.Units}}<ul class="library-list">{{$root := .}}{{range .Goal.Units}}<li>{{template "open" (openLink $root "unit" .ID .Statement)}}<p class="library-meta">{{knowledgeKind .Kind}}<span>Definition {{.Version}}{{if .Archived}}; archived{{end}}</span></p><p class="small muted">{{unitState $root.Goal.Estimates .ID}}. Open for task and time context.</p></li>{{end}}</ul>{{else}}<p>No definitions have been mapped for this goal yet. That is missing coverage, not evidence of a learning gap.</p>{{end}}
+  </section>
+  <section class="knowledge-section" aria-labelledby="goal-material"><h2 id="goal-material">Instruction and practice</h2>{{template "material-list" (within . .Goal.Materials)}}</section>
+  <section class="knowledge-section" aria-labelledby="goal-suggestions"><h2 id="goal-suggestions">Where to go next</h2>
+    <p>Options stay within this chosen goal. Accepting one changes future planning; it never silently adds a new goal. <a href="/add">Choose a separate new goal</a> when that is what you want.</p>
+    {{if .Goal.Suggestions}}<ul class="question-list">{{$root := .}}{{range .Goal.Suggestions}}<li>
+      <h3>{{.Title}}</h3><p class="small muted">{{if eq .Kind "advance"}}Deeper application or composition{{else}}Lateral connection, contrast or transfer{{end}}. {{.Status}}.</p><p class="preserve">{{.Reason}}</p>
+      {{if eq .Status "superseded"}}<p class="small muted">A newer compatible option replaces this one. Its original wording and decision history remain here; it is not offered again.</p>{{else if eq .Status "obsolete"}}<p class="small muted">This option no longer matches the current goal definitions or preferences. It is retained as history, not offered as a new choice.</p>{{end}}
+      {{if .SupersedesID}}<p class="small muted">Refreshed from saved option {{.SupersedesID}}.</p>{{end}}
+      {{if or .UnitIDs .MaterialIDs}}<details><summary>Connection to this goal</summary><ul>{{range .UnitIDs}}<li>{{template "open" (openLink $root "unit" . "Inspect linked knowledge")}}</li>{{end}}</ul>{{if .MaterialIDs}}<ul>{{range .MaterialIDs}}<li>{{template "open" (openLink $root "material" . "Inspect proposed material")}}</li>{{end}}</ul>{{end}}</details>{{end}}
+      {{if eq .Status "pending"}}<form action="/suggestions/{{.ID}}/choose" method="post" hx-post="/suggestions/{{.ID}}/choose" data-recover-to="/goals/{{$root.Goal.ID}}">{{template "tokens" $root}}<div class="actions"><button type="submit" name="action" value="accept" data-pending="Saving this goal-aligned choice…">Accept option</button><button type="submit" class="quiet" name="action" value="decline" data-pending="Saving your decision…">Decline</button></div></form>{{end}}
+    </li>{{end}}</ul>{{else}}<p>No advanced or lateral options have been proposed yet. This does not imply you need remediation; preparation and evidence may still be incomplete.</p>{{end}}
+  </section>
+  <section class="knowledge-section" aria-labelledby="goal-decisions"><h2 id="goal-decisions">Why this plan</h2>
+    <p class="small muted">Planning is separate from direct-review FSRS. Undo changes future selection, not observations or past schedule transitions.</p>
+    {{if .Goal.Decisions}}<ol class="history-list">{{$root := .}}{{range .Goal.Decisions}}<li>
+      <h3>{{planKind .Kind}}</h3><p class="preserve">{{.Reason}}</p><p class="small muted"><time datetime="{{timeISO .CreatedAt}}" data-local-time>{{timeText .CreatedAt}}</time>. Policy {{.Policy}}.</p>
+      {{if .ReconsiderAt}}<p>Reconsider <time datetime="{{timeISO .ReconsiderAt}}" data-local-time>{{timeText .ReconsiderAt}}</time>. This bound comes from recorded evidence, not a new window on each visit.</p>{{end}}
+      <details><summary>Inspect this decision</summary>
+        <p class="small">Decision {{.ID}}, goal revision {{.GoalRevision}}.</p>
+        {{if .MaterialID}}<div>{{template "open" (openLink $root "material" .MaterialID "Inspect material")}}<p class="small">Version {{.MaterialVersion}}.</p></div>{{end}}
+        {{if .UnitVersions}}<ul>{{range .UnitVersions}}<li>{{template "open" (openLink $root "unit" .ID .ID)}}Definition {{.Version}}</li>{{end}}</ul>{{end}}
+        {{if .EvidenceIDs}}<p class="small">Supporting original observations:</p><ul>{{range .EvidenceIDs}}<li>{{.}}</li>{{end}}</ul>{{template "open" (openLink $root "history" "" "Inspect original activity")}}{{end}}
+        {{if .After.TimeBudgetSeconds}}<p class="small">Pace changed from {{.Before.TimeBudgetSeconds}} to {{.After.TimeBudgetSeconds}} seconds; new-assessment allowance from {{.Before.NewAssessmentsPerDay}} to {{.After.NewAssessmentsPerDay}} per day. Focus: {{.After.Focus}}.</p>{{end}}
+      </details>
+      {{if .UndoneAt}}<p class="small">Future effects undone <time datetime="{{timeISO .UndoneAt}}" data-local-time>{{timeText .UndoneAt}}</time>.</p>{{else if .UndoOf}}<p class="small">This records a reversal of decision {{.UndoOf}}.</p>{{else if planUndoable .Kind}}<form action="/plans/{{.ID}}/undo" method="post" hx-post="/plans/{{.ID}}/undo" data-recover-to="/goals/{{$root.Goal.ID}}">{{template "tokens" $root}}<button type="submit" data-pending="Undoing future planning effects…">{{if eq .Kind "defer"}}Decline this deferral{{else}}Undo future effects{{end}}</button></form>{{end}}
+    </li>{{end}}</ol>{{else}}<p>No recorded planning changes yet. Direct quiz schedules remain the baseline.</p>{{end}}
+  </section>
+  <details class="knowledge-section"><summary>Preparation and missing work</summary>
+    {{if .Goal.Jobs}}<ul class="question-list">{{$root := .}}{{range .Goal.Jobs}}<li><h3>{{jobLabel .Status}}</h3><p class="small">{{.Kind}} work. {{.NewMaterials}} new materials, {{.ReusedMaterials}} reused, including {{.NewQuizzes}} new assessments.</p>{{template "coverage-summary" .Coverage}}{{if .Error}}<p class="job-error preserve">{{.Error}}</p>{{end}}<p class="small muted">{{.Attempts}} attempts. {{money .CostMicros}} accounted{{if .CostUnknown}}, including allowance retained for unknown usage{{end}}. {{if .ReservedMicros}}{{money .ReservedMicros}} additionally reserved.{{end}}</p><p class="small">{{if .Model}}Recorded model {{.Model}}.{{end}}</p>{{template "job-retry" (within $root .)}}{{template "open" (openLink $root "source" .SourceID "Inspect saved status")}}</li>{{end}}</ul>{{else}}<p>No preparation job is recorded for this goal.</p>{{end}}
+    <div class="actions"><a href="/goals/{{.Goal.ID}}">Refresh saved preparation state</a><a href="/">Keep reviewing available work</a></div>
+  </details>
+</article>{{end}}
+
+{{define "plan"}}<section>
+  <a class="back-link" href="/">Learning</a><h1 tabindex="-1" data-focus>Set your pace.</h1>
+  <p class="lede">{{.Goal.Title}}</p><p>Choose a short amount of learning work, not a forced timer. Reading, practice and retrieval share this plan; nothing here claims mastery.</p>
+  {{if .Goal.Archived}}<p class="message">This goal is archived. Its saved plan remains inspectable.</p>{{else}}
+  <form action="/goals/{{.Goal.ID}}/plan" method="post" hx-post="/goals/{{.Goal.ID}}/plan" data-recover-to="/goals/{{.Goal.ID}}/plan">
+    {{template "tokens" .}}<input type="hidden" name="version" value="{{.Form.Get "version"}}">
+    <label for="plan-time">Time for this goal plan, in seconds</label><input id="plan-time" name="time_budget_seconds" type="number" min="30" max="3600" step="1" required value="{{.Form.Get "time_budget_seconds"}}" aria-describedby="plan-time-help"><p id="plan-time-help" class="small muted">300 seconds is five minutes. Use 30–3600 seconds for this goal's plan, not an app-wide timer. You can stop, change this, or deliberately save a new plan when its allowance is used.</p>
+    <label for="plan-new">New assessments per day</label><input id="plan-new" name="new_assessments_per_day" type="number" min="0" max="100" step="1" required value="{{.Form.Get "new_assessments_per_day"}}" aria-describedby="plan-new-help"><p id="plan-new-help" class="small muted">Five is the starting allowance. The daily count spans every goal; changing goals does not restart it. Zero pauses new assessment selection without erasing existing history or instruction.</p>
+    <label for="plan-focus">Learning focus</label><select id="plan-focus" name="focus"><option value="goal" {{if eq (.Form.Get "focus") "goal"}}selected{{end}}>Work toward this goal</option><option value="foundation" {{if eq (.Form.Get "focus") "foundation"}}selected{{end}}>Make room for foundations</option><option value="practice" {{if eq (.Form.Get "focus") "practice"}}selected{{end}}>Deliberately choose more practice</option></select>
+    <label for="plan-reason">Why this change?</label><textarea id="plan-reason" name="reason" rows="2" required maxlength="2000">{{.Form.Get "reason"}}</textarea>
+    <p class="small muted">These choices are not saved yet. The acknowledged plan survives restart, keeps its reason, and can be undone without rewriting history.</p>
+    <button type="submit" class="primary" data-pending="Saving your pace and focus…">Save this plan</button>
+  </form>{{end}}
+  <div class="actions"><a href="/">Return to learning</a>{{template "open" (openLink . "goal" .Goal.ID "Inspect goal and planning reasons")}}{{template "open" (openLink . "library" "" "Choose another saved goal")}}</div>
+</section>{{end}}
+
+{{define "material-list"}}{{$root := .Page}}{{if .Value}}<ul class="library-list">{{range .Value}}<li>{{template "open" (openLink $root "material" .ID .Title)}}<p class="library-meta">{{materialKind .Kind}}<span>Version {{.Version}}{{if .Archived}}; archived{{else if .FirstPresentedAt}}; previously presented{{else}}; available, not yet presented{{end}}</span></p>{{if .Unmapped}}<p class="small muted">Coverage is not mapped; no historical knowledge credit has been invented.</p>{{end}}</li>{{end}}</ul>{{else}}<p>No material is available here yet. A represented unit may still have missing instruction or assessment coverage.</p>{{end}}{{end}}
+
+{{define "coverage-links"}}{{$root := .Page}}{{if .Value}}<ul class="coverage-links">{{range .Value}}<li><strong>{{coverageRole .Role}}</strong> {{template "open" (openLink $root "unit" .UnitID .UnitID)}}<p class="small">Definition {{.UnitVersion}}.</p><details><summary>Link provenance</summary><p class="small">Coverage {{.ID}}; material version {{.MaterialVersion}}.</p>{{template "provenance" (within $root .Provenance)}}</details></li>{{end}}</ul>{{else}}<p>This material has no mapped knowledge coverage. Its previous history is retained without invented attribution.</p>{{end}}{{end}}
+
+{{define "provenance"}}{{$root := .Page}}<div class="provenance">{{with .Value}}
+  {{if .SourceID}}{{template "open" (openLink $root "source" .SourceID "Saved source")}}<p>Input revision {{.SourceRevision}}.</p>{{end}}
+  {{if .JobID}}<p>Proposed by generation job {{.JobID}}{{if .Model}}, model {{.Model}}{{end}}{{if .PromptVersion}}, prompt {{.PromptVersion}}{{end}}. Model-proposed content is not verified fact.</p>{{end}}
+  {{if .Reason}}<p class="preserve">Correction reason: {{.Reason}}</p>{{end}}
+  {{if .Evidence}}<blockquote class="preserve">{{.Evidence}}</blockquote>{{end}}
+  {{if .CreatedAt}}<p><time datetime="{{timeISO .CreatedAt}}" data-local-time>{{timeText .CreatedAt}}</time>.</p>{{end}}
+{{end}}</div>{{end}}
+
+{{define "unit"}}<article>
+  {{template "open" (openLink . "library" "" "Library")}}<p class="small muted">{{knowledgeKind .Unit.Unit.Kind}}, definition {{.Unit.Unit.Version}}{{if .Unit.Unit.Archived}}; archived{{end}}.</p>
+  <h1 class="knowledge-statement" tabindex="-1" data-focus>{{.Unit.Unit.Statement}}</h1>
+  <p class="small muted">Stable knowledge identity {{.Unit.Unit.ID}}. This definition is authored or model-proposed, not a measurement of your memory.</p>
+  <section class="knowledge-section" aria-labelledby="estimate-heading"><h2 id="estimate-heading">{{estimateState .Unit.Estimate.State}}</h2><p class="preserve">{{.Unit.Estimate.Reason}}</p>
+    <p class="small muted">{{kind .Unit.Estimate.Mode}} context. Evidence observed as of <time datetime="{{timeISO .Unit.Estimate.AsOf.UnixMilli}}" data-local-time>{{timeText .Unit.Estimate.AsOf.UnixMilli}}</time>; estimate for <time datetime="{{timeISO .Unit.Estimate.TargetAt.UnixMilli}}" data-local-time>{{timeText .Unit.Estimate.TargetAt.UnixMilli}}</time>.</p>
+    {{if .Unit.Estimate.RecallProbability}}<p><strong>{{probability .Unit.Estimate.RecallProbability}}</strong> conditional recall estimate.</p><p class="small preserve">{{.Unit.Estimate.RecallCondition}}</p><p class="small muted">Based on original review {{.Unit.Estimate.RecallEvidenceID}} and its pinned schedule. This is not a mastery score, a syllabus-completeness score, or a calibrated promise about unobserved tasks.</p>{{else}}<p class="small muted">No numeric recall confidence is justified here. Reading, assumptions and graph connections alone do not demonstrate uncued recall.</p>{{end}}
+    <details><summary>Change context or target time</summary><form action="/units/{{.Unit.Unit.ID}}" method="get" hx-get="/units/{{.Unit.Unit.ID}}" hx-push-url="true"><label for="estimate-mode">Response context</label><select name="mode" id="estimate-mode"><option value="recall" {{if eq .Mode "recall"}}selected{{end}}>Short cued recall</option><option value="choice" {{if eq .Mode "choice"}}selected{{end}}>Recognition with choices</option></select><label for="estimate-at">Estimate for a time with timezone</label><input id="estimate-at" name="at" type="text" value="{{.EstimateAt}}" placeholder="2026-09-20T12:00:00Z" aria-describedby="estimate-at-help"><p id="estimate-at-help" class="small muted">Use ISO time including Z or an offset. Leave blank for now. Changing this view creates no observation and changes no schedule.</p><button type="submit">Inspect estimate</button></form></details>
+    <details><summary>Original evidence and uncertainty</summary><p class="small">Inference policy: {{.Unit.Estimate.Policy}}. One observation can inform several units but is counted once in this estimate.</p>
+      <h3>Direct assessment evidence</h3>{{template "attributions" (within . .Unit.Estimate.Direct)}}
+      <h3>Cross-item support, not another review</h3>{{template "attributions" (within . .Unit.Estimate.Support)}}
+      <h3>Instruction, exposure and practice</h3>{{template "attributions" (within . .Unit.Estimate.Exposure)}}
+      <h3>Assumed or mentioned knowledge</h3>{{template "attributions" (within . .Unit.Estimate.Assumed)}}
+    </details>
+  </section>
+  <section class="knowledge-section"><h2>Materials for this knowledge</h2>{{template "material-list" (within . .Unit.Materials)}}</section>
+  <section class="knowledge-section"><h2>Relationships</h2><p class="small muted">Direction and exact definition versions matter. A proposed prerequisite is not an established dependency or proof that either end is known.</p>
+    {{if .Unit.Relations}}<ul class="question-list">{{$root := .}}{{range .Unit.Relations}}<li><div>{{template "open" (openLink $root "unit" .FromID .FromID)}}<p class="small">From definition {{.FromVersion}} <strong>{{.Kind}}</strong> To definition {{.ToVersion}}.</p>{{template "open" (openLink $root "unit" .ToID .ToID)}}</div><p class="small muted">Relationship version {{.Version}}. {{if .Proposed}}Proposed / uncertain.{{else}}Explicitly confirmed, still not assessment evidence.{{end}}{{if .Archived}} Archived.{{end}}</p><details><summary>Provenance and correction</summary>{{template "provenance" (within $root .Provenance)}}<a href="/units/{{$root.Unit.Unit.ID}}?relation={{.ID}}#relation-repair">Correct this relationship</a></details></li>{{end}}</ul>{{else}}<p>No relationships have been mapped for this definition.</p>{{end}}
+  </section>
+  <details class="maintenance" {{if .Error}}open{{end}}><summary>Correct this definition</summary><p>Save a new definition version with a reason. Earlier material coverage and observations keep the definition they actually used.</p>
+    <form action="/units/{{.Unit.Unit.ID}}/edit" method="post" hx-post="/units/{{.Unit.Unit.ID}}/edit" data-recover-to="/units/{{.Unit.Unit.ID}}">{{template "tokens" .}}<input type="hidden" name="version" value="{{.Form.Get "version"}}"><label for="unit-statement">Independently meaningful statement or capability</label><textarea id="unit-statement" name="statement" rows="4" required>{{.Form.Get "statement"}}</textarea><label for="unit-kind">Knowledge kind</label><select id="unit-kind" name="kind">{{range unitKinds}}<option value="{{.}}" {{if eq ($.Form.Get "kind") .}}selected{{end}}>{{knowledgeKind .}}</option>{{end}}</select><label for="unit-reason">Correction reason</label><textarea id="unit-reason" name="reason" rows="2" required maxlength="2000">{{.Form.Get "reason"}}</textarea><button type="submit" data-pending="Saving a new definition version…">Save definition correction</button></form>
+  </details>
+  <details class="maintenance" id="relation-repair" {{if or (.Form.Get "relation_id") .Error}}open{{end}}><summary>{{if .Form.Get "relation_id"}}Correct selected relationship{{else}}Add a missing relationship{{end}}</summary>
+    <p>Use exact unit IDs and definition versions from their inspection pages. This edits one assertion, not a graph or a learning result.</p>
+    <form action="/relations/edit" method="post" hx-post="/relations/edit" data-recover-to="/units/{{.Unit.Unit.ID}}">{{template "tokens" .}}<input type="hidden" name="return_unit" value="{{.Unit.Unit.ID}}"><input type="hidden" name="relation_id" value="{{.Form.Get "relation_id"}}"><input type="hidden" name="relation_version" value="{{.Form.Get "relation_version"}}">
+      <label for="relation-from">From unit ID</label><input id="relation-from" name="from_id" required value="{{.Form.Get "from_id"}}"><label for="relation-from-version">From definition version</label><input id="relation-from-version" name="from_version" type="number" min="1" required value="{{.Form.Get "from_version"}}"><label for="relation-to">To unit ID</label><input id="relation-to" name="to_id" required value="{{.Form.Get "to_id"}}"><label for="relation-to-version">To definition version</label><input id="relation-to-version" name="to_version" type="number" min="1" required value="{{.Form.Get "to_version"}}">
+      <label for="relation-kind">Relationship</label><select id="relation-kind" name="relation_kind"><option value="prerequisite" {{if eq (.Form.Get "relation_kind") "prerequisite"}}selected{{end}}>From is a prerequisite of To</option><option value="composition" {{if eq (.Form.Get "relation_kind") "composition"}}selected{{end}}>From is a component of To</option><option value="contrast" {{if eq (.Form.Get "relation_kind") "contrast"}}selected{{end}}>From contrasts with To</option></select>
+      <label for="relation-evidence">Evidence or basis for the relationship</label><textarea id="relation-evidence" name="relation_evidence" rows="3">{{.Form.Get "relation_evidence"}}</textarea><label class="check-field"><input type="checkbox" name="proposed" value="yes" {{if eq (.Form.Get "proposed") "yes"}}checked{{end}}><span>Keep this relationship proposed or uncertain.</span></label>{{if .Form.Get "relation_id"}}<label class="check-field"><input type="checkbox" name="archived" value="yes" {{if eq (.Form.Get "archived") "yes"}}checked{{end}}><span>Retire this relationship for future inference; retain the old versions.</span></label>{{end}}
+      <label for="relation-reason">Correction reason</label><textarea id="relation-reason" name="reason" rows="2" required maxlength="2000">{{.Form.Get "reason"}}</textarea><button type="submit" data-pending="Saving the relationship correction…">Save relationship assertion</button>
+    </form>
+  </details>
+  <details class="maintenance"><summary>Definition versions and corrections</summary><ul class="question-list">{{$root := .}}{{range .Unit.Versions}}<li><h3>Definition {{.Version}}</h3><p class="preserve">{{.Statement}}</p>{{template "provenance" (within $root .Provenance)}}</li>{{end}}</ul>{{if .Unit.Corrections}}<ul>{{range .Unit.Corrections}}<li>{{.Kind}}: version {{.BeforeVersion}} to {{.AfterVersion}}. <span class="preserve">{{.Reason}}</span> <time datetime="{{timeISO .CreatedAt}}" data-local-time>{{timeText .CreatedAt}}</time>.</li>{{end}}</ul>{{end}}</details>
+</article>{{end}}
+
+{{define "attributions"}}{{$root := .Page}}{{if .Value}}<ul class="evidence-list">{{range .Value}}<li>
+  <p class="small">Observation {{.EvidenceID}}, <time datetime="{{timeISO .At.UnixMilli}}" data-local-time>{{timeText .At.UnixMilli}}</time>. {{if .Mode}}{{kind .Mode}}{{else}}{{.Kind}}{{end}}; {{.Outcome}}{{if .Assisted}}; helped{{end}}{{if .Disputed}}; disputed{{end}}{{if .Ambiguous}}; ambiguous{{end}}.</p>
+  {{if .MaterialID}}{{template "open" (openLink $root "material" .MaterialID "Inspect current material")}}<p class="small">Encountered material {{.MaterialID}}, version {{.MaterialVersion}}. {{coverageRole .Role}}.</p>{{end}}
+  {{if .AssistanceReasons}}<ul>{{range .AssistanceReasons}}<li class="small preserve">{{.}}</li>{{end}}</ul>{{end}}
+  <details><summary>Version attribution</summary>{{template "open" (openLink $root "history" "" "Inspect original activity")}}{{if .Targets}}<ul>{{range .Targets}}<li>{{template "open" (openLink $root "unit" .UnitID .UnitID)}}Definition {{.UnitVersion}}; {{coverageRole .Role}}.</li>{{end}}</ul>{{end}}{{if .Coverage}}<ul>{{range .Coverage}}<li>Coverage {{.ID}}, version {{.Version}}.</li>{{end}}</ul>{{end}}{{if .Relations}}<ul>{{range .Relations}}<li>Relationship {{.ID}}, version {{.Version}}.</li>{{end}}</ul>{{end}}{{if .Corrections}}<ul>{{range .Corrections}}<li>{{.Kind}} correction {{.ID}}: <span class="preserve">{{.Reason}}</span></li>{{end}}</ul>{{end}}</details>
+</li>{{end}}</ul>{{else}}<p class="small muted">No eligible observations in this category.</p>{{end}}{{end}}
+
+{{define "job-retry"}}{{$root := .Page}}{{with .Value}}
+  {{if .RetryWarning}}<p class="small preserve">{{.RetryWarning}}</p>{{end}}
+  {{if .RetryAvailable}}<form action="/jobs/{{.ID}}/retry" method="post" hx-post="/jobs/{{.ID}}/retry" hx-target="#main" hx-select="#main" hx-swap="outerHTML" data-recover-to="{{if .GoalID}}/goals/{{.GoalID}}{{else}}/sources/{{.SourceID}}{{end}}">{{template "tokens" $root}}<button type="submit" data-pending="Saving an exact, bounded retry request…">Retry this preparation job</button></form>{{end}}
+{{end}}{{end}}

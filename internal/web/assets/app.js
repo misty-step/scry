@@ -10,6 +10,8 @@
   const recoverLink = document.getElementById('recover-request');
   const cover = document.getElementById('session-cover');
   const retrySessionButton = document.getElementById('retry-session');
+  const scopeReopen = document.getElementById('scope-reopen');
+  const scopeRetryButton = document.getElementById('scope-retry-request');
   const requests = new WeakMap();
   const submitters = new WeakMap();
   let epoch = 0;
@@ -17,6 +19,10 @@
   let replayPermit = false;
   let pressed = null;
   let checkingSession = null;
+  let scopeTimer = null;
+  let scopeDrafts = null;
+  let sessionConfirmed = false;
+  let readingCovered = false;
 
   function announce(text, recover = false, canRetry = false) {
     message.textContent = text;
@@ -74,6 +80,7 @@
     document.getElementById('content')?.removeAttribute('aria-busy');
     restorePreview();
     banner.hidden = true;
+    refreshReadingControls();
   }
 
   function unknown() {
@@ -81,13 +88,14 @@
     pending.unknown = true;
     restorePreview();
     announce('Save status unknown. Your input is still here. Retry this exact request, or check what the server saved.', true, true);
+    refreshReadingControls();
   }
 
   document.addEventListener('htmx:beforeRequest', (event) => {
     const detail = event.detail;
     const config = detail.requestConfig;
     const mutation = config.verb.toLowerCase() !== 'get';
-    const poll = detail.target?.id === 'job-status';
+    const poll = detail.target?.hasAttribute('data-status-poll') || detail.target?.id === 'job-status';
     if (pending && !replayPermit) {
       event.preventDefault();
       if (!poll) announce(pending.unknown ? 'Resolve the unknown save before starting another action.' : 'One request is being saved. Wait for its result before continuing.', pending.unknown, pending.unknown);
@@ -99,7 +107,7 @@
       return;
     }
     if (!poll) epoch += 1;
-    const meta = { epoch, mutation, poll, main: document.getElementById('main') };
+    const meta = { epoch, mutation, poll, main: document.getElementById('main'), startedAt: performance.now() };
     requests.set(detail.xhr, meta);
     if (!mutation) return;
     if (replayPermit && pending) {
@@ -112,7 +120,7 @@
       for (const [name, value] of Object.entries(config.parameters)) values[name] = Array.isArray(value) ? value.slice() : value;
       pending = { path: config.path, verb: config.verb, values, controls: freeze(), xhr: detail.xhr, unknown: false };
       if (button?.classList.contains('choice')) button.classList.add('is-selected');
-      recoverLink.href = config.path === '/add' ? '/library' : config.path.startsWith('/review/') ? '/' : window.location.pathname;
+      recoverLink.href = form?.dataset.recoverTo || (config.path === '/add' ? '/library' : config.path.startsWith('/review/') ? '/' : window.location.pathname + window.location.search);
       if (form?.hasAttribute('data-next')) {
         const preview = document.getElementById('next-preview');
         const stage = document.querySelector('.review-stage');
@@ -125,6 +133,7 @@
     }
     replayPermit = false;
     announce(pending.label || 'Retrying the same request…');
+    refreshReadingControls();
   });
 
   // Reject obsolete responses before HTMX can process response headers, a
@@ -167,9 +176,32 @@
       announce('The input is too large. Nothing was saved. Use at most 32 KiB; split a long passage into smaller sections.');
       return;
     }
+    if (meta?.mutation && xhr.status >= 200 && xhr.status < 300) {
+      const response = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+      if (response.querySelector('#main[data-view="gate"]') && meta.main?.dataset.scopeKind) {
+        // A correction rejected after its reading scope expired must not
+        // replace the form with a gate and discard the retained draft.
+        event.preventDefault();
+        release();
+        readingExpired(meta.main);
+        return;
+      }
+    }
     if ([400, 404, 409, 422, 429].includes(xhr.status)) {
-      event.detail.shouldSwap = true;
-      event.detail.isError = false;
+      if (meta?.mutation) {
+        // A definite rejection is not an unknown save. Keep every in-page
+        // draft, including structured corrections and planning choices, instead
+        // of replacing it with an error page or a competing tab's new form.
+        event.preventDefault();
+        const response = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+        const reason = response.querySelector('.error-message p')?.textContent;
+        release();
+        if (readingCovered) readingExpired(meta.main);
+        announce(reason || 'This change was not accepted. Your input is still here. Check it, or reload the saved state before trying again.', true, false);
+      } else {
+        event.detail.shouldSwap = true;
+        event.detail.isError = false;
+      }
     }
   });
 
@@ -210,6 +242,9 @@
     if (meta?.poll) return;
     const main = document.getElementById('main');
     if (!main) return;
+    restoreScopeDrafts(main);
+    armReadingScope(main, performance.now() - (meta?.startedAt || 0));
+    if (body.classList.contains('private-hidden')) checkSession();
     document.title = `${main.dataset.title} · Scry`;
     // Focus is a presentation change, not an advance. Keep long results in
     // natural scroll flow and never focus a speculative answer control.
@@ -218,35 +253,151 @@
     if (focus && !pending?.unknown) focus.scrollIntoView({ block: 'start', behavior: 'instant' });
   });
   localTimes(document);
+  armReadingScope(document.getElementById('main'), performance.now());
+
+  function captureScopeDrafts(main) {
+    if (pending || scopeDrafts) return;
+    const forms = [];
+    for (const form of main.querySelectorAll('form')) {
+      const controls = [...form.querySelectorAll('input, textarea, select')];
+      const modified = controls.some(control => control.name && control.type !== 'hidden' && (control.matches('select') ? [...control.options].some(option => option.selected !== option.defaultSelected) : control.type === 'checkbox' || control.type === 'radio' ? control.checked !== control.defaultChecked : control.value !== control.defaultValue));
+      if (!modified) continue;
+      const draft = form.cloneNode(true);
+      const copied = draft.querySelectorAll('input, textarea, select');
+      controls.forEach((control, index) => {
+        copied[index].value = control.value;
+        if (control.type === 'checkbox' || control.type === 'radio') copied[index].checked = control.checked;
+      });
+      forms.push({ action: form.getAttribute('action'), draft });
+    }
+    scopeDrafts = { kind: main.dataset.scopeKind, id: main.dataset.scopeId, view: main.dataset.view, forms };
+  }
+
+  function restoreScopeDrafts(main) {
+    if (!scopeDrafts || !main.dataset.scopeKind) return;
+    const drafts = scopeDrafts;
+    scopeDrafts = null;
+    if (drafts.kind !== main.dataset.scopeKind || drafts.id !== main.dataset.scopeId || drafts.view !== main.dataset.view) return;
+    for (const saved of drafts.forms) {
+      const form = [...main.querySelectorAll('form')].find(item => item.getAttribute('action') === saved.action);
+      if (!form) continue;
+      // Preserve the whole draft, including repeated coverage rows, selected
+      // relationship identity and expected versions. Only authorization and
+      // the new unsent operation token come from the freshly inspected form.
+      for (const name of ['csrf', 'operation_id']) {
+        const fresh = form.elements.namedItem(name);
+        const retained = saved.draft.elements.namedItem(name);
+        if (fresh && retained) retained.value = fresh.value;
+      }
+      form.replaceWith(saved.draft);
+      const details = saved.draft.closest('details');
+      if (details) details.open = true;
+      htmx.process(saved.draft);
+    }
+  }
+
+  function readingExpired(main, tokens = null) {
+    if (!main || main !== document.getElementById('main')) return;
+    captureScopeDrafts(main);
+    hidePrivate();
+    readingCovered = true;
+    retrySessionButton.hidden = true;
+    refreshReadingControls();
+    scopeReopen.elements.csrf.value = tokens?.csrf || main.dataset.scopeCsrf;
+    scopeReopen.elements.operation_id.value = tokens?.operation_id || main.dataset.scopeOperation;
+    scopeReopen.elements.kind.value = main.dataset.scopeKind;
+    scopeReopen.elements.id.value = main.dataset.scopeId;
+    scopeReopen.elements.return_to.value = main.dataset.scopeReturn;
+    scopeReopen.dataset.recoverTo = main.dataset.scopeReturn;
+  }
+
+  function refreshReadingControls() {
+    if (!readingCovered) return;
+    cover.querySelector('p').textContent = pending ? 'Reading is paused and a save still needs confirmation. Resolve that request before opening more content; your input is retained.' : 'Continue reading when you are ready. Opening again records inspection and marks related unanswered targets helped, not as a failed review. Your unsaved edits are retained.';
+    scopeReopen.hidden = Boolean(pending);
+    scopeRetryButton.hidden = !pending?.unknown;
+  }
+
+  function armReadingScope(main, elapsed = 0, access = null) {
+    clearTimeout(scopeTimer);
+    if (!main?.dataset.scopeKind) return true;
+    const expires = Number(access?.expires_at ?? main.dataset.scopeExpires);
+    const checked = Number(access?.checked_at ?? main.dataset.scopeChecked);
+    // An active committed presentation stays readable until deliberate
+    // retirement. Periodic read-only checks discover a different tab's Next.
+    if (expires === 0 && main.dataset.scopeKind === 'presentation') return true;
+    const remaining = expires - checked - Math.max(0, elapsed) - 100;
+    if (!Number.isFinite(remaining) || expires <= 0 || remaining <= 0) {
+      readingExpired(main);
+      return false;
+    }
+    scopeTimer = setTimeout(() => readingExpired(main), remaining);
+    return true;
+  }
 
   function hidePrivate() {
     body.classList.add('private-hidden');
+    sessionConfirmed = false;
     cover.hidden = false;
   }
-  async function checkSession() {
+  async function checkSession(options = {}) {
     if (checkingSession) return checkingSession;
-    hidePrivate();
+    const main = document.getElementById('main');
+    const startedAt = performance.now();
+    if (!options.quiet) hidePrivate();
+    readingCovered = false;
     retrySessionButton.hidden = true;
+    scopeReopen.hidden = true;
+    scopeRetryButton.hidden = true;
     cover.querySelector('p').textContent = 'Checking private access…';
     checkingSession = (async () => {
       try {
-        const response = await fetch('/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-        if (!response.ok || (await response.json()).authenticated !== true) throw new Error('private access unavailable');
+        const query = new URLSearchParams();
+        if (main?.dataset.scopeKind) {
+          query.set('kind', main.dataset.scopeKind);
+          query.set('id', main.dataset.scopeId);
+        }
+        const response = await fetch(`/session?${query}`, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error('private access unavailable');
+        const result = await response.json();
+        if (result.authenticated !== true) throw new Error('private access unavailable');
+        if (main !== document.getElementById('main')) return;
+        sessionConfirmed = true;
+        if (main?.dataset.scopeKind && (!result.access?.allowed || result.access?.requires_assistance)) {
+          readingExpired(main, result);
+          sessionConfirmed = true;
+          return;
+        }
+        if (!armReadingScope(main, performance.now() - startedAt, result.access)) {
+          sessionConfirmed = true;
+          return;
+        }
         if (document.visibilityState !== 'hidden') {
+          readingCovered = false;
           body.classList.remove('private-hidden');
           cover.hidden = true;
         }
       } catch {
+        readingCovered = false;
+        hidePrivate();
         epoch += 1;
         if (pending) unknown();
         cover.querySelector('p').textContent = 'Private access could not be confirmed. Your unsaved input is still here. Reconnect or sign in with the approved exe account, then retry private access.';
         retrySessionButton.hidden = false;
       } finally {
         checkingSession = null;
+        if (main !== document.getElementById('main') && body.classList.contains('private-hidden')) checkSession();
       }
     })();
     return checkingSession;
   }
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && !body.classList.contains('private-hidden') && document.getElementById('main')?.dataset.scopeKind) checkSession({ quiet: true });
+  }, 30000);
+  scopeRetryButton.addEventListener('click', async () => {
+    await checkSession();
+    if (sessionConfirmed) retryButton.click();
+  });
   retrySessionButton.addEventListener('click', checkSession);
   window.addEventListener('pagehide', hidePrivate);
   window.addEventListener('blur', hidePrivate);

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -66,10 +65,26 @@ func (s *Store) Next(ctx context.Context, presentationID string) (ReviewState, e
 	defer tx.Rollback()
 	// The predicate is the entire advancement authority. Repeated/stale Next
 	// cannot consume a new prompt, an ungraded response, or another held result.
-	_, err = tx.ExecContext(ctx, `UPDATE review_session SET current_id=NULL WHERE singleton=1 AND current_id=?
-	 AND EXISTS(SELECT 1 FROM presentations WHERE id=? AND graded=1)`, presentationID, presentationID)
+	result, err := tx.ExecContext(ctx, `UPDATE review_session SET current_id=NULL WHERE singleton=1 AND current_id=?
+	 AND EXISTS(SELECT 1 FROM presentations WHERE id=? AND graded=1 AND kind='quiz')`, presentationID, presentationID)
 	if err != nil {
 		return ReviewState{}, err
+	}
+	advanced, err := result.RowsAffected()
+	if err != nil {
+		return ReviewState{}, err
+	}
+	if advanced == 1 {
+		p, err := presentation(ctx, tx, presentationID)
+		if err != nil {
+			return ReviewState{}, err
+		}
+		if err = advanceBridge(ctx, tx, p, s.now()); err != nil {
+			return ReviewState{}, err
+		}
+		if err = endPresentationDisclosure(ctx, tx, p, s.now()); err != nil {
+			return ReviewState{}, err
+		}
 	}
 	state, err := reviewState(ctx, tx, s.now())
 	if err != nil {
@@ -82,56 +97,7 @@ func (s *Store) Next(ctx context.Context, presentationID string) (ReviewState, e
 }
 
 func reviewState(ctx context.Context, tx *sql.Tx, now int64) (ReviewState, error) {
-	var state ReviewState
-	var current sql.NullString
-	if err := tx.QueryRowContext(ctx, "SELECT current_id FROM review_session WHERE singleton=1").Scan(&current); err != nil {
-		return state, err
-	}
-	if current.Valid {
-		p, err := presentation(ctx, tx, current.String)
-		if err != nil {
-			return state, err
-		}
-		state.Current = &p
-	} else {
-		q, scheduleVersion, err := candidate(ctx, tx, now, "")
-		if err != nil {
-			return state, err
-		}
-		if q != nil {
-			p := Presentation{ID: newID(), Quiz: *q, DueAt: q.DueAt}
-			snapshot, err := marshal(q)
-			if err != nil {
-				return state, err
-			}
-			_, err = tx.ExecContext(ctx, `INSERT INTO presentations(id,quiz_id,content_version,schedule_version,snapshot,created_at,due_at)
-			 VALUES(?,?,?,?,?,?,?)`, p.ID, q.ID, q.Version, scheduleVersion, snapshot, now, q.DueAt)
-			if err != nil {
-				return state, err
-			}
-			if _, err = tx.ExecContext(ctx, "UPDATE review_session SET current_id=? WHERE singleton=1", p.ID); err != nil {
-				return state, err
-			}
-			state.Current = &p
-		}
-	}
-	if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(sc.due_at<=?),0),COALESCE(min(CASE WHEN sc.due_at>? THEN sc.due_at END),0)
-	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN schedules sc ON sc.quiz_id=q.id
-	 WHERE q.archived=0 AND src.archived=0`, now, now).Scan(&state.Total, &state.Due, &state.NextDueAt); err != nil {
-		return state, err
-	}
-	if state.Current != nil {
-		q, _, err := candidate(ctx, tx, now, state.Current.Quiz.ID)
-		if err != nil {
-			return state, err
-		}
-		if q != nil {
-			state.Preview = &Presentation{Quiz: *q, DueAt: q.DueAt}
-			hideAnswer(state.Preview)
-		}
-		hideAnswer(state.Current)
-	}
-	return state, nil
+	return sessionState(ctx, tx, now, true)
 }
 
 func hideAnswer(p *Presentation) {
@@ -140,36 +106,42 @@ func hideAnswer(p *Presentation) {
 		p.Quiz.Explanation = ""
 		p.Quiz.Evidence = ""
 		p.Quiz.Variants = nil
+		if p.Kind == "quiz" && !p.Practice {
+			p.PlanningReason = "Selected within the current learning plan; answer-bearing rationale is available through explicit inspection"
+		}
+		if p.Material != nil && p.Kind == "quiz" {
+			p.Material.Body = ""
+			p.Material.Evidence = ""
+			p.Material.Provenance = Provenance{}
+			p.Material.Quiz = &p.Quiz
+			if !p.Practice {
+				p.Material.PlanningReason = p.PlanningReason
+			}
+			for i := range p.Material.Links {
+				p.Material.Links[i].Provenance = Provenance{}
+			}
+		}
 	}
-}
-
-func candidate(ctx context.Context, tx *sql.Tx, now int64, exclude string) (*Quiz, int, error) {
-	var id string
-	var scheduleVersion int
-	err := tx.QueryRowContext(ctx, `SELECT q.id,sc.version FROM quizzes q JOIN schedules sc ON sc.quiz_id=q.id
-	 JOIN sources src ON src.id=q.source_id WHERE q.archived=0 AND src.archived=0 AND sc.due_at<=? AND q.id<>?
-	 ORDER BY sc.due_at,q.created_at,q.rowid LIMIT 1`, now, exclude).Scan(&id, &scheduleVersion)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, 0, nil
-	}
-	if err != nil {
-		return nil, 0, err
-	}
-	q, err := quiz(ctx, tx, id)
-	return &q, scheduleVersion, err
 }
 
 func presentation(ctx context.Context, tx *sql.Tx, id string) (Presentation, error) {
 	var p Presentation
-	var snapshot string
+	var snapshot, materialSnapshot string
 	err := tx.QueryRowContext(ctx, `SELECT p.id,p.snapshot,p.answer,p.outcome,p.assisted,p.graded,p.rating,p.due_at,p.reviewed_at,p.review_id,
-	 EXISTS(SELECT 1 FROM corrections c WHERE c.review_id=p.review_id) FROM presentations p WHERE p.id=?`, id).
-		Scan(&p.ID, &snapshot, &p.Answer, &p.Outcome, &p.Assisted, &p.Graded, &p.Rating, &p.DueAt, &p.ReviewedAt, &p.ReviewID, &p.Disputed)
+	 EXISTS(SELECT 1 FROM corrections c WHERE c.review_id=p.review_id),p.kind,p.material_snapshot,p.bridge_id,p.planning_reason,p.practice,p.goal_id,p.goal_revision,p.goal_pin_origin FROM presentations p WHERE p.id=?`, id).
+		Scan(&p.ID, &snapshot, &p.Answer, &p.Outcome, &p.Assisted, &p.Graded, &p.Rating, &p.DueAt, &p.ReviewedAt, &p.ReviewID, &p.Disputed,
+			&p.Kind, &materialSnapshot, &p.BridgeID, &p.PlanningReason, &p.Practice, &p.GoalID, &p.GoalRevision, &p.GoalPinOrigin)
 	if err != nil {
 		return p, notFound(err, "presentation")
 	}
 	if err = json.Unmarshal([]byte(snapshot), &p.Quiz); err != nil {
 		return p, fmt.Errorf("decode presented quiz: %w", err)
+	}
+	if err = json.Unmarshal([]byte(materialSnapshot), &p.Material); err != nil {
+		return p, err
+	}
+	if p.Kind == "quiz" && p.Material != nil {
+		p.Material.Quiz = &p.Quiz
 	}
 	return p, nil
 }
@@ -202,6 +174,9 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 		if err = json.Unmarshal([]byte(receipt), &p); err != nil {
 			return p, err
 		}
+		if err = hydrateLegacyPresentationReceipt(ctx, tx, &p); err != nil {
+			return p, err
+		}
 		return p, tx.Commit()
 	}
 	p, err := presentation(ctx, tx, presentationID)
@@ -214,6 +189,9 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	}
 	if !current.Valid || current.String != presentationID {
 		return Presentation{}, fmt.Errorf("%w: this occurrence is no longer current; reload review", ErrConflict)
+	}
+	if p.Kind != "quiz" {
+		return Presentation{}, fmt.Errorf("%w: instructional material uses Continue", ErrInvalid)
 	}
 	if p.Graded {
 		// An assistance fence always wins over a second tab's late success.
@@ -248,11 +226,32 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			return Presentation{}, fmt.Errorf("%w: select one of the exact presented choices", ErrInvalid)
 		}
 	}
-	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
+	assisted := p.Assisted || reveal
+	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Answer, p.Quiz.Variants, answer, reveal || (p.Assisted && !p.Practice))
 	now := s.now()
 	p.Answer, p.Outcome, p.Rating = answer, outcome, rating
-	p.Assisted, p.Graded = reveal, rating != 0
-	p.ReviewedAt, p.ReviewID = now, newID()
+	p.Assisted, p.Graded = assisted, rating != 0
+	p.ReviewedAt = now
+	if p.Practice {
+		p.Rating, p.ReviewID = 0, ""
+		if err = recordInteraction(ctx, tx, newID(), p, "practice", p.Outcome, p.PlanningReason, now); err != nil {
+			return Presentation{}, err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE presentations SET answer=?,outcome=?,assisted=?,graded=?,rating=0,reviewed_at=?,review_id='' WHERE id=?`, p.Answer, p.Outcome, p.Assisted, p.Graded, now, p.ID); err != nil {
+			return Presentation{}, err
+		}
+		if p.Graded {
+			if err = endPresentationDisclosure(ctx, tx, p, now); err != nil {
+				return Presentation{}, err
+			}
+		}
+		hideAnswer(&p)
+		if err = saveOperation(ctx, tx, operationID, "submit", hash, p.ID, p, now); err != nil {
+			return Presentation{}, err
+		}
+		return p, tx.Commit()
+	}
+	p.ReviewID = newID()
 	afterJSON := cardJSON
 	afterVersion := scheduleVersion
 	if p.Graded {
@@ -292,10 +291,21 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	if err != nil {
 		return Presentation{}, err
 	}
+	if err = recordInteraction(ctx, tx, p.ReviewID, p, "review", p.Outcome, p.PlanningReason, now); err != nil {
+		return Presentation{}, err
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE presentations SET answer=?,outcome=?,assisted=?,graded=?,rating=?,due_at=?,reviewed_at=?,review_id=? WHERE id=?`,
 		p.Answer, p.Outcome, p.Assisted, p.Graded, p.Rating, p.DueAt, now, p.ReviewID, p.ID)
 	if err != nil {
 		return Presentation{}, err
+	}
+	if err = queueObservedGap(ctx, tx, p, now); err != nil {
+		return Presentation{}, err
+	}
+	if p.Graded {
+		if err = endPresentationDisclosure(ctx, tx, p, now); err != nil {
+			return Presentation{}, err
+		}
 	}
 	hideAnswer(&p)
 	if err = saveOperation(ctx, tx, operationID, "submit", hash, p.ID, p, now); err != nil {
@@ -309,8 +319,6 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 
 // Lifecycle changes retire only unanswered occurrences. A held graded snapshot
 // remains visible even if its future content has been edited or archived.
-func retireUnanswered(ctx context.Context, tx *sql.Tx, quizID, sourceID string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE review_session SET current_id=NULL WHERE singleton=1 AND current_id IN
-	 (SELECT p.id FROM presentations p JOIN quizzes q ON q.id=p.quiz_id WHERE p.graded=0 AND (q.id=? OR q.source_id=?))`, quizID, sourceID)
-	return err
+func retireUnanswered(ctx context.Context, tx *sql.Tx, quizID, sourceID string, now int64) error {
+	return retireMaterial(ctx, tx, quizID, sourceID, now)
 }

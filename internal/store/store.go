@@ -22,9 +22,10 @@ import (
 )
 
 type Store struct {
-	db    *sql.DB
-	path  string
-	clock func() time.Time
+	db           *sql.DB
+	path         string
+	clock        func() time.Time
+	schemaCookie int
 }
 
 func Open(path string) (*Store, error) {
@@ -100,6 +101,13 @@ func (s *Store) initialize(ctx context.Context) error {
 	if numbers[0]*1000000+numbers[1]*1000+numbers[2] < 3051003 {
 		return fmt.Errorf("SQLite %s lacks the required WAL-reset fix; require >=3.51.3", engine)
 	}
+	// SQLite table reconstruction requires foreign keys disabled on this single
+	// connection; the entire source and destination are checked in the same
+	// transaction before any commit, and enforcement is restored before use.
+	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer s.db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON")
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -123,10 +131,25 @@ func (s *Store) initialize(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, schemaV1); err != nil {
 			return fmt.Errorf("migration 1: %w", err)
 		}
-	} else if version != SchemaVersion || app != ApplicationID {
-		return fmt.Errorf("%w: incompatible database application/schema (%d/%d), require %d/%d", ErrInvalid, app, version, ApplicationID, SchemaVersion)
+		version, app = 1, ApplicationID
+	} else if !CanUpgradeSchema(version) || app != ApplicationID {
+		return fmt.Errorf("%w: incompatible database application/schema (%d/%d), require supported Scry schema", ErrInvalid, app, version)
+	}
+	if err = validateState(ctx, tx, version); err != nil {
+		return fmt.Errorf("validate source schema %d: %w", version, err)
+	}
+	if version == 1 {
+		if err = migrateKnowledge(ctx, tx, s.now()); err != nil {
+			return err
+		}
+	}
+	if err = validateState(ctx, tx, SchemaVersion); err != nil {
+		return fmt.Errorf("validate current schema: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if _, err = s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
 		return err
 	}
 	var journal string
@@ -152,6 +175,9 @@ func (s *Store) initialize(ctx context.Context) error {
 	// This join also checks that the core schema and singleton exist, rather
 	// than treating a forged user_version as proof of readiness.
 	var singleton int
+	if err = s.db.QueryRowContext(ctx, "PRAGMA schema_version").Scan(&s.schemaCookie); err != nil {
+		return err
+	}
 	return s.db.QueryRowContext(ctx, `SELECT r.singleton FROM review_session r
 	 LEFT JOIN presentations p ON p.id=r.current_id LEFT JOIN quizzes q ON q.id=p.quiz_id
 	 LEFT JOIN schedules sc ON sc.quiz_id=q.id LEFT JOIN quiz_versions v ON v.quiz_id=q.id AND v.version=q.version

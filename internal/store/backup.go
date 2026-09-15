@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -40,36 +39,15 @@ func (s *Store) Backup(ctx context.Context, destination string) (err error) {
 	if _, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", path); err != nil {
 		return fmt.Errorf("create SQLite snapshot: %w", err)
 	}
-	uri := url.URL{Scheme: "file", Path: path}
-	query := url.Values{"mode": {"ro"}, "_pragma": {"foreign_keys(1)", "trusted_schema(OFF)"}}
-	uri.RawQuery = query.Encode()
-	snapshot, err := sql.Open("sqlite", uri.String())
-	if err != nil {
-		return err
-	}
-	snapshot.SetMaxOpenConns(1)
-	if err = integrity(ctx, snapshot); err == nil {
-		var version, app int
-		if err = snapshot.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err == nil {
-			err = snapshot.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app)
-		}
-		if err == nil && (version != SchemaVersion || app != ApplicationID) {
-			err = errors.New("snapshot schema metadata mismatch")
-		}
-	}
-	closeErr := snapshot.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
+	if err = ValidateDatabase(ctx, path, false); err != nil {
+		return fmt.Errorf("validate complete snapshot: %w", err)
 	}
 	file, err = os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
 	err = file.Sync()
-	closeErr = file.Close()
+	closeErr := file.Close()
 	if err != nil {
 		return err
 	}

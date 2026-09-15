@@ -3,35 +3,91 @@ package generation
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/misty-step/scry/internal/learning"
 	"github.com/misty-step/scry/internal/store"
 )
 
-func topicDraft() quizDraft {
-	return quizDraft{
+func topicDraft() store.GeneratedQuiz {
+	return store.GeneratedQuiz{
+		Key: "quiz_energy", Level: "target", EstimatedSeconds: 30,
 		Kind: "recall", Basis: "topic", Evidence: "",
 		Prompt:      "Which molecule directly supplies energy for many cellular processes?",
 		Answer:      "ATP",
 		Explanation: "ATP transfers chemical energy through phosphate-group reactions rather than serving as long-term genetic storage.",
-		Choices:     []string{}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{{UnitKey: "unit_energy", Role: "assesses"}},
 	}
 }
 
-func outputJSON(t *testing.T, kind string, drafts ...quizDraft) string {
+func outputJSON(t *testing.T, kind string, quizzes ...store.GeneratedQuiz) string {
 	t.Helper()
-	if drafts == nil {
-		drafts = []quizDraft{}
+	bundle := store.GenerationResult{
+		Coverage: store.CoverageReport{Kind: kind, Complete: true, Missing: []string{}},
+		Units:    []store.GeneratedUnit{}, Relations: []store.GeneratedRelation{},
+		Materials: []store.GeneratedMaterial{}, Quizzes: []store.GeneratedQuiz{}, Suggestions: []store.GeneratedSuggestion{},
 	}
+	seen := make(map[string]bool)
+	for index, quiz := range quizzes {
+		if quiz.Key == "" {
+			quiz.Key = fmt.Sprintf("quiz_%d", index)
+		}
+		if quiz.Level == "" {
+			quiz.Level = "target"
+		}
+		if quiz.EstimatedSeconds == 0 {
+			quiz.EstimatedSeconds = 30
+		}
+		if len(quiz.Links) == 0 {
+			quiz.Links = []store.GeneratedLink{{UnitKey: fmt.Sprintf("unit_%d", index), Role: "assesses"}}
+		}
+		statement := quiz.Explanation
+		if quiz.Basis == "source" {
+			statement = quiz.Evidence
+		}
+		for _, link := range quiz.Links {
+			if seen[link.UnitKey] {
+				continue
+			}
+			unitKind := "foundation"
+			if kind == "exact_text" {
+				unitKind = "exact_text"
+			}
+			bundle.Units = append(bundle.Units, store.GeneratedUnit{Key: link.UnitKey, Statement: statement, Kind: unitKind})
+			seen[link.UnitKey] = true
+		}
+		bundle.Quizzes = append(bundle.Quizzes, quiz)
+		if index == 0 && kind != "complete_set" && kind != "exact_text" && len(meaningful(normalized(statement))) >= 6 {
+			bundle.Materials = append(bundle.Materials, store.GeneratedMaterial{
+				Key: "instruction", Kind: "explanation", Title: "Energy transfer foundation",
+				Body: statement, Basis: quiz.Basis, Evidence: quiz.Evidence, EstimatedSeconds: 45,
+				Links: []store.GeneratedLink{{UnitKey: quiz.Links[0].UnitKey, Role: "teaches"}},
+			})
+		}
+	}
+	return bundleJSON(t, bundle)
+}
+
+func bundleJSON(t *testing.T, bundle store.GenerationResult) string {
+	t.Helper()
+	// The wire has exactly six roots; model provenance belongs to the provider
+	// receipt and must never be accepted from the model's generated object.
 	body, err := json.Marshal(struct {
-		Coverage outputCoverage `json:"coverage"`
-		Quizzes  []quizDraft    `json:"quizzes"`
-	}{outputCoverage{Kind: kind, Complete: true, Missing: []string{}}, drafts})
+		Coverage    store.CoverageReport        `json:"coverage"`
+		Units       []store.GeneratedUnit       `json:"units"`
+		Relations   []store.GeneratedRelation   `json:"relations"`
+		Materials   []store.GeneratedMaterial   `json:"materials"`
+		Quizzes     []store.GeneratedQuiz       `json:"quizzes"`
+		Suggestions []store.GeneratedSuggestion `json:"suggestions"`
+	}{bundle.Coverage, bundle.Units, bundle.Relations, bundle.Materials, bundle.Quizzes, bundle.Suggestions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +140,7 @@ func TestPaidRejectedResponsesRetainReportedCost(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server := responseServer(t, test.body, http.StatusOK)
 			worker := New(nil, localConfig(server.URL))
-			result, cost, failure := worker.generate(context.Background(), &store.Job{SourceText: "mitochondria", SourceKind: "topic", Attempts: 1})
+			result, cost, failure := worker.generate(context.Background(), &store.Job{Kind: "capture", Context: store.KnowledgeContext{Version: store.KnowledgeContextVersion}, SourceText: "mitochondria", SourceKind: "topic", Attempts: 1})
 			if failure == nil || failure.retry || len(result.Quizzes) != 0 {
 				t.Fatalf("malformed paid output must not publish or trigger an unearned retry: result=%+v failure=%+v", result, failure)
 			}
@@ -150,7 +206,7 @@ func TestQualityRepairRequiresKnownReceiptAndStopsAfterOnePass(t *testing.T) {
 	bad.Prompt = "Why does ATP directly supply cellular energy?" // Leaks the answer.
 	server := responseServer(t, envelopeJSON(t, outputJSON(t, "concepts", bad), "stop", json.RawMessage(`0.001`)), http.StatusOK)
 	worker := New(nil, localConfig(server.URL))
-	job := &store.Job{SourceText: "mitochondria", SourceKind: "topic", Attempts: 1}
+	job := &store.Job{Kind: "capture", Context: store.KnowledgeContext{Version: store.KnowledgeContextVersion}, SourceText: "mitochondria", SourceKind: "topic", Attempts: 1}
 	_, cost, first := worker.generate(context.Background(), job)
 	if first == nil || !first.retry || cost == nil || *cost != 1_000 {
 		t.Fatalf("small paid quality failure did not request a separately reserved repair: %v %+v", cost, first)
@@ -167,9 +223,152 @@ func TestOversizeCompleteTaskIsRejectedBeforeAnyPaidTransmission(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
 	defer server.Close()
 	worker := New(nil, localConfig(server.URL))
-	job := &store.Job{SourceKind: "source", SourceText: "Learn all entries:\n" + strings.Repeat("- entry\n", 61), Attempts: 1}
+	job := &store.Job{Kind: "capture", Context: store.KnowledgeContext{Version: store.KnowledgeContextVersion}, SourceKind: "source", SourceText: "Learn all entries:\n" + strings.Repeat("- entry\n", 61), Attempts: 1}
 	result, cost, failure := worker.generate(context.Background(), job)
 	if calls.Load() != 0 || failure == nil || failure.retry || cost == nil || *cost != 0 || len(result.Quizzes) != 0 {
 		t.Fatalf("oversized complete task was billed or silently sampled: calls=%d result=%+v cost=%v failure=%+v", calls.Load(), result, cost, failure)
+	}
+}
+
+func TestObservedGapRejectsUnusableTriggerOrTargetBeforeTransmission(t *testing.T) {
+	cases := []struct {
+		name   string
+		change func(*store.Job)
+	}{
+		{"missing observation identity", func(job *store.Job) { job.ObservationID = "" }},
+		{"omitted trigger with another failure", func(job *store.Job) { job.Context.Evidence[0].ID = "newer_failure"; job.Context.Omitted.Evidence = 1 }},
+		{"duplicate trigger identity", func(job *store.Job) { job.Context.Evidence = append(job.Context.Evidence, job.Context.Evidence[0]) }},
+		{"different observed material", func(job *store.Job) { job.Context.Evidence[0].MaterialID = "different_material" }},
+		{"different observed version", func(job *store.Job) { job.Context.Evidence[0].MaterialVersion++ }},
+		{"practice is not a direct review", func(job *store.Job) { job.Context.Evidence[0].Kind = "practice" }},
+		{"revealed answer is not a failure", func(job *store.Job) { job.Context.Evidence[0].Outcome = "revealed" }},
+		{"rating does not record failure", func(job *store.Job) { job.Context.Evidence[0].Rating = 3 }},
+		{"assisted failure", func(job *store.Job) { job.Context.Evidence[0].Assisted = true }},
+		{"disputed failure", func(job *store.Job) { job.Context.Evidence[0].Disputed = true }},
+		{"corrected failure", func(job *store.Job) { job.Context.Evidence[0].CorrectionIDs = []string{"material_correction"} }},
+		{"different encountered mode", func(job *store.Job) { job.Context.Evidence[0].Mode = "choice" }},
+		{"missing chosen goal", func(job *store.Job) { job.Context.GoalID = "" }},
+		{"different chosen goal revision", func(job *store.Job) { job.Context.GoalRevision++ }},
+		{"missing target", func(job *store.Job) { job.Context.Materials = nil }},
+		{"superseded target", func(job *store.Job) { job.Context.Materials[0].Version++ }},
+		{"metadata-only target", func(job *store.Job) { job.Context.Materials[0].MetadataOnly = true }},
+		{"missing presentation", func(job *store.Job) { job.TargetPresentationID = "" }},
+		{"wrong presentation material version", func(job *store.Job) { job.TargetPresentationVersion++ }},
+		{"oversized original trigger", func(job *store.Job) {
+			job.Context.Evidence[0].AssistanceReasons = []string{strings.Repeat("Original context. ", 1024)}
+		}},
+		{"oversized original target", func(job *store.Job) {
+			job.Context.Materials[0].Quiz.Explanation = strings.Repeat("Original explanation. ", 2048)
+		}},
+		{"oversized scoped source", func(job *store.Job) { job.SourceText = strings.Repeat("s", maxSourceBytes+1) }},
+		{"unsupported scoped provenance", func(job *store.Job) { job.SourceKind = "retrieved" }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			job, _ := observedGapFixture(t)
+			test.change(&job)
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+			defer server.Close()
+			worker := New(nil, localConfig(server.URL))
+			result, cost, failure := worker.generate(context.Background(), &job)
+			if calls.Load() != 0 || failure == nil || failure.retry || cost == nil || *cost != 0 || len(result.Quizzes)+len(result.Materials) != 0 {
+				t.Fatalf("invalid observed work reached a paid request or invented support: calls=%d result=%+v cost=%v failure=%+v", calls.Load(), result, cost, failure)
+			}
+		})
+	}
+}
+
+func TestObservedGapTransmitsExactTriggerAndTargetWithinBoundedScope(t *testing.T) {
+	job, bundle := observedGapFixture(t)
+	job.SourceKind = "source"
+	job.SourceText = "Learn all cellular entries:\n" + strings.Repeat("- A separate entry in the saved source inventory.\n", 61)
+	bundle.Materials[0].Basis, bundle.Quizzes[0].Basis = "background", "background"
+	bundle.Materials[0].Body = "Generated background: " + bundle.Materials[0].Body
+	bundle.Quizzes[0].Explanation = "Generated background: " + bundle.Quizzes[0].Explanation
+	target, trigger := job.Context.Materials[0], job.Context.Evidence[0]
+	job.Context.Materials, job.Context.Evidence = nil, nil
+	job.Context.Omitted.Materials, job.Context.Omitted.Evidence = 2, 3
+	for index := range 24 {
+		job.Context.Materials = append(job.Context.Materials, store.Material{
+			ID: fmt.Sprintf("unrelated_%02d", index), SourceID: job.SourceID, Version: 1, Kind: "quiz", Unmapped: true,
+			Quiz: &store.Quiz{ID: fmt.Sprintf("old_quiz_%02d", index), Version: 1, Kind: "recall", Prompt: fmt.Sprintf("Which saved detail belongs to entry %d?", index), Answer: "an unrelated detail", Explanation: "This previously saved quiz remains unrelated to the observed energy target.", Basis: "topic"},
+		})
+		recent := trigger
+		recent.ID, recent.At = fmt.Sprintf("recent_%02d", index), trigger.At.Add(time.Duration(index+1)*time.Minute)
+		recent.Outcome, recent.Rating = "correct", 3
+		job.Context.Evidence = append(job.Context.Evidence, recent)
+	}
+	// Neither history order nor category ceilings can crowd out the original
+	// failed target. Other observations retain their limitations as whole rows.
+	job.Context.Evidence[0].Assisted, job.Context.Evidence[0].Disputed = true, true
+	job.Context.Evidence[0].CorrectionIDs = []string{"review_dispute"}
+	job.Context.Evidence[0].Corrections = []learning.Correction{{ID: "review_dispute", Kind: "dispute", Reason: "The saved answer was disputed.", At: trigger.At.Add(2 * time.Minute)}}
+	job.Context.Evidence[0].AssistanceReasons = []string{"The explanation was previously revealed."}
+	job.Context.Materials = append(job.Context.Materials, target)
+	job.Context.Evidence = append(job.Context.Evidence, trigger)
+	before, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	received := make(chan []byte, 1)
+	response := envelopeJSON(t, bundleJSON(t, bundle), "stop", json.RawMessage(`0.000031`))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		received <- body
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, response)
+	}))
+	defer server.Close()
+	worker := New(nil, localConfig(server.URL))
+	result, cost, failure := worker.generate(context.Background(), &job)
+	if failure != nil || cost == nil || *cost != 31 || !result.Coverage.Complete || len(result.Materials) != 1 || len(result.Quizzes) != 1 || result.Quizzes[0].Level != "foundation" {
+		t.Fatalf("useful ambiguous-target support was replaced by full-source mapping or rejected: %+v %v %+v", result, cost, failure)
+	}
+	var request struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(<-received, &request); err != nil {
+		t.Fatal(err)
+	}
+	var input struct {
+		ObservationID             string                 `json:"observation_id"`
+		TargetMaterialID          string                 `json:"target_material_id"`
+		TargetMaterialVersion     int                    `json:"target_material_version"`
+		TargetPresentationID      string                 `json:"target_presentation_id"`
+		TargetPresentationVersion int                    `json:"target_presentation_version"`
+		Context                   store.KnowledgeContext `json:"knowledge_context"`
+		Plan                      coveragePlan           `json:"task_contract"`
+	}
+	for _, message := range request.Messages {
+		if message.Role == "user" {
+			if err := json.Unmarshal([]byte(message.Content), &input); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if input.ObservationID != trigger.ID || input.TargetMaterialID != target.ID || input.TargetMaterialVersion != target.Version || input.TargetPresentationID != job.TargetPresentationID || input.TargetPresentationVersion != target.Version || input.Context.GoalID != job.GoalID || input.Context.GoalRevision != job.GoalRevision {
+		t.Fatalf("paid request changed original failure/target identity or chosen goal authority: %+v", input)
+	}
+	if input.Plan.Task != "infer" || len(input.Plan.Units) != 0 || input.Context.Omitted.Materials <= 2 || input.Context.Omitted.Evidence <= 3 {
+		t.Fatalf("bounded support regenerated unrelated inventory or hid context omissions: %+v", input)
+	}
+	if len(input.Context.Materials) == 0 || !reflect.DeepEqual(input.Context.Materials[0], target) || len(input.Context.Evidence) < 2 || !reflect.DeepEqual(input.Context.Evidence[0], trigger) || !reflect.DeepEqual(input.Context.Evidence[1], job.Context.Evidence[0]) {
+		t.Fatalf("exact versioned target, ambiguous trigger or limited history was lost: %+v", input.Context)
+	}
+	after, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("preparing the paid request mutated saved context")
 	}
 }

@@ -47,7 +47,7 @@ func TestExpiredClaimsKeepSpendAndFenceLatePublication(t *testing.T) {
 	if err != nil || second == nil || second.Attempts != 2 || second.LeaseToken == first.LeaseToken {
 		t.Fatalf("replacement claim lacked a new fence: %+v %v", second, err)
 	}
-	result := GenerationResult{Quizzes: []GeneratedQuiz{authoredChoice("Only published once?")}, Model: "authored-test-fixture", PromptVersion: "fixture-v1"}
+	result := authoredBundle(authoredChoice("Only published once?"))
 	lateCost := int64(20)
 	if err = s.CompleteJob(ctx, first.ID, first.LeaseToken, result, &lateCost); !errors.Is(err, ErrConflict) {
 		t.Fatalf("late provider completion published: %v", err)
@@ -63,7 +63,7 @@ func TestExpiredClaimsKeepSpendAndFenceLatePublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	src, err = s.Source(ctx, src.ID)
-	if err != nil || len(src.Quizzes) != 1 || src.Status != "ready" || src.Job.Attempts != 2 {
+	if err != nil || len(src.Quizzes) != 1 || src.Job.Coverage.Complete || src.Job.Attempts != 2 {
 		t.Fatalf("publication duplicated or successor claim overwritten: %+v %v", src, err)
 	}
 	summary, err = s.Summary(ctx)
@@ -121,7 +121,7 @@ func TestFailureAccountingRetryBoundAndInvalidOutput(t *testing.T) {
 		t.Fatalf("claim retry: %+v %v", claim, err)
 	}
 	cost := int64(11)
-	bad := GenerationResult{Quizzes: []GeneratedQuiz{authoredChoice("Rejected content?")}, Model: "authored-test-fixture", PromptVersion: "fixture-v1"}
+	bad := authoredBundle(authoredChoice("Rejected content?"))
 	bad.Quizzes[0].Answer = "not a displayed choice"
 	if err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, bad, &cost); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid output was accepted: %v", err)
@@ -182,7 +182,7 @@ func TestSnapshotPreservesReviewAndPausesRestoredBilling(t *testing.T) {
 		t.Fatal(err)
 	}
 	lateCost := int64(40)
-	if err = restored.CompleteJob(ctx, claim.ID, claim.LeaseToken, GenerationResult{Quizzes: []GeneratedQuiz{authoredChoice("Archived output?")}, Model: "authored-test-fixture", PromptVersion: "fixture-v1"}, &lateCost); !errors.Is(err, ErrConflict) {
+	if err = restored.CompleteJob(ctx, claim.ID, claim.LeaseToken, authoredBundle(authoredChoice("Archived output?")), &lateCost); !errors.Is(err, ErrConflict) {
 		t.Fatalf("archived restored source resurrected: %v", err)
 	}
 }

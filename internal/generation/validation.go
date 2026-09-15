@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -14,28 +17,11 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
-type outputCoverage struct {
-	Kind     string   `json:"kind"`
-	Complete bool     `json:"complete"`
-	Missing  []string `json:"missing"`
-}
-
-type quizDraft struct {
-	Evidence    string   `json:"evidence"`
-	Basis       string   `json:"basis"`
-	Kind        string   `json:"kind"`
-	Prompt      string   `json:"prompt"`
-	Answer      string   `json:"answer"`
-	Explanation string   `json:"explanation"`
-	Choices     []string `json:"choices"`
-	Variants    []string `json:"variants"`
-	Covers      []string `json:"covers"`
-}
-
 var (
 	markup         = regexp.MustCompile(`(?i)<[/!]?[a-z][^>]*>|\[[^\]]+\]\([^\)]+\)|` + "```")
 	quotedText     = regexp.MustCompile(`["“]([^"”\n]{2,})["”]|‘([^’\n]{2,})’|(?:^|[\s(])'([^'\n]{3,})'(?:$|[\s.,!?:;)])`)
 	citations      = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s<>()]+|\bdoi:[^\s]+|\[[0-9]+\]`)
+	inlineURL      = regexp.MustCompile(`(?i)\b(?:[a-z][a-z0-9+.-]*://|www\.)`)
 	falseSource    = regexp.MustCompile(`(?i)\b(according to (the |this )?(source|passage|excerpt|text)|the (source|passage|excerpt|text) (says|states|shows|proves))\b`)
 	catchAll       = regexp.MustCompile(`(?i)\b(all|none|both|any) of (the |these )?(above|below|options|choices)|\b(not enough information|cannot be determined)\b`)
 	keyedOption    = regexp.MustCompile(`^[A-Ea-e][.)]\s`)
@@ -44,6 +30,10 @@ var (
 	strongClaims   = regexp.MustCompile(`\b(always|never|everyone|proves?|guarantees?|causes?|causal|causation|certainly|definitely)\b`)
 	numericRange   = regexp.MustCompile(`^\s*(-?[0-9]+(?:\.[0-9]+)?)\s*(?:-|–|—|to)\s*(-?[0-9]+(?:\.[0-9]+)?)\s*([^0-9]*)$`)
 	numericPoint   = regexp.MustCompile(`^\s*(-?[0-9]+(?:\.[0-9]+)?)\s*([^0-9]*)$`)
+	batchKey       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+	vagueUnit      = regexp.MustCompile(`(?i)^(understand|learn|know|study|basics of|introduction to)\b`)
+	falseResearch  = regexp.MustCompile(`(?i)\b(I|we) (fetched|browsed|verified|researched|watched|looked up)|\b(verified (fact|citation|transcript)|the (article|video|transcript) (says|states|shows|proves))\b`)
+	fakeCertainty  = regexp.MustCompile(`(?i)\b(mastered|mastery|permanently knows|expert learner)\b|\b[0-9]{1,3}% (confident|confidence|mastery)\b`)
 )
 
 func strictObject(data []byte, target any, fields ...string) error {
@@ -53,7 +43,7 @@ func strictObject(data []byte, target any, fields ...string) error {
 	}
 	for _, field := range fields {
 		value, found := object[field]
-		if !found || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		if !found || (field != "diagram" && bytes.Equal(bytes.TrimSpace(value), []byte("null"))) {
 			return errors.New("missing or null JSON field")
 		}
 	}
@@ -62,133 +52,610 @@ func strictObject(data []byte, target any, fields ...string) error {
 	return decoder.Decode(target)
 }
 
-func validateOutput(content string, job *store.Job, plan coveragePlan) (store.GenerationResult, []string, error) {
-	result := store.GenerationResult{}
-	data := []byte(content)
-	if len(data) > maxContentBytes || !utf8.Valid(data) || checkJSON(data, 12) != nil {
-		return result, nil, errors.New("invalid quiz JSON")
-	}
+// Decode the entire bundle before inspecting content. Unlike candidate filtering,
+// atomic rejection cannot leave a relation or suggestion pointing at removed work.
+func decodeBundle(data []byte) (store.GenerationResult, error) {
+	var result store.GenerationResult
 	var raw struct {
-		Coverage json.RawMessage   `json:"coverage"`
-		Quizzes  []json.RawMessage `json:"quizzes"`
+		Coverage    json.RawMessage   `json:"coverage"`
+		Units       []json.RawMessage `json:"units"`
+		Relations   []json.RawMessage `json:"relations"`
+		Materials   []json.RawMessage `json:"materials"`
+		Quizzes     []json.RawMessage `json:"quizzes"`
+		Suggestions []json.RawMessage `json:"suggestions"`
 	}
-	if err := strictObject(data, &raw, "coverage", "quizzes"); err != nil {
-		return result, nil, err
+	if err := strictObject(data, &raw, "coverage", "units", "relations", "materials", "quizzes", "suggestions"); err != nil {
+		return result, err
 	}
-	var coverage outputCoverage
-	if err := strictObject(raw.Coverage, &coverage, "kind", "complete", "missing"); err != nil {
-		return result, nil, err
+	if len(raw.Units) > maxUnits || len(raw.Relations) > maxRelations || len(raw.Materials) > maxMaterials || len(raw.Quizzes) > maxQuizzes || len(raw.Suggestions) > maxSuggestions {
+		return result, errors.New("bundle count exceeds limit")
 	}
-	switch coverage.Kind {
-	case "concepts", "vocabulary", "procedure", "complete_set", "exact_text":
-	default:
-		return result, nil, errors.New("unsupported task classification")
+	if err := strictObject(raw.Coverage, &result.Coverage, "kind", "complete", "missing"); err != nil {
+		return result, err
 	}
-	if len(raw.Quizzes) > maxQuizzes || len(coverage.Missing) > maxQuizzes {
-		return result, nil, errors.New("quiz or coverage count exceeds limit")
+	for _, value := range raw.Units {
+		var unit store.GeneratedUnit
+		if err := strictObject(value, &unit, "key", "reuse_id", "statement", "kind"); err != nil {
+			return result, err
+		}
+		result.Units = append(result.Units, unit)
 	}
-	for _, missing := range coverage.Missing {
-		if len(missing) > 512 || hasUnsafeControl(missing) {
-			return result, nil, errors.New("invalid coverage detail")
+	for _, value := range raw.Relations {
+		var relation store.GeneratedRelation
+		if err := strictObject(value, &relation, "from", "to", "kind", "evidence"); err != nil {
+			return result, err
+		}
+		result.Relations = append(result.Relations, relation)
+	}
+	for _, value := range raw.Materials {
+		var material store.GeneratedMaterial
+		if err := strictObject(value, &material, "key", "reuse_id", "kind", "title", "body", "basis", "evidence", "reference_url", "start_seconds", "end_seconds", "estimated_seconds", "diagram", "links"); err != nil {
+			return result, err
+		}
+		if err := decodeResourceDetails(value, material.Diagram != nil); err != nil {
+			return result, err
+		}
+		result.Materials = append(result.Materials, material)
+	}
+	for _, value := range raw.Quizzes {
+		var quiz store.GeneratedQuiz
+		if err := strictObject(value, &quiz, "key", "reuse_id", "level", "estimated_seconds", "evidence", "basis", "kind", "prompt", "answer", "explanation", "choices", "variants", "links"); err != nil {
+			return result, err
+		}
+		if err := decodeResourceDetails(value, false); err != nil {
+			return result, err
+		}
+		result.Quizzes = append(result.Quizzes, quiz)
+	}
+	for _, value := range raw.Suggestions {
+		var suggestion store.GeneratedSuggestion
+		if err := strictObject(value, &suggestion, "key", "kind", "title", "reason", "unit_keys", "material_keys"); err != nil {
+			return result, err
+		}
+		result.Suggestions = append(result.Suggestions, suggestion)
+	}
+	return result, nil
+}
+
+func decodeResourceDetails(data []byte, diagram bool) error {
+	var raw struct {
+		Links   []json.RawMessage `json:"links"`
+		Diagram json.RawMessage   `json:"diagram"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw.Links) > maxLinks {
+		return errors.New("coverage link count exceeds limit")
+	}
+	for _, value := range raw.Links {
+		var link store.GeneratedLink
+		if err := strictObject(value, &link, "unit_key", "role"); err != nil {
+			return err
 		}
 	}
-	drafts := make([]quizDraft, len(raw.Quizzes))
-	for index, rawQuiz := range raw.Quizzes {
-		if err := strictObject(rawQuiz, &drafts[index], "evidence", "basis", "kind", "prompt", "answer", "explanation", "choices", "variants", "covers"); err != nil {
-			return result, nil, err
+	if diagram {
+		var parts struct {
+			Nodes   []json.RawMessage `json:"nodes"`
+			Edges   []json.RawMessage `json:"edges"`
+			Caption string            `json:"caption"`
+		}
+		if err := strictObject(raw.Diagram, &parts, "nodes", "edges", "caption"); err != nil {
+			return err
+		}
+		if len(parts.Nodes) > 16 || len(parts.Edges) > 32 {
+			return errors.New("diagram count exceeds limit")
+		}
+		for _, value := range parts.Nodes {
+			var node store.DiagramNode
+			if err := strictObject(value, &node, "id", "label"); err != nil {
+				return err
+			}
+		}
+		for _, value := range parts.Edges {
+			var edge store.DiagramEdge
+			if err := strictObject(value, &edge, "from", "to", "label"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateOutput(content string, job *store.Job, plan coveragePlan) (store.GenerationResult, []string, error) {
+	empty := store.GenerationResult{}
+	data := []byte(content)
+	if len(data) > maxContentBytes || !utf8.Valid(data) || checkJSON(data, 12) != nil {
+		return empty, nil, errors.New("invalid bundle JSON")
+	}
+	result, err := decodeBundle(data)
+	if err != nil {
+		return empty, nil, err
+	}
+	coverage := &result.Coverage
+	if !slices.Contains([]string{"concepts", "vocabulary", "procedure", "complete_set", "exact_text"}, coverage.Kind) || len(coverage.Missing) > maxQuizzes {
+		return empty, nil, errors.New("unsupported task classification or coverage count")
+	}
+	missingSeen := make(map[string]bool)
+	for _, missing := range coverage.Missing {
+		if !plainText(missing, 512, true) || missingSeen[normalized(missing)] {
+			return empty, nil, errors.New("invalid coverage detail")
+		}
+		missingSeen[normalized(missing)] = true
+	}
+	issues := make([]string, 0)
+	addIssue := func(issue string) {
+		if issue != "" && !slices.Contains(issues, issue) {
+			issues = append(issues, issue)
 		}
 	}
 	if plan.Task != "infer" && coverage.Kind != plan.Task {
-		return result, []string{"task_mismatch"}, nil
+		addIssue("task_mismatch")
 	}
-	finite := coverage.Kind == "complete_set" || coverage.Kind == "exact_text"
-	unitIndex := make(map[string]int, len(plan.Units))
-	for index, unit := range plan.Units {
-		unitIndex[unit.ID] = index
+	units := make(map[string]store.GeneratedUnit, len(result.Units))
+	keys, statements := make(map[string]bool), make(map[string]bool)
+	required := make(map[string]string, len(plan.Units))
+	for _, unit := range plan.Units {
+		required[unit.ID] = unit.Text
 	}
-	covered := make(map[string]bool, len(plan.Units))
-	seenPrompts := make(map[string]bool, len(drafts))
-	issues := make([]string, 0)
+	claimKey := func(key string) bool {
+		if !batchKey.MatchString(key) || keys[key] {
+			return false
+		}
+		keys[key] = true
+		return true
+	}
+	for _, unit := range result.Units {
+		if !claimKey(unit.Key) || !slices.Contains([]string{"foundation", "concept", "composition", "procedure", "exact_text"}, unit.Kind) {
+			addIssue("invalid_unit_identity")
+		}
+		atomic := len(meaningful(normalized(unit.Statement))) >= 3 && !vagueUnit.MatchString(unit.Statement)
+		if required[unit.Key] == unit.Statement {
+			atomic = true // An explicit finite inventory can contain short mappings.
+		}
+		if !plainText(unit.Statement, 2048, true) || !atomic || statements[normalized(unit.Statement)] {
+			addIssue("vague_or_duplicate_unit")
+		}
+		if unit.ReuseID == "" && unsupportedCitation(unit.Statement, job, job.SourceKind == "source") {
+			addIssue("invented_unit_citation")
+		}
+		if text, found := required[unit.Key]; found && text != unit.Statement {
+			addIssue("required_unit_changed")
+		}
+		addIssue(validateUnitReuse(unit, job))
+		statements[normalized(unit.Statement)] = true
+		units[unit.Key] = unit
+	}
+	if len(units) == 0 {
+		addIssue("missing_knowledge_units")
+	}
+	relations, dependencies := make(map[string]bool), make(map[string][]string)
+	used := make(map[string]bool)
+	for _, relation := range result.Relations {
+		_, from := units[relation.From]
+		_, to := units[relation.To]
+		key := relation.From + "\x00" + relation.To + "\x00" + relation.Kind
+		if !from || !to || relation.From == relation.To || relations[key] || !slices.Contains([]string{"prerequisite", "composition", "contrast"}, relation.Kind) {
+			addIssue("invalid_knowledge_relation")
+		}
+		if !plainText(relation.Evidence, 8192, true) || len(meaningful(normalized(relation.Evidence))) < 4 || (!strings.HasPrefix(relation.Evidence, "Proposed relationship:") && (job.SourceKind != "source" || !strings.Contains(job.SourceText, relation.Evidence))) {
+			addIssue("unsubstantiated_relation")
+		}
+		if relation.Kind == "composition" && units[relation.To].Kind != "composition" {
+			addIssue("invalid_composition_target")
+		}
+		if relation.Kind != "contrast" {
+			dependencies[relation.From] = append(dependencies[relation.From], relation.To)
+		}
+		relations[key], used[relation.From], used[relation.To] = true, true, true
+	}
+	if dependencyCycle(dependencies) {
+		addIssue("cyclic_knowledge_dependencies")
+	}
+	materials := make(map[string]bool)
+	seenContent := make(map[string]bool)
+	for _, material := range result.Materials {
+		if !claimKey(material.Key) {
+			addIssue("invalid_material_identity")
+		}
+		addIssue(validateLinks(material.Links, units, false, used))
+		addIssue(validateMaterial(material, job))
+		addIssue(validateMaterialReuse(material, job))
+		if material.Basis == "background" {
+			for _, link := range material.Links {
+				if link.Role == "teaches" && units[link.UnitKey].Kind != "foundation" {
+					addIssue("background_target_laundering")
+				}
+			}
+		}
+		contentKey := material.Kind + "\x00" + normalized(material.Body) + "\x00" + material.ReferenceURL + "\x00" + strconv.Itoa(material.StartSeconds) + "\x00" + strconv.Itoa(material.EndSeconds)
+		if seenContent[contentKey] {
+			addIssue("duplicate_material")
+		}
+		seenContent[contentKey], materials[material.Key] = true, true
+	}
 	lastUnit, lastExactOffset := -1, -1
-	for _, draft := range drafts {
-		if issue := validateQuiz(draft, job); issue != "" {
-			issues = append(issues, issue)
+	covered := make(map[string]bool, len(plan.Units))
+	for _, quiz := range result.Quizzes {
+		if !claimKey(quiz.Key) {
+			addIssue("invalid_quiz_identity")
+		}
+		if !slices.Contains([]string{"foundation", "target", "extension"}, quiz.Level) || quiz.EstimatedSeconds < 1 || quiz.EstimatedSeconds > 3600 {
+			addIssue("invalid_quiz_pacing")
+		}
+		addIssue(validateLinks(quiz.Links, units, true, used))
+		if quiz.ReuseID == "" {
+			addIssue(validateQuiz(quiz, job))
+		}
+		addIssue(validateQuizReuse(quiz, job))
+		if quiz.Basis == "background" {
+			for _, link := range quiz.Links {
+				if link.Role == "assesses" && units[link.UnitKey].Kind != "foundation" {
+					addIssue("background_target_laundering")
+				}
+			}
+		}
+		contentKey := "quiz\x00" + normalized(quiz.Prompt)
+		if seenContent[contentKey] {
+			addIssue("duplicate_question")
+		}
+		seenContent[contentKey], materials[quiz.Key] = true, true
+		if quiz.Level != "target" {
 			continue
 		}
-		promptKey := normalized(draft.Prompt)
-		if seenPrompts[promptKey] {
-			issues = append(issues, "duplicate_question")
-			continue
-		}
-		if len(draft.Covers) > 1 || (len(plan.Units) == 0 && len(draft.Covers) != 0) {
-			issues = append(issues, "invented_coverage")
-			continue
-		}
+		assessed := assessedKeys(quiz.Links)
 		unit := -1
 		if len(plan.Units) > 0 {
-			if len(draft.Covers) != 1 {
-				issues = append(issues, "missing_coverage_unit")
-				continue
-			}
-			var found bool
-			unit, found = unitIndex[draft.Covers[0]]
-			if !found || covered[draft.Covers[0]] || (plan.Ordered && unit <= lastUnit) {
-				issues = append(issues, "repeated_or_reordered_unit")
-				continue
-			}
-			if !strings.Contains(draft.Evidence, plan.Units[unit].Text) || !unitIsTested(plan.Units[unit].Text, draft, coverage.Kind) {
-				issues = append(issues, "unit_not_actually_tested")
-				continue
+			if len(assessed) != 1 {
+				addIssue("missing_coverage_unit")
+			} else {
+				for index, requiredUnit := range plan.Units {
+					if requiredUnit.ID == assessed[0] {
+						unit = index
+					}
+				}
+				if unit < 0 || covered[assessed[0]] || (plan.Ordered && unit <= lastUnit) {
+					addIssue("repeated_or_reordered_unit")
+				} else if !strings.Contains(quiz.Evidence, plan.Units[unit].Text) || !unitIsTested(plan.Units[unit].Text, quiz, coverage.Kind) {
+					addIssue("unit_not_actually_tested")
+				} else {
+					covered[assessed[0]], lastUnit = true, unit
+				}
 			}
 		}
 		if coverage.Kind == "exact_text" {
-			if draft.Kind != "recall" || len(draft.Variants) != 0 || job.SourceKind != "source" || !strings.Contains(job.SourceText, draft.Answer) {
-				issues = append(issues, "exact_text_changed")
-				continue
+			if quiz.Kind != "recall" || len(quiz.Variants) != 0 || job.SourceKind != "source" || !strings.Contains(job.SourceText, quiz.Answer) {
+				addIssue("exact_text_changed")
 			}
 			if unit < 0 {
-				offset := strings.Index(job.SourceText, draft.Answer)
+				offset := strings.Index(job.SourceText, quiz.Answer)
 				if offset <= lastExactOffset {
-					issues = append(issues, "exact_text_reordered")
-					continue
+					addIssue("exact_text_reordered")
 				}
 				lastExactOffset = offset
 			}
 		}
-		seenPrompts[promptKey] = true
-		if unit >= 0 {
-			covered[draft.Covers[0]], lastUnit = true, unit
+	}
+	for _, suggestion := range result.Suggestions {
+		if !claimKey(suggestion.Key) || !slices.Contains([]string{"advance", "lateral"}, suggestion.Kind) || !plainText(suggestion.Title, 240, true) || !plainText(suggestion.Reason, 2048, true) || len(meaningful(normalized(suggestion.Reason))) < 6 || fakeCertainty.MatchString(suggestion.Reason) {
+			addIssue("invalid_goal_suggestion")
 		}
-		result.Quizzes = append(result.Quizzes, store.GeneratedQuiz{
-			Kind: draft.Kind, Prompt: draft.Prompt, Answer: draft.Answer,
-			Explanation: draft.Explanation, Evidence: draft.Evidence, Basis: draft.Basis,
-			Choices: draft.Choices, Variants: draft.Variants,
-		})
+		if len(suggestion.UnitKeys) == 0 || len(suggestion.UnitKeys) > maxLinks || len(suggestion.MaterialKeys) > maxLinks {
+			addIssue("invalid_suggestion_scope")
+		}
+		seen := make(map[string]bool)
+		for _, key := range suggestion.UnitKeys {
+			if _, exists := units[key]; !exists || seen[key] {
+				addIssue("dangling_suggestion_unit")
+			}
+			seen[key], used[key] = true, true
+		}
+		for _, key := range suggestion.MaterialKeys {
+			if !materials[key] || seen[key] {
+				addIssue("dangling_suggestion_material")
+			}
+			seen[key] = true
+		}
 	}
-	unverifiable := finite && (plan.Unverified || len(plan.Units) == 0)
-	missingUnits := len(plan.Units) - len(covered)
-	result.Partial = len(issues) > 0 || !coverage.Complete || len(coverage.Missing) > 0 || unverifiable || missingUnits > 0
-	result.Note = fmt.Sprintf("%d quiz(es) passed structural and provenance checks; this is not independent fact-checking.", len(result.Quizzes))
+	for key := range units {
+		if !used[key] {
+			addIssue("unconnected_knowledge_unit")
+		}
+	}
+	addIssue(validateJobBundle(&result, job, units))
+	if len(result.Materials)+len(result.Quizzes) == 0 {
+		addIssue("no_usable_material")
+	}
 	if len(issues) > 0 {
-		result.Note += fmt.Sprintf(" %d candidate(s) rejected; their paid usage is included. Checks: %s.", len(issues), strings.Join(issues[:min(4, len(issues))], ", "))
+		return empty, issues, nil
 	}
-	if len(plan.Units) > 0 {
-		result.Note += fmt.Sprintf(" Source-unit coverage: %d/%d, in the supplied order.", len(covered), len(plan.Units))
+	addMissing := func(detail string) {
+		if !missingSeen[normalized(detail)] {
+			coverage.Missing = append(coverage.Missing, detail)
+			missingSeen[normalized(detail)] = true
+		}
+		coverage.Complete = false
 	}
-	if unverifiable {
-		result.Note += " Partial: complete-set or exact-text coverage cannot be established without a complete authoritative input; no completeness claim is made."
-	} else if missingUnits > 0 || !coverage.Complete || len(coverage.Missing) > 0 {
-		result.Note += " Partial: some requested material is missing or uncertain. Inspect the source and clarify or split the task before retrying."
+	finite := coverage.Kind == "complete_set" || coverage.Kind == "exact_text"
+	if finite && (plan.Unverified || len(plan.Units) == 0) {
+		addMissing("Complete coverage cannot be established without a complete authoritative finite input.")
 	}
-	return result, issues, nil
+	missingUnits := make([]string, 0, len(plan.Units))
+	for _, unit := range plan.Units {
+		if !covered[unit.ID] {
+			missingUnits = append(missingUnits, unit.ID)
+		}
+	}
+	if len(missingUnits) > 0 {
+		addMissing("Required source units lack validated target assessments: " + strings.Join(missingUnits, ", ") + ".")
+	}
+	unavailable := 0
+	for _, material := range result.Materials {
+		if material.Basis == "reference" {
+			unavailable++
+		}
+	}
+	if unavailable > 0 {
+		addMissing(fmt.Sprintf("%d reference(s) have no supplied article body or video transcript; no content was fetched.", unavailable))
+	}
+	if job.Kind == "capture" && !finite {
+		foundation := false
+		for _, unit := range result.Units {
+			foundation = foundation || unit.Kind == "foundation"
+		}
+		if !foundation {
+			addMissing("The bounded capture has not yet represented its foundations.")
+		}
+		if len(result.Materials) == 0 {
+			addMissing("Durable foundation instruction remains missing from this capture.")
+		}
+		if len(result.Quizzes) == 0 {
+			addMissing("Practice assessments remain missing from this bounded capture.")
+		}
+	}
+	if len(coverage.Missing) > 0 {
+		coverage.Complete = false
+	}
+	if !coverage.Complete && len(coverage.Missing) == 0 {
+		addMissing("The provider reports incomplete bounded coverage without further detail.")
+	}
+	if len(coverage.Missing) > maxQuizzes {
+		return empty, []string{"coverage_detail_limit"}, nil
+	}
+	return result, nil, nil
 }
 
-func validateQuiz(q quizDraft, job *store.Job) string {
+func plainText(value string, limit int, required bool) bool {
+	if len(value) > limit || !utf8.ValidString(value) || (required && strings.TrimSpace(value) == "") || hasUnsafeControl(value) || markup.MatchString(value) || inlineURL.MatchString(value) {
+		return false
+	}
+	lower := strings.ToLower(value)
+	return !strings.Contains(lower, "javascript:") && !strings.Contains(lower, "data:")
+}
+
+func unsupportedCitation(text string, job *store.Job, sourceBacked bool) bool {
+	for _, citation := range citations.FindAllString(text, -1) {
+		if !sourceBacked || !strings.Contains(job.SourceText, citation) {
+			return true
+		}
+	}
+	return false
+}
+
+func assessedKeys(links []store.GeneratedLink) []string {
+	keys := make([]string, 0, len(links))
+	for _, link := range links {
+		if link.Role == "assesses" {
+			keys = append(keys, link.UnitKey)
+		}
+	}
+	return keys
+}
+
+func validateLinks(links []store.GeneratedLink, units map[string]store.GeneratedUnit, quiz bool, used map[string]bool) string {
+	if len(links) == 0 || len(links) > maxLinks {
+		return "missing_or_excessive_coverage"
+	}
+	seen, useful := make(map[string]bool), false
+	for _, link := range links {
+		key := link.UnitKey + "\x00" + link.Role
+		if _, found := units[link.UnitKey]; !found || !slices.Contains([]string{"assesses", "teaches", "assumes", "mentions"}, link.Role) || seen[key] {
+			return "invalid_coverage_link"
+		}
+		if !quiz && link.Role == "assesses" {
+			return "instruction_cannot_assess"
+		}
+		useful = useful || (quiz && link.Role == "assesses") || (!quiz && link.Role == "teaches")
+		seen[key], used[link.UnitKey] = true, true
+	}
+	if !useful {
+		return "no_direct_material_coverage"
+	}
+	return ""
+}
+
+func dependencyCycle(edges map[string][]string) bool {
+	state := make(map[string]uint8)
+	var visit func(string) bool
+	visit = func(key string) bool {
+		if state[key] == 1 {
+			return true
+		}
+		if state[key] == 2 {
+			return false
+		}
+		state[key] = 1
+		for _, next := range edges[key] {
+			if visit(next) {
+				return true
+			}
+		}
+		state[key] = 2
+		return false
+	}
+	for key := range edges {
+		if visit(key) {
+			return true
+		}
+	}
+	return false
+}
+
+func safeReference(raw string) bool {
+	if raw == "" || len(raw) > 2048 || !utf8.ValidString(raw) || strings.IndexFunc(raw, unicode.IsSpace) >= 0 || hasUnsafeControl(raw) {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" || strings.ContainsAny(raw, "<>\"\\") {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
+			return false
+		}
+	}
+	return true
+}
+
+func validateMaterial(material store.GeneratedMaterial, job *store.Job) string {
+	if !slices.Contains([]string{"explanation", "worked_example", "diagram", "article", "video"}, material.Kind) || !plainText(material.Title, 240, true) || !plainText(material.Body, 16384, material.Basis != "reference") || material.EstimatedSeconds < 1 || material.EstimatedSeconds > 3600 {
+		return "invalid_material_text"
+	}
+	if len(material.Evidence) > 8192 || !utf8.ValidString(material.Evidence) || hasUnsafeControl(material.Evidence) {
+		return "invalid_material_evidence"
+	}
+	reference := material.Kind == "article" || material.Kind == "video"
+	if reference {
+		if !safeReference(material.ReferenceURL) || !suppliedReference(material, job) {
+			return "invented_or_unsafe_reference"
+		}
+	} else if material.ReferenceURL != "" {
+		return "unexpected_external_reference"
+	}
+	if material.StartSeconds < 0 || material.EndSeconds < 0 || material.EndSeconds > 86400 || (material.StartSeconds != 0 || material.EndSeconds != 0) && (material.Kind != "video" || material.EndSeconds <= material.StartSeconds) {
+		return "invalid_video_segment"
+	}
+	if (material.Kind == "diagram") != (material.Diagram != nil) {
+		return "invalid_diagram_kind"
+	}
+	// Immutable reuse still passes executable-content, reference, shape and
+	// bounds gates. New semantic/source attribution checks must not reinterpret
+	// a preserved resource from a different source as a newly authored one.
+	if material.ReuseID != "" {
+		if material.Diagram != nil {
+			return validateDiagram(material.Diagram, material.Body)
+		}
+		return ""
+	}
+	combined := material.Title + "\n" + material.Body
+	if unsupportedCitation(combined, job, material.Basis == "source" && job.SourceKind == "source") {
+		return "invented_citation"
+	}
+	if material.Diagram != nil {
+		if issue := validateDiagram(material.Diagram, material.Body); issue != "" {
+			return issue
+		}
+		combined += "\n" + material.Diagram.Caption
+		for _, node := range material.Diagram.Nodes {
+			combined += "\n" + node.Label
+		}
+		for _, edge := range material.Diagram.Edges {
+			combined += "\n" + edge.Label
+		}
+	}
+	if falseResearch.MatchString(combined) {
+		return "invented_reference_research"
+	}
+	if material.Basis != "reference" && (len(meaningful(normalized(material.Body))) < 6 || normalized(material.Body) == normalized(material.Title)) {
+		return "uninformative_instruction"
+	}
+	switch material.Basis {
+	case "reference":
+		if !reference || material.Body != "" || material.Evidence != "" || material.Diagram != nil {
+			return "invented_reference_content"
+		}
+	case "background":
+		if material.Evidence != "" || !strings.HasPrefix(material.Body, "Generated background:") || falseSource.MatchString(combined) {
+			return "false_background_evidence"
+		}
+	case "topic":
+		if job.SourceKind != "topic" || reference || material.Evidence != "" || falseSource.MatchString(combined) {
+			return "false_topic_evidence"
+		}
+	case "source":
+		if job.SourceKind != "source" || len(strings.Fields(material.Evidence)) < 2 || !strings.Contains(job.SourceText, material.Evidence) {
+			return "unverified_source_quote"
+		}
+		evidence := normalized(material.Evidence)
+		if !answerSupported(normalized(material.Body), evidence) || !numbersSupported(combined, material.Evidence) {
+			return "unsupported_source_instruction"
+		}
+		if qualifications.MatchString(material.Evidence) && strengthensQualification(normalized(combined), evidence) {
+			return "strengthened_source_claim"
+		}
+		for _, match := range quotedText.FindAllStringSubmatch(combined, -1) {
+			for _, quote := range match[1:] {
+				if quote != "" && !strings.Contains(material.Evidence, quote) {
+					return "invented_quoted_text"
+				}
+			}
+		}
+	default:
+		return "invalid_material_basis"
+	}
+	return ""
+}
+
+func validateDiagram(diagram *store.Diagram, body string) string {
+	if len(diagram.Nodes) < 2 || len(diagram.Nodes) > 16 || len(diagram.Edges) == 0 || len(diagram.Edges) > 32 || !plainText(diagram.Caption, 1024, true) {
+		return "invalid_diagram_bounds"
+	}
+	bodyKey := normalized(body)
+	nodes, labels, edges := make(map[string]bool), make(map[string]bool), make(map[string]bool)
+	neighbors := make(map[string][]string)
+	for _, node := range diagram.Nodes {
+		label := normalized(node.Label)
+		if !batchKey.MatchString(node.ID) || nodes[node.ID] || !plainText(node.Label, 240, true) || labels[label] || !phraseContains(bodyKey, label) {
+			return "invalid_diagram_node"
+		}
+		nodes[node.ID], labels[label] = true, true
+	}
+	for _, edge := range diagram.Edges {
+		key := edge.From + "\x00" + edge.To
+		if !nodes[edge.From] || !nodes[edge.To] || edge.From == edge.To || edges[key] || !plainText(edge.Label, 240, true) || !phraseContains(bodyKey, normalized(edge.Label)) {
+			return "invalid_diagram_edge"
+		}
+		edges[key] = true
+		neighbors[edge.From] = append(neighbors[edge.From], edge.To)
+		neighbors[edge.To] = append(neighbors[edge.To], edge.From)
+	}
+	visited := make(map[string]bool)
+	queue := []string{diagram.Nodes[0].ID}
+	for len(queue) > 0 {
+		key := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		if visited[key] {
+			continue
+		}
+		visited[key] = true
+		queue = append(queue, neighbors[key]...)
+	}
+	if len(visited) != len(nodes) {
+		return "disconnected_diagram"
+	}
+	return ""
+}
+
+func validateQuiz(q store.GeneratedQuiz, job *store.Job) string {
 	for _, field := range []struct {
 		value string
 		limit int
 	}{{q.Prompt, 4096}, {q.Answer, 1024}, {q.Explanation, 8192}} {
-		if strings.TrimSpace(field.value) == "" || len(field.value) > field.limit || hasUnsafeControl(field.value) || markup.MatchString(field.value) {
+		if !plainText(field.value, field.limit, true) {
 			return "invalid_quiz_text"
 		}
 	}
@@ -222,7 +689,7 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 		keys := make([]string, 0, len(q.Choices))
 		for _, choice := range q.Choices {
 			key := normalized(choice)
-			if strings.TrimSpace(choice) != choice || key == "" || len(choice) > 1024 || hasUnsafeControl(choice) || markup.MatchString(choice) || catchAll.MatchString(choice) || keyedOption.MatchString(choice) {
+			if strings.TrimSpace(choice) != choice || key == "" || !plainText(choice, 1024, true) || catchAll.MatchString(choice) || keyedOption.MatchString(choice) {
 				return "invalid_distractor"
 			}
 			for index, previous := range keys {
@@ -243,7 +710,7 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 		seen := map[string]bool{answer: true}
 		for _, variant := range q.Variants {
 			key := normalized(variant)
-			if key == "" || strings.TrimSpace(variant) != variant || len(variant) > 1024 || hasUnsafeControl(variant) || markup.MatchString(variant) || seen[key] || phraseContains(prompt, key) || phraseContains(answer, key) || phraseContains(key, answer) || strings.ContainsAny(variant, "*|") {
+			if key == "" || strings.TrimSpace(variant) != variant || !plainText(variant, 1024, true) || seen[key] || phraseContains(prompt, key) || phraseContains(answer, key) || phraseContains(key, answer) || strings.ContainsAny(variant, "*|") {
 				return "invalid_recall_variant"
 			}
 			seen[key] = true
@@ -252,13 +719,17 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 		return "unsupported_quiz_kind"
 	}
 	combined := q.Prompt + "\n" + q.Answer + "\n" + q.Explanation + "\n" + strings.Join(q.Choices, "\n") + "\n" + strings.Join(q.Variants, "\n")
-	for _, citation := range citations.FindAllString(combined, -1) {
-		if job.SourceKind != "source" || !strings.Contains(job.SourceText, citation) {
-			return "invented_citation"
+	if unsupportedCitation(combined, job, q.Basis == "source" && job.SourceKind == "source") {
+		return "invented_citation"
+	}
+	if q.Basis == "background" {
+		if q.Level != "foundation" || q.Evidence != "" || !strings.HasPrefix(q.Explanation, "Generated background:") || falseSource.MatchString(combined) || falseResearch.MatchString(combined) || citations.MatchString(combined) {
+			return "false_background_evidence"
 		}
+		return ""
 	}
 	if job.SourceKind == "topic" {
-		if q.Basis != "topic" || q.Evidence != "" || falseSource.MatchString(combined) {
+		if q.Basis != "topic" || q.Evidence != "" || falseSource.MatchString(combined) || falseResearch.MatchString(combined) {
 			return "false_topic_evidence"
 		}
 		return ""
@@ -367,7 +838,7 @@ func numbersSupported(text, evidence string) bool {
 	return true
 }
 
-func unitIsTested(unit string, q quizDraft, task string) bool {
+func unitIsTested(unit string, q store.GeneratedQuiz, task string) bool {
 	if task == "exact_text" {
 		return q.Answer == unit
 	}

@@ -60,9 +60,29 @@ type page struct {
 	Sources        []store.Source
 	Source         store.Source
 	Quiz           store.Quiz
-	History        []store.ReviewEvent
 	Summary        store.Summary
-	Gate           *store.Presentation
+	Interactions   []store.Interaction
+	HistoryHidden  bool
+	HistoryLimit   int
+	ReviewByID     map[string]store.ReviewEvent
+	Goals          []store.Goal
+	Goal           store.Goal
+	Unit           store.KnowledgeUnitDetail
+	Material       store.Material
+	Materials      []store.Material
+	Form           url.Values
+	Mode           string
+	EstimateAt     string
+	ReviewGoalID   string
+	InspectionHelp bool
+	Gate           bool
+	ScopeKind      string
+	ScopeID        string
+	ScopeReturn    string
+	ScopeExpiresAt int64
+	ScopeCheckedAt int64
+	GateKind       string
+	GateID         string
 	ReturnTo       string
 	ReviewID       string
 	Note           string
@@ -129,16 +149,30 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		redirectHosts = append(redirectHosts, host)
 	}
 	funcs := template.FuncMap{
-		"timeText":   timeText,
-		"timeISO":    timeISO,
-		"money":      money,
-		"excerpt":    excerpt,
-		"joinLines":  func(v []string) string { return strings.Join(v, "\n") },
-		"outcome":    outcomeText,
-		"kind":       kindText,
-		"jobLabel":   jobLabel,
-		"jobPending": jobPending,
-		"retryable":  retryable,
+		"timeText":      timeText,
+		"timeISO":       timeISO,
+		"money":         money,
+		"excerpt":       excerpt,
+		"joinLines":     func(v []string) string { return strings.Join(v, "\n") },
+		"outcome":       outcomeText,
+		"kind":          kindText,
+		"jobLabel":      jobLabel,
+		"jobPending":    jobPending,
+		"materialKind":  materialKind,
+		"knowledgeKind": knowledgeKind,
+		"coverageRole":  coverageRole,
+		"safeReference": safeReference,
+		"diagramLabel":  diagramLabel,
+		"estimateState": estimateState,
+		"probability":   probability,
+		"planKind":      planKind,
+		"planUndoable":  planUndoable,
+		"unitKinds":     func() []string { return []string{"foundation", "concept", "composition", "procedure", "exact_text"} },
+		"within":        within,
+		"openLink":      openLink,
+		"formAt":        formAt,
+		"activityKind":  activityKind,
+		"unitState":     unitState,
 	}
 	t, err := template.New("scry").Funcs(funcs).ParseFS(files, "templates/*.html")
 	if err != nil {
@@ -151,11 +185,28 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("POST /review/answer", app.answer)
 	mux.HandleFunc("POST /review/reveal", app.reveal)
 	mux.HandleFunc("POST /review/next", app.next)
+	mux.HandleFunc("POST /review/bridge", app.startBridge)
+	mux.HandleFunc("POST /review/return", app.returnToTarget)
+	mux.HandleFunc("POST /review/continue", app.continueMaterial)
+	mux.HandleFunc("POST /review/assisted", app.markAssisted)
+	mux.HandleFunc("POST /inspection/assist", app.assistInspection)
 	mux.HandleFunc("GET /add", app.add)
 	mux.HandleFunc("POST /add", app.capture)
 	mux.HandleFunc("GET /library", app.library)
+	mux.HandleFunc("GET /goals/{id}", app.goal)
+	mux.HandleFunc("GET /goals/{id}/plan", app.planPage)
+	mux.HandleFunc("POST /goals/{id}/plan", app.planGoal)
+	mux.HandleFunc("POST /suggestions/{id}/choose", app.chooseSuggestion)
+	mux.HandleFunc("POST /plans/{id}/undo", app.undoPlan)
+	mux.HandleFunc("GET /units/{id}", app.unit)
+	mux.HandleFunc("POST /units/{id}/edit", app.editUnit)
+	mux.HandleFunc("GET /materials/{id}", app.material)
+	mux.HandleFunc("POST /materials/{id}/edit", app.editMaterial)
+	mux.HandleFunc("POST /materials/{id}/coverage", app.editCoverage)
+	mux.HandleFunc("POST /relations/edit", app.editRelation)
 	mux.HandleFunc("GET /sources/{id}", app.source)
 	mux.HandleFunc("POST /sources/{id}/retry", app.retrySource)
+	mux.HandleFunc("POST /jobs/{id}/retry", app.retryJob)
 	mux.HandleFunc("POST /sources/{id}/archive", app.archiveSource)
 	mux.HandleFunc("GET /quizzes/{id}/edit", app.editQuiz)
 	mux.HandleFunc("POST /quizzes/{id}/edit", app.saveQuiz)
@@ -165,9 +216,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("POST /reviews/{id}/dispute", app.dispute)
 	mux.HandleFunc("GET /settings", app.settings)
 	mux.HandleFunc("GET /export", app.export)
-	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
-		jsonResponse(w, http.StatusOK, map[string]bool{"authenticated": true})
-	})
+	mux.HandleFunc("GET /session", app.sessionStatus)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		app.render(w, r, http.StatusNotFound, page{View: "error", Title: "Page not found", Error: "That page is not available. Return to review or find your material in the library."})
 	})
@@ -233,12 +282,23 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, status int, p pa
 	if p.Title == "" {
 		p.Title = "Scry"
 	}
+	if p.View != "access" {
+		access, err := s.store.InspectionAccess(r.Context(), "export", "")
+		if err != nil {
+			http.Error(w, "Private learning state could not be checked. Reload to recover your saved state.", http.StatusServiceUnavailable)
+			return
+		}
+		p.InspectionHelp = access.RequiresAssistance
+	}
+	if !s.prepareScope(w, r, &p) {
+		return
+	}
 	var buf bytes.Buffer
 	name := "document"
 	if isHTMX(r) {
 		name = "main"
 	}
-	if err := s.templates.ExecuteTemplate(&buf, name, p); err != nil {
+	if err := s.templates.ExecuteTemplate(&buf, name, &p); err != nil {
 		slog.Error("web rendering failed", "view", p.View)
 		http.Error(w, "The page could not be displayed. Reload to recover your saved state.", http.StatusInternalServerError)
 		return
@@ -400,11 +460,11 @@ func jobLabel(status string) string {
 	case "queued":
 		return "Waiting to generate"
 	case "running":
-		return "Generating questions"
+		return "Preparing learning material"
 	case "retry":
 		return "Waiting to retry"
 	case "ready", "complete":
-		return "Questions ready"
+		return "Material ready"
 	case "partial":
 		return "Partially ready"
 	case "failed":
@@ -423,15 +483,6 @@ func jobLabel(status string) string {
 func jobPending(status string) bool {
 	switch status {
 	case "queued", "running", "retry":
-		return true
-	default:
-		return false
-	}
-}
-
-func retryable(status string) bool {
-	switch status {
-	case "failed", "paused", "canceled":
 		return true
 	default:
 		return false

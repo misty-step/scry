@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/misty-step/scry/internal/store"
 )
 
 func (s *server) renderJob(w http.ResponseWriter, r *http.Request, p page) {
@@ -23,7 +25,7 @@ func (s *server) renderJob(w http.ResponseWriter, r *http.Request, p page) {
 	p.CSRF, _ = r.Context().Value(csrfKey{}).(string)
 	p.Operation = randomToken()
 	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "job", p); err != nil {
+	if err := s.templates.ExecuteTemplate(&buf, "job", &p); err != nil {
 		http.Error(w, "Status could not be displayed. Refresh this page to check saved work.", http.StatusInternalServerError)
 		return
 	}
@@ -62,6 +64,9 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) export(w http.ResponseWriter, r *http.Request) {
+	if s.guardInspection(w, r, "export", "") {
+		return
+	}
 	data, err := s.store.Export(r.Context())
 	if err != nil {
 		s.fail(w, r, err, page{})
@@ -71,4 +76,22 @@ func (s *server) export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="scry-export-`+time.Now().UTC().Format("2006-01-02")+`.json"`)
 	w.Header().Set("X-Download-Options", "noopen")
 	w.Write(data)
+}
+
+func (s *server) retryJob(w http.ResponseWriter, r *http.Request) {
+	op := r.PostForm.Get("operation_id")
+	if op == "" || len(op) > 128 {
+		s.fail(w, r, store.ErrInvalid, page{Operation: op})
+		return
+	}
+	job, err := s.store.RetryJob(r.Context(), r.PathValue("id"), op)
+	if err != nil {
+		s.fail(w, r, err, page{Operation: op})
+		return
+	}
+	destination := "/sources/" + job.SourceID
+	if job.GoalID != "" {
+		destination = "/goals/" + job.GoalID
+	}
+	s.finish(w, r, destination, map[string]any{"job_id": job.ID, "status": job.Status, "goal_id": job.GoalID})
 }

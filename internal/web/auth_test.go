@@ -48,6 +48,9 @@ func TestPrivateIdentityCannotBeForgedThroughAnotherPeerOrHeader(t *testing.T) {
 	if _, err := s.Capture(context.Background(), secretMaterial, randomToken()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.AssistInspection(context.Background(), "export", "", randomToken()); err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name    string
 		change  func(*http.Request)
@@ -212,8 +215,10 @@ func TestUngradedDisputeDoesNotRequireHelpOrChangeSchedule(t *testing.T) {
 	const explanation = "The authored explanation must remain hidden during an unresolved attempt."
 	cost := int64(70)
 	err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
-		Quizzes: []store.GeneratedQuiz{{Kind: "recall", Prompt: "Explain the synthetic process.", Answer: expected, Explanation: explanation, Basis: "topic"}},
-		Model:   "authored-test-fixture", PromptVersion: "fixture-v1",
+		Coverage: store.CoverageReport{Kind: "concepts", Complete: true},
+		Units:    []store.GeneratedUnit{{Key: "process", Statement: expected, Kind: "concept"}},
+		Quizzes:  []store.GeneratedQuiz{{Key: "process-assessment", Level: "target", EstimatedSeconds: 30, Links: []store.GeneratedLink{{UnitKey: "process", Role: "assesses"}}, Kind: "recall", Prompt: "Explain the synthetic process.", Answer: expected, Explanation: explanation, Basis: "topic"}},
+		Model:    "authored-test-fixture", PromptVersion: "fixture-v2",
 	}, &cost)
 	if err != nil {
 		t.Fatal(err)

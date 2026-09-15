@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -337,5 +338,176 @@ func TestRetentionPreservesNewestAndUnknownMaterial(t *testing.T) {
 	}
 	if err = Restore(ctx, newest.Path, filepath.Join(t.TempDir(), "restored.sqlite")); err != nil {
 		t.Fatalf("retention lost the newest complete recovery set: %v", err)
+	}
+}
+
+func legacyDatabase(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+	schema, err := os.ReadFile("testdata/go-v1.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(string(schema))
+	if err = errors.Join(err, db.Close()); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func archiveDatabase(t *testing.T, database, path, id string, declaredSchema int) manifest {
+	t.Helper()
+	ctx := context.Background()
+	info, err := inspectCompatibleDatabase(ctx, database, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info.Schema = declaredSchema
+	digest, size, err := checksum(ctx, database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := manifest{Format: 1, ID: id, CreatedAt: 1704067200000, Database: info, Bytes: size, SHA256: digest, Integrity: "ok"}
+	if err = writeArchive(ctx, path, database, metadata); err != nil {
+		t.Fatal(err)
+	}
+	return metadata
+}
+
+func TestUpgradePreflightIsReadOnlyAndStrictCheckRejectsV1(t *testing.T) {
+	ctx := context.Background()
+	path := legacyDatabase(t)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = Check(ctx, path); err == nil {
+		t.Fatal("strict rollback check accepted an old schema")
+	}
+	report, err := CheckForMigration(ctx, path)
+	if err != nil || !report.Accepted || report.Compatible || !report.MigrationRequired || report.Migrated || !report.ReadOnly || report.SourceSchema != 1 || report.TargetSchema != store.SchemaVersion {
+		t.Fatalf("upgrade preflight confused source acceptance with completed migration: %+v %v", report, err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("upgrade preflight modified the v1 database: %v", err)
+	}
+	if err = noSourceSidecars(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = CheckForMigration(ctx, filepath.Join(t.TempDir(), "absent.sqlite")); err == nil {
+		t.Fatal("upgrade preflight accepted an absent database")
+	}
+}
+
+func TestRestoreMigratesOnlyPrivateCopyAndRejectsManifestMismatch(t *testing.T) {
+	ctx := context.Background()
+	source := legacyDatabase(t)
+	before, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "scry-20240101T000000.000000000Z-00000000000000000000000000000000"
+	archive := filepath.Join(t.TempDir(), id+archiveSuffix)
+	archiveDatabase(t, source, archive, id, 1)
+	for _, input := range []string{source, archive} {
+		t.Run(filepath.Base(input), func(t *testing.T) {
+			destination := filepath.Join(t.TempDir(), "restored.sqlite")
+			if err := Restore(ctx, input, destination); err != nil {
+				t.Fatal(err)
+			}
+			if err := Check(ctx, destination); err != nil {
+				t.Fatal(err)
+			}
+			db, err := store.Open(destination)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			src, err := db.Source(ctx, "legacy-running-source")
+			if err != nil || src.Job == nil || src.Job.Status != "paused" || !src.Job.CostUnknown {
+				t.Fatalf("migration lost the paused uncertain job: %+v %v", src, err)
+			}
+			claimed, err := db.ClaimJob(ctx, time.Minute, 0, 0)
+			if err != nil || claimed != nil {
+				t.Fatalf("restore made external work runnable: %+v %v", claimed, err)
+			}
+		})
+	}
+	after, err := os.ReadFile(source)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("restore migrated the original v1 snapshot: %v", err)
+	}
+	t.Run("archive-declaration", func(t *testing.T) {
+		mismatch := filepath.Join(t.TempDir(), "mismatch.zip")
+		archiveDatabase(t, source, mismatch, id, store.SchemaVersion)
+		destination := filepath.Join(t.TempDir(), "restored.sqlite")
+		if err := Restore(ctx, mismatch, destination); err == nil {
+			t.Fatal("restore accepted a checksum-valid archive whose schema declaration differs from its database")
+		}
+		assertAbsent(t, destination)
+	})
+	t.Run("standalone-declaration", func(t *testing.T) {
+		metadata := archiveDatabase(t, source, filepath.Join(t.TempDir(), "descriptor.zip"), id, store.SchemaVersion)
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(source+".manifest.json", encoded, 0600); err != nil {
+			t.Fatal(err)
+		}
+		destination := filepath.Join(t.TempDir(), "restored.sqlite")
+		if err = Restore(ctx, source, destination); err == nil {
+			t.Fatal("restore accepted a mismatched standalone manifest")
+		}
+		assertAbsent(t, destination)
+	})
+}
+
+func TestOldSchemaArchivesNeitherExpireNorConsumeCurrentRetention(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	m := New(openTestStore(t), Config{Dir: dir, Keep: 3})
+	current := make([]store.BackupRecord, 3)
+	for i := range current {
+		var err error
+		current[i], err = m.Backup(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := legacyDatabase(t)
+	oldArchives := map[string][]byte{}
+	for _, year := range []string{"1900", "9999"} {
+		id := "scry-" + year + "0101T000000.000000000Z-00000000000000000000000000000000"
+		path := filepath.Join(dir, id+archiveSuffix)
+		archiveDatabase(t, legacy, path, id, 1)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldArchives[path] = data
+	}
+	m.cfg.Keep = 2
+	if err := m.prune(ctx, dir, current[2].Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(current[0].Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("current-schema retention did not expire its oldest archive: %v", err)
+	}
+	for _, retained := range current[1:] {
+		if err := regularFile(retained.Path); err != nil {
+			t.Fatalf("v1 archive consumed a current-schema retention slot: %v", err)
+		}
+	}
+	for path, before := range oldArchives {
+		after, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatalf("old-schema archive was deleted or modified: %s %v", path, err)
+		}
 	}
 }

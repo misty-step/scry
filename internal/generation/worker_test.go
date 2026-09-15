@@ -44,12 +44,16 @@ func captureAndClaim(t *testing.T, s *store.Store, text string, reservation int6
 	return source, job
 }
 
-func TestWorkerPublishesUsefulPartialAndRecordsRejectedSpend(t *testing.T) {
+func TestWorkerPublishesUsefulPartialAndRecordsActualSpend(t *testing.T) {
 	s := generationStore(t)
 	source, job := captureAndClaim(t, s, "mitochondria", 100_000)
-	good, bad := topicDraft(), topicDraft()
-	bad.Prompt = "Why is ATP used for cellular energy transfer?"
-	server := responseServer(t, envelopeJSON(t, outputJSON(t, "concepts", good, bad), "stop", json.RawMessage(`0.0018031`)), http.StatusOK)
+	bundle, err := decodeBundle([]byte(outputJSON(t, "concepts", topicDraft())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle.Coverage.Complete = false
+	bundle.Coverage.Missing = []string{"A composition example remains outside this bounded bundle."}
+	server := responseServer(t, envelopeJSON(t, bundleJSON(t, bundle), "stop", json.RawMessage(`0.0018031`)), http.StatusOK)
 	worker := New(s, localConfig(server.URL))
 	if err := worker.process(context.Background(), job); err != nil {
 		t.Fatal(err)
@@ -62,11 +66,7 @@ func TestWorkerPublishesUsefulPartialAndRecordsRejectedSpend(t *testing.T) {
 		t.Fatalf("useful partial material was not published honestly: %+v", saved)
 	}
 	if saved.Job.CostUnknown || saved.Job.CostMicros != 1_804 || saved.Job.Attempts != 1 {
-		t.Fatalf("paid rejected output or fractional micro-dollar was lost: %+v", saved.Job)
-	}
-	review, err := s.Review(context.Background())
-	if err != nil || review.Current == nil || review.Current.Quiz.ID != saved.Quizzes[0].ID {
-		t.Fatalf("validated partial quiz is not immediately reviewable: %+v %v", review, err)
+		t.Fatalf("actual paid usage or fractional micro-dollar was lost: %+v", saved.Job)
 	}
 }
 

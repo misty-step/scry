@@ -11,7 +11,8 @@ usage() {
 Usage: sudo bash deploy/activate.sh --release ID [--allow-local-backup]
 
 Stop/drain Scry, take a completed off-VM/readback-verified backup of an existing
-DB using the previous binary, check candidate schema compatibility read-only,
+DB using the previous binary, accept the candidate's supported source schema
+read-only (migration happens only at candidate startup),
 switch the immutable release link, start and check the actual process/readiness.
 The initial empty installation has no database to back up.
 
@@ -105,7 +106,7 @@ if [[ -e $live_db || -L $live_db ]]; then
   else
     scry_command "$backup_release/scry" backup --db "$live_db" --require-remote
   fi
-  scry_command "$candidate/scry" check --db "$live_db"
+  scry_command "$candidate/scry" check --db "$live_db" --allow-migration
 else
   [[ ! -e $live_db-wal && ! -L $live_db-wal && ! -e $live_db-shm && ! -L $live_db-shm && ! -e $live_db-journal && ! -L $live_db-journal ]] || fail 'live database is absent but SQLite sidecars exist; do not initialize over uncertain recovery state'
 fi

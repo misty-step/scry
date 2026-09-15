@@ -39,10 +39,18 @@ func Restore(ctx context.Context, snapshotPath, destinationPath string) error {
 	}
 	defer os.RemoveAll(work)
 	staged := filepath.Join(work, "restoring.sqlite")
-	if err = extractSnapshot(ctx, snapshotPath, staged); err != nil {
+	metadata, err := extractSnapshot(ctx, snapshotPath, staged)
+	if err != nil {
 		return err
 	}
-	if _, err = inspectDatabase(ctx, staged, true); err != nil {
+	sourceInfo, err := inspectCompatibleDatabase(ctx, staged, true, true)
+	if err != nil {
+		return err
+	}
+	if metadata != nil && (metadata.Database.ApplicationID != sourceInfo.ApplicationID || metadata.Database.Schema != sourceInfo.Schema) {
+		return errors.New("recovery manifest does not describe the embedded database application and schema")
+	}
+	if err = ctx.Err(); err != nil {
 		return err
 	}
 	restored, err := store.Open(staged)
@@ -102,95 +110,98 @@ func unusedDestination(path string) error {
 	return nil
 }
 
-func extractSnapshot(ctx context.Context, source, destination string) error {
+func extractSnapshot(ctx context.Context, source, destination string) (*manifest, error) {
 	file, err := os.Open(source)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var signature [16]byte
 	_, readErr := io.ReadFull(file, signature[:])
 	file.Close()
 	if readErr != nil {
-		return errors.New("recovery input is incomplete")
+		return nil, errors.New("recovery input is incomplete")
 	}
 	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer out.Close()
+	var metadata *manifest
 	if string(signature[:]) == "SQLite format 3\x00" {
-		err = copyClosedSnapshot(ctx, out, source)
+		metadata, err = copyClosedSnapshot(ctx, out, source)
 	} else {
 		zr, openErr := zip.OpenReader(source)
 		if openErr != nil {
-			return errors.New("recovery archive is incomplete, corrupt, or not a Scry backup")
+			return nil, errors.New("recovery archive is incomplete, corrupt, or not a Scry backup")
 		}
 		defer zr.Close()
-		metadata, database, metadataErr := archiveManifest(zr)
+		declared, database, metadataErr := readArchiveManifest(zr, true)
 		if metadataErr != nil {
-			return metadataErr
+			return nil, metadataErr
 		}
+		metadata = &declared
 		reader, openErr := database.Open()
 		if openErr != nil {
-			return fmt.Errorf("open archived database: %w", openErr)
+			return nil, fmt.Errorf("open archived database: %w", openErr)
 		}
-		err = errors.Join(copyVerified(ctx, out, reader, metadata), reader.Close())
+		err = errors.Join(copyVerified(ctx, out, reader, declared), reader.Close())
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return errors.Join(out.Sync(), out.Close())
+	return metadata, errors.Join(out.Sync(), out.Close())
 }
 
-func copyClosedSnapshot(ctx context.Context, out io.Writer, source string) error {
+func copyClosedSnapshot(ctx context.Context, out io.Writer, source string) (*manifest, error) {
 	if err := noSourceSidecars(source); err != nil {
-		return err
+		return nil, err
 	}
 	file, err := os.Open(source)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 	before, err := file.Stat()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var metadata *manifest
 	metadataPath := source + ".manifest.json"
 	if _, err = os.Lstat(metadataPath); err == nil {
 		if err = regularFile(metadataPath); err != nil {
-			return err
+			return nil, err
 		}
 		metadataFile, err := os.Open(metadataPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		encoded, readErr := io.ReadAll(io.LimitReader(metadataFile, manifestLimit+1))
 		err = errors.Join(readErr, metadataFile.Close())
 		if err != nil || len(encoded) > manifestLimit {
-			return errors.New("standalone recovery manifest is unreadable or oversized")
+			return nil, errors.New("standalone recovery manifest is unreadable or oversized")
 		}
-		var metadata manifest
-		if err = decodeManifest(encoded, &metadata); err != nil {
-			return err
+		metadata = &manifest{}
+		if err = decodeCompatibleManifest(encoded, metadata, true); err != nil {
+			return nil, err
 		}
-		if err = copyVerified(ctx, out, file, metadata); err != nil {
-			return err
+		if err = copyVerified(ctx, out, file, *metadata); err != nil {
+			return nil, err
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
 		if _, err = io.Copy(out, contextReader{ctx, file}); err != nil {
-			return fmt.Errorf("copy standalone recovery snapshot: %w", err)
+			return nil, fmt.Errorf("copy standalone recovery snapshot: %w", err)
 		}
 	} else {
-		return fmt.Errorf("inspect standalone recovery metadata: %w", err)
+		return nil, fmt.Errorf("inspect standalone recovery metadata: %w", err)
 	}
 	after, err := os.Lstat(source)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-		return errors.New("standalone recovery snapshot changed during restore; use a completed online backup")
+		return nil, errors.New("standalone recovery snapshot changed during restore; use a completed online backup")
 	}
-	return noSourceSidecars(source)
+	return metadata, noSourceSidecars(source)
 }
 
 func noSourceSidecars(path string) error {

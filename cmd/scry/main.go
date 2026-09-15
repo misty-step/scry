@@ -56,7 +56,7 @@ func run(args []string) error {
 	case "seed-fixture":
 		return seedFixture(args[1:])
 	case "help", "--help", "-h":
-		fmt.Println("Scry: a private learning application\n\nCommands:\n  serve    Serve the application and durable background work\n  check    Check database integrity and schema without changing it\n  backup   Create a consistent snapshot and verify configured remote storage\n  restore  Restore into a new database with uncertain jobs paused\n  export   Export personal learning data without credentials\n  seed-fixture  Publish labeled authored quizzes for local review proof\n  version  Print the source revision\n\nLocal use: scry serve --dev --db ./data/scry.sqlite\nProduction configuration: deploy/scry.env.example")
+		fmt.Println("Scry: a private learning application\n\nCommands:\n  serve    Serve the application and durable background work\n  check    Check integrity read-only; --allow-migration accepts supported upgrade sources without migrating\n  backup   Create a consistent snapshot and verify configured remote storage\n  restore  Restore into a new database with uncertain jobs paused\n  export   Export personal learning data without credentials\n  seed-fixture  Create an authored synthetic knowledge bundle in an unused database only\n  version  Print the source revision\n\nLocal use: scry serve --dev --db ./data/scry.sqlite\nProduction configuration: deploy/scry.env.example")
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
@@ -263,6 +263,7 @@ func serve(args []string) error {
 func check(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	dbPath := databaseFlag(fs)
+	allowMigration := fs.Bool("allow-migration", false, "accept a supported source schema read-only; does not migrate (candidate activation only)")
 	if err := parse(fs, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -271,10 +272,23 @@ func check(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	if err := recovery.Check(ctx, *dbPath); err != nil {
+	result := recovery.SchemaCompatibility{
+		Integrity: "ok", Accepted: true, Compatible: true,
+		SourceSchema: store.SchemaVersion, TargetSchema: store.SchemaVersion, ReadOnly: true,
+	}
+	if *allowMigration {
+		var err error
+		result, err = recovery.CheckForMigration(ctx, *dbPath)
+		if err != nil {
+			return err
+		}
+	} else if err := recovery.Check(ctx, *dbPath); err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"integrity": "ok", "compatible": true, "revision": revision})
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		recovery.SchemaCompatibility
+		Revision string `json:"revision"`
+	}{result, revision})
 }
 
 func backup(args []string) error {
@@ -379,39 +393,171 @@ func seedFixture(args []string) error {
 		}
 		return err
 	}
-	db, err := store.Open(*dbPath)
+	destination, err := filepath.Abs(*dbPath)
+	if err != nil {
+		return err
+	}
+	if err = unusedFixturePath(destination); err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		return err
+	}
+	// Work in a new private directory, not in the requested database. Even a
+	// concurrent creator cannot make this command claim their queued work.
+	work, err := os.MkdirTemp(filepath.Dir(destination), ".scry-fixture-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	db, err := store.Open(filepath.Join(work, "authored.sqlite"))
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	src, err := db.Capture(ctx, "Synthetic DNS and TLS review fixture "+time.Now().UTC().Format(time.RFC3339Nano), "seed-dns-source-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	src, err := db.Capture(ctx, "Synthetic authored DNS and TLS learning fixture; link-only public reference https://www.rfc-editor.org/rfc/rfc1035.html (not retrieved)", "authored-fixture-capture-v2")
 	if err != nil {
 		return err
 	}
-	claim, err := db.ClaimJob(ctx, time.Minute, 100, 1_000_000)
-	if err != nil || claim == nil {
-		return fmt.Errorf("claim authored fixture: %v %w", claim, err)
+	claim, err := db.ClaimJob(ctx, time.Minute, 0, 0)
+	if err != nil {
+		return fmt.Errorf("claim authored fixture: %w", err)
 	}
-	cost := int64(70)
-	err = db.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
-		Quizzes: []store.GeneratedQuiz{
+	if claim == nil || claim.SourceID != src.ID {
+		return errors.New("authored fixture did not claim its own isolated capture")
+	}
+	// A local authored bundle has exactly zero provider spend. Nil would mean
+	// unknown external usage, and a positive value would fabricate paid work.
+	cost := int64(0)
+	if err = db.CompleteJob(ctx, claim.ID, claim.LeaseToken, authoredFixture(), &cost); err != nil {
+		return err
+	}
+	goal, err := db.Goal(ctx, src.GoalID)
+	if err != nil {
+		return err
+	}
+	// Ordinary goal reads intentionally return material metadata. This isolated
+	// authored CLI fixture is a deliberate full-content synthetic smoke oracle.
+	for i := range goal.Materials {
+		goal.Materials[i], err = db.Material(ctx, goal.Materials[i].ID)
+		if err != nil {
+			return fmt.Errorf("load authored fixture material: %w", err)
+		}
+	}
+	prepared := filepath.Join(work, "complete.sqlite")
+	if err = db.Backup(ctx, prepared); err != nil {
+		return err
+	}
+	if err = db.Close(); err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if err = unusedFixturePath(destination); err != nil {
+		return err
+	}
+	if err = os.Link(prepared, destination); err != nil {
+		return fmt.Errorf("publish synthetic fixture without replacing existing data: %w", err)
+	}
+	parent, err := os.Open(filepath.Dir(destination))
+	if err != nil {
+		return err
+	}
+	if err = errors.Join(parent.Sync(), parent.Close()); err != nil {
+		return fmt.Errorf("fixture is present but directory durability could not be confirmed: %w", err)
+	}
+	return json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"source": src.ID, "goal": goal, "model": "authored-test-fixture",
+		"synthetic": true, "provider_cost_micros": cost,
+	})
+}
+
+func unusedFixturePath(path string) error {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if _, err := os.Lstat(path + suffix); err == nil {
+			return errors.New("seed-fixture requires an unused database and all SQLite sidecars; existing data is never modified")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func authoredFixture() store.GenerationResult {
+	return store.GenerationResult{
+		Model: "authored-test-fixture", PromptVersion: "fixture-v2",
+		Coverage: store.CoverageReport{Kind: "concepts", Missing: []string{"Linked RFC content was not retrieved; the authored DNS/TLS examples are not quotations or complete protocol coverage"}},
+		Units: []store.GeneratedUnit{
+			{Key: "dns", Statement: "A DNS A record maps a hostname to an IPv4 address.", Kind: "foundation"},
+			{Key: "tls", Statement: "TLS encrypts HTTP traffic when using HTTPS.", Kind: "foundation"},
+			{Key: "connection", Statement: "An HTTPS connection combines hostname resolution with TLS-protected HTTP.", Kind: "composition"},
+		},
+		Relations: []store.GeneratedRelation{
+			{From: "dns", To: "connection", Kind: "prerequisite", Evidence: "Proposed relationship: understanding hostname resolution helps explain a hostname-based HTTPS connection."},
+			{From: "dns", To: "connection", Kind: "composition", Evidence: "Proposed relationship: hostname resolution is one component of this simplified connection model."},
+			{From: "tls", To: "connection", Kind: "composition", Evidence: "Proposed relationship: TLS protection is another component of this simplified connection model."},
+			{From: "dns", To: "tls", Kind: "contrast", Evidence: "Proposed relationship: naming and transport encryption solve different problems."},
+		},
+		Materials: []store.GeneratedMaterial{
 			{
-				Kind: "choice", Prompt: "What type of address does a DNS A record map a hostname to?",
-				Answer: "IPv4 address", Choices: []string{"Text value", "IPv4 address", "IPv6 address", "Mail server address"},
-				Explanation: "A DNS A record maps a hostname to an IPv4 address.", Basis: "topic",
+				Key: "instruction", Kind: "explanation", Title: "Two different jobs: naming and encryption",
+				Body:  "Authored synthetic instruction: DNS A maps a hostname to an IPv4 address. TLS protects HTTP traffic. Knowing the destination address does not itself encrypt a request.",
+				Basis: "topic", EstimatedSeconds: 30,
+				Links: []store.GeneratedLink{{UnitKey: "dns", Role: "teaches"}, {UnitKey: "tls", Role: "teaches"}, {UnitKey: "connection", Role: "mentions"}},
 			},
 			{
-				Kind: "recall", Prompt: "What protocol does HTTPS use to encrypt HTTP?",
-				Answer: "TLS", Variants: []string{"Transport Layer Security"},
-				Explanation: "HTTPS wraps HTTP in TLS.", Basis: "topic",
+				Key: "worked", Kind: "worked_example", Title: "Resolve a name, then protect the request",
+				Body:  "Authored synthetic worked example: a browser resolves a hostname through a DNS A record to obtain an IPv4 address, then negotiates TLS before sending protected HTTP. If resolution succeeds but TLS fails, the name lookup did not establish a secure connection.",
+				Basis: "topic", EstimatedSeconds: 30,
+				Links: []store.GeneratedLink{{UnitKey: "connection", Role: "teaches"}, {UnitKey: "dns", Role: "assumes"}, {UnitKey: "tls", Role: "teaches"}},
+			},
+			{
+				Key: "diagram", Kind: "diagram", Title: "A simplified HTTPS connection",
+				Body:  "Authored synthetic diagram: Hostname leads through DNS A lookup to an IPv4 address. Connect and negotiate TLS then leads to TLS-protected HTTP. Naming and transport protection are distinct steps.",
+				Basis: "topic", EstimatedSeconds: 30,
+				Diagram: &store.Diagram{
+					Nodes:   []store.DiagramNode{{ID: "name", Label: "Hostname"}, {ID: "address", Label: "IPv4 address"}, {ID: "secure", Label: "TLS-protected HTTP"}},
+					Edges:   []store.DiagramEdge{{From: "name", To: "address", Label: "DNS A lookup"}, {From: "address", To: "secure", Label: "Connect and negotiate TLS"}},
+					Caption: "Authored conceptual model, not a captured network trace.",
+				},
+				Links: []store.GeneratedLink{{UnitKey: "dns", Role: "teaches"}, {UnitKey: "tls", Role: "teaches"}, {UnitKey: "connection", Role: "teaches"}},
+			},
+			{
+				Key: "reference", Kind: "article", Title: "RFC 1035: DNS protocol reference (link only)",
+				Basis: "reference", ReferenceURL: "https://www.rfc-editor.org/rfc/rfc1035.html", EstimatedSeconds: 30,
+				Links: []store.GeneratedLink{{UnitKey: "dns", Role: "teaches"}, {UnitKey: "connection", Role: "mentions"}},
 			},
 		},
-		Model: "authored-test-fixture", PromptVersion: "fixture-v1",
-	}, &cost)
-	if err != nil {
-		return err
+		Quizzes: []store.GeneratedQuiz{
+			{
+				Key: "foundation-one", Level: "foundation", Kind: "recall",
+				Prompt: "Name the DNS record for an IPv4 address, then the protocol that protects HTTP.",
+				Answer: "A; TLS", Variants: []string{"A and TLS"},
+				Explanation: "A records return IPv4 addresses; TLS protects HTTP in HTTPS.", Basis: "topic", EstimatedSeconds: 20,
+				Links: []store.GeneratedLink{{UnitKey: "dns", Role: "assesses"}, {UnitKey: "tls", Role: "assesses"}, {UnitKey: "connection", Role: "mentions"}},
+			},
+			{
+				Key: "foundation-two", Level: "foundation", Kind: "recall",
+				Prompt: "Complete both gaps: DNS A returns an ___ address, while HTTPS protects HTTP with ___.",
+				Answer: "IPv4; TLS", Variants: []string{"IPv4 and TLS"},
+				Explanation: "The two separate facts are IPv4 address mapping and TLS encryption.", Basis: "topic", EstimatedSeconds: 20,
+				Links: []store.GeneratedLink{{UnitKey: "dns", Role: "assesses"}, {UnitKey: "tls", Role: "assesses"}, {UnitKey: "connection", Role: "assumes"}},
+			},
+			{
+				Key: "target", Level: "target", Kind: "choice",
+				Prompt:      "Which sequence separates naming from transport protection in a simplified HTTPS connection?",
+				Answer:      "Resolve the hostname, then negotiate TLS for HTTP",
+				Choices:     []string{"Resolve the hostname, then negotiate TLS for HTTP", "Use DNS A to encrypt HTTP", "Use TLS to allocate an IPv4 address", "Send protected HTTP before choosing a destination"},
+				Explanation: "DNS resolves the destination; TLS protects transport. Neither substitutes for the other.", Basis: "topic", EstimatedSeconds: 20,
+				Links: []store.GeneratedLink{{UnitKey: "connection", Role: "assesses"}, {UnitKey: "dns", Role: "assumes"}, {UnitKey: "tls", Role: "assumes"}},
+			},
+		},
+		Suggestions: []store.GeneratedSuggestion{
+			{Key: "advance", Kind: "advance", Title: "Combine the foundations", Reason: "Opt into the authored integrated connection question after checking the two separate facts.", UnitKeys: []string{"connection"}, MaterialKeys: []string{"target"}},
+			{Key: "lateral", Kind: "lateral", Title: "Consult the DNS protocol reference", Reason: "Optionally open the supplied public RFC link; its content has not been fetched or assessed.", UnitKeys: []string{"dns"}, MaterialKeys: []string{"reference"}},
+		},
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"source": src.ID, "model": "authored-test-fixture"})
 }

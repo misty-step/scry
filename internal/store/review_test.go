@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -31,6 +32,24 @@ func authoredChoice(prompt string) GeneratedQuiz {
 	return GeneratedQuiz{Kind: "choice", Prompt: prompt, Answer: "second", Choices: []string{"first", "second", "third"}, Explanation: "The second option is the authored answer in this synthetic fixture.", Basis: "topic"}
 }
 
+func authoredBundle(content ...GeneratedQuiz) GenerationResult {
+	result := GenerationResult{
+		Model: "authored-test-fixture", PromptVersion: "fixture-v2",
+		Coverage: CoverageReport{Kind: "concepts", Complete: false, Missing: []string{"This synthetic retrieval-only fixture has no authored foundation instruction."}},
+		Units:    []GeneratedUnit{}, Quizzes: make([]GeneratedQuiz, 0, len(content)),
+	}
+	for index, quiz := range content {
+		unitKey := fmt.Sprintf("unit_%d", index+1)
+		result.Units = append(result.Units, GeneratedUnit{Key: unitKey, Kind: "concept", Statement: fmt.Sprintf("The synthetic question numbered %d has its explicitly authored answer", index+1)})
+		quiz.Key = fmt.Sprintf("quiz_%d", index+1)
+		quiz.Level = "target"
+		quiz.EstimatedSeconds = 45
+		quiz.Links = []GeneratedLink{{UnitKey: unitKey, Role: "assesses"}}
+		result.Quizzes = append(result.Quizzes, quiz)
+	}
+	return result
+}
+
 func publishFixture(t *testing.T, s *Store, content ...GeneratedQuiz) Source {
 	t.Helper()
 	ctx := context.Background()
@@ -43,7 +62,7 @@ func publishFixture(t *testing.T, s *Store, content ...GeneratedQuiz) Source {
 		t.Fatalf("claim fixture: %v, %v", claim, err)
 	}
 	cost := int64(70)
-	if err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, GenerationResult{Quizzes: content, Model: "authored-test-fixture", PromptVersion: "fixture-v1"}, &cost); err != nil {
+	if err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, authoredBundle(content...), &cost); err != nil {
 		t.Fatal(err)
 	}
 	src, err = s.Source(ctx, src.ID)

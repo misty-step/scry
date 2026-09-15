@@ -7,15 +7,15 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
-func sourceDraft() (store.Job, quizDraft) {
+func sourceDraft() (store.Job, store.GeneratedQuiz) {
 	evidence := "In aerobic cells, mitochondria use oxidative phosphorylation to produce ATP, a carrier of chemical energy."
 	job := store.Job{SourceKind: "source", SourceText: evidence + "\nChloroplasts capture light energy in photosynthetic cells."}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "recall", Basis: "source", Evidence: evidence,
 		Prompt:      "Which molecule is produced by mitochondrial oxidative phosphorylation?",
 		Answer:      "ATP",
 		Explanation: "ATP carries chemical energy in aerobic cells; the excerpt specifically links its production to mitochondrial oxidative phosphorylation.",
-		Choices:     []string{}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{},
 	}
 	return job, quiz
 }
@@ -28,13 +28,15 @@ func TestSourceQuotationCannotLeakAnswerOrLaunderUnseenCitations(t *testing.T) {
 	}
 	cases := []struct {
 		name   string
-		mutate func(*quizDraft)
+		mutate func(*store.GeneratedQuiz)
 	}{
-		{"answer-bearing source in prompt", func(q *quizDraft) { q.Prompt = q.Evidence + " Which energy carrier is produced?" }},
-		{"fabricated evidence", func(q *quizDraft) { q.Evidence = "Mitochondria produce ATP by nuclear fission." }},
-		{"real quote but unrelated answer", func(q *quizDraft) { q.Answer = "DNA" }},
-		{"invented quotation in explanation", func(q *quizDraft) { q.Explanation += ` The author calls this "the universal proof of energy".` }},
-		{"unseen external citation", func(q *quizDraft) { q.Explanation += " See https://unseen.invalid/proof for confirmation." }},
+		{"answer-bearing source in prompt", func(q *store.GeneratedQuiz) { q.Prompt = q.Evidence + " Which energy carrier is produced?" }},
+		{"fabricated evidence", func(q *store.GeneratedQuiz) { q.Evidence = "Mitochondria produce ATP by nuclear fission." }},
+		{"real quote but unrelated answer", func(q *store.GeneratedQuiz) { q.Answer = "DNA" }},
+		{"invented quotation in explanation", func(q *store.GeneratedQuiz) {
+			q.Explanation += ` The author calls this "the universal proof of energy".`
+		}},
+		{"unseen external citation", func(q *store.GeneratedQuiz) { q.Explanation += " See https://unseen.invalid/proof for confirmation." }},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -61,12 +63,12 @@ func TestSingleLetterIdentifierDoesNotLeakThroughAnArticle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "choice", Basis: "source", Evidence: job.SourceText,
 		Prompt:      "Which DNS record type maps a hostname to an IPv4 address?",
 		Answer:      "A",
 		Explanation: "An A record maps a hostname to an IPv4 address, as the supplied mapping states.",
-		Choices:     []string{"A", "AAAA", "CNAME"}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{"A", "AAAA", "CNAME"}, Variants: []string{}, Links: []store.GeneratedLink{},
 	}
 	result, _, err := validateOutput(outputJSON(t, "concepts", quiz), &job, plan)
 	if err != nil || len(result.Quizzes) != 1 || result.Quizzes[0].Answer != "A" {
@@ -100,31 +102,31 @@ func TestCompleteSetCoverageMustBeActuallyTestedInSourceOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys, values := []string{"Red", "Blue", "Green"}, []string{"Crimson", "Azure", "Viridian"}
-	drafts := make([]quizDraft, 0, 3)
+	drafts := make([]store.GeneratedQuiz, 0, 3)
 	for index, unit := range plan.Units {
-		drafts = append(drafts, quizDraft{
+		drafts = append(drafts, store.GeneratedQuiz{
 			Kind: "recall", Basis: "source", Evidence: unit.Text,
 			Prompt:      "Which value is paired with " + keys[index] + " in the supplied mapping?",
 			Answer:      values[index],
 			Explanation: "The supplied mapping explicitly pairs " + keys[index] + " with " + values[index] + "; each key identifies its own separate value.",
-			Choices:     []string{}, Variants: []string{}, Covers: []string{unit.ID},
+			Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{{UnitKey: unit.ID, Role: "assesses"}},
 		})
 	}
 	complete, _, err := validateOutput(outputJSON(t, "complete_set", drafts...), &job, plan)
-	if err != nil || complete.Partial || len(complete.Quizzes) != 3 {
+	if err != nil || !complete.Coverage.Complete || len(complete.Quizzes) != 3 {
 		t.Fatalf("complete ordered set was not accepted: %+v %v", complete, err)
 	}
 	partial, _, err := validateOutput(outputJSON(t, "complete_set", drafts[0], drafts[2]), &job, plan)
-	if err != nil || !partial.Partial || len(partial.Quizzes) != 2 {
+	if err != nil || partial.Coverage.Complete || len(partial.Quizzes) != 2 {
 		t.Fatalf("sampled set claimed completion: %+v %v", partial, err)
 	}
 	reordered, _, err := validateOutput(outputJSON(t, "complete_set", drafts[1], drafts[0], drafts[2]), &job, plan)
-	if err != nil || !reordered.Partial || len(reordered.Quizzes) != 2 || reordered.Quizzes[0].Answer != "Azure" || reordered.Quizzes[1].Answer != "Viridian" {
-		t.Fatalf("reordered set escaped coverage fencing: %+v %v", reordered, err)
+	if err != nil || len(reordered.Quizzes) != 0 || len(reordered.Units) != 0 {
+		t.Fatalf("reordered bundle was partially published: %+v %v", reordered, err)
 	}
 	laundered := drafts[0]
 	laundered.Evidence = job.SourceText
-	laundered.Covers = []string{"u2"} // Entire source is quoted, but Blue is not tested.
+	laundered.Links = []store.GeneratedLink{{UnitKey: "u2", Role: "assesses"}} // Entire source is quoted, but Blue is not tested.
 	partial, _, err = validateOutput(outputJSON(t, "complete_set", laundered), &job, plan)
 	if err != nil || len(partial.Quizzes) != 0 {
 		t.Fatalf("coverage IDs were trusted without a tested unit: %+v %v", partial, err)
@@ -137,15 +139,15 @@ func TestExactTextCannotParaphraseOrClaimPartialInventoryComplete(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "recall", Basis: "source", Evidence: plan.Units[0].Text,
 		Prompt:      "Recite the first line of the supplied poem.",
 		Answer:      plan.Units[0].Text,
 		Explanation: "The opening line introduces hope through a feathered creature, retaining the supplied wording rather than replacing it with a paraphrase.",
-		Choices:     []string{}, Variants: []string{}, Covers: []string{"u1"},
+		Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{{UnitKey: "u1", Role: "assesses"}},
 	}
 	result, _, err := validateOutput(outputJSON(t, "exact_text", quiz), &job, plan)
-	if err != nil || !result.Partial || len(result.Quizzes) != 1 || result.Quizzes[0].Answer != "Hope is the thing with feathers" {
+	if err != nil || result.Coverage.Complete || len(result.Quizzes) != 1 || result.Quizzes[0].Answer != "Hope is the thing with feathers" {
 		t.Fatalf("partial recitation inventory was misrepresented: %+v %v", result, err)
 	}
 	quiz.Answer += "." // Even plausible punctuation is not the supplied exact text.
@@ -162,7 +164,7 @@ func TestModelInventedFiniteInventoryCannotProveCompleteness(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, _, err := validateOutput(outputJSON(t, "complete_set", topicDraft()), &job, plan)
-	if err != nil || !result.Partial || len(result.Quizzes) != 1 {
+	if err != nil || result.Coverage.Complete || len(result.Quizzes) != 1 {
 		t.Fatalf("model self-reported coverage became a completeness claim: %+v %v", result, err)
 	}
 }
@@ -193,12 +195,12 @@ func TestQualifiedSourceCannotBeStrengthenedIntoCausation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "recall", Basis: "source", Evidence: job.SourceText,
 		Prompt:      "What outcome was associated with exercise in the observational study?",
 		Answer:      "lower blood pressure",
 		Explanation: "Exercise causes lower blood pressure because the observational study proves a causal relationship.",
-		Choices:     []string{}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{},
 	}
 	result, _, err := validateOutput(outputJSON(t, "concepts", quiz), &job, plan)
 	if err != nil || len(result.Quizzes) != 0 {
@@ -217,12 +219,12 @@ func TestOverlappingNumericDistractorsCannotHaveTwoCorrectAnswers(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "choice", Basis: "topic", Evidence: "",
 		Prompt:      "Which inclusive interval contains the integer five?",
 		Answer:      "0–5",
 		Explanation: "The first interval includes five at its upper endpoint; inclusion of both endpoints determines membership.",
-		Choices:     []string{"0–5", "5–10", "11–15"}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{"0–5", "5–10", "11–15"}, Variants: []string{}, Links: []store.GeneratedLink{},
 	}
 	result, _, err := validateOutput(outputJSON(t, "concepts", quiz), &job, plan)
 	if err != nil || len(result.Quizzes) != 0 {
@@ -242,12 +244,12 @@ func TestPossibleSourceClaimDoesNotBecomeCertain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiz := quizDraft{
+	quiz := store.GeneratedQuiz{
 		Kind: "recall", Basis: "source", Evidence: evidence,
 		Prompt:      "What effect may these medicines have in susceptible adults?",
 		Answer:      "drowsiness",
 		Explanation: "These medicines cause drowsiness in susceptible adults, so the symptom follows treatment.",
-		Choices:     []string{}, Variants: []string{}, Covers: []string{},
+		Choices:     []string{}, Variants: []string{}, Links: []store.GeneratedLink{},
 	}
 	result, _, err := validateOutput(outputJSON(t, "concepts", quiz), &job, plan)
 	if err != nil || len(result.Quizzes) != 0 {

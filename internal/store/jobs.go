@@ -3,31 +3,64 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/misty-step/scry/internal/learning"
 )
 
 func enqueue(ctx context.Context, tx *sql.Tx, sourceID string, revision int, now int64) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO jobs(id,source_id,source_revision,status,created_at,updated_at,available_at)
-	 VALUES(?,?,?,'queued',?,?,?)`, newID(), sourceID, revision, now, now, now)
+	_, err := enqueueKnowledge(ctx, tx, sourceID, revision, "capture", "", 0, "", 0, now)
 	return err
 }
 
 func job(ctx context.Context, tx *sql.Tx, id string) (Job, error) {
+	return readJob(ctx, tx, id, true)
+}
+
+func jobMetadata(ctx context.Context, tx *sql.Tx, id string) (Job, error) {
+	return readJob(ctx, tx, id, false)
+}
+
+func readJob(ctx context.Context, tx *sql.Tx, id string, includeContext bool) (Job, error) {
 	var j Job
-	err := tx.QueryRowContext(ctx, `SELECT j.id,j.source_id,j.status,j.error,j.model,j.lease_token,r.text,r.kind,j.source_revision,j.attempts,
+	var contextJSON, coverageJSON string
+	err := tx.QueryRowContext(ctx, `SELECT j.id,j.source_id,j.status,j.error,j.model,CASE WHEN ? THEN j.lease_token ELSE '' END,CASE WHEN ? THEN r.text ELSE '' END,r.kind,j.source_revision,j.attempts,
 	 j.created_at,j.updated_at,j.published,
 	 COALESCE((SELECT sum(CASE WHEN a.state='active' THEN 0 ELSE COALESCE(a.cost_micros,a.reserved_micros) END) FROM job_attempts a WHERE a.job_id=j.id),0),
 	 COALESCE((SELECT sum(a.reserved_micros) FROM job_attempts a WHERE a.job_id=j.id AND a.state='active'),0),
-	 EXISTS(SELECT 1 FROM job_attempts a WHERE a.job_id=j.id AND a.state<>'active' AND a.cost_micros IS NULL)
-	 FROM jobs j JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision WHERE j.id=?`, id).
+	 EXISTS(SELECT 1 FROM job_attempts a WHERE a.job_id=j.id AND a.state<>'active' AND a.cost_micros IS NULL),
+	 j.kind,j.goal_id,j.goal_revision,j.target_material_id,j.target_material_version,j.target_presentation_id,j.target_presentation_version,CASE WHEN ? THEN j.context_json ELSE '{}' END,j.new_materials,j.reused_materials,j.new_quizzes,CASE WHEN ? THEN j.coverage_json ELSE json_set(j.coverage_json,'$.missing',json('[]')) END,j.suggestion_id,j.parent_job_id,j.retry_root_id,j.observation_id
+	 FROM jobs j JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision WHERE j.id=?`, includeContext, includeContext, includeContext, includeContext, id).
 		Scan(&j.ID, &j.SourceID, &j.Status, &j.Error, &j.Model, &j.LeaseToken, &j.SourceText, &j.SourceKind, &j.SourceRevision,
-			&j.Attempts, &j.CreatedAt, &j.UpdatedAt, &j.Published, &j.CostMicros, &j.ReservedMicros, &j.CostUnknown)
-	return j, notFound(err, "generation job")
+			&j.Attempts, &j.CreatedAt, &j.UpdatedAt, &j.Published, &j.CostMicros, &j.ReservedMicros, &j.CostUnknown,
+			&j.Kind, &j.GoalID, &j.GoalRevision, &j.TargetMaterialID, &j.TargetMaterialVersion, &j.TargetPresentationID, &j.TargetPresentationVersion, &contextJSON, &j.NewMaterials, &j.ReusedMaterials, &j.NewQuizzes, &coverageJSON, &j.SuggestionID, &j.ParentJobID, &j.RetryRootID, &j.ObservationID)
+	if err != nil {
+		return j, notFound(err, "generation job")
+	}
+	if err = json.Unmarshal([]byte(contextJSON), &j.Context); err != nil {
+		return j, err
+	}
+	err = json.Unmarshal([]byte(coverageJSON), &j.Coverage)
+	if err != nil {
+		return j, err
+	}
+	if !includeContext {
+		hideJobContext(&j)
+	}
+	err = jobRetryMetadata(ctx, tx, &j)
+	return j, err
+}
+
+func hideJobContext(j *Job) {
+	j.MetadataOnly = true
+	j.SourceText, j.LeaseToken = "", ""
+	j.Context = KnowledgeContext{}
+	j.Coverage.Missing = []string{}
+	if j.Error != "" {
+		j.Error = "A " + j.Status + " diagnostic is recorded; explicit full-export inspection is required for its unredacted details"
+	}
 }
 
 // ClaimJob reserves before external work. A zero reservation is solely for a
@@ -43,6 +76,12 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	}
 	defer tx.Rollback()
 	now := s.now()
+	if err = s.checkSchemaCookie(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err = queueEnrichment(ctx, tx, now); err != nil {
+		return nil, err
+	}
 	if err = expireJobs(ctx, tx, now); err != nil {
 		return nil, err
 	}
@@ -53,10 +92,10 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	if running {
 		return nil, tx.Commit()
 	}
-	var id string
-	err = tx.QueryRowContext(ctx, `SELECT j.id FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status IN ('queued','retry')
-	 AND j.available_at<=? AND j.attempts<3 AND src.archived=0 AND src.revision=j.source_revision
-	 ORDER BY j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id)
+	var id, jobKind string
+	err = tx.QueryRowContext(ctx, `SELECT j.id,j.kind FROM jobs j WHERE j.status IN ('queued','retry')
+	 AND j.available_at<=? AND j.attempts<3 AND `+eligibleKnowledgeJob+`
+	 ORDER BY CASE j.kind WHEN 'bridge' THEN 0 WHEN 'capture' THEN 1 WHEN 'expand' THEN 2 ELSE 3 END,j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id, &jobKind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
@@ -69,7 +108,7 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 		 WHERE started_at>=? OR state='active'`, now-int64(24*time.Hour/time.Millisecond)).Scan(&spent); err != nil {
 			return nil, err
 		}
-		if spent > dailyBudgetMicros || reservationMicros > dailyBudgetMicros-spent {
+		if spent > dailyBudgetMicros || reservationMicros > dailyBudgetMicros-spent || (jobKind == "enrich" && reservationMicros > (dailyBudgetMicros-spent)/2) {
 			if _, err = tx.ExecContext(ctx, "UPDATE jobs SET error='Waiting for daily generation allowance; prior and unknown usage remain accounted',updated_at=? WHERE id=? AND error=''", now, id); err != nil {
 				return nil, err
 			}
@@ -78,6 +117,21 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 			}
 			return nil, fmt.Errorf("%w: last 24h costs, unknown usage and reservations leave insufficient allowance", ErrBudget)
 		}
+	}
+	j, err := job(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	knowledge, err := generationContext(ctx, tx, j, now)
+	if err != nil {
+		return nil, err
+	}
+	encodedContext, err := marshal(knowledge)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE jobs SET context_json=? WHERE id=?", encodedContext, id); err != nil {
+		return nil, err
 	}
 	token := newID()
 	_, err = tx.ExecContext(ctx, "UPDATE jobs SET status='running',attempts=attempts+1,lease_token=?,lease_until=?,updated_at=? WHERE id=?", token, now+lease.Milliseconds(), now, id)
@@ -89,7 +143,7 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	if err != nil {
 		return nil, err
 	}
-	j, err := job(ctx, tx, id)
+	j, err = job(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -101,13 +155,12 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 
 func expireJobs(ctx context.Context, tx *sql.Tx, now int64) error {
 	_, err := tx.ExecContext(ctx, `UPDATE job_attempts SET state='unknown',finished_at=? WHERE state='active' AND job_id IN
-	 (SELECT j.id FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status='running'
-	 AND (j.lease_until<=? OR src.archived=1 OR src.revision<>j.source_revision))`, now, now)
+	 (SELECT j.id FROM jobs j WHERE j.status='running' AND (j.lease_until<=? OR NOT (`+eligibleKnowledgeJob+`)))`, now, now)
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status='canceled',error='Source no longer eligible; prior usage retained',lease_token='',lease_until=0,updated_at=?
-	 WHERE status IN ('queued','retry','running') AND EXISTS(SELECT 1 FROM sources src WHERE src.id=jobs.source_id AND (src.archived=1 OR src.revision<>jobs.source_revision))`, now)
+	_, err = tx.ExecContext(ctx, `UPDATE jobs AS j SET status='canceled',error='Source, goal, or retained target changed; prior usage retained',lease_token='',lease_until=0,updated_at=?
+	 WHERE status IN ('queued','retry','running') AND NOT (`+eligibleKnowledgeJob+`)`, now)
 	if err != nil {
 		return err
 	}
@@ -137,8 +190,8 @@ func claimAttempt(ctx context.Context, tx *sql.Tx, jobID, token string, now int6
 		return a, err
 	}
 	var eligible bool
-	err = tx.QueryRowContext(ctx, `SELECT (j.status='running' AND j.lease_token=? AND j.lease_until>? AND src.archived=0 AND src.revision=j.source_revision)
-	 FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.id=?`, token, now, jobID).Scan(&eligible)
+	err = tx.QueryRowContext(ctx, `SELECT (j.status='running' AND j.lease_token=? AND j.lease_until>? AND `+eligibleKnowledgeJob+`)
+	 FROM jobs j WHERE j.id=?`, token, now, jobID).Scan(&eligible)
 	if err != nil {
 		return a, err
 	}
@@ -175,7 +228,7 @@ func settleAttempt(ctx context.Context, tx *sql.Tx, token, hash, code string, co
 func finishStale(ctx context.Context, tx *sql.Tx, jobID, token string, now int64) error {
 	// Do not touch a successor claim. If nobody has swept this expired claim
 	// yet, recover it now; its already-settled actual/unknown cost remains.
-	_, err := tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN EXISTS(SELECT 1 FROM sources src WHERE src.id=jobs.source_id AND (src.archived=1 OR src.revision<>jobs.source_revision))
+	_, err := tx.ExecContext(ctx, `UPDATE jobs AS j SET status=CASE WHEN NOT (`+eligibleKnowledgeJob+`)
 	 THEN 'canceled' WHEN attempts>=3 THEN 'failed' ELSE 'retry' END,
 	 error='Expired or stale completion discarded; usage recorded',lease_token='',lease_until=0,updated_at=?,available_at=?+60000
 	 WHERE id=? AND status='running' AND lease_token=?`, now, now, jobID, token)
@@ -218,8 +271,15 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 	}
 	src := Source{Text: a.job.SourceText, Kind: a.job.SourceKind}
 	validation := validateGeneration(result, src)
+	if validation == nil {
+		validation = validateReuse(ctx, tx, a.job, result)
+	}
+	code := "invalid"
+	if errors.Is(validation, ErrConflict) {
+		code = "conflict"
+	}
 	if validation != nil {
-		if err = settleAttempt(ctx, tx, leaseToken, hash, "invalid", costMicros, now); err != nil {
+		if err = settleAttempt(ctx, tx, leaseToken, hash, code, costMicros, now); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, "UPDATE jobs SET status='failed',error=?,lease_token='',lease_until=0,updated_at=? WHERE id=?", validation.Error(), now, jobID)
@@ -231,39 +291,46 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		}
 		return validation
 	}
-	for index, content := range result.Quizzes {
-		id := newID()
-		encoded, err := marshal(content)
-		if err != nil {
-			return err
+	if _, err = tx.ExecContext(ctx, "SAVEPOINT publish_bundle"); err != nil {
+		return err
+	}
+	newMaterials, reusedMaterials, newQuizzes, err := publishKnowledge(ctx, tx, a.job, result, now)
+	if err != nil {
+		if _, rollbackErr := tx.ExecContext(ctx, "ROLLBACK TO publish_bundle; RELEASE publish_bundle"); rollbackErr != nil {
+			return rollbackErr
 		}
-		card, err := marshal(learning.NewCard(time.UnixMilli(now)))
-		if err != nil {
-			return err
+		if settleErr := settleAttempt(ctx, tx, leaseToken, hash, "invalid", costMicros, now); settleErr != nil {
+			return settleErr
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,source_id,version,created_at,origin_job_id,origin_index) VALUES(?,?,1,?,?,?)", id, a.job.SourceID, now, jobID, index)
-		if err != nil {
-			return err
+		if _, saveErr := tx.ExecContext(ctx, "UPDATE jobs SET status='failed',error='Bundle publication rejected; no material published and prior usage retained',lease_token='',lease_until=0,updated_at=? WHERE id=?", now, jobID); saveErr != nil {
+			return saveErr
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO quiz_versions(quiz_id,version,content,model,prompt_version,created_at) VALUES(?,1,?,?,?,?)", id, encoded, result.Model, result.PromptVersion, now)
-		if err != nil {
-			return err
+		if commitErr := tx.Commit(); commitErr != nil {
+			return commitErr
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO schedules(quiz_id,version,card,due_at,algorithm) VALUES(?,1,?,?,?)", id, card, now, learning.Algorithm)
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("%w: bundle publication rejected: %v", ErrInvalid, err)
+	}
+	if _, err = tx.ExecContext(ctx, "RELEASE publish_bundle"); err != nil {
+		return err
+	}
+	if err = recordKnowledgeEstimates(ctx, tx, now); err != nil {
+		return err
 	}
 	status := "complete"
-	if result.Partial {
+	if !result.Coverage.Complete {
 		status = "partial"
 	}
 	encoded, err := marshal(result)
 	if err != nil {
 		return err
 	}
+	coverageJSON, err := marshal(result.Coverage)
+	if err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,model=?,prompt_version=?,published=?,result_json=?,
-	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, result.Note, result.Model, result.PromptVersion, len(result.Quizzes), encoded, now, jobID)
+	 new_materials=?,reused_materials=?,new_quizzes=?,coverage_json=?,lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, strings.Join(result.Coverage.Missing, "\n"), result.Model, result.PromptVersion, newMaterials+reusedMaterials, encoded,
+		newMaterials, reusedMaterials, newQuizzes, coverageJSON, now, jobID)
 	if err != nil {
 		return err
 	}
@@ -271,33 +338,6 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		return err
 	}
 	return tx.Commit()
-}
-
-func validateGeneration(result GenerationResult, src Source) error {
-	if len(result.Quizzes) == 0 || len(result.Quizzes) > MaxGeneratedQuizzes {
-		return fmt.Errorf("%w: generation must contain 1–%d complete quizzes; split larger source tasks", ErrInvalid, MaxGeneratedQuizzes)
-	}
-	if err := validText("model attribution", result.Model, 200, true); err != nil {
-		return err
-	}
-	if err := validText("prompt version", result.PromptVersion, 200, true); err != nil {
-		return err
-	}
-	if err := validText("generation note", result.Note, 4096, result.Partial); err != nil {
-		return err
-	}
-	seen := make(map[string]bool, len(result.Quizzes))
-	for i, q := range result.Quizzes {
-		if err := validateQuiz(q, src); err != nil {
-			return fmt.Errorf("quiz %d: %w", i+1, err)
-		}
-		key := strings.TrimSpace(q.Prompt)
-		if seen[key] {
-			return fmt.Errorf("%w: duplicate generated prompt", ErrInvalid)
-		}
-		seen[key] = true
-	}
-	return nil
 }
 
 func (s *Store) FailJob(ctx context.Context, jobID, leaseToken, message string, retry bool, costMicros *int64) error {

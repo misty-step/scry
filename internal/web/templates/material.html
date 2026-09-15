@@ -1,0 +1,60 @@
+{{define "material-content"}}
+  {{if .Body}}<div class="reference-body preserve">{{.Body}}</div>{{end}}
+  {{if .Diagram}}{{$diagram := .Diagram}}<figure class="knowledge-diagram" aria-label="Structured learning diagram">
+    <ul class="diagram-nodes">{{range .Diagram.Nodes}}<li>{{.Label}}</li>{{end}}</ul>
+    {{if .Diagram.Edges}}<ul class="diagram-connections">{{range .Diagram.Edges}}<li><strong>{{diagramLabel $diagram .From}}</strong><span>{{if .Label}}{{.Label}}{{else}}connects to{{end}}</span><strong>{{diagramLabel $diagram .To}}</strong></li>{{end}}</ul>{{end}}
+    {{if .Diagram.Caption}}<figcaption class="preserve">{{.Diagram.Caption}}</figcaption>{{end}}
+    <p class="small muted">Each connection is written out above. This is a proposed explanation, not a verified dependency.</p>
+  </figure>{{end}}
+  {{if or (eq .Kind "article") (eq .Kind "video")}}
+    <div class="reference-link">
+      {{if safeReference .ReferenceURL}}<a class="button" href="{{safeReference .ReferenceURL}}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hx-boost="false">{{if eq .Kind "video"}}Open supplied video reference{{else}}Open supplied article reference{{end}}</a>{{else}}<p>No safe external reference is available.</p>{{end}}
+      {{if eq .Kind "video"}}<p class="small muted">A reference, not a generated video. No transcript has been retrieved.{{if or .StartSeconds .EndSeconds}} Suggested segment: {{.StartSeconds}} seconds{{if .EndSeconds}} to {{.EndSeconds}} seconds{{end}}.{{end}}</p>{{else}}<p class="small muted">This article has not been retrieved. A saved link does not verify its contents.</p>{{end}}
+    </div>
+  {{end}}
+  <p class="provenance">{{if eq .Basis "source"}}Source-backed instruction. The provided quotation establishes attribution, not independent verification.{{else if .Body}}Generated or authored background, not a quotation from the saved input or the linked reference. Check consequential claims.{{else}}A saved reference, not retrieved or verified remote content.{{end}}</p>
+  {{if .Evidence}}<details class="inspection"><summary>Provided evidence</summary><blockquote class="preserve">{{.Evidence}}</blockquote></details>{{end}}
+{{end}}
+
+{{define "material"}}<article>
+  {{template "open" (openLink . "library" "" "Library")}}
+  <p class="small muted">{{materialKind .Material.Kind}}, immutable version {{.Material.Version}}{{if .Material.Archived}}; archived{{end}}.</p>
+  <h1 class="question" tabindex="-1" data-focus>{{.Material.Title}}</h1>
+  <p class="small muted">Material identity {{.Material.ID}}. {{if .Material.FirstPresentedAt}}First presented <time datetime="{{timeISO .Material.FirstPresentedAt}}" data-local-time>{{timeText .Material.FirstPresentedAt}}</time>; presentation alone does not mean it was read or understood.{{else}}Available in your library; not yet presented in a learning stage.{{end}}</p>
+  {{if .Material.Quiz}}<section class="reference-body">
+    <h2>{{.Material.Quiz.Prompt}}</h2>{{if .Material.Quiz.Choices}}<ul>{{range .Material.Quiz.Choices}}<li class="preserve">{{.}}</li>{{end}}</ul>{{end}}
+    <p class="preserve"><strong>Expected answer:</strong> {{.Material.Quiz.Answer}}</p>
+    <p class="preserve">{{.Material.Quiz.Explanation}}</p>
+    {{if .Material.Quiz.Evidence}}<blockquote class="preserve">{{.Material.Quiz.Evidence}}</blockquote>{{end}}
+    {{template "open" (openLink . "quiz" .Material.Quiz.ID "Edit future assessment wording")}}
+  </section>{{else}}{{template "material-content" .Material}}{{end}}
+  <p class="quiet-note">This is an inspection, not a retrieval attempt. Related assessments offered after help remain practice. Use the learning stage for a deliberate reading continuation or an actual answer.</p>
+  <div class="actions"><a href="/">Return to learning</a>{{template "open" (openLink . "source" .Material.SourceID "Open original input")}}</div>
+  <section class="knowledge-section"><h2>What this material does</h2><p class="small muted">Teaching, direct assessment, assumptions and mentions are different. A coverage link is an assertion about an exact material and definition version, not automatic knowledge credit.</p>{{template "coverage-links" (within . .Material.Links)}}</section>
+  <details class="knowledge-section"><summary>Material provenance</summary>{{template "provenance" (within . .Material.Provenance)}}<p class="small muted">Earlier versions remain in encountered history and your full export. Corrections append new versions instead of rewriting those snapshots.</p>{{template "open" (openLink . "export" "" "Download the complete version record")}}</details>
+  {{if not .Material.Archived}}
+  {{if ne .Material.Kind "quiz"}}<details class="maintenance" {{if .Error}}open{{end}}><summary>Correct this material</summary>
+    <p>Save a new text or reference version. The material kind and provenance basis stay fixed; coverage is corrected separately below.</p>
+    <form action="/materials/{{.Material.ID}}/edit" method="post" hx-post="/materials/{{.Material.ID}}/edit" data-recover-to="/materials/{{.Material.ID}}">
+      {{template "tokens" .}}<input type="hidden" name="version" value="{{.Form.Get "version"}}">
+      <label for="material-title">Title</label><textarea id="material-title" name="title" rows="2" required>{{.Form.Get "title"}}</textarea>
+      <label for="material-body">Saved text or worked example</label><textarea id="material-body" name="body" rows="8">{{.Form.Get "body"}}</textarea>
+      <p class="small muted">{{if eq .Material.Basis "source"}}Keep source-backed text faithful to the actual supplied material.{{else}}This remains separately labeled generated background, not a fetched article or transcript.{{end}}</p>
+      <label for="material-evidence">{{if eq .Material.Basis "source"}}Exact source quotation{{else}}Provided evidence, if any{{end}}</label><textarea id="material-evidence" name="evidence" rows="4" {{if eq .Material.Basis "source"}}required{{end}}>{{.Form.Get "evidence"}}</textarea>
+      {{if or (eq .Material.Kind "article") (eq .Material.Kind "video")}}<label for="material-url">Supplied or reused HTTPS reference</label><input id="material-url" type="url" name="reference_url" value="{{.Form.Get "reference_url"}}" required><p class="small muted">Only an actual reference already present in the captured or reusable context is accepted. No URL is fetched, and credentials in URLs are not allowed.</p>{{else}}<input type="hidden" name="reference_url" value="{{.Form.Get "reference_url"}}">{{end}}
+      {{if eq .Material.Kind "video"}}<div class="field-pair"><div><label for="material-start">Segment start, seconds</label><input id="material-start" name="start_seconds" type="number" min="0" required value="{{.Form.Get "start_seconds"}}"></div><div><label for="material-end">Segment end, seconds</label><input id="material-end" name="end_seconds" type="number" min="0" required value="{{.Form.Get "end_seconds"}}"></div></div><p class="small muted">Use zero for an unspecified bound. A known end must follow its start; these values do not imply a transcript exists.</p>{{else}}<input type="hidden" name="start_seconds" value="{{.Form.Get "start_seconds"}}"><input type="hidden" name="end_seconds" value="{{.Form.Get "end_seconds"}}">{{end}}
+      <label for="material-seconds">Estimated use time, seconds</label><input id="material-seconds" name="estimated_seconds" type="number" min="1" required value="{{.Form.Get "estimated_seconds"}}"><p class="small muted">A planning estimate, never a forced timer or evidence of reading.</p>
+      {{if eq .Material.Kind "diagram"}}<fieldset><legend>Small structured diagram</legend><label for="diagram-nodes">Nodes, one per line</label><textarea id="diagram-nodes" name="diagram_nodes" rows="5" required aria-describedby="diagram-nodes-help">{{.Form.Get "diagram_nodes"}}</textarea><p id="diagram-nodes-help" class="small muted">Write each as id | label. IDs connect the lines below; labels are plain text, never HTML or SVG.</p><label for="diagram-edges">Connections, one per line</label><textarea id="diagram-edges" name="diagram_edges" rows="5" aria-describedby="diagram-edges-help">{{.Form.Get "diagram_edges"}}</textarea><p id="diagram-edges-help" class="small muted">Write each as from-id | to-id | label. Refer only to listed nodes.</p><label for="diagram-caption">Text caption</label><textarea id="diagram-caption" name="diagram_caption" rows="2">{{.Form.Get "diagram_caption"}}</textarea></fieldset>{{end}}
+      <label for="material-reason">Correction reason</label><textarea id="material-reason" name="reason" rows="2" required maxlength="2000">{{.Form.Get "reason"}}</textarea><button type="submit" data-pending="Saving the corrected material version…">Save material correction</button>
+    </form>
+  </details>{{end}}
+  <details class="maintenance" {{if .Error}}open{{end}}><summary>Correct knowledge coverage</summary>
+    <p>Keep exact definition versions. Change a role or remove a mistaken link without editing the original interaction. Use a unit's inspection page to find its stable ID and version.</p>
+    <form action="/materials/{{.Material.ID}}/coverage" method="post" hx-post="/materials/{{.Material.ID}}/coverage" data-recover-to="/materials/{{.Material.ID}}">
+      {{template "tokens" .}}<input type="hidden" name="version" value="{{.Form.Get "version"}}">{{$root := .}}
+      {{range $i, $id := index .Form "unit_id"}}<fieldset class="coverage-edit"><legend>Coverage link</legend><label for="coverage-unit-{{$i}}">Unit ID</label><input id="coverage-unit-{{$i}}" name="unit_id" value="{{$id}}"><label for="coverage-version-{{$i}}">Definition version</label><input id="coverage-version-{{$i}}" type="number" min="1" name="unit_version" value="{{formAt $root.Form "unit_version" $i}}"><label for="coverage-role-{{$i}}">What this material does</label><select id="coverage-role-{{$i}}" name="role">{{$role := formAt $root.Form "role" $i}}<option value="" {{if eq $role ""}}selected{{end}}>Choose a role</option><option value="assesses" {{if eq $role "assesses"}}selected{{end}}>Directly assesses</option><option value="teaches" {{if eq $role "teaches"}}selected{{end}}>Teaches</option><option value="assumes" {{if eq $role "assumes"}}selected{{end}}>Assumes, without assessing</option><option value="mentions" {{if eq $role "mentions"}}selected{{end}}>Mentions, without assessing</option><option value="remove" {{if eq $role "remove"}}selected{{end}}>Remove this link from future versions</option></select></fieldset>{{end}}
+      <fieldset class="coverage-edit"><legend>Link another unit, if needed</legend><label for="coverage-new-unit">Unit ID</label><input id="coverage-new-unit" name="unit_id"><label for="coverage-new-version">Definition version</label><input id="coverage-new-version" name="unit_version" type="number" min="1"><label for="coverage-new-role">Role</label><select id="coverage-new-role" name="role"><option value="">No additional link</option><option value="assesses">Directly assesses</option><option value="teaches">Teaches</option><option value="assumes">Assumes</option><option value="mentions">Mentions</option></select></fieldset>
+      <label for="coverage-reason">Correction reason</label><textarea id="coverage-reason" name="reason" rows="2" required maxlength="2000">{{.Form.Get "reason"}}</textarea><button type="submit" data-pending="Saving versioned coverage correction…">Save coverage correction</button>
+    </form>
+  </details>{{end}}
+</article>{{end}}

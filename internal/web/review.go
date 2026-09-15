@@ -14,19 +14,60 @@ import (
 func privateReview(state store.ReviewState) store.ReviewState {
 	if state.Current != nil {
 		copy := *state.Current
-		if !copy.Graded {
-			copy.Quiz = withoutAnswer(copy.Quiz)
+		if copy.Kind != "reference" {
+			copy.Material = materialIdentity(copy.Material)
+			if !copy.Graded {
+				copy.Quiz = withoutAnswer(copy.Quiz)
+				copy.PlanningReason = ""
+			}
+		} else if copy.Material != nil {
+			material := *copy.Material
+			material.Links = nil
+			material.Provenance = store.Provenance{}
+			material.Quiz = nil
+			material.PlanningReason = ""
+			material.SelectionPolicy = ""
+			copy.Material = &material
 		}
 		state.Current = &copy
 	}
 	if state.Preview != nil {
-		copy := *state.Preview
-		copy.ID = ""
-		copy.Answer = ""
-		copy.Quiz = withoutAnswer(copy.Quiz)
-		state.Preview = &copy
+		// A reference's title, diagram, citation and coverage can all carry
+		// instruction. None belongs in a speculative response or hidden markup.
+		state.Preview = &store.Presentation{Kind: state.Preview.Kind}
+	}
+	if state.Suspended != nil {
+		suspended := make([]*store.Presentation, 0, len(state.Suspended))
+		for _, item := range state.Suspended {
+			if item != nil {
+				suspended = append(suspended, &store.Presentation{ID: item.ID, Kind: item.Kind, GoalID: item.GoalID, GoalRevision: item.GoalRevision, GoalPinOrigin: item.GoalPinOrigin, BridgeID: item.BridgeID, Material: materialIdentity(item.Material), Assisted: item.Assisted, Graded: item.Graded, Practice: item.Practice})
+			}
+		}
+		state.Suspended = suspended
+	}
+	if state.Bridge != nil {
+		copy := *state.Bridge
+		copy.Reason = ""
+		if copy.Job != nil {
+			job := *copy.Job
+			job.Context = store.KnowledgeContext{}
+			job.SourceText = ""
+			job.Coverage.Missing = nil
+			if job.Error != "" {
+				job.Error = "Preparation did not finish. Open the saved job details for its recorded error."
+			}
+			copy.Job = &job
+		}
+		state.Bridge = &copy
 	}
 	return state
+}
+
+func materialIdentity(material *store.Material) *store.Material {
+	if material == nil {
+		return nil
+	}
+	return &store.Material{ID: material.ID, SourceID: material.SourceID, GoalID: material.GoalID, GoalRevision: material.GoalRevision, Version: material.Version, Kind: material.Kind, Level: material.Level, MetadataOnly: true, Archived: material.Archived, Unmapped: material.Unmapped, DueAt: material.DueAt, EstimatedSeconds: material.EstimatedSeconds}
 }
 
 func withoutAnswer(q store.Quiz) store.Quiz {
@@ -47,6 +88,18 @@ func (s *server) review(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) reviewResponse(w http.ResponseWriter, r *http.Request, state store.ReviewState, notice string) {
+	if state.Current != nil && state.Current.Kind == "reference" {
+		if state.Current.Material == nil {
+			s.fail(w, r, fmt.Errorf("reference presentation has no material"), page{})
+			return
+		}
+		if s.guardInspection(w, r, "presentation", state.Current.ID) {
+			return
+		}
+	}
+	if state.Current != nil && state.Current.Graded && s.guardInspection(w, r, "presentation", state.Current.ID) {
+		return
+	}
 	state = privateReview(state)
 	if wantsJSON(r) {
 		jsonResponse(w, http.StatusOK, map[string]any{"review": state, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})
@@ -61,7 +114,13 @@ func (s *server) reviewResponse(w http.ResponseWriter, r *http.Request, state st
 	} else {
 		w.Header().Set("HX-Push-Url", "/")
 	}
-	s.render(w, r, http.StatusOK, page{View: "review", Title: "Review", Active: "review", Review: state, Notice: notice})
+	p := page{View: "review", Title: "Review", Active: "review", Review: state, Notice: notice}
+	if state.Current != nil {
+		p.ReviewGoalID = state.Current.GoalID
+	} else if state.Bridge != nil {
+		p.ReviewGoalID = state.Bridge.GoalID
+	}
+	s.render(w, r, http.StatusOK, p)
 }
 
 func (s *server) preview(w http.ResponseWriter, r *http.Request) {
@@ -100,12 +159,6 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request, reveal bool) {
 	if err != nil {
 		s.reviewFailure(w, r, err, op, answer)
 		return
-	}
-	if reveal {
-		if destination := safeReturn(r.PostForm.Get("return_to")); destination != "" {
-			s.finish(w, r, destination, map[string]any{"presentation": p, "location": destination})
-			return
-		}
 	}
 	state, err := s.store.Review(r.Context())
 	if err != nil {
@@ -153,33 +206,102 @@ func (s *server) next(w http.ResponseWriter, r *http.Request) {
 
 func safeReturn(raw string) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.IsAbs() || u.Host != "" || u.RawQuery != "" || u.Fragment != "" || strings.Contains(raw, "\\") {
+	if err != nil || u.IsAbs() || u.Host != "" || u.Fragment != "" || u.RawPath != "" || strings.ContainsAny(raw, "\\\r\n\t") {
 		return ""
 	}
-	if raw == "/history" || raw == "/library" || strings.HasPrefix(raw, "/sources/") || strings.HasPrefix(raw, "/quizzes/") || strings.HasPrefix(raw, "/reviews/") {
+	if u.RawQuery != "" {
+		query, err := url.ParseQuery(u.RawQuery)
+		if err != nil || u.Path != "/library" || len(query) != 1 || len(query["q"]) != 1 || len(query.Get("q")) > 1024 {
+			return ""
+		}
+		return u.String()
+	}
+	switch raw {
+	case "/", "/history", "/library", "/export":
 		return raw
+	}
+	parts := strings.Split(strings.TrimPrefix(raw, "/"), "/")
+	if !strings.HasPrefix(raw, "/") || len(parts) < 2 || len(parts) > 3 || parts[1] == "" {
+		return ""
+	}
+	for _, c := range parts[1] {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			return ""
+		}
+	}
+	switch parts[0] {
+	case "sources", "units", "materials":
+		if len(parts) == 2 {
+			return raw
+		}
+	case "goals":
+		if len(parts) == 2 || len(parts) == 3 && parts[2] == "plan" {
+			return raw
+		}
+	case "quizzes":
+		if len(parts) == 3 && parts[2] == "edit" {
+			return raw
+		}
+	case "reviews":
+		if len(parts) == 3 && parts[2] == "dispute" {
+			return raw
+		}
 	}
 	return ""
 }
 
-func (s *server) coldReview(r *http.Request) (*store.Presentation, error) {
-	current, err := s.store.Current(r.Context())
+// Inspection is read-only until the owner explicitly accepts this fence. The
+// store checks stable source identity and shared versioned coverage, including
+// suspended bridge targets; a browser route is not an assistance loophole.
+func (s *server) guardInspection(w http.ResponseWriter, r *http.Request, kind, id string) bool {
+	access, err := s.store.InspectionAccess(r.Context(), kind, id)
 	if err != nil {
-		return nil, err
+		s.fail(w, r, err, page{})
+		return true
 	}
-	if current != nil && !current.Graded {
-		return current, nil
+	if access.Allowed && !access.RequiresAssistance {
+		return false
 	}
-	return nil, nil
-}
-
-func (s *server) gate(w http.ResponseWriter, r *http.Request, current *store.Presentation) {
+	destination := safeReturn(inspectionDestination(kind, id))
+	if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/review/") {
+		destination = "/"
+	}
+	if destination == "" {
+		destination = "/library"
+	}
 	if wantsJSON(r) {
 		jsonResponse(w, http.StatusConflict, map[string]any{
-			"error":           "This material contains the answer to your current question. Reveal it first, or finish that review.",
-			"presentation_id": current.ID, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken(), "return_to": r.URL.Path,
+			"error":  "Open this content explicitly before reading it. Related unanswered targets are marked helped, never automatically graded.",
+			"access": access, "kind": kind, "id": id, "csrf": r.Context().Value(csrfKey{}),
+			"operation_id": randomToken(), "return_to": destination, "action": "/inspection/assist",
 		})
+		return true
+	}
+	s.render(w, r, http.StatusOK, page{View: "gate", Title: "Open saved learning content", Active: "library", Gate: access.RequiresAssistance, GateKind: kind, GateID: id, ReturnTo: destination})
+	return true
+}
+
+func (s *server) assistInspection(w http.ResponseWriter, r *http.Request) {
+	kind, id, op := r.PostForm.Get("kind"), r.PostForm.Get("id"), r.PostForm.Get("operation_id")
+	destination := safeReturn(r.PostForm.Get("return_to"))
+	if kind == "library" {
+		id = strings.TrimSpace(id)
+		if len(id) > 1024 {
+			s.fail(w, r, store.ErrInvalid, page{Operation: op})
+			return
+		}
+		destination = inspectionDestination(kind, id)
+	}
+	if op == "" || len(op) > 128 || destination == "" {
+		s.fail(w, r, store.ErrInvalid, page{Operation: op})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "gate", Title: "Inspect this material", Active: "library", Gate: current, ReturnTo: r.URL.Path})
+	_, err := s.store.AssistInspection(r.Context(), kind, id, op)
+	if err != nil {
+		s.fail(w, r, err, page{Operation: op})
+		return
+	}
+	// The destination GET rechecks its own guard. No answered quiz, reference
+	// body, knowledge statement, or bridge target is returned as a side channel.
+	s.finish(w, r, destination, map[string]any{"inspection_recorded": true, "location": destination})
 }

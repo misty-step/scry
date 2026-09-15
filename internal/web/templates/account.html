@@ -1,27 +1,29 @@
 {{define "history"}}<section>
   <h1 tabindex="-1" data-focus>What actually happened.</h1>
-  <p class="lede">Your latest 100 recorded reviews. Attempts and assistance are a record of practice, not proof of lasting knowledge.</p>
-  {{if .History}}<ol class="history-list">{{range .History}}<li>
-    <div class="history-heading"><h2>{{outcome .Outcome}}</h2><span class="status-label">{{kind .Quiz.Kind}}</span></div>
-    <p class="history-question">{{.Quiz.Prompt}}</p>
-    <p class="small muted"><time datetime="{{timeISO .ReviewedAt}}" data-local-time>{{timeText .ReviewedAt}}</time>{{if .Assisted}}. Helped{{end}}{{if .Disputed}}. Disputed; original result retained{{end}}.</p>
-    <details><summary>Inspect this recorded attempt</summary>
-      {{if .Quiz.Answer}}
+  <p class="lede">Your latest {{.HistoryLimit}} learning interactions. A request, a reading, practice and direct retrieval are different observations, not interchangeable reviews.</p>
+  {{if .HistoryHidden}}<div class="message"><p>Answer-bearing snapshots are closed. You can inspect activity metadata or flag an attempt without claiming unaided recall.</p>{{template "open" (openLink . "history" "" "Open the full activity details")}}</div>{{end}}
+  {{if .Interactions}}<ol class="history-list">{{$root := .}}{{range .Interactions}}<li id="event-{{.ID}}">
+    <div class="history-heading"><h2>{{if .ReviewID}}{{outcome .Outcome}}{{else if .Practice}}{{outcome .Outcome}}{{else}}{{activityKind .Kind}}{{end}}</h2><span class="activity-kind">{{if .ReviewID}}Direct assessment{{else if .Practice}}Practice, not an FSRS review{{else}}Non-review interaction{{end}}</span></div>
+    {{if .Snapshot.Title}}<p class="history-question">{{.Snapshot.Title}}</p>{{end}}
+    <p class="small muted"><time datetime="{{timeISO .At}}" data-local-time>{{timeText .At}}</time>{{if .Mode}}. {{kind .Mode}}{{end}}{{if .Assisted}}. Helped{{end}}{{if .Disputed}}. Disputed; original result retained{{end}}.</p>
+    <details><summary>Inspect this recorded interaction</summary>
+      <p class="small">Original observation {{.ID}}. {{if .MaterialID}}Material {{.MaterialID}}, encountered version {{.MaterialVersion}}.{{end}}</p>
+      {{if .GoalID}}<p class="small">Associated goal {{.GoalID}}, revision {{.GoalRevision}}. {{if eq .GoalPinOrigin "migration-v1-origin-source"}}This association was derived from the original source during migration; it is not a claim about an originally selected goal.{{else if eq .GoalPinOrigin "selected-plan"}}Pinned from the plan that selected this occurrence.{{end}}</p>{{template "open" (openLink $root "goal" .GoalID "Inspect associated goal")}}{{end}}
+      {{if $root.HistoryHidden}}<p class="small muted">Content stays hidden until explicitly opened. No reading or help is recorded by this summary alone.</p>{{else}}
         {{if .Answer}}<p class="preserve"><strong>Your answer:</strong> {{.Answer}}</p>{{end}}
-        <p class="preserve"><strong>Expected answer:</strong> {{.Quiz.Answer}}</p>
-        {{if .Quiz.Choices}}<p class="small">Presented choices:</p><ul>{{range .Quiz.Choices}}<li>{{.}}</li>{{end}}</ul>{{end}}
-        <p class="preserve">{{.Quiz.Explanation}}</p>
-        {{if .Quiz.Evidence}}<blockquote class="preserve">{{.Quiz.Evidence}}</blockquote>{{end}}
-      {{else}}<p>The answer is hidden while this question is awaiting your current attempt. Finish or reveal it in review before inspecting answer-bearing material.</p>{{end}}
-      <p class="small muted">Question version {{.Quiz.Version}}. {{if eq .Quiz.Basis "source"}}Source-based.{{else}}Generated topic knowledge.{{end}} Schedule policy: {{.Algorithm}}. Next date at the time of this attempt: <time datetime="{{timeISO .DueAt}}" data-local-time>{{timeText .DueAt}}</time>.</p>
-      <div class="actions"><a href="/reviews/{{.ID}}/dispute">Flag a problem or reset</a><a href="/sources/{{.Quiz.SourceID}}">Open current material</a></div>
+        {{if .Snapshot.Quiz}}<p class="preserve"><strong>Expected answer:</strong> {{.Snapshot.Quiz.Answer}}</p><p class="preserve">{{.Snapshot.Quiz.Explanation}}</p>{{if .Snapshot.Quiz.Choices}}<ul>{{range .Snapshot.Quiz.Choices}}<li>{{.}}</li>{{end}}</ul>{{end}}{{else if .Snapshot.Kind}}{{template "material-content" .Snapshot}}{{end}}
+        {{if .Reason}}<p class="preserve">{{.Reason}}</p>{{end}}
+        {{if .Snapshot.Links}}<details><summary>Encountered coverage</summary>{{template "coverage-links" (within $root .Snapshot.Links)}}</details>{{end}}
+      {{end}}
+      {{if .ReviewID}}{{$review := index $root.ReviewByID .ReviewID}}<p class="small muted">Direct review {{.ReviewID}}.{{if $review.Algorithm}} Schedule policy: {{$review.Algorithm}}.{{end}}{{if $review.DueAt}} Due date recorded by that attempt: <time datetime="{{timeISO $review.DueAt}}" data-local-time>{{timeText $review.DueAt}}</time>.{{else}} No graded schedule transition is shown for this attempt.{{end}}</p><a href="/reviews/{{.ReviewID}}/dispute">Flag a problem or explicitly reset this direct schedule</a>{{else}}<p class="small muted">This interaction does not create a direct-review event, move FSRS, or demonstrate cold recall.</p>{{end}}
+      {{if .MaterialID}}{{template "open" (openLink $root "material" .MaterialID "Inspect or correct current material")}}{{end}}
     </details>
-  </li>{{end}}</ol>{{else}}<div class="empty-stage compact"><h2>No recorded reviews yet.</h2><p>Answer a question, or ask to reveal it. Reading pages and adding material do not manufacture successful attempts.</p><a href="/" class="button primary">Open review</a></div>{{end}}
-  <p class="quiet-note">Need the full record? <a href="/export" hx-boost="false" download>Download your personal export.</a></p>
+  </li>{{end}}</ol>{{else}}<div class="empty-stage compact"><h2>No recorded interactions yet.</h2><p>Reading a summary does not manufacture learning evidence. Open a learning moment when you are ready.</p><a href="/" class="button primary">Open learning</a></div>{{end}}
+  <div class="quiet-note"><p>Older observations and every pinned version remain in the full record.</p>{{template "open" (openLink . "export" "" "Download your personal export")}}</div>
 </section>{{end}}
 
 {{define "dispute"}}<section>
-  <a href="/history" class="back-link">History</a>
+  {{template "open" (openLink . "history" "" "History")}}
   <h1 tabindex="-1" data-focus>Flag the question, not your memory.</h1>
   {{if .Quiz.Prompt}}<p class="history-question">{{.Quiz.Prompt}}</p>{{end}}
   <p>A dispute keeps the original review and adds your correction. It never turns the attempt into a success.</p>
@@ -32,17 +34,17 @@
     <p class="small muted">A reset is a separate recorded correction, not a new recall. Leave it off to preserve the current schedule.</p>
     <div class="actions"><button class="primary" type="submit" data-pending="Saving your correction…">Record dispute</button><a href="/history">Cancel</a></div>
   </form>
-  {{if .Quiz.ID}}<p class="quiet-note"><a href="/quizzes/{{.Quiz.ID}}/edit">Edit future question wording</a> separately. The recorded question remains unchanged.</p>{{end}}
+  {{if .Quiz.ID}}<div class="quiet-note">{{template "open" (openLink . "quiz" .Quiz.ID "Edit future question wording")}}<p>The recorded question remains unchanged.</p></div>{{end}}
 </section>{{end}}
 
 {{define "settings"}}<section>
   <h1 tabindex="-1" data-focus>Your Scry</h1>
   <p class="lede">Private learning, with a record you can inspect and take with you.</p>
   <section class="settings-section" aria-labelledby="record-heading"><h2 id="record-heading">Personal record</h2>
-    <dl class="facts"><div><dt>Active sources</dt><dd>{{.Summary.Sources}}</dd></div><div><dt>Active questions</dt><dd>{{.Summary.Quizzes}}</dd></div><div><dt>Due now</dt><dd>{{.Summary.Due}}</dd></div><div><dt>Recorded reviews</dt><dd>{{.Summary.Reviews}}</dd></div><div><dt>Helped attempts</dt><dd>{{.Summary.Assisted}}</dd></div><div><dt>Disputed reviews</dt><dd>{{.Summary.Disputed}}</dd></div></dl>
+    <dl class="facts"><div><dt>Active sources</dt><dd>{{.Summary.Sources}}</dd></div><div><dt>Chosen goals</dt><dd>{{.Summary.Goals}}</dd></div><div><dt>Saved materials</dt><dd>{{.Summary.Materials}}</dd></div><div><dt>Represented units</dt><dd>{{.Summary.KnowledgeUnits}}</dd></div><div><dt>Active assessments</dt><dd>{{.Summary.Quizzes}}</dd></div><div><dt>Due assessments</dt><dd>{{.Summary.Due}}</dd></div><div><dt>Direct attempts</dt><dd>{{.Summary.Reviews}}</dd></div><div><dt>Helped direct attempts</dt><dd>{{.Summary.Assisted}}</dd></div><div><dt>Disputed direct attempts</dt><dd>{{.Summary.Disputed}}</dd></div></dl>
     <p class="small muted">These counts describe saved activity, not mastery, predicted retention, or learning gains.</p>
-    <a href="/export" class="button" hx-boost="false" download>Download personal export</a>
-    <p class="small muted">Portable JSON includes saved inputs, question versions, reviews, corrections, and schedules. Downloading does not change your session. Store the file privately; it contains your learning material, but no service secrets.</p>
+    {{template "open" (openLink . "export" "" "Download personal export")}}
+    <p class="small muted">Portable JSON includes saved inputs, all knowledge/material versions, actual interactions, direct reviews, corrections, plans and schedules. Opening a browser export records inspection and marks related unanswered targets helped; it does not grade them. Store the file privately; it contains your learning material, but no service secrets.</p>
   </section>
   <section class="settings-section" aria-labelledby="generation-heading"><h2 id="generation-heading">Generation and spend</h2>
     <p class="spend-line">{{money .Summary.CostMicros}} <span>accounted usage and reservations</span></p>
@@ -50,7 +52,7 @@
     <p>Actual job attempts, reservations, partial output, and failures are visible on each saved input. Generation never runs on the answer-grading path.</p>
     {{if .RecordedModels}}<h3>Models recorded by saved jobs</h3><ul class="model-list">{{range .RecordedModels}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>No model is recorded by a saved job yet. This is not confirmation that a provider is configured or reachable.</p>{{end}}
     <p class="small muted">The provider and spending ceiling are set in the service configuration, not in this page. A recorded model identifies past work; it is not a promise about the next job.</p>
-    <a href="/library">Inspect saved jobs</a>
+    {{template "open" (openLink . "library" "" "Inspect saved preparation jobs")}}
   </section>
   <section class="settings-section" aria-labelledby="backup-heading"><h2 id="backup-heading">Recovery</h2>
     {{if .Summary.LastBackup}}{{$backup := .Summary.LastBackup}}

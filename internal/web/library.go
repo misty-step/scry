@@ -44,47 +44,58 @@ func (s *server) library(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrInvalid, page{View: "library", Title: "Library", Active: "library", Query: query})
 		return
 	}
+	if s.guardInspection(w, r, "library", query) {
+		return
+	}
 	sources, err := s.store.Sources(r.Context(), query)
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
-	current, err := s.coldReview(r)
+	goals, err := s.store.Goals(r.Context(), query)
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
 	for i := range sources {
-		// Search can find the current material, but its snippet must not reveal
-		// the answer. Opening it requires explicit assistance first.
-		if current != nil && sources[i].ID == current.Quiz.SourceID {
-			sources[i].Text = "Material in your current review"
-			sources[i].Quizzes = nil
-			sources[i].Job = nil
+		sources[i].Text = "Original saved input"
+		sources[i].Quizzes = nil
+		sources[i].Materials = nil
+		sources[i].Job = nil
+		sources[i].Coverage = store.CoverageReport{}
+	}
+	materials := make([]store.Material, 0)
+	seen := make(map[string]bool)
+	for i := range goals {
+		item := goals[i]
+		for _, material := range item.Materials {
+			if seen[material.ID] {
+				continue
+			}
+			seen[material.ID] = true
+			materials = append(materials, store.Material{ID: material.ID, SourceID: material.SourceID, Title: material.Title, Version: material.Version, Kind: material.Kind, Level: material.Level, MetadataOnly: true, Archived: material.Archived, Unmapped: material.Unmapped, FirstPresentedAt: material.FirstPresentedAt})
 		}
+		// Library scope permits titles, not hidden bodies, unit statements,
+		// proposed answers, or a generation model's reusable context.
+		goals[i] = store.Goal{ID: item.ID, SourceID: item.SourceID, Title: item.Title, Revision: item.Revision, MetadataOnly: true, UnitCount: item.UnitCount, MaterialCount: item.MaterialCount, MissingCoverageCount: item.MissingCoverageCount, Archived: item.Archived, CreatedAt: item.CreatedAt}
 	}
 	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"sources": sources, "query": query})
+		jsonResponse(w, http.StatusOK, map[string]any{"sources": sources, "goals": goals, "materials": materials, "query": query})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "library", Title: "Library", Active: "library", Query: query, Sources: sources})
+	s.render(w, r, http.StatusOK, page{View: "library", Title: "Library", Active: "library", Query: query, Sources: sources, Goals: goals, Materials: materials})
 }
 
 func (s *server) source(w http.ResponseWriter, r *http.Request) {
+	if s.guardInspection(w, r, "source", r.PathValue("id")) {
+		return
+	}
 	item, err := s.store.Source(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
-	current, err := s.coldReview(r)
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	if current != nil && current.Quiz.SourceID == item.ID {
-		s.gate(w, r, current)
-		return
-	}
+	item = publicSource(item)
 	if wantsJSON(r) {
 		jsonResponse(w, http.StatusOK, map[string]any{"source": item, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})
 		return
@@ -107,12 +118,12 @@ func (s *server) retrySource(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		p := page{Operation: op}
 		if status, _ := publicError(err); status == http.StatusConflict {
-			p.Error = "This input is not eligible for another retry, or its bounded retry limit has been reached. Open the saved material to inspect existing questions or edit as new input. Nothing was duplicated."
+			p.Error = "This input is not eligible for another retry, or its bounded retry limit has been reached. Open the saved material to inspect existing work or edit as new input. Nothing was duplicated."
 		}
 		s.fail(w, r, err, p)
 		return
 	}
-	s.finish(w, r, "/sources/"+item.ID, item)
+	s.finish(w, r, "/sources/"+item.ID, map[string]any{"source_id": item.ID, "status": item.Status})
 }
 
 func (s *server) archiveSource(w http.ResponseWriter, r *http.Request) {
@@ -125,18 +136,12 @@ func (s *server) archiveSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
+	if s.guardInspection(w, r, "quiz", r.PathValue("id")) {
+		return
+	}
 	q, err := s.store.Quiz(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err, page{})
-		return
-	}
-	current, err := s.coldReview(r)
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	if current != nil && current.Quiz.ID == q.ID {
-		s.gate(w, r, current)
 		return
 	}
 	if wantsJSON(r) {
@@ -179,7 +184,7 @@ func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, page{View: "edit", Title: "Edit question", Active: "library", Quiz: original})
 		return
 	}
-	s.finish(w, r, "/sources/"+updated.SourceID, updated)
+	s.finish(w, r, "/sources/"+updated.SourceID, map[string]any{"quiz_id": updated.ID, "source_id": updated.SourceID, "version": updated.Version})
 }
 
 func nonemptyLines(raw string) []string {
@@ -211,29 +216,69 @@ func (s *server) archiveQuiz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) history(w http.ResponseWriter, r *http.Request) {
-	events, err := s.store.History(r.Context(), 100)
+	events, err := s.store.History(r.Context(), store.HistoryPageSize)
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
-	current, err := s.coldReview(r)
+	interactions, err := s.store.Interactions(r.Context(), store.HistoryPageSize)
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
-	if current != nil {
-		for i := range events {
-			if events[i].Quiz.ID == current.Quiz.ID {
-				events[i].Quiz = withoutAnswer(events[i].Quiz)
-				events[i].Answer = ""
-			}
+	// The grant covers the rendered mixed timeline, not another independent
+	// hundred direct reviews hidden beside it in the JSON response.
+	visibleReviews := make(map[string]bool, len(interactions))
+	for _, interaction := range interactions {
+		if interaction.ReviewID != "" {
+			visibleReviews[interaction.ReviewID] = true
 		}
 	}
-	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"history": events, "limit": 100})
+	visibleEvents := events[:0]
+	for _, event := range events {
+		if visibleReviews[event.ID] {
+			visibleEvents = append(visibleEvents, event)
+		}
+	}
+	events = visibleEvents
+	if r.URL.Query().Get("inspect") == "1" && s.guardInspection(w, r, "history", "") {
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "history", Title: "History", Active: "history", History: events})
+	access, err := s.store.InspectionAccess(r.Context(), "history", "")
+	if err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	blocked := access.RequiresAssistance || !access.Allowed
+	if blocked {
+		for i := range interactions {
+			item := interactions[i]
+			item.Answer, item.Reason = "", ""
+			item.Snapshot = store.Material{ID: item.MaterialID, Version: item.MaterialVersion}
+			interactions[i] = item
+		}
+	}
+	for i := range events {
+		// A prior wording or pinned coverage can differ from today's links.
+		// Keep every historical answer-bearing snapshot closed while a cold
+		// target remains, rather than matching only today's quiz/source ID.
+		if blocked {
+			q := events[i].Quiz
+			events[i].Quiz = store.Quiz{ID: q.ID, SourceID: q.SourceID, Kind: q.Kind, Version: q.Version, Prompt: "Historical wording closed until inspection"}
+			events[i].Answer = ""
+			events[i].Material = nil
+			events[i].Coverage = nil
+		}
+	}
+	byID := make(map[string]store.ReviewEvent, len(events))
+	for _, event := range events {
+		byID[event.ID] = event
+	}
+	if wantsJSON(r) {
+		jsonResponse(w, http.StatusOK, map[string]any{"history": events, "interactions": interactions, "answer_content_hidden": blocked, "limit": store.HistoryPageSize})
+		return
+	}
+	s.render(w, r, http.StatusOK, page{View: "history", Title: "History", Active: "history", ReviewByID: byID, Interactions: interactions, HistoryHidden: blocked, HistoryLimit: store.HistoryPageSize})
 }
 
 func (s *server) disputePage(w http.ResponseWriter, r *http.Request) {
@@ -248,14 +293,31 @@ func (s *server) disputePage(w http.ResponseWriter, r *http.Request) {
 		if event.ID != r.PathValue("id") {
 			continue
 		}
-		current, err := s.coldReview(r)
+		access, err := s.store.InspectionAccess(r.Context(), "history", "")
 		if err != nil {
 			s.fail(w, r, err, page{})
 			return
 		}
-		if current != nil && current.Quiz.ID == event.Quiz.ID {
-			event.Quiz = withoutAnswer(event.Quiz)
+		inTimeline := false
+		if event.Rating != 0 && access.Allowed && !access.RequiresAssistance {
+			interactions, err := s.store.Interactions(r.Context(), store.HistoryPageSize)
+			if err != nil {
+				s.fail(w, r, err, page{})
+				return
+			}
+			for _, interaction := range interactions {
+				if interaction.ReviewID == event.ID {
+					inTimeline = true
+					break
+				}
+			}
+		}
+		if !inTimeline {
+			q := event.Quiz
+			event.Quiz = store.Quiz{ID: q.ID, SourceID: q.SourceID, Kind: q.Kind, Version: q.Version}
 			event.Answer = ""
+			event.Material = nil
+			event.Coverage = nil
 		}
 		if wantsJSON(r) {
 			jsonResponse(w, http.StatusOK, map[string]any{"review": event, "csrf": r.Context().Value(csrfKey{})})

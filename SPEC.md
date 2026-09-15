@@ -21,6 +21,18 @@ accepted direction: smooth, simple, aesthetically intentional, and enhanced by
 AI content generation. Full execution was authorized. The initial real-phone
 flow was subsequently approved, followed by the daily recovery policy below.
 
+**Knowledge-centered implementation authorized; not yet evidenced:** on
+2026-09-10 the operator explicitly authorized specification, full implementation,
+and protected shipping of the
+[knowledge-centered direction](#approved-knowledge-centered-design-unimplemented).
+The new [KC01–KC18 criteria](#knowledge-centered-implementation-acceptance)
+extend accepted scope; they do not change S01–S10 meanings or recorded evidence,
+including open S04.2/S09.2. Authorization is not a claim of implementation or
+release. Existing spend ceilings, privacy/access, live-history preservation,
+recovery, and deployment safeguards remain binding; it grants no default
+production access to coding agents or permission for new infrastructure,
+credentials, higher spend, historical imports/deletion, or an unprotected cutover.
+
 **Implemented and accepted defaults:** tap-choice and short cued recall; reveal
 marks the occurrence assisted; one question stage with held feedback and
 deliberate Next; daily and pre-release off-VM snapshots with 30-day new-app
@@ -470,10 +482,11 @@ provenance claims. Initial grading stays deterministic for supported formats;
 semantic model grading is a distinct, slower product decision, not a hidden
 network call in the fast review path.
 
-Start with reusable explanations and an optional simpler question after a miss
-only when genuinely helpful. A universal prerequisite graph, recursive tutor,
-fixed activity ladder, automatic curriculum, and personalization optimizer do
-not follow from needing spaced review.
+The initial quiz-first scope does not implement a curriculum or knowledge graph.
+The [approved next design](#approved-knowledge-centered-design-unimplemented)
+goes beyond optional simpler material after a miss: proactive goal/foundation
+coverage and durable bridge material are intended, not shipped. A universal
+prerequisite graph, fixed activity ladder, or required chat tutor is not implied.
 
 Use durable job status with bounded HTMX polling. SSE is optional only after
 proving useful incremental delivery through exe's actual proxy; streaming and
@@ -514,11 +527,287 @@ backup timestamp each fall short of a tested restore. Backup failures should
 be visible without disabling ordinary review. D5 owns data-loss tolerance,
 retention and recovery time; no provider SLA is asserted here.
 
+## Approved knowledge-centered design (unimplemented)
+
+This is the approved next direction from [VISION.md](VISION.md#approved-next-direction),
+now authorized for full implementation and protected shipping under
+[KC01–KC18](#knowledge-centered-implementation-acceptance), not a description of
+shipped architecture or evidence of learning gains. The live app remains
+single-owner Go/SQLite/HTMX with quiz-owned FSRS schedules. Preserve its existing
+source provenance, content versions, schedules, and complete Go history; this is
+not permission to import the retired legacy stores. Deployment, privacy/access,
+recovery, spending, and historical-data safeguards remain unchanged.
+
+### Knowledge and material responsibilities
+
+The map should cover chosen learning goals, including foundations for beginners
+and experts, rather than only knowledge already present in generated cards.
+Missing graph coverage is a modeling/content gap; unknown knowledge is absent
+diagnostic evidence about a represented unit; an observed gap is evidence tied
+to a task and time. These must remain distinguishable.
+
+Six conceptual responsibilities describe the relationships, not mandatory DDL,
+one table/package per noun, a graph database, or a new framework:
+
+- **KnowledgeUnit:** an independently meaningful claim, distinction, or capability
+  with stable identity and versioned definitions. Preserve aggressive atomic
+  targets as well as composition/application targets; changing a definition
+  must not silently change the meaning of earlier evidence.
+- **KnowledgeRelation:** a typed, directional relationship between knowledge units,
+  such as prerequisite, composition, or contrast, with provenance and the relevant
+  unit versions. Modeled relationships can be uncertain; a proposed edge is not
+  an established dependency or proof of knowledge.
+- **MaterialVersion:** an immutable version of a quiz, explanation, article,
+  video segment, diagram, or worked example, retaining source/generation
+  provenance. Instructional and reference resources are durable material, not
+  merely transient feedback attached to a quiz.
+- **MaterialKnowledgeLink:** versioned, provenance-backed coverage linking a
+  particular material version to a knowledge unit/version. Distinguish what it
+  teaches, directly assesses, assumes, or merely mentions; these roles do not
+  confer equal evidence.
+- **Interaction:** one actual immutable observation pinned to the material version
+  encountered, with timestamp, response, outcome, and assistance as applicable.
+  Preserve its identity and any associated disputes; an interaction is not
+  automatically a review or a demonstration of understanding.
+- **KnowledgeEstimate:** derived state for the owner's knowledge unit at a time
+  and task context, carrying uncertainty, evidence identities/versions, and
+  inference-model provenance. It is revisable inference, not an authored fact,
+  permanent mastery label, or replacement for the observation history.
+
+Materials and units are many-to-many through coverage links; relations connect
+units, and interactions record what actually happened with material. Estimates
+attribute those observations through the applicable coverage and relations, not
+through invented review events. This supports multiple practice, instructional,
+and reference materials for the same durable foundation.
+
+### Evidence and mastery boundaries
+
+- One interaction may influence several units, but remains one observation.
+  Never fabricate multiple independent reviews or count the same evidence again
+  through different graph paths.
+- Mention, exposure, practice, and demonstrated understanding are distinct.
+  Assumed prerequisites and taught content are not automatically assessed;
+  reading an explanation is not proof of uncued recall or understanding.
+- Composite success may reduce redundant foundational review when it supplies
+  relevant evidence. Composite failure does not fail every prerequisite; keep
+  uncertain attribution or probe the suspected gap rather than invent failures.
+- Assistance and disputes remain attached through every inference. Later
+  corrections or disputes add context without rewriting the original observation.
+- Version unit definitions, relationships, coverage, and inference; retain which
+  versions an estimate used so it can be recomputed without rewriting observations.
+
+For example, recalling the ATP/NADPH pair is different from explaining why NADPH
+supplies reducing power. Pair recall alone does not demonstrate that explanation;
+a composition target may supply evidence about components without making each
+component an independent review.
+
+Foundation completeness for a chosen goal, demonstrated capability in context,
+and future recall probability are separate. An aggregate mastery score cannot
+conceal a consequential foundation gap, and an SRS retention probability is not
+syllabus coverage. No permanent binary mastery or expert flag arbitrarily
+postpones all basics: evidence and estimated state guide exposure. Predicting
+unreviewed content at future times is a calibrated-inference ambition, not a
+guarantee derived from graph reachability.
+
+### Proactive selection and retained authority
+
+Generate or reuse durable bridge material and reference resources at capture
+and when gaps emerge, not only after a failed quiz. Being present in the graph
+or library does not make every generated item immediately due. Learner goals
+and available time govern selection of useful instruction, probes, retrieval,
+and composition/application, not only the earliest card due date.
+
+Current quiz-owned FSRS remains the direct-review baseline. Do not blindly fan
+out FSRS Good ratings to related units or materials. A cross-item model must
+earn any replacement with later uncued evidence; neither this design nor current
+receipts establish improved retention.
+
+Models may discover decompositions and relationships and propose content; the
+application retains identity, privacy, bounded spend, immutable evidence,
+publication, and scheduling authority. There is no hidden model call in the fast
+grading path. Proactive agency stays backstage behind the one-learning-moment,
+deliberate-Next phone experience. Meaningful changes are visible and reversible
+without rewriting evidence. Chat can be an optional later surface over the same
+records, never a required interface or a prerequisite for this design.
+
+### Knowledge-centered implementation acceptance
+
+These new stable criteria are implementation obligations, not PASS observations
+or replacements for S01–S10. Existing authentication, CSRF, injection safety,
+assistance, immutable history, idempotency, and recovery contracts continue to
+apply to every new surface and job. Record revision-bound evidence per criterion;
+unexercised behavior remains UNVERIFIED, regardless of scaffold or fixture success.
+
+- **KC01 — Versioned knowledge:** Persist independently meaningful foundational
+  units and composition/application units with stable identities and immutable
+  definition versions. Both beginner and expert goals retain their foundations.
+  Typed directional relations retain relevant unit versions, provenance, and
+  uncertainty; a proposed relation does not become an established prerequisite.
+- **KC02 — Honest coverage:** For each captured source and chosen goal, distinguish
+  unmapped knowledge or missing material (modeling/content gaps), represented
+  units with unknown knowledge, and observed gaps tied to actual tasks/times.
+  Show partial or missing coverage without claiming an exhaustive map,
+  treating absence as learner failure, or hiding a foundation gap in an aggregate.
+- **KC03 — Versioned material coverage:** Persist many-to-many links between exact
+  material and unit versions with provenance and separate teaches,
+  directly-assesses, assumes, and mentions roles. Inspectable links distinguish
+  assessment scope from exposition; taught, assumed, or mentioned content receives
+  no automatic credit for demonstrated understanding.
+- **KC04 — Durable material and source honesty:** Instruction, reference text,
+  worked examples, structured diagrams, and assessment material remain reusable
+  and inspectable beyond feedback on one quiz. Store versions and authored/
+  generated/source provenance, including safe actual external article and video
+  references with segment information when known. A stored reference alone does
+  not establish a fetched article body, verified claim/citation, or transcript;
+  missing source content stays explicit. Do not invent retrieval, quotations,
+  or video generation capabilities. Instruction/reference use need not be review.
+- **KC05 — Proactive coverage work:** Capture and later gap detection initiate
+  bounded, durable reuse or generation of relevant foundations, bridge instruction,
+  practice, and reference material without waiting for a failed quiz. Reuse
+  compatible existing material; expose pending, partial, and missing work.
+  Creating map/library content does not make every item immediately due.
+- **KC06 — Advanced and lateral options:** Offer evidence- and goal-aligned
+  advanced/composition and lateral/contrast or transfer suggestions, not only
+  remedial basics. Explain their connection to the selected goal and account for
+  available time. Accepting or declining a suggestion does not silently create
+  a new goal; any new goal is a deliberate learner choice.
+- **KC07 — One observation, several estimates:** One actual interaction retains
+  one immutable identity, encountered material version, time, response/outcome,
+  and applicable assistance. Demonstrate one eligible interaction influencing
+  several relevant unit estimates through explicit attribution; each estimate
+  deduplicates it across coverage and relation paths. Neither exposure nor
+  inferred evidence creates extra independent reviews or fabricated FSRS ratings.
+- **KC08 — Assistance, disputes, and corrections:** Preserve assistance and
+  disputes through every attribution. Append corrections to content, knowledge
+  definitions, relations, coverage, or evidence context without rewriting what
+  happened or converting a disputed attempt into success. Recomputed estimates
+  retain the original evidence identities, applicable versions, inference/policy
+  provenance, and correction reason; superseded results remain explainable.
+  Estimate recomputation does not silently rewrite historical FSRS transitions
+  or bypass the explicit direct-schedule correction policy in S05.3.
+- **KC09 — Contextual, uncertain estimates:** For observed and unobserved units,
+  expose a time- and task-conditioned estimate with uncertainty or an explicit
+  insufficient-evidence state. Identify direct evidence, cross-item inference,
+  and prior/unknown state, with as-of/target time and policy/model version.
+  Derivation accounts for evidence age and task context; no permanent mastery/
+  expert flag or graph reachability stands in for measured knowledge.
+- **KC10 — Evidence-aware selection, direct FSRS baseline:** Preserve current
+  quiz-owned FSRS and real direct-review history. A separately versioned selection
+  policy supports deferring redundant foundation practice when relevant evidence
+  warrants it, with an inspectable reason, evidence identities, and reconsideration.
+  Composite success cannot blanket-credit prerequisites; composite failure
+  cannot reset or fail them all. Keep ambiguous attribution uncertain or choose
+  a useful probe. Cross-item selection must not masquerade as FSRS events.
+- **KC11 — Too advanced, bridge, and return:** From a learning moment, a non-chat
+  Too advanced action leads to useful foundation instruction and appropriate
+  practice, not just another hard quiz, an empty help panel, or a graph editor.
+  Retain the original target and bridge progress through navigation/restart,
+  and offer a deliberate return to that target without fabricating recall from
+  the request for help, reading, or an answer-assisted attempt.
+- **KC12 — Visible, reversible, paced planning:** Meaningful changes to goal focus,
+  selected material, or practice deferral are visible with a reason and a way to
+  decline/undo future planning effects without erasing evidence. Respect learner
+  pacing and available time; instruction, probes, retrieval, and composition fit
+  the one-learning-moment, held-feedback, deliberate-Next flow. Resume committed
+  target/bridge/plan state after interruption without mandatory chat or graph
+  management, and distinguish unsaved choices from acknowledged changes.
+- **KC19 — Multi-scale learning horizons (daily, weekly, quarterly campaigns):**
+  Support multi-scale temporal containers for knowledge acquisition and retention
+  without turning the interface into a bloated course manager. Distinguish
+  (1) daily maintenance review (FSRS card sweeps across all retained domains in
+  10–15 minutes), (2) daily Pomodoro focus sessions (bounded 300–3600 second
+  acquisition/practice slices on active targets), (3) weekly rhythm/domain balance
+  (monitoring topic variety across technical, historical, theological, or
+  mathematical goals), and (4) quarterly/semester campaign focus (tagging 1–2
+  active immersion domains per quarter while past campaigns remain in pure
+  low-overhead retention). A goal's campaign association and pacing limits are
+  inspectable metadata; campaign transitions do not erase historical retention,
+  invent artificial completion deadlines, or force premature card retirement.
+- **KC13 — Responsive review and offline truth:** Ordinary review remains usable
+  while planning/generation is slow, rate-limited, failed, or recovering. No model
+  call enters the fast grading path or holds a database write transaction.
+  Network loss pauses mutations honestly, retains in-page input, and recovers
+  an uncertain commit idempotently; it does not create an invisible answer queue
+  or imply a new offline synchronization engine. Stale tabs/results cannot revert
+  a newer occurrence or committed plan.
+- **KC14 — Bounded jobs and honest completion:** Proactive work shares the existing
+  spend ceiling, conservative reservations, bounded attempts/timeouts, durable
+  claim ownership, and uncertain-usage policy. Retry or stale completion cannot
+  duplicate material, evidence, or planner effects, resurrect archived/changed
+  inputs, or publish against superseded source/goal versions. Report missing
+  coverage, rejected output, budget exhaustion, and recoverable failure instead
+  of claiming completeness or silently widening goals, retries, or spend.
+- **KC15 — Complete live Go migration:** Upgrade the current Go schema without
+  losing or reinterpreting sources/content versions, occurrences, assistance,
+  reviews, disputes/corrections, operation receipts, FSRS state, jobs/spend, or
+  lifecycle state. Missing historical coverage remains unmapped, not invented
+  assessment evidence. Prove migration and interruption recovery against a
+  representative populated Go database; incompatible state fails before traffic
+  or job claims. The release has a verified pre-release snapshot and an explicit
+  compatible-binary rollback or tested snapshot-recovery path, with no competing
+  writer or unacknowledged loss of post-snapshot writes.
+- **KC16 — Full ownership and recovery:** Full export, integrity-checked backup,
+  and isolated restore include existing Go history plus all knowledge/material
+  versions, relations/coverage provenance, interactions, corrections, estimates
+  and derivation provenance, planner/resume state, jobs, and required assets.
+  Verify restored content/history and ordinary use, not merely schema creation.
+  Keep uncertain external jobs paused until reconciled; preserve the approved
+  off-VM recovery and retention policy without importing or deleting old stores.
+- **KC17 — Real browser and access proof:** Exercise the actual private browser/
+  phone surface through capture, instruction/practice, Too advanced/return,
+  advanced/lateral suggestions, correction, planner reversal, and resume, including
+  slow/offline/stale-tab cases. Prove owner access, denied/forged identity, CSRF,
+  inert generated/source content, and private history after sign-out/account
+  change against the actual ingress. Prior receipts do not close unexercised new
+  surfaces or the existing open access/usefulness observations.
+- **KC18 — Live generation and protected release proof:** Within the existing
+  authorized spend and environment, exercise real selected-provider capture and
+  gap-driven generation/reuse through durable publication and useful learner
+  consumption, with operator review of foundations, compositions, references,
+  coverage, and provenance. Record failures, latency/spend, missing coverage,
+  exact source/binary/schema revision, migration/recovery proof, and the protected
+  deployed smoke result before claiming release. Authored fixtures or parser
+  success cannot substitute for provider or usefulness proof; no new credentials,
+  infrastructure, or production access is implied by local implementation work.
+
+Functional acceptance proves the exercised data, inference-policy, planning, UI,
+and release behavior only. Cross-item effectiveness, learning gains, and broadly
+calibrated predictions for arbitrary or unobserved content require later
+uncued/held-out and longitudinal evidence; none passes by assertion here.
+
+### Implementation boundaries and consequential choices
+
+Stay within the one private Go/SQLite/HTMX application and its existing identity,
+transaction, job, FSRS, spend, and recovery boundaries. The six responsibilities
+above are conceptual contracts, not mandatory tables/packages or a graph service.
+No required chat, graph-management screen, universal prerequisite map, fixed
+activity ladder, video generator, legacy import, or new infrastructure is implied.
+This acceptance section is not a speculative backlog or authority to create one.
+
+The integration owner must record these consequential decisions before the
+dependent behavior can be accepted; their exact implementation is open here:
+
+- Physical schema/API contracts, version/correction boundaries, and the mapping
+  of existing Go records into knowledge/material coverage without invented history.
+- The estimator and cross-item selection policy: task contexts, priors/uncertainty,
+  evidence attribution/aging, coefficients, and deferral/reconsideration limits.
+  Choices must remain inspectable and distinct from direct FSRS scheduling.
+- Goal/source coverage boundaries and completion signals; reference validation,
+  retrieval limits, and what unavailable external content can honestly support.
+- Persistent planner reversal/resume semantics and the concrete migration,
+  schema/binary compatibility, and protected rollback/recovery procedure.
+
+Open choices do not weaken the criteria, authorize broader spend/access, or claim
+empirical calibration. Acceptance requires concrete decisions and proof, not
+leaving these as implementation placeholders.
+
 ## Delivery slices and Linear mapping
 
 MIS-48 owns the accepted rewrite and its execution evidence. The Scry project
 was empty at the initial September 9 assessment; no speculative backlog was
 generated. MIS-42 remains Estate's separate inventory repair, not this rewrite.
+Proposed Linear work items tracking the knowledge-centered and multi-scale learning
+pipeline are documented in [docs/linear-tickets-map.md](docs/linear-tickets-map.md).
 
 The first deliverable is an experience to judge, not a repository scaffold.
 Ticket only the next ready slice and its real dependencies. A primary story

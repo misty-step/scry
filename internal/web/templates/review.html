@@ -1,72 +1,54 @@
 {{define "review"}}
 {{if .Review.Current}}
 {{$root := .}}{{$p := .Review.Current}}
-<section class="review-stage" data-presentation="{{$p.ID}}" data-graded="{{$p.Graded}}">
-  <div class="review-context"><span>{{kind $p.Quiz.Kind}}</span><span>{{.Review.Due}} due</span></div>
-  <h1 class="question" {{if not $p.Graded}}tabindex="-1" data-focus{{end}}>{{$p.Quiz.Prompt}}</h1>
-  {{if $p.Graded}}
-    <div class="feedback {{if eq $p.Outcome "correct"}}feedback-correct{{else}}feedback-retry{{end}}" role="status" aria-live="polite">
-      <h2 tabindex="-1" data-focus>{{outcome $p.Outcome}}</h2>
-      {{if $p.Assisted}}<p class="feedback-detail">Helped, not unaided recall.</p>{{end}}
-      {{if $p.Answer}}<div class="response-pair"><span class="field-caption">Your answer</span><p class="preserve">{{$p.Answer}}</p></div>{{end}}
-      <div class="response-pair"><span class="field-caption">Expected answer</span><p class="expected-answer preserve">{{$p.Quiz.Answer}}</p></div>
-      {{if $p.Quiz.Explanation}}<p class="explanation preserve">{{$p.Quiz.Explanation}}</p>{{end}}
-      <div class="next-row">
-        <form action="/review/next" method="post" hx-post="/review/next" data-next>
-          {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
-          <button type="submit" class="primary" data-pending="Confirming the next question…">Next</button>
-        </form>
-        <a href="/reviews/{{$p.ReviewID}}/dispute">Flag a problem</a>
-      </div>
-      <p class="small muted">This result stays until you choose Next. This attempt scheduled a review for <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>; later edits, resets, or archiving can change future review.</p>
-      {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
-    </div>
-    <details class="inspection">
-      <summary>Inspect the question</summary>
-      <p>{{if eq $p.Quiz.Basis "source"}}Based on your saved source. A matching quotation is attribution, not independent fact-checking.{{else}}Generated topic knowledge, not evidence supplied by your input. Check factual claims when they matter.{{end}}</p>
-      {{if $p.Quiz.Evidence}}<blockquote class="preserve">{{$p.Quiz.Evidence}}</blockquote>{{end}}
-      <div class="actions"><a href="/quizzes/{{$p.Quiz.ID}}/edit">Edit future wording</a><a href="/sources/{{$p.Quiz.SourceID}}">Open saved material</a></div>
-    </details>
-  {{else}}
-    {{if $p.Answer}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Not graded</h2><p>Your answer was not a clear match. The schedule has not changed. Try the supported wording, or reveal the answer and record this attempt as helped.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>{{end}}
-    <form class="answer-form" action="/review/answer" method="post" hx-post="/review/answer">
-      {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
-      {{if eq $p.Quiz.Kind "choice"}}
-        <fieldset class="choice-fieldset"><legend class="sr-only">Choose one answer</legend><div class="choices">
-        {{range $p.Quiz.Choices}}<button class="choice" type="submit" name="answer" value="{{.}}" data-pending="Saving your answer…">{{.}}</button>{{end}}
-        </div></fieldset>
-      {{else}}
-        <label class="field-caption" for="recall-answer">Your answer</label>
-        <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Answer}}</textarea>
-        <p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you answer.</p>
-        <button type="submit" class="primary" data-pending="Saving your answer…">Check answer</button>
-      {{end}}
+<section class="review-stage" data-presentation="{{$p.ID}}" data-kind="{{$p.Kind}}" data-graded="{{$p.Graded}}">
+  {{if eq $p.Kind "reference"}}
+    <div class="review-context"><span>{{materialKind $p.Material.Kind}}</span><span>{{if $p.BridgeID}}Foundation detour{{else}}Instruction, not a review{{end}}</span></div>
+    <h1 class="question" tabindex="-1" data-focus>{{$p.Material.Title}}</h1>
+    {{template "material-content" $p.Material}}
+    <form action="/review/continue" method="post" hx-post="/review/continue" data-next data-recover-to="/">
+      {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><button type="submit" class="primary" data-pending="Recording this reading and continuing…">Continue</button>
     </form>
-    <div class="review-secondary">
-      <form action="/review/reveal" method="post" hx-post="/review/reveal">
-        {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
-        <button type="submit" class="quiet" data-pending="Recording help before revealing…">I don't know yet</button>
+    <p class="small muted">Continue records one reading interaction, not a correct answer or an FSRS review. There is no forced reading timer.</p>
+    <details class="inspection"><summary>Keep, inspect or correct this material</summary>{{template "open" (openLink $root "material" $p.Material.ID "Inspect this saved material")}}{{if $p.PlanningReason}}<p class="preserve">{{$p.PlanningReason}}</p>{{end}}</details>
+  {{else}}
+    <div class="review-context"><span>{{if $p.Practice}}Practice: {{kind $p.Quiz.Kind}}{{else}}{{kind $p.Quiz.Kind}}{{end}}</span><span>{{.Review.Due}} due assessments</span></div>
+    <h1 class="question" {{if not $p.Graded}}tabindex="-1" data-focus{{end}}>{{$p.Quiz.Prompt}}</h1>
+    {{if $p.Practice}}<p class="practice-note">Practice after help or instruction. You can try the answer, but this interaction is not a cold recall review and does not move FSRS.</p>{{else if $p.Assisted}}<p class="practice-note">Help has been recorded for this target. This cannot count as unaided recall.</p>{{end}}
+    {{if $p.Graded}}
+      <div class="feedback {{if eq $p.Outcome "correct"}}feedback-correct{{else}}feedback-retry{{end}}" role="status" aria-live="polite">
+        <h2 tabindex="-1" data-focus>{{outcome $p.Outcome}}</h2>
+        {{if $p.Assisted}}<p class="feedback-detail">Helped, not unaided recall.</p>{{end}}
+        {{if $p.Answer}}<div class="response-pair"><span class="field-caption">Your answer</span><p class="preserve">{{$p.Answer}}</p></div>{{end}}
+        <div class="response-pair"><span class="field-caption">Expected answer</span><p class="expected-answer preserve">{{$p.Quiz.Answer}}</p></div>
+        {{if $p.Quiz.Explanation}}<p class="explanation preserve">{{$p.Quiz.Explanation}}</p>{{end}}
+        <div class="next-row"><form action="/review/next" method="post" hx-post="/review/next" data-next data-recover-to="/">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><button type="submit" class="primary" data-pending="Confirming the next learning moment…">Next</button></form>{{if $p.ReviewID}}<a href="/reviews/{{$p.ReviewID}}/dispute">Flag a problem</a>{{else if $p.Material}}{{template "open" (openLink $root "material" $p.Material.ID "Correct this material")}}{{end}}</div>
+        {{if $p.ReviewID}}<p class="small muted">This result stays until you choose Next. This direct attempt scheduled review for <time datetime="{{timeISO $p.DueAt}}" data-local-time>{{timeText $p.DueAt}}</time>; later edits, resets or archiving can change future review.</p>{{else}}<p class="small muted">This result stays until you choose Next. It is one practice interaction, not an extra direct review or a schedule transition.</p>{{end}}
+        {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
+      </div>
+      <details class="inspection"><summary>Inspect the assessment</summary><p>{{if eq $p.Quiz.Basis "source"}}Based on your saved source. A matching quotation is attribution, not independent fact-checking.{{else}}Generated topic knowledge, not evidence supplied by your input. Check factual claims when they matter.{{end}}</p>{{if $p.Quiz.Evidence}}<blockquote class="preserve">{{$p.Quiz.Evidence}}</blockquote>{{end}}<div class="actions">{{template "open" (openLink $root "quiz" $p.Quiz.ID "Edit future wording")}}{{if $p.Material}}{{template "open" (openLink $root "material" $p.Material.ID "Inspect coverage and provenance")}}{{end}}{{template "open" (openLink $root "source" $p.Quiz.SourceID "Open saved input")}}</div>{{if $p.PlanningReason}}<p class="preserve">{{$p.PlanningReason}}</p>{{end}}</details>
+    {{else}}
+      {{if $p.Answer}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Not graded</h2><p>Your answer was not a clear match. No schedule has changed. Try supported wording, flag a problem in history, or reveal the answer as help.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>{{end}}
+      <form class="answer-form" action="/review/answer" method="post" hx-post="/review/answer" data-recover-to="/">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
+        {{if eq $p.Quiz.Kind "choice"}}<fieldset class="choice-fieldset"><legend class="sr-only">Choose one answer</legend><div class="choices">{{range $p.Quiz.Choices}}<button class="choice" type="submit" name="answer" value="{{.}}" data-pending="Saving your answer…">{{.}}</button>{{end}}</div></fieldset>{{else}}<label class="field-caption" for="recall-answer">Your answer</label><textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Answer}}</textarea><p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you answer.</p><button type="submit" class="primary" data-pending="Saving your answer…">Check answer</button>{{end}}
       </form>
-      <a href="/quizzes/{{$p.Quiz.ID}}/edit" class="quiet-link">Fix or inspect</a>
-    </div>
-    <details class="inspection"><summary>Stop reviewing this question</summary><p>Archive it without recording an answer. Past reviews stay in history.</p>
-      <form action="/quizzes/{{$p.Quiz.ID}}/archive" method="post" hx-post="/quizzes/{{$p.Quiz.ID}}/archive">
-        {{template "tokens" $root}}<input type="hidden" name="return_to" value="/">
-        <button type="submit" class="danger">Archive question</button>
-      </form>
-    </details>
+      <div class="review-secondary"><form action="/review/bridge" method="post" hx-post="/review/bridge" data-recover-to="/">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><button type="submit" class="quiet" data-pending="Saving your request for foundations…">Too advanced</button></form><form action="/review/reveal" method="post" hx-post="/review/reveal" data-recover-to="/">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><button type="submit" class="quiet" data-pending="Recording help before revealing…">I don't know yet</button></form></div>
+      <details class="inspection"><summary>Help or correct this question</summary><p>Too advanced keeps this target and looks for useful foundations. It does not grade or penalize a request for help.</p>{{template "open" (openLink $root "quiz" $p.Quiz.ID "Inspect or fix with help")}}
+        {{if not $p.Assisted}}<form action="/review/assisted" method="post" hx-post="/review/assisted" data-recover-to="/">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><input type="hidden" name="reason" value="Learner reported using help outside this question"><button type="submit" class="quiet" data-pending="Recording help without grading…">I used other help</button></form>{{end}}
+      </details>
+      <details class="inspection"><summary>Stop reviewing this question</summary><p>Archive it without recording an answer. Past reviews stay in history.</p><form action="/quizzes/{{$p.Quiz.ID}}/archive" method="post" hx-post="/quizzes/{{$p.Quiz.ID}}/archive">{{template "tokens" $root}}<input type="hidden" name="return_to" value="/"><button type="submit" class="danger">Archive question</button></form></details>
+    {{end}}
   {{end}}
 </section>
-{{if and $p.Graded .Review.Preview}}<template id="next-preview" data-after="{{$p.ID}}">
-  <section class="preview-stage" aria-busy="true"><p class="pending-label" role="status">Confirming next question…</p><h1 class="question">{{.Review.Preview.Quiz.Prompt}}</h1>
-    {{if eq .Review.Preview.Quiz.Kind "choice"}}<div class="choices">{{range .Review.Preview.Quiz.Choices}}<div class="choice preview-choice">{{.}}</div>{{end}}</div>{{else}}<p class="muted">The answer control opens when the server confirms this question.</p>{{end}}
-  </section>
-</template>{{end}}
+{{if or $p.Graded (eq $p.Kind "reference")}}<template id="next-preview" data-after="{{$p.ID}}"><section class="preview-stage" aria-busy="true"><p class="pending-label" role="status">Confirming the next learning moment…</p><p>Instruction and answer controls open only after the server confirms the transition. Nothing new has been recorded yet.</p></section></template>{{end}}
 {{else}}
-<section class="empty-stage">
-  {{if eq .Review.Total 0}}<h1 class="question" tabindex="-1" data-focus>No active questions.</h1><p>Add a word, a question, or a passage. Scry saves your input, then turns it into questions you can come back to.</p><a class="button primary" href="/add">Add something</a><p class="small muted">Saved material may still need generation. Archived questions do not appear in review. <a href="/library">Inspect your material and generation status.</a></p>
-  {{else}}<h1 class="question" tabindex="-1" data-focus>Nothing due right now.</h1><p>Your available questions are scheduled for later. There is no need to turn a quiet queue into extra work.</p>{{if .Review.NextDueAt}}<p>Next due <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions"><a class="button primary" href="/add">Add something new</a><a href="/library">Browse your material</a></div>{{end}}
-  <a class="quiet-link" href="/">Check again</a>
-</section>
+<section class="empty-stage"><h1 class="question" tabindex="-1" data-focus>No learning moment selected.</h1><p>The current pace, due dates and available material determine what appears here. A quiet queue is not an empty library or a measure of what you know.</p>{{if .Review.NextDueAt}}<p>Next direct assessment due <time datetime="{{timeISO .Review.NextDueAt}}" data-local-time>{{timeText .Review.NextDueAt}}</time>.</p>{{end}}<div class="actions">{{template "open" (openLink . "library" "" "Choose a goal or inspect saved material")}}<a href="/add">Add a learning goal</a></div><a class="quiet-link" href="/">Check saved learning state</a></section>
 {{end}}
+{{if .Review.Bridge}}{{$bridge := .Review.Bridge}}<section class="bridge-context" aria-labelledby="bridge-heading"><h2 id="bridge-heading">Your foundation detour</h2><p class="small muted">Saved state: {{$bridge.Status}}. {{if $bridge.Path}}{{$bridge.Position}} of {{len $bridge.Path}} steps passed.{{end}}</p>
+  {{if eq $bridge.Status "pending"}}<p>Your foundation request is retained. {{if $bridge.Job}}Saved preparation status: <strong>{{jobLabel $bridge.Job.Status}}</strong>.{{else}}No usable preparation result is recorded yet.{{end}} Ordinary available review remains accessible while preparation is pending, paused or stopped.</p>{{else if eq $bridge.Status "ready_return"}}<p>You have reached the end of this foundation path. Return to the retained target when you choose; completing the path is not proof of recall.</p>{{else if eq $bridge.Status "returned"}}<p>The retained target was restored. Help and completed practice remain in its history.</p>{{else if eq $bridge.Status "unavailable"}}<p>The original target is no longer available in its retained version. Its history has not been rewritten. Choose another learning moment.</p>{{else}}<p>The original target and this path are retained. Instruction, practice and the eventual target attempt are different kinds of evidence.</p>{{end}}
+  {{if $bridge.Job}}{{if $bridge.Job.Error}}<p class="small preserve">{{$bridge.Job.Error}}</p>{{end}}{{template "job-retry" (within . $bridge.Job)}}{{end}}
+  <div class="actions">{{if and (ne $bridge.Status "returned") (ne $bridge.Status "unavailable")}}<form action="/review/return" method="post" hx-post="/review/return" data-recover-to="/">{{template "tokens" .}}<input type="hidden" name="bridge_id" value="{{$bridge.ID}}"><button type="submit" data-pending="Restoring your retained target…">Return to target</button></form>{{end}}<a href="/">Check saved detour state</a>{{if $bridge.GoalID}}{{template "open" (openLink . "goal" $bridge.GoalID "Inspect foundations and pending work")}}{{end}}</div>
+  {{if $bridge.Path}}<details><summary>Inspect the saved foundation path</summary><ol>{{$root := .}}{{range $i, $id := $bridge.Path}}<li>{{template "open" (openLink $root "material" $id "Open saved step")}}{{if lt $i (len $bridge.PathVersions)}}<span class="small">Retained version {{index $bridge.PathVersions $i}}.</span>{{end}}</li>{{end}}</ol></details>{{end}}
+</section>{{end}}
+<div class="review-plan">{{if .ReviewGoalID}}<a href="/goals/{{.ReviewGoalID}}/plan">Set pace or choose more practice</a>{{else}}{{template "open" (openLink . "library" "" "Choose a goal and set your pace")}}{{end}}{{with .Review.Current}}{{if eq .GoalPinOrigin "migration-v1-origin-source"}}<p class="small muted">This older occurrence's goal association was derived from its original source during migration, not from a recorded goal choice.</p>{{end}}{{end}}</div>
 {{end}}

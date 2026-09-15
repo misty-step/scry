@@ -80,6 +80,9 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 		return Source{}, err
 	}
 	if !found {
+		if result.Job != nil && result.Job.Kind != "capture" && result.Job.Kind != "enrich" {
+			return Source{}, fmt.Errorf("%w: retry the exact retained bridge or accepted proposal job", ErrConflict)
+		}
 		if result.Archived || result.Job == nil || result.Job.Published != 0 ||
 			(result.Job.Status != "failed" && result.Job.Status != "canceled" && result.Job.Status != "paused") {
 			return Source{}, fmt.Errorf("%w: only unpublished failed or explicitly reconciled paused work can be retried", ErrConflict)
@@ -183,10 +186,17 @@ func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, e
 	if err != nil {
 		return src, notFound(err, "source")
 	}
+	var coverageJSON string
+	if err = tx.QueryRowContext(ctx, "SELECT id,coverage_json FROM goals WHERE source_id=?", id).Scan(&src.GoalID, &coverageJSON); err != nil {
+		return src, err
+	}
+	if err = json.Unmarshal([]byte(coverageJSON), &src.Coverage); err != nil {
+		return src, err
+	}
 	var jobID string
 	err = tx.QueryRowContext(ctx, "SELECT id FROM jobs WHERE source_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", id).Scan(&jobID)
 	if err == nil {
-		j, err := job(ctx, tx, jobID)
+		j, err := jobMetadata(ctx, tx, jobID)
 		if err != nil {
 			return src, err
 		}
@@ -226,6 +236,18 @@ func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, e
 				return src, err
 			}
 			src.Quizzes = append(src.Quizzes, q)
+		}
+		materialIDs, err := rowIDs(ctx, tx, "SELECT id FROM materials WHERE source_id=? ORDER BY created_at,rowid", id)
+		if err != nil {
+			return src, err
+		}
+		src.Materials = make([]Material, 0, len(materialIDs))
+		for _, materialID := range materialIDs {
+			m, err := material(ctx, tx, materialID)
+			if err != nil {
+				return src, err
+			}
+			src.Materials = append(src.Materials, m)
 		}
 	}
 	return src, nil
@@ -277,14 +299,14 @@ func validateQuiz(q GeneratedQuiz, src Source) error {
 			return err
 		}
 	}
-	if q.Basis != src.Kind {
-		return fmt.Errorf("%w: quiz basis must honestly match the captured %s input", ErrInvalid, src.Kind)
+	if err := validateBasis(q.Basis, q.Evidence, src); err != nil {
+		return err
 	}
-	if q.Basis == "source" && !strings.Contains(src.Text, q.Evidence) {
-		return fmt.Errorf("%w: source evidence must be an exact quotation from the saved input", ErrInvalid)
+	if q.Basis == "reference" {
+		return fmt.Errorf("%w: external reference is not assessment content", ErrInvalid)
 	}
-	if q.Basis == "topic" && q.Evidence != "" {
-		return fmt.Errorf("%w: topic knowledge must not claim source evidence", ErrInvalid)
+	if q.Basis == "background" && (q.Level != "foundation" || !strings.HasPrefix(q.Explanation, "Generated background:")) {
+		return fmt.Errorf("%w: background assessment must be clearly labeled foundation practice", ErrInvalid)
 	}
 	if len(q.Variants) > 16 {
 		return fmt.Errorf("%w: at most 16 explicit answer variants", ErrInvalid)
@@ -343,6 +365,14 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if err != nil {
 		return Quiz{}, err
 	}
+	m, err := material(ctx, tx, id)
+	if err != nil {
+		return Quiz{}, err
+	}
+	if content.Key != "" || content.ReuseID != "" || len(content.Links) > 0 {
+		return Quiz{}, fmt.Errorf("%w: quiz editing cannot replace generation identity or coverage; use EditCoverage", ErrInvalid)
+	}
+	content.Level, content.EstimatedSeconds = m.Level, m.EstimatedSeconds
 	if q.Version != expectedVersion {
 		return Quiz{}, fmt.Errorf("%w: the quiz was already edited; reload before editing", ErrConflict)
 	}
@@ -364,11 +394,28 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if _, err = tx.ExecContext(ctx, "UPDATE quizzes SET version=version+1 WHERE id=?", id); err != nil {
 		return Quiz{}, err
 	}
-	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
+	if err = retireUnanswered(ctx, tx, id, "", s.now()); err != nil {
 		return Quiz{}, err
 	}
 	q, err = quiz(ctx, tx, id)
 	if err != nil {
+		return Quiz{}, err
+	}
+	before := m.Version
+	m.Version++
+	m.Quiz = &q
+	m.Title, m.Basis, m.Evidence = q.Prompt, q.Basis, q.Evidence
+	m.Provenance = Provenance{SourceID: q.SourceID, SourceRevision: src.Revision, Basis: q.Basis, Evidence: q.Evidence, Reason: "Explicit quiz content correction; exact prior coverage inherited", CreatedAt: s.now()}
+	if err = saveMaterialVersion(ctx, tx, m, m.Links, s.now()); err != nil {
+		return Quiz{}, err
+	}
+	if err = appendCorrection(ctx, tx, "material", id, before, m.Version, m.Provenance.Reason, s.now()); err != nil {
+		return Quiz{}, err
+	}
+	if err = invalidateMaterialGoals(ctx, tx, id, "Assessment content changed; prior authored coverage requires review", s.now()); err != nil {
+		return Quiz{}, err
+	}
+	if err = recordKnowledgeEstimates(ctx, tx, s.now()); err != nil {
 		return Quiz{}, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -383,13 +430,23 @@ func (s *Store) ArchiveQuiz(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = quiz(ctx, tx, id); err != nil {
+	q, err := quiz(ctx, tx, id)
+	if err != nil {
 		return err
+	}
+	if q.Archived {
+		return tx.Commit()
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE quizzes SET archived=1 WHERE id=?", id); err != nil {
 		return err
 	}
-	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE materials SET archived=1 WHERE id=?", id); err != nil {
+		return err
+	}
+	if err = invalidateMaterialGoals(ctx, tx, id, "Assessment archived; current goal coverage no longer includes this material", s.now()); err != nil {
+		return err
+	}
+	if err = retireUnanswered(ctx, tx, id, "", s.now()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -401,13 +458,30 @@ func (s *Store) ArchiveSource(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = source(ctx, tx, id, false); err != nil {
+	src, err := source(ctx, tx, id, false)
+	if err != nil {
 		return err
+	}
+	if src.Archived {
+		return tx.Commit()
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE sources SET archived=1 WHERE id=?", id); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, "UPDATE materials SET archived=1 WHERE source_id=?", id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE goals SET archived=1 WHERE source_id=?", id); err != nil {
+		return err
+	}
 	now := s.now()
+	affected, err := rowIDs(ctx, tx, `SELECT DISTINCT g.id FROM goals g JOIN goal_materials gm ON gm.goal_id=g.id JOIN materials m ON m.id=gm.material_id WHERE m.source_id=? AND g.archived=0 ORDER BY g.id`, id)
+	if err != nil {
+		return err
+	}
+	if err = invalidateGoalCoverage(ctx, tx, affected, "A material source was archived; reused current goal coverage requires review", now); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE job_attempts SET state='unknown',finished_at=? WHERE state='active'
 	 AND job_id IN (SELECT id FROM jobs WHERE source_id=?)`, now, id); err != nil {
 		return err
@@ -416,7 +490,7 @@ func (s *Store) ArchiveSource(ctx context.Context, id string) error {
 	 WHERE source_id=? AND status IN ('queued','running','retry','paused')`, now, id); err != nil {
 		return err
 	}
-	if err = retireUnanswered(ctx, tx, "", id); err != nil {
+	if err = retireUnanswered(ctx, tx, "", id, now); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -459,12 +533,18 @@ func (s *Store) Dispute(ctx context.Context, reviewID, note string, reset bool) 
 		if _, err = tx.ExecContext(ctx, "UPDATE schedules SET version=version+1,card=?,due_at=?,algorithm=? WHERE quiz_id=?", encoded, now, learning.Algorithm, quizID); err != nil {
 			return err
 		}
-		if err = retireUnanswered(ctx, tx, quizID, ""); err != nil {
+		if err = retireUnanswered(ctx, tx, quizID, "", now); err != nil {
 			return err
 		}
 	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO corrections(id,review_id,note,reset,created_at,schedule_before,schedule_after) VALUES(?,?,?,?,?,?,?)", newID(), reviewID, note, reset, now, before, after)
 	if err != nil {
+		return err
+	}
+	if err = cancelDisputedGap(ctx, tx, reviewID, now); err != nil {
+		return err
+	}
+	if err = recordKnowledgeEstimates(ctx, tx, now); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -27,16 +27,21 @@
       <button type="button" id="retry-session" hidden>Retry private access</button>
       <a href="/" hx-boost="false" class="button">Reload Scry</a>
     </div>
+    <form id="scope-reopen" action="/inspection/assist" method="post" hx-post="/inspection/assist" hidden>
+      <input type="hidden" name="csrf"><input type="hidden" name="operation_id"><input type="hidden" name="kind"><input type="hidden" name="id"><input type="hidden" name="return_to">
+      <button type="submit" class="primary" data-pending="Recording your choice to continue reading…">Continue reading</button>
+    </form>
+    <button type="button" id="scope-retry-request" hidden>Retry the unresolved request</button>
   </div>
   <noscript><p class="noscript-note">All actions work without JavaScript. Generation status updates when you refresh the page.</p></noscript>
 </body>
 </html>{{end}}
 
-{{define "main"}}<div id="main" data-view="{{.View}}" data-title="{{.Title}}" data-http-status="{{.Status}}" hx-history="false">
+{{define "main"}}<div id="main" data-view="{{.View}}" data-title="{{.Title}}" data-http-status="{{.Status}}" data-scope-kind="{{.ScopeKind}}" data-scope-id="{{.ScopeID}}" data-scope-return="{{.ScopeReturn}}" data-scope-expires="{{.ScopeExpiresAt}}" data-scope-checked="{{.ScopeCheckedAt}}" data-scope-csrf="{{.CSRF}}" data-scope-operation="{{.Operation}}_scope" hx-history="false">
   <header class="masthead">
     <a class="wordmark" href="/" aria-label="Scry review">scry<span class="wordmark-dot" aria-hidden="true"></span></a>
     {{if ne .View "access"}}<nav class="utility-nav" aria-label="Account and history">
-      <a href="/history" {{if eq .Active "history"}}aria-current="page"{{end}}>History</a>
+      {{template "open" (openLink . "history" "" "History")}}
       <a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a>
     </nav>{{end}}
   </header>
@@ -48,30 +53,43 @@
     {{else if eq .View "library"}}{{template "library" .}}
     {{else if eq .View "source"}}{{template "source" .}}
     {{else if eq .View "edit"}}{{template "edit" .}}
+    {{else if eq .View "goal"}}{{template "goal" .}}
+    {{else if eq .View "plan"}}{{template "plan" .}}
+    {{else if eq .View "unit"}}{{template "unit" .}}
+    {{else if eq .View "material"}}{{template "material" .}}
     {{else if eq .View "history"}}{{template "history" .}}
     {{else if eq .View "dispute"}}{{template "dispute" .}}
     {{else if eq .View "settings"}}{{template "settings" .}}
     {{else if eq .View "gate"}}{{template "gate" .}}
     {{else if eq .View "access"}}<section class="empty-stage"><h1 tabindex="-1" data-focus>Private access required</h1><p>Open the private application address and sign in with the approved exe account. This page does not grant access to your learning material.</p><a href="/" class="button" hx-boost="false">Check access again</a></section>
-    {{else}}<section class="empty-stage"><h1 tabindex="-1" data-focus>{{.Title}}</h1><div class="actions"><a class="button" href="/">Return to review</a><a href="/library">Open library</a></div></section>{{end}}
+    {{else}}<section class="empty-stage"><h1 tabindex="-1" data-focus>{{.Title}}</h1><div class="actions"><a class="button" href="/">Return to review</a>{{template "open" (openLink . "library" "" "Open library")}}</div></section>{{end}}
   </main>
   {{if ne .View "access"}}<nav class="dock" aria-label="Main navigation">
     <a href="/" {{if eq .Active "review"}}aria-current="page"{{end}}>Review</a>
     <a href="/add" {{if eq .Active "add"}}aria-current="page"{{end}}>Add</a>
-    <a href="/library" {{if eq .Active "library"}}aria-current="page"{{end}}>Library</a>
+    {{template "open" (openLink . "library" "" "Library")}}
   </nav>{{end}}
 </div>{{end}}
 
 {{define "tokens"}}<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="operation_id" value="{{.Operation}}">{{end}}
 
+{{define "open"}}<form class="inspection-open" action="/inspection/assist" method="post" {{if eq .Kind "export"}}hx-boost="false"{{else}}hx-post="/inspection/assist"{{end}} data-recover-to="{{.Destination}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="operation_id" value="{{.Operation}}">
+  <input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="return_to" value="{{.Destination}}">
+  <button type="submit" class="text-link" {{if .Current}}aria-current="page"{{end}} data-pending="Recording inspection and opening saved content…">{{.Label}}{{if .Helped}}<span class="help-tag">Opens with help if related</span>{{end}}</button>
+</form>{{end}}
+
 {{define "gate"}}<section class="empty-stage">
-  <h1 tabindex="-1" data-focus>Look it up, without calling it recall.</h1>
-  <p>This material contains the answer to your current question. Opening it will record that question as <strong>helped</strong> and schedule it for another try, not count it as an unaided success.</p>
-  <form action="/review/reveal" method="post" hx-post="/review/reveal">
+  <h1 tabindex="-1" data-focus>{{if .Gate}}Look it up, without calling it recall.{{else}}Open this saved content.{{end}}</h1>
+  {{if .Gate}}<p>This page can help with an unanswered learning target, including one retained in a foundation detour. Reading it first would not be unaided recall.</p>
+  <p>Opening it records an explicit inspection and marks the related unanswered targets as <strong>helped</strong>. It does not grade an answer, penalize the target, or change FSRS just for asking.</p>{{else}}<p>Opening records that you chose to inspect this content. Related assessments offered soon after teaching are labeled practice, not cold recall. Reading is not a successful retrieval.</p>{{end}}
+  <form action="/inspection/assist" method="post" {{if eq .ReturnTo "/export"}}hx-boost="false"{{else}}hx-post="/inspection/assist"{{end}} data-recover-to="{{.ReturnTo}}">
     {{template "tokens" .}}
-    <input type="hidden" name="presentation_id" value="{{.Gate.ID}}">
+    <input type="hidden" name="kind" value="{{.GateKind}}">
+    <input type="hidden" name="id" value="{{.GateID}}">
     <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-    <button class="primary" type="submit" data-pending="Recording help before opening…">Mark helped and open</button>
+    <button class="primary" type="submit" data-pending="Recording inspection before opening…">{{if .Gate}}Mark helped and {{if eq .ReturnTo "/export"}}download export{{else}}open{{end}}{{else}}{{if eq .ReturnTo "/export"}}Download personal export{{else}}Open saved content{{end}}{{end}}</button>
   </form>
-  <a class="quiet-link" href="/">Return to the question</a>
+  <p class="small muted">Nothing is marked by this page alone. You can go back and try the target first.</p>
+  <a class="quiet-link" href="/">Return to learning</a>
 </section>{{end}}

@@ -42,10 +42,23 @@ type completion struct {
 
 func (w *Worker) generate(ctx context.Context, job *store.Job) (store.GenerationResult, *int64, *generationFailure) {
 	zero := int64(0)
-	plan, err := planTask(job.SourceText, job.SourceKind)
+	plan := coveragePlan{Task: "infer", Units: []coverageUnit{}}
+	var err error
+	if job.Kind == "bridge" || job.Kind == "expand" || job.Kind == "enrich" && job.ObservationID != "" {
+		// Retained source text is evidence for scoped support, not an instruction
+		// to regenerate its inventory. Its whole-text safety bounds still apply.
+		err = validateSource(job.SourceText, job.SourceKind)
+	} else {
+		plan, err = planTask(job.SourceText, job.SourceKind)
+	}
 	if err != nil {
 		return store.GenerationResult{}, &zero, &generationFailure{message: err.Error()}
 	}
+	prepared, err := prepareJob(job)
+	if err != nil {
+		return store.GenerationResult{}, &zero, &generationFailure{message: err.Error()}
+	}
+	job = &prepared
 	repair := job.Attempts == 2 && strings.HasPrefix(job.Error, repairMarker)
 	request, err := makeRequest(w.cfg.Model, job, plan, repair, w.openRouter)
 	if err != nil {
@@ -59,18 +72,18 @@ func (w *Worker) generate(ctx context.Context, job *store.Job) (store.Generation
 	if parseErr != nil {
 		// Syntax errors, truncation, refusals, and adversarial envelopes do not earn
 		// a second paid request. In particular, never recover fenced substrings.
-		return store.GenerationResult{}, response.cost, &generationFailure{message: "The provider returned malformed or unsupported quiz JSON. No quizzes were published; usage was retained. Retry explicitly after checking the model's structured-output support."}
+		return store.GenerationResult{}, response.cost, &generationFailure{message: "The provider returned malformed or unsupported knowledge-bundle JSON. Nothing was published; usage was retained. Retry explicitly after checking structured-output support."}
 	}
-	if len(result.Quizzes) == 0 {
+	if len(result.Quizzes)+len(result.Materials) == 0 {
 		if job.Attempts == 1 && len(issues) > 0 && len(issues) <= 4 && response.cost != nil {
 			// One earned quality repair is a NEW durable attempt with its own spend
 			// reservation. Store preserves the safe code-only error on that claim.
 			return store.GenerationResult{}, response.cost, &generationFailure{
-				message: repairMarker + strings.Join(issues, ", ") + ". No usable quizzes passed; one separately reserved repair may run.",
+				message: repairMarker + strings.Join(issues, ", ") + ". No usable bundle passed; one separately reserved repair may run.",
 				retry:   true,
 			}
 		}
-		message := "No usable quizzes passed the source, task-coverage, or answerability checks. The source and paid usage are saved. Clarify the learning task or provide an authoritative excerpt before retrying."
+		message := "No usable knowledge-and-material bundle passed the source, reuse, coverage, and answerability checks. The source and paid usage are saved. Clarify the task or provide missing authoritative material before retrying."
 		if len(issues) > 0 {
 			message += " Checks: " + strings.Join(issues[:min(4, len(issues))], ", ") + "."
 		}
@@ -79,8 +92,6 @@ func (w *Worker) generate(ctx context.Context, job *store.Job) (store.Generation
 	result.Model = response.model
 	if result.Model == "" {
 		result.Model = w.cfg.Model
-	} else if result.Model != w.cfg.Model {
-		result.Note += " Requested model: " + w.cfg.Model + "."
 	}
 	result.PromptVersion = promptVersion
 	if repair {
@@ -124,7 +135,7 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil || len(body) > maxResponseBytes {
-		return response, &generationFailure{message: "The provider response was interrupted or exceeded the 1 MiB limit. Spend is unknown; no quizzes were published. Check the provider receipt before retrying."}
+		return response, &generationFailure{message: "The provider response was interrupted or exceeded the 1 MiB limit. Spend is unknown; no material was published. Check the provider receipt before retrying."}
 	}
 	var envelope completionEnvelope
 	jsonValid := utf8.Valid(body) && checkJSON(body, 24) == nil
@@ -166,20 +177,20 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 		return response, &generationFailure{message: message, retry: retry}
 	}
 	if !readable {
-		return response, &generationFailure{message: "The provider returned an unreadable response. Reported usage was retained; any missing price remains unknown. No quizzes were published. Check provider health and the receipt before retrying."}
+		return response, &generationFailure{message: "The provider returned an unreadable response. Reported usage was retained; any missing price remains unknown. No material was published. Check provider health and the receipt before retrying."}
 	}
 	if nonNull(envelope.Error) || len(envelope.Choices) != 1 {
-		return response, &generationFailure{message: "The provider returned an error or an ambiguous completion envelope. Usage was retained; no quizzes were published. Check provider compatibility before retrying."}
+		return response, &generationFailure{message: "The provider returned an error or an ambiguous completion envelope. Usage was retained; no material was published. Check provider compatibility before retrying."}
 	}
 	choice := envelope.Choices[0]
 	if nonNull(choice.Error) || choice.FinishReason != "stop" || (choice.Message.Role != "" && choice.Message.Role != "assistant") || nonEmpty(choice.Message.Refusal) || nonEmpty(choice.Message.ToolCalls) {
-		return response, &generationFailure{message: "The provider refused, truncated, or did not finish an ordinary text completion. Usage was retained; no quizzes were published. Clarify or split the source before retrying."}
+		return response, &generationFailure{message: "The provider refused, truncated, or did not finish an ordinary text completion. Usage was retained; no material was published. Clarify or split the source before retrying."}
 	}
 	if json.Unmarshal(choice.Message.Content, &response.content) != nil || response.content == "" || len(response.content) > maxContentBytes || !utf8.ValidString(response.content) {
-		return response, &generationFailure{message: "The provider returned missing, oversized, or unsupported completion content. Usage was retained; no quizzes were published. Check structured-output support or split the source before retrying."}
+		return response, &generationFailure{message: "The provider returned missing, oversized, or unsupported completion content. Usage was retained; no material was published. Check structured-output support or split the source before retrying."}
 	}
 	if len(envelope.Model) > 200 || strings.ContainsAny(envelope.Model, "\r\n\x00") {
-		return response, &generationFailure{message: "The provider returned invalid model provenance. Usage was retained; no quizzes were published."}
+		return response, &generationFailure{message: "The provider returned invalid model provenance. Usage was retained; no material was published."}
 	}
 	response.model = envelope.Model
 	return response, nil

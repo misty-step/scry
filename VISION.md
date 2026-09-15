@@ -6,7 +6,7 @@ acceptance; [the runbook](docs/runbook.md) owns deployed origins and recovery.
 
 ## The Product
 
-Scry is a personal, quiz-first learning app. It turns something I want to know
+Today Scry is a personal, quiz-first learning app. It turns something I want to know
 into useful questions and brings those questions back when reviewing them is
 worthwhile. AI helps create and improve the material; my attempts drive the
 learning history and next review.
@@ -19,6 +19,47 @@ At the rewrite decision, the operator reported no active users, including the
 operator. That is the adoption baseline. Phone acceptance, generated fixtures,
 passing checks, and historical production receipts are not evidence of sustained
 use or learning gains.
+
+## Approved Next Direction
+
+The approved next direction is a proactively managed personal learning map.
+Chosen goals define the knowledge to cover comprehensively, not just concepts
+already found in generated cards. Quizzes serve retrieval/practice and provide
+observations alongside durable instructional and reference material. This
+direction remains unimplemented, but on 2026-09-10 the operator explicitly
+authorized specification, full implementation, and protected shipping. New
+[KC01–KC19 acceptance criteria](SPEC.md#knowledge-centered-implementation-acceptance)
+govern that work; the initial S01–S10 meanings and historical receipts are
+unchanged. Existing spend, private-access, live-history preservation, recovery,
+and deployment safeguards still apply; this is not evidence of a shipped engine.
+
+Foundations remain represented for beginners and experts. Evidence and uncertain,
+task-dependent estimates guide exposure, not deletion of basics or a permanent
+expert flag. Missing map coverage, unknown knowledge, and observed gaps are
+different problems. Independently meaningful atomic targets and composition/
+application both matter. Foundation completeness, demonstrated capability, and
+future recall probability are distinct, not one score that can hide a basic gap.
+
+The operator reported introductory biology material that was too advanced; this
+is a design driver, not a revised QA result. Generate or reuse durable bridge
+material and reference resources proactively at capture and when gaps emerge.
+Goals and available time govern useful instruction, probes, retrieval, and
+composition; library presence does not make every item immediately due. The
+[approved design](SPEC.md#approved-knowledge-centered-design-unimplemented)
+owns the data relationships, evidence limits, and direct-review baseline.
+
+Instruction, reference text, structured diagrams, and assessment material are
+durable resources. Actual external article/video references retain provenance;
+a reference is not an invented transcript, fetched source, or generated video.
+The map supports advanced and lateral suggestions as well as bridges, aligned
+with chosen goals rather than silently adding new ones. Goals can be organized
+into multi-scale learning horizons—daily retention sweeps, Pomodoro acquisition
+sessions, and quarterly immersion campaigns—allowing deep focus without dropping
+foundational maintenance. One interaction can inform several uncertain estimates
+without becoming several reviews. Current
+quiz-owned FSRS remains the direct-review baseline; cross-item selection has
+explicit policy provenance and must earn effectiveness claims through later
+evidence, not functional checks.
 
 ## Experience Direction
 
@@ -39,6 +80,17 @@ The accepted initial experience has one learning moment at a time:
 The initial phone flow is approved, not a permanent freeze on design. Changes
 to question styles, gestures, visual direction, or ambiguous-answer behavior
 should follow real use and renewed operator review.
+
+The next direction preserves one learning moment and deliberate Next on the
+phone. Proactive planning belongs backstage; meaningful changes to learning
+focus, material, or schedules must be visible and reversible without rewriting
+history. No chat surface is required. Chat may later be another way to use the
+same knowledge and evidence, not a prerequisite for the learning loop.
+
+From a Too advanced action, useful foundation instruction and practice should
+lead to a deliberate return to the retained target. Pacing and resumable bridge/
+plan state keep that detour useful; model work must not block ordinary review or
+blur the difference between pending and saved work when connectivity fails.
 
 ## What Must Remain True
 
@@ -62,11 +114,13 @@ The initial audience is the operator. The phone web experience is primary.
 Agent capture or a CLI can be added when an actual personal workflow needs it;
 five independent product faces are not a launch obligation.
 
-The current scope is capture, generation, review, correction, library,
+The implemented initial scope is capture, generation, review, correction, library,
 learning history, private access, and recovery. Public signup, waitlists,
 billing, collaboration, generalized import, full course generation, a chat
 product, and an offline synchronization engine are not initial requirements.
-Their exclusion is not a permanent ban if later use justifies them.
+These initial exclusions do not reject the approved knowledge-centered direction
+above or authorize multi-user infrastructure, historical imports, or operational
+changes.
 
 ## Technical Direction and Current Runtime
 

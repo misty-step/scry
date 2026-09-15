@@ -63,13 +63,46 @@ type manifest struct {
 // transaction. It never creates a missing database, migrates, or claims jobs.
 // Unlike immutable snapshot inspection, this observes a live database's WAL.
 func Check(ctx context.Context, path string) error {
-	_, err := inspectDatabase(ctx, path, false)
-	return err
+	return store.ValidateDatabase(ctx, path, false)
+}
+
+// SchemaCompatibility reports read-only acceptance, never a completed upgrade.
+// Compatible means this binary can use the source without a migration.
+type SchemaCompatibility struct {
+	Integrity         string `json:"integrity"`
+	Accepted          bool   `json:"accepted"`
+	Compatible        bool   `json:"compatible"`
+	SourceSchema      int    `json:"source_schema"`
+	TargetSchema      int    `json:"target_schema"`
+	MigrationRequired bool   `json:"migration_required"`
+	Migrated          bool   `json:"migrated"`
+	ReadOnly          bool   `json:"read_only"`
+}
+
+// CheckForMigration accepts supported upgrade sources without opening a writer.
+// It must not replace Check at old-binary rollback or snapshot publication.
+func CheckForMigration(ctx context.Context, path string) (SchemaCompatibility, error) {
+	info, err := inspectCompatibleDatabase(ctx, path, false, true)
+	if err != nil {
+		return SchemaCompatibility{}, err
+	}
+	return SchemaCompatibility{
+		Integrity: "ok", Accepted: true, Compatible: info.Schema == store.SchemaVersion,
+		SourceSchema: info.Schema, TargetSchema: store.SchemaVersion,
+		MigrationRequired: info.Schema != store.SchemaVersion, ReadOnly: true,
+	}, nil
 }
 
 func inspectDatabase(ctx context.Context, path string, immutable bool) (databaseInfo, error) {
+	return inspectCompatibleDatabase(ctx, path, immutable, false)
+}
+
+func inspectCompatibleDatabase(ctx context.Context, path string, immutable, allowUpgrade bool) (databaseInfo, error) {
 	var info databaseInfo
 	if err := regularFile(path); err != nil {
+		return info, err
+	}
+	if err := store.ValidateDatabase(ctx, path, allowUpgrade); err != nil {
 		return info, err
 	}
 	absolute, err := filepath.Abs(path)
@@ -102,47 +135,11 @@ func inspectDatabase(ctx context.Context, path string, immutable bool) (database
 	if err = tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&info.Schema); err != nil {
 		return info, fmt.Errorf("read database schema: %w", err)
 	}
-	if info.ApplicationID != store.ApplicationID || info.Schema != store.SchemaVersion {
-		return info, fmt.Errorf("incompatible Scry database: application %d, schema %d; binary requires application %d, schema %d", info.ApplicationID, info.Schema, store.ApplicationID, store.SchemaVersion)
+	if info.ApplicationID != store.ApplicationID || (info.Schema != store.SchemaVersion && !(allowUpgrade && store.CanUpgradeSchema(info.Schema))) {
+		return info, fmt.Errorf("incompatible Scry database: application %d, schema %d", info.ApplicationID, info.Schema)
 	}
 	if err = tx.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&info.SQLite); err != nil {
 		return info, fmt.Errorf("read SQLite version: %w", err)
-	}
-	rows, err := tx.QueryContext(ctx, "PRAGMA integrity_check")
-	if err != nil {
-		return info, fmt.Errorf("inspect database integrity: %w", err)
-	}
-	count := 0
-	for rows.Next() {
-		var result string
-		if err = rows.Scan(&result); err != nil {
-			rows.Close()
-			return info, fmt.Errorf("read integrity result: %w", err)
-		}
-		if result != "ok" {
-			rows.Close()
-			return info, errors.New("recovery database failed SQLite integrity_check")
-		}
-		count++
-	}
-	err = errors.Join(rows.Err(), rows.Close())
-	if err != nil {
-		return info, fmt.Errorf("finish database integrity inspection: %w", err)
-	}
-	if count != 1 {
-		return info, errors.New("database integrity check returned no complete result")
-	}
-	rows, err = tx.QueryContext(ctx, "PRAGMA foreign_key_check")
-	if err != nil {
-		return info, fmt.Errorf("inspect database references: %w", err)
-	}
-	if rows.Next() {
-		rows.Close()
-		return info, errors.New("recovery database has broken foreign keys")
-	}
-	err = errors.Join(rows.Err(), rows.Close())
-	if err != nil {
-		return info, fmt.Errorf("finish reference inspection: %w", err)
 	}
 	return info, tx.Commit()
 }
@@ -217,6 +214,11 @@ func writeArchive(ctx context.Context, path, database string, metadata manifest)
 }
 
 func archiveManifest(zr *zip.ReadCloser) (manifest, *zip.File, error) {
+	return readArchiveManifest(zr, false)
+}
+
+// Restore supports old Go schemas; local retention deliberately does not.
+func readArchiveManifest(zr *zip.ReadCloser, allowUpgrade bool) (manifest, *zip.File, error) {
 	var metadata manifest
 	var database, descriptor *zip.File
 	if len(zr.File) != 2 {
@@ -256,7 +258,7 @@ func archiveManifest(zr *zip.ReadCloser) (manifest, *zip.File, error) {
 	if err != nil || len(encoded) > manifestLimit {
 		return metadata, nil, errors.New("recovery manifest is corrupt or oversized")
 	}
-	if err = decodeManifest(encoded, &metadata); err != nil {
+	if err = decodeCompatibleManifest(encoded, &metadata, allowUpgrade); err != nil {
 		return metadata, nil, err
 	}
 	if database.UncompressedSize64 != uint64(metadata.Bytes) {
@@ -265,7 +267,7 @@ func archiveManifest(zr *zip.ReadCloser) (manifest, *zip.File, error) {
 	return metadata, database, nil
 }
 
-func decodeManifest(encoded []byte, metadata *manifest) error {
+func decodeCompatibleManifest(encoded []byte, metadata *manifest, allowUpgrade bool) error {
 	if err := json.Unmarshal(encoded, metadata); err != nil {
 		return errors.New("recovery manifest is not valid JSON")
 	}
@@ -273,7 +275,7 @@ func decodeManifest(encoded []byte, metadata *manifest) error {
 	if metadata.Format != 1 || metadata.Integrity != "ok" || metadata.Bytes <= 0 || metadata.Bytes >= (1<<63)-1 || metadata.CreatedAt <= 0 || !validID(metadata.ID) || err != nil || len(digest) != sha256.Size {
 		return errors.New("recovery manifest is incomplete or has an unsupported format")
 	}
-	if metadata.Database.ApplicationID != store.ApplicationID || metadata.Database.Schema != store.SchemaVersion {
+	if metadata.Database.ApplicationID != store.ApplicationID || (metadata.Database.Schema != store.SchemaVersion && !(allowUpgrade && store.CanUpgradeSchema(metadata.Database.Schema))) {
 		return errors.New("recovery manifest requires a different application or schema version")
 	}
 	return nil
