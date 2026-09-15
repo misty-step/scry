@@ -71,7 +71,7 @@ func newKnowledgeFixture(t *testing.T) knowledgeFixture {
 	if err := s.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
 		Coverage:  store.CoverageReport{Kind: "concepts", Complete: true},
 		Units:     []store.GeneratedUnit{{Key: "marker", ReuseID: unit.ID, Statement: unit.Statement, Kind: unit.Kind}},
-		Materials: []store.GeneratedMaterial{{Key: "instruction", Kind: "explanation", Title: "A reusable foundation reference", Body: knowledgeBody, Basis: "background", EstimatedSeconds: 45, Links: []store.GeneratedLink{{UnitKey: "marker", Role: "teaches"}}}},
+		Materials: []store.GeneratedMaterial{{Key: "instruction", Kind: "explanation", Title: "A reusable foundation reference", Body: "Generated background: " + knowledgeBody, Basis: "background", EstimatedSeconds: 45, Links: []store.GeneratedLink{{UnitKey: "marker", Role: "teaches"}}}},
 		Model:     "authored-web-boundary-fixture", PromptVersion: "fixture-v2",
 	}, &cost); err != nil {
 		t.Fatal(err)

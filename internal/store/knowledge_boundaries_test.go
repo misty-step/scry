@@ -291,7 +291,7 @@ func TestHistoryDisclosureMatchesActualBoundedReferenceTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	events, err := s.Interactions(ctx, HistoryPageSize)
-	if err != nil || len(events) != 1 || events[0].Kind != "continue" || events[0].Material == nil || events[0].Material.Body != ref.Material.Body || events[0].Material.Version != ref.Material.Version {
+	if err != nil || len(events) != 1 || events[0].Kind != "continue" || events[0].MaterialID != ref.Material.ID || events[0].Snapshot.Body != ref.Material.Body || events[0].Snapshot.Version != ref.Material.Version {
 		t.Fatalf("actual continued reference was missing its pinned shown content: %+v %v", events, err)
 	}
 	for range HistoryPageSize {
@@ -327,7 +327,7 @@ func TestHistoryDisclosureMatchesActualBoundedReferenceTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, event := range events {
-		if event.Kind == "continue" || event.Material != nil && event.Material.Body != "" {
+		if event.Kind == "continue" || event.Snapshot.Body != "" {
 			t.Fatal("timeline disclosed content outside its selected activity window")
 		}
 	}
