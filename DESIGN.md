@@ -1,10 +1,19 @@
 # Scry design system
 
-Status: the binding visual and interaction contract for production surfaces in
-`crates/memory-engine-api-render`. The operator’s current authorization to
-implement and ship the comprehensive PWA redesign supersedes the July 2026
-Ledger aesthetic lock. Existing route, wire, storage, environment, and DOM
-integration identifiers are not product naming and remain stable.
+Status: historical design record for the retired Rust renderer
+`crates/memory-engine-api-render`, not the current Go application’s contract.
+For that renderer, the operator’s authorization to implement and ship the
+comprehensive PWA redesign superseded the July 2026 Ledger aesthetic lock.
+The aesthetic decisions and route, wire, storage, environment, asset, and DOM
+identifiers below are preserved as history, not current requirements or shipping
+authorization.
+
+[SPEC.md](SPEC.md) owns current behavior and design, including the
+[experience contract](SPEC.md#experience-contract) and
+[browser/server boundary](SPEC.md#the-browserserver-boundary).
+The Go UI lives in [internal/web](internal/web/), with
+[templates](internal/web/templates/) and
+[visual tokens](internal/web/assets/app.css).
 
 ## Direction: a reading-first study instrument
 

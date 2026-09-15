@@ -24,9 +24,9 @@ Forest Gate.
 ## Boundary
 
 Work only in the assigned worktree and never modify `master`. Keep credentials
-out of files, commands, prompts, and output. Preserve Scry's Rust boundaries:
-`memory-engine-core` stays framework-free and persistence-free, and browser JS
-is limited to the documented API assets. Read the current request and
+out of files, commands, prompts, and output. Preserve the current
+[architecture and boundaries](../../AGENTS.md#architecture-and-boundaries).
+Read the current request and
 affected code; make the smallest complete change, migrate callers, and test
 observable behavior. Do not add unrequested dependencies, fallbacks, or
 compatibility paths.

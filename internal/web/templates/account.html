@@ -1,0 +1,72 @@
+{{define "history"}}<section>
+  <h1 tabindex="-1" data-focus>What actually happened.</h1>
+  <p class="lede">Your latest 100 recorded reviews. Attempts and assistance are a record of practice, not proof of lasting knowledge.</p>
+  {{if .History}}<ol class="history-list">{{range .History}}<li>
+    <div class="history-heading"><h2>{{outcome .Outcome}}</h2><span class="status-label">{{kind .Quiz.Kind}}</span></div>
+    <p class="history-question">{{.Quiz.Prompt}}</p>
+    <p class="small muted"><time datetime="{{timeISO .ReviewedAt}}" data-local-time>{{timeText .ReviewedAt}}</time>{{if .Assisted}}. Helped{{end}}{{if .Disputed}}. Disputed; original result retained{{end}}.</p>
+    <details><summary>Inspect this recorded attempt</summary>
+      {{if .Quiz.Answer}}
+        {{if .Answer}}<p class="preserve"><strong>Your answer:</strong> {{.Answer}}</p>{{end}}
+        <p class="preserve"><strong>Expected answer:</strong> {{.Quiz.Answer}}</p>
+        {{if .Quiz.Choices}}<p class="small">Presented choices:</p><ul>{{range .Quiz.Choices}}<li>{{.}}</li>{{end}}</ul>{{end}}
+        <p class="preserve">{{.Quiz.Explanation}}</p>
+        {{if .Quiz.Evidence}}<blockquote class="preserve">{{.Quiz.Evidence}}</blockquote>{{end}}
+      {{else}}<p>The answer is hidden while this question is awaiting your current attempt. Finish or reveal it in review before inspecting answer-bearing material.</p>{{end}}
+      <p class="small muted">Question version {{.Quiz.Version}}. {{if eq .Quiz.Basis "source"}}Source-based.{{else}}Generated topic knowledge.{{end}} Schedule policy: {{.Algorithm}}. Next date at the time of this attempt: <time datetime="{{timeISO .DueAt}}" data-local-time>{{timeText .DueAt}}</time>.</p>
+      <div class="actions"><a href="/reviews/{{.ID}}/dispute">Flag a problem or reset</a><a href="/sources/{{.Quiz.SourceID}}">Open current material</a></div>
+    </details>
+  </li>{{end}}</ol>{{else}}<div class="empty-stage compact"><h2>No recorded reviews yet.</h2><p>Answer a question, or ask to reveal it. Reading pages and adding material do not manufacture successful attempts.</p><a href="/" class="button primary">Open review</a></div>{{end}}
+  <p class="quiet-note">Need the full record? <a href="/export" hx-boost="false" download>Download your personal export.</a></p>
+</section>{{end}}
+
+{{define "dispute"}}<section>
+  <a href="/history" class="back-link">History</a>
+  <h1 tabindex="-1" data-focus>Flag the question, not your memory.</h1>
+  {{if .Quiz.Prompt}}<p class="history-question">{{.Quiz.Prompt}}</p>{{end}}
+  <p>A dispute keeps the original review and adds your correction. It never turns the attempt into a success.</p>
+  <form action="/reviews/{{.ReviewID}}/dispute" method="post" hx-post="/reviews/{{.ReviewID}}/dispute">
+    {{template "tokens" .}}
+    <label for="dispute-note">What went wrong?</label><textarea id="dispute-note" name="note" rows="5" required maxlength="2000" placeholder="An ambiguous question, a missing valid answer, or a factual problem…">{{.Note}}</textarea>
+    <label class="check-field" for="reset-schedule"><input id="reset-schedule" name="reset" type="checkbox" value="yes" {{if .Reset}}checked{{end}}><span>Also reset the future schedule for this faulty question.</span></label>
+    <p class="small muted">A reset is a separate recorded correction, not a new recall. Leave it off to preserve the current schedule.</p>
+    <div class="actions"><button class="primary" type="submit" data-pending="Saving your correction…">Record dispute</button><a href="/history">Cancel</a></div>
+  </form>
+  {{if .Quiz.ID}}<p class="quiet-note"><a href="/quizzes/{{.Quiz.ID}}/edit">Edit future question wording</a> separately. The recorded question remains unchanged.</p>{{end}}
+</section>{{end}}
+
+{{define "settings"}}<section>
+  <h1 tabindex="-1" data-focus>Your Scry</h1>
+  <p class="lede">Private learning, with a record you can inspect and take with you.</p>
+  <section class="settings-section" aria-labelledby="record-heading"><h2 id="record-heading">Personal record</h2>
+    <dl class="facts"><div><dt>Active sources</dt><dd>{{.Summary.Sources}}</dd></div><div><dt>Active questions</dt><dd>{{.Summary.Quizzes}}</dd></div><div><dt>Due now</dt><dd>{{.Summary.Due}}</dd></div><div><dt>Recorded reviews</dt><dd>{{.Summary.Reviews}}</dd></div><div><dt>Helped attempts</dt><dd>{{.Summary.Assisted}}</dd></div><div><dt>Disputed reviews</dt><dd>{{.Summary.Disputed}}</dd></div></dl>
+    <p class="small muted">These counts describe saved activity, not mastery, predicted retention, or learning gains.</p>
+    <a href="/export" class="button" hx-boost="false" download>Download personal export</a>
+    <p class="small muted">Portable JSON includes saved inputs, question versions, reviews, corrections, and schedules. Downloading does not change your session. Store the file privately; it contains your learning material, but no service secrets.</p>
+  </section>
+  <section class="settings-section" aria-labelledby="generation-heading"><h2 id="generation-heading">Generation and spend</h2>
+    <p class="spend-line">{{money .Summary.CostMicros}} <span>accounted usage and reservations</span></p>
+    {{if .Summary.CostUnknown}}<p class="message">This includes pending or unknown provider usage at its reserved allowance. Actual provider charges may differ; failed or interrupted work is not assumed to be free.</p>{{end}}
+    <p>Actual job attempts, reservations, partial output, and failures are visible on each saved input. Generation never runs on the answer-grading path.</p>
+    {{if .RecordedModels}}<h3>Models recorded by saved jobs</h3><ul class="model-list">{{range .RecordedModels}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>No model is recorded by a saved job yet. This is not confirmation that a provider is configured or reachable.</p>{{end}}
+    <p class="small muted">The provider and spending ceiling are set in the service configuration, not in this page. A recorded model identifies past work; it is not a promise about the next job.</p>
+    <a href="/library">Inspect saved jobs</a>
+  </section>
+  <section class="settings-section" aria-labelledby="backup-heading"><h2 id="backup-heading">Recovery</h2>
+    {{if .Summary.LastBackup}}{{$backup := .Summary.LastBackup}}
+      <p>Latest recorded backup attempt: <time datetime="{{timeISO $backup.CreatedAt}}" data-local-time>{{timeText $backup.CreatedAt}}</time>.</p>
+      {{if .BackupStale}}<p class="message">This backup record is more than 24 hours old. Recent changes may not be covered; inspect a completed snapshot before relying on it.</p>{{end}}
+      {{if $backup.Remote}}<p class="backup-good">This snapshot was uploaded and read back with a matching checksum.</p>{{else if $backup.Path}}<p class="message">A local archive was recorded, but this backup is not confirmed off-VM. A local file alone will not protect against losing the VM.</p>{{else}}<p class="message">This attempt did not record a completed archive. An earlier backup may exist; check the recovery location rather than treating this attempt as protection.</p>{{end}}
+      {{if $backup.Error}}<p class="preserve">{{$backup.Error}}</p>{{end}}
+      {{if $backup.Path}}<dl class="facts"><div><dt>Recorded archive bytes</dt><dd>{{$backup.Bytes}}</dd></div></dl>
+      {{if $backup.SHA256}}<details><summary>Archive checksum</summary><code class="checksum">{{$backup.SHA256}}</code></details>{{end}}{{end}}
+    {{else}}<p class="message">No completed backup is recorded. Do not assume this VM or a local database file is a recovery plan.</p>{{end}}
+    <p class="small muted">A verified snapshot is not a completed restore drill. Recovery location, retention, and service configuration are managed by the operator. Restored uncertain jobs stay paused until explicitly reconciled.</p>
+  </section>
+  <section class="settings-section" aria-labelledby="privacy-heading"><h2 id="privacy-heading">Private access</h2>
+    <p>Every application request requires the approved private identity. Scry does not store browser history snapshots or an offline answer queue.</p>
+    <p>To sign out or switch accounts, use exe's account controls for this application address. Scry cannot sign out your upstream exe account from here.</p>
+    <p class="small muted">Archiving is not erasure. It stops future selection while preserving historical evidence and backups. Full erasure and backup retention are separate operator decisions.</p>
+  </section>
+  <details class="settings-section"><summary>Browser dependency license</summary><p>HTMX 2.0.10 is served from this application under the <a href="/assets/htmx-LICENSE" hx-boost="false">Zero-Clause BSD license</a>. Typography uses your device's local system font; no font or script is fetched from a third-party CDN.</p></details>
+</section>{{end}}

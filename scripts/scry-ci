@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""One host/Dagger Go gate; export only the binary that passed isolated smoke."""
+import argparse
+from datetime import datetime, timezone
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from scry_smoke import smoke  # noqa: E402
+
+RECOVERY_CONTRACTS = (
+    "scripts/scry-ops.test.py",
+    "bin/install-scry-backup.test.py",
+    "bin/retention-preflight.test.py",
+    "bin/scry-backup-freshness.test.py",
+    "bin/scry-restore.test.py",
+    "bin/scry-backup-alert.test.py",
+)
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def run(command, *, cwd, env=None, data=None, log=None):
+    command = [str(arg) for arg in command]
+    print("+ " + " ".join(command), flush=True)
+    result = subprocess.run(command, cwd=cwd, env=env, input=data, capture_output=True)
+    output = result.stdout + result.stderr
+    if output:
+        print(output.decode(errors="replace"), end="", flush=True)
+    if log:
+        with log.open("ab") as stream:
+            stream.write(("+ " + " ".join(command) + "\n").encode() + output)
+    require(result.returncode == 0, f"command failed ({result.returncode}): {command[0]}")
+    return result.stdout
+
+
+def environment():
+    # Do not forward application, cloud, model, proxy or Git credential variables.
+    allowed = ("PATH", "HOME", "TMPDIR", "GOCACHE", "GOMODCACHE")
+    result = {key: os.environ[key] for key in allowed if key in os.environ}
+    result.update({
+        "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
+        "GOENV": "off", "GOWORK": "off", "GOFLAGS": "", "GOTOOLCHAIN": "local",
+        "GOOS": "linux", "GOARCH": "amd64", "GOAMD64": "v1", "CGO_ENABLED": "0",
+        "GOPROXY": "https://proxy.golang.org,direct", "GOSUMDB": "sum.golang.org",
+    })
+    return result
+
+
+def excluded(path):
+    parts = Path(path).parts
+    if parts[0] in {".git", ".tmp", "target", "dist", "node_modules", ".wrangler", "data", "scry"}:
+        return True
+    if path.startswith(".dagger/sdk/"):
+        return True
+    return any(part == ".env" or (part.startswith(".env.") and part != ".env.example")
+               or part == ".dev.vars" or part.startswith(".dev.vars.") for part in parts)
+
+
+def inventory(root, object_format):
+    result = []
+    for parent, directories, names in os.walk(root, followlinks=False):
+        for name in directories[:]:
+            if (Path(parent) / name).is_symlink():
+                directories.remove(name)
+                names.append(name)
+        for name in names:
+            file = Path(parent) / name
+            relative = file.relative_to(root).as_posix()
+            require(not excluded(relative), f"excluded local state in source: {relative}")
+            info = file.lstat()
+            if stat.S_ISLNK(info.st_mode):
+                target = os.readlink(file)
+                require(not os.path.isabs(target), f"absolute source symlink: {relative}")
+                require(file.resolve().is_relative_to(root.resolve()) and file.exists(),
+                        f"source symlink escapes snapshot or has an excluded target: {relative}")
+                data, mode = os.fsencode(target), "120000"
+            else:
+                require(stat.S_ISREG(info.st_mode), f"source is not a regular file: {relative}")
+                data = file.read_bytes()
+                mode = "100755" if info.st_mode & 0o111 else "100644"
+            blob = hashlib.new(object_format, b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+            result.append({"path": relative, "mode": mode, "sha256": digest(data), "git_blob": blob})
+    return sorted(result, key=lambda item: item["path"])
+
+
+def revision(metadata):
+    commit = metadata["git_revision"]
+    require(re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit), "invalid Git revision")
+    require(metadata["source_state"] in {"committed", "worktree"}, "invalid source state")
+    if metadata["source_state"] == "committed":
+        return commit
+    return f"worktree-{commit[:12]}-{metadata['source_sha256'][:16]}"
+
+
+def snapshot(root, destination):
+    def git(*args, data=None):
+        result = subprocess.run(["git", "-C", str(root), *args], input=data, capture_output=True)
+        require(result.returncode == 0, "cannot establish local Git source provenance")
+        return result.stdout
+
+    head = git("rev-parse", "--verify", "HEAD").decode().strip()
+    object_format = git("rev-parse", "--show-object-format").decode().strip()
+    entries = git("ls-tree", "-rz", "--full-tree", head).split(b"\0")
+    committed = {}
+    for entry in filter(None, entries):
+        header, name = entry.split(b"\t", 1)
+        mode, kind, blob = header.decode().split()
+        require(kind == "blob", "submodules are not supported release source")
+        committed[os.fsdecode(name)] = (mode, blob)
+    paths = {os.fsdecode(name) for name in git("ls-files", "-z", "--cached", "--others", "--exclude-standard").split(b"\0") if name}
+    candidates = sorted(paths | committed.keys())
+    ignored = subprocess.run(
+        ["git", "-C", str(root), "check-ignore", "--no-index", "-z", "--stdin"],
+        input=b"\0".join(os.fsencode(path) for path in candidates) + b"\0", capture_output=True,
+    )
+    require(ignored.returncode in (0, 1), "cannot establish source ignore policy")
+    omitted = {os.fsdecode(path) for path in ignored.stdout.split(b"\0") if path}
+    admitted = {path for path in candidates if path not in omitted and not excluded(path)}
+    source = destination / "source"
+    source.mkdir()
+    for name in sorted(paths & admitted):
+        original, copied = root / name, source / name
+        if not original.exists() and not original.is_symlink():
+            continue  # A deleted tracked file makes the snapshot a worktree, not HEAD.
+        require(original.resolve().is_relative_to(root), f"source path escapes repository: {name}")
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        if original.is_symlink():
+            copied.symlink_to(os.readlink(original))
+        else:
+            require(original.is_file(), f"unsupported source entry: {name}")
+            shutil.copyfile(original, copied)
+            copied.chmod(0o755 if original.stat().st_mode & 0o111 else 0o644)
+    files = inventory(source, object_format)
+    actual = {item["path"]: (item["mode"], item["git_blob"]) for item in files}
+    expected = {path: value for path, value in committed.items() if path in admitted}
+    clean = not git("status", "--porcelain=v1", "-z", "--untracked-files=all") and actual == expected
+    metadata = {
+        "format": "scry-release-source-v1", "git_revision": head,
+        "git_object_format": object_format, "source_state": "committed" if clean else "worktree",
+        "source_sha256": digest(encoded(files)), "files": files,
+    }
+    metadata["revision"] = revision(metadata)
+    (destination / "source.json").write_bytes(encoded(metadata))
+    return metadata
+
+
+def verify_source(source, metadata):
+    require(metadata["format"] == "scry-release-source-v1", "unsupported source manifest")
+    require(inventory(source, metadata["git_object_format"]) == metadata["files"],
+            "source no longer matches the supplied inventory")
+    require(digest(encoded(metadata["files"])) == metadata["source_sha256"], "source checksum mismatch")
+    require(revision(metadata) == metadata["revision"], "source revision label mismatch")
+
+
+def recovery(source, env, log=None):
+    for script in RECOVERY_CONTRACTS:
+        run([sys.executable, script], cwd=source, env=env, log=log)
+
+
+def archive_source(source, metadata, output):
+    def normalize(info):
+        info.uid = info.gid = info.mtime = 0
+        info.uname = info.gname = ""
+        return info
+
+    with output.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+        with tarfile.open(fileobj=compressed, mode="w") as archive:
+            for item in metadata["files"]:
+                archive.add(source / item["path"], arcname=item["path"], recursive=False, filter=normalize)
+
+
+def gate(args):
+    source, output = args.source.resolve(), args.out.resolve()
+    metadata = json.loads(args.metadata.read_bytes())
+    verify_source(source, metadata)
+    require(platform.system() == "Linux" and platform.machine() in {"x86_64", "amd64"},
+            "exact Linux amd64 smoke requires Linux amd64; use ci:full on other hosts")
+    output.mkdir(parents=True, exist_ok=False)
+    env, log = environment(), output / "gate.log"
+    go_version = run(["go", "version"], cwd=source, env=env, log=log).decode().strip()
+    require(go_version == "go version go1.27.1 linux/amd64", "Go 1.27.1 is required; use ci:full for the pinned toolchain")
+    node_version = run(["node", "--version"], cwd=source, env=env, log=log).decode().strip()
+    require(int(node_version.lstrip("v").split(".")[0]) >= 22, "Node >=22 is required for syntax checks")
+    go_files = [item["path"] for item in metadata["files"]
+                if item["path"].startswith(("cmd/", "internal/")) and item["path"].endswith(".go")]
+    require(go_files, "no Go application source")
+    unformatted = run(["gofmt", "-l", *go_files], cwd=source, env=env, log=log)
+    require(not unformatted.strip(), "Go formatting differs; run gofmt on the listed files")
+    for command in (["go", "test", "-count=1", "-mod=readonly", "./..."],
+                    ["go", "vet", "-mod=readonly", "./..."],
+                    ["node", "--check", "internal/web/assets/app.js"],
+                    ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"],
+                    ["node", "--check", "deploy/backup-gateway/worker.mjs"]):
+        run(command, cwd=source, env=env, log=log)
+    for script in sorted(source.glob("deploy/*.sh")):
+        run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
+    recovery(source, env, log)
+    binary = output / "scry"
+    build = ["go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
+             "-ldflags", f"-X main.revision={metadata['revision']}", "-o", str(binary), "./cmd/scry"]
+    run(build, cwd=source, env=env, log=log)
+    build_info = run(["go", "version", "-m", binary], cwd=source, env=env, log=log)
+    for setting in (b"CGO_ENABLED=0", b"GOOS=linux", b"GOARCH=amd64"):
+        require(b"\t" + setting + b"\n" in build_info, f"binary is missing build setting {setting.decode()}")
+    binary_sha256 = digest(binary.read_bytes())
+    proof = smoke(binary, source, output, metadata["revision"])
+    require(digest(binary.read_bytes()) == binary_sha256, "smoke changed the release binary")
+    verify_source(source, metadata)
+    archive_source(source, metadata, output / "source.tar.gz")
+    (output / "source.json").write_bytes(encoded(metadata))
+    (output / "build-info.txt").write_bytes(build_info)
+    shutil.copyfile(args.secrets_proof, output / "gitleaks.txt")
+    proof.update({
+        "format": "scry-release-proof-v1", "revision": metadata["revision"],
+        "source_state": metadata["source_state"], "source_sha256": metadata["source_sha256"],
+        "binary_sha256": binary_sha256, "build_command": build,
+        "build_environment": {key: env[key] for key in ("GOOS", "GOARCH", "GOAMD64", "CGO_ENABLED", "GOTOOLCHAIN")},
+        "go_version": go_version, "node_version": node_version,
+        "checks": ["gofmt", "go test", "go vet", "browser/gateway JavaScript syntax", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
+    })
+    (output / "proof.json").write_bytes(encoded(proof))
+    files = sorted(path for path in output.iterdir() if path.is_file())
+    (output / "SHA256SUMS").write_text("".join(f"{digest(path.read_bytes())}  {path.name}\n" for path in files))
+    print(f"PASS {metadata['revision']} sha256:{binary_sha256}")
+
+
+def delivery(args):
+    root = Path(__file__).resolve().parent.parent
+    with tempfile.TemporaryDirectory(prefix="scry-ci-") as temporary:
+        work = Path(temporary)
+        package = work / "input"
+        package.mkdir()
+        metadata = snapshot(root, package)
+        require(not args.require_committed or metadata["source_state"] == "committed",
+                "release requires committed source; commit the actual source before running hosted release CI")
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        output = (args.out or root / "target" / "releases" / f"{metadata['revision']}-{run_id}").resolve()
+        require(not output.exists(), f"artifact destination already exists; choose a new --out: {output}")
+        if args.command == "full":
+            # Dagger codegen has its own copy; it must not mutate frozen build input.
+            module = work / "module"
+            module.mkdir()
+            shutil.copyfile(package / "source/dagger.json", module / "dagger.json")
+            shutil.copytree(package / "source/.dagger", module / ".dagger")
+            run(["dagger", "-m", module, "call", "check", "--source", package,
+                 "export", "--path", output], cwd=root)
+        else:
+            env = environment()
+            version = run(["gitleaks", "version"], cwd=root, env=env).decode().strip()
+            require(version == "8.30.1", "Gitleaks 8.30.1 is required; use ci:full for pinned tooling")
+            scan = subprocess.run(["gitleaks", "dir", str(package / "source"), "--redact", "--no-banner"],
+                                  cwd=root, env=env, capture_output=True)
+            scan_output = scan.stdout + scan.stderr
+            print(scan_output.decode(errors="replace"), end="")
+            require(scan.returncode == 0, "redacted Gitleaks scan failed")
+            secrets_proof = work / "gitleaks.txt"
+            secrets_proof.write_bytes(scan_output)
+            run([sys.executable, package / "source/scripts/scry-ci", "gate",
+                 "--source", package / "source", "--metadata", package / "source.json",
+                 "--secrets-proof", secrets_proof, "--out", output], cwd=package / "source", env=env)
+        print(f"Release artifact: {output}\nSource state: {metadata['source_state']}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name in ("local", "full"):
+        command = commands.add_parser(name, help="check and export the exact binary (destination must be unused)")
+        command.add_argument("--out", type=Path)
+        command.add_argument("--require-committed", action="store_true")
+    commands.add_parser("recovery", help="run only the retained historical recovery contracts")
+    command = commands.add_parser("gate", help="internal shared gate over a frozen, inventoried source package")
+    for name in ("source", "metadata", "secrets-proof", "out"):
+        command.add_argument("--" + name, type=Path, required=True)
+    args = parser.parse_args()
+    if args.command == "gate":
+        gate(args)
+    elif args.command == "recovery":
+        recovery(Path(__file__).resolve().parent.parent, environment())
+    else:
+        delivery(args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError) as error:
+        sys.exit(f"scry-ci: {error}")
