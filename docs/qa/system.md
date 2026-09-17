@@ -3,7 +3,30 @@
 The current application is Go/SQLite/HTMX on private exe.dev ingress. Choose
 proof for the changed behavior; a build, a fixture, a browser observation, a
 live provider result, and physical-phone acceptance establish different things.
-`SPEC.md` owns acceptance. The runbook owns live authority and recovery.
+[VISION](../../VISION.md) owns product intent, [SPEC](../../SPEC.md) owns
+acceptance, and [the runbook](../runbook.md) owns deployment/recovery procedures.
+Linear owns current work ownership, status, and pause; a procedure or old receipt
+does not grant permission to execute it.
+
+## Choose proof before running checks
+
+Start with the authorized changed surface and the claim to establish, not the
+largest available gate:
+
+1. Read the owning criterion/design direction and existing
+   [dated evidence](#evidence-and-historical-material). Reuse evidence whose
+   source/artifact, environment, and exercised behavior still cover the claim;
+   name any changed boundary that invalidates it rather than repeating unrelated
+   paid, browser, or recovery work.
+2. For prose-only design changes, review meaning, source links, authority, and
+   the proposed journey/stop boundary. Keep operator direction distinct from
+   unaccepted proposals and current commands. Native document readback is proof
+   of those edits; tests, models, VMs, and deployment are not needed by default.
+3. For authorized runtime changes, choose the [focused proof](#focused-checks)
+   below; use the exact-binary gate for a release claim. Neither a green gate
+   nor another live request resolves the operator's
+   [September 12 foundations rejection](../design/concept-centered-study.md#operator-findings-and-direction).
+   Reuse functional evidence without calling the experience useful or approved.
 
 ## Repository gate and release artifact
 
@@ -39,6 +62,7 @@ exclusive-create. A successful process launch is not release evidence: inspect
 
 | Changed area | Useful existing checks | Additional real proof |
 | --- | --- | --- |
+| Design/prose only | Meaning, relative-link and authority review; native readback | Operator design agreement when sought; no runtime claim or default test/model/VM exercise |
 | Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
 | Generation | `go test ./internal/generation` | One bounded, authorized live request on representative material; inspect provenance, coverage, rejections, and actual spend |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
@@ -187,6 +211,11 @@ state, next availability and Library must agree on completion plus 24 hours.
 Compare all FSRS bytes before/after warm work. A deliberate reset or newer real
 review must override old consumption; explicit Reveal retains assisted/Again.
 A paused unknown foundation job retains allowance and never auto-retries.
+Do not confuse retrying a saved browser operation after response loss with
+resending paid provider work. For an unknown provider outcome, keep the job and
+reservation intact and hand off through the runbook's
+[generation/spending boundary](../runbook.md#generation-and-spending); no fresh
+request or manual charge release is authorized by a QA interruption.
 
 Repeat Too advanced on the same occurrence with an edited draft; reload/restart
 must retain the latest acknowledgment. Replay an older exact operation and send
@@ -221,11 +250,18 @@ Prove the retained v1 snapshot/compatible-binary recovery path described in the
 runbook; never overwrite a live DB to demonstrate rollback.
 
 Local provider-boundary fixtures prove serialization, publication, failure,
-reservation and retry mechanics ONLY. Live selected-provider material quality,
-operator usefulness, actual private ingress/phone access, independent review,
-final exact-binary gate, fresh off-VM backup and protected activation remain
-UNVERIFIED until their separate authorized exercises. This slice does not test
-or claim MIS-60–63's unimplemented planner/estimator behavior.
+reservation and retry mechanics ONLY. The
+[September 11 rollout receipt](foundation-rollout-20260911.json), particularly
+`authorized_live_followup`, records bounded selected-provider generation,
+native private-browser interaction, and off-VM restore of the new records
+through private UI on the exact deployed binary. Its earlier blockers and
+historical PASS/UNVERIFIED fields remain dated observations, not current status.
+The operator subsequently rejected the foundations experience; see
+[current product direction](../../VISION.md) and the
+[design assessment](../design/concept-centered-study.md#operator-findings-and-direction).
+Technical success does not reverse that assessment or authorize further work.
+This slice does not test or claim MIS-60–63's unimplemented planner/estimator
+behavior.
 
 ## Independent recovery
 
@@ -259,9 +295,18 @@ S09.2 remains unverified for a different exe account. Global logout kept private
 content hidden; history return encountered an upstream authentication redirect
 loop, while fresh navigation reached sign-in. Do not substitute a VM token,
 local owner-header fixture, or global logout for a second-account observation.
-S04.2/AI1 also await operator material-usefulness review. The receipt enumerates
-all seven candidate quality contracts, including unmeasured p95 and full
-text-zoom/accessibility coverage; functional checks do not silently pass them.
+The receipt's pending S04.2/AI1 review describes its date, not the latest
+foundations assessment. [Current acceptance](../../SPEC.md) distinguishes that
+negative operator assessment from general generated-material usefulness, which
+is not established. The receipt enumerates all seven candidate quality
+contracts, including unmeasured p95 and full text-zoom/accessibility coverage;
+functional checks do not silently pass them.
+
+[The September 11 foundation rollout receipt](foundation-rollout-20260911.json)
+adds exact-binary activation and bounded live provider/browser/new-record
+recovery evidence. Read `authorized_live_followup` alongside its explicitly
+retained earlier observations. Both temporary VM-scoped QA tokens were revoked;
+that exercise supplies evidence, not reusable credentials or fresh authority.
 
 Dated Rust/Cloudflare, beta, dogfood, performance, and generation receipts remain
 historical evidence. Their old commands require the corresponding historical

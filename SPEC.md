@@ -21,6 +21,15 @@ accepted direction: smooth, simple, aesthetically intentional, and enhanced by
 AI content generation. Full execution was authorized. The initial real-phone
 flow was subsequently approved, followed by the daily recovery policy below.
 
+**Latest foundations assessment (2026-09-12):** the operator tried the experience
+and rejected it as bad, awkward, and clunky; this is not merely unreviewed
+usability. They called for a product-design reset before regrouping and further
+implementation. [Concept-centered study](docs/design/concept-centered-study.md)
+captures operator direction, assistant-only proposals, unresolved choices, and a
+proposed design-review journey—not accepted behavior or build authorization.
+Earlier phone approval applies only to the earlier flow. MIS-59 owns this pause;
+historical receipts, stable criteria, and existing safeguards remain unchanged.
+
 **Implemented and accepted defaults:** tap-choice and short cued recall; reveal
 marks the occurrence assisted; one question stage with held feedback and
 deliberate Next; daily and pre-release off-VM snapshots with 30-day new-app
@@ -40,9 +49,11 @@ exactly and the restored Review UI rendered. Approximately 117 seconds elapsed
 through private HTTPS on an existing recovery VM; provisioning and DNS recovery
 were not timed, and the synthetic rehearsal received no production integrations.
 
-**Still unverified:** operator review of generated-material usefulness (S04.2)
-and switching to another exe account with private-history return (S09.2).
-Global sign-out hid private content, but history return hit an upstream
+**Open acceptance:** generated-material usefulness (S04.2) is not generally
+established; the foundations experience now has the negative operator assessment
+above, not just pending review. This does not judge all generation quality.
+Switching to another exe account with private-history return (S09.2) remains
+unverified. Global sign-out hid private content, but history return hit an upstream
 authentication redirect loop; fresh navigation reached sign-in. MIS-48 remains
 open. Proposed p95/accessibility budgets and held-out AI acceptance are recorded
 separately in the receipt, not inferred from phone-flow approval. Future material
@@ -516,14 +527,17 @@ retention and recovery time; no provider SLA is asserted here.
 
 ## Foundation detour: MIS-59
 
-This bounded implementation follows accepted knowledge-centered direction:
-durable instructional/reference material, exact material/unit coverage, and a
-retained target with a useful bridge back. It is not the remaining knowledge
-engine. MIS-60–63 (capture-time preparation, cross-item evidence, estimates, and
-broader planning) remain separate unimplemented work. The original S01–S10
-criteria and historical observations are unchanged. Local implementation is not
-a claim of shipped capability, usefulness, private-ingress acceptance, or learning
-gain.
+The bounded implementation below records the existing foundations contract,
+not an approved future experience. On 2026-09-12 the operator rejected its
+usability and requested design regroup before further engineering or closure.
+[Concept-centered study](docs/design/concept-centered-study.md) distinguishes the
+new operator direction from unaccepted proposals; its concept model does not
+silently replace these implementation details or settle a new warmth policy.
+MIS-59 owns the pause and remaining acceptance. MIS-60–63 (capture-time preparation,
+cross-item evidence, estimates, and broader planning) remain separate unimplemented
+work. Original S01–S10/KC identifiers, historical observations, and technical
+release facts remain unchanged. Implementation and technical proof are not
+operator usefulness acceptance or evidence of learning gain.
 
 ### Durable contract
 
@@ -635,9 +649,15 @@ A ready ticket contains:
   before edits. Parallel agents own independent slices, not the same mutation.
 - Authorized environment/data/capabilities/spend and the evidence needed to close.
 
-The issue owns execution state. PRs own change explanation and evidence links.
-Neither becomes a second spec. Fixing a technical dependency can close its ticket
-without closing the parent story; its missing criteria remain explicit.
+The issue owns execution state: current owner, accepted scope and open choices,
+pause/blocker, and next permitted action. On interruption or handoff, retain the
+selected checkout/worktree and committed base, identify relevant uncommitted
+work, and link the exact tested revision/artifact and its evidence limitations.
+PRs own change explanation and evidence links. Keep durable decisions in their
+owning spec/design sections and link them; neither issue nor PR becomes a second
+spec or a pasted session transcript. An In Progress status or earlier approval
+does not override a later operator pause. Fixing a technical dependency can close
+its ticket without closing the parent story; its missing criteria remain explicit.
 
 ## Agent engineering and independent QA
 

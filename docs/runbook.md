@@ -2,10 +2,18 @@
 
 ## Current authority
 
-Scry is one private Go process and SQLite database on **`scry-app.exe.xyz`**.
-The canonical application is **https://scry.study**. The operator approved the
-earlier phone flow and daily-backup policy; the MIS-59 foundation phone flow and
-material usefulness remain unverified. `www.scry.study` and `scry-app.exe.xyz`
+This runbook owns deployment/recovery procedures, not product acceptance or
+permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
+current intent and acceptance; Linear owns current owner, status, and pause.
+The [September 12 operator assessment](design/concept-centered-study.md#operator-findings-and-direction)
+rejects the foundations experience and calls for design reset, not another
+technical gate. Earlier phone-flow approval does not cover that experience.
+
+The recorded production baseline below is from the
+[September 11 rollout and live QA receipt](qa/foundation-rollout-20260911.json),
+not a fresh runtime probe. Scry is one private Go process and SQLite database
+on **`scry-app.exe.xyz`**. The canonical application is **https://scry.study**.
+`www.scry.study` and `scry-app.exe.xyz`
 redirect reads to that origin; mutations on aliases are rejected, not replayed.
 The old Worker is not the live learner store. `scry-dev.exe.xyz` remains an
 isolated development/recovery environment, not a second production writer; its
@@ -21,13 +29,13 @@ restored rehearsal service is stopped/disabled.
 | DNS | Existing DigitalOcean `scry.study` zone; exe.dev handles custom-domain TLS and private ingress |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-The active release is `mis59-4e13cafef7c3`, compiled from committed revision
+The release observed on September 11 was `mis59-4e13cafef7c3`, compiled from committed revision
 `4e13cafef7c3e7eac1c6f6fbd1fa8e5bfbc087df`. The retained, smoke-tested binary's
 SHA-256 is `79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08`.
 September 11 protected activation required the previous binary's fresh off-VM
 backup and matching readback, then migrated schema 1 to 2. Every pre-existing
 learning/history/schedule/operation/job export section remained equal; new
-backup receipts are accounted separately. The actual process is active/enabled
+backup receipts are accounted separately. The actual process was active/enabled
 as `scry`, bound to loopback port 8080, with that executable checksum and readiness.
 The prior `mis48-e0274bc916de` binary is retained but cannot run the upgraded DB.
 Evidence-only documentation commits do not relabel or replace the compiled binary.
@@ -49,13 +57,16 @@ revoked through exe authority; each prior token then returned 401 and its
 fingerprint was absent from the authority list. No login/global-logout or
 different-account acceptance is implied.
 
-Machine review found substantive instruction/diagram, but warm practice repeats
-the original multiple-choice answer and four options rather than isolating a
-simpler prerequisite. Appropriate practice and operator usefulness are NOT
-accepted. The optional reference path was absent, not invented or fetched.
-Physical-phone foundation acceptance remains unverified. The operator can open
-the saved real material from canonical `https://scry.study/foundations` using
-their normal private login; no QA token is needed or retained.
+The September 11 machine review found substantive instruction/diagram, but warm
+practice repeated the original multiple-choice answer and four options rather
+than isolating a simpler prerequisite. Appropriate practice and usefulness were
+not accepted; the optional reference path was absent, not invented or fetched.
+The later operator rejection is recorded in the
+[design assessment](design/concept-centered-study.md#operator-findings-and-direction),
+not an outstanding blanket request to rerun QA or obtain phone sign-off. Saved
+material is at canonical `https://scry.study/foundations` under normal private
+login. The revoked QA tokens and earlier permission are not authority for a new
+exercise.
 
 There is no public signup, magic-link mail, separate frontend, public service
 session, maintained legacy CLI/MCP contract, or second application database.
@@ -123,6 +134,25 @@ path with the snapshot's compatible binary. Preserve the upgraded database and
 post-snapshot writes; quantify and obtain acknowledgment of any loss before
 switching a restored instance into service. Never overwrite the live DB or allow
 two writers.
+
+If activation fails or its response is lost, do not infer the running release
+from source HEAD, the `current` link, or a missing response alone. The
+[failure trap](../deploy/activate.sh) leaves the service stopped when no verified
+compatible rollback is available; preserve that boundary rather than forcing
+the old binary to start. In the existing work record, hand off candidate/prior
+release IDs and checksums, the pre-release archive/readback reference, schema
+check result, and last observed process/readiness state, separating unknowns
+from observations. The current work owner retains the stopped-release decision.
+Resume compatible activation or the [isolated restore procedure](#independent-restore)
+only within existing explicit authority; obtain a new operator decision when
+recovery or potential data loss exceeds it. Procedures do not extend that grant.
+
+For an authorized compatibility inspection, use the intended binary's existing
+`check --db PATH`, not `export`. The CLI's
+[`export`](../cmd/scry/main.go) opens through
+[`store.Open`](../internal/store/store.go): it can create a database, migrate
+schema 1 to 2, and set WAL mode. It is not a read-only schema probe and must not
+be used to investigate an untouched pre-upgrade DB.
 
 For a rehearsal, preserve a populated v1 snapshot and its exact compatible
 binary, run candidate `check` and verify the v1 schema/data remain unchanged,
@@ -195,6 +225,16 @@ reservations remain accounted. There is no automated provider reconciliation or
 UI action to discard an unknown charge. Keep ordinary review available, inspect
 the provider outcome, and obtain separate operator authority before any manual
 reconciliation. Source/quiz revision changes or archive prevent stale publication.
+
+On interruption, hand off the saved foundation/job identity, last recorded
+status/error, known cost versus retained reservation, and any provider receipt
+reference through the existing work record (private content stays private).
+The current work owner needs a provider outcome and explicit operator authority
+before selecting any manual reconciliation; if either is missing, leave the
+job paused and reservation intact. The
+[current CLI](../cmd/scry/main.go) supplies no reconciliation command, and the
+[foundation retry control](../internal/store/foundation.go) rejects unknown-cost
+work. Do not turn “reconcile explicitly” into an invented command or database edit.
 
 Warm target completion consumes practice availability for 24 hours from its
 persisted rating-zero assisted completion, only while content and schedule
@@ -293,7 +333,7 @@ private ingress returned sign-in. Foundation tables were empty because real
 generation access was unavailable: this is not off-VM proof for newly generated
 foundation records or a complete end-to-end RTO claim.
 
-A later authorized drill retrieved archive
+A later authorized September 11 drill retrieved archive
 `0570ca1a312b14506e50d0b5ceafb5acd4d4c7b4845330c8e9272437f890816b`
 (329,316 bytes) with the independently retained recovery authority and exact
 authenticated readback. It contains one foundation request/bundle/bridge, three
@@ -309,7 +349,7 @@ not a complete RTO claim. The transient service was stopped/collected, MainPID
 zero and no port-8080 listener; normal dev service remains stopped/disabled and
 its original DB metadata/current-release link remained unchanged. No production
 integration or recurring recovery writer was attached. Both QA tokens were
-revoked and denied afterward; production still runs the exact accepted release.
+revoked and denied afterward; production was observed on the same exact release.
 
 The September 9 drill restored the independently retrieved R2 archive on
 `scry-dev`, activated the unprivileged service, matched the private HTTPS export,
@@ -346,20 +386,25 @@ Private cutover archives and compatible binaries live under the operator's
 - [September 9–10 cutover acceptance](qa/personal-go-cutover-20260910.json):
   criterion-level browser corrections, generation, canonical activation, and
   explicit remaining identity-switch evidence.
+- [September 11 foundation rollout](qa/foundation-rollout-20260911.json):
+  protected schema-2 activation plus `authorized_live_followup` provider/browser
+  and new-record recovery evidence; earlier blockers remain historical.
 - Current exported `proof.json`: source-bound exact-binary gate; synthetic and
   without production model/recovery capability.
 - Dated September 8 Rust receipts remain historical. Do not reinterpret them
   as Go, new-domain, or current-monitor evidence.
 
-Phone approval establishes the operator's initial experience acceptance. It
-does not establish sustained use, delayed recall, availability, or unmeasured
+The September 9 phone approval establishes the operator's initial experience
+acceptance, not acceptance of the later rejected foundations flow. It does not
+establish sustained use, delayed recall, availability, or unmeasured
 DNS/provisioning recovery time.
 
 Global exe sign-out was exercised without an independent VM token. Private
 content stayed absent on history return, but that return encountered an upstream
 authentication redirect loop; a fresh canonical navigation reached sign-in.
-Switching to a different exe account remains unverified. Keep S09.2/MIS-48 open
-for that observation rather than broadening trust or assuming logout covers it.
-Operator material-usefulness acceptance also remains open under S04.2/AI1.
+Switching to a different exe account remains unverified in that receipt.
+Do not broaden trust or assume logout covers S09.2; Linear owns current work
+status. [SPEC](../SPEC.md) owns current S04.2/AI1 acceptance, including the later
+negative foundations assessment rather than merely pending usefulness review.
 The receipt records candidate performance/accessibility budgets separately;
 initial phone-flow approval is not a measured p95 or general AI-quality claim.
