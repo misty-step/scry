@@ -124,7 +124,7 @@ func (s *Store) initialize(ctx context.Context) error {
 			return fmt.Errorf("migration 1: %w", err)
 		}
 		version, app = 1, ApplicationID
-	} else if (version != 1 && version != SchemaVersion) || app != ApplicationID {
+	} else if (version < 1 || version > SchemaVersion) || app != ApplicationID {
 		return fmt.Errorf("%w: incompatible database application/schema (%d/%d), require %d/%d", ErrInvalid, app, version, ApplicationID, SchemaVersion)
 	}
 	if err = CheckSchema(ctx, tx, version); err != nil {
@@ -133,6 +133,15 @@ func (s *Store) initialize(ctx context.Context) error {
 	if version == 1 {
 		if _, err = tx.ExecContext(ctx, schemaV2); err != nil {
 			return fmt.Errorf("migration 2: %w", err)
+		}
+		version = 2
+	}
+	if version == 2 {
+		if _, err = tx.ExecContext(ctx, schemaV3); err != nil {
+			return fmt.Errorf("migration 3 DDL: %w", err)
+		}
+		if _, err = tx.ExecContext(ctx, migrationV2ToV3); err != nil {
+			return fmt.Errorf("migration 3 data: %w", err)
 		}
 	}
 	if err = tx.Commit(); err != nil {

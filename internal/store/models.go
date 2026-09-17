@@ -11,7 +11,7 @@ var (
 )
 
 const (
-	SchemaVersion       = 2
+	SchemaVersion       = 3
 	ApplicationID       = 0x53435259 // SCRY
 	MaxSourceBytes      = 32 * 1024
 	MaxGeneratedQuizzes = 60
@@ -147,4 +147,37 @@ type Summary struct {
 	CostMicros  int64         `json:"cost_micros"`
 	CostUnknown bool          `json:"cost_unknown"`
 	LastBackup  *BackupRecord `json:"last_backup"`
+}
+
+type Concept struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
+type Reference struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Format    string `json:"format"`
+	SourceURL string `json:"source_url,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+type ConceptDetail struct {
+	Concept
+	References    []Reference `json:"references,omitempty"`
+	Quizzes       []Quiz      `json:"quizzes,omitempty"`
+	Prerequisites []Concept   `json:"prerequisites,omitempty"`
+}
+
+type ReferenceDetail struct {
+	Reference
+	Concepts []Concept `json:"concepts,omitempty"`
+}
+
+type SearchResult struct {
+	Concepts   []ConceptDetail   `json:"concepts"`
+	References []ReferenceDetail `json:"references"`
 }

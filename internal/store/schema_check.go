@@ -11,7 +11,7 @@ import (
 // Version one is readable and migratable by this binary; only Open migrates it.
 // The reference database is isolated in memory and never reads or writes user data.
 func CheckSchema(ctx context.Context, tx *sql.Tx, version int) error {
-	if version != 1 && version != SchemaVersion {
+	if version < 1 || version > SchemaVersion {
 		return fmt.Errorf("%w: unsupported schema %d", ErrInvalid, version)
 	}
 	reference, err := sql.Open("sqlite", ":memory:")
@@ -23,8 +23,13 @@ func CheckSchema(ctx context.Context, tx *sql.Tx, version int) error {
 	if _, err = reference.ExecContext(ctx, schemaV1); err != nil {
 		return err
 	}
-	if version == SchemaVersion {
+	if version >= 2 {
 		if _, err = reference.ExecContext(ctx, schemaV2); err != nil {
+			return err
+		}
+	}
+	if version >= 3 {
+		if _, err = reference.ExecContext(ctx, schemaV3); err != nil {
 			return err
 		}
 	}

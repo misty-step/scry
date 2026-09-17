@@ -113,6 +113,11 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"foundation_links", "SELECT * FROM foundation_links ORDER BY material_id,material_version,unit_id,unit_version,role"},
 		{"foundation_bridges", "SELECT * FROM foundation_bridges ORDER BY id"},
 		{"foundation_interactions", "SELECT * FROM foundation_interactions ORDER BY created_at,id"},
+		{"concepts", "SELECT * FROM concepts ORDER BY created_at,id"},
+		{"references", "SELECT * FROM \"references\" ORDER BY created_at,id"},
+		{"concept_prerequisites", "SELECT * FROM concept_prerequisites ORDER BY concept_id,prerequisite_id"},
+		{"concept_references", "SELECT * FROM concept_references ORDER BY concept_id,reference_id"},
+		{"concept_quizzes", "SELECT * FROM concept_quizzes ORDER BY concept_id,quiz_id"},
 	} {
 		data, err := exportRows(ctx, tx, section.query)
 		if err != nil {
