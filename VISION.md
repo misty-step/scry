@@ -1,8 +1,12 @@
 # Scry Product Vision
 
 Status: adopted personal Go/SQLite/HTMX product direction. The operator approved
-the initial phone flow on 2026-09-09. [SPEC.md](SPEC.md) owns stories and
-acceptance; [the runbook](docs/runbook.md) owns deployed origins and recovery.
+the initial phone flow on 2026-09-09, not the later foundations experience:
+on 2026-09-12 they rejected that experience and called for a design reset before
+further implementation. [Concept-centered study](docs/design/concept-centered-study.md)
+separates the new operator direction from proposals and open choices.
+[SPEC.md](SPEC.md) owns stories and acceptance;
+[the runbook](docs/runbook.md) owns deployed origins and recovery.
 
 ## The Product
 
@@ -28,13 +32,17 @@ foundations, and uncertain context-dependent evidence rather than a single
 mastery score. That broader direction is not a shipped engine or an authorization
 to silently widen goals, spending, access, or historical-data changes.
 
-MIS-59 implements only the Too advanced detour: useful saved foundations and warm
-practice, a deliberate return to the identical retained question, and later reuse.
-Requesting help is not a failed answer; reading is not cold recall. Direct
-quiz-owned FSRS remains the scheduler baseline. Capture-time foundation planning,
-cross-item evidence/estimates, autonomous planning and suggestions remain
-unimplemented successor scope. See [SPEC.md](SPEC.md#foundation-detour-mis-59) for
-the exact bounded contract and proof still required before release.
+MIS-59's bounded Too advanced detour implements saved foundations and warm
+practice with return to the retained question. Its implemented flow is not the
+approved future experience: the operator rejected its usability. The
+[concept-centered study note](docs/design/concept-centered-study.md) records the
+quiz/reference library and concept relationships now being fleshed out, not an
+authorization to resume engineering. Requesting help is not a failed answer;
+reading is not cold recall. Direct quiz-owned FSRS remains the scheduler baseline.
+Capture-time foundation planning, cross-item evidence/estimates, autonomous
+planning and suggestions remain unimplemented successor scope. See
+[SPEC.md](SPEC.md#foundation-detour-mis-59) for the existing bounded contract;
+Linear owns the design pause and remaining acceptance.
 
 ## Experience Direction
 
