@@ -44,6 +44,15 @@ planning and suggestions remain unimplemented successor scope. See
 [SPEC.md](SPEC.md#foundation-detour-mis-59) for the existing bounded contract;
 Linear owns the design pause and remaining acceptance.
 
+On 2026-09-18 the operator set the review screen itself as the bar: one
+question, one way to answer it, one check, then the result and a single Next.
+The review surface therefore drops kind and due-count chrome, Too advanced,
+Saved-foundations links, flag/inspect controls, and schedule lectures; the one
+navigation set (Review, Add, Library, History, Settings) carries the session and
+one quiet overflow carries reveal, edit, and archive. That supersedes the
+MIS-59 review UI, not the saved-foundations backend: foundations data, jobs, and
+routes remain, reachable from the Library.
+
 ## Experience Direction
 
 The operator's bar is **TikTok-level smoothness**, with a simple interface and
