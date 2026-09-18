@@ -73,6 +73,9 @@ var reviewRemovals = []string{
 	"Inspect the question",
 	"scheduled a review for",
 	"Helped, not unaided recall",
+	// Navigation punches out; it is never an always-visible bar on review.
+	`class="utility-nav"`,
+	`<nav class="dock"`,
 }
 
 func openReviewState(t *testing.T, s *store.Store) *store.Presentation {
@@ -105,12 +108,8 @@ func TestReviewUngradedSurfaceIsQuestionAnswerAndSingleSubmit(t *testing.T) {
 		`id="recall-answer"`,
 		`name="answer"`,
 		`>Check answer</button>`,
-		// The one nav set: dock Review/Add/Library plus History/Settings.
-		`<nav class="dock" aria-label="Main navigation">`,
-		`href="/add"`,
-		`href="/library"`,
-		`href="/history"`,
-		`href="/settings"`,
+		// Navigation punches out beside the wordmark, not as an always-visible bar.
+		`<details class="menu-punchout"><summary>Menu</summary>`,
 		// Reachability moved into the one overflow, not removed.
 		`<details class="overflow">`,
 		"I don't know yet",
@@ -145,6 +144,31 @@ func TestReviewUngradedChoiceSubmitsByTapWithoutExtraControls(t *testing.T) {
 	requireAbsent(t, page, "ungraded choice surface",
 		`id="recall-answer"`, ">Check answer</button>")
 	requireAbsent(t, page, "ungraded choice surface", reviewRemovals...)
+}
+
+// TestReviewNavigationIsOnePunchOut pins the menu contract: the five
+// destinations (Review, Add, Library, History, Settings) live behind one or
+// two punch-out controls, and the review document never ships the
+// always-visible dock plus utility-nav combo.
+func TestReviewNavigationIsOnePunchOut(t *testing.T) {
+	_, app := privateApp(t)
+	cookie, _, _ := bootstrapForm(t, app)
+	page := reviewPage(t, app, cookie)
+	// The always-visible combo is gone from the review document.
+	requireAbsent(t, page, "review nav", `<nav class="dock"`, `class="utility-nav"`)
+	// One or two punch-out controls, not zero.
+	if count := strings.Count(page, `<details class="menu-punchout">`); count < 1 || count > 2 {
+		t.Fatalf("menu punch-out controls = %d, want 1 or 2", count)
+	}
+	// All five destinations are inside the punch-out nav.
+	requirePresent(t, page, "review nav",
+		`<nav aria-label="Main menu">`,
+		`href="/"`, `>Review</a>`,
+		`href="/add"`, `>Add</a>`,
+		`href="/library"`, `>Library</a>`,
+		`href="/history"`, `>History</a>`,
+		`href="/settings"`, `>Settings</a>`,
+	)
 }
 
 func TestReviewResultShowsOutcomeAndNextOnly(t *testing.T) {

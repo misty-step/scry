@@ -43,9 +43,10 @@ Criteria:
    contain "Too advanced", "Saved foundations", "Fix or inspect", or "Stop
    reviewing this question", and MUST NOT remove reveal, edit, or archive from
    the review surface.
-5. THE review session's navigation SHALL be one set (Review, Add, Library,
-   History, Settings) and no second navigation set SHALL appear on the review
-   surface.
+5. WHEN I am reviewing, THE review document MUST NOT show Review, Add,
+   Library, History, or Settings as always-visible links or bars; those five
+   destinations MUST be reachable from at most two punch-out controls (a Menu
+   control beside the wordmark) on the review surface.
 
 No-gos: no MIS-59 foundations UX rebuild, no grading or scheduler behavior
 change, no removal of foundations data or routes, no restyle of pages outside

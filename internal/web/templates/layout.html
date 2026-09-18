@@ -35,7 +35,14 @@
 {{define "main"}}<div id="main" data-view="{{.View}}" data-title="{{.Title}}" data-http-status="{{.Status}}" hx-history="false">
   <header class="masthead">
     <a class="wordmark" href="/" aria-label="Scry review">scry<span class="wordmark-dot" aria-hidden="true"></span></a>
-    {{if ne .View "access"}}<nav class="utility-nav" aria-label="Account and history">
+    {{if eq .View "review"}}<details class="menu-punchout"><summary>Menu</summary><nav aria-label="Main menu">
+      <a href="/" {{if eq .Active "review"}}aria-current="page"{{end}}>Review</a>
+      <a href="/add" {{if eq .Active "add"}}aria-current="page"{{end}}>Add</a>
+      <a href="/library" {{if eq .Active "library"}}aria-current="page"{{end}}>Library</a>
+      <a href="/history" {{if eq .Active "history"}}aria-current="page"{{end}}>History</a>
+      <a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a>
+    </nav></details>
+    {{else if ne .View "access"}}<nav class="utility-nav" aria-label="Account and history">
       <a href="/history" {{if eq .Active "history"}}aria-current="page"{{end}}>History</a>
       <a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a>
     </nav>{{end}}
@@ -57,7 +64,7 @@
     {{else if eq .View "access"}}<section class="empty-stage"><h1 tabindex="-1" data-focus>Private access required</h1><p>Open the private application address and sign in with the approved exe account. This page does not grant access to your learning material.</p><a href="/" class="button" hx-boost="false">Check access again</a></section>
     {{else}}<section class="empty-stage"><h1 tabindex="-1" data-focus>{{.Title}}</h1><div class="actions"><a class="button" href="/">Return to review</a><a href="/library">Open library</a></div></section>{{end}}
   </main>
-  {{if ne .View "access"}}<nav class="dock" aria-label="Main navigation">
+  {{if and (ne .View "access") (ne .View "review")}}<nav class="dock" aria-label="Main navigation">
     <a href="/" {{if eq .Active "review"}}aria-current="page"{{end}}>Review</a>
     <a href="/add" {{if eq .Active "add"}}aria-current="page"{{end}}>Add</a>
     <a href="/library" {{if eq .Active "library"}}aria-current="page"{{end}}>Library</a>
