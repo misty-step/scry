@@ -214,7 +214,9 @@ def gate(args):
                     ["go", "vet", "-mod=readonly", "./..."],
                     ["node", "--check", "internal/web/assets/app.js"],
                     ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"],
-                    ["node", "--check", "deploy/backup-gateway/worker.mjs"]):
+                    ["node", "--check", "deploy/backup-gateway/worker.mjs"],
+                    ["node", "--check", "deploy/cloudflare-hosting/index.mjs"],
+                    ["node", "--check", "deploy/cloudflare-hosting/container.mjs"]):
         run(command, cwd=source, env=env, log=log)
     critic_files = sorted(
         str(path.relative_to(source))
@@ -239,6 +241,8 @@ def gate(args):
     run(["node", "--test", "--test-timeout=180000", *critic_tests], cwd=source, env=critic_env, log=log)
     for script in sorted(source.glob("deploy/*.sh")):
         run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
+    for script in sorted(source.glob("deploy/cloudflare-hosting/*.sh")):
+        run(["sh", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
     recovery(source, env, log)
     binary = output / "scry"
     build = ["go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",

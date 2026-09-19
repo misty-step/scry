@@ -12,11 +12,18 @@ function response(body, status, headers = {}) {
 }
 
 async function authorized(request, env) {
-  if (!env.BACKUP_TOKEN || env.BACKUP_TOKEN.length < 32) return false;
   const supplied = request.headers.get("authorization") || "";
-  const expected = `Bearer ${env.BACKUP_TOKEN}`;
-  if (supplied.length !== expected.length) return false;
-  return crypto.subtle.timingSafeEqual(encoder.encode(supplied), encoder.encode(expected));
+  // The original token keeps the VM/exe-integration path unchanged; the
+  // container token is issued separately for the Cloudflare-hosted
+  // instance. Both are exact-bearer, timing-safe compared.
+  for (const name of ["BACKUP_TOKEN", "SCRY_CONTAINER_BACKUP_TOKEN"]) {
+    const secret = env[name];
+    if (!secret || secret.length < 32) continue;
+    const expected = `Bearer ${secret}`;
+    if (supplied.length !== expected.length) continue;
+    if (crypto.subtle.timingSafeEqual(encoder.encode(supplied), encoder.encode(expected))) return true;
+  }
+  return false;
 }
 
 async function boundedBody(request) {

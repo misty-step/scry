@@ -1,0 +1,68 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "scry-app-host",
+  "account_id": "b069014f6a46558ea9146fb6c4ff8f6c",
+  "main": "index.mjs",
+  "compatibility_date": "2026-09-09",
+  "workers_dev": false,
+  "preview_urls": false,
+  "send_metrics": false,
+  "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false } },
+  "containers": [
+    {
+      "name": "scry-app-container",
+      "class_name": "ScryContainer",
+      "image": "./Dockerfile",
+      "max_instances": 1,
+      "instance_type": "lite"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScryContainer"] }],
+  "env": {
+    // Staging: workers.dev hostname, synthetic environment, NO R2 binding.
+    // Proves the container shape boots and the Access gate denies anonymous
+    // traffic before any production name or data is touched.
+    "staging": {
+      "name": "scry-app-host-staging",
+      "workers_dev": true,
+      "vars": {
+        "SCRY_BASE_URL": "https://scry-app-host-staging.misty-step.workers.dev",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
+        "SCRY_ACCESS_AUD": "set-after-access-app-creation",
+        "SCRY_REDIRECT_HOSTS": ""
+      }
+    },
+    // First production attach: mistystep.io zone (active, CF NS). Proves the
+    // whole stack with real data before the scry.study NS flip.
+    "mistystep-prod": {
+      "name": "scry-app-host",
+      "workers_dev": false,
+      "routes": [{ "pattern": "scry.mistystep.io", "custom_domain": true }],
+      "vars": {
+        "SCRY_BASE_URL": "https://scry.mistystep.io",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
+        "SCRY_ACCESS_AUD": "set-after-access-app-creation"
+      },
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }]
+    },
+    // Final production: canonical scry.study + www alias.
+    "production": {
+      "name": "scry-app-host",
+      "workers_dev": false,
+      "routes": [
+        { "pattern": "scry.study", "custom_domain": true },
+        { "pattern": "www.scry.study", "custom_domain": true },
+        { "pattern": "scry.mistystep.io", "custom_domain": true }
+      ],
+      "vars": {
+        "SCRY_BASE_URL": "https://scry.study",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
+        "SCRY_ACCESS_AUD": "set-after-access-app-creation"
+      },
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }]
+    }
+  }
+}
