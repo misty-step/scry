@@ -182,8 +182,11 @@ for local mechanics. The changed route family is `POST /review/foundation`,
 `GET /foundations`, and `GET/POST /foundations/{id}`. The Library links to saved
 foundations; requests do not invoke Reveal. Since MIS-157 the review interface
 does not surface a Too advanced control, so walk the detour by posting to
-`POST /review/foundation` directly (covered by the review-surface tests) and
-view saved foundations from the Library. Relevant focused commands:
+`POST /review/foundation` directly and viewing saved foundations from the
+Library. No test posts `POST /review/foundation`; the commands below cover the
+store and generation methods, and the web Foundation tests cover the
+`/foundations/{id}` and `/foundations` routes, so the direct request and its
+queued job stay part of this manual walk. Relevant focused commands:
 
 ```sh
 go test ./internal/store -run 'Foundation|PopulatedV1' -count=1

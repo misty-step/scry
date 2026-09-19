@@ -32,17 +32,21 @@ Criteria:
    question as the dominant heading, one answer control (choice buttons that
    submit by tap, or a short recall field plus one submit), and no other answer
    control or secondary row.
-2. WHEN I submit an answer, THE review surface SHALL replace the answer control
-   with the result heading, the expected answer, and one Next control. When the
-   question is a choice, THE tap on a choice SHALL grade the answer without any
-   separate submit.
-3. WHEN a review is graded, THE review surface MUST NOT show kind or due-count
-   chrome, schedule lectures, Flag-a-problem, or an inspect accordion, and
-   reveal, edit, and archive MUST be reachable only from one overflow control.
+2. WHEN a submitted answer is graded, THE review surface SHALL replace the
+   answer control with the result heading, the expected answer, and one Next
+   control, and a choice tap SHALL grade the answer without any separate
+   submit. WHEN a recall submission is unclear and stays ungraded, THE surface
+   SHALL keep the question and the answer form for another attempt.
+3. THE review surface MUST NOT show kind or due-count chrome, schedule lectures,
+   Flag-a-problem, or an inspect accordion in any state. WHILE the review is
+   ungraded, reveal, edit, and archive SHALL be reachable only from the one More
+   overflow; WHEN the review is graded, reveal SHALL be hidden while edit and
+   archive SHALL remain reachable from the More overflow.
 4. THE review document in every state, including the empty state, MUST NOT
    contain "Too advanced", "Saved foundations", "Fix or inspect", or "Stop
-   reviewing this question", and MUST NOT remove reveal, edit, or archive from
-   the review surface.
+   reviewing this question". Reveal SHALL remain reachable while the review is
+   ungraded, and edit and archive SHALL remain reachable in every state that
+   presents a question.
 5. WHEN I am reviewing, THE review document MUST NOT show Review, Add,
    Library, History, or Settings as always-visible links or bars; those five
    destinations MUST be reachable from at most two punch-out controls (a Menu
