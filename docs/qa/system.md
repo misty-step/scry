@@ -180,7 +180,13 @@ no current `/statusz` contract or public service-session API.
 Use a fresh isolated schema-2 app and clearly labeled synthetic authored content
 for local mechanics. The changed route family is `POST /review/foundation`,
 `GET /foundations`, and `GET/POST /foundations/{id}`. The Library links to saved
-foundations; requests do not invoke Reveal. Relevant focused commands:
+foundations; requests do not invoke Reveal. Since MIS-157 the review interface
+does not surface a Too advanced control, so walk the detour by posting to
+`POST /review/foundation` directly and viewing saved foundations from the
+Library. No test posts `POST /review/foundation`; the commands below cover the
+store and generation methods, and the web Foundation tests cover the
+`/foundations/{id}` and `/foundations` routes, so the direct request and its
+queued job stay part of this manual walk. Relevant focused commands:
 
 ```sh
 go test ./internal/store -run 'Foundation|PopulatedV1' -count=1
@@ -190,7 +196,8 @@ go test ./internal/recovery
 ```
 
 Walk through a retained Calvin-cycle-style question, including a typed draft:
-Too advanced → pending/failed saved job → ordinary review still available →
+submit the foundation request (the review UI no longer shows a Too advanced
+button, MIS-157) → pending/failed saved job → ordinary review still available →
 explicit bounded retry → saved explanation → ordered diagram/reference →
 warm foundation practice → held feedback/Next → deliberate identical-target
 return. Save the original presentation ID and exact prompt, not merely a similar
@@ -217,7 +224,7 @@ reservation intact and hand off through the runbook's
 [generation/spending boundary](../runbook.md#generation-and-spending); no fresh
 request or manual charge release is authorized by a QA interruption.
 
-Repeat Too advanced on the same occurrence with an edited draft; reload/restart
+Repeat the foundation request on the same occurrence with an edited draft; reload/restart
 must retain the latest acknowledgment. Replay an older exact operation and send
 a stale new operation after bridge advancement: neither may revert draft or
 progress. Clear the draft and ask for help; required answer validation must not
