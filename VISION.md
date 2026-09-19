@@ -24,6 +24,20 @@ operator. That is the adoption baseline. Phone acceptance, generated fixtures,
 passing checks, and historical production receipts are not evidence of sustained
 use or learning gains.
 
+## Product principles
+
+1. Learning effort is the point; interface effort is not.
+2. History and assistance stay durable and truthful: no invented success, no
+   rewritten history.
+3. Fewer concepts, fewer controls, fewer moving parts; prefer simple coherent
+   design over patches.
+4. Failure is recoverable: retry, resume, restore without losing truth.
+5. Measure useful recall, not session time or card volume.
+
+The contract chain is VISION.md (intent) -> [USER_STORIES.md](USER_STORIES.md)
+(root story artifact) -> [SPEC.md](SPEC.md) (criteria, behavior, architecture)
+-> [docs/qa/*](docs/qa/system.md) (verification). Linear owns work state.
+
 ## Approved knowledge-centered direction and bounded delivery
 
 The operator approved a future personal learning map: chosen goals, durable

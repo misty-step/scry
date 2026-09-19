@@ -99,7 +99,7 @@ tests > type system > code > docs > memory/lore
   through a production adapter.
 - `docs/beta/content-generation.md` — source-backed generation and validation
   pressure.
-- `exemplars.md` — learning-semantics precedents; do not copy app-specific
+- `docs/history/exemplars.md` — learning-semantics precedents; do not copy app-specific
   session builders into the kernel.
 
 ## Product Forms Considered

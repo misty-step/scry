@@ -75,6 +75,14 @@ observable boundaries, races, precedence, and failure transitions. Mock only
 external boundaries; repository-owned storage and learning collaborators stay
 real.
 
+## Critics
+
+Scheduled and exploratory critic passes start at `scripts/critics/` with run
+instructions in [critics.md](critics.md). A pass needs a code postcondition plus
+a real observation; Jev output is advisory only. Mutating passes run only
+against isolated synthetic data. Receipts bind the source revision, environment,
+story/criterion ids, and observed result.
+
 ## Browser and private ingress
 
 ### Local authored fixture
