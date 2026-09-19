@@ -223,7 +223,9 @@ def gate(args):
     require(critic_files, "no critic tooling found")
     for path in critic_files:
         run(["node", "--check", path], cwd=source, env=env, log=log)
-    run(["node", "--test", "scripts/critics/tests/"], cwd=source, env=env, log=log)
+    critic_tests = [path for path in critic_files if ".test." in path]
+    require(critic_tests, "no critic tests found")
+    run(["node", "--test", *critic_tests], cwd=source, env=env, log=log)
     for script in sorted(source.glob("deploy/*.sh")):
         run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
     recovery(source, env, log)
