@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <!-- Review fixture where Next button exists but is a no-op (page content doesn't change) -->
+  <div class="review-stage" data-presentation="p1">
+    <h1>Test question?</h1>
+    <div class="answer-form">
+      <button class="choice" name="answer" value="A">A</button>
+      <button class="choice" name="answer" value="B">B</button>
+    </div>
+    <!-- Feedback section (always present) -->
+    <div class="feedback">
+      <p>Answer received</p>
+      <!-- Next button that does nothing (no-op) -->
+      <button data-next="next">Next</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,108 @@
+{
+  "format": "scry-critic-receipt-v1",
+  "no_findings": true,
+  "run": {
+    "id": "crit-1789861007484",
+    "started_at": "2026-09-19T23:36:43.235Z",
+    "ended_at": "2026-09-19T23:36:47.484Z",
+    "duration_s": 4,
+    "budget": {
+      "maxSteps": 24,
+      "timeoutS": 120,
+      "maxScreenshots": 12
+    }
+  },
+  "candidate": {
+    "revision": "d55c694d078714e4ac385ae8ec730cb1ed738cd4",
+    "origin": "http://127.0.0.1:18091",
+    "kind": "external-isolated-synthetic",
+    "seed": "declared-unverified",
+    "binary_sha256": null
+  },
+  "environment": {
+    "viewport": "390x844",
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "network": "local-loopback",
+    "data": "synthetic-authored"
+  },
+  "story_bindings": [
+    {
+      "story": "US-002",
+      "criteria": [
+        "US-002.1",
+        "US-002.2"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "US-002.1",
+      "surface": "/",
+      "status": "pass",
+      "expected": "answer affordance",
+      "observed": "choice confirmed",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "ungraded",
+            "path": "target/critics/fresh2/run/shots/ungraded.png"
+          }
+        ],
+        "notes": [
+          "discovery confirmed: choice"
+        ]
+      }
+    },
+    {
+      "id": "US-002.2",
+      "surface": "/",
+      "status": "pass",
+      "expected": "feedback+next",
+      "observed": "state=graded",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "feedback",
+            "path": "target/critics/fresh2/run/shots/feedback.png"
+          }
+        ],
+        "notes": [
+          "discovery confirmed graded state"
+        ]
+      }
+    },
+    {
+      "id": "US-002.2-next",
+      "surface": "/",
+      "status": "pass",
+      "expected": "advance to next",
+      "observed": "state=ungraded",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "next",
+            "path": "target/critics/fresh2/run/shots/next.png"
+          }
+        ],
+        "notes": [
+          "html differs before/after",
+          "state changed"
+        ]
+      }
+    }
+  ],
+  "findings": [],
+  "coverage": {
+    "exercised": [
+      "US-002.1",
+      "US-002.2",
+      "US-002.2-next"
+    ],
+    "skipped": []
+  },
+  "advisory": {
+    "jevs": [],
+    "notes": []
+  },
+  "limits": []
+}

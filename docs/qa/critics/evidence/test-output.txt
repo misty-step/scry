@@ -1,0 +1,39 @@
+▶ dedupe
+  ✔ normalizeMechanism collapses whitespace and punctuation (0.442337ms)
+  ✔ fingerprint is deterministic for same inputs (0.314405ms)
+  ✔ different mechanisms produce different fingerprints (0.06894ms)
+  ✔ fingerprint ignores title/prose (same story+criterion+mechanism) (0.057959ms)
+  ✔ dedupeFindings collapses identical fingerprints (0.125508ms)
+  ✔ different mechanisms do not collapse (0.501067ms)
+  ✔ mergeFindings dedupes identical operation replay (0.07952ms)
+✔ dedupe (2.158863ms)
+▶ negative e2e failure scenarios
+  ✔ production target https://scry.study -> exit 2, no browser launched (21.743056ms)
+  ✔ blocked env (closed port) -> exit 2 or 3 (runner cannot confirm), receipt written (413.110408ms)
+  ✔ no-op answer fixture -> not pass (exit 1 or 2) (15370.41167ms)
+  ✔ missing feedback/Next fixture -> finding or unverified (not pass) (15354.355298ms)
+✔ negative e2e failure scenarios (31160.423771ms)
+▶ guards
+  ✔ classifyOrigin rejects production origins for mutating modes (4.407827ms)
+  ✔ classifyOrigin accepts loopback (0.277936ms)
+  ✔ classifyOrigin requires --allow-origin for non-loopback mutating (0.152348ms)
+  ✔ classifyOrigin accepts non-loopback with valid --allow-origin (0.077797ms)
+  ✔ Budget tracks steps (0.113415ms)
+  ✔ Budget checks timeout (4.290685ms)
+  ✔ Budget toJSON (0.084059ms)
+✔ guards (10.16179ms)
+▶ receipt
+  ✔ valid minimal receipt (0.785806ms)
+  ✔ pass check requires notes (0.154863ms)
+  ✔ unexercised checks cannot be pass (0.107684ms)
+  ✔ finalize sets end and duration (0.082917ms)
+  ✔ no_findings must match findings length (0.621456ms)
+✔ receipt (2.361536ms)
+ℹ tests 23
+ℹ suites 4
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31213.972867

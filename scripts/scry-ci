@@ -216,6 +216,14 @@ def gate(args):
                     ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"],
                     ["node", "--check", "deploy/backup-gateway/worker.mjs"]):
         run(command, cwd=source, env=env, log=log)
+    critic_files = sorted(
+        str(path.relative_to(source))
+        for pattern in ("scripts/critics/run.mjs", "scripts/critics/lib/*.mjs", "scripts/critics/tests/**/*.mjs")
+        for path in source.glob(pattern))
+    require(critic_files, "no critic tooling found")
+    for path in critic_files:
+        run(["node", "--check", path], cwd=source, env=env, log=log)
+    run(["node", "--test", "scripts/critics/tests/"], cwd=source, env=env, log=log)
     for script in sorted(source.glob("deploy/*.sh")):
         run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
     recovery(source, env, log)
