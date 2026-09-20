@@ -225,7 +225,18 @@ def gate(args):
         run(["node", "--check", path], cwd=source, env=env, log=log)
     critic_tests = [path for path in critic_files if ".test." in path]
     require(critic_tests, "no critic tests found")
-    run(["node", "--test", *critic_tests], cwd=source, env=env, log=log)
+    # The critic browser cases run for real here: distribution Chromium plus
+    # the pinned Playwright module must both be present, and the suite fails
+    # (never passes vacuously) when the browser is unavailable.
+    critic_env = dict(env)
+    critic_env.update({
+        "HOME": env.get("HOME", "/root"),
+        "NODE_PATH": "/opt/scry-critics/node_modules",
+        "CHROMIUM_PATH": "/usr/bin/chromium",
+        "SCRY_CRITICS_REQUIRE_BROWSER": "1",
+        "SCRY_CRITICS_NO_SANDBOX": "1",
+    })
+    run(["node", "--test", "--test-timeout=180000", *critic_tests], cwd=source, env=critic_env, log=log)
     for script in sorted(source.glob("deploy/*.sh")):
         run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
     recovery(source, env, log)
@@ -250,7 +261,7 @@ def gate(args):
         "binary_sha256": binary_sha256, "build_command": build,
         "build_environment": {key: env[key] for key in ("GOOS", "GOARCH", "GOAMD64", "CGO_ENABLED", "GOTOOLCHAIN")},
         "go_version": go_version, "node_version": node_version,
-        "checks": ["gofmt", "go test", "go vet", "browser/gateway JavaScript syntax", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
+        "checks": ["gofmt", "go test", "go vet", "browser/gateway JavaScript syntax", "critic suite with real Chromium (pinned Playwright)", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
     })
     (output / "proof.json").write_bytes(encoded(proof))
     files = sorted(path for path in output.iterdir() if path.is_file())
