@@ -1,7 +1,8 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { spawnSync, spawn } from 'node:child_process';
-import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBrowser } from '../../lib/browser.mjs';
@@ -10,8 +11,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const FIXTURES_DIR = join(__dirname, 'fixtures');
 const CRITICS_DIR = join(__dirname, '..', '..');
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const REQUIRE_BROWSER = process.env.SCRY_CRITICS_REQUIRE_BROWSER === '1';
+// Test artifacts stay OUT of the repository tree: the source-bound gate
+// inventories the tree again after the suite and must observe zero writes.
+const TMP_ROOT = mkdtempSync(join(tmpdir(), 'scry-critics-negative-'));
+after(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
 const net = await import('node:net');
 
 // A real free ephemeral port: closed at walk time and not on Chromium's
@@ -90,7 +94,7 @@ function readReceipt(outDir) {
 
 describe('negative e2e failure scenarios', () => {
   it('production target https://scry.study -> exit 2, no receipt', async () => {
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-prod');
+    const outDir = join(TMP_ROOT, 'e2e-negative-prod');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -107,7 +111,7 @@ describe('negative e2e failure scenarios', () => {
     const browser = await browserGate(t);
     if (!browser) return;
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-blocked');
+    const outDir = join(TMP_ROOT, 'e2e-negative-blocked');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -131,7 +135,7 @@ describe('negative e2e failure scenarios', () => {
     const browser = await browserGate(t);
     if (!browser) return;
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-noop');
+    const outDir = join(TMP_ROOT, 'e2e-negative-noop');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -158,7 +162,7 @@ describe('negative e2e failure scenarios', () => {
     const browser = await browserGate(t);
     if (!browser) return;
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-missing');
+    const outDir = join(TMP_ROOT, 'e2e-negative-missing');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -184,10 +188,10 @@ describe('negative e2e failure scenarios', () => {
       return;
     }
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-launch');
+    const outDir = join(TMP_ROOT, 'e2e-negative-launch');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
-    const fakeChromium = join(REPO_ROOT, 'target/critics/e2e-fake-chromium');
+    const fakeChromium = join(TMP_ROOT, 'e2e-fake-chromium');
     writeFileSync(fakeChromium, '#!/bin/sh\nexit 127\n');
     chmodSync(fakeChromium, 0o755);
 
@@ -208,7 +212,7 @@ describe('negative e2e failure scenarios', () => {
     const browser = await browserGate(t);
     if (!browser) return;
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-maxsteps');
+    const outDir = join(TMP_ROOT, 'e2e-negative-maxsteps');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -230,7 +234,7 @@ describe('negative e2e failure scenarios', () => {
     const browser = await browserGate(t);
     if (!browser) return;
 
-    const outDir = join(REPO_ROOT, 'target/critics/e2e-negative-timeout');
+    const outDir = join(TMP_ROOT, 'e2e-negative-timeout');
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
@@ -248,7 +252,7 @@ describe('negative e2e failure scenarios', () => {
   });
 
   it('--allow-origin is accepted, validated, and never silently ignored', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-negative-allow-origin');
+    const dir = join(TMP_ROOT, 'e2e-negative-allow-origin');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
 
@@ -273,7 +277,7 @@ describe('negative e2e failure scenarios', () => {
   });
 
   it('--goal is validated (unknown or missing goal exits 2 without a walk)', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-negative-goal');
+    const dir = join(TMP_ROOT, 'e2e-negative-goal');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
 
@@ -303,7 +307,7 @@ describe('negative e2e failure scenarios', () => {
       t.skip('meta-check runs only in optional-browser mode');
       return;
     }
-    const maskedHome = join(REPO_ROOT, 'target/critics/e2e-masked-home');
+    const maskedHome = join(TMP_ROOT, 'e2e-masked-home');
     rmSync(maskedHome, { recursive: true, force: true });
     mkdirSync(maskedHome, { recursive: true });
 

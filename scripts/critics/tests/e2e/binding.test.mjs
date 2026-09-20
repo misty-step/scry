@@ -1,7 +1,8 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createNetServer } from 'node:net';
@@ -12,6 +13,9 @@ const __dirname = dirname(__filename);
 const CRITICS_DIR = join(__dirname, '..', '..');
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const RUN = join(CRITICS_DIR, 'run.mjs');
+// Test artifacts stay OUT of the repository tree (the gate re-inventories it).
+const TMP_ROOT = mkdtempSync(join(tmpdir(), 'scry-critics-binding-'));
+after(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
 
 // Closed at walk time and not on Chromium's unsafe-port list.
 function freePort() {
@@ -52,7 +56,7 @@ function runWalk(args, env = {}) {
 
 describe('candidate handle binding (D1)', () => {
   it('rejects a mismatched handle revision; the receipt carries the handle identity, not the checkout', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-bind-mismatch');
+    const dir = join(TMP_ROOT, 'e2e-bind-mismatch');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const handlePath = writeHandle(dir, { revision: 'f'.repeat(40), sha: 'a'.repeat(64), url: 'http://127.0.0.1:1' });
@@ -77,7 +81,7 @@ describe('candidate handle binding (D1)', () => {
   });
 
   it('rejects a missing handle file (exit 2, receipt, unbound candidate)', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-bind-missing');
+    const dir = join(TMP_ROOT, 'e2e-bind-missing');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const outDir = join(dir, 'out');
@@ -96,7 +100,7 @@ describe('candidate handle binding (D1)', () => {
   });
 
   it('rejects a handle that describes a different target than the walk', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-bind-target');
+    const dir = join(TMP_ROOT, 'e2e-bind-target');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const handlePath = writeHandle(dir, { revision: headRevision() ?? 'a'.repeat(40), sha: 'b'.repeat(64), url: 'http://127.0.0.1:19999' });
@@ -122,7 +126,7 @@ describe('candidate handle binding (D1)', () => {
     }
     const browser = await resolveBrowser();
 
-    const dir = join(REPO_ROOT, 'target/critics/e2e-bind-valid');
+    const dir = join(TMP_ROOT, 'e2e-bind-valid');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     const sha = 'c'.repeat(64);

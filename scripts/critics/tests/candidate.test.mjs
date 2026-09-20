@@ -1,7 +1,8 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
@@ -10,7 +11,9 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CRITICS_DIR = join(__dirname, '..');
-const REPO_ROOT = join(__dirname, '..', '..', '..');
+// Test artifacts stay OUT of the repository tree (the gate re-inventories it).
+const TMP_ROOT = mkdtempSync(join(tmpdir(), 'scry-critics-candidate-'));
+after(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -29,7 +32,7 @@ describe('candidate lifecycle fail-closed (D5)', () => {
     await new Promise(resolve => occupier.listen(0, '127.0.0.1', resolve));
     const port = occupier.address().port;
 
-    const dir = join(REPO_ROOT, 'target/critics/e2e-cand-busy');
+    const dir = join(TMP_ROOT, 'e2e-cand-busy');
     rmSync(dir, { recursive: true, force: true });
 
     const result = spawnSync('node', [
@@ -50,7 +53,7 @@ describe('candidate lifecycle fail-closed (D5)', () => {
   });
 
   it('detects a server that exits before ready (exit 2, no handle)', async () => {
-    const dir = join(REPO_ROOT, 'target/critics/e2e-cand-dies');
+    const dir = join(TMP_ROOT, 'e2e-cand-dies');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
 
