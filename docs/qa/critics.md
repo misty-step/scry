@@ -18,9 +18,14 @@ Builds `scry` binary (or reuses `--binary <path>`), seeds a fresh SQLite DB with
 process is alive (each readiness attempt is bounded by a request timeout, so a
 server that accepts but never answers cannot stall the attempt loop), then
 writes a JSON handle. A port that is already in use is refused, and no handle
-is ever written for a process that is not serving. The handle carries `id`,
-`binary_sha256`, `revision`, `binary_revision`, `binary_revision_source`,
-`source_state`, and `source_state_source` to identify the artifact it serves.
+is ever written for a process that is not serving. `--dir` must be fresh: a
+missing directory is created, an existing empty directory is reused, and an
+existing non-empty directory is refused (exit 2) with its content untouched —
+the tool never recursively deletes a directory it did not create. A directory
+that already holds a written handle is refused with `Use fresh dir`. The
+handle carries `id`, `binary_sha256`, `revision`, `binary_revision`,
+`binary_revision_source`, `source_state`, and `source_state_source` to
+identify the artifact it serves.
 
 `revision` is the walking checkout; `binary_revision` and `source_state` are
 the revision and build-tree state of the served binary itself. For the default
@@ -96,7 +101,10 @@ receipt would claim. A stopped candidate, a port re-used by another server, a
 replaced binary, or a binary whose revision is undeterminable (`null` or
 missing) or differs from the claimed revision fails closed (exit 2, blocked
 receipt with `walk-execution: unverified`); the receipt keeps the declared
-handle identity and records the rejection in `observed`.
+handle identity and records the rejection in `observed`. A blocked receipt
+never carries a contradictory identity: when the handle's `revision` and
+`binary_revision` disagree, the receipt records `binary_revision: null` and
+the mismatch in `observed`.
 Non-loopback handles (`--allow-origin`) are not process-verified — `candidate
 up` only ever writes loopback handles.
 
@@ -110,8 +118,10 @@ back to the reveal path ("I don't know yet") to reach a graded state. Budgets
 (steps/time/screenshots) are enforced (`--max-steps`, `--timeout`,
 `--max-screenshots`); a limit stop is blocked (exit 2) with a receipt that
 records the configured limits and used counters. A blocked run (no browser,
-unreachable candidate, unsafe target, browser launch failure, rejected binding)
-still writes a receipt with `walk-execution: unverified`.
+unreachable candidate, browser launch failure, rejected binding) still writes
+a receipt with `walk-execution: unverified`. A refused origin (production, or
+non-loopback without a matching `--allow-origin`) stops before the walk
+starts: exit 2, and no receipt is written.
 
 Exit codes:
 - 0: all selected postconditions met, no findings, coverage > 0
@@ -147,11 +157,14 @@ Key invariants:
 - `no_findings` = true iff `findings.length === 0`.
 - `coverage.exercised` lists all check ids; pass checks must be exercised.
 - Zero coverage → exit 2.
-- `candidate.bound: true` requires a 40/64-hex `revision`, a 64-hex
-  `binary_sha256`, and a `handle` reference; `candidate.bound: false` may claim
-  neither revision nor digest.
-- `candidate.binary_revision` (when present) is 40/64-hex or null; an unbound
-  candidate must not claim one.
+- `candidate.bound` is required and must be boolean. `true` requires a
+  40/64-hex `revision`, a 64-hex `binary_sha256`, and a `handle` reference;
+  `false` may claim neither revision nor digest. A receipt that omits `bound`
+  must not validate.
+- `candidate.binary_revision` (when present) is 40/64-hex or null and must
+  equal `candidate.revision`; an unbound candidate must not claim one.
+- The validator is total: malformed input returns `{ok: false, errors}` and
+  never throws.
 - `run.budget` records the configured limits plus used `steps`/`screenshots`.
 
 ## Browser requirement (tests and CI)
