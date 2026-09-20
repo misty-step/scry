@@ -48,9 +48,20 @@ the candidate's handle file. The receipt then records the handle's `revision`,
 `binary_sha256`, `handle_id` and `source_state` (`candidate.bound: true`). The
 walk fails closed (exit 2, blocked receipt) when the handle is unreadable,
 lacks identity fields, describes a different origin than the walk target, or
-its revision does not match the walking checkout HEAD. Without `--handle` the
-receipt is explicitly unbound (`bound: false`, `revision: null`) and cannot be
-cited as revision-bound evidence.
+its revision does not match the walking checkout HEAD.
+
+For a loopback handle the walk also verifies the serving artifact before
+accepting the binding: the recorded PID must be alive, its command line must
+reference the recorded binary (relative paths resolve against the repo root),
+and the binary's sha256 must equal the recorded digest. A stopped candidate, a
+port re-used by another server, or a replaced binary fails closed (exit 2,
+blocked receipt with `walk-execution: unverified`); the receipt keeps the
+declared handle identity and records the rejection in `observed`.
+Non-loopback handles (`--allow-origin`) are not process-verified — `candidate
+up` only ever writes loopback handles.
+
+Without `--handle` the receipt is explicitly unbound (`bound: false`,
+`revision: null`) and cannot be cited as revision-bound evidence.
 
 Resume-safe: a persistent candidate may carry a leftover graded state; the walk
 advances via Next (bounded) before starting. Recall answers use the authored

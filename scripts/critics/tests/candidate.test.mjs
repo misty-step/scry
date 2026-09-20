@@ -74,4 +74,32 @@ describe('candidate lifecycle fail-closed (D5)', () => {
 
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('creates missing parent directories (pristine checkout): clean failure, no ENOENT crash', async () => {
+    // The documented `candidate up` runs from the repo root. In a pristine
+    // checkout the candidate dir has no parents yet; a non-recursive mkdir
+    // crashed with a raw ENOENT (exit 1 + stack trace) instead of reaching
+    // normal failure handling.
+    const dir = join(TMP_ROOT, 'pristine-family', 'nested', 'deeper', 'candidate');
+    rmSync(join(TMP_ROOT, 'pristine-family'), { recursive: true, force: true });
+
+    const fakeServer = join(TMP_ROOT, 'pristine-fake-scry.sh');
+    writeFileSync(fakeServer, '#!/bin/sh\nif [ "$1" = "seed-fixture" ]; then echo \'{"questions": 2}\'; exit 0; fi\nexit 1\n');
+    chmodSync(fakeServer, 0o755);
+
+    const port = await freePort();
+    const result = spawnSync('node', [
+      join(CRITICS_DIR, 'run.mjs'), 'candidate', 'up',
+      '--dir', dir, '--binary', fakeServer,
+      '--port', String(port), '--out', join(dir, 'candidate.json'),
+    ], { encoding: 'utf8', timeout: 60000 });
+
+    strictEqual(result.status, 2, 'must fail cleanly (exit 2), got ' + result.status + ': ' + result.stderr);
+    ok(!/ENOENT/.test(result.stderr), 'the parent dirs must be created, not crash: ' + result.stderr);
+    ok(/exited before becoming ready/i.test(result.stderr), 'must reach the serving step: ' + result.stderr);
+    ok(existsSync(dir), 'the candidate dir tree must exist');
+
+    rmSync(join(TMP_ROOT, 'pristine-family'), { recursive: true, force: true });
+    rmSync(fakeServer, { force: true });
+  });
 });

@@ -7,7 +7,7 @@
 import { spawnSync, spawn } from 'node:child_process';
 import { rm, writeFile, readFile, mkdir, open, access, constants } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -129,8 +129,8 @@ async function candidateUp(args) {
   }
 
   await rm(dir, { recursive: true, force: true });
-  await mkdir(dir);
-  await mkdir(backupsDir);
+  await mkdir(dir, { recursive: true });
+  await mkdir(backupsDir, { recursive: true });
 
   if (values.binary) {
     try {
@@ -273,9 +273,52 @@ async function candidateDown(args) {
 
 // === human walk ===
 
+// Verify that a loopback candidate handle still identifies the process that
+// serves the walk target. A handle outlives the candidate: without this check
+// a stale handle (candidate stopped, port re-occupied by another server) or a
+// rebuilt binary behind the same path binds a receipt to an artifact that was
+// not served. Mirrors the `candidate down` guard (pid alive + command line
+// references the binary) and additionally checks the binary digest. Relative
+// binary paths resolve against the repo root. Fails closed on any mismatch.
+async function verifyServedArtifact(handle) {
+  const { classifyOrigin } = await import('./lib/guards.mjs');
+  const classified = classifyOrigin(String(handle.url ?? ''));
+  if (!classified.ok || classified.kind !== 'loopback') return { ok: true, checked: false };
+
+  const pid = Number(handle.pid);
+  if (!Number.isInteger(pid) || pid < 1) {
+    return { ok: false, checked: true, reason: 'handle pid is missing or invalid; cannot verify the serving process' };
+  }
+
+  const ps = spawnSync('ps', ['-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
+  if (ps.status !== 0 || !ps.stdout.trim()) {
+    return { ok: false, checked: true, reason: `serving process ${pid} is not running; the candidate may have stopped and another artifact may hold the port` };
+  }
+
+  const binary = typeof handle.binary === 'string' && handle.binary.length > 0 ? handle.binary : null;
+  if (!binary) {
+    return { ok: false, checked: true, reason: 'handle binary path is missing; cannot verify the serving process' };
+  }
+  const binaryPath = isAbsolute(binary) ? binary : join(REPO_ROOT, binary);
+  if (!ps.stdout.includes(binary) && !ps.stdout.includes(binaryPath)) {
+    return { ok: false, checked: true, reason: `process ${pid} does not run the handle binary ${binaryPath}; refusing to bind to another artifact` };
+  }
+
+  let actual;
+  try { actual = sha256File(binaryPath); }
+  catch (err) { return { ok: false, checked: true, reason: `handle binary ${binaryPath} is unreadable: ${err.message}` }; }
+  const declared = String(handle.binary_sha256).toLowerCase();
+  if (actual !== declared) {
+    return { ok: false, checked: true, reason: `handle binary ${binaryPath} changed since candidate up (sha256 ${actual.slice(0, 12)}…, handle declares ${declared.slice(0, 12)}…)` };
+  }
+
+  return { ok: true, checked: true };
+}
+
 // Load and validate a candidate handle for receipt binding. Fails closed:
 // unreadable handle, missing identity fields, an artifact that is not the
-// walk target, or a revision that is not the walking checkout all reject.
+// walk target, a revision that is not the walking checkout, or (loopback) a
+// serving process that no longer matches the handle all reject.
 async function loadCandidateHandle(handlePath, targetUrl) {
   const block = {
     bound: false, handle: handlePath, handle_id: null, revision: null,
@@ -307,6 +350,16 @@ async function loadCandidateHandle(handlePath, targetUrl) {
   try { hOrigin = new URL(String(raw.url ?? '')).origin; } catch (_) {}
   if (!tOrigin || !hOrigin || tOrigin !== hOrigin) {
     return { ok: false, reason: `handle describes ${hOrigin || 'an unknown origin'} but the walk target is ${tOrigin || 'unknown'}`, identityBlock: block };
+  }
+
+  // Served-artifact verification (loopback handles): the handle must still
+  // identify the running process/artifact, not only the revision. Runs before
+  // the checkout-revision comparison — it depends on neither the checkout nor
+  // the browser, so the boundary is enforced wherever the walk runs (host or
+  // bare CI tree without .git).
+  const served = await verifyServedArtifact(raw);
+  if (!served.ok) {
+    return { ok: false, reason: served.reason, identityBlock: block };
   }
 
   const checkout = getGitRevision();
