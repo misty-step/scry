@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { readyAttempt } from '../lib/ready.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -101,5 +102,75 @@ describe('candidate lifecycle fail-closed (D5)', () => {
 
     rmSync(join(TMP_ROOT, 'pristine-family'), { recursive: true, force: true });
     rmSync(fakeServer, { force: true });
+  });
+
+  it('bounds each readiness attempt: a server that never answers still settles', async () => {
+    const sockets = new Set();
+    const server = createNetServer((socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    const started = Date.now();
+    let settled = false;
+    try {
+      await readyAttempt('http://127.0.0.1:' + port, { timeoutMs: 300 });
+    } catch (_) {
+      settled = true;
+    }
+    const elapsed = Date.now() - started;
+
+    ok(settled, 'the attempt must settle instead of staying pending forever');
+    ok(elapsed < 5000, 'the attempt must be bounded by its timeout, took ' + elapsed + 'ms');
+
+    for (const socket of sockets) socket.destroy();
+    await new Promise(resolve => server.close(resolve));
+  });
+
+  it('advances past a ready attempt that never answers (the attempt bound must not stall)', async () => {
+    const dir = join(TMP_ROOT, 'e2e-cand-hang');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+
+    const port = await freePort();
+    // The first /readyz connection hangs (accept, never answer); the second
+    // answers. Without a bounded attempt the loop could never reach it.
+    const fakeServer = join(dir, 'hang-then-ready.cjs');
+    writeFileSync(fakeServer, '#!' + process.execPath + `
+const net = require('node:net');
+const args = process.argv.slice(2);
+if (args[0] === 'seed-fixture') { process.stdout.write('{"questions": 2}\\n'); process.exit(0); }
+if (args[0] === 'serve') {
+  const addr = args[args.indexOf('--addr') + 1];
+  const port = Number(addr.split(':')[1]);
+  let connections = 0;
+  const server = net.createServer((socket) => {
+    connections += 1;
+    if (connections === 1) return; // accept, never answer
+    socket.end('HTTP/1.1 200 OK\\r\\nContent-Length: 5\\r\\nConnection: close\\r\\n\\r\\nready');
+  });
+  server.listen(port, '127.0.0.1');
+  setInterval(() => {}, 60000);
+}
+`);
+    chmodSync(fakeServer, 0o755);
+
+    const result = spawnSync('node', [
+      join(CRITICS_DIR, 'run.mjs'), 'candidate', 'up',
+      '--dir', join(dir, 'candidate'), '--binary', fakeServer,
+      '--port', String(port), '--out', join(dir, 'candidate', 'candidate.json'),
+    ], { encoding: 'utf8', timeout: 60000 });
+
+    strictEqual(result.status, 0, 'the candidate must become ready on a later attempt: ' + result.stdout + result.stderr);
+    ok(existsSync(join(dir, 'candidate', 'candidate.json')), 'a handle must be written once ready');
+
+    spawnSync('node', [
+      join(CRITICS_DIR, 'run.mjs'), 'candidate', 'down',
+      '--dir', join(dir, 'candidate'), '--out', join(dir, 'candidate', 'candidate.json'),
+    ], { encoding: 'utf8', timeout: 30000 });
+
+    rmSync(dir, { recursive: true, force: true });
   });
 });

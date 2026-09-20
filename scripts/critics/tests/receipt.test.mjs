@@ -102,4 +102,39 @@ describe('receipt', () => {
     strictEqual(v.ok, false);
     strictEqual(v.errors.some(e => e.includes('must not claim a revision')), true);
   });
+
+  it('candidate.binary_revision must be 40/64-hex or null', () => {
+    const base = {
+      storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      checks: [],
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    };
+    const good = newReceipt({
+      ...base,
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_revision: 'a'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' }
+    });
+    strictEqual(validateReceipt(good).ok, true, 'a matching binary revision is valid');
+
+    const bad = newReceipt({
+      ...base,
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_revision: 'zz', binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' }
+    });
+    const v = validateReceipt(bad);
+    strictEqual(v.ok, false, 'a malformed binary revision must fail validation');
+    strictEqual(v.errors.some(e => e.includes('binary_revision')), true);
+  });
+
+  it('unbound candidate must not claim a binary revision', () => {
+    const r = newReceipt({
+      storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
+      candidate: { bound: false, handle: null, revision: null, binary_revision: 'a'.repeat(40), binary_sha256: null, kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' },
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      checks: [],
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    });
+    const v = validateReceipt(r);
+    strictEqual(v.ok, false);
+    strictEqual(v.errors.some(e => e.includes('must not claim a binary revision')), true);
+  });
 });

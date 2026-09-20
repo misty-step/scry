@@ -15,12 +15,27 @@ node scripts/critics/run.mjs candidate up --dir target/critics/candidate --port 
 
 Builds `scry` binary (or reuses `--binary <path>`), seeds a fresh SQLite DB with
 `seed-fixture`, serves on loopback, polls `/readyz` while verifying the child
-process is alive, then writes a JSON handle. A port that is already in use is
-refused, and no handle is ever written for a process that is not serving. The
-handle carries `id`, `binary_sha256`, `revision`, and `source_state`
+process is alive (each readiness attempt is bounded by a request timeout, so a
+server that accepts but never answers cannot stall the attempt loop), then
+writes a JSON handle. A port that is already in use is refused, and no handle
+is ever written for a process that is not serving. The handle carries `id`,
+`binary_sha256`, `revision`, `binary_revision`, and `source_state`
 (clean/dirty/unknown) to identify the artifact it serves.
 
-Exit codes: 0 success, 2 build/seed/serve failure, busy port, or dir not fresh.
+`revision` is the walking checkout; `binary_revision` is the revision the
+served binary itself was built from. For the default build both are the
+checkout revision by construction. For `--binary` the binary's own evidence
+decides: buildinfo `vcs.revision` for plain builds, the `main.revision` stamp
+(buildinfo `-ldflags`, or the binary's `version` output for gate exports built
+with `-trimpath`). A determinable revision that differs from the checkout (or
+cannot be compared to one) refuses the command (exit 2, no handle written).
+When the revision cannot be determined, the handle records
+`binary_revision: null` (`binary_revision_source: null`) and the walk binding
+refuses the handle — the checkout revision is never asserted as the supplied
+binary's provenance.
+
+Exit codes: 0 success, 2 build/seed/serve failure, busy port, foreign binary
+provenance, or dir not fresh.
 
 **candidate down**
 ```sh
@@ -53,10 +68,13 @@ its revision does not match the walking checkout HEAD.
 For a loopback handle the walk also verifies the serving artifact before
 accepting the binding: the recorded PID must be alive, its command line must
 reference the recorded binary (relative paths resolve against the repo root),
-and the binary's sha256 must equal the recorded digest. A stopped candidate, a
-port re-used by another server, or a replaced binary fails closed (exit 2,
-blocked receipt with `walk-execution: unverified`); the receipt keeps the
-declared handle identity and records the rejection in `observed`.
+the binary's sha256 must equal the recorded digest, and the handle must record
+the binary's own revision (`binary_revision`), equal to the revision the
+receipt would claim. A stopped candidate, a port re-used by another server, a
+replaced binary, or a binary whose revision is undeterminable (`null` or
+missing) or differs from the claimed revision fails closed (exit 2, blocked
+receipt with `walk-execution: unverified`); the receipt keeps the declared
+handle identity and records the rejection in `observed`.
 Non-loopback handles (`--allow-origin`) are not process-verified — `candidate
 up` only ever writes loopback handles.
 
@@ -110,6 +128,8 @@ Key invariants:
 - `candidate.bound: true` requires a 40/64-hex `revision`, a 64-hex
   `binary_sha256`, and a `handle` reference; `candidate.bound: false` may claim
   neither revision nor digest.
+- `candidate.binary_revision` (when present) is 40/64-hex or null; an unbound
+  candidate must not claim one.
 - `run.budget` records the configured limits plus used `steps`/`screenshots`.
 
 ## Browser requirement (tests and CI)

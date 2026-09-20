@@ -44,9 +44,14 @@ function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
-function writeHandle(dir, { revision, sha, url, id, sourceState = 'clean', pid = 999999, binary = null }) {
+function writeHandle(dir, opts) {
+  const { revision, sha, url, id, sourceState = 'clean', pid = 999999, binary = null } = opts;
+  // Default: a candidate-up-shaped handle declares the binary's own revision.
+  // `binaryRevision: null` writes an undeterminable provenance; `undefined`
+  // omits the field (a pre-fix handle shape).
+  const binaryRevision = 'binaryRevision' in opts ? opts.binaryRevision : revision;
   const path = join(dir, 'candidate.json');
-  writeFileSync(path, JSON.stringify({
+  const handle = {
     format: 'scry-critic-candidate-v1',
     id: id ?? 'cand-test000000',
     pid,
@@ -56,7 +61,9 @@ function writeHandle(dir, { revision, sha, url, id, sourceState = 'clean', pid =
     revision,
     source_state: sourceState,
     seed: { model: 'authored-test-fixture', source: 'test' },
-  }, null, 2));
+  };
+  if (binaryRevision !== undefined) handle.binary_revision = binaryRevision;
+  writeFileSync(path, JSON.stringify(handle, null, 2));
   return path;
 }
 
@@ -235,6 +242,7 @@ describe('candidate handle binding (D1)', () => {
     const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
     strictEqual(receipt.candidate.bound, true);
     strictEqual(receipt.candidate.revision, revision, 'revision must come from the handle');
+    strictEqual(receipt.candidate.binary_revision, revision, 'binary revision must come from the handle');
     strictEqual(receipt.candidate.binary_sha256, keep.sha, 'digest must come from the handle');
     strictEqual(receipt.candidate.handle_id, 'cand-test000000');
     if (browser.ok) {
@@ -353,6 +361,110 @@ describe('candidate handle binding (D1)', () => {
     const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
     const check = receipt.checks.find(c => c.id === 'walk-execution');
     ok(check && /does not run the handle binary/i.test(check.observed), 'observed must explain: ' + (check && check.observed));
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('rejects a loopback handle that records no determinable binary revision (binary_revision null)', async () => {
+    const dir = join(TMP_ROOT, 'e2e-bind-null-revision');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const outDir = join(dir, 'out');
+    mkdirSync(outDir);
+
+    const keep = startKeepalive(dir);
+    let result;
+    try {
+      const port = await freePort();
+      const handlePath = writeHandle(dir, {
+        revision: headRevision() ?? 'a'.repeat(40),
+        sha: keep.sha,
+        url: 'http://127.0.0.1:' + port,
+        pid: keep.pid,
+        binary: keep.binary,
+        binaryRevision: null,
+      });
+
+      result = runWalk(['--candidate', 'http://127.0.0.1:' + port + '/', '--handle', handlePath, '--out', outDir]);
+    } finally {
+      await keep.stop();
+    }
+
+    strictEqual(result.status, 2, 'an undeterminable binary revision must fail closed, got ' + result.status);
+    ok(/candidate binding rejected/i.test(result.stderr), 'stderr must name the rejection: ' + result.stderr);
+    ok(/binary revision/.test(result.stderr), 'stderr must explain the missing provenance: ' + result.stderr);
+    const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
+    strictEqual(receipt.candidate.bound, true, 'the declared handle identity is kept');
+    strictEqual(receipt.candidate.binary_revision, null, 'no provenance may be claimed');
+    const check = receipt.checks.find(c => c.id === 'walk-execution');
+    ok(check && check.status === 'unverified', 'the walk is blocked, not certified');
+    ok(/binary revision/.test(check.observed), 'observed must explain: ' + check.observed);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('rejects a pre-fix loopback handle that omits binary_revision entirely', async () => {
+    const dir = join(TMP_ROOT, 'e2e-bind-missing-revision');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const outDir = join(dir, 'out');
+    mkdirSync(outDir);
+
+    const keep = startKeepalive(dir);
+    let result;
+    try {
+      const port = await freePort();
+      const handlePath = writeHandle(dir, {
+        revision: headRevision() ?? 'a'.repeat(40),
+        sha: keep.sha,
+        url: 'http://127.0.0.1:' + port,
+        pid: keep.pid,
+        binary: keep.binary,
+        binaryRevision: undefined,
+      });
+
+      result = runWalk(['--candidate', 'http://127.0.0.1:' + port + '/', '--handle', handlePath, '--out', outDir]);
+    } finally {
+      await keep.stop();
+    }
+
+    strictEqual(result.status, 2, 'a handle without a binary revision must fail closed, got ' + result.status);
+    const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
+    const check = receipt.checks.find(c => c.id === 'walk-execution');
+    ok(check && /binary revision/.test(check.observed), 'observed must explain: ' + (check && check.observed));
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('rejects a handle whose binary revision differs from the claimed revision', async () => {
+    const dir = join(TMP_ROOT, 'e2e-bind-foreign-revision');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const outDir = join(dir, 'out');
+    mkdirSync(outDir);
+
+    const keep = startKeepalive(dir);
+    let result;
+    try {
+      const port = await freePort();
+      const handlePath = writeHandle(dir, {
+        revision: headRevision() ?? 'a'.repeat(40),
+        sha: keep.sha,
+        url: 'http://127.0.0.1:' + port,
+        pid: keep.pid,
+        binary: keep.binary,
+        binaryRevision: 'e'.repeat(40),
+      });
+
+      result = runWalk(['--candidate', 'http://127.0.0.1:' + port + '/', '--handle', handlePath, '--out', outDir]);
+    } finally {
+      await keep.stop();
+    }
+
+    strictEqual(result.status, 2, 'a foreign binary revision must fail closed, got ' + result.status);
+    const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
+    const check = receipt.checks.find(c => c.id === 'walk-execution');
+    ok(check && /does not match handle revision/i.test(check.observed), 'observed must explain: ' + (check && check.observed));
 
     rmSync(dir, { recursive: true, force: true });
   });

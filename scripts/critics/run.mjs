@@ -150,6 +150,30 @@ async function candidateUp(args) {
     }
   }
 
+  // Build provenance. The handle records the revision the served binary was
+  // built from (`binary_revision`) next to the walking checkout revision. For
+  // the default build that is the checkout by construction. For --binary the
+  // binary's own evidence decides: a determinable revision that differs from
+  // the checkout (or cannot be compared to one) refuses here, before any
+  // handle exists; an undeterminable revision is recorded as null and the
+  // walk binding later fails closed on it. The checkout revision is never
+  // asserted as the supplied binary's provenance.
+  const revision = getGitRevision();
+  let binaryRevision = revision;
+  let binaryRevisionSource = revision ? 'source-build' : null;
+  if (values.binary) {
+    const { readBinaryRevision } = await import('./lib/provenance.mjs');
+    const provenance = readBinaryRevision(binaryPath, { env });
+    binaryRevision = provenance.revision;
+    binaryRevisionSource = provenance.source;
+    if (binaryRevision && binaryRevision !== revision) {
+      process.stderr.write(revision
+        ? `--binary was built from revision ${binaryRevision}, but the checkout HEAD is ${revision}; refusing to record a handle that would mislabel the served artifact\n`
+        : `--binary was built from revision ${binaryRevision}, but the checkout revision is unavailable; refusing to record a handle whose provenance cannot be verified against a checkout\n`);
+      process.exit(2);
+    }
+  }
+
   const seedR = spawnSync(binaryPath, ['seed-fixture', '--db', dbPath], { env, encoding: 'utf8' });
   if (seedR.status !== 0) {
     process.stderr.write('Seed failed: ' + seedR.stderr + '\n');
@@ -175,17 +199,14 @@ async function candidateUp(args) {
   let ready = false;
   let earlyExit = false;
   const url = `http://127.0.0.1:${port}`;
+  const { readyAttempt } = await import('./lib/ready.mjs');
   for (let i = 0; i < 30; i++) {
     if (serveCmd.exitCode !== null) { earlyExit = true; break; }
     try {
-      const { request } = await import('node:http');
-      await new Promise((resolve, reject) => {
-        request(url + '/readyz', res => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => res.statusCode === 200 && data.trim() === 'ready' ? resolve() : reject(new Error('not ready')));
-        }).on('error', reject).end();
-      });
+      // Each attempt is bounded: a server that accepts but never answers must
+      // not leave the attempt pending forever (the 30-attempt bound could
+      // never advance).
+      await readyAttempt(url, { timeoutMs: 2000 });
       ready = true;
       break;
     } catch (_) {
@@ -206,7 +227,6 @@ async function candidateUp(args) {
     process.exit(2);
   }
 
-  const revision = getGitRevision();
   const binarySha = sha256File(binaryPath);
   const pid = serveCmd.pid;
   const started_at = new Date().toISOString();
@@ -220,7 +240,8 @@ async function candidateUp(args) {
   const handle = {
     format: 'scry-critic-candidate-v1',
     id, pid, url, dir, port, db: dbPath, binary: binaryPath, binary_sha256: binarySha,
-    seed, revision, source_state: sourceState, kind: 'isolated-synthetic', started_at
+    seed, revision, binary_revision: binaryRevision, binary_revision_source: binaryRevisionSource,
+    source_state: sourceState, kind: 'isolated-synthetic', started_at
   };
 
   await writeFile(outPath, JSON.stringify(handle, null, 2));
@@ -312,6 +333,21 @@ async function verifyServedArtifact(handle) {
     return { ok: false, checked: true, reason: `handle binary ${binaryPath} changed since candidate up (sha256 ${actual.slice(0, 12)}…, handle declares ${declared.slice(0, 12)}…)` };
   }
 
+  // Build provenance: the handle must record the served binary's own revision
+  // (`binary_revision`) and it must equal the revision the receipt would
+  // claim. A --binary candidate whose provenance could not be determined
+  // records binary_revision: null and cannot bind a revision-claiming
+  // receipt; the checkout revision is never substituted for it.
+  const binaryRevision = typeof handle.binary_revision === 'string' ? handle.binary_revision.toLowerCase() : null;
+  if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(binaryRevision ?? '')) {
+    const declared = handle.binary_revision === undefined ? 'missing' : JSON.stringify(handle.binary_revision);
+    return { ok: false, checked: true, reason: `handle records no determinable binary revision (binary_revision: ${declared}); the served artifact's provenance cannot be verified` };
+  }
+  const claimedRevision = String(handle.revision ?? '').toLowerCase();
+  if (binaryRevision !== claimedRevision) {
+    return { ok: false, checked: true, reason: `binary revision ${binaryRevision} does not match handle revision ${handle.revision}; refusing to bind a revision the binary was not built from` };
+  }
+
   return { ok: true, checked: true };
 }
 
@@ -322,7 +358,7 @@ async function verifyServedArtifact(handle) {
 async function loadCandidateHandle(handlePath, targetUrl) {
   const block = {
     bound: false, handle: handlePath, handle_id: null, revision: null,
-    binary_sha256: null, source_state: null, seed: 'declared-unverified'
+    binary_revision: null, binary_sha256: null, source_state: null, seed: 'declared-unverified'
   };
 
   let raw;
@@ -333,6 +369,7 @@ async function loadCandidateHandle(handlePath, targetUrl) {
 
   if (typeof raw.id === 'string') block.handle_id = raw.id;
   if (typeof raw.revision === 'string') block.revision = raw.revision;
+  if (typeof raw.binary_revision === 'string') block.binary_revision = raw.binary_revision;
   if (typeof raw.binary_sha256 === 'string') block.binary_sha256 = raw.binary_sha256;
   if (typeof raw.source_state === 'string') block.source_state = raw.source_state;
   if (raw.seed && typeof raw.seed === 'object' && typeof raw.seed.model === 'string') block.seed = raw.seed.model;
@@ -427,7 +464,7 @@ async function humanWalk(args) {
   // only from its handle. A mismatch is a blocked walk with a receipt.
   let binding = {
     bound: false, handle: null, handle_id: null, revision: null,
-    binary_sha256: null, source_state: null, seed: 'declared-unverified'
+    binary_revision: null, binary_sha256: null, source_state: null, seed: 'declared-unverified'
   };
   if (values.handle) {
     const loaded = await loadCandidateHandle(values.handle, url);
@@ -473,6 +510,7 @@ async function humanWalk(args) {
       handle: binding.handle,
       handle_id: binding.handle_id,
       revision: binding.revision,
+      binary_revision: binding.binary_revision,
       origin: url || 'localhost:18080',
       kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
       seed: binding.seed,
@@ -537,6 +575,7 @@ async function humanWalk(args) {
           handle: bindingOverride.handle,
           handle_id: bindingOverride.handle_id,
           revision: bindingOverride.revision,
+          binary_revision: bindingOverride.binary_revision,
           origin: url || 'localhost:18080',
           kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
           seed: bindingOverride.seed,

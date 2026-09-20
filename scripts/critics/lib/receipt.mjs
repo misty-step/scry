@@ -47,6 +47,9 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
         if (r.candidate.binary_sha256 !== null) errors.push('unbound candidate must not claim a binary_sha256');
       }
     }
+    if (r.candidate.binary_revision !== undefined && r.candidate.binary_revision !== null &&
+        !/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(r.candidate.binary_revision))) errors.push('candidate.binary_revision must be 40/64-hex or null');
+    if (r.candidate.binary_revision != null && r.candidate.bound !== true) errors.push('unbound candidate must not claim a binary revision');
     if (r.candidate.handle_id !== undefined && r.candidate.handle_id !== null && typeof r.candidate.handle_id !== 'string') errors.push('candidate.handle_id must be string or null');
     if (r.candidate.source_state !== undefined && r.candidate.source_state !== null &&
         !['clean', 'dirty', 'unknown'].includes(r.candidate.source_state)) errors.push('candidate.source_state must be clean|dirty|unknown or null');
