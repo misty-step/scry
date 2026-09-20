@@ -119,3 +119,23 @@ func TestFoundationRoutesRetainPrivacyCSRFAndInertContent(t *testing.T) {
 		t.Fatal("foundation route lost CSP")
 	}
 }
+
+// The MIS-157 review surface removed the Too advanced control. The saved
+// foundations empty state must not instruct users to use a control that no
+// longer exists.
+func TestFoundationsEmptyStateDropsRemovedControlCopy(t *testing.T) {
+	_, app := privateApp(t)
+	r := ownerRequest("GET", "/foundations", nil)
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("foundations empty state: %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Too advanced") {
+		t.Fatal("foundations empty state still cites the removed Too advanced control")
+	}
+	if !strings.Contains(body, "No saved foundations yet.") {
+		t.Fatal("foundations empty state lost its copy")
+	}
+}
