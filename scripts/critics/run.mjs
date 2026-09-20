@@ -5,7 +5,7 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { rm, writeFile, readFile, mkdir, open, access, constants } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, open, access, constants, lstat, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
@@ -121,6 +121,31 @@ async function candidateUp(args) {
     process.exit(2);
   } catch (_) {}
 
+  // Freshness guard (data safety): the tool never recursively deletes a
+  // directory. A pre-existing non-empty --dir is refused (exit 2) with its
+  // content untouched; a missing dir is created; an existing empty dir is
+  // treated as fresh. The handle-exists refusal above stays first so a dir
+  // holding a written handle keeps its dedicated message.
+  let dirState = 'missing';
+  try {
+    const dirStat = await lstat(dir);
+    if (!dirStat.isDirectory()) dirState = 'not-a-directory';
+    else dirState = (await readdir(dir)).length === 0 ? 'empty' : 'non-empty';
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      process.stderr.write('Candidate dir is not fresh: cannot inspect ' + dir + ' (' + err.message + '); refusing to proceed. Use a fresh dir\n');
+      process.exit(2);
+    }
+  }
+  if (dirState === 'non-empty') {
+    process.stderr.write('Candidate dir is not fresh: ' + dir + ' already contains files; refusing to delete existing content. Use a fresh dir\n');
+    process.exit(2);
+  }
+  if (dirState === 'not-a-directory') {
+    process.stderr.write('Candidate dir is not fresh: ' + dir + ' is not a directory; refusing to replace it. Use a fresh dir\n');
+    process.exit(2);
+  }
+
   // Fail fast on an occupied port: the ready poll must never be satisfied by
   // another process, and the handle must never record a PID that does not serve.
   if (await isPortBusy(port)) {
@@ -128,7 +153,6 @@ async function candidateUp(args) {
     process.exit(2);
   }
 
-  await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
   await mkdir(backupsDir, { recursive: true });
 
@@ -382,7 +406,14 @@ async function loadCandidateHandle(handlePath, targetUrl) {
 
   if (typeof raw.id === 'string') block.handle_id = raw.id;
   if (typeof raw.revision === 'string') block.revision = raw.revision;
-  if (typeof raw.binary_revision === 'string') block.binary_revision = raw.binary_revision;
+  // A receipt must never carry a contradictory identity pair: when the
+  // handle's own `revision` and `binary_revision` disagree, the binding is
+  // rejected below and the receipt records the mismatch in `observed` with
+  // `binary_revision` left null.
+  if (typeof raw.binary_revision === 'string' &&
+      String(raw.revision ?? '').toLowerCase() === raw.binary_revision.toLowerCase()) {
+    block.binary_revision = raw.binary_revision;
+  }
   if (typeof raw.binary_sha256 === 'string') block.binary_sha256 = raw.binary_sha256;
   if (typeof raw.source_state === 'string') block.source_state = raw.source_state;
   if (raw.seed && typeof raw.seed === 'object' && typeof raw.seed.model === 'string') block.seed = raw.seed.model;

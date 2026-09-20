@@ -11,7 +11,24 @@ export function normalizeString(s) {
   return String(s).replace(/\s+/g, ' ').trim();
 }
 
-export function validateReceipt(r, { fileExists = existsSync } = {}) {
+// A malformed screenshot path (or a throwing fileExists) counts as missing:
+// fail closed, never throw.
+function fileExistsSafe(fileExists, path) {
+  try { return Boolean(fileExists(path)); } catch (_) { return false; }
+}
+
+// Total wrapper: input of any shape must return {ok, errors}, never throw.
+// The inner validator produces the precise errors; this wrapper is the
+// fail-closed net for shapes the guards did not anticipate.
+export function validateReceipt(r, options = {}) {
+  try {
+    return validateReceiptInner(r, options);
+  } catch (err) {
+    return { ok: false, errors: ['receipt validation failed on malformed input: ' + (err?.message ?? String(err))] };
+  }
+}
+
+function validateReceiptInner(r, { fileExists = existsSync } = {}) {
   const errors = [];
   if (!r || typeof r !== 'object') return { ok: false, errors: ['receipt must be an object'] };
 
@@ -36,20 +53,22 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
     if (typeof r.candidate.kind !== 'string') errors.push('candidate.kind must be string');
     if (typeof r.candidate.seed !== 'string') errors.push('candidate.seed must be string');
     if (r.candidate.binary_sha256 !== null && !/^[0-9a-f]{64}$/i.test(r.candidate.binary_sha256 ?? '')) errors.push('candidate.binary_sha256 must be 64-hex or null');
-    if (r.candidate.bound !== undefined) {
-      if (typeof r.candidate.bound !== 'boolean') errors.push('candidate.bound must be boolean');
-      else if (r.candidate.bound === true) {
-        if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(r.candidate.revision ?? ''))) errors.push('bound candidate requires a 40/64-hex revision');
-        if (!/^[0-9a-f]{64}$/i.test(String(r.candidate.binary_sha256 ?? ''))) errors.push('bound candidate requires a 64-hex binary_sha256');
-        if (typeof r.candidate.handle !== 'string' || r.candidate.handle.length === 0) errors.push('bound candidate requires a handle reference');
-      } else {
-        if (r.candidate.revision !== null) errors.push('unbound candidate must not claim a revision');
-        if (r.candidate.binary_sha256 !== null) errors.push('unbound candidate must not claim a binary_sha256');
-      }
+    // `bound` is required as a boolean: an identity-bearing receipt that
+    // omits it must not validate.
+    if (typeof r.candidate.bound !== 'boolean') errors.push('candidate.bound must be boolean');
+    else if (r.candidate.bound === true) {
+      if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(r.candidate.revision ?? ''))) errors.push('bound candidate requires a 40/64-hex revision');
+      if (!/^[0-9a-f]{64}$/i.test(String(r.candidate.binary_sha256 ?? ''))) errors.push('bound candidate requires a 64-hex binary_sha256');
+      if (typeof r.candidate.handle !== 'string' || r.candidate.handle.length === 0) errors.push('bound candidate requires a handle reference');
+    } else {
+      if (r.candidate.revision !== null) errors.push('unbound candidate must not claim a revision');
+      if (r.candidate.binary_sha256 !== null) errors.push('unbound candidate must not claim a binary_sha256');
     }
     if (r.candidate.binary_revision !== undefined && r.candidate.binary_revision !== null &&
         !/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(r.candidate.binary_revision))) errors.push('candidate.binary_revision must be 40/64-hex or null');
     if (r.candidate.binary_revision != null && r.candidate.bound !== true) errors.push('unbound candidate must not claim a binary revision');
+    if (r.candidate.binary_revision != null && r.candidate.revision != null &&
+        String(r.candidate.binary_revision).toLowerCase() !== String(r.candidate.revision).toLowerCase()) errors.push('candidate.binary_revision must match candidate.revision');
     if (r.candidate.handle_id !== undefined && r.candidate.handle_id !== null && typeof r.candidate.handle_id !== 'string') errors.push('candidate.handle_id must be string or null');
     if (r.candidate.source_state !== undefined && r.candidate.source_state !== null &&
         !['clean', 'dirty', 'unknown'].includes(r.candidate.source_state)) errors.push('candidate.source_state must be clean|dirty|unknown or null');
@@ -67,6 +86,7 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
   else if (r.story_bindings.length === 0) errors.push('story_bindings must not be empty');
   else for (let i = 0; i < r.story_bindings.length; i++) {
     const b = r.story_bindings[i];
+    if (!b || typeof b !== 'object') { errors.push(`story_bindings[${i}] must be an object`); continue; }
     if (!/US-\d{3}/.test(b.story)) errors.push(`story_bindings[${i}].story must match /US-\d{3}/`);
     if (!Array.isArray(b.criteria)) errors.push(`story_bindings[${i}].criteria must be array`);
   }
@@ -74,18 +94,22 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
   if (!Array.isArray(r.checks)) errors.push('checks must be array');
   else for (let i = 0; i < r.checks.length; i++) {
     const c = r.checks[i];
+    if (!c || typeof c !== 'object') { errors.push(`checks[${i}] must be an object`); continue; }
     if (typeof c.id !== 'string') errors.push(`checks[${i}].id must be string`);
     if (typeof c.surface !== 'string') errors.push(`checks[${i}].surface must be string`);
     if (!['pass', 'fail', 'unverified'].includes(c.status)) errors.push(`checks[${i}].status must be pass|fail|unverified, got "${c.status}"`);
     if (c.status === 'pass') {
       if (!c.evidence || typeof c.evidence !== 'object') errors.push(`checks[${i}].evidence required for pass`);
-      else if (!Array.isArray(c.evidence.notes)) errors.push(`checks[${i}].evidence.notes must be array`);
-      else if (c.evidence.notes.length === 0) errors.push(`checks[${i}].evidence.notes must be non-empty for pass`);
-      if (!Array.isArray(c.evidence.screenshots)) errors.push(`checks[${i}].evidence.screenshots must be array`);
-      for (let j = 0; j < c.evidence.screenshots.length; j++) {
-        const sh = c.evidence.screenshots[j];
-        if (typeof sh.path !== 'string') errors.push(`checks[${i}].evidence.screenshots[${j}].path must be string`);
-        if (!fileExists(sh.path)) errors.push(`checks[${i}].evidence.screenshots[${j}].path "${sh.path}" does not exist`);
+      else {
+        if (!Array.isArray(c.evidence.notes)) errors.push(`checks[${i}].evidence.notes must be array`);
+        else if (c.evidence.notes.length === 0) errors.push(`checks[${i}].evidence.notes must be non-empty for pass`);
+        if (!Array.isArray(c.evidence.screenshots)) errors.push(`checks[${i}].evidence.screenshots must be array`);
+        else for (let j = 0; j < c.evidence.screenshots.length; j++) {
+          const sh = c.evidence.screenshots[j];
+          if (!sh || typeof sh !== 'object') { errors.push(`checks[${i}].evidence.screenshots[${j}] must be an object`); continue; }
+          if (typeof sh.path !== 'string') errors.push(`checks[${i}].evidence.screenshots[${j}].path must be string`);
+          else if (!fileExistsSafe(fileExists, sh.path)) errors.push(`checks[${i}].evidence.screenshots[${j}].path "${sh.path}" does not exist`);
+        }
       }
     }
   }
@@ -97,11 +121,13 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
     if (!Array.isArray(r.coverage.exercised)) errors.push('coverage.exercised must be array');
     if (!Array.isArray(r.coverage.skipped)) errors.push('coverage.skipped must be array');
     else for (let i = 0; i < r.coverage.skipped.length; i++) {
-      if (typeof r.coverage.skipped[i].id !== 'string') errors.push(`coverage.skipped[${i}].id must be string`);
+      const sk = r.coverage.skipped[i];
+      if (!sk || typeof sk !== 'object') { errors.push(`coverage.skipped[${i}] must be an object`); continue; }
+      if (typeof sk.id !== 'string') errors.push(`coverage.skipped[${i}].id must be string`);
     }
-    const exercisedIds = new Set(r.coverage.exercised);
-    for (const c of r.checks ?? []) {
-      if (c.status === 'pass' && !exercisedIds.has(c.id)) errors.push(`check "${c.id}" is pass but not exercised`);
+    const exercisedIds = new Set(Array.isArray(r.coverage.exercised) ? r.coverage.exercised : []);
+    for (const c of Array.isArray(r.checks) ? r.checks : []) {
+      if (c && typeof c === 'object' && c.status === 'pass' && !exercisedIds.has(c.id)) errors.push(`check "${c.id}" is pass but not exercised`);
     }
   }
 

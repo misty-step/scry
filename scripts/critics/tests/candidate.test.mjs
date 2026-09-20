@@ -1,7 +1,7 @@
 import { describe, it, after } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, chmodSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { createServer } from 'node:http';
@@ -172,5 +172,86 @@ if (args[0] === 'serve') {
     ], { encoding: 'utf8', timeout: 30000 });
 
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('candidate dir freshness (data safety: never delete content the tool did not create)', () => {
+  // A candidate must become ready: `seed-fixture` returns JSON, `serve` answers
+  // /readyz. A child process survives the blocking spawnSync CLI.
+  function writeReadyFakeServer(path) {
+    writeFileSync(path, '#!' + process.execPath + `
+const http = require('node:http');
+const args = process.argv.slice(2);
+if (args[0] === 'seed-fixture') { process.stdout.write('{"questions": 2}\\n'); process.exit(0); }
+if (args[0] === 'serve') {
+  const addr = args[args.indexOf('--addr') + 1];
+  const port = Number(addr.split(':')[1]);
+  http.createServer((req, res) => { res.end(req.url === '/readyz' ? 'ready' : 'ok'); }).listen(port, '127.0.0.1');
+}
+`);
+    chmodSync(path, 0o755);
+  }
+
+  it('refuses a pre-existing non-empty dir: exit 2, content untouched, no handle', async () => {
+    const family = join(TMP_ROOT, 'nonfresh');
+    const dir = join(family, 'precious');
+    rmSync(family, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'keep.txt'), 'keep-me\n');
+    writeFileSync(join(dir, 'evidence-receipt.json'), '{"format":"evidence"}\n');
+    const before = readdirSync(dir).sort();
+
+    const fakeServer = join(TMP_ROOT, 'nonfresh-fake-scry.sh');
+    writeFileSync(fakeServer, '#!/bin/sh\nif [ "$1" = "seed-fixture" ]; then echo \'{"questions": 2}\'; exit 0; fi\nexit 1\n');
+    chmodSync(fakeServer, 0o755);
+
+    const port = await freePort();
+    const result = spawnSync('node', [
+      join(CRITICS_DIR, 'run.mjs'), 'candidate', 'up',
+      '--dir', dir, '--binary', fakeServer,
+      '--port', String(port), '--out', join(dir, 'candidate.json'),
+    ], { encoding: 'utf8', timeout: 60000 });
+
+    strictEqual(result.status, 2, 'a non-fresh dir must be refused: ' + result.stdout + result.stderr);
+    ok(/not fresh/i.test(result.stderr), 'stderr must say the dir is not fresh: ' + result.stderr);
+    strictEqual(readFileSync(join(dir, 'keep.txt'), 'utf8'), 'keep-me\n', 'unrelated content must survive');
+    strictEqual(existsSync(join(dir, 'evidence-receipt.json')), true, 'the unrelated evidence file must survive');
+    strictEqual(readdirSync(dir).sort().join(','), before.join(','), 'the refused dir must be untouched');
+    strictEqual(existsSync(join(dir, 'candidate.json')), false, 'no handle may be written for a refused dir');
+
+    rmSync(family, { recursive: true, force: true });
+    rmSync(fakeServer, { force: true });
+  });
+
+  it('creates a missing dir and reuses an existing empty dir (fresh paths work)', async () => {
+    const family = join(TMP_ROOT, 'fresh-paths');
+    rmSync(family, { recursive: true, force: true });
+    mkdirSync(family, { recursive: true });
+
+    const fakeServer = join(family, 'ready-fake-scry.cjs');
+    writeReadyFakeServer(fakeServer);
+
+    const missingDir = join(family, 'missing', 'candidate');
+    const emptyDir = join(family, 'empty', 'candidate');
+    mkdirSync(emptyDir, { recursive: true });
+
+    for (const dir of [missingDir, emptyDir]) {
+      const port = await freePort();
+      const result = spawnSync('node', [
+        join(CRITICS_DIR, 'run.mjs'), 'candidate', 'up',
+        '--dir', dir, '--binary', fakeServer,
+        '--port', String(port), '--out', join(dir, 'candidate.json'),
+      ], { encoding: 'utf8', timeout: 60000 });
+      strictEqual(result.status, 0, 'fresh path must work (' + dir + '): ' + result.stdout + result.stderr);
+      strictEqual(existsSync(join(dir, 'candidate.json')), true, 'a handle must be written for ' + dir);
+
+      const down = spawnSync('node', [
+        join(CRITICS_DIR, 'run.mjs'), 'candidate', 'down',
+        '--dir', dir, '--out', join(dir, 'candidate.json'),
+      ], { encoding: 'utf8', timeout: 30000 });
+      strictEqual(down.status, 0, 'candidate down must stop the candidate: ' + down.stderr);
+    }
+
+    rmSync(family, { recursive: true, force: true });
   });
 });

@@ -6,7 +6,7 @@ describe('receipt', () => {
   it('valid minimal receipt', () => {
     const r = newReceipt({
       storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
-      candidate: { revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
       environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
       checks: [],
       runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
@@ -19,7 +19,7 @@ describe('receipt', () => {
   it('pass check requires notes', () => {
     const r = newReceipt({
       storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
-      candidate: { revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
       environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
       checks: [{ id: 'check1', surface: '/', status: 'pass', expected: 'x', observed: 'y', evidence: { screenshots: [{ name: 's', path: '/tmp/s.png' }], notes: [] } }],
       coverage: { exercised: ['check1'], skipped: [] },
@@ -33,7 +33,7 @@ describe('receipt', () => {
   it('unexercised checks cannot be pass', () => {
     const r = newReceipt({
       storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
-      candidate: { revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
       environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
       checks: [{ id: 'check1', surface: '/', status: 'pass', expected: 'x', observed: 'y', evidence: { screenshots: [{ name: 's', path: '/tmp/s.png' }], notes: ['note'] } }],
       coverage: { exercised: [], skipped: [] },
@@ -47,7 +47,7 @@ describe('receipt', () => {
   it('finalize sets end and duration', () => {
     const r = newReceipt({
       storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
-      candidate: { revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
       environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
       runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
     });
@@ -59,7 +59,7 @@ describe('receipt', () => {
   it('no_findings must match findings length', () => {
     const r = newReceipt({
       storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
-      candidate: { revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), origin: 'http://127.0.0.1:18080', kind: 'isolated-synthetic', seed: 'authored-test-fixture', binary_sha256: 'b'.repeat(64) },
       environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
       findings: [{ id: 'f1', category: 'missing', story: 'US-002', criterion: 'US-002.1', mechanism: 'test', title: 't', expected: 'e', actual: 'a', impact: 'i', uncertainty: 'u', evidence: {}, acceptance: 'a' }],
       runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
@@ -136,5 +136,91 @@ describe('receipt', () => {
     const v = validateReceipt(r);
     strictEqual(v.ok, false);
     strictEqual(v.errors.some(e => e.includes('must not claim a binary revision')), true);
+  });
+
+  it('never throws on malformed pass-check evidence shapes (total validator)', () => {
+    const base = () => ({
+      storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' },
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    });
+    const shapes = [
+      [undefined, 'evidence required for pass'],
+      [{}, 'evidence.notes'],
+      [{ notes: ['note'] }, 'evidence.screenshots'],
+    ];
+    for (const [evidence, expected] of shapes) {
+      const r = newReceipt({
+        ...base(),
+        checks: [{ id: 'c1', surface: '/', status: 'pass', expected: 'e', observed: 'o', evidence }],
+        coverage: { exercised: ['c1'], skipped: [] }
+      });
+      let v;
+      try {
+        v = validateReceipt(r, { fileExists: () => true });
+      } catch (err) {
+        throw new Error('validateReceipt threw on a malformed pass check: ' + err.message);
+      }
+      strictEqual(v.ok, false, 'malformed pass evidence must not validate: ' + JSON.stringify(v.errors));
+      strictEqual(v.errors.some(e => e.includes(expected)), true,
+        'errors must include "' + expected + '": ' + JSON.stringify(v.errors));
+    }
+  });
+
+  it('requires candidate.bound to be a boolean (identity without it is rejected)', () => {
+    const r = newReceipt({
+      storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
+      candidate: { revision: 'a'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' },
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      checks: [],
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    });
+    const v = validateReceipt(r);
+    strictEqual(v.ok, false, 'a receipt without candidate.bound must not validate');
+    strictEqual(v.errors.some(e => e.includes('candidate.bound must be boolean')), true, 'errors: ' + JSON.stringify(v.errors));
+  });
+
+  it('rejects a binary_revision that differs from revision (contradictory identity)', () => {
+    const base = {
+      storyBindings: [{ story: 'US-002', criteria: ['US-002.1'] }],
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      checks: [],
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    };
+    const conflicting = newReceipt({
+      ...base,
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_revision: 'c'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' }
+    });
+    const v = validateReceipt(conflicting);
+    strictEqual(v.ok, false, 'a contradictory binary_revision must not validate');
+    strictEqual(v.errors.some(e => e.includes('must match candidate.revision')), true, 'errors: ' + JSON.stringify(v.errors));
+
+    const sameRevision = newReceipt({
+      ...base,
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_revision: 'A'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' }
+    });
+    strictEqual(validateReceipt(sameRevision).ok, true, 'the same revision in different case is not a contradiction');
+  });
+
+  it('is total on malformed container entries (nulls are rejected, not thrown)', () => {
+    const r = newReceipt({
+      storyBindings: [null],
+      candidate: { bound: true, handle: 'target/critics/candidate.json', revision: 'a'.repeat(40), binary_sha256: 'b'.repeat(64), kind: 'external-isolated-synthetic', seed: 'declared-unverified', origin: 'http://127.0.0.1:18080' },
+      environment: { viewport: '390x844', user_agent: 'test', network: 'local-loopback', data: 'synthetic-authored' },
+      checks: [null],
+      coverage: { exercised: [], skipped: [null] },
+      runId: 'crit-test', maxSteps: 24, timeoutS: 120, maxScreenshots: 12
+    });
+    let v;
+    try {
+      v = validateReceipt(r);
+    } catch (err) {
+      throw new Error('validateReceipt threw on null container entries: ' + err.message);
+    }
+    strictEqual(v.ok, false);
+    strictEqual(v.errors.some(e => e.includes('story_bindings[0] must be an object')), true, 'errors: ' + JSON.stringify(v.errors));
+    strictEqual(v.errors.some(e => e.includes('checks[0] must be an object')), true, 'errors: ' + JSON.stringify(v.errors));
+    strictEqual(v.errors.some(e => e.includes('coverage.skipped[0] must be an object')), true, 'errors: ' + JSON.stringify(v.errors));
   });
 });

@@ -463,6 +463,8 @@ describe('candidate handle binding (D1)', () => {
 
     strictEqual(result.status, 2, 'a foreign binary revision must fail closed, got ' + result.status);
     const receipt = JSON.parse(readFileSync(join(outDir, 'receipt.json'), 'utf8'));
+    strictEqual(receipt.candidate.bound, true, 'the declared handle identity is kept');
+    strictEqual(receipt.candidate.binary_revision, null, 'the blocked receipt must not carry the contradictory pair');
     const check = receipt.checks.find(c => c.id === 'walk-execution');
     ok(check && /does not match handle revision/i.test(check.observed), 'observed must explain: ' + (check && check.observed));
 
