@@ -65,6 +65,10 @@ exe.dev. The operator approved the phone flow and daily recovery policy.
 - Start focused verification with `.agents/skills/scry-qa/SKILL.md`. It owns
   real-surface proof boundaries and run-owned cleanup; read it explicitly when
   the runner disables ambient skill discovery.
+- Critic passes start at `scripts/critics/` with run instructions in
+  `docs/qa/critics.md`. Their receipts bind revision, environment, story, and
+  criterion; Jev output is advisory, and mutating passes stay on isolated
+  synthetic data.
 - `bun run ci` / `bun run ci:local` run the host source-snapshot gate.
   `bun run ci:full` runs the same gate in pinned Dagger tooling and exports the
   exact smoke-tested Linux amd64 binary, source inventory/archive, and proof.
@@ -85,10 +89,13 @@ exe.dev. The operator approved the phone flow and daily recovery policy.
 
 ## Sources of truth and work
 
-Use the operator-approved specification for acceptance and current code/tests
-for implemented behavior. `docs/qa/system.md` owns verification entrypoints.
-Dated Rust/beta/dogfood/research receipts, `docs/rust-migration.md`, `SLICE-*.md`,
-and `exemplars.md` are history, not current deployment instructions.
+Use the contract chain: `VISION.md` owns intent, `USER_STORIES.md` owns root
+stories, `SPEC.md` owns criteria, behavior, and architecture, and
+`docs/qa/system.md` owns verification entrypoints. Current code and tests own
+implemented behavior. Critic passes start at `scripts/critics/` with run
+instructions in `docs/qa/critics.md`. Dated Rust/beta/dogfood/research receipts,
+`docs/rust-migration.md`, `docs/history/SLICE-*.md`, and
+`docs/history/exemplars.md` are history, not current deployment instructions.
 
 Work from the current request, preserve overlapping work, and keep ownership
 and evidence in the session/PR. Linear owns operational state, not a duplicate

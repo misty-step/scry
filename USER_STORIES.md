@@ -1,7 +1,11 @@
 # Stories
 
 <!-- Root artifact: what users must be able to do. One file, ids never
-reused, criteria a check can fail on. skill://user-stories guides edits. -->
+reused, criteria a check can fail on. skill://user-stories guides edits.
+Authoritative chain: VISION.md (intent) -> this file (root stories) -> SPEC.md
+(binding acceptance ids S##.##, behavior, architecture) -> docs/qa/system.md and
+docs/qa/critics.md (verification). Linear owns work state. Journeys and receipts
+cite both US ids and S ids. -->
 
 ## Capability: Concept-centered study
 

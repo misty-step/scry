@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Critic fixture: missing feedback</title>
+</head>
+<body>
+  <!-- Review fixture: confirmed answer affordance; answering does nothing at
+       all — no feedback, no Next. Expected walk outcome: finding
+       feedback-absent (exit 1). -->
+  <div class="review-stage">
+    <h1>Fixture missing feedback test question?</h1>
+    <form class="answer-form" action="#" method="post">
+      <fieldset class="choice-fieldset">
+        <button class="choice" name="answer" value="A" type="button">A</button>
+        <button class="choice" name="answer" value="B" type="button">B</button>
+      </fieldset>
+    </form>
+  </div>
+  <script>
+    document.querySelector('.answer-form').addEventListener('click', function (e) {
+      e.preventDefault(); // no feedback, no next: state never changes
+    });
+  </script>
+</body>
+</html>

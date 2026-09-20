@@ -35,6 +35,9 @@ It uses pinned Dagger tooling, freezes actual source, runs shared checks and
 redacted Gitleaks, and exports the same binary exercised by the synthetic smoke.
 Worktree-labeled artifacts are not committed release proof. Never rebuild
 between smoke and deployment or bypass protected activation/remote backup.
+Scheduled or exploratory critic passes use `scripts/critics/` with run
+instructions in [docs/qa/critics.md](../../../docs/qa/critics.md); treat their
+output as advisory.
 
 ## UI and private production
 

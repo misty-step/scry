@@ -80,10 +80,17 @@ planning every future feature before testing the core experience.
 | Layer | Durable owner | Question answered |
 | --- | --- | --- |
 | Product | VISION.md | Who is this for, what outcome matters, what is out of scope? |
-| Behavior | Stories and quality contracts below | What must the learner be able to do, including failure and interruption? |
+| Stories | USER_STORIES.md plus this file's criteria | What must the learner be able to do, including failure and interruption? |
+| Behavior / criteria | This file (binding ids: S##.##) | What exactly must be accepted for each story? |
 | Design | Architecture and decision sections below | What is the smallest system that can deliver those behaviors? |
-| Work | Accepted Linear issues linked to story/criterion IDs and a source revision | What bounded change is someone doing now? |
-| Evidence | Revision-bound QA receipt linked from the issue/PR | What was actually exercised, observed, and not verified? |
+| Work | Linear, linked to story/criterion IDs and a source revision | What bounded change is someone doing now? |
+| Verification | docs/qa/system.md plus docs/qa/critics.md critic receipts | What was actually exercised, observed, and not verified? |
+
+**Contract status.** Implemented behavior lives in code, tests, and dated
+receipts; accepted goals live in [VISION.md](VISION.md) and the accepted
+criteria in this file; proposals live in [design notes](docs/design/) marked as
+proposals; unknowns live in the Open acceptance list above. No other document is
+a second authority for these states.
 
 This is not a waterfall. A cheap experience or technical spike can change a
 story or design before implementation. Later failures feed back into the spec.

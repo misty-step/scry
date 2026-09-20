@@ -1,0 +1,116 @@
+{
+  "format": "scry-critic-receipt-v1",
+  "no_findings": true,
+  "run": {
+    "id": "crit-1789905713147",
+    "started_at": "2026-09-20T12:01:49.487Z",
+    "ended_at": "2026-09-20T12:01:53.147Z",
+    "duration_s": 4,
+    "budget": {
+      "maxSteps": 24,
+      "timeoutS": 120,
+      "maxScreenshots": 12,
+      "steps": 4,
+      "screenshots": 3,
+      "elapsed_s": 4
+    }
+  },
+  "candidate": {
+    "bound": true,
+    "handle": "target/critics/evidence-c/candidate.json",
+    "handle_id": "cand-59869625646e",
+    "revision": "ad272f5930e2981cda14d62a02e0a5d9eaef436b",
+    "binary_revision": "ad272f5930e2981cda14d62a02e0a5d9eaef436b",
+    "origin": "http://127.0.0.1:18096",
+    "kind": "external-isolated-synthetic",
+    "seed": "authored-test-fixture",
+    "binary_sha256": "2a68bdb510db588b3d7948a930443877cb59c570930d3e0049e292a996fc5c2b",
+    "source_state": "clean"
+  },
+  "environment": {
+    "viewport": "390x844",
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "network": "local-loopback",
+    "data": "synthetic-authored"
+  },
+  "story_bindings": [
+    {
+      "story": "US-002",
+      "criteria": [
+        "US-002.1",
+        "US-002.2"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "US-002.1",
+      "surface": "/",
+      "status": "pass",
+      "expected": "answer affordance",
+      "observed": "choice confirmed",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "ungraded",
+            "path": "target/critics/evidence-run/shots/ungraded.png"
+          }
+        ],
+        "notes": [
+          "discovery confirmed: choice"
+        ]
+      }
+    },
+    {
+      "id": "US-002.2",
+      "surface": "/",
+      "status": "pass",
+      "expected": "feedback+next",
+      "observed": "state=graded",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "feedback",
+            "path": "target/critics/evidence-run/shots/feedback.png"
+          }
+        ],
+        "notes": [
+          "discovery confirmed graded state"
+        ]
+      }
+    },
+    {
+      "id": "US-002.2-next",
+      "surface": "/",
+      "status": "pass",
+      "expected": "advance to next",
+      "observed": "state=ungraded",
+      "evidence": {
+        "screenshots": [
+          {
+            "name": "next",
+            "path": "target/critics/evidence-run/shots/next.png"
+          }
+        ],
+        "notes": [
+          "html differs before/after",
+          "state changed"
+        ]
+      }
+    }
+  ],
+  "findings": [],
+  "coverage": {
+    "exercised": [
+      "US-002.1",
+      "US-002.2",
+      "US-002.2-next"
+    ],
+    "skipped": []
+  },
+  "advisory": {
+    "jevs": [],
+    "notes": []
+  },
+  "limits": []
+}
