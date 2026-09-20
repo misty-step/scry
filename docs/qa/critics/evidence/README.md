@@ -5,15 +5,19 @@ synthetic candidate (`candidate up` → `human --goal practice-review`).
 
 - `receipt.json` — exit 0: US-002.1 pass, US-002.2 pass, US-002.2-next pass;
   no findings; coverage exercised x3. **Candidate-bound**: the receipt cites
-  the tested handle (`cand-b678b6e5006a`), checkout revision `db04ef5`, the
-  served binary's own revision `binary_revision: db04ef5` (verified against
+  the tested handle (`cand-59869625646e`), checkout revision `ad272f5`, the
+  served binary's own revision `binary_revision: ad272f5` (verified against
   the binary the candidate served), the built `binary_sha256`, and
-  `source_state: clean`. A walk whose handle revision does not match the
-  checkout HEAD, whose binary was replaced, or whose binary revision is
-  undeterminable fails closed (exit 2, receipt) instead of producing a false
-  claim.
+  `source_state: clean`. The handle's `source_state_source: source-checkout`
+  records that a default build's state comes from the checkout (== build
+  source); a `--binary` handle's state comes from the binary's own buildinfo
+  (`vcs.modified` → clean/dirty, or `unknown` for stamp-only exports) and
+  never from the walking checkout. A walk whose handle revision does not
+  match the checkout HEAD, whose binary was replaced, or whose binary
+  revision is undeterminable fails closed (exit 2, receipt) instead of
+  producing a false claim.
 - `test-output.txt` — raw `node --test scripts/critics/tests/` output
-  (60 pass / 0 fail / 0 skipped) with a real browser; the browser cases
+  (65 pass / 0 fail / 0 skipped) with a real browser; the browser cases
   exercise the fixtures for real and report visible skips (never passes)
   when the environment cannot run them.
 
@@ -31,6 +35,13 @@ Negative proof (reproducible, not committed):
 - `candidate up --binary <revision undeterminable>` → handle records
   `binary_revision: null`; the walk binding refuses it (exit 2, blocked
   receipt with `walk-execution: unverified`)
+- `candidate up --binary <built from a modified tree at the checkout rev>` →
+  handle records `source_state: dirty` (`source_state_source: buildinfo-vcs`)
+  from the binary's own `vcs.modified`; the bound walk receipt carries
+  `dirty`, never `clean`
+- `candidate up --binary <stamped/-trimpath export at the checkout rev>` →
+  handle records `source_state: unknown` (a stamp carries no tree state); the
+  walk still binds, labeled `unknown`
 - a `/readyz` that accepts but never answers → each readiness attempt is
   bounded by a request timeout; the attempt loop advances instead of stalling
 
