@@ -32,10 +32,24 @@ export function validateReceipt(r, { fileExists = existsSync } = {}) {
 
   if (!r.candidate || typeof r.candidate !== 'object') errors.push('candidate is required');
   else {
-    if (r.candidate.revision && !/^[0-9a-f]{40}$/i.test(r.candidate.revision)) errors.push('candidate.revision must be 40-hex');
+    if (r.candidate.revision != null && !/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(r.candidate.revision)) errors.push('candidate.revision must be 40/64-hex or null');
     if (typeof r.candidate.kind !== 'string') errors.push('candidate.kind must be string');
     if (typeof r.candidate.seed !== 'string') errors.push('candidate.seed must be string');
     if (r.candidate.binary_sha256 !== null && !/^[0-9a-f]{64}$/i.test(r.candidate.binary_sha256 ?? '')) errors.push('candidate.binary_sha256 must be 64-hex or null');
+    if (r.candidate.bound !== undefined) {
+      if (typeof r.candidate.bound !== 'boolean') errors.push('candidate.bound must be boolean');
+      else if (r.candidate.bound === true) {
+        if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(r.candidate.revision ?? ''))) errors.push('bound candidate requires a 40/64-hex revision');
+        if (!/^[0-9a-f]{64}$/i.test(String(r.candidate.binary_sha256 ?? ''))) errors.push('bound candidate requires a 64-hex binary_sha256');
+        if (typeof r.candidate.handle !== 'string' || r.candidate.handle.length === 0) errors.push('bound candidate requires a handle reference');
+      } else {
+        if (r.candidate.revision !== null) errors.push('unbound candidate must not claim a revision');
+        if (r.candidate.binary_sha256 !== null) errors.push('unbound candidate must not claim a binary_sha256');
+      }
+    }
+    if (r.candidate.handle_id !== undefined && r.candidate.handle_id !== null && typeof r.candidate.handle_id !== 'string') errors.push('candidate.handle_id must be string or null');
+    if (r.candidate.source_state !== undefined && r.candidate.source_state !== null &&
+        !['clean', 'dirty', 'unknown'].includes(r.candidate.source_state)) errors.push('candidate.source_state must be clean|dirty|unknown or null');
   }
 
   if (!r.environment || typeof r.environment !== 'object') errors.push('environment is required');

@@ -7,15 +7,20 @@
 import { spawnSync, spawn } from 'node:child_process';
 import { rm, writeFile, readFile, mkdir, open, access, constants } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, dirname, delimiter } from 'node:path';
+import { join, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { connect } from 'node:net';
 import os from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, '..', '..');
+
+// Supported walk goals. An unknown goal is a usage error, never a silent
+// practice-review run.
+const GOALS = ['practice-review'];
 
 // === utilities ===
 function jsonOutput(data) {
@@ -39,99 +44,61 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// === playwright resolution ===
-function tryRequirePlaywright() {
-  const nodePath = process.env.NODE_PATH;
-  if (nodePath) {
-    const paths = nodePath.split(delimiter);
-    for (const p of paths) {
-      if (existsSync(join(p, 'playwright'))) {
-        try {
-          const require = createRequire(import.meta.url);
-          const mod = require(p + '/playwright');
-          return { mod, source: 'NODE_PATH' };
-        } catch (_) {}
-      }
-    }
-  }
-
-  const pwEnv = process.env.SCRY_CRITICS_PLAYWRIGHT;
-  if (pwEnv) {
-    try {
-      const require = createRequire(import.meta.url);
-      const mod = require(pwEnv);
-      return { mod, source: 'SCRY_CRITICS_PLAYWRIGHT' };
-    } catch (_) {}
-    try {
-      const require = createRequire(import.meta.url);
-      const mod = require(join(REPO_ROOT, pwEnv));
-      return { mod, source: 'SCRY_CRITICS_PLAYWRIGHT (relative)' };
-    } catch (_) {}
-  }
-
-  try {
-    const require = createRequire(import.meta.url);
-    const mod = require('playwright');
-    return { mod, source: 'cwd-require' };
-  } catch (_) {}
-
-  const homedir = os.homedir();
-  const homedirPaths = [
-    join(homedir, '.local/share/mise/installs/npm-playwright/latest/node_modules/playwright'),
-    join(homedir, 'node_modules/playwright'),
-    join(homedir, '.npm-global/lib/node_modules/playwright'),
-  ];
-  for (const p of homedirPaths) {
-    if (existsSync(p)) {
-      try {
-        const require = createRequire(import.meta.url);
-        const mod = require(p);
-        return { mod, source: 'homedir-fallback' };
-      } catch (_) {}
-    }
-  }
-
-  return null;
+function fail(message, code = 2) {
+  process.stderr.write(message + '\n');
+  process.exit(code);
 }
 
-// === chromium resolution ===
-async function tryFindChromium() {
-  const candidates = [
-    process.env.CHROMIUM_PATH,
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-  ].filter(Boolean);
-
-  for (const p of candidates) {
-    try {
-      await access(p, constants.X_OK);
-      return p;
-    } catch (_) {}
-  }
-
-  return null;
+function positiveInt(value, flag) {
+  if (value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) fail(`usage: ${flag} must be a positive integer, got "${value}"`);
+  return n;
 }
 
 // === candidate commands ===
+function isPortBusy(port) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (busy) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      socket.destroy();
+      resolve(busy);
+    };
+    const socket = connect({ host: '127.0.0.1', port });
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    timer = setTimeout(() => finish(false), 800);
+  });
+}
+
 async function candidateUp(args) {
   const { parseArgs } = await import('node:util');
-  const { values } = parseArgs({
-    args,
-    options: {
-      dir: { type: 'string' },
-      port: { type: 'string' },
-      out: { type: 'string' },
-      json: { type: 'boolean' },
-    }
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args,
+      options: {
+        dir: { type: 'string' },
+        port: { type: 'string' },
+        out: { type: 'string' },
+        binary: { type: 'string' },
+        json: { type: 'boolean' },
+      }
+    }));
+  } catch (err) {
+    fail('usage: candidate up: ' + err.message);
+  }
 
   const dir = values.dir || join(REPO_ROOT, 'target/critics/candidate');
-  const port = values.port ? parseInt(values.port) : 18080;
+  const port = values.port ? parseInt(values.port, 10) : 18080;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) fail('usage: --port must be a port number 1-65535');
   const outPath = values.out || join(dir, 'candidate.json');
   const dbPath = join(dir, 'synthetic.sqlite');
-  const binaryPath = join(dir, 'scry');
+  const binaryPath = values.binary ? values.binary : join(dir, 'scry');
   const backupsDir = join(dir, 'backups');
 
   const homeDir = os.homedir();
@@ -154,17 +121,33 @@ async function candidateUp(args) {
     process.exit(2);
   } catch (_) {}
 
+  // Fail fast on an occupied port: the ready poll must never be satisfied by
+  // another process, and the handle must never record a PID that does not serve.
+  if (await isPortBusy(port)) {
+    process.stderr.write(`Port ${port} is already in use; refusing to start a candidate that cannot bind\n`);
+    process.exit(2);
+  }
+
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir);
   await mkdir(backupsDir);
 
-  const buildR = spawnSync('go', ['build', '-mod=readonly', '-o', binaryPath, './cmd/scry'], {
-    cwd: REPO_ROOT,
-    env, encoding: 'utf8'
-  });
-  if (buildR.status !== 0) {
-    process.stderr.write('Build failed: ' + (buildR.stderr || 'unknown error') + '\n');
-    process.exit(2);
+  if (values.binary) {
+    try {
+      await access(binaryPath, constants.X_OK);
+    } catch (_) {
+      process.stderr.write('--binary is not an executable file: ' + binaryPath + '\n');
+      process.exit(2);
+    }
+  } else {
+    const buildR = spawnSync('go', ['build', '-mod=readonly', '-o', binaryPath, './cmd/scry'], {
+      cwd: REPO_ROOT,
+      env, encoding: 'utf8'
+    });
+    if (buildR.status !== 0) {
+      process.stderr.write('Build failed: ' + (buildR.stderr || 'unknown error') + '\n');
+      process.exit(2);
+    }
   }
 
   const seedR = spawnSync(binaryPath, ['seed-fixture', '--db', dbPath], { env, encoding: 'utf8' });
@@ -172,7 +155,13 @@ async function candidateUp(args) {
     process.stderr.write('Seed failed: ' + seedR.stderr + '\n');
     process.exit(2);
   }
-  const seed = JSON.parse(seedR.stdout);
+  let seed;
+  try {
+    seed = JSON.parse(seedR.stdout);
+  } catch (_) {
+    process.stderr.write('Seed output was not JSON\n');
+    process.exit(2);
+  }
 
   const logPath = join(dir, 'serve.log');
   const logFd = await open(logPath, 'w');
@@ -184,8 +173,10 @@ async function candidateUp(args) {
   serveCmd.unref();
 
   let ready = false;
+  let earlyExit = false;
   const url = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 30; i++) {
+    if (serveCmd.exitCode !== null) { earlyExit = true; break; }
     try {
       const { request } = await import('node:http');
       await new Promise((resolve, reject) => {
@@ -202,8 +193,16 @@ async function candidateUp(args) {
     }
   }
   if (!ready) {
-    process.stderr.write('Server did not become ready\n');
-    serveCmd.kill();
+    process.stderr.write(earlyExit
+      ? `Server exited before becoming ready (see ${logPath})\n`
+      : 'Server did not become ready\n');
+    try { serveCmd.kill(); } catch (_) {}
+    process.exit(2);
+  }
+  // Settle: a bind failure kills the child within milliseconds of the ready answer.
+  await sleep(250);
+  if (serveCmd.exitCode !== null) {
+    process.stderr.write(`Server exited during startup (see ${logPath})\n`);
     process.exit(2);
   }
 
@@ -212,10 +211,16 @@ async function candidateUp(args) {
   const pid = serveCmd.pid;
   const started_at = new Date().toISOString();
 
+  let sourceState = 'unknown';
+  const st = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
+  if (st.status === 0) sourceState = st.stdout.trim() ? 'dirty' : 'clean';
+
+  const id = 'cand-' + createHash('sha256').update(`${revision}|${url}|${binarySha}`).digest('hex').slice(0, 12);
+
   const handle = {
     format: 'scry-critic-candidate-v1',
-    pid, url, dir, port, db: dbPath, binary: binaryPath, binary_sha256: binarySha,
-    seed, revision, kind: 'isolated-synthetic', started_at
+    id, pid, url, dir, port, db: dbPath, binary: binaryPath, binary_sha256: binarySha,
+    seed, revision, source_state: sourceState, kind: 'isolated-synthetic', started_at
   };
 
   await writeFile(outPath, JSON.stringify(handle, null, 2));
@@ -226,10 +231,15 @@ async function candidateUp(args) {
 
 async function candidateDown(args) {
   const { parseArgs } = await import('node:util');
-  const { values } = parseArgs({
-    args,
-    options: { dir: { type: 'string' }, out: { type: 'string' }, json: { type: 'boolean' } }
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args,
+      options: { dir: { type: 'string' }, out: { type: 'string' }, json: { type: 'boolean' } }
+    }));
+  } catch (err) {
+    fail('usage: candidate down: ' + err.message);
+  }
 
   const dir = values.dir || join(REPO_ROOT, 'target/critics/candidate');
   const outPath = values.out || join(dir, 'candidate.json');
@@ -262,47 +272,127 @@ async function candidateDown(args) {
 }
 
 // === human walk ===
+
+// Load and validate a candidate handle for receipt binding. Fails closed:
+// unreadable handle, missing identity fields, an artifact that is not the
+// walk target, or a revision that is not the walking checkout all reject.
+async function loadCandidateHandle(handlePath, targetUrl) {
+  const block = {
+    bound: false, handle: handlePath, handle_id: null, revision: null,
+    binary_sha256: null, source_state: null, seed: 'declared-unverified'
+  };
+
+  let raw;
+  try { raw = JSON.parse(await readFile(handlePath, 'utf8')); }
+  catch (err) { return { ok: false, reason: 'handle unreadable: ' + err.message, identityBlock: block }; }
+
+  if (!raw || typeof raw !== 'object') return { ok: false, reason: 'handle is not an object', identityBlock: block };
+
+  if (typeof raw.id === 'string') block.handle_id = raw.id;
+  if (typeof raw.revision === 'string') block.revision = raw.revision;
+  if (typeof raw.binary_sha256 === 'string') block.binary_sha256 = raw.binary_sha256;
+  if (typeof raw.source_state === 'string') block.source_state = raw.source_state;
+  if (raw.seed && typeof raw.seed === 'object' && typeof raw.seed.model === 'string') block.seed = raw.seed.model;
+
+  if (raw.format !== 'scry-critic-candidate-v1') return { ok: false, reason: 'handle format mismatch: ' + raw.format, identityBlock: block };
+  if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(raw.revision ?? ''))) return { ok: false, reason: 'handle revision missing or invalid', identityBlock: block };
+  if (!/^[0-9a-f]{64}$/i.test(String(raw.binary_sha256 ?? ''))) return { ok: false, reason: 'handle binary_sha256 missing or invalid', identityBlock: block };
+
+  // A valid identity exists on the handle from here on.
+  block.bound = true;
+
+  const target = targetUrl || 'http://127.0.0.1:18080';
+  let tOrigin = null, hOrigin = null;
+  try { tOrigin = new URL(target).origin; } catch (_) {}
+  try { hOrigin = new URL(String(raw.url ?? '')).origin; } catch (_) {}
+  if (!tOrigin || !hOrigin || tOrigin !== hOrigin) {
+    return { ok: false, reason: `handle describes ${hOrigin || 'an unknown origin'} but the walk target is ${tOrigin || 'unknown'}`, identityBlock: block };
+  }
+
+  const checkout = getGitRevision();
+  if (!checkout) return { ok: false, reason: 'checkout revision unavailable (not a git checkout); cannot verify the binding', identityBlock: block };
+  if (checkout !== raw.revision) {
+    return { ok: false, reason: `handle revision ${raw.revision} does not match checkout HEAD ${checkout}`, identityBlock: block };
+  }
+
+  return { ok: true, reason: null, identityBlock: block };
+}
+
 async function humanWalk(args) {
   const { parseArgs } = await import('node:util');
-  const { values } = parseArgs({
-    args,
-    options: {
-      goal: { type: 'string' },
-      candidate: { type: 'string' },
-      out: { type: 'string' },
-      timeout: { type: 'string' },
-      'max-steps': { type: 'string' },
-      json: { type: 'boolean' }
-    }
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args,
+      options: {
+        goal: { type: 'string' },
+        candidate: { type: 'string' },
+        out: { type: 'string' },
+        timeout: { type: 'string' },
+        'max-steps': { type: 'string' },
+        'max-screenshots': { type: 'string' },
+        'allow-origin': { type: 'string' },
+        handle: { type: 'string' },
+        json: { type: 'boolean' }
+      }
+    }));
+  } catch (err) {
+    fail('usage: ' + err.message);
+  }
+
+  if (!values.goal) fail('usage: --goal is required; supported goals: ' + GOALS.join(', '));
+  if (!GOALS.includes(values.goal)) fail(`usage: unknown goal "${values.goal}"; supported goals: ` + GOALS.join(', '));
+  const maxSteps = positiveInt(values['max-steps'], '--max-steps') ?? 24;
+  const timeoutS = positiveInt(values.timeout, '--timeout') ?? 120;
+  const maxScreenshots = positiveInt(values['max-screenshots'], '--max-screenshots') ?? 12;
 
   const outDir = values.out || join(REPO_ROOT, 'target/critics/run1');
   const url = values.candidate;
-  const timeout = values.timeout ? parseInt(values.timeout) : 120;
+  const startedAt = Date.now();
 
   await mkdir(outDir, { recursive: true });
 
   const { validateReceipt } = await import('./lib/receipt.mjs');
-  const { classifyOrigin, Budget } = await import('./lib/guards.mjs');
+  const { classifyOrigin, Budget, BudgetError } = await import('./lib/guards.mjs');
+  const { resolveBrowser } = await import('./lib/browser.mjs');
   const { discoverControls, parseAriaSnapshot } = await import('./lib/discover.mjs');
   const { fingerprint, dedupeFindings } = await import('./lib/dedupe.mjs');
 
+  const budget = new Budget({ maxSteps, timeoutS, maxScreenshots });
+
+  // Origin safety: mutating walks pass only for loopback or an explicitly
+  // allowed non-loopback origin; production origins are always refused.
   if (url) {
-    const result = classifyOrigin(url, { mutating: true });
+    const result = classifyOrigin(url, { mutating: true, allowOrigin: values['allow-origin'] || null });
     if (!result.ok) {
       process.stderr.write('Blocked: ' + result.reason + '\n');
       process.exit(2);
     }
   }
 
+  // Candidate binding (D1): receipts carry the identity of the tested artifact
+  // only from its handle. A mismatch is a blocked walk with a receipt.
+  let binding = {
+    bound: false, handle: null, handle_id: null, revision: null,
+    binary_sha256: null, source_state: null, seed: 'declared-unverified'
+  };
+  if (values.handle) {
+    const loaded = await loadCandidateHandle(values.handle, url);
+    if (!loaded.ok) {
+      await writeBlockedReceipt('candidate binding rejected: ' + loaded.reason, loaded.identityBlock);
+      fail('Blocked: candidate binding rejected: ' + loaded.reason);
+    }
+    binding = loaded.identityBlock;
+  } else {
+    process.stderr.write('note: no --handle passed; receipt candidate identity will be unbound\n');
+  }
+
   const shotsDir = join(outDir, 'shots');
   await mkdir(shotsDir, { recursive: true });
 
-  const startedAt = Date.now();
   const checks = [];
   const findings = [];
   const coverage = { exercised: [], skipped: [] };
-  const budget = new Budget({});
 
   // Authored fixture answers (cmd/scry/main.go seed-fixture). The critic knows
   // its own fixture; unknown prompts fall back to placeholder behavior.
@@ -322,6 +412,20 @@ async function humanWalk(args) {
     } catch (_) {
       return 'unknown';
     }
+  }
+
+  function candidateBlock() {
+    return {
+      bound: binding.bound,
+      handle: binding.handle,
+      handle_id: binding.handle_id,
+      revision: binding.revision,
+      origin: url || 'localhost:18080',
+      kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
+      seed: binding.seed,
+      binary_sha256: binding.binary_sha256,
+      source_state: binding.source_state
+    };
   }
 
   // Helper to scan DOM and build aria-like structure
@@ -368,12 +472,25 @@ async function humanWalk(args) {
     return { domList, ariaList };
   }
 
-  function makeReceipt(discovery, checks, findings, coverage, elapsedS, useragent, networkType) {
+  function makeReceipt(discovery, checks, findings, coverage, elapsedS, useragent, networkType, bindingOverride = null) {
     return {
       format: 'scry-critic-receipt-v1',
       no_findings: findings.length === 0,
       run: { id: 'crit-' + Date.now(), started_at: new Date(startedAt).toISOString(), ended_at: new Date().toISOString(), duration_s: elapsedS, budget: budget.toJSON() },
-      candidate: { revision: getGitRevision(), origin: url || 'localhost:18080', kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic', seed: url ? 'declared-unverified' : 'authored-test-fixture', binary_sha256: url ? null : sha256File(join(REPO_ROOT, 'target/critics/candidate/scry')) },
+      candidate: (() => {
+        if (!bindingOverride) return candidateBlock();
+        return {
+          bound: bindingOverride.bound,
+          handle: bindingOverride.handle,
+          handle_id: bindingOverride.handle_id,
+          revision: bindingOverride.revision,
+          origin: url || 'localhost:18080',
+          kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
+          seed: bindingOverride.seed,
+          binary_sha256: bindingOverride.binary_sha256,
+          source_state: bindingOverride.source_state
+        };
+      })(),
       environment: { viewport: '390x844', user_agent: useragent, network: networkType, data: 'synthetic-authored' },
       story_bindings: [{ story: 'US-002', criteria: ['US-002.1', 'US-002.2'] }],
       checks,
@@ -384,14 +501,14 @@ async function humanWalk(args) {
     };
   }
 
-  async function writeBlockedReceipt(observed) {
+  async function writeBlockedReceipt(observed, bindingOverride = null) {
     const elapsedS = Math.round((Date.now() - startedAt) / 1000);
     const receipt = makeReceipt(
       { question: { name: '', status: 'unverified' }, answerAffordance: { type: null, controls: [], status: 'unverified' }, state: 'unknown', notes: [] },
-      [{ id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed, evidence: { screenshots: [], notes: ['runner-defect: ' + observed] } }],
+      [{ id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed, evidence: { screenshots: [], notes: ['blocked: ' + observed] } }],
       [],
       { exercised: ['walk-execution'], skipped: [] },
-      elapsedS, '', getNetworkType(url)
+      elapsedS, '', getNetworkType(url), bindingOverride
     );
     const validation = validateReceipt(receipt);
     if (validation.ok) await writeFile(join(outDir, 'receipt.json'), JSON.stringify(receipt, null, 2));
@@ -399,29 +516,48 @@ async function humanWalk(args) {
 
   // Browser availability is part of the environment contract: a missing
   // browser is a blocked run, and blocked runs still write a receipt.
-  const pw = tryRequirePlaywright();
-  if (!pw) {
-    process.stderr.write('Playwright unavailable. Use one of:\n');
-    process.stderr.write('  NODE_PATH=/path/to/playwright\n');
-    process.stderr.write('  SCRY_CRITICS_PLAYWRIGHT=/path/to/playwright\n');
-    process.stderr.write('  or add playwright to project package.json\n');
-    await writeBlockedReceipt('playwright unavailable');
+  const browser = await resolveBrowser();
+  if (!browser.ok) {
+    if (!browser.playwright) {
+      process.stderr.write('Playwright unavailable. Use one of:\n');
+      process.stderr.write('  NODE_PATH=/path/to/playwright\n');
+      process.stderr.write('  SCRY_CRITICS_PLAYWRIGHT=/path/to/playwright\n');
+      process.stderr.write('  or add playwright to project package.json\n');
+      await writeBlockedReceipt('playwright unavailable');
+    } else {
+      process.stderr.write('No Chromium found. Set CHROMIUM_PATH or install:\n');
+      process.stderr.write('  /usr/bin/chromium\n');
+      process.stderr.write('  /usr/bin/google-chrome\n');
+      await writeBlockedReceipt('chromium unavailable');
+    }
     process.exit(2);
   }
 
-  const chromium = await tryFindChromium();
-  if (!chromium) {
-    process.stderr.write('No Chromium found. Set CHROMIUM_PATH or install:\n');
-    process.stderr.write('  /usr/bin/chromium\n');
-    process.stderr.write('  /usr/bin/google-chrome\n');
-    await writeBlockedReceipt('chromium unavailable');
+  // Browser launch failure is a blocked environment, not a findings exit: it
+  // must preserve a blocked receipt.
+  let b = null;
+  let p = null;
+  try {
+    b = await browser.playwright.mod.chromium.launch({ executablePath: browser.chromium, headless: true, args: browser.launchArgs });
+    p = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  } catch (err) {
+    if (b) { try { await b.close(); } catch (_) {} }
+    process.stderr.write('Browser launch failed: ' + err.message + '\n');
+    await writeBlockedReceipt('browser launch failed: ' + err.message);
     process.exit(2);
   }
 
-  const b = await pw.mod.chromium.launch({ executablePath: chromium, headless: true });
-  const p = await b.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  // Budget enforcement (D3): every step and elapsed time is counted; a limit
+  // stop is a blocked walk with a receipt, never a false pass.
+  const checkBudget = (stage) => {
+    const step = budget.checkStep();
+    if (!step.ok) throw new BudgetError(`max steps exceeded (limit ${maxSteps}; stage: ${stage})`);
+    const t = budget.checkTimeout();
+    if (!t.ok) throw new BudgetError(`timeout exceeded (limit ${timeoutS}s; stage: ${stage})`);
+  };
 
   try {
+    checkBudget('initial navigation');
     await p.goto(url || 'http://127.0.0.1:18080/', { waitUntil: 'load', timeout: 15000 });
     await p.waitForTimeout(500);
 
@@ -437,6 +573,7 @@ async function humanWalk(args) {
     let { obs: observation, discovery } = await readState();
     let normalizeSteps = 0;
     while (discovery.state === 'graded' && normalizeSteps < 5) {
+      checkBudget('normalize ' + (normalizeSteps + 1));
       const nb = await p.$('form[data-next] button[type="submit"]');
       if (!nb) break;
       await nb.click();
@@ -447,7 +584,7 @@ async function humanWalk(args) {
 
     const takeShot = async (name) => {
       const c = budget.checkScreenshot();
-      if (!c.ok) throw new Error('budget exhausted: ' + c.reason);
+      if (!c.ok) throw new BudgetError('budget exhausted: ' + c.reason);
       await p.screenshot({ path: join(shotsDir, name + '.png') });
     };
 
@@ -523,7 +660,7 @@ async function humanWalk(args) {
     const fixtureAnswer = FIXTURE_ANSWERS[discovery.question.name];
     let answerAction = null;
 
-    { const tc = budget.checkTimeout(); if (!tc.ok) throw new Error('budget exhausted: ' + tc.reason); }
+    checkBudget('answer');
 
     if (affordanceType === 'choice') {
       const buttons = await p.$$('form.answer-form button[name="answer"]');
@@ -578,6 +715,7 @@ async function humanWalk(args) {
       }
     }
 
+    checkBudget('feedback scan');
     await takeShot('feedback');
 
     // Scan page state 2 (after answer) - RE-SCAN to avoid stale data
@@ -661,6 +799,7 @@ async function humanWalk(args) {
       process.exit(3);
     }
 
+    checkBudget('next');
     await nextBtn.click();
     await p.waitForTimeout(1200);
     await takeShot('next');
@@ -727,17 +866,16 @@ async function humanWalk(args) {
     else process.exit(0);
 
   } catch (err) {
-    await b.close();
+    try { if (b) await b.close(); } catch (_) {}
     process.stderr.write('Walk failed: ' + err.message + '\n');
     const elapsedS = Math.round((Date.now() - startedAt) / 1000);
     const networkType = getNetworkType(url);
-    
-    // Build catch receipt - FIXED: correct argument order for makeReceipt
-    // makeReceipt(discovery, checks, findings, coverage, elapsedS, useragent, networkType)
+    const note = (err && err.budgetStop) ? 'budget-stop: ' + err.message : 'runner-defect: walk execution failed';
+
     const catchChecks = [
-      { id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed: err.message || 'exception', evidence: { screenshots: [], notes: ['runner-defect: walk execution failed'] } }
+      { id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed: err.message || 'exception', evidence: { screenshots: [], notes: [note] } }
     ];
-    
+
     const receipt = makeReceipt(
       { question: { name: '', status: 'unverified' }, answerAffordance: { type: null, controls: [], status: 'unverified' }, state: 'unknown', notes: [] },
       catchChecks,

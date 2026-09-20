@@ -26,6 +26,29 @@ describe('guards', () => {
     strictEqual(r.ok, true);
   });
 
+  it('classifyOrigin rejects a non-matching --allow-origin', () => {
+    const r = classifyOrigin('http://example.com', { mutating: true, allowOrigin: 'http://other.example' });
+    strictEqual(r.ok, false);
+    strictEqual(r.kind, 'non-loopback');
+  });
+
+  it('classifyOrigin still refuses production origins with a matching --allow-origin', () => {
+    const r = classifyOrigin('https://scry.study', { mutating: true, allowOrigin: 'https://scry.study' });
+    strictEqual(r.ok, false);
+    strictEqual(r.kind, 'production');
+  });
+
+  it('Budget reports configured limits and used counters', () => {
+    const b = new Budget({ maxSteps: 5, timeoutS: 10, maxScreenshots: 2 });
+    b.checkStep();
+    b.checkScreenshot();
+    const j = b.toJSON();
+    strictEqual(j.maxSteps, 5);
+    strictEqual(j.steps, 1);
+    strictEqual(j.screenshots, 1);
+    strictEqual(typeof j.elapsed_s, 'number');
+  });
+
   it('Budget tracks steps', () => {
     const b = new Budget({ maxSteps: 3 });
     strictEqual(b.checkStep().ok, true);

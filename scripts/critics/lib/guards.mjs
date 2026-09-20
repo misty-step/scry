@@ -84,6 +84,20 @@ export class Budget {
   }
 
   toJSON() {
-    return { maxSteps: this.maxSteps, timeoutS: this.timeoutS, maxScreenshots: this.maxScreenshots };
+    return {
+      maxSteps: this.maxSteps, timeoutS: this.timeoutS, maxScreenshots: this.maxScreenshots,
+      steps: this.steps, screenshots: this.screenshots,
+      elapsed_s: Math.round((Date.now() - this.startedAt) / 1000)
+    };
+  }
+}
+
+// Thrown when a budget limit stops the walk. Distinct from runner defects so
+// receipts can classify the stop honestly (blocked stop, not a product finding).
+export class BudgetError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'BudgetError';
+    this.budgetStop = true;
   }
 }
