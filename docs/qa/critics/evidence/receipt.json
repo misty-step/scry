@@ -2,28 +2,29 @@
   "format": "scry-critic-receipt-v1",
   "no_findings": true,
   "run": {
-    "id": "crit-1789872069410",
-    "started_at": "2026-09-20T02:41:05.969Z",
-    "ended_at": "2026-09-20T02:41:09.410Z",
-    "duration_s": 3,
+    "id": "crit-1789901693479",
+    "started_at": "2026-09-20T10:54:49.086Z",
+    "ended_at": "2026-09-20T10:54:53.479Z",
+    "duration_s": 4,
     "budget": {
       "maxSteps": 24,
       "timeoutS": 120,
       "maxScreenshots": 12,
       "steps": 4,
       "screenshots": 3,
-      "elapsed_s": 3
+      "elapsed_s": 4
     }
   },
   "candidate": {
     "bound": true,
     "handle": "target/critics/evidence-c/candidate.json",
-    "handle_id": "cand-d9fd5d0fa8b0",
-    "revision": "621249015dcd0256b35ba3709d5cb373928ecafc",
+    "handle_id": "cand-b678b6e5006a",
+    "revision": "db04ef5e168de729d72b5cc96ce311ad7fd86ee3",
+    "binary_revision": "db04ef5e168de729d72b5cc96ce311ad7fd86ee3",
     "origin": "http://127.0.0.1:18096",
     "kind": "external-isolated-synthetic",
     "seed": "authored-test-fixture",
-    "binary_sha256": "d21e43447f353f5dae2e9a120d7f4716d872c03db830860dbcb063f30acd05da",
+    "binary_sha256": "5f9ebcc3c018db45a661e10a1d4880c8357ebb154af78ad25aa5ebfb28d747ff",
     "source_state": "clean"
   },
   "environment": {
