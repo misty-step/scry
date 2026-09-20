@@ -1,12 +1,13 @@
 import { describe, it, after } from 'node:test';
 import { strictEqual, ok } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createNetServer } from 'node:net';
 import { resolveBrowser } from '../../lib/browser.mjs';
+import { readBinaryProvenance, sourceStateFromProvenance } from '../../lib/provenance.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,6 +99,12 @@ describe('--binary build provenance (fail closed on a foreign or undeterminable 
       strictEqual(handle.revision, head, 'handle must record the checkout revision');
       strictEqual(handle.binary_revision, head, 'handle must record the binary\u2019s own revision');
       strictEqual(handle.binary_revision_source, 'buildinfo-vcs');
+      // The state label must come from the binary's own evidence (a clean
+      // plain build in a clean checkout stays green), never from a guess
+      // about the walking checkout.
+      const expectedState = sourceStateFromProvenance(readBinaryProvenance(binary));
+      strictEqual(handle.source_state, expectedState.state, 'handle source_state must describe the binary');
+      strictEqual(handle.source_state_source, expectedState.source);
 
       const walk = runWalk(['--candidate', 'http://127.0.0.1:' + port, '--handle', join(dir, 'candidate.json'), '--out', join(dir, 'run')]);
       strictEqual(walk.status, 0, 'a verified same-revision candidate must stay green: ' + walk.stdout + walk.stderr);
@@ -105,6 +112,7 @@ describe('--binary build provenance (fail closed on a foreign or undeterminable 
       strictEqual(receipt.candidate.bound, true);
       strictEqual(receipt.candidate.revision, head);
       strictEqual(receipt.candidate.binary_revision, head, 'receipt must carry the verified binary revision');
+      strictEqual(receipt.candidate.source_state, expectedState.state, 'receipt must carry the binary\u2019s own state');
       ok(receipt.checks.every(c => c.status === 'pass'),
         'checks must all pass: ' + receipt.checks.map(c => c.id + ':' + c.status).join(', '));
     } finally {
@@ -127,6 +135,8 @@ describe('--binary build provenance (fail closed on a foreign or undeterminable 
       const handle = JSON.parse(readFileSync(join(dir, 'candidate.json'), 'utf8'));
       strictEqual(handle.binary_revision, null, 'the handle must not assert a provenance it cannot verify');
       strictEqual(handle.binary_revision_source, null);
+      strictEqual(handle.source_state, 'unknown', 'the handle must not borrow the checkout\u2019s state either');
+      strictEqual(handle.source_state_source, null);
 
       const walk = runWalk(['--candidate', 'http://127.0.0.1:' + port, '--handle', join(dir, 'candidate.json'), '--out', join(dir, 'run')]);
       strictEqual(walk.status, 2, 'the walk must fail closed, got ' + walk.status + ': ' + walk.stdout + walk.stderr);
@@ -136,6 +146,99 @@ describe('--binary build provenance (fail closed on a foreign or undeterminable 
       const check = receipt.checks.find(c => c.id === 'walk-execution');
       ok(check && check.status === 'unverified', 'the walk is blocked, not certified');
       ok(/binary revision/.test(check.observed), 'observed must explain: ' + check.observed);
+      strictEqual(receipt.candidate.source_state, 'unknown', 'the receipt must not claim a state the binary cannot prove');
+    } finally {
+      runCandidateDown(dir);
+    }
+  });
+
+  it('records source_state: dirty for a --binary built from a modified tree (isolated clone) and keeps the walk bound', async (t) => {
+    const head = headRevision();
+    if (!head) return t.skip('not a git checkout; a modified-tree binary needs a checkout revision to compare');
+    if (!goAvailable()) return t.skip('go toolchain unavailable');
+    const browser = await resolveBrowser();
+    if (!browser.ok && REQUIRE_BROWSER) throw new Error('browser required but unavailable: ' + browser.reason);
+    if (!browser.ok) return t.skip('browser unavailable: ' + browser.reason);
+
+    // Build at the checkout revision from a modified tree, entirely inside an
+    // isolated clone: the shared checkout is never mutated.
+    const clone = join(TMP_ROOT, 'e2e-prov-dirty-clone');
+    rmSync(clone, { recursive: true, force: true });
+    const cloned = spawnSync('git', ['clone', '-q', '--shared', REPO_ROOT, clone], { encoding: 'utf8', timeout: 60000 });
+    if (cloned.status !== 0) return t.skip('cannot clone the checkout for the modified-tree fixture: ' + cloned.stderr);
+    const cloneHead = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: clone, encoding: 'utf8' }).stdout.trim();
+    strictEqual(cloneHead, head, 'the clone must start at the checkout revision');
+
+    const binary = join(TMP_ROOT, 'e2e-prov-dirty-scry');
+    const mainGo = join(clone, 'cmd', 'scry', 'main.go');
+    writeFileSync(mainGo, readFileSync(mainGo, 'utf8') + '\n// dirty probe\n');
+    const built = spawnSync('go', ['build', '-mod=readonly', '-o', binary, './cmd/scry'],
+      { cwd: clone, encoding: 'utf8', timeout: 180000 });
+    if (built.status !== 0) throw new Error('modified-tree build failed: ' + (built.stderr || built.error?.message));
+    // Restore the clone so only the built bytes carry the modified evidence.
+    spawnSync('git', ['checkout', '--', 'cmd/scry/main.go'], { cwd: clone, encoding: 'utf8' });
+
+    const evidence = readBinaryProvenance(binary);
+    strictEqual(evidence.revision, head, 'fixture binary must be built at the checkout revision');
+    strictEqual(evidence.modified, true, 'fixture binary must carry vcs.modified=true');
+
+    const dir = join(TMP_ROOT, 'e2e-prov-dirty');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const port = await freePort();
+
+    const up = runCandidateUp(['--binary', binary, '--dir', dir, '--port', String(port), '--out', join(dir, 'candidate.json')]);
+    strictEqual(up.status, 0, 'a modified-tree --binary at the checkout revision must still start: ' + up.stdout + up.stderr);
+    try {
+      const handle = JSON.parse(readFileSync(join(dir, 'candidate.json'), 'utf8'));
+      strictEqual(handle.binary_revision, head);
+      strictEqual(handle.source_state, 'dirty', 'a binary built from a modified tree must never be labeled clean');
+      strictEqual(handle.source_state_source, 'buildinfo-vcs');
+
+      const walk = runWalk(['--candidate', 'http://127.0.0.1:' + port, '--handle', join(dir, 'candidate.json'), '--out', join(dir, 'run')]);
+      strictEqual(walk.status, 0, 'the walk stays bound for an honestly labeled dirty binary: ' + walk.stdout + walk.stderr);
+      const receipt = JSON.parse(readFileSync(join(dir, 'run', 'receipt.json'), 'utf8'));
+      strictEqual(receipt.candidate.bound, true);
+      strictEqual(receipt.candidate.source_state, 'dirty', 'the receipt must carry the binary\u2019s own state');
+      ok(receipt.checks.every(c => c.status === 'pass'),
+        'checks must all pass: ' + receipt.checks.map(c => c.id + ':' + c.status).join(', '));
+    } finally {
+      runCandidateDown(dir);
+    }
+  });
+
+  it('records source_state: unknown for a stamped same-revision --binary (no tree-state evidence) and keeps the walk bound', async (t) => {
+    const head = headRevision();
+    if (!head) return t.skip('not a git checkout; a stamped same-revision binary needs a checkout revision');
+    if (!goAvailable()) return t.skip('go toolchain unavailable');
+    const browser = await resolveBrowser();
+    if (!browser.ok && REQUIRE_BROWSER) throw new Error('browser required but unavailable: ' + browser.reason);
+    if (!browser.ok) return t.skip('browser unavailable: ' + browser.reason);
+
+    const dir = join(TMP_ROOT, 'e2e-prov-stamped');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    // Gate-export shape: a determinable revision via the stamp, no vcs
+    // evidence — the tree state is undeterminable from the artifact.
+    const binary = buildScry('stamped-same-scry', ['-buildvcs=false', '-ldflags', `-X main.revision=${head}`]);
+    const port = await freePort();
+
+    const up = runCandidateUp(['--binary', binary, '--dir', dir, '--port', String(port), '--out', join(dir, 'candidate.json')]);
+    strictEqual(up.status, 0, 'a stamped same-revision --binary must start: ' + up.stdout + up.stderr);
+    try {
+      const handle = JSON.parse(readFileSync(join(dir, 'candidate.json'), 'utf8'));
+      strictEqual(handle.binary_revision, head);
+      strictEqual(handle.binary_revision_source, 'buildinfo-ldflags');
+      strictEqual(handle.source_state, 'unknown', 'a stamp carries no tree state; unknown is the honest label');
+      strictEqual(handle.source_state_source, null);
+
+      const walk = runWalk(['--candidate', 'http://127.0.0.1:' + port, '--handle', join(dir, 'candidate.json'), '--out', join(dir, 'run')]);
+      strictEqual(walk.status, 0, 'a determinable revision still binds, labeled unknown: ' + walk.stdout + walk.stderr);
+      const receipt = JSON.parse(readFileSync(join(dir, 'run', 'receipt.json'), 'utf8'));
+      strictEqual(receipt.candidate.bound, true);
+      strictEqual(receipt.candidate.source_state, 'unknown');
+      ok(receipt.checks.every(c => c.status === 'pass'),
+        'checks must all pass: ' + receipt.checks.map(c => c.id + ':' + c.status).join(', '));
     } finally {
       runCandidateDown(dir);
     }

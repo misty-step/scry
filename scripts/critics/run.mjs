@@ -151,26 +151,43 @@ async function candidateUp(args) {
   }
 
   // Build provenance. The handle records the revision the served binary was
-  // built from (`binary_revision`) next to the walking checkout revision. For
-  // the default build that is the checkout by construction. For --binary the
-  // binary's own evidence decides: a determinable revision that differs from
-  // the checkout (or cannot be compared to one) refuses here, before any
-  // handle exists; an undeterminable revision is recorded as null and the
-  // walk binding later fails closed on it. The checkout revision is never
-  // asserted as the supplied binary's provenance.
+  // built from (`binary_revision`) and the state of the tree it was built
+  // from (`source_state`), next to the walking checkout revision. For the
+  // default build both describe the checkout by construction (checkout ==
+  // build source). For --binary the binary's own evidence decides: a
+  // determinable revision that differs from the checkout (or cannot be
+  // compared to one) refuses here, before any handle exists; an
+  // undeterminable revision is recorded as null and the walk binding later
+  // fails closed on it. The source state likewise comes from the binary's
+  // own evidence (buildinfo vcs.modified); when the binary cannot determine
+  // it, the state is `unknown` -- the walking checkout's revision or state
+  // is never asserted as the supplied binary's provenance.
   const revision = getGitRevision();
   let binaryRevision = revision;
   let binaryRevisionSource = revision ? 'source-build' : null;
+  let sourceState = 'unknown';
+  let sourceStateSource = null;
   if (values.binary) {
-    const { readBinaryRevision } = await import('./lib/provenance.mjs');
-    const provenance = readBinaryRevision(binaryPath, { env });
+    const { readBinaryProvenance, sourceStateFromProvenance } = await import('./lib/provenance.mjs');
+    const provenance = readBinaryProvenance(binaryPath, { env });
     binaryRevision = provenance.revision;
     binaryRevisionSource = provenance.source;
+    const state = sourceStateFromProvenance(provenance);
+    sourceState = state.state;
+    sourceStateSource = state.source;
     if (binaryRevision && binaryRevision !== revision) {
       process.stderr.write(revision
         ? `--binary was built from revision ${binaryRevision}, but the checkout HEAD is ${revision}; refusing to record a handle that would mislabel the served artifact\n`
         : `--binary was built from revision ${binaryRevision}, but the checkout revision is unavailable; refusing to record a handle whose provenance cannot be verified against a checkout\n`);
       process.exit(2);
+    }
+  } else {
+    // Source build: the checkout is the build source by construction, so its
+    // working-tree state is the built artifact's state.
+    const st = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (st.status === 0) {
+      sourceState = st.stdout.trim() ? 'dirty' : 'clean';
+      sourceStateSource = 'source-checkout';
     }
   }
 
@@ -231,17 +248,13 @@ async function candidateUp(args) {
   const pid = serveCmd.pid;
   const started_at = new Date().toISOString();
 
-  let sourceState = 'unknown';
-  const st = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
-  if (st.status === 0) sourceState = st.stdout.trim() ? 'dirty' : 'clean';
-
   const id = 'cand-' + createHash('sha256').update(`${revision}|${url}|${binarySha}`).digest('hex').slice(0, 12);
 
   const handle = {
     format: 'scry-critic-candidate-v1',
     id, pid, url, dir, port, db: dbPath, binary: binaryPath, binary_sha256: binarySha,
     seed, revision, binary_revision: binaryRevision, binary_revision_source: binaryRevisionSource,
-    source_state: sourceState, kind: 'isolated-synthetic', started_at
+    source_state: sourceState, source_state_source: sourceStateSource, kind: 'isolated-synthetic', started_at
   };
 
   await writeFile(outPath, JSON.stringify(handle, null, 2));

@@ -19,20 +19,42 @@ process is alive (each readiness attempt is bounded by a request timeout, so a
 server that accepts but never answers cannot stall the attempt loop), then
 writes a JSON handle. A port that is already in use is refused, and no handle
 is ever written for a process that is not serving. The handle carries `id`,
-`binary_sha256`, `revision`, `binary_revision`, and `source_state`
-(clean/dirty/unknown) to identify the artifact it serves.
+`binary_sha256`, `revision`, `binary_revision`, `binary_revision_source`,
+`source_state`, and `source_state_source` to identify the artifact it serves.
 
-`revision` is the walking checkout; `binary_revision` is the revision the
-served binary itself was built from. For the default build both are the
-checkout revision by construction. For `--binary` the binary's own evidence
-decides: buildinfo `vcs.revision` for plain builds, the `main.revision` stamp
-(buildinfo `-ldflags`, or the binary's `version` output for gate exports built
-with `-trimpath`). A determinable revision that differs from the checkout (or
-cannot be compared to one) refuses the command (exit 2, no handle written).
-When the revision cannot be determined, the handle records
-`binary_revision: null` (`binary_revision_source: null`) and the walk binding
-refuses the handle — the checkout revision is never asserted as the supplied
-binary's provenance.
+`revision` is the walking checkout; `binary_revision` and `source_state` are
+the revision and build-tree state of the served binary itself. For the default
+build both come from the checkout by construction (checkout == build source;
+`source_state_source: source-checkout`). For `--binary` the binary's own
+evidence decides: buildinfo `vcs.revision` and `vcs.modified` for plain builds
+(`binary_revision_source: buildinfo-vcs`; `source_state` clean/dirty from
+`vcs.modified`), or the `main.revision` stamp (buildinfo `-ldflags`, or the
+binary's `version` output for gate exports built with `-trimpath`) for the
+revision only — a stamp carries no tree state, so `source_state` is recorded
+as `unknown` (`source_state_source: null`). A determinable revision that
+differs from the checkout (or cannot be compared to one) refuses the command
+(exit 2, no handle written). When the revision cannot be determined, the
+handle records `binary_revision: null` (`binary_revision_source: null`) and
+the walk binding refuses the handle. The walking checkout's revision or state
+is never asserted as the supplied binary's provenance.
+
+Artifact identity cases (`candidate up` → walk):
+
+| supplied artifact | binary_revision (source) | source_state (source) | binary_sha256 | serving process | walk binding |
+|---|---|---|---|---|---|
+| default build, clean checkout | checkout rev (`source-build`) | clean (`source-checkout`) | served bytes | recorded pid | binds |
+| default build, dirty checkout | checkout rev (`source-build`) | dirty (`source-checkout`) | served bytes | recorded pid | binds |
+| `--binary`, clean-tree build at the checkout rev | checkout rev (`buildinfo-vcs`) | clean (`buildinfo-vcs`) | served bytes | recorded pid | binds |
+| `--binary`, modified-tree build at the checkout rev | checkout rev (`buildinfo-vcs`) | dirty (`buildinfo-vcs`) | served bytes | recorded pid | binds; receipt carries `dirty` |
+| `--binary`, stamped/`-trimpath` export at the checkout rev | checkout rev (`buildinfo-ldflags` / `version-output`) | unknown (no tree-state evidence) | served bytes | recorded pid | binds; receipt carries `unknown` |
+| `--binary`, built from another revision | foreign — refused | — | — | — | exit 2, no handle |
+| `--binary`, no determinable revision | null | unknown | served bytes | recorded pid | refuses: no verifiable provenance |
+
+`binary_sha256` is the digest of the bytes at the handle's binary path; the
+walk re-hashes the file and refuses a replaced binary. The serving process is
+the PID recorded at `candidate up`; the walk requires it alive, its command
+line referencing the handle binary, and the digest match. Both apply to every
+case above; only the provenance fields vary.
 
 Exit codes: 0 success, 2 build/seed/serve failure, busy port, foreign binary
 provenance, or dir not fresh.
