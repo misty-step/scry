@@ -80,11 +80,8 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 		return nil, err
 	}
 	if reservationMicros > 0 {
-		var spent int64
-		if err = tx.QueryRowContext(ctx, `SELECT
-		 COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts WHERE started_at>=? OR state='active'),0)+
-		 COALESCE((SELECT sum(cost_micros) FROM semantic_assessments WHERE created_at>=?),0)`,
-			now-int64(24*time.Hour/time.Millisecond), now-int64(24*time.Hour/time.Millisecond)).Scan(&spent); err != nil {
+		spent, err := spentMicros(ctx, tx, now)
+		if err != nil {
 			return nil, err
 		}
 		if spent > dailyBudgetMicros || reservationMicros > dailyBudgetMicros-spent {

@@ -9,7 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/misty-step/scry/internal/learning"
 	"github.com/misty-step/scry/internal/semantic"
 	"github.com/misty-step/scry/internal/store"
 )
@@ -23,17 +25,26 @@ type fakeSemanticClient struct {
 	mu      sync.Mutex
 	replies []semanticReply
 	calls   int
+	// hold, when set, blocks each Decide until released so concurrent
+	// duplicate submits can be exercised while a request is in flight.
+	hold chan struct{}
 }
 
 func (f *fakeSemanticClient) Decide(_ context.Context, _ semantic.Request) (semantic.Response, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
+	hold := f.hold
+	var reply semanticReply
 	if len(f.replies) == 0 {
-		return semantic.Response{}, semantic.ErrUnavailable
+		reply = semanticReply{err: semantic.ErrUnavailable}
+	} else {
+		reply = f.replies[0]
+		f.replies = f.replies[1:]
 	}
-	reply := f.replies[0]
-	f.replies = f.replies[1:]
+	f.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
 	return reply.response, reply.err
 }
 
@@ -50,7 +61,12 @@ func privateSemanticApp(t *testing.T, fake *fakeSemanticClient) (*store.Store, h
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	assessor := semantic.NewAssessor(s, fake, semantic.DefaultModel)
+	// The web boundary is exercised with every class enabled so the fenced
+	// cue path renders; production keeps incomplete/incorrect in shadow.
+	params := learning.SemanticV1Params()
+	params.IncompleteEnabled, params.IncorrectEnabled = true, true
+	s.SetSemanticParams(params)
+	assessor := semantic.NewAssessor(s, fake, semantic.DefaultModel, semantic.Spending{ReservationMicros: 2_000, DailyBudgetMicros: 1_000_000})
 	h, err := New(s, Config{
 		Mode: "production", OwnerID: "owner-123", Secret: strings.Repeat("s", 32), BaseURL: "https://scry.example",
 		TrustProxy: true, TrustedProxyIPs: []string{"127.0.0.1"}, Semantic: assessor,
@@ -157,6 +173,75 @@ func TestSemanticSubmitFinalizesCorrectAndReplayDoesNotCallAgain(t *testing.T) {
 	history, err := s.History(context.Background(), 10)
 	if err != nil || len(history) != 1 || history[0].Grading != "semantic-v1" {
 		t.Fatalf("semantic history: %+v %v", history, err)
+	}
+}
+
+func TestSemanticConcurrentDuplicatePostsSendOneModelRequest(t *testing.T) {
+	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.96, 0.94, "equivalent", 0.93, 0.02)}}, hold: make(chan struct{})}
+	s, app := privateSemanticApp(t, fake)
+	current := seedSemanticReview(t, s)
+	cookie, csrf, operation := bootstrapForm(t, app)
+	answer := "A validator names cached content so the origin can verify whether it changed."
+	form := url.Values{"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}, "csrf": {csrf}}
+	post := func() *httptest.ResponseRecorder {
+		r := ownerRequest(http.MethodPost, "/review/answer", form)
+		r.AddCookie(cookie)
+		r.Header.Set("Origin", "https://scry.example")
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		return w
+	}
+	first := make(chan *httptest.ResponseRecorder, 1)
+	go func() { first <- post() }()
+	// Wait until the first request holds the lease inside the provider call.
+	deadline := time.Now().Add(5 * time.Second)
+	for fake.callCount() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("first request never reached the provider")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// The duplicate arrives while the first is in flight: same operation,
+	// same answer. It must not obtain a lease or send a second request.
+	duplicate := post()
+	if duplicate.Code != http.StatusSeeOther && duplicate.Code != http.StatusConflict {
+		t.Fatalf("duplicate POST status %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+	if fake.callCount() != 1 {
+		t.Fatalf("duplicate POST sent a second model request: %d", fake.callCount())
+	}
+	close(fake.hold)
+	if w := <-first; w.Code != http.StatusSeeOther {
+		t.Fatalf("first POST: %d %s", w.Code, w.Body.String())
+	}
+	// A later exact replay reconciles the judged result without resending.
+	postReview(t, app, cookie, csrf, "/review/answer", url.Values{"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}})
+	if fake.callCount() != 1 {
+		t.Fatalf("replay after judgment sent a model request: %d", fake.callCount())
+	}
+	history, err := s.History(context.Background(), 10)
+	if err != nil || len(history) != 1 || history[0].Grading != "semantic-v1" {
+		t.Fatalf("duplicate submits produced wrong history: %+v %v", history, err)
+	}
+}
+
+func TestSemanticShadowIncompleteRendersUngradedWithFrozenPolicy(t *testing.T) {
+	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.10, 0.95, "partial", 0.91, 0.02)}}}
+	s, app := privateSemanticApp(t, fake)
+	s.SetSemanticParams(learning.SemanticV1Params())
+	current := seedSemanticReview(t, s)
+	cookie, csrf, operation := bootstrapForm(t, app)
+	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
+		"presentation_id": {current.ID}, "answer": {"The server can confirm whether a cached response changed."}, "operation_id": {operation},
+	})
+	page := reviewPage(t, app, cookie)
+	requirePresent(t, page, "semantic shadow", ">Not graded</h2>")
+	if strings.Contains(page, "Think about recognizing the stored representation.") || strings.Contains(page, ">Almost</h2>") {
+		t.Fatal("shadow incomplete leaked the cue to the learner")
+	}
+	persisted, err := s.Current(context.Background())
+	if err != nil || persisted == nil || persisted.Assisted || persisted.Graded || persisted.AssessmentStatus != "judged" {
+		t.Fatalf("shadow incomplete changed learner state: %+v %v", persisted, err)
 	}
 }
 

@@ -64,7 +64,7 @@ exclusive-create. A successful process launch is not release evidence: inspect
 | --- | --- | --- |
 | Design/prose only | Meaning, relative-link and authority review; native readback | Operator design agreement when sought; no runtime claim or default test/model/VM exercise |
 | Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
-| Semantic grading | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Synthetic authored semantic quiz: pending → correct, incomplete cue fenced as assistance, failed check with saved answer/retry/reveal, exact-operation replay, and stale finalization; live Jev quality is separate bounded evidence |
+| Semantic grading | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Synthetic authored semantic quiz: pending → correct, concurrent duplicate POST sends one request, crash-after-send reconciles to failed with reservation retained, allowance reserved before send and shared with generation, shadow classes recorded but never applied, enabled cue/feedback fenced with a durable exposure record across occurrences, failed check with saved answer/retry/reveal, exact-operation replay, and stale finalization; live Jev quality is separate bounded evidence |
 | Generation | `go test ./internal/generation` | One bounded, authorized live request on representative material; inspect provenance, coverage, rejections, and actual spend |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
 | Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |

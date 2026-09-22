@@ -213,11 +213,14 @@ func presentation(ctx context.Context, tx *sql.Tx, id string) (Presentation, err
 		}
 	}
 	var assessmentID, assessmentOperationID, assessmentStatus, assessmentDecision, assessmentDetail string
-	err = tx.QueryRowContext(ctx, `SELECT id,operation_id,status,decision,detail FROM semantic_assessments WHERE presentation_id=?
-	 ORDER BY created_at DESC,rowid DESC LIMIT 1`, p.ID).Scan(&assessmentID, &assessmentOperationID, &assessmentStatus, &assessmentDecision, &assessmentDetail)
+	var assessmentApplied bool
+	err = tx.QueryRowContext(ctx, `SELECT id,operation_id,status,decision,applied,detail FROM semantic_assessments WHERE presentation_id=?
+	 ORDER BY created_at DESC,rowid DESC LIMIT 1`, p.ID).Scan(&assessmentID, &assessmentOperationID, &assessmentStatus, &assessmentDecision, &assessmentApplied, &assessmentDetail)
 	if err == nil {
 		p.AssessmentID, p.AssessmentOperationID, p.AssessmentStatus = assessmentID, assessmentOperationID, assessmentStatus
-		p.AssessmentDecision, p.AssessmentDetail = assessmentDecision, assessmentDetail
+		if assessmentApplied {
+			p.AssessmentDecision, p.AssessmentDetail = assessmentDecision, assessmentDetail
+		}
 		p.Pending = assessmentStatus == "pending"
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return p, err
@@ -258,13 +261,11 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			if assessmentErr != nil {
 				return Presentation{}, assessmentErr
 			}
-			if a.Status == "pending" && a.Transmissions >= 2 {
-				if _, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='failed',error='semantic transmission limit reached',finished_at=?
-					WHERE id=? AND status='pending'`, s.now(), a.ID); err != nil {
-					return Presentation{}, err
-				}
-				a.Status = "failed"
-				a.Error = "semantic transmission limit reached"
+			// A replay reconciles; it never resends. A transmitted assessment
+			// whose lease lapsed without a result is a definite failure that
+			// keeps its unknown spend accounted.
+			if err = reconcileInterrupted(ctx, tx, &a, s.now()); err != nil {
+				return Presentation{}, err
 			}
 			p, presentationErr := presentation(ctx, tx, a.PresentationID)
 			if presentationErr != nil {
@@ -276,7 +277,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			if a.Status != "judged" || a.ReviewID == "" {
 				p = saved
 				p.Answer, p.Draft = a.Answer, a.Answer
-				if a.Status == "judged" {
+				if a.Status == "judged" && a.Applied {
 					p.Outcome = a.Decision
 					p.Assisted = p.Assisted || a.Decision == "incomplete"
 				}
@@ -373,11 +374,16 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	// Exposure makes this occurrence warm, but does not turn help into Again
 	// or manufacture an FSRS success. Explicit Reveal retains its old contract.
 	var exposed bool
-	// The first 24 hours after instruction remain warm across new occurrences.
+	// The first 24 hours after instruction or shown help remain warm across
+	// new occurrences of the same content. Foundation reads and recorded
+	// assistance exposures are the same class of evidence: the learner saw
+	// authored help for this content, so a later cold success is not proven.
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM foundation_interactions i
 	 JOIN foundation_bridges b ON b.id=i.bridge_id JOIN presentations target ON target.id=b.presentation_id,
 	 presentations current WHERE current.id=? AND target.quiz_id=current.quiz_id
-	 AND target.content_version=current.content_version AND i.action='read' AND i.created_at>=current.created_at-86400000)`, p.ID).Scan(&exposed); err != nil {
+	 AND target.content_version=current.content_version AND i.action='read' AND i.created_at>=current.created_at-86400000)
+	 OR EXISTS(SELECT 1 FROM assistance_exposures x, presentations current WHERE current.id=? AND x.quiz_id=current.quiz_id
+	 AND x.content_version=current.content_version AND x.created_at>=current.created_at-86400000)`, p.ID, p.ID).Scan(&exposed); err != nil {
 		return Presentation{}, err
 	}
 	if exposed && !reveal {

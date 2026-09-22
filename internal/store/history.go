@@ -58,10 +58,15 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 		return result, err
 	}
 	// CostMicros is conservatively accounted lifetime spend: actual usage when
-	// known, otherwise the reservation. CostUnknown includes pending claims.
+	// known, otherwise the reservation. CostUnknown includes pending claims and
+	// transmitted assessments that never reported a cost.
 	if err = tx.QueryRowContext(ctx, `SELECT
-	 COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts),0)+COALESCE((SELECT sum(cost_micros) FROM semantic_assessments),0),
-	 EXISTS(SELECT 1 FROM job_attempts WHERE cost_micros IS NULL) OR EXISTS(SELECT 1 FROM semantic_assessments WHERE transmissions>0 AND cost_micros IS NULL)`).
+	 COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts),0)
+	 +COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM semantic_assessments),0)
+	 +COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM content_assessments),0),
+	 EXISTS(SELECT 1 FROM job_attempts WHERE cost_micros IS NULL)
+	 OR EXISTS(SELECT 1 FROM semantic_assessments WHERE transmissions>0 AND cost_micros IS NULL)
+	 OR EXISTS(SELECT 1 FROM content_assessments WHERE transmissions>0 AND cost_micros IS NULL)`).
 		Scan(&result.CostMicros, &result.CostUnknown); err != nil {
 		return result, err
 	}
@@ -92,7 +97,8 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 	defer tx.Rollback()
 	result := map[string]any{
 		"format": "scry-personal-export", "format_version": 1, "schema_version": SchemaVersion,
-		"exported_at": s.now(), "algorithm": learning.Algorithm,
+		"exported_at": s.now(), "algorithm": learning.Algorithm, "scheduler": learning.Scheduler,
+		"grading_policies": []string{"exact-v1", learning.SemanticPolicyVersion},
 	}
 	for _, section := range []struct{ name, query string }{
 		{"sources", "SELECT id,text,kind,revision,archived,created_at FROM sources ORDER BY created_at,id"},
@@ -122,6 +128,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"concept_quizzes", "SELECT * FROM concept_quizzes ORDER BY concept_id,quiz_id"},
 		{"semantic_assessments", "SELECT * FROM semantic_assessments ORDER BY created_at,id"},
 		{"content_assessments", "SELECT * FROM content_assessments ORDER BY created_at,id"},
+		{"assistance_exposures", "SELECT * FROM assistance_exposures ORDER BY created_at,id"},
 	} {
 		data, err := exportRows(ctx, tx, section.query)
 		if err != nil {

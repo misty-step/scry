@@ -189,6 +189,13 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	semanticReservation, err := integerEnv("SCRY_SEMANTIC_RESERVATION_MICROS", 2_000)
+	if err != nil {
+		return err
+	}
+	if semanticReservation < 0 || semanticReservation > budget {
+		return errors.New("SCRY_SEMANTIC_RESERVATION_MICROS must be nonnegative and no larger than SCRY_GENERATION_DAILY_BUDGET_MICROS")
+	}
 	backupConfig, err := recoveryConfig(*dbPath)
 	if err != nil {
 		return err
@@ -207,11 +214,16 @@ func serve(args []string) error {
 		Endpoint: os.Getenv("SCRY_SEMANTIC_ENDPOINT"), APIKey: semanticKey, Model: semanticModel,
 		HTTPClient: &http.Client{Timeout: 8 * time.Second, CheckRedirect: noRedirect},
 	})
+	semanticSpending := semantic.Spending{ReservationMicros: semanticReservation, DailyBudgetMicros: budget}
+	if os.Getenv("SCRY_SEMANTIC_ENDPOINT") == "" {
+		// No endpoint means no request can leave the process: reserve nothing.
+		semanticSpending = semantic.Spending{}
+	}
 	handler, err := web.New(db, web.Config{
 		Mode: mode, OwnerID: os.Getenv("SCRY_OWNER_ID"), Secret: secret,
 		BaseURL: baseURL, TrustProxy: mode == "production", TrustedProxyIPs: trustedPeers,
 		RedirectHosts: strings.Split(os.Getenv("SCRY_REDIRECT_HOSTS"), ","),
-		Semantic:      semantic.NewAssessor(db, semanticClient, semanticModel),
+		Semantic:      semantic.NewAssessor(db, semanticClient, semanticModel, semanticSpending),
 	})
 	if err != nil {
 		return err

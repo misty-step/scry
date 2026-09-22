@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/misty-step/scry/internal/learning"
 	_ "modernc.org/sqlite"
 )
 
@@ -25,6 +26,17 @@ type Store struct {
 	db    *sql.DB
 	path  string
 	clock func() time.Time
+	// semantic overrides the frozen semantic policy parameters. It exists so
+	// tests can exercise enabled classes; production always uses the frozen set.
+	semantic *learning.Params
+}
+
+// semanticParams returns the policy that finalization applies.
+func (s *Store) semanticParams() learning.Params {
+	if s.semantic != nil {
+		return *s.semantic
+	}
+	return learning.SemanticV1Params()
 }
 
 func Open(path string) (*Store, error) {
@@ -79,6 +91,11 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Path() string { return s.path }
 func (s *Store) now() int64   { return s.clock().UTC().UnixMilli() }
+
+// SetSemanticParams overrides the frozen semantic policy for this store. It is
+// for tests and offline evaluation only; production wiring never calls it, so
+// the shipped store always grades with learning.SemanticV1Params.
+func (s *Store) SetSemanticParams(params learning.Params) { s.semantic = &params }
 
 func (s *Store) initialize(ctx context.Context) error {
 	var engine string

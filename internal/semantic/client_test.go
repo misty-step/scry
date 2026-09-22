@@ -111,7 +111,9 @@ func TestClientErrorClassesAndMalformedResponses(t *testing.T) {
 
 func TestClientUnavailableWithoutEndpointOrOnTimeout(t *testing.T) {
 	request := Request{Model: "jev", State: struct{}{}, Questions: map[string]Question{"x": {Type: "noul", Instructions: "x"}}}
-	if _, err := NewClient(Config{}).Decide(context.Background(), request); !errors.Is(err, ErrUnavailable) {
+	// No endpoint is the one provable no-send failure; it is both
+	// unavailable and not-configured so callers can release the reservation.
+	if _, err := NewClient(Config{}).Decide(context.Background(), request); !errors.Is(err, ErrUnavailable) || !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("empty endpoint: %v", err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -121,7 +123,9 @@ func TestClientUnavailableWithoutEndpointOrOnTimeout(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	if _, err := NewClient(Config{Endpoint: server.URL, HTTPClient: server.Client()}).Decide(ctx, request); !errors.Is(err, ErrUnavailable) {
+	// A timeout may already have been accepted by the provider: unavailable,
+	// but never classified as a no-send failure.
+	if _, err := NewClient(Config{Endpoint: server.URL, HTTPClient: server.Client()}).Decide(ctx, request); !errors.Is(err, ErrUnavailable) || errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("timeout: %v", err)
 	}
 }

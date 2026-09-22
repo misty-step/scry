@@ -154,7 +154,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		return nil, fmt.Errorf("web templates: %w", err)
 	}
 	if cfg.Semantic == nil {
-		cfg.Semantic = semantic.NewAssessor(s, semantic.NewClient(semantic.Config{}), semantic.DefaultModel)
+		cfg.Semantic = semantic.NewAssessor(s, semantic.NewClient(semantic.Config{}), semantic.DefaultModel, semantic.Spending{})
 	}
 	app := &server{store: s, semantic: cfg.Semantic, cfg: cfg, origin: u, peers: peers, templates: t}
 	mux := http.NewServeMux()

@@ -16,19 +16,33 @@ type AssessmentService interface {
 	Assess(context.Context, string) (store.Presentation, error)
 }
 
+// Spending is the per-assessment reservation policy in USD micros. The
+// reservation is taken from the shared rolling allowance before a request
+// leaves the process and is replaced by the measured cost afterwards.
+type Spending = store.SemanticSpending
+
 type Assessor struct {
-	store  *store.Store
-	client Client
-	model  string
+	store    *store.Store
+	client   Client
+	model    string
+	spending Spending
 }
 
-func NewAssessor(repository *store.Store, client Client, model string) *Assessor {
+// NewAssessor wires the durable store, the bounded client, the pinned model,
+// and the reservation policy. A zero Spending reserves nothing, which is only
+// correct for the unconfigured no-network client.
+func NewAssessor(repository *store.Store, client Client, model string, spending Spending) *Assessor {
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Assessor{store: repository, client: client, model: model}
+	return &Assessor{store: repository, client: client, model: model, spending: spending}
 }
 
+// Assess resumes one staged assessment. Exactly one caller ever obtains the
+// send lease for an assessment; every other caller (a duplicate submit, an
+// exact replay, a retry after a crash) receives the durable state without a
+// second model request. A transmitted assessment with no recorded result is
+// reconciled to failed with its reservation retained as unknown spend.
 func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, error) {
 	if a == nil || a.store == nil || a.client == nil {
 		return store.Presentation{}, errors.New("semantic assessor is not configured")
@@ -37,56 +51,56 @@ func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, e
 	if err != nil {
 		return store.Presentation{}, err
 	}
-	if assessment.Status != "pending" {
-		return a.store.FinalizeAssessment(ctx, id, store.AssessmentResult{})
+	if assessment.Status != "pending" || assessment.Transmissions > 0 || assessment.Quiz.Rubric == nil {
+		// Judged, failed, superseded, already transmitted, or unjudgeable:
+		// reconcile durable state only; never build or send another request.
+		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
 	}
-	if assessment.Quiz.Rubric == nil {
-		return a.fail(ctx, id, Response{}, ErrMalformed)
-	}
-	request := Request{}
-	var requestJSON []byte
-	if assessment.Transmissions > 0 {
-		requestJSON = []byte(assessment.RequestJSON)
-		if err = json.Unmarshal(requestJSON, &request); err != nil || request.Model == "" {
-			return a.fail(ctx, id, Response{}, ErrMalformed)
-		}
-	} else {
-		request = BuildRecallRequest(a.model, RecallState{
-			Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
-			LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
-		})
-		requestJSON, err = json.Marshal(request)
-		if err != nil {
-			return a.fail(ctx, id, Response{}, ErrMalformed)
-		}
-	}
-	assessment, err = a.store.BeginAssessmentTransmission(ctx, id, request.Model, requestJSON)
+	request := BuildRecallRequest(a.model, RecallState{
+		Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
+		LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
+	})
+	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return store.Presentation{}, err
 	}
-	if assessment.Status != "pending" {
-		return a.store.FinalizeAssessment(ctx, id, store.AssessmentResult{})
+	lease, err := a.store.BeginAssessmentTransmission(ctx, id, request.Model, requestJSON, a.spending)
+	if errors.Is(err, store.ErrBudget) {
+		// A definite no-send failure is already durable; show it.
+		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
+	}
+	if err != nil {
+		return store.Presentation{}, err
+	}
+	if !lease.Send {
+		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
 	}
 	response, decisionErr := a.client.Decide(ctx, request)
 	if decisionErr != nil {
-		return a.fail(ctx, id, response, decisionErr)
+		return a.fail(ctx, id, lease.Token, response, decisionErr)
 	}
 	judgments, err := judgments(response, len(assessment.Quiz.Rubric.Required), len(assessment.Quiz.Rubric.Contradictions))
 	if err != nil {
-		return a.fail(ctx, id, response, ErrMalformed)
+		return a.fail(ctx, id, lease.Token, response, ErrMalformed)
 	}
-	return a.store.FinalizeAssessment(ctx, id, assessmentResult(response, judgments, ""))
+	return a.store.FinalizeAssessment(ctx, id, lease.Token, assessmentResult(response, judgments, ""))
 }
 
-func (a *Assessor) fail(ctx context.Context, id string, response Response, cause error) (store.Presentation, error) {
+func (a *Assessor) fail(ctx context.Context, id, token string, response Response, cause error) (store.Presentation, error) {
 	classification := "malformed"
 	switch {
+	case errors.Is(cause, ErrNotConfigured):
+		classification = "unconfigured"
 	case errors.Is(cause, ErrUnavailable):
 		classification = "unavailable"
 	case errors.Is(cause, ErrRejected):
 		classification = "rejected"
 	}
-	return a.store.FailAssessment(ctx, id, assessmentResult(response, learning.SemanticJudgments{}, classification))
+	result := assessmentResult(response, learning.SemanticJudgments{}, classification)
+	// Only a client that provably never sent may release its reservation; a
+	// timeout or transport error may already have been accepted and billed.
+	result.NoSend = errors.Is(cause, ErrNotConfigured)
+	return a.store.FailAssessment(ctx, id, token, result)
 }
 
 func assessmentResult(response Response, judgments learning.SemanticJudgments, failure string) store.AssessmentResult {

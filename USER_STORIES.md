@@ -69,25 +69,33 @@ words, I want Scry to check the authored meaning rather than require one phrase,
 while preserving my answer and learning history whenever that check is uncertain.
 
 Criteria:
-1. EACH quiz content version SHALL explicitly choose exact or semantic grading;
-   choice, numeric, symbolic, identifier, spelling, and other deterministic
-   answers SHALL remain exact.
+1. EACH quiz content version SHALL explicitly choose exact or semantic grading.
+   THE authored mode SHALL be the task contract: choice and deterministic
+   answers stay exact by authoring, and THE SYSTEM SHALL NOT infer or override
+   the mode from digits, symbols, or answer length.
 2. WHEN an exact answer, authored variant, or case-only uncertainty resolves
    locally, THE SYSTEM SHALL NOT call the semantic assessor. OTHERWISE a semantic
    prose answer SHALL be saved as a durable pending assessment before one bounded
    external request is made outside SQL.
 3. THE semantic-v1 policy SHALL record Correct only when all authored required
-   ideas and the overall relation independently meet their thresholds with no
-   contradiction or injection signal. It SHALL NOT record an automatic miss by
-   default; unclear, malformed, unavailable, and timed-out checks remain ungraded.
-4. WHEN exactly one required idea is clearly missing, THE surface SHALL show
-   Almost and its authored cue only after the occurrence is durably marked
-   assisted. A later correct response on that occurrence SHALL use the helped
-   warm contract, not an FSRS success.
+   ideas and the overall relation (frozen threshold 0.85) independently meet
+   their thresholds with no contradiction or injection signal. Under the frozen
+   policy incomplete and incorrect SHALL be recorded as shadow classes and
+   rendered as ungraded; unclear, malformed, unavailable, and timed-out checks
+   remain ungraded.
+4. WHEN a class that shows authored help is enabled and applies, THE surface
+   SHALL show the cue or feedback only after the occurrence is marked assisted
+   and an exposure record is written in the same transaction. A later correct
+   response on that content within 24 hours, on any occurrence, SHALL use the
+   helped warm contract, not an FSRS success.
 5. A failed check SHALL keep the answer, offer retry and reveal, and show no model
-   probabilities. Replaying the same operation SHALL resume or return its durable
-   assessment without duplicate review/schedule transitions; stale finalization
-   SHALL be superseded without changing learning state.
+   probabilities. EXACTLY one send lease SHALL exist per assessment: a concurrent
+   duplicate SHALL be refused, an exact replay SHALL reconcile the durable
+   assessment without resending, an interrupted send SHALL become a definite
+   failure that keeps its reservation as unknown spend, and the reservation
+   SHALL be enforced against the shared daily allowance before any request
+   leaves the process. Stale finalization SHALL be superseded without changing
+   learning state.
 
 No-gos: no liberal similarity grading, no model call inside a SQL transaction,
 no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.

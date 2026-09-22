@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/misty-step/scry/internal/learning"
@@ -341,6 +340,10 @@ func validateQuiz(q GeneratedQuiz, src Source) error {
 	return nil
 }
 
+// validateGrading enforces the structural contract only. The author's explicit
+// grading mode is the task contract: a semantic explanation may legitimately
+// contain digits or symbols, and a letter-only identifier may need exactness,
+// so no heuristic on the answer text overrides the authored mode.
 func validateGrading(q GeneratedQuiz) error {
 	switch q.Grading {
 	case "", "exact":
@@ -354,19 +357,6 @@ func validateGrading(q GeneratedQuiz) error {
 	}
 	if q.Kind != "recall" || q.Rubric == nil {
 		return fmt.Errorf("%w: semantic grading requires a recall quiz and rubric", ErrInvalid)
-	}
-	answer := strings.TrimSpace(q.Answer)
-	hasLetter := false
-	singleTokenIsLetters := len(strings.Fields(answer)) == 1
-	for _, r := range answer {
-		if unicode.IsLetter(r) {
-			hasLetter = true
-		} else if singleTokenIsLetters {
-			singleTokenIsLetters = false
-		}
-	}
-	if !hasLetter || (len(strings.Fields(answer)) == 1 && !singleTokenIsLetters) {
-		return fmt.Errorf("%w: semantic grading is not available for numeric, symbolic, or mixed single-token answers", ErrInvalid)
 	}
 	if len(q.Rubric.Required) < 1 || len(q.Rubric.Required) > 6 || len(q.Rubric.Contradictions) > 6 {
 		return fmt.Errorf("%w: a semantic rubric needs 1–6 required ideas and at most 6 contradictions", ErrInvalid)

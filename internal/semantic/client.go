@@ -21,6 +21,9 @@ var (
 	ErrUnavailable = errors.New("semantic assessor unavailable")
 	ErrRejected    = errors.New("semantic assessment rejected")
 	ErrMalformed   = errors.New("malformed semantic response")
+	// ErrNotConfigured is the one provable no-send failure: nothing left the
+	// process, so no provider spend can exist. It also satisfies ErrUnavailable.
+	ErrNotConfigured = fmt.Errorf("%w: endpoint is not configured", ErrUnavailable)
 )
 
 const (
@@ -114,7 +117,7 @@ func (c *client) Decide(ctx context.Context, request Request) (Response, error) 
 	started := time.Now()
 	response := Response{}
 	if c.endpoint == "" {
-		return response, fmt.Errorf("%w: endpoint is not configured", ErrUnavailable)
+		return response, ErrNotConfigured
 	}
 	if request.Model == "" {
 		request.Model = c.model

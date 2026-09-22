@@ -156,11 +156,24 @@ type Assessment struct {
 	RequestModel    string
 	RequestJSON     string
 	Transmissions   int
+	ReservedMicros  int64
+	LeaseToken      string
+	LeaseUntil      int64
 	Decision        string
+	Applied         bool
 	Detail          string
 	Error           string
 	ReviewID        string
 	Quiz            Quiz
+}
+
+// AssessmentLease is the outcome of BeginAssessmentTransmission: exactly one
+// caller holds Token for one send; every other caller sees Send=false and the
+// durable assessment state to return to the learner.
+type AssessmentLease struct {
+	Assessment Assessment
+	Token      string
+	Send       bool
 }
 
 type AssessmentResult struct {
@@ -172,6 +185,9 @@ type AssessmentResult struct {
 	CostMicros    *int64
 	LatencyMS     int64
 	Error         string
+	// NoSend marks a definite failure in which no request left the process,
+	// so the reservation can be released instead of retained as unknown spend.
+	NoSend bool
 }
 
 type BackupRecord struct {

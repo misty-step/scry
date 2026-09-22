@@ -206,8 +206,11 @@ an invented token price.
 Generation uses `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, and `SCRY_MODEL`.
 Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
 `SCRY_SEMANTIC_API_KEY` (empty reuses `SCRY_MODEL_API_KEY`), and
-`SCRY_SEMANTIC_MODEL` (default `typesafe/jev-1.13`). An empty semantic endpoint
-means no Decisions request is sent and the saved answer remains ungraded. Before
+`SCRY_SEMANTIC_MODEL` (default `typesafe/jev-1.13`), and
+`SCRY_SEMANTIC_RESERVATION_MICROS` (default 2000, USD micros reserved per check
+from the same rolling 24-hour allowance as generation). An empty semantic
+endpoint means no Decisions request is sent, nothing is reserved, and the
+saved answer remains ungraded. Before
 production activation, prove that the configured private integration forwards
 `POST /api/alpha/decisions`; generation access alone does not prove that route.
 Learner answers sent for semantic assessment are private provider-bound text:
@@ -217,14 +220,22 @@ not identity or review history.
 Saved capture creates a durable bounded generation job. Semantic Check instead
 stages a durable assessment, calls the model outside SQL with an eight-second
 limit, then re-fences the occurrence/content/schedule in a second transaction.
-Exact operation replay permits at most two recorded transmissions; failures keep
-the answer ungraded for deliberate retry or reveal. Returned semantic cost is
-rounded up to micro-dollars, stored per assessment, and included in the rolling
-24-hour allowance accounting; missing provider cost stays unknown, never zero.
-Leases and recorded operation identities prevent stale publication or semantic
-finalization from manufacturing duplicate work. Unknown provider outcomes retain
-their reservation or assessment record; do not resend merely because a request
-lost its response. Inspect the recorded state and reconcile explicitly.
+Each assessment gets exactly one send lease (30 seconds). Before the request
+leaves the process, the reservation is checked and recorded against the shared
+allowance in the same transaction. A duplicate submit during a live lease is
+refused; an exact replay reconciles the durable state and never resends; a
+lease that lapses without a result becomes a definite failure with its
+reservation retained as unknown spend. Only the no-endpoint case releases a
+reservation, because it provably never sent. Returned semantic cost is rounded
+up to micro-dollars, stored per assessment, and replaces the reservation in the
+rolling 24-hour allowance; missing provider cost stays unknown, never zero.
+Failures keep the answer ungraded for a deliberate new operation (retry) or
+reveal. Inspect the recorded state and reconcile explicitly; the app never
+auto-retries a paid unknown outcome.
+
+The frozen `semantic-v1` policy applies only Correct. Incomplete and incorrect
+are recorded as shadow classes (`decision` with `applied=0`) for evaluation and
+render as ungraded. Enabling a class is a code change with holdout evidence.
 
 Source-backed quizzes keep exact supplied evidence. Topic expansions are
 labeled as model knowledge. Structural/provenance checks are not independent
