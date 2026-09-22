@@ -82,6 +82,19 @@ The runner appends to `raw.jsonl`.
 It rejects a duplicate `run_id` and `response_id` pair.
 Move the committed raw receipt before a fresh reproduction run.
 
+Every request reserves `--reservation` (default $0.0002) against `--max-spend`
+before it is sent and replaces the reservation with the measured cost after
+the response arrives, so concurrent workers cannot pass the ceiling together.
+A request whose outcome is lost after send (timeout, dropped connection,
+unreadable body) is recorded with `cost_unknown` set, keeps its reservation as
+spend, and stops the run. Reconcile the provider ledger before running again;
+the runner refuses to spend more while an unknown-spend record exists.
+
+`summarize` and `verify` bind every raw record to the loaded corpus and gold
+(response identity, split, bucket, learner text, gold action, and the exact
+request the shipped builder produces) and refuse a raw file that does not
+belong to them.
+
 ## Verification
 
 Run the required Go checks:

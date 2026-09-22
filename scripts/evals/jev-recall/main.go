@@ -234,6 +234,7 @@ type RawRecord struct {
 	InputTokens              int                       `json:"input_tokens,omitempty"`
 	OutputTokens             int                       `json:"output_tokens,omitempty"`
 	CostUSD                  float64                   `json:"cost_usd"`
+	CostUnknown              bool                      `json:"cost_unknown,omitempty"`
 	LatencyMS                int64                     `json:"latency_ms"`
 	HTTPStatus               int                       `json:"http_status"`
 	Error                    string                    `json:"error,omitempty"`
@@ -250,7 +251,11 @@ type callResult struct {
 	Status        int
 	LatencyMS     int64
 	Cost          float64
-	Error         string
+	// CostUnknown is set when a request left the process and no billable
+	// outcome came back (timeout, dropped connection, unreadable body). The
+	// provider may have charged for it, so the run must not count it as $0.
+	CostUnknown bool
+	Error       string
 }
 
 type runJob struct {
@@ -339,6 +344,7 @@ func runCommand(args []string) error {
 	repeats := fs.Int("repeats", 1, "number of passes")
 	concurrency := fs.Int("concurrency", 8, "maximum concurrent requests")
 	maxSpend := fs.Float64("max-spend", 0.05, "hard cumulative raw.jsonl spend ceiling in USD")
+	reservation := fs.Float64("reservation", 0.0002, "USD reserved against max-spend for each request before it is sent; replaced by measured cost afterwards")
 	tIdea := fs.Float64("t-idea", frozenParams.TIdea, "required-idea acceptance threshold")
 	tIdeaLow := fs.Float64("t-idea-low", frozenParams.TIdeaLow, "missing-idea threshold")
 	tContraLow := fs.Float64("t-contra-low", frozenParams.TContraLow, "contradiction absence threshold")
@@ -392,16 +398,25 @@ func runCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := bindRecords(existing, items); err != nil {
+		return err
+	}
 	existingKeys := make(map[string]bool, len(existing))
 	spent := 0.0
 	callsBefore := 0
 	for _, record := range existing {
 		existingKeys[record.RunID+"\x00"+record.ResponseID] = true
+		if record.CostUnknown {
+			return fmt.Errorf("existing record for run %q response %q has unknown spend; reconcile the provider ledger before spending more", record.RunID, record.ResponseID)
+		}
 		spent += record.CostUSD
 		callsBefore += len(record.Transmissions)
 	}
 	if spent >= *maxSpend {
 		return fmt.Errorf("existing spend %.9f is at or above max-spend %.9f", spent, *maxSpend)
+	}
+	if *reservation <= 0 || math.IsNaN(*reservation) || *reservation > *maxSpend {
+		return errors.New("reservation must be positive and no larger than max-spend")
 	}
 	selected := make([]WorkItem, 0, len(items))
 	for _, item := range items {
@@ -439,59 +454,103 @@ func runCommand(args []string) error {
 			return errors.New("redirects disabled")
 		},
 	}
+	totals, err := runJobs(jobs, runBudget{Spent: spent, MaxSpend: *maxSpend, Reservation: *reservation, Concurrency: *concurrency}, file,
+		func(job runJob) RawRecord { return evaluateOne(client, apiKey, job) })
+	fmt.Printf("recorded=%d selected=%d calls=%d failures=%d unknown_spend_records=%d input_tokens=%d output_tokens=%d cumulative_spend_usd=%.9f prior_calls=%d\n", totals.Written, len(jobs), totals.Calls, totals.Failures, totals.Unknown, totals.InputTokens, totals.OutputTokens, totals.Spent, callsBefore)
+	if err != nil {
+		return err
+	}
+	if totals.Written != len(jobs) {
+		return fmt.Errorf("recorded %d of %d selected responses", totals.Written, len(jobs))
+	}
+	return nil
+}
 
+// runBudget is the spend policy for one run: prior spend already in
+// raw.jsonl, the hard ceiling, the amount reserved for each request before
+// it is sent, and the worker count.
+type runBudget struct {
+	Spent       float64
+	MaxSpend    float64
+	Reservation float64
+	Concurrency int
+}
+
+type runTotals struct {
+	Spent        float64
+	Written      int
+	Calls        int
+	Failures     int
+	Unknown      int
+	InputTokens  int
+	OutputTokens int
+}
+
+// runJobs evaluates jobs with bounded concurrency and appends each record to
+// out. Every request reserves budget.Reservation against MaxSpend before it
+// is sent and replaces it with the measured cost afterwards, so concurrent
+// workers cannot pass the ceiling check on stale totals together. A request
+// whose outcome was lost after send keeps its reservation as spend and stops
+// the run; the provider may have billed it and nobody knows for how much.
+func runJobs(jobs []runJob, budget runBudget, out io.Writer, evaluate func(runJob) RawRecord) (runTotals, error) {
 	type sharedState struct {
 		sync.Mutex
-		spent        float64
-		written      int
-		calls        int
-		failures     int
-		fatal        error
-		writeErr     error
-		inputTokens  int
-		outputTokens int
+		runTotals
+		reserved float64
+		fatal    error
+		writeErr error
 	}
-	state := &sharedState{spent: spent}
+	state := &sharedState{runTotals: runTotals{Spent: budget.Spent}}
 	jobCh := make(chan runJob)
 	var workers sync.WaitGroup
-	workerCount := min(*concurrency, len(jobs))
+	workerCount := min(budget.Concurrency, len(jobs))
 	for range workerCount {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
 			for job := range jobCh {
 				state.Lock()
-				stop := state.fatal != nil || state.writeErr != nil || state.spent >= *maxSpend
+				stop := state.fatal != nil || state.writeErr != nil || state.Spent+state.reserved+budget.Reservation > budget.MaxSpend
+				if !stop {
+					state.reserved += budget.Reservation
+				}
 				state.Unlock()
 				if stop {
 					continue
 				}
-				record := evaluateOne(client, apiKey, job)
+				record := evaluate(job)
 				line, marshalErr := json.Marshal(record)
 				state.Lock()
+				state.reserved -= budget.Reservation
 				if marshalErr != nil {
 					state.writeErr = fmt.Errorf("marshal raw record: %w", marshalErr)
 					state.Unlock()
 					continue
 				}
-				if _, writeErr := file.Write(append(line, '\n')); writeErr != nil {
+				if _, writeErr := out.Write(append(line, '\n')); writeErr != nil {
 					state.writeErr = fmt.Errorf("write raw record: %w", writeErr)
 					state.Unlock()
 					continue
 				}
-				state.written++
-				state.calls += len(record.Transmissions)
-				state.spent += record.CostUSD
-				state.inputTokens += record.InputTokens
-				state.outputTokens += record.OutputTokens
+				state.Written++
+				state.Calls += len(record.Transmissions)
+				state.InputTokens += record.InputTokens
+				state.OutputTokens += record.OutputTokens
+				if record.CostUnknown {
+					state.Unknown++
+					state.Spent += budget.Reservation
+					state.fatal = fmt.Errorf("response %q outcome lost after send (%s); unknown spend retained at the reservation, reconcile the provider ledger before running again", record.ResponseID, record.Error)
+				} else {
+					state.Spent += record.CostUSD
+				}
 				if record.Error != "" {
-					state.failures++
+					state.Failures++
 				}
 				if record.HTTPStatus == http.StatusUnauthorized || record.HTTPStatus == http.StatusForbidden {
 					state.fatal = fmt.Errorf("persistent authorization failure: HTTP %d", record.HTTPStatus)
 				}
-				if state.spent > *maxSpend {
-					state.fatal = fmt.Errorf("spend %.9f exceeded max-spend %.9f", state.spent, *maxSpend)
+				if state.Spent > budget.MaxSpend {
+					state.fatal = fmt.Errorf("spend %.9f exceeded max-spend %.9f", state.Spent, budget.MaxSpend)
 				}
 				state.Unlock()
 			}
@@ -508,22 +567,17 @@ func runCommand(args []string) error {
 	}
 	close(jobCh)
 	workers.Wait()
-	if err := file.Sync(); err != nil {
-		return fmt.Errorf("sync raw output: %w", err)
+	if syncer, ok := out.(interface{ Sync() error }); ok {
+		if err := syncer.Sync(); err != nil {
+			return state.runTotals, fmt.Errorf("sync raw output: %w", err)
+		}
 	}
 	state.Lock()
 	defer state.Unlock()
-	fmt.Printf("recorded=%d selected=%d calls=%d failures=%d input_tokens=%d output_tokens=%d cumulative_spend_usd=%.9f prior_calls=%d\n", state.written, len(jobs), state.calls, state.failures, state.inputTokens, state.outputTokens, state.spent, callsBefore)
 	if state.writeErr != nil {
-		return state.writeErr
+		return state.runTotals, state.writeErr
 	}
-	if state.fatal != nil {
-		return state.fatal
-	}
-	if state.written != len(jobs) {
-		return fmt.Errorf("recorded %d of %d selected responses", state.written, len(jobs))
-	}
-	return nil
+	return state.runTotals, state.fatal
 }
 
 func evaluateOne(client *http.Client, apiKey string, job runJob) RawRecord {
@@ -560,6 +614,7 @@ func evaluateOne(client *http.Client, apiKey string, job runJob) RawRecord {
 		InputTokens:     result.Response.Usage.InputTokens,
 		OutputTokens:    result.Response.Usage.OutputTokens,
 		CostUSD:         result.Cost,
+		CostUnknown:     result.CostUnknown,
 		LatencyMS:       result.LatencyMS,
 		HTTPStatus:      result.Status,
 		Error:           result.Error,
@@ -679,6 +734,9 @@ func callDecisionAPI(client *http.Client, apiKey string, req DecisionRequest) ca
 			transmission.Error = doErr.Error()
 			result.Transmissions = append(result.Transmissions, transmission)
 			result.Error = transmission.Error
+			// The request may have reached the provider before the timeout or
+			// transport failure; its charge, if any, never came back.
+			result.CostUnknown = true
 			return result
 		}
 		transmission.HTTPStatus = resp.StatusCode
@@ -716,6 +774,9 @@ func callDecisionAPI(client *http.Client, apiKey string, req DecisionRequest) ca
 		if transmission.Error != "" {
 			result.Transmissions = append(result.Transmissions, transmission)
 			result.Error = transmission.Error
+			// A 200 whose body could not be read or was oversized was still a
+			// completed, billable call with no usage to account.
+			result.CostUnknown = resp.StatusCode == http.StatusOK
 			return result
 		}
 		if resp.StatusCode != http.StatusOK {
@@ -729,6 +790,7 @@ func callDecisionAPI(client *http.Client, apiKey string, req DecisionRequest) ca
 			transmission.Error = fmt.Sprintf("decode response: %v", err)
 			result.Transmissions = append(result.Transmissions, transmission)
 			result.Error = transmission.Error
+			result.CostUnknown = true
 			return result
 		}
 		transmission.ResponseModel = decoded.Model
@@ -1091,6 +1153,70 @@ func loadRawOptional(path string) ([]RawRecord, error) {
 	return records, nil
 }
 
+// bindRecords refuses raw records that do not belong to the loaded corpus and
+// gold. Every record must name a known response, carry that response's
+// identity, split, bucket, grading, learner text and gold action, and embed
+// exactly the request the product's shipped builder produces for the same
+// state, so a stale, edited, or foreign raw.jsonl can never be summarized
+// beside the current corpus and gold hashes. Duplicate (run, response) pairs
+// are rejected as well.
+func bindRecords(records []RawRecord, items []WorkItem) error {
+	byResponse := make(map[string]WorkItem, len(items))
+	for _, item := range items {
+		byResponse[item.Response.ID] = item
+	}
+	seen := make(map[string]bool, len(records))
+	for index, record := range records {
+		item, ok := byResponse[record.ResponseID]
+		if !ok {
+			return fmt.Errorf("raw record %d: response %q is not in the loaded corpus", index+1, record.ResponseID)
+		}
+		key := record.RunID + "\x00" + record.ResponseID
+		if seen[key] {
+			return fmt.Errorf("raw record %d: duplicate run %q response %q", index+1, record.RunID, record.ResponseID)
+		}
+		seen[key] = true
+		switch {
+		case record.ConceptID != item.Concept.ID, record.QuestionID != item.Question.ID,
+			record.Domain != item.Concept.Domain, record.Split != item.Concept.Split,
+			record.Bucket != item.Response.Bucket, record.Grading != item.Question.Grading,
+			record.LearnerAnswer != item.Response.Text, record.GoldAction != item.Gold.AppAction,
+			record.ExactControl != (item.Question.Grading == "exact"):
+			return fmt.Errorf("raw record %d: response %q identity does not match the loaded corpus and gold", index+1, record.ResponseID)
+		}
+		recorded, err := json.Marshal(record.Request)
+		if err != nil {
+			return fmt.Errorf("raw record %d: %w", index+1, err)
+		}
+		expected, err := json.Marshal(buildRecallRequest(item.Question, item.Response.Text))
+		if err != nil {
+			return fmt.Errorf("raw record %d: %w", index+1, err)
+		}
+		if !bytes.Equal(recorded, expected) {
+			return fmt.Errorf("raw record %d: response %q request differs from the request built for the loaded corpus", index+1, record.ResponseID)
+		}
+		if record.Error == "" && record.Answers != nil {
+			if err := validateAPIResponse(record.Request, APIResponse{Model: record.ResponseModel, Answers: record.Answers}); err != nil {
+				return fmt.Errorf("raw record %d: response %q answers do not fit its request: %w", index+1, record.ResponseID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// loadBoundRaw loads raw.jsonl and binds every record to the loaded corpus and
+// gold before any table is computed from it.
+func loadBoundRaw(evalDir string, items []WorkItem) ([]RawRecord, error) {
+	records, err := loadRawOptional(filepath.Join(evalDir, "raw.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	if err := bindRecords(records, items); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 // summarizeCommand prints all report tables from raw.jsonl. No report number
 // needs to be counted by hand.
 func summarizeCommand(args []string) error {
@@ -1106,7 +1232,7 @@ func summarizeCommand(args []string) error {
 	if err := validateEvaluation(items, corpus); err != nil {
 		return err
 	}
-	records, err := loadRawOptional(filepath.Join(*evalDir, "raw.jsonl"))
+	records, err := loadBoundRaw(*evalDir, items)
 	if err != nil {
 		return err
 	}
@@ -1223,6 +1349,7 @@ func printRunTotals(records []RawRecord) {
 	calls := 0
 	failures := 0
 	cost := 0.0
+	unknown := 0
 	inputTokens := 0
 	outputTokens := 0
 	latencies := make([]int64, 0, logical)
@@ -1231,6 +1358,9 @@ func printRunTotals(records []RawRecord) {
 	for _, record := range records {
 		calls += len(record.Transmissions)
 		cost += record.CostUSD
+		if record.CostUnknown {
+			unknown++
+		}
 		inputTokens += record.InputTokens
 		outputTokens += record.OutputTokens
 		if record.Error != "" {
@@ -1245,6 +1375,9 @@ func printRunTotals(records []RawRecord) {
 	}
 	fmt.Printf("## Run totals\n\n")
 	fmt.Printf("- Logical responses: %d\n- HTTP calls: %d\n- Input tokens: %d\n- Output tokens: %d\n- Spend: $%.9f\n- Failed logical responses: %d\n", logical, calls, inputTokens, outputTokens, cost, failures)
+	if unknown > 0 {
+		fmt.Printf("- Responses with unknown provider spend (sent, no billable outcome returned): %d; the spend above is a floor\n", unknown)
+	}
 	if len(latencies) > 0 {
 		fmt.Printf("- Latency p50/p95: %d ms / %d ms\n", percentile(latencies, 0.50), percentile(latencies, 0.95))
 	}
@@ -1686,6 +1819,7 @@ func printMachineSummary(records, full []RawRecord) {
 		Calls                      int            `json:"calls"`
 		ResponsesTotal             int            `json:"responses_total"`
 		SpendUSD                   float64        `json:"spend_usd"`
+		UnknownSpendResponses      int            `json:"unknown_spend_responses"`
 		HTTPFailures               int            `json:"http_failures"`
 		BucketCounts               map[string]int `json:"bucket_counts_full"`
 		HoldoutFalseSuccess        ratio          `json:"holdout_false_success"`
@@ -1700,6 +1834,9 @@ func printMachineSummary(records, full []RawRecord) {
 		value.Calls += len(record.Transmissions)
 		value.ResponsesTotal++
 		value.SpendUSD += record.CostUSD
+		if record.CostUnknown {
+			value.UnknownSpendResponses++
+		}
 		if record.Error != "" {
 			value.HTTPFailures++
 		}
@@ -1803,7 +1940,14 @@ func verifyCommand(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	records, err := loadRawOptional(filepath.Join(*evalDir, "raw.jsonl"))
+	items, corpus, _, err := loadEvaluation(*evalDir)
+	if err != nil {
+		return err
+	}
+	if err := validateEvaluation(items, corpus); err != nil {
+		return err
+	}
+	records, err := loadBoundRaw(*evalDir, items)
 	if err != nil {
 		return err
 	}
