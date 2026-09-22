@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
+import { failureReason, runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
 
 const key = "scry-20260922T210000.000000000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scry-backup.zip";
 const sha256 = "b".repeat(64);
@@ -57,16 +57,38 @@ test("idle missing or invalid recovery key fails rather than claiming no change"
   }), /invalid/);
 });
 
+test("failed command reports its exit and last stderr line without secrets", async () => {
+  const capability = "c".repeat(48);
+  const stderr = [
+    "progress noise",
+    `scry: backup upload failed Bearer ${capability} at https://gateway.example/${key} token ${capability}`,
+    "",
+  ].join("\n");
+  const failure = await runBackupCycle({
+    running: () => true,
+    execute: async () => ({ exitCode: 1, stdout: "{\"path\":\"/var/lib/scry/private\"}", stderr }),
+    head: async () => object,
+  }).then(() => assert.fail("a failed command must reject"), error => error);
+  assert.match(failure.message, /^scheduled remote backup command failed \(exit 1\): scry: backup upload failed /);
+  assert.match(failure.message, /<url>/);
+  for (const leaked of [capability, "gateway.example", "/var/lib/scry/private", "progress noise"]) {
+    assert.equal(failure.message.includes(leaked), false, `${leaked} must not reach logs`);
+  }
+  assert.equal(failureReason(""), "no error output");
+  assert.equal(failureReason("x".repeat(500)).length <= 240, true);
+  assert.equal(failureReason(`open ${"/a".repeat(200)}`).length <= 240, true);
+});
+
 test("idle stop requires a verified backup and keeps the writer on failure", async () => {
   let stopped = 0;
   const messages = [];
   const stop = async () => { stopped++; };
-  const log = message => messages.push(message);
+  const log = (...values) => messages.push(values);
   await stopAfterBackup({ backup: async () => ({ state: "backed_up" }), stop, log });
   assert.equal(stopped, 1);
   await stopAfterBackup({ backup: async () => { throw new Error("remote unavailable"); }, stop, log });
   assert.equal(stopped, 1);
-  assert.deepEqual(messages, ["[scry-recovery] idle stop deferred: remote backup failed"]);
+  assert.deepEqual(messages, [["[scry-recovery] idle stop deferred: remote backup failed", { reason: "remote unavailable" }]]);
   await stopAfterBackup({ backup: async () => ({ state: "backed_up" }), stop, log, canStop: () => false });
   assert.equal(stopped, 1, "a request during the backup must cancel the idle stop");
 });
