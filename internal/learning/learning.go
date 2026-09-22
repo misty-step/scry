@@ -50,9 +50,9 @@ func Schedule(card Card, rating int, now time.Time) (Card, error) {
 
 // Grade is deliberately local. Variants must be explicitly authored; punctuation,
 // accents, case, negation and word order are never silently discarded. Short
-// unmatched factual answers can be misses; a long semantic answer cannot be
-// judged reliably by this policy and remains ungraded until retry or reveal.
-func Grade(kind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
+// unmatched factual answers can be misses only in exact mode; an unmatched
+// semantic answer remains ungraded for the semantic assessor.
+func Grade(kind, grading, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
 	if reveal {
 		return "revealed", int(fsrs.Again)
 	}
@@ -77,7 +77,7 @@ func Grade(kind, expected string, variants []string, answer string, reveal bool)
 	if strings.EqualFold(answer, expected) {
 		return "close", 0
 	}
-	if shortFact(answer) && shortFact(expected) {
+	if grading != "semantic" && shortFact(answer) && shortFact(expected) {
 		return "wrong", int(fsrs.Again)
 	}
 	return "ungraded", 0

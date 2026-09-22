@@ -468,7 +468,7 @@ func (s *Store) AdvanceFoundation(ctx context.Context, id string, revision int, 
 				return fmt.Errorf("%w: select an exact choice", ErrInvalid)
 			}
 		}
-		outcome, _ = learning.Grade(q.Kind, q.Answer, q.Variants, answer, false)
+		outcome, _ = learning.Grade(q.Kind, "exact", q.Answer, q.Variants, answer, false)
 		phase, interaction = "feedback", "practice"
 	case action == "retry" && phase == "waiting" && b.Job != nil:
 		if b.Job.Status != "failed" || b.Job.Attempts >= 3 || b.Job.CostUnknown {

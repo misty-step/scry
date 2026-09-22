@@ -287,7 +287,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			return Presentation{}, fmt.Errorf("%w: select one of the exact presented choices", ErrInvalid)
 		}
 	}
-	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
+	outcome, rating := learning.Grade(p.Quiz.Kind, "exact", p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
 	now := s.now()
 	p.Answer, p.Outcome, p.Rating = answer, outcome, rating
 	p.Assisted, p.Graded = reveal, rating != 0
