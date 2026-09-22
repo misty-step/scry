@@ -525,6 +525,59 @@ wrong decision under the frozen policy, and assistance-fenced cues. It is a
 distinct slower product path, not liberal grading or a hidden network call
 inside the grading transaction.
 
+### Prepublication content critic: US-004
+
+The configured semantic endpoint also checks validated generation candidates.
+The worker retains at most twelve candidates per batch and marks truncation
+as partial. It saves candidate content, generator attribution, and usage before
+criticism. Without an endpoint, it records `critic_status=skipped` and preserves
+the existing generation capacity and publication behavior. Foundations are not
+scheduled quiz candidates and do not enter this critic.
+
+`BuildCriticRequest` sends only candidate prompt, answer, explanation, choices,
+rubric, basis, and evidence. Each applicable defect receives an independent
+Noul judgment. Hard defects cover unsupported source answers, contradictory
+evidence, changed qualifications, missing context, ambiguous answers, indefensible
+answers, leaked answers, overlapping choices, misaligned rubrics, and adversarial
+content. Source support applies only to source-basis candidates. Choice overlap
+and rubric alignment apply only to their corresponding quiz types. The leakage
+check also covers authored rubric cues. Generator v3 still authors exact items;
+this increment does not add semantic rubric generation or contrast candidates.
+
+The code-owned `critic-v1` policy freezes the hard threshold at 0.80.
+Any hard judgment at or above that threshold rejects the candidate.
+Explanation restatement supplies a teaching-value score only; it never rejects.
+The worker preserves source order rather than sorting ordered learning material.
+Missing, mixed-type, or invalid judgments remain ungraded and cannot publish.
+These initial thresholds do not establish calibrated accuracy or learning gains.
+
+Each `content_assessments` row permits exactly one transmission under a 30-second
+lease. The store reserves the semantic amount against the shared daily allowance
+before sending. Known costs replace reservations; unknown outcomes retain them.
+Expired leases become failed, including rows abandoned by terminal jobs.
+Candidate storage extends job ownership for the bounded serial critic battery.
+The provider call remains outside SQL and uses the existing eight-second limit.
+
+Unavailable criticism leaves candidates saved with `critic_status=pending`.
+Automatic retries stay within three total job attempts. Explicit retries may
+resume the same unpublished batch up to five total attempts. They never repeat
+generation or charge its reservation. Judged candidates are reused unchanged;
+unjudged candidates receive new assessment rows on a new job attempt.
+Restored work remains paused until explicit retry. Fully rejected batches need
+revised input, not repeated criticism to search for a passing judgment.
+
+`Store.CompleteJob` recomputes decisions from stored response judgments and
+rechecks candidate identity, source revision, validation, and ownership.
+It publishes accepted candidates only. Mixed batches become partial; fully
+rejected batches fail without publishing. Export includes candidates, attempts,
+policy identity, raw requests/responses, reasons, and usage. `ContentHistory`
+returns content attempts separately from immutable learner review history.
+
+Proof: pure-policy boundaries; durable lease, spend, crash, retry, and publication
+tests; real HTTP worker integration; and bounded live public/synthetic controls.
+Live controls report false accepts, false rejects, abstentions, model, and cost.
+They do not establish broad publication quality or authorize activation.
+
 Too advanced can request reusable foundation instruction and warm practice
 without first recording a miss. The bounded MIS-59 detour below does not imply
 a universal prerequisite graph, recursive tutor, automatic curriculum,

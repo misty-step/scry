@@ -1,5 +1,5 @@
 // Package generation turns durable source jobs into bounded, inspectable quizzes.
-// It makes no semantic assessment calls; all external work stays outside SQL.
+// Generation and prepublication assessment calls stay outside SQL.
 package generation
 
 import (
@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/misty-step/scry/internal/semantic"
 	"github.com/misty-step/scry/internal/store"
 )
 
@@ -45,6 +46,9 @@ type Config struct {
 	ReservationMicros int64
 	PollInterval      time.Duration
 	HTTPClient        *http.Client
+	Critic            semantic.Client
+	CriticModel       string
+	CriticSpending    store.SemanticSpending
 }
 
 // Worker is deliberately serial: one claimed attempt, one HTTP transmission.
@@ -169,6 +173,10 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) process(ctx context.Context, job *store.Job) error {
+	if job.Candidates != nil {
+		zero := int64(0)
+		return w.processCandidates(ctx, job, job.Candidates.Result, &zero)
+	}
 	var result store.GenerationResult
 	var failure *generationFailure
 	var cost *int64
@@ -182,6 +190,9 @@ func (w *Worker) process(ctx context.Context, job *store.Job) error {
 		failure = &generationFailure{message: "Generation stopped before transmission; the source is saved and can be retried."}
 	} else {
 		result, cost, failure = w.generate(ctx, job)
+	}
+	if failure == nil && job.FoundationTarget == nil {
+		return w.processCandidates(ctx, job, result, cost)
 	}
 	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
 	defer cancel()

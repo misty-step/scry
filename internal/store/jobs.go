@@ -20,14 +20,21 @@ func enqueue(ctx context.Context, tx *sql.Tx, sourceID string, revision int, now
 
 func job(ctx context.Context, tx *sql.Tx, id string) (Job, error) {
 	var j Job
+	var candidates sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT j.id,j.source_id,j.status,j.error,j.model,j.lease_token,r.text,r.kind,j.source_revision,j.attempts,
 	 j.created_at,j.updated_at,j.published,
-	 COALESCE((SELECT sum(CASE WHEN a.state='active' THEN 0 ELSE COALESCE(a.cost_micros,a.reserved_micros) END) FROM job_attempts a WHERE a.job_id=j.id),0),
-	 COALESCE((SELECT sum(a.reserved_micros) FROM job_attempts a WHERE a.job_id=j.id AND a.state='active'),0),
-	 EXISTS(SELECT 1 FROM job_attempts a WHERE a.job_id=j.id AND a.state<>'active' AND a.cost_micros IS NULL)
+	 COALESCE((SELECT sum(CASE WHEN a.state='active' THEN COALESCE(a.cost_micros,0) ELSE COALESCE(a.cost_micros,a.reserved_micros) END) FROM job_attempts a WHERE a.job_id=j.id),0)
+	 +COALESCE((SELECT sum(CASE WHEN a.status='pending' THEN 0 ELSE COALESCE(a.cost_micros,a.reserved_micros) END) FROM content_assessments a WHERE a.job_id=j.id),0),
+	 COALESCE((SELECT sum(a.reserved_micros) FROM job_attempts a WHERE a.job_id=j.id AND a.state='active'),0)
+	 +COALESCE((SELECT sum(a.reserved_micros) FROM content_assessments a WHERE a.job_id=j.id AND a.status='pending'),0),
+	 (EXISTS(SELECT 1 FROM job_attempts a WHERE a.job_id=j.id AND a.state<>'active' AND a.cost_micros IS NULL)
+	 OR EXISTS(SELECT 1 FROM content_assessments a WHERE a.job_id=j.id AND a.transmissions>0 AND a.cost_micros IS NULL)),j.critic_status,j.candidates_json
 	 FROM jobs j JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision WHERE j.id=?`, id).
 		Scan(&j.ID, &j.SourceID, &j.Status, &j.Error, &j.Model, &j.LeaseToken, &j.SourceText, &j.SourceKind, &j.SourceRevision,
-			&j.Attempts, &j.CreatedAt, &j.UpdatedAt, &j.Published, &j.CostMicros, &j.ReservedMicros, &j.CostUnknown)
+			&j.Attempts, &j.CreatedAt, &j.UpdatedAt, &j.Published, &j.CostMicros, &j.ReservedMicros, &j.CostUnknown, &j.CriticStatus, &candidates)
+	if err == nil && candidates.Valid {
+		err = json.Unmarshal([]byte(candidates.String), &j.Candidates)
+	}
 	if err == nil {
 		var encoded string
 		target := Quiz{SourceID: j.SourceID}
@@ -69,15 +76,21 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 		return nil, tx.Commit()
 	}
 	var id string
-	err = tx.QueryRowContext(ctx, `SELECT j.id FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status IN ('queued','retry')
-	 AND j.available_at<=? AND j.attempts<3 AND src.archived=0 AND src.revision=j.source_revision
+	var criticOnly bool
+	err = tx.QueryRowContext(ctx, `SELECT j.id,j.candidates_json IS NOT NULL FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status IN ('queued','retry')
+	 AND j.available_at<=? AND (j.attempts<3 OR (j.candidates_json IS NOT NULL AND j.status='queued' AND j.attempts<5)) AND src.archived=0 AND src.revision=j.source_revision
 	 AND NOT EXISTS(SELECT 1 FROM foundation_requests f JOIN quizzes q ON q.id=f.quiz_id WHERE f.job_id=j.id AND (q.archived=1 OR q.version<>f.quiz_version))
-	 ORDER BY j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id)
+	 ORDER BY j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id, &criticOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
 	if err != nil {
 		return nil, err
+	}
+	if criticOnly {
+		// Candidate assessments reserve individually before send. This claim
+		// must not reserve (or charge) another generation request.
+		reservationMicros = 0
 	}
 	if reservationMicros > 0 {
 		spent, err := spentMicros(ctx, tx, now)
@@ -103,6 +116,11 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	 SELECT ?,id,attempts,?,?,'active' FROM jobs WHERE id=?`, token, now, reservationMicros, id)
 	if err != nil {
 		return nil, err
+	}
+	if criticOnly {
+		if _, err = tx.ExecContext(ctx, "UPDATE job_attempts SET cost_micros=0 WHERE token=?", token); err != nil {
+			return nil, err
+		}
 	}
 	j, err := job(ctx, tx, id)
 	if err != nil {
@@ -196,7 +214,9 @@ func repeatedFinish(a attempt, hash string) (bool, error) {
 }
 
 func settleAttempt(ctx context.Context, tx *sql.Tx, token, hash, code string, costMicros *int64, now int64) error {
-	_, err := tx.ExecContext(ctx, `UPDATE job_attempts SET cost_micros=?,state='settled',finished_at=?,finish_hash=?,finish_code=? WHERE token=? AND finish_hash=''`, costMicros, now, hash, code, token)
+	// Saved candidates already committed generator usage. Later critic
+	// completion/failure cannot replace it, including a known zero retry claim.
+	_, err := tx.ExecContext(ctx, `UPDATE job_attempts SET cost_micros=CASE WHEN EXISTS(SELECT 1 FROM jobs WHERE id=job_attempts.job_id AND candidates_json IS NOT NULL) THEN cost_micros ELSE ? END,state='settled',finished_at=?,finish_hash=?,finish_code=? WHERE token=? AND finish_hash=''`, costMicros, now, hash, code, token)
 	return err
 }
 
@@ -246,6 +266,17 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		return finishError("conflict")
 	}
 	var validation error
+	if a.job.Candidates != nil {
+		if payloadHash(result) != payloadHash(a.job.Candidates.Result) {
+			return fmt.Errorf("%w: saved candidates cannot be replaced at publication", ErrConflict)
+		}
+		if a.job.CriticStatus != "skipped" {
+			result, err = judgedCandidates(ctx, tx, a.job)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if a.job.FoundationTarget != nil {
 		validation = ValidateFoundation(result.Foundation)
 		if len(result.Quizzes) != 0 {
@@ -273,6 +304,15 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		return validation
 	}
 	for index, content := range result.Quizzes {
+		originIndex := index
+		if a.job.Candidates != nil {
+			for originalIndex, candidate := range a.job.Candidates.Result.Quizzes {
+				if candidate.Prompt == content.Prompt {
+					originIndex = originalIndex
+					break
+				}
+			}
+		}
 		id := newID()
 		encoded, err := marshal(content)
 		if err != nil {
@@ -282,7 +322,7 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		if err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,source_id,version,created_at,origin_job_id,origin_index) VALUES(?,?,1,?,?,?)", id, a.job.SourceID, now, jobID, index)
+		_, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,source_id,version,created_at,origin_job_id,origin_index) VALUES(?,?,1,?,?,?)", id, a.job.SourceID, now, jobID, originIndex)
 		if err != nil {
 			return err
 		}
@@ -311,6 +351,7 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,model=?,prompt_version=?,published=?,result_json=?,
+	 critic_status=CASE WHEN critic_status='pending' THEN 'judged' ELSE critic_status END,
 	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, result.Note, result.Model, result.PromptVersion, published, encoded, now, jobID)
 	if err != nil {
 		return err

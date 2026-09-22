@@ -1,0 +1,7 @@
+{
+  "prompt": "The mitochondrion produces ATP through oxidative phosphorylation. Which organelle produces most ATP through oxidative phosphorylation in a typical animal cell?",
+  "answer": "Mitochondrion",
+  "explanation": "Mitochondria use an inner-membrane proton gradient to power ATP synthase during oxidative phosphorylation.",
+  "basis": "topic",
+  "evidence": ""
+}

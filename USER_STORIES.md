@@ -102,3 +102,32 @@ no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.
 
 Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
 `internal/semantic/client_test.go`, `internal/web/semantic_test.go`
+
+## US-004 Check generated candidates before publication
+
+Statement: I want generated quizzes checked for critical defects before they
+enter review. A failed check must retain candidates and paid usage.
+
+Criteria:
+1. WHEN the critic is configured, THE SYSTEM SHALL save validated candidates
+   before any critic request. EACH batch SHALL contain at most twelve candidates.
+2. THE critic-v1 policy SHALL reject any applicable hard defect at probability
+   0.80 or higher. Missing or malformed judgments SHALL remain ungraded.
+   Explanation teaching value SHALL rank only, never reject.
+3. EACH assessment SHALL have one transmission lease and an atomic reservation
+   against the shared generation and semantic allowance. Interrupted sends SHALL
+   retain unknown usage. A retry SHALL use a new assessment, never resend a row.
+4. WHEN a critic fails, THE SYSTEM SHALL preserve candidates and retry only the
+   critic. Judged candidates SHALL be reused. Publication SHALL recheck the saved
+   judgments, source revision, and job ownership in one transaction.
+5. WHEN no critic endpoint is configured, THE SYSTEM SHALL record skipped
+   criticism without reserving allowance or changing existing publication.
+6. Export and content history SHALL retain candidate attempts, defect reasons,
+   model attribution, raw responses, and known or unknown usage.
+
+No-gos: no generator-v4 change, contrast candidates, pairwise duplicate checks,
+practice-coverage UI, production activation, or general accuracy claim.
+
+Evidence: `internal/learning/critic_test.go`,
+`internal/semantic/critic_request_test.go`, `internal/store/critic_test.go`,
+`internal/store/critic_lifecycle_test.go`, `internal/generation/critic_test.go`.

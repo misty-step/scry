@@ -88,6 +88,26 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 			(result.Job.Status != "failed" && result.Job.Status != "canceled" && result.Job.Status != "paused") {
 			return Source{}, fmt.Errorf("%w: only unpublished failed or explicitly reconciled paused work can be retried", ErrConflict)
 		}
+		if result.Job.Candidates != nil {
+			// Continue the same immutable batch. The first three attempts are
+			// automatic; at most two more require deliberate manual retries.
+			// Monotonic attempt numbers preserve every prior send/spend record.
+			if result.Job.Attempts >= 5 || result.Job.CriticStatus == "judged" {
+				return Source{}, fmt.Errorf("%w: saved candidate checks are exhausted or rejected; inspect and revise the input", ErrConflict)
+			}
+			now := s.now()
+			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status='queued',error='Explicit retry of saved candidates',lease_token='',lease_until=0,available_at=?,updated_at=? WHERE id=?`, now, now, result.Job.ID); err != nil {
+				return Source{}, err
+			}
+			if err = saveOperation(ctx, tx, operationID, "retry", hash, id, nil, now); err != nil {
+				return Source{}, err
+			}
+			result, err = source(ctx, tx, id, true)
+			if err != nil {
+				return Source{}, err
+			}
+			return result, tx.Commit()
+		}
 		var jobs int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=? AND id NOT IN (SELECT job_id FROM foundation_requests)", id).Scan(&jobs); err != nil {
 			return Source{}, err

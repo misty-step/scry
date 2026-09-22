@@ -90,6 +90,11 @@ func reconcileInterrupted(ctx context.Context, tx *sql.Tx, a *Assessment, now in
 // under: measured cost when known, otherwise the reservation, across generation
 // attempts and both assessment tables, plus everything still active or pending.
 func spentMicros(ctx context.Context, tx *sql.Tx, now int64) (int64, error) {
+	// A canceled, restored, or exhausted job might never revisit its content
+	// rows. Expired send leases still need a terminal unknown-cost record.
+	if _, err := tx.ExecContext(ctx, `UPDATE content_assessments SET status='failed',decision='ungraded',error=?,lease_token='',lease_until=0,finished_at=? WHERE status='pending' AND transmissions=1 AND lease_until<=?`, assessmentInterruptedErr, now, now); err != nil {
+		return 0, err
+	}
 	since := now - allowanceWindow.Milliseconds()
 	var spent int64
 	err := tx.QueryRowContext(ctx, `SELECT

@@ -99,6 +99,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		"format": "scry-personal-export", "format_version": 1, "schema_version": SchemaVersion,
 		"exported_at": s.now(), "algorithm": learning.Algorithm, "scheduler": learning.Scheduler,
 		"grading_policies": []string{"exact-v1", learning.SemanticPolicyVersion},
+		"content_policies": []string{learning.CriticPolicyVersion},
 	}
 	for _, section := range []struct{ name, query string }{
 		{"sources", "SELECT id,text,kind,revision,archived,created_at FROM sources ORDER BY created_at,id"},
@@ -127,7 +128,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"concept_references", "SELECT * FROM concept_references ORDER BY concept_id,reference_id"},
 		{"concept_quizzes", "SELECT * FROM concept_quizzes ORDER BY concept_id,quiz_id"},
 		{"semantic_assessments", "SELECT * FROM semantic_assessments ORDER BY created_at,id"},
-		{"content_assessments", "SELECT * FROM content_assessments ORDER BY created_at,id"},
+		{"content_assessments", "SELECT id,job_id,candidate_index,candidate_json,status,policy_version,request_model,response_model,request_json,response_json,decision,reasons,error,input_tokens,output_tokens,cost_micros,latency_ms,transmissions,reserved_micros,lease_until,created_at,finished_at FROM content_assessments ORDER BY created_at,id"},
 		{"assistance_exposures", "SELECT * FROM assistance_exposures ORDER BY created_at,id"},
 	} {
 		data, err := exportRows(ctx, tx, section.query)
