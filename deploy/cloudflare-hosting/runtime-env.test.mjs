@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appEnvVars, backupExecEnv, containerSleepAfter } from "./runtime-env.mjs";
+import { appEnvVars, backupExec, backupExecEnv, containerSleepAfter } from "./runtime-env.mjs";
 
 const complete = {
   SCRY_BOOT_MODE: "restore-required",
@@ -94,6 +94,16 @@ test("scheduled backup exec receives only the server's recovery configuration", 
     assert.throws(() => backupExecEnv({ ...vars, [name]: "" }), new RegExp(name));
   }
   assert.throws(() => backupExecEnv(undefined), /SCRY_BACKUP_DIR/);
+});
+
+test("scheduled backup exec runs the remote-verified CLI with only its settings", () => {
+  const vars = appEnvVars(complete);
+  const { argv, options } = backupExec(vars);
+  assert.deepEqual(argv, ["/usr/local/bin/scry", "backup", "--db", "/var/lib/scry/data/scry.sqlite", "--require-remote"]);
+  // Only `env`. The regression was an exec with no env; `user` is unsafe here.
+  assert.deepEqual(Object.keys(options), ["env"]);
+  assert.deepEqual(options.env, backupExecEnv(vars));
+  assert.throws(() => backupExec({ ...vars, SCRY_BACKUP_REMOTE_URL: undefined }), /SCRY_BACKUP_REMOTE_URL/);
 });
 
 test("container runtime refuses any missing durability capability", () => {

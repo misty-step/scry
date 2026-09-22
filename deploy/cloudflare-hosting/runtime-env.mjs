@@ -39,6 +39,16 @@ export function backupExecEnv(envVars) {
   return result;
 }
 
+// The scheduled backup exec. Options carry only the backup settings. Never set
+// `user`: exec already runs as the image USER (uid 1000, scry), and on live
+// staging `user: "scry"` failed internally while `user: "1000"` ran as root.
+export function backupExec(envVars) {
+  return {
+    argv: ["/usr/local/bin/scry", "backup", "--db", "/var/lib/scry/data/scry.sqlite", "--require-remote"],
+    options: { env: backupExecEnv(envVars) },
+  };
+}
+
 export function containerSleepAfter(env) {
   if (!new Set(["1m", "24h"]).has(env.SCRY_SLEEP_AFTER)) {
     throw new Error("SCRY_SLEEP_AFTER must be the staged 1m proof window or the reviewed 24h production policy");
