@@ -15,6 +15,29 @@ const MODEL_FIELDS = [
   "SCRY_MODEL",
   "SCRY_MODEL_PROVIDER",
 ];
+// Exactly what `scry backup` reads (cmd/scry recoveryConfig). The shared
+// directory also keeps the CLI and the in-process timer behind one lock.
+const BACKUP_EXEC_FIELDS = [
+  "SCRY_BACKUP_DIR",
+  "SCRY_BACKUP_REMOTE_URL",
+  "SCRY_BACKUP_REMOTE_TOKEN",
+  "SCRY_BACKUP_INTERVAL",
+  "SCRY_BACKUP_KEEP",
+];
+
+// A live staging exec of `scry backup` saw no SCRY_BACKUP_REMOTE_URL: exec'd
+// processes do not get the container's per-start environment. Pass the backup
+// its recovery configuration explicitly, and nothing else.
+export function backupExecEnv(envVars) {
+  const result = {};
+  for (const name of BACKUP_EXEC_FIELDS) {
+    if (typeof envVars?.[name] !== "string" || envVars[name].length === 0) {
+      throw new Error(`${name} is required for the scheduled backup`);
+    }
+    result[name] = envVars[name];
+  }
+  return result;
+}
 
 export function containerSleepAfter(env) {
   if (!new Set(["1m", "24h"]).has(env.SCRY_SLEEP_AFTER)) {

@@ -6,7 +6,7 @@ import { Container } from "@cloudflare/containers";
 import { runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
 import { createStartupOnlyFetch, fatalContainerError } from "./container-lifecycle.mjs";
 import { latestSnapshotKey } from "./recovery-key.mjs";
-import { appEnvVars, containerSleepAfter } from "./runtime-env.mjs";
+import { appEnvVars, backupExecEnv, containerSleepAfter } from "./runtime-env.mjs";
 
 export class ScryContainer extends Container {
   defaultPort = 8080;
@@ -55,9 +55,11 @@ export class ScryContainer extends Container {
         // The existing CLI snapshots SQLite consistently and checks the exact
         // uploaded bytes. Never log stdout: the receipt has local paths. The
         // cycle logs only a redacted last stderr line when the command fails.
+        // exec does not inherit the start environment; run as the image's
+        // unprivileged owner so no root-owned files enter the data volume.
         const process = await this.ctx.container.exec([
           "/usr/local/bin/scry", "backup", "--db", "/var/lib/scry/data/scry.sqlite", "--require-remote",
-        ]);
+        ], { user: "scry", env: backupExecEnv(this.envVars) });
         const output = await process.output();
         const decoder = new TextDecoder();
         return { exitCode: output.exitCode, stdout: decoder.decode(output.stdout), stderr: decoder.decode(output.stderr) };

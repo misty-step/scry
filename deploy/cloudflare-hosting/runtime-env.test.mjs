@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appEnvVars, containerSleepAfter } from "./runtime-env.mjs";
+import { appEnvVars, backupExecEnv, containerSleepAfter } from "./runtime-env.mjs";
 
 const complete = {
   SCRY_BOOT_MODE: "restore-required",
@@ -73,6 +73,27 @@ test("container idle policy is explicit and bounded", () => {
   assert.equal(containerSleepAfter({ SCRY_SLEEP_AFTER: "1m" }), "1m");
   assert.equal(containerSleepAfter({ SCRY_SLEEP_AFTER: "24h" }), "24h");
   assert.throws(() => containerSleepAfter({ SCRY_SLEEP_AFTER: "never" }), /SCRY_SLEEP_AFTER/);
+});
+
+test("scheduled backup exec receives only the server's recovery configuration", () => {
+  const vars = appEnvVars(complete);
+  const exec = backupExecEnv(vars);
+  // Same remote, capability, directory (and therefore lock), cadence and keep
+  // as the in-process server timer; nothing the backup CLI does not read.
+  assert.deepEqual(exec, {
+    SCRY_BACKUP_DIR: "/var/lib/scry/backups",
+    SCRY_BACKUP_REMOTE_URL: complete.SCRY_BACKUP_REMOTE_URL,
+    SCRY_BACKUP_REMOTE_TOKEN: complete.SCRY_BACKUP_REMOTE_TOKEN,
+    SCRY_BACKUP_INTERVAL: "24h",
+    SCRY_BACKUP_KEEP: "30",
+  });
+  for (const name of ["SCRY_SECRET", "SCRY_MODEL_API_KEY", "SCRY_OWNER_ID", "SCRY_CONTAINER_RESTORE_KEY"]) {
+    assert.equal(name in exec, false, `${name} must not enter the backup process`);
+  }
+  for (const name of Object.keys(exec)) {
+    assert.throws(() => backupExecEnv({ ...vars, [name]: "" }), new RegExp(name));
+  }
+  assert.throws(() => backupExecEnv(undefined), /SCRY_BACKUP_DIR/);
 });
 
 test("container runtime refuses any missing durability capability", () => {
