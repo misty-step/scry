@@ -34,6 +34,7 @@ func withoutAnswer(q store.Quiz) store.Quiz {
 	q.Explanation = ""
 	q.Evidence = ""
 	q.Variants = nil
+	q.Rubric = nil
 	return q
 }
 
@@ -61,7 +62,11 @@ func (s *server) reviewResponse(w http.ResponseWriter, r *http.Request, state st
 	} else {
 		w.Header().Set("HX-Push-Url", "/")
 	}
-	s.render(w, r, http.StatusOK, page{View: "review", Title: "Review", Active: "review", Review: state, Notice: notice})
+	operation := ""
+	if state.Current != nil && state.Current.Pending {
+		operation = state.Current.AssessmentOperationID
+	}
+	s.render(w, r, http.StatusOK, page{View: "review", Title: "Review", Active: "review", Review: state, Notice: notice, Operation: operation})
 }
 
 func (s *server) preview(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +105,13 @@ func (s *server) submit(w http.ResponseWriter, r *http.Request, reveal bool) {
 	if err != nil {
 		s.reviewFailure(w, r, err, op, answer)
 		return
+	}
+	if p.Pending {
+		p, err = s.semantic.Assess(r.Context(), p.AssessmentID)
+		if err != nil {
+			s.reviewFailure(w, r, err, op, answer)
+			return
+		}
 	}
 	if reveal {
 		if destination := safeReturn(r.PostForm.Get("return_to")); destination != "" {

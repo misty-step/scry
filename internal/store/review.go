@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/misty-step/scry/internal/learning"
@@ -157,6 +158,7 @@ func hideAnswer(p *Presentation) {
 		p.Quiz.Explanation = ""
 		p.Quiz.Evidence = ""
 		p.Quiz.Variants = nil
+		p.Quiz.Rubric = nil
 	}
 }
 
@@ -210,6 +212,16 @@ func presentation(ctx context.Context, tx *sql.Tx, id string) (Presentation, err
 			p.Draft = p.Answer
 		}
 	}
+	var assessmentID, assessmentOperationID, assessmentStatus, assessmentDecision, assessmentDetail string
+	err = tx.QueryRowContext(ctx, `SELECT id,operation_id,status,decision,detail FROM semantic_assessments WHERE presentation_id=?
+	 ORDER BY created_at DESC,rowid DESC LIMIT 1`, p.ID).Scan(&assessmentID, &assessmentOperationID, &assessmentStatus, &assessmentDecision, &assessmentDetail)
+	if err == nil {
+		p.AssessmentID, p.AssessmentOperationID, p.AssessmentStatus = assessmentID, assessmentOperationID, assessmentStatus
+		p.AssessmentDecision, p.AssessmentDetail = assessmentDecision, assessmentDetail
+		p.Pending = assessmentStatus == "pending"
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return p, err
+	}
 	return p, nil
 }
 
@@ -237,11 +249,29 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 		return Presentation{}, err
 	}
 	if found {
-		var p Presentation
-		if err = json.Unmarshal([]byte(receipt), &p); err != nil {
-			return p, err
+		var saved Presentation
+		if err = json.Unmarshal([]byte(receipt), &saved); err != nil {
+			return saved, err
 		}
-		return p, tx.Commit()
+		if saved.AssessmentID != "" {
+			a, assessmentErr := readAssessment(ctx, tx, saved.AssessmentID)
+			if assessmentErr != nil {
+				return Presentation{}, assessmentErr
+			}
+			if a.Status == "pending" && a.Transmissions >= 2 {
+				if _, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='failed',error='semantic transmission limit reached',finished_at=?
+					WHERE id=? AND status='pending'`, s.now(), a.ID); err != nil {
+					return Presentation{}, err
+				}
+			}
+			p, presentationErr := presentation(ctx, tx, a.PresentationID)
+			if presentationErr != nil {
+				return Presentation{}, presentationErr
+			}
+			hideAnswer(&p)
+			return p, tx.Commit()
+		}
+		return saved, tx.Commit()
 	}
 	p, err := presentation(ctx, tx, presentationID)
 	if err != nil {
@@ -258,6 +288,13 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 		// An assistance fence always wins over a second tab's late success.
 		// Fresh operation IDs are not authority to grade an occurrence twice.
 		return Presentation{}, fmt.Errorf("%w: this occurrence already has saved feedback; reload review", ErrConflict)
+	}
+	var pending bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM semantic_assessments WHERE presentation_id=? AND status='pending')", p.ID).Scan(&pending); err != nil {
+		return Presentation{}, err
+	}
+	if pending {
+		return Presentation{}, fmt.Errorf("%w: this answer is still being checked", ErrConflict)
 	}
 	var contentVersion, scheduleVersion, presentedSchedule int
 	var archived bool
@@ -287,10 +324,37 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			return Presentation{}, fmt.Errorf("%w: select one of the exact presented choices", ErrInvalid)
 		}
 	}
-	outcome, rating := learning.Grade(p.Quiz.Kind, "exact", p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
+	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Grading, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
 	now := s.now()
+	if p.Quiz.Grading == "semantic" && outcome == "ungraded" && !reveal {
+		assessmentID := newID()
+		p.Answer, p.Draft = answer, answer
+		p.Pending, p.AssessmentID, p.AssessmentOperationID, p.AssessmentStatus = true, assessmentID, operationID, "pending"
+		_, err = tx.ExecContext(ctx, `INSERT INTO semantic_assessments(id,presentation_id,operation_id,content_version,schedule_version,answer,
+		 status,policy_version,request_model,request_json,created_at) VALUES(?,?,?,?,?,?,'pending',?,'','{}',?)`,
+			assessmentID, p.ID, operationID, p.Quiz.Version, presentedSchedule, answer, learning.SemanticPolicyVersion, now)
+		if err != nil {
+			if strings.Contains(err.Error(), "one_pending_assessment") || strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				return Presentation{}, fmt.Errorf("%w: this answer is still being checked", ErrConflict)
+			}
+			return Presentation{}, err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE presentations SET answer=?,outcome='',assisted=?,graded=0,rating=0 WHERE id=?`,
+			answer, p.Assisted, p.ID); err != nil {
+			return Presentation{}, err
+		}
+		hideAnswer(&p)
+		if err = saveOperation(ctx, tx, operationID, "submit", hash, p.ID, p, now); err != nil {
+			return Presentation{}, err
+		}
+		if err = tx.Commit(); err != nil {
+			return Presentation{}, err
+		}
+		return p, nil
+	}
+	preAssisted := p.Assisted
 	p.Answer, p.Outcome, p.Rating = answer, outcome, rating
-	p.Assisted, p.Graded = reveal, rating != 0
+	p.Assisted, p.Graded = p.Assisted || reveal, rating != 0
 	// Exposure makes this occurrence warm, but does not turn help into Again
 	// or manufacture an FSRS success. Explicit Reveal retains its old contract.
 	var exposed bool
@@ -304,6 +368,9 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	if exposed && !reveal {
 		p.Assisted, p.Graded, p.Rating = true, true, 0
 		p.Outcome = "warm_" + outcome
+	} else if preAssisted && !reveal && outcome == "correct" {
+		p.Assisted, p.Graded, p.Rating = true, true, 0
+		p.Outcome = "warm_correct"
 	}
 	if p.Graded {
 		p.Draft = ""

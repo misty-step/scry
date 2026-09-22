@@ -143,6 +143,12 @@ func (s *Store) initialize(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, migrationV2ToV3); err != nil {
 			return fmt.Errorf("migration 3 data: %w", err)
 		}
+		version = 3
+	}
+	if version == 3 {
+		if _, err = tx.ExecContext(ctx, schemaV4); err != nil {
+			return fmt.Errorf("migration 4: %w", err)
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/misty-step/scry/internal/learning"
 )
@@ -263,7 +264,7 @@ func quiz(ctx context.Context, tx *sql.Tx, id string) (Quiz, error) {
 	if err = json.Unmarshal([]byte(content), &generated); err != nil {
 		return q, err
 	}
-	q.Kind, q.Prompt, q.Answer, q.Explanation, q.Evidence, q.Basis = generated.Kind, generated.Prompt, generated.Answer, generated.Explanation, generated.Evidence, generated.Basis
+	q.Kind, q.Grading, q.Rubric, q.Prompt, q.Answer, q.Explanation, q.Evidence, q.Basis = generated.Kind, generated.Grading, generated.Rubric, generated.Prompt, generated.Answer, generated.Explanation, generated.Evidence, generated.Basis
 	q.Choices, q.Variants = generated.Choices, generated.Variants
 	return q, nil
 }
@@ -303,6 +304,9 @@ func validateQuiz(q GeneratedQuiz, src Source) error {
 		}
 		seen[key] = true
 	}
+	if err := validateGrading(q); err != nil {
+		return err
+	}
 	switch q.Kind {
 	case "choice":
 		if len(q.Choices) < 2 || len(q.Choices) > 6 || len(q.Variants) != 0 {
@@ -332,6 +336,58 @@ func validateQuiz(q GeneratedQuiz, src Source) error {
 		}
 	default:
 		return fmt.Errorf("%w: quiz kind must be choice or recall", ErrInvalid)
+	}
+	return nil
+}
+
+func validateGrading(q GeneratedQuiz) error {
+	switch q.Grading {
+	case "", "exact":
+		if q.Rubric != nil {
+			return fmt.Errorf("%w: exact grading cannot carry a semantic rubric", ErrInvalid)
+		}
+		return nil
+	case "semantic":
+	default:
+		return fmt.Errorf("%w: grading must be exact or semantic", ErrInvalid)
+	}
+	if q.Kind != "recall" || q.Rubric == nil {
+		return fmt.Errorf("%w: semantic grading requires a recall quiz and rubric", ErrInvalid)
+	}
+	answer := strings.TrimSpace(q.Answer)
+	hasLetter := false
+	singleTokenIsLetters := len(strings.Fields(answer)) == 1
+	for _, r := range answer {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		} else if singleTokenIsLetters {
+			singleTokenIsLetters = false
+		}
+	}
+	if !hasLetter || (len(strings.Fields(answer)) == 1 && !singleTokenIsLetters) {
+		return fmt.Errorf("%w: semantic grading is not available for numeric, symbolic, or mixed single-token answers", ErrInvalid)
+	}
+	if len(q.Rubric.Required) < 1 || len(q.Rubric.Required) > 6 || len(q.Rubric.Contradictions) > 6 {
+		return fmt.Errorf("%w: a semantic rubric needs 1–6 required ideas and at most 6 contradictions", ErrInvalid)
+	}
+	for _, idea := range q.Rubric.Required {
+		if err := validText("required idea", idea.Text, 1024, true); err != nil {
+			return err
+		}
+		if err := validText("missing-idea cue", idea.Cue, 200, false); err != nil {
+			return err
+		}
+		if idea.Cue != "" && (strings.Contains(idea.Cue, strings.TrimSpace(q.Answer)) || strings.Contains(idea.Cue, strings.TrimSpace(idea.Text))) {
+			return fmt.Errorf("%w: a missing-idea cue must not contain the expected answer or required idea verbatim", ErrInvalid)
+		}
+	}
+	for _, claim := range q.Rubric.Contradictions {
+		if err := validText("contradiction", claim.Text, 1024, true); err != nil {
+			return err
+		}
+		if err := validText("contradiction feedback", claim.Feedback, 400, false); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -16,7 +16,10 @@
       {{if $p.Disputed}}<p class="small">This review has been disputed. Its original result remains in history.</p>{{end}}
     </div>
   {{else}}
-    {{if $p.Answer}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Not graded</h2><p>Your answer was not a clear match, so the schedule has not changed. Try again, or use More to reveal the answer as a helped attempt.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>{{end}}
+    {{if $p.Pending}}<div class="message" role="status"><h2 tabindex="-1" data-focus>Checking meaning…</h2><p>Your answer is saved. Retry this check only if the earlier response was interrupted.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>
+    {{else if eq $p.AssessmentStatus "failed"}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Could not check meaning</h2><p>Your answer is saved. Retry the meaning check, or reveal the answer as a helped attempt.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p><form action="/review/reveal" method="post" hx-post="/review/reveal">{{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}"><button type="submit" class="quiet" data-pending="Recording help before revealing…">Reveal answer</button></form></div>
+    {{else if eq $p.AssessmentDecision "incomplete"}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Almost</h2>{{if $p.AssessmentDetail}}<p class="preserve">{{$p.AssessmentDetail}}</p>{{end}}<p><strong>This counts as help.</strong> Your answer is saved; try again when you are ready.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>
+    {{else if $p.Answer}}<div class="message ungraded-message" role="status"><h2 tabindex="-1" data-focus>Not graded</h2><p>Your answer was not a clear match, so the schedule has not changed. Try again, or use More to reveal the answer as a helped attempt.</p><p class="preserve"><strong>Your answer:</strong> {{$p.Answer}}</p></div>{{end}}
     <form class="answer-form" action="/review/answer" method="post" hx-post="/review/answer">
       {{template "tokens" $root}}<input type="hidden" name="presentation_id" value="{{$p.ID}}">
       {{if eq $p.Quiz.Kind "choice"}}
@@ -27,7 +30,7 @@
         <label class="field-caption" for="recall-answer">Your answer</label>
         <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Draft}}</textarea>
         <p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you submit.</p>
-        <button type="submit" class="primary" data-pending="Saving your answer…">Check answer</button>
+        <button type="submit" class="primary" data-pending="{{if eq $p.Quiz.Grading "semantic"}}Checking meaning…{{else}}Saving your answer…{{end}}">{{if $p.Pending}}Retry interrupted check{{else if eq $p.AssessmentStatus "failed"}}Retry meaning check{{else}}Check answer{{end}}</button>
       {{end}}
     </form>
   {{end}}

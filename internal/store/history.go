@@ -17,7 +17,7 @@ func (s *Store) History(ctx context.Context, limit int) ([]ReviewEvent, error) {
 	if limit > 1000 {
 		return nil, fmt.Errorf("%w: history supports up to 1000 recent attempts; use export for all history", ErrInvalid)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.presentation_id,e.snapshot,e.answer,e.outcome,e.rating,e.assisted,e.reviewed_at,e.due_at,e.algorithm,
+	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.presentation_id,e.snapshot,e.answer,e.outcome,e.rating,e.assisted,e.reviewed_at,e.due_at,e.algorithm,e.grading,
 	 EXISTS(SELECT 1 FROM corrections c WHERE c.review_id=e.id) FROM review_events e ORDER BY e.reviewed_at DESC,e.rowid DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func (s *Store) History(ctx context.Context, limit int) ([]ReviewEvent, error) {
 		var event ReviewEvent
 		var snapshot string
 		if err = rows.Scan(&event.ID, &event.PresentationID, &snapshot, &event.Answer, &event.Outcome, &event.Rating, &event.Assisted,
-			&event.ReviewedAt, &event.DueAt, &event.Algorithm, &event.Disputed); err != nil {
+			&event.ReviewedAt, &event.DueAt, &event.Algorithm, &event.Grading, &event.Disputed); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal([]byte(snapshot), &event.Quiz); err != nil {
@@ -103,7 +103,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"review_events", "SELECT * FROM review_events ORDER BY reviewed_at,rowid"},
 		{"corrections", "SELECT * FROM corrections ORDER BY created_at,id"},
 		{"operations", "SELECT * FROM operations ORDER BY created_at,id"},
-		{"jobs", "SELECT id,source_id,source_revision,status,error,model,prompt_version,attempts,created_at,updated_at,available_at,lease_until,published,result_json FROM jobs ORDER BY created_at,id"},
+		{"jobs", "SELECT id,source_id,source_revision,status,error,model,prompt_version,attempts,created_at,updated_at,available_at,lease_until,published,result_json,candidates_json,critic_status FROM jobs ORDER BY created_at,id"},
 		{"job_attempts", "SELECT job_id,number,started_at,finished_at,reserved_micros,cost_micros,state,finish_code FROM job_attempts ORDER BY started_at,job_id,number"},
 		{"backups", "SELECT id,sha256,error,created_at,bytes,remote FROM backups ORDER BY created_at,id"},
 		{"foundation_requests", "SELECT * FROM foundation_requests ORDER BY job_id"},
@@ -118,6 +118,8 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"concept_prerequisites", "SELECT * FROM concept_prerequisites ORDER BY concept_id,prerequisite_id"},
 		{"concept_references", "SELECT * FROM concept_references ORDER BY concept_id,reference_id"},
 		{"concept_quizzes", "SELECT * FROM concept_quizzes ORDER BY concept_id,quiz_id"},
+		{"semantic_assessments", "SELECT * FROM semantic_assessments ORDER BY created_at,id"},
+		{"content_assessments", "SELECT * FROM content_assessments ORDER BY created_at,id"},
 	} {
 		data, err := exportRows(ctx, tx, section.query)
 		if err != nil {
@@ -170,7 +172,7 @@ func exportRows(ctx context.Context, tx *sql.Tx, query string) ([]map[string]any
 
 func decodeExportValue(column string, value any) any {
 	switch column {
-	case "content", "card", "snapshot", "schedule_before", "schedule_after", "result_json":
+	case "content", "card", "snapshot", "schedule_before", "schedule_after", "result_json", "candidates_json", "candidate_json", "request_json", "response_json":
 		if value == nil {
 			return nil
 		}

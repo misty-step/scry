@@ -22,6 +22,7 @@ import (
 
 	"github.com/misty-step/scry/internal/generation"
 	"github.com/misty-step/scry/internal/recovery"
+	"github.com/misty-step/scry/internal/semantic"
 	"github.com/misty-step/scry/internal/store"
 	"github.com/misty-step/scry/internal/web"
 )
@@ -197,10 +198,20 @@ func serve(args []string) error {
 		return err
 	}
 	defer db.Close()
+	semanticModel := env("SCRY_SEMANTIC_MODEL", semantic.DefaultModel)
+	semanticKey := os.Getenv("SCRY_SEMANTIC_API_KEY")
+	if semanticKey == "" {
+		semanticKey = os.Getenv("SCRY_MODEL_API_KEY")
+	}
+	semanticClient := semantic.NewClient(semantic.Config{
+		Endpoint: os.Getenv("SCRY_SEMANTIC_ENDPOINT"), APIKey: semanticKey, Model: semanticModel,
+		HTTPClient: &http.Client{Timeout: 8 * time.Second, CheckRedirect: noRedirect},
+	})
 	handler, err := web.New(db, web.Config{
 		Mode: mode, OwnerID: os.Getenv("SCRY_OWNER_ID"), Secret: secret,
 		BaseURL: baseURL, TrustProxy: mode == "production", TrustedProxyIPs: trustedPeers,
 		RedirectHosts: strings.Split(os.Getenv("SCRY_REDIRECT_HOSTS"), ","),
+		Semantic:      semantic.NewAssessor(db, semanticClient, semanticModel),
 	})
 	if err != nil {
 		return err
@@ -406,6 +417,18 @@ func seedFixture(args []string) error {
 				Kind: "recall", Prompt: "What protocol does HTTPS use to encrypt HTTP?",
 				Answer: "TLS", Variants: []string{"Transport Layer Security"},
 				Explanation: "HTTPS wraps HTTP in TLS.", Basis: "topic",
+			},
+			{
+				Kind: "recall", Grading: "semantic", Prompt: "What two checks let a TLS client trust a server certificate?",
+				Answer:      "It identifies the intended host and chains to a trusted issuer.",
+				Explanation: "Certificate validation checks both hostname identity and a chain to a trusted issuer.", Basis: "topic",
+				Rubric: &store.Rubric{
+					Required: []store.RubricIdea{
+						{Text: "The certificate identifies the intended host", Cue: "Think about the server name the client requested."},
+						{Text: "The certificate chain leads to a trusted issuer"},
+					},
+					Contradictions: []store.RubricClaim{{Text: "Encryption alone proves the server identity", Feedback: "Encryption protects the connection, but identity still depends on hostname and chain validation."}},
+				},
 			},
 		},
 		Model: "authored-test-fixture", PromptVersion: "fixture-v1",

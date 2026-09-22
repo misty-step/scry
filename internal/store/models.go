@@ -1,7 +1,11 @@
 // Package store is the single durable owner of Scry content, learning and jobs.
 package store
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/misty-step/scry/internal/learning"
+)
 
 var (
 	ErrNotFound = errors.New("not found")
@@ -11,27 +15,33 @@ var (
 )
 
 const (
-	SchemaVersion       = 3
+	SchemaVersion       = 4
 	ApplicationID       = 0x53435259 // SCRY
 	MaxSourceBytes      = 32 * 1024
 	MaxGeneratedQuizzes = 60
 )
 
+type Rubric = learning.Rubric
+type RubricIdea = learning.RubricIdea
+type RubricClaim = learning.RubricClaim
+
 type Quiz struct {
-	ID          string   `json:"id"`
-	SourceID    string   `json:"source_id"`
-	Kind        string   `json:"kind"`
-	Prompt      string   `json:"prompt"`
-	Answer      string   `json:"answer"`
-	Explanation string   `json:"explanation"`
-	Evidence    string   `json:"evidence"`
-	Basis       string   `json:"basis"`
-	Choices     []string `json:"choices"`
-	Variants    []string `json:"variants"`
-	Version     int      `json:"version"`
-	Archived    bool     `json:"archived"`
-	DueAt       int64    `json:"due_at"`
-	AvailableAt int64    `json:"available_at"`
+	ID          string           `json:"id"`
+	SourceID    string           `json:"source_id"`
+	Kind        string           `json:"kind"`
+	Grading     string           `json:"grading,omitempty"`
+	Rubric      *learning.Rubric `json:"rubric,omitempty"`
+	Prompt      string           `json:"prompt"`
+	Answer      string           `json:"answer"`
+	Explanation string           `json:"explanation"`
+	Evidence    string           `json:"evidence"`
+	Basis       string           `json:"basis"`
+	Choices     []string         `json:"choices"`
+	Variants    []string         `json:"variants"`
+	Version     int              `json:"version"`
+	Archived    bool             `json:"archived"`
+	DueAt       int64            `json:"due_at"`
+	AvailableAt int64            `json:"available_at"`
 }
 
 type Source struct {
@@ -47,19 +57,25 @@ type Source struct {
 }
 
 type Presentation struct {
-	ID             string `json:"id"`
-	Quiz           Quiz   `json:"quiz"`
-	Answer         string `json:"answer"`
-	Draft          string `json:"draft,omitempty"`
-	BridgeRevision int    `json:"bridge_revision"`
-	Outcome        string `json:"outcome"`
-	Assisted       bool   `json:"assisted"`
-	Graded         bool   `json:"graded"`
-	Disputed       bool   `json:"disputed"`
-	Rating         int    `json:"rating"`
-	DueAt          int64  `json:"due_at"`
-	ReviewedAt     int64  `json:"reviewed_at"`
-	ReviewID       string `json:"review_id"`
+	ID                    string `json:"id"`
+	Quiz                  Quiz   `json:"quiz"`
+	Answer                string `json:"answer"`
+	Draft                 string `json:"draft,omitempty"`
+	BridgeRevision        int    `json:"bridge_revision"`
+	Outcome               string `json:"outcome"`
+	Assisted              bool   `json:"assisted"`
+	Graded                bool   `json:"graded"`
+	Disputed              bool   `json:"disputed"`
+	Rating                int    `json:"rating"`
+	DueAt                 int64  `json:"due_at"`
+	ReviewedAt            int64  `json:"reviewed_at"`
+	ReviewID              string `json:"review_id"`
+	Pending               bool   `json:"pending,omitempty"`
+	AssessmentID          string `json:"assessment_id,omitempty"`
+	AssessmentOperationID string `json:"assessment_operation_id,omitempty"`
+	AssessmentStatus      string `json:"assessment_status,omitempty"`
+	AssessmentDecision    string `json:"assessment_decision,omitempty"`
+	AssessmentDetail      string `json:"assessment_detail,omitempty"`
 }
 
 type ReviewState struct {
@@ -82,6 +98,7 @@ type ReviewEvent struct {
 	ReviewedAt     int64  `json:"reviewed_at"`
 	DueAt          int64  `json:"due_at"`
 	Algorithm      string `json:"algorithm"`
+	Grading        string `json:"grading"`
 }
 
 type Job struct {
@@ -106,14 +123,16 @@ type Job struct {
 }
 
 type GeneratedQuiz struct {
-	Kind        string   `json:"kind"`
-	Prompt      string   `json:"prompt"`
-	Answer      string   `json:"answer"`
-	Explanation string   `json:"explanation"`
-	Evidence    string   `json:"evidence"`
-	Basis       string   `json:"basis"`
-	Choices     []string `json:"choices"`
-	Variants    []string `json:"variants"`
+	Kind        string           `json:"kind"`
+	Grading     string           `json:"grading,omitempty"`
+	Rubric      *learning.Rubric `json:"rubric,omitempty"`
+	Prompt      string           `json:"prompt"`
+	Answer      string           `json:"answer"`
+	Explanation string           `json:"explanation"`
+	Evidence    string           `json:"evidence"`
+	Basis       string           `json:"basis"`
+	Choices     []string         `json:"choices"`
+	Variants    []string         `json:"variants"`
 }
 
 type GenerationResult struct {
@@ -123,6 +142,32 @@ type GenerationResult struct {
 	Model         string             `json:"model"`
 	PromptVersion string             `json:"prompt_version"`
 	Foundation    *FoundationContent `json:"foundation,omitempty"`
+}
+
+type Assessment struct {
+	ID              string
+	PresentationID  string
+	OperationID     string
+	ContentVersion  int
+	ScheduleVersion int
+	Answer          string
+	Status          string
+	PolicyVersion   string
+	RequestModel    string
+	RequestJSON     string
+	Transmissions   int
+	Quiz            Quiz
+}
+
+type AssessmentResult struct {
+	ResponseModel string
+	ResponseJSON  []byte
+	Judgments     learning.SemanticJudgments
+	InputTokens   int
+	OutputTokens  int
+	CostMicros    *int64
+	LatencyMS     int64
+	Error         string
 }
 
 type BackupRecord struct {
