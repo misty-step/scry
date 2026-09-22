@@ -53,12 +53,14 @@ export class ScryContainer extends Container {
       head: key => this.env.RECOVERY.head(key),
       execute: async () => {
         // The existing CLI snapshots SQLite consistently and checks the exact
-        // uploaded bytes. Do not log stdout/stderr: the receipt has local paths.
+        // uploaded bytes. Never log stdout: the receipt has local paths. The
+        // cycle logs only a redacted last stderr line when the command fails.
         const process = await this.ctx.container.exec([
           "/usr/local/bin/scry", "backup", "--db", "/var/lib/scry/data/scry.sqlite", "--require-remote",
         ]);
         const output = await process.output();
-        return { exitCode: output.exitCode, stdout: new TextDecoder().decode(output.stdout) };
+        const decoder = new TextDecoder();
+        return { exitCode: output.exitCode, stdout: decoder.decode(output.stdout), stderr: decoder.decode(output.stderr) };
       },
     });
     this.backupInFlight = task;

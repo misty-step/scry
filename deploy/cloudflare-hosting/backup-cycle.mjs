@@ -1,6 +1,18 @@
 const SNAPSHOT_KEY = /^scry-\d{8}T\d{6}\.\d{9}Z-[a-f0-9]{32}\.scry-backup\.zip$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
+// The CLI reports one error line. Keep only that line and strip URLs, bearer
+// material, and long opaque runs, so a failed run is diagnosable from logs
+// without exposing capabilities or stdout receipts.
+export function failureReason(text) {
+  const lines = String(text ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  return (lines.at(-1) || "no error output")
+    .replace(/https?:\/\/\S+/gi, "<url>")
+    .replace(/bearer\s+\S+/gi, "Bearer <redacted>")
+    .replace(/[A-Za-z0-9+/=_-]{32,}/g, "<redacted>")
+    .slice(0, 240);
+}
+
 export async function runBackupCycle({ running, execute, latest, head, now = Date.now() }) {
   // A stopped container has no live disk to back up. Never wake it from an
   // archive merely to run the daily check; that could discard unbacked writes.
@@ -19,7 +31,9 @@ export async function runBackupCycle({ running, execute, latest, head, now = Dat
   }
 
   const result = await execute();
-  if (result.exitCode !== 0) throw new Error("scheduled remote backup command failed");
+  if (result.exitCode !== 0) {
+    throw new Error(`scheduled remote backup command failed (exit ${result.exitCode}): ${failureReason(result.stderr)}`);
+  }
   let record;
   try {
     record = JSON.parse(result.stdout);
@@ -41,10 +55,10 @@ export async function stopAfterBackup({ backup, stop, log, canStop = () => true 
   try {
     result = await backup();
     if (result.state !== "backed_up") throw new Error("idle stop lacks a fresh verified backup");
-  } catch {
+  } catch (error) {
     // An idle timeout is optional. Keep the only writer's disk when the
     // remote snapshot cannot be confirmed; the next cron can retry.
-    log("[scry-recovery] idle stop deferred: remote backup failed");
+    log("[scry-recovery] idle stop deferred: remote backup failed", { reason: failureReason(error?.message) });
     return;
   }
   if (!canStop()) return;
