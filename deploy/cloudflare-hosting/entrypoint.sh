@@ -162,8 +162,11 @@ wait_for_scry
 # -e redirects the early-startup error log (opened before the config is read)
 # to nginx's inherited stderr descriptor. Do not name the stderr device here:
 # socket-backed container log descriptors cannot be reopened by pathname.
-"$NGINX_BIN" -e stderr -c "$CONF"
-NGINX_PID=$(cat "$state_dir/nginx.pid")
+# Keep nginx in the foreground as a shell child. A daemonized nginx can
+# return before it writes nginx.pid, killing this PID 1 under set -e even
+# after Scry has restored and opened its listener.
+"$NGINX_BIN" -e stderr -g 'daemon off;' -c "$CONF" &
+NGINX_PID=$!
 
 shutdown() {
   say "shutdown signal"

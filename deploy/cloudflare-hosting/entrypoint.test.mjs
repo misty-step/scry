@@ -83,6 +83,44 @@ test("nginx uses inherited stderr when the platform forbids reopening its device
   }
 });
 
+test("cold boot keeps the entrypoint alive without waiting for a daemonized nginx pid file", () => {
+  const f = fixture();
+  try {
+    const state = path.join(f.root, "state");
+    const template = path.join(f.root, "nginx.conf");
+    const server = path.join(f.root, "listen.mjs");
+    const nginxArgs = path.join(f.root, "nginx.args");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(template, "owner __SCRY_OWNER_ID__\n");
+    writeFileSync(server, 'import net from "node:net";\nconst listener = net.createServer();\nlistener.listen(8081, "127.0.0.1");\nsetTimeout(() => listener.close(), 2500);\n');
+    writeFileSync(f.scry, '#!/bin/sh\ncase "$1" in serve) exec "$NODE_BIN" "$TCP_SERVER" ;; *) exit 0 ;; esac\n');
+    chmodSync(f.scry, 0o755);
+    // Model nginx returning before its daemon writes nginx.pid. A foreground
+    // nginx should instead be tracked by the shell's child PID directly.
+    command(f.bin, "nginx", 'printf "%s\\n" "$@" > "$NGINX_ARGS"\ncase " $* " in *"daemon off;"*) sleep 1 ;; *) (sleep 1; printf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid") & ;; esac');
+
+    const result = boot({
+      PATH: `${f.bin}:${process.env.PATH}`,
+      SCRY_BOOT_MODE: "synthetic-fresh",
+      SCRY_DATA_CLASS: "synthetic",
+      SCRY_STATE_DIR: state,
+      SCRY_BIN: f.scry,
+      SCRY_NGINX_TEMPLATE: template,
+      SCRY_STARTUP_TIMEOUT_SECONDS: "5",
+      SCRY_BACKUP_REMOTE_URL: "",
+      SCRY_OWNER_ID: "synthetic-owner",
+      NODE_BIN: process.execPath,
+      TCP_SERVER: server,
+      NGINX_ARGS: nginxArgs,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(nginxArgs, "utf8"), /daemon off;/);
+    assert.doesNotMatch(result.stderr, /nginx\.pid.*No such file/);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("restore-required boot refuses missing recovery configuration before serving", () => {
   const result = boot();
 
