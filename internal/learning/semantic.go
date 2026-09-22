@@ -77,7 +77,7 @@ type SemanticDecision struct {
 // ungraded rather than manufacturing success or failure.
 func GradeSemantic(j SemanticJudgments, p Params) SemanticDecision {
 	ungraded := SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
-	if p.PolicyVersion != SemanticPolicyVersion || len(j.Ideas) == 0 || !validProbability(j.Injection) || j.Injection > p.InjectionThreshold {
+	if p.PolicyVersion != SemanticPolicyVersion || len(j.Ideas) == 0 || !validParams(p) || !validProbability(j.Injection) || j.Injection > p.InjectionThreshold {
 		return ungraded
 	}
 	for _, probability := range j.Ideas {
@@ -136,6 +136,14 @@ func GradeSemantic(j SemanticJudgments, p Params) SemanticDecision {
 		}
 	}
 	return ungraded
+}
+
+func validParams(p Params) bool {
+	return validProbability(p.IdeaThreshold) && validProbability(p.IdeaLowThreshold) &&
+		validProbability(p.ContradictionLow) && validProbability(p.ContradictionHigh) &&
+		validProbability(p.RelationThreshold) && validProbability(p.PartialRelationThreshold) &&
+		validProbability(p.InjectionThreshold) && p.IdeaLowThreshold <= p.IdeaThreshold &&
+		p.ContradictionLow <= p.ContradictionHigh
 }
 
 func validProbability(value float64) bool { return value >= 0 && value <= 1 }

@@ -59,7 +59,9 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 	}
 	// CostMicros is conservatively accounted lifetime spend: actual usage when
 	// known, otherwise the reservation. CostUnknown includes pending claims.
-	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(sum(COALESCE(cost_micros,reserved_micros)),0),EXISTS(SELECT 1 FROM job_attempts WHERE cost_micros IS NULL) FROM job_attempts").
+	if err = tx.QueryRowContext(ctx, `SELECT
+	 COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts),0)+COALESCE((SELECT sum(cost_micros) FROM semantic_assessments),0),
+	 EXISTS(SELECT 1 FROM job_attempts WHERE cost_micros IS NULL) OR EXISTS(SELECT 1 FROM semantic_assessments WHERE transmissions>0 AND cost_micros IS NULL)`).
 		Scan(&result.CostMicros, &result.CostUnknown); err != nil {
 		return result, err
 	}

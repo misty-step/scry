@@ -139,6 +139,9 @@ func (c *client) Decide(ctx context.Context, request Request) (Response, error) 
 		if httpResponse != nil && httpResponse.Body != nil {
 			httpResponse.Body.Close()
 		}
+		if httpResponse != nil && httpResponse.StatusCode >= 300 && httpResponse.StatusCode < 400 {
+			return response, fmt.Errorf("%w: redirect refused", ErrRejected)
+		}
 		if requestCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return response, fmt.Errorf("%w: request timed out or was canceled", ErrUnavailable)
 		}
@@ -192,6 +195,15 @@ func (c *client) Decide(ctx context.Context, request Request) (Response, error) 
 }
 
 func validAnswer(answer Answer) bool {
+	if answer.Type != "" && !validLabel(answer.Type, 200) {
+		return false
+	}
+	if answer.Type != "" && answer.Type != "noul" && answer.Type != "choice" && answer.Type != "score" {
+		return false
+	}
+	if answer.Choice != "" && !validLabel(answer.Choice, 200) {
+		return false
+	}
 	if answer.Noul != nil && !probability(*answer.Noul) {
 		return false
 	}

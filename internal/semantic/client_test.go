@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -122,6 +123,34 @@ func TestClientUnavailableWithoutEndpointOrOnTimeout(t *testing.T) {
 	defer cancel()
 	if _, err := NewClient(Config{Endpoint: server.URL, HTTPClient: server.Client()}).Decide(ctx, request); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("timeout: %v", err)
+	}
+}
+
+func TestClientRefusesRedirectAndCapsResponse(t *testing.T) {
+	request := Request{Model: "jev", State: struct{}{}, Questions: map[string]Question{"x": {Type: "noul", Instructions: "x"}}}
+	var redirected atomic.Bool
+	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/target" {
+			redirected.Store(true)
+			fmt.Fprint(w, `{"model":"jev","answers":{"x":{"noul":0.5}},"usage":{}}`)
+			return
+		}
+		http.Redirect(w, r, "/target", http.StatusFound)
+	}))
+	defer redirectServer.Close()
+	if _, err := NewClient(Config{Endpoint: redirectServer.URL, HTTPClient: redirectServer.Client()}).Decide(context.Background(), request); !errors.Is(err, ErrRejected) {
+		t.Fatalf("redirect: %v", err)
+	}
+	if redirected.Load() {
+		t.Fatal("semantic client followed redirect")
+	}
+
+	largeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, strings.Repeat("x", maxResponseSize+1))
+	}))
+	defer largeServer.Close()
+	if _, err := NewClient(Config{Endpoint: largeServer.URL, HTTPClient: largeServer.Client()}).Decide(context.Background(), request); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("oversized response: %v", err)
 	}
 }
 

@@ -43,15 +43,24 @@ func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, e
 	if assessment.Quiz.Rubric == nil {
 		return a.fail(ctx, id, Response{}, ErrMalformed)
 	}
-	request := BuildRecallRequest(a.model, RecallState{
-		Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
-		LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
-	})
-	requestJSON, err := json.Marshal(request)
-	if err != nil {
-		return a.fail(ctx, id, Response{}, ErrMalformed)
+	request := Request{}
+	var requestJSON []byte
+	if assessment.Transmissions > 0 {
+		requestJSON = []byte(assessment.RequestJSON)
+		if err = json.Unmarshal(requestJSON, &request); err != nil || request.Model == "" {
+			return a.fail(ctx, id, Response{}, ErrMalformed)
+		}
+	} else {
+		request = BuildRecallRequest(a.model, RecallState{
+			Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
+			LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
+		})
+		requestJSON, err = json.Marshal(request)
+		if err != nil {
+			return a.fail(ctx, id, Response{}, ErrMalformed)
+		}
 	}
-	assessment, err = a.store.BeginAssessmentTransmission(ctx, id, a.model, requestJSON)
+	assessment, err = a.store.BeginAssessmentTransmission(ctx, id, request.Model, requestJSON)
 	if err != nil {
 		return store.Presentation{}, err
 	}
@@ -97,6 +106,9 @@ func judgments(response Response, ideas, contradictions int) (learning.SemanticJ
 	result := learning.SemanticJudgments{
 		Ideas: make([]float64, ideas), Contradictions: make([]float64, contradictions),
 		RelationProbabilities: map[string]float64{},
+	}
+	if len(response.Answers) != ideas+contradictions+2 {
+		return result, ErrMalformed
 	}
 	for index := 0; index < ideas; index++ {
 		answer, ok := response.Answers[fmt.Sprintf("idea_%d", index)]

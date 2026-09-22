@@ -24,10 +24,10 @@ func readAssessment(ctx context.Context, q interface {
 	var a Assessment
 	var snapshot string
 	err := q.QueryRowContext(ctx, `SELECT a.id,a.presentation_id,a.operation_id,a.content_version,a.schedule_version,a.answer,
-	 a.status,a.policy_version,a.request_model,a.request_json,a.transmissions,p.snapshot
+	 a.status,a.policy_version,a.request_model,a.request_json,a.transmissions,a.decision,a.detail,a.error,a.review_id,p.snapshot
 	 FROM semantic_assessments a JOIN presentations p ON p.id=a.presentation_id WHERE a.id=?`, id).
 		Scan(&a.ID, &a.PresentationID, &a.OperationID, &a.ContentVersion, &a.ScheduleVersion, &a.Answer,
-			&a.Status, &a.PolicyVersion, &a.RequestModel, &a.RequestJSON, &a.Transmissions, &snapshot)
+			&a.Status, &a.PolicyVersion, &a.RequestModel, &a.RequestJSON, &a.Transmissions, &a.Decision, &a.Detail, &a.Error, &a.ReviewID, &snapshot)
 	if err != nil {
 		return a, notFound(err, "semantic assessment")
 	}
@@ -35,6 +35,18 @@ func readAssessment(ctx context.Context, q interface {
 		return a, fmt.Errorf("decode semantic assessment quiz: %w", err)
 	}
 	return a, nil
+}
+
+// bindAssessment prevents a replay of one operation from inheriting a newer
+// assessment on the same occurrence. That distinction is what makes a failed
+// operation stay failed rather than accidentally resuming another operation.
+func bindAssessment(p *Presentation, a Assessment) {
+	p.Pending = a.Status == "pending"
+	p.AssessmentID = a.ID
+	p.AssessmentOperationID = a.OperationID
+	p.AssessmentStatus = a.Status
+	p.AssessmentDecision = a.Decision
+	p.AssessmentDetail = a.Detail
 }
 
 // BeginAssessmentTransmission durably records the exact request before the
@@ -57,6 +69,9 @@ func (s *Store) BeginAssessmentTransmission(ctx context.Context, id, model strin
 	}
 	if a.Status != "pending" {
 		return a, tx.Commit()
+	}
+	if a.Transmissions > 0 && (a.RequestModel != model || a.RequestJSON != string(requestJSON)) {
+		return Assessment{}, fmt.Errorf("%w: semantic replay request changed", ErrConflict)
 	}
 	if a.Transmissions >= 2 {
 		if _, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='failed',error='semantic transmission limit reached',finished_at=?
@@ -116,11 +131,13 @@ func (s *Store) FailAssessment(ctx context.Context, id string, result Assessment
 		if err != nil {
 			return Presentation{}, err
 		}
+		a.Status, a.Error = "failed", result.Error
 	}
 	p, err := presentation(ctx, tx, a.PresentationID)
 	if err != nil {
 		return Presentation{}, err
 	}
+	bindAssessment(&p, a)
 	hideAnswer(&p)
 	if err = tx.Commit(); err != nil {
 		return Presentation{}, err
@@ -146,6 +163,7 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id string, result Assess
 		return Presentation{}, err
 	}
 	if a.Status != "pending" {
+		bindAssessment(&p, a)
 		hideAnswer(&p)
 		if err = tx.Commit(); err != nil {
 			return Presentation{}, err
@@ -170,14 +188,16 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id string, result Assess
 		return Presentation{}, err
 	}
 	if !current.Valid || current.String != p.ID || p.Graded || archived || contentVersion != a.ContentVersion ||
-		scheduleVersion != a.ScheduleVersion || algorithm != learning.Algorithm {
+		scheduleVersion != a.ScheduleVersion || algorithm != learning.Algorithm || a.PolicyVersion != learning.SemanticPolicyVersion {
 		_, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='superseded',response_model=?,response_json=?,error='',
 		 input_tokens=?,output_tokens=?,cost_micros=?,latency_ms=?,finished_at=? WHERE id=? AND status='pending'`,
-			result.ResponseModel, response, nullableCount(result.InputTokens), nullableCount(result.OutputTokens), result.CostMicros,
-			nullableLatency(result.LatencyMS), s.now(), id)
+			result.ResponseModel, response, result.InputTokens, result.OutputTokens, result.CostMicros,
+			result.LatencyMS, s.now(), id)
 		if err != nil {
 			return Presentation{}, err
 		}
+		p.Pending, p.AssessmentStatus = false, "superseded"
+		p.AssessmentID = id
 		hideAnswer(&p)
 		if err = tx.Commit(); err != nil {
 			return Presentation{}, err
@@ -261,8 +281,8 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id string, result Assess
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='judged',response_model=?,response_json=?,decision=?,detail=?,error='',
 	 input_tokens=?,output_tokens=?,cost_micros=?,latency_ms=?,review_id=?,finished_at=? WHERE id=? AND status='pending'`,
-		result.ResponseModel, response, decision.Decision, detail, nullableCount(result.InputTokens), nullableCount(result.OutputTokens), result.CostMicros,
-		nullableLatency(result.LatencyMS), reviewID, now, id)
+		result.ResponseModel, response, decision.Decision, detail, result.InputTokens, result.OutputTokens, result.CostMicros,
+		result.LatencyMS, reviewID, now, id)
 	if err != nil {
 		return Presentation{}, err
 	}

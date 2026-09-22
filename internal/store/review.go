@@ -263,11 +263,25 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 					WHERE id=? AND status='pending'`, s.now(), a.ID); err != nil {
 					return Presentation{}, err
 				}
+				a.Status = "failed"
+				a.Error = "semantic transmission limit reached"
 			}
 			p, presentationErr := presentation(ctx, tx, a.PresentationID)
 			if presentationErr != nil {
 				return Presentation{}, presentationErr
 			}
+			// Nonterminal, failed, and ungraded receipts retain the response
+			// shape of their own staged operation even when a later operation
+			// exists. A graded assessment uses its immutable presentation.
+			if a.Status != "judged" || a.ReviewID == "" {
+				p = saved
+				p.Answer, p.Draft = a.Answer, a.Answer
+				if a.Status == "judged" {
+					p.Outcome = a.Decision
+					p.Assisted = p.Assisted || a.Decision == "incomplete"
+				}
+			}
+			bindAssessment(&p, a)
 			hideAnswer(&p)
 			return p, tx.Commit()
 		}
@@ -328,8 +342,9 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	now := s.now()
 	if p.Quiz.Grading == "semantic" && outcome == "ungraded" && !reveal {
 		assessmentID := newID()
-		p.Answer, p.Draft = answer, answer
+		p.Answer, p.Draft, p.Outcome, p.Rating = answer, answer, "", 0
 		p.Pending, p.AssessmentID, p.AssessmentOperationID, p.AssessmentStatus = true, assessmentID, operationID, "pending"
+		p.AssessmentDecision, p.AssessmentDetail = "", ""
 		_, err = tx.ExecContext(ctx, `INSERT INTO semantic_assessments(id,presentation_id,operation_id,content_version,schedule_version,answer,
 		 status,policy_version,request_model,request_json,created_at) VALUES(?,?,?,?,?,?,'pending',?,'','{}',?)`,
 			assessmentID, p.ID, operationID, p.Quiz.Version, presentedSchedule, answer, learning.SemanticPolicyVersion, now)

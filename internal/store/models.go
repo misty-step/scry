@@ -156,6 +156,10 @@ type Assessment struct {
 	RequestModel    string
 	RequestJSON     string
 	Transmissions   int
+	Decision        string
+	Detail          string
+	Error           string
+	ReviewID        string
 	Quiz            Quiz
 }
 
