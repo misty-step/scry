@@ -5,10 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/misty-step/scry/internal/learning"
 	"github.com/misty-step/scry/internal/store"
 )
+
+// settleTimeout bounds the terminal write after a request has been sent. It
+// is detached from the learner's request so a dropped connection cannot turn
+// a transmitted judgment into an unknown outcome.
+const settleTimeout = 10 * time.Second
 
 // AssessmentService is the web boundary: a staged durable assessment is
 // resumed outside SQL and then finalized through a separately fenced write.
@@ -76,14 +82,20 @@ func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, e
 		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
 	}
 	response, decisionErr := a.client.Decide(ctx, request)
+	// The request has left the process and may be billed whatever the caller
+	// does next. Terminal persistence must not depend on the learner's
+	// connection: settle under a bounded context detached from cancellation
+	// so a dropped request still records the judgment or the failure.
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
+	defer cancel()
 	if decisionErr != nil {
-		return a.fail(ctx, id, lease.Token, response, decisionErr)
+		return a.fail(settleCtx, id, lease.Token, response, decisionErr)
 	}
 	judgments, err := judgments(response, len(assessment.Quiz.Rubric.Required), len(assessment.Quiz.Rubric.Contradictions))
 	if err != nil {
-		return a.fail(ctx, id, lease.Token, response, ErrMalformed)
+		return a.fail(settleCtx, id, lease.Token, response, ErrMalformed)
 	}
-	return a.store.FinalizeAssessment(ctx, id, lease.Token, assessmentResult(response, judgments, ""))
+	return a.store.FinalizeAssessment(settleCtx, id, lease.Token, assessmentResult(response, judgments, ""))
 }
 
 func (a *Assessor) fail(ctx context.Context, id, token string, response Response, cause error) (store.Presentation, error) {

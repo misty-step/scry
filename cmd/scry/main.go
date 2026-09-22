@@ -210,6 +210,11 @@ func serve(args []string) error {
 	if semanticKey == "" {
 		semanticKey = os.Getenv("SCRY_MODEL_API_KEY")
 	}
+	// The semantic endpoint receives the bearer key and private learner text;
+	// refuse to start rather than send either over plaintext.
+	if err := semantic.ValidateEndpoint(os.Getenv("SCRY_SEMANTIC_ENDPOINT")); err != nil {
+		return fmt.Errorf("SCRY_SEMANTIC_ENDPOINT: %w", err)
+	}
 	semanticClient := semantic.NewClient(semantic.Config{
 		Endpoint: os.Getenv("SCRY_SEMANTIC_ENDPOINT"), APIKey: semanticKey, Model: semanticModel,
 		HTTPClient: &http.Client{Timeout: 8 * time.Second, CheckRedirect: noRedirect},

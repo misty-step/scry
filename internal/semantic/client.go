@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +102,31 @@ func NewClient(cfg Config) Client {
 		return errors.New("semantic redirects are not permitted")
 	}
 	return &client{endpoint: strings.TrimSpace(cfg.Endpoint), apiKey: cfg.APIKey, model: model, http: &httpClient}
+}
+
+// ValidateEndpoint is the deployment boundary for a configured semantic
+// endpoint. Every request carries the bearer key and private learner text, so
+// a non-empty endpoint must be a complete HTTPS URL without embedded
+// credentials, query, or fragment; plaintext HTTP is permitted only for a
+// loopback gateway. Local tests that build a client directly against an
+// httptest server are not subject to this boundary.
+func ValidateEndpoint(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return errors.New("semantic endpoint is invalid: use a complete HTTPS URL without embedded credentials, query, or fragment")
+	}
+	loopback := strings.EqualFold(u.Hostname(), "localhost")
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		loopback = ip.IsLoopback()
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && loopback) {
+		return errors.New("semantic endpoint must use HTTPS; HTTP is permitted only for a loopback gateway")
+	}
+	return nil
 }
 
 type responseEnvelope struct {

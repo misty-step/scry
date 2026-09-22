@@ -210,7 +210,10 @@ Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
 `SCRY_SEMANTIC_RESERVATION_MICROS` (default 2000, USD micros reserved per check
 from the same rolling 24-hour allowance as generation). An empty semantic
 endpoint means no Decisions request is sent, nothing is reserved, and the
-saved answer remains ungraded. Before
+saved answer remains ungraded. A configured endpoint must be a complete HTTPS
+URL without embedded credentials, query, or fragment, because every request
+carries the bearer key and private learner text; plaintext HTTP is accepted
+only for a loopback gateway, and the service refuses to start otherwise. Before
 production activation, prove that the configured private integration forwards
 `POST /api/alpha/decisions`; generation access alone does not prove that route.
 Learner answers sent for semantic assessment are private provider-bound text:
@@ -225,8 +228,12 @@ leaves the process, the reservation is checked and recorded against the shared
 allowance in the same transaction. A duplicate submit during a live lease is
 refused; an exact replay reconciles the durable state and never resends; a
 lease that lapses without a result becomes a definite failure with its
-reservation retained as unknown spend. Only the no-endpoint case releases a
-reservation, because it provably never sent. Returned semantic cost is rounded
+reservation retained as unknown spend. Once a request has left the process,
+its judgment or failure is settled under a bounded context detached from the
+learner's connection, so a dropped request cannot turn a transmitted result
+into an unknown outcome. The no-endpoint path is the only case that reserves
+nothing and marks the failure as a provable no-send, because nothing left the
+process. Returned semantic cost is rounded
 up to micro-dollars, stored per assessment, and replaces the reservation in the
 rolling 24-hour allowance; missing provider cost stays unknown, never zero.
 Failures keep the answer ungraded for a deliberate new operation (retry) or

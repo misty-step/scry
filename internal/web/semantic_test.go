@@ -28,12 +28,16 @@ type fakeSemanticClient struct {
 	// hold, when set, blocks each Decide until released so concurrent
 	// duplicate submits can be exercised while a request is in flight.
 	hold chan struct{}
+	// onDecide, when set, runs inside the provider call so a test can drop
+	// the learner's connection while the paid request is in flight.
+	onDecide func()
 }
 
 func (f *fakeSemanticClient) Decide(_ context.Context, _ semantic.Request) (semantic.Response, error) {
 	f.mu.Lock()
 	f.calls++
 	hold := f.hold
+	onDecide := f.onDecide
 	var reply semanticReply
 	if len(f.replies) == 0 {
 		reply = semanticReply{err: semantic.ErrUnavailable}
@@ -42,6 +46,9 @@ func (f *fakeSemanticClient) Decide(_ context.Context, _ semantic.Request) (sema
 		f.replies = f.replies[1:]
 	}
 	f.mu.Unlock()
+	if onDecide != nil {
+		onDecide()
+	}
 	if hold != nil {
 		<-hold
 	}
@@ -258,6 +265,44 @@ func TestSemanticIncompleteShowsCueAfterDurableAssistanceFence(t *testing.T) {
 	persisted, err := s.Current(context.Background())
 	if err != nil || persisted == nil || !persisted.Assisted || persisted.Graded {
 		t.Fatalf("cue rendered without durable assistance: %+v %v", persisted, err)
+	}
+}
+
+func TestSemanticJudgmentPersistsWhenLearnerDisconnectsMidRequest(t *testing.T) {
+	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.96, 0.94, "equivalent", 0.93, 0.02)}}}
+	s, app := privateSemanticApp(t, fake)
+	current := seedSemanticReview(t, s)
+	cookie, csrf, operation := bootstrapForm(t, app)
+	answer := "A validator names cached content so the origin can verify whether it changed."
+	// The learner's connection drops while the paid request is in flight:
+	// the request context is canceled before the judgment can be written.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake.onDecide = cancel
+	r := ownerRequest(http.MethodPost, "/review/answer", url.Values{
+		"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}, "csrf": {csrf},
+	}).WithContext(ctx)
+	r.AddCookie(cookie)
+	r.Header.Set("Origin", "https://scry.example")
+	app.ServeHTTP(httptest.NewRecorder(), r)
+	if fake.callCount() != 1 {
+		t.Fatalf("model calls=%d want 1", fake.callCount())
+	}
+	// The response to a vanished client is irrelevant; the durable truth is
+	// not. The transmitted judgment must be recorded, not left as a dangling
+	// lease that later reconciles to an interrupted unknown outcome.
+	persisted, err := s.Current(context.Background())
+	if err != nil || persisted == nil || !persisted.Graded || persisted.AssessmentStatus != "judged" {
+		t.Fatalf("judgment lost after disconnect: %+v %v", persisted, err)
+	}
+	history, err := s.History(context.Background(), 10)
+	if err != nil || len(history) != 1 || history[0].Grading != "semantic-v1" || history[0].Outcome != "correct" {
+		t.Fatalf("semantic history after disconnect: %+v %v", history, err)
+	}
+	// An exact replay from the reconnected learner reconciles without resending.
+	postReview(t, app, cookie, csrf, "/review/answer", url.Values{"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}})
+	if fake.callCount() != 1 {
+		t.Fatalf("replay after disconnect sent a model request: %d", fake.callCount())
 	}
 }
 

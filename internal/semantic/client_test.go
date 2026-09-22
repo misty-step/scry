@@ -109,6 +109,33 @@ func TestClientErrorClassesAndMalformedResponses(t *testing.T) {
 	}
 }
 
+func TestValidateEndpointRefusesPlaintextExceptLoopback(t *testing.T) {
+	for _, tc := range []struct {
+		name, endpoint string
+		ok             bool
+	}{
+		{"empty is unconfigured", "", true},
+		{"https provider", "https://openrouter.ai/api/alpha/decisions", true},
+		{"https private gateway", "https://scry-model-gateway.example.workers.dev/api/alpha/decisions", true},
+		{"http loopback gateway", "http://127.0.0.1:9000/api/alpha/decisions", true},
+		{"http localhost gateway", "http://localhost:9000/decisions", true},
+		{"http remote host", "http://openrouter.ai/api/alpha/decisions", false},
+		{"http private ip", "http://10.0.0.5/decisions", false},
+		{"embedded credentials", "https://user:pass@openrouter.ai/api/alpha/decisions", false},
+		{"query", "https://openrouter.ai/api/alpha/decisions?key=1", false},
+		{"fragment", "https://openrouter.ai/api/alpha/decisions#x", false},
+		{"no host", "https:///decisions", false},
+		{"not a url", "openrouter.ai/api/alpha/decisions", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateEndpoint(tc.endpoint)
+			if (err == nil) != tc.ok {
+				t.Fatalf("ValidateEndpoint(%q) = %v, want ok=%v", tc.endpoint, err, tc.ok)
+			}
+		})
+	}
+}
+
 func TestClientUnavailableWithoutEndpointOrOnTimeout(t *testing.T) {
 	request := Request{Model: "jev", State: struct{}{}, Questions: map[string]Question{"x": {Type: "noul", Instructions: "x"}}}
 	// No endpoint is the one provable no-send failure; it is both
