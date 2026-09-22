@@ -178,6 +178,23 @@ shutdown() {
 }
 trap shutdown TERM INT
 
-wait "$SCRY_PID"
+# POSIX sh has no portable wait-for-either-child primitive (dash lacks
+# wait -n). If ingress dies, stop the writer rather than leaving it running
+# without a reachable listener.
+while kill -0 "$SCRY_PID" 2>/dev/null && kill -0 "$NGINX_PID" 2>/dev/null; do
+  sleep 1
+done
+if ! kill -0 "$NGINX_PID" 2>/dev/null; then
+  say "nginx exited before the application; refusing to remain a writer without ingress"
+  kill -TERM "$SCRY_PID" 2>/dev/null || true
+  wait "$SCRY_PID" 2>/dev/null || true
+  final_backup
+  exit 70
+fi
+
+wait "$SCRY_PID" 2>/dev/null || true
 say "application exited; attempting final backup"
+kill -TERM "$NGINX_PID" 2>/dev/null || true
+wait "$NGINX_PID" 2>/dev/null || true
 final_backup
+exit 70

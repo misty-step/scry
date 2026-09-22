@@ -58,7 +58,7 @@ test("nginx uses inherited stderr when the platform forbids reopening its device
     command(
       f.bin,
       "nginx",
-      'log_target=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in\n    -e) log_target=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nif [ "$log_target" != stderr ]; then\n  printf \'nginx: open() "/dev/stderr" failed (6: No such device or address)\\n\' >&2\n  exit 1\nfi\nprintf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid"',
+      'log_target=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in\n    -e) log_target=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nif [ "$log_target" != stderr ]; then\n  printf \'nginx: open() "/dev/stderr" failed (6: No such device or address)\\n\' >&2\n  exit 1\nfi\nprintf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid"\nsleep 4',
     );
 
     const result = boot({
@@ -75,8 +75,10 @@ test("nginx uses inherited stderr when the platform forbids reopening its device
       TCP_SERVER: server,
     });
 
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 70, result.stderr);
     assert.match(result.stderr, /application listener ready/);
+    assert.match(result.stderr, /application exited; attempting final backup/);
+    assert.doesNotMatch(result.stderr, /nginx exited before the application/);
     assert.doesNotMatch(result.stderr, /open\(\) "\/dev\/stderr" failed/);
   } finally {
     rmSync(f.root, { recursive: true, force: true });
@@ -97,7 +99,7 @@ test("cold boot keeps the entrypoint alive without waiting for a daemonized ngin
     chmodSync(f.scry, 0o755);
     // Model nginx returning before its daemon writes nginx.pid. A foreground
     // nginx should instead be tracked by the shell's child PID directly.
-    command(f.bin, "nginx", 'printf "%s\\n" "$@" > "$NGINX_ARGS"\ncase " $* " in *"daemon off;"*) sleep 1 ;; *) (sleep 1; printf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid") & ;; esac');
+    command(f.bin, "nginx", 'printf "%s\\n" "$@" > "$NGINX_ARGS"\ncase " $* " in *"daemon off;"*) sleep 4 ;; *) (sleep 1; printf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid") & ;; esac');
 
     const result = boot({
       PATH: `${f.bin}:${process.env.PATH}`,
@@ -113,9 +115,45 @@ test("cold boot keeps the entrypoint alive without waiting for a daemonized ngin
       TCP_SERVER: server,
       NGINX_ARGS: nginxArgs,
     });
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 70, result.stderr);
     assert.match(readFileSync(nginxArgs, "utf8"), /daemon off;/);
+    assert.match(result.stderr, /application exited; attempting final backup/);
+    assert.doesNotMatch(result.stderr, /nginx exited before the application/);
     assert.doesNotMatch(result.stderr, /nginx\.pid.*No such file/);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("an early foreground nginx exit stops the writer", () => {
+  const f = fixture();
+  try {
+    const state = path.join(f.root, "state");
+    const template = path.join(f.root, "nginx.conf");
+    const server = path.join(f.root, "listen.mjs");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(template, "owner __SCRY_OWNER_ID__\n");
+    writeFileSync(server, 'import net from "node:net";\nconst listener = net.createServer();\nlistener.listen(8081, "127.0.0.1");\nsetTimeout(() => listener.close(), 6000);\n');
+    writeFileSync(f.scry, '#!/bin/sh\ncase "$1" in serve) exec "$NODE_BIN" "$TCP_SERVER" ;; *) exit 0 ;; esac\n');
+    chmodSync(f.scry, 0o755);
+    command(f.bin, "nginx", 'exit 1');
+    const started = Date.now();
+    const result = boot({
+      PATH: `${f.bin}:${process.env.PATH}`,
+      SCRY_BOOT_MODE: "synthetic-fresh",
+      SCRY_DATA_CLASS: "synthetic",
+      SCRY_STATE_DIR: state,
+      SCRY_BIN: f.scry,
+      SCRY_NGINX_TEMPLATE: template,
+      SCRY_STARTUP_TIMEOUT_SECONDS: "5",
+      SCRY_BACKUP_REMOTE_URL: "",
+      SCRY_OWNER_ID: "synthetic-owner",
+      NODE_BIN: process.execPath,
+      TCP_SERVER: server,
+    });
+    assert.notEqual(result.status, 0, result.stderr);
+    assert.match(result.stderr, /nginx exited before the application; refusing to remain a writer without ingress/);
+    assert.ok(Date.now() - started < 5000, "the dead ingress must not leave Scry serving");
   } finally {
     rmSync(f.root, { recursive: true, force: true });
   }
