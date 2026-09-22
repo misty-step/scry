@@ -1,5 +1,5 @@
 // Package generation turns durable source jobs into bounded, inspectable quizzes.
-// No model call is made on the review or grading path.
+// It makes no semantic assessment calls; all external work stays outside SQL.
 package generation
 
 import (

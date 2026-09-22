@@ -64,6 +64,7 @@ exclusive-create. A successful process launch is not release evidence: inspect
 | --- | --- | --- |
 | Design/prose only | Meaning, relative-link and authority review; native readback | Operator design agreement when sought; no runtime claim or default test/model/VM exercise |
 | Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
+| Semantic grading | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Synthetic authored semantic quiz: pending → correct, concurrent duplicate POST sends one request, crash-after-send reconciles to failed with reservation retained, allowance reserved before send and shared with generation, shadow classes recorded but never applied, enabled cue/feedback fenced with a durable exposure record across occurrences, failed check with saved answer/retry/reveal, exact-operation replay, and stale finalization; live Jev quality is separate bounded evidence |
 | Generation | `go test ./internal/generation` | One bounded, authorized live request on representative material; inspect provenance, coverage, rejections, and actual spend |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
 | Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |
@@ -110,9 +111,12 @@ env -i PATH=/usr/bin:/bin HOME="$qa_dir" LANG=C.UTF-8 \
 `seed-fixture` publishes an authored DNS/TLS bundle without calling a model or
 fetching its reference link. Its JSON reports `synthetic: true`, model
 `authored-test-fixture`, and `provider_cost_micros: 0`; it includes authored
-content, so reading it is not a cold-recall observation. It refuses an existing
-database or any SQLite sidecar (`-wal`, `-shm`, `-journal`), never replaces them,
-and does not import production data. This is the fixture command also used by
+content, so reading it is not a cold-recall observation. One TLS recall uses a
+two-idea semantic rubric, one missing-idea cue, and one contradiction/feedback
+pair for local UI smoke. With the isolated recipe's empty semantic endpoint, its
+non-exact answer safely shows the failed/ungraded recovery state without a live
+request. The command refuses an existing database or any SQLite sidecar (`-wal`,
+`-shm`, `-journal`), never replaces them, and does not import production data.
 the exact-binary smoke in `scripts/lib/scry_smoke.py`, reached through the
 repository gate above.
 

@@ -174,7 +174,7 @@ func (m *Manager) Backup(ctx context.Context) (record store.BackupRecord, result
 		Format: 1, ID: record.ID, CreatedAt: record.CreatedAt,
 		Database: dbInfo, Bytes: size, SHA256: digest, Integrity: "ok",
 		Binary: *m.binary, Assets: "embedded in the compatible application binary; no separate uploaded files",
-		Configuration: []string{"SCRY_DB", "SCRY_ADDR", "SCRY_MODE", "SCRY_OWNER_ID", "SCRY_SECRET", "SCRY_BASE_URL", "SCRY_TRUSTED_PROXY_IPS", "SCRY_MODEL_ENDPOINT", "SCRY_MODEL_API_KEY", "SCRY_MODEL", "SCRY_GENERATION_DAILY_BUDGET_MICROS", "SCRY_GENERATION_RESERVATION_MICROS", "SCRY_BACKUP_DIR", "SCRY_BACKUP_REMOTE_URL", "SCRY_BACKUP_REMOTE_TOKEN", "SCRY_BACKUP_INTERVAL", "SCRY_BACKUP_KEEP"},
+		Configuration: []string{"SCRY_DB", "SCRY_ADDR", "SCRY_MODE", "SCRY_OWNER_ID", "SCRY_SECRET", "SCRY_BASE_URL", "SCRY_TRUSTED_PROXY_IPS", "SCRY_MODEL_ENDPOINT", "SCRY_MODEL_API_KEY", "SCRY_MODEL", "SCRY_SEMANTIC_ENDPOINT", "SCRY_SEMANTIC_API_KEY", "SCRY_SEMANTIC_MODEL", "SCRY_SEMANTIC_RESERVATION_MICROS", "SCRY_GENERATION_DAILY_BUDGET_MICROS", "SCRY_GENERATION_RESERVATION_MICROS", "SCRY_BACKUP_DIR", "SCRY_BACKUP_REMOTE_URL", "SCRY_BACKUP_REMOTE_TOKEN", "SCRY_BACKUP_INTERVAL", "SCRY_BACKUP_KEEP"},
 		RestorePolicy: "Restore into an unused path with a compatible binary. Nonterminal jobs are paused. Keep private environment/integration credentials and the compatible release off-VM separately; no credentials are in this archive.",
 	}
 	archive := filepath.Join(work, "snapshot.zip")

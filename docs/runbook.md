@@ -197,16 +197,52 @@ tokens through their actual authority. Do not print their values in receipts.
 ## Generation and spending
 
 The ignored workstation `.env` retains `OPENROUTER_API_KEY` with mode `0600`.
-The Scry-only key has a $1/day UTC provider limit. The app receives it through
-`scry-model`; no provider management key belongs in the VM. The application
-uses a $1 rolling 24-hour allowance with $0.20 conservative reservations per
-attempt. Provider and app windows differ; neither is an invented token price.
+The Scry-only key has a $1/day UTC provider limit. The app receives generation
+access through `scry-model`; no provider management key belongs in the VM. The
+application uses a $1 rolling 24-hour allowance with $0.20 conservative
+reservations per generation attempt. Provider and app windows differ; neither is
+an invented token price.
 
-Review/grading never waits on a model. Saved capture creates a durable bounded
-job. Leases and recorded operation identities prevent stale publication or
-retries from manufacturing duplicate work. Unknown provider outcomes retain
-their reservation; do not release spend or resend merely because a request
-lost its response. Inspect the recorded job/error and reconcile explicitly.
+Generation uses `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, and `SCRY_MODEL`.
+Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
+`SCRY_SEMANTIC_API_KEY` (empty reuses `SCRY_MODEL_API_KEY`), and
+`SCRY_SEMANTIC_MODEL` (default `typesafe/jev-1.13`), and
+`SCRY_SEMANTIC_RESERVATION_MICROS` (default 2000, USD micros reserved per check
+from the same rolling 24-hour allowance as generation). An empty semantic
+endpoint means no Decisions request is sent, nothing is reserved, and the
+saved answer remains ungraded. A configured endpoint must be a complete HTTPS
+URL without embedded credentials, query, or fragment, because every request
+carries the bearer key and private learner text; plaintext HTTP is accepted
+only for a loopback gateway, and the service refuses to start otherwise. Before
+production activation, prove that the configured private integration forwards
+`POST /api/alpha/decisions`; generation access alone does not prove that route.
+Learner answers sent for semantic assessment are private provider-bound text:
+state contains only prompt, expected answer, variants, rubric, and learner answer,
+not identity or review history.
+
+Saved capture creates a durable bounded generation job. Semantic Check instead
+stages a durable assessment, calls the model outside SQL with an eight-second
+limit, then re-fences the occurrence/content/schedule in a second transaction.
+Each assessment gets exactly one send lease (30 seconds). Before the request
+leaves the process, the reservation is checked and recorded against the shared
+allowance in the same transaction. A duplicate submit during a live lease is
+refused; an exact replay reconciles the durable state and never resends; a
+lease that lapses without a result becomes a definite failure with its
+reservation retained as unknown spend. Once a request has left the process,
+its judgment or failure is settled under a bounded context detached from the
+learner's connection, so a dropped request cannot turn a transmitted result
+into an unknown outcome. The no-endpoint path is the only case that reserves
+nothing and marks the failure as a provable no-send, because nothing left the
+process. Returned semantic cost is rounded
+up to micro-dollars, stored per assessment, and replaces the reservation in the
+rolling 24-hour allowance; missing provider cost stays unknown, never zero.
+Failures keep the answer ungraded for a deliberate new operation (retry) or
+reveal. Inspect the recorded state and reconcile explicitly; the app never
+auto-retries a paid unknown outcome.
+
+The frozen `semantic-v1` policy applies only Correct. Incomplete and incorrect
+are recorded as shadow classes (`decision` with `applied=0`) for evaluation and
+render as ungraded. Enabling a class is a code change with holdout evidence.
 
 Source-backed quizzes keep exact supplied evidence. Topic expansions are
 labeled as model knowledge. Structural/provenance checks are not independent

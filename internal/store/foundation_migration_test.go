@@ -69,10 +69,18 @@ func populatedV1(t *testing.T) (string, map[string]json.RawMessage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"sources", "source_revisions", "jobs", "job_attempts", "quizzes", "quiz_versions", "schedules", "presentations", "review_events", "corrections", "operations", "backups"} {
+	for _, table := range []string{"sources", "source_revisions", "job_attempts", "quizzes", "quiz_versions", "schedules", "presentations", "corrections", "operations", "backups"} {
 		if _, err = tx.ExecContext(ctx, "INSERT INTO main."+table+" SELECT * FROM fixture."+table); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO main.jobs(id,source_id,source_revision,status,error,model,prompt_version,attempts,created_at,updated_at,available_at,lease_token,lease_until,published,result_json)
+		SELECT id,source_id,source_revision,status,error,model,prompt_version,attempts,created_at,updated_at,available_at,lease_token,lease_until,published,result_json FROM fixture.jobs`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO main.review_events(id,presentation_id,snapshot,answer,outcome,rating,assisted,reviewed_at,due_at,algorithm,schedule_before,schedule_after,schedule_version_before,schedule_version_after)
+		SELECT id,presentation_id,snapshot,answer,outcome,rating,assisted,reviewed_at,due_at,algorithm,schedule_before,schedule_after,schedule_version_before,schedule_version_after FROM fixture.review_events`); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE main.review_session SET current_id=(SELECT current_id FROM fixture.review_session)"); err != nil {
 		t.Fatal(err)

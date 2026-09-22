@@ -24,11 +24,18 @@ func TestConservativeGradeBoundaries(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			outcome, rating := Grade("recall", tc.expected, tc.variants, tc.answer, tc.reveal)
+			outcome, rating := Grade("recall", "exact", tc.expected, tc.variants, tc.answer, tc.reveal)
 			if outcome != tc.outcome || rating != tc.rating {
 				t.Fatalf("got %s/%d, want %s/%d", outcome, rating, tc.outcome, tc.rating)
 			}
 		})
+	}
+}
+
+func TestSemanticGradeDefersUnmatchedShortAnswer(t *testing.T) {
+	outcome, rating := Grade("recall", "semantic", "Paris", nil, "Berlin", false)
+	if outcome != "ungraded" || rating != 0 {
+		t.Fatalf("got %s/%d, want ungraded/0", outcome, rating)
 	}
 }
 

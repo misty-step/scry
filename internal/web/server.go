@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misty-step/scry/internal/semantic"
 	"github.com/misty-step/scry/internal/store"
 )
 
@@ -33,6 +34,7 @@ type Config struct {
 	RedirectHosts   []string
 	TrustProxy      bool
 	TrustedProxyIPs []string
+	Semantic        semantic.AssessmentService
 }
 
 //go:embed templates/*.html assets/*
@@ -40,6 +42,7 @@ var files embed.FS
 
 type server struct {
 	store     *store.Store
+	semantic  semantic.AssessmentService
 	cfg       Config
 	origin    *url.URL
 	peers     map[netip.Addr]bool
@@ -131,22 +134,29 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		redirectHosts = append(redirectHosts, host)
 	}
 	funcs := template.FuncMap{
-		"timeText":   timeText,
-		"timeISO":    timeISO,
-		"money":      money,
-		"excerpt":    excerpt,
-		"joinLines":  func(v []string) string { return strings.Join(v, "\n") },
-		"outcome":    outcomeText,
-		"kind":       kindText,
-		"jobLabel":   jobLabel,
-		"jobPending": jobPending,
-		"retryable":  retryable,
+		"timeText":       timeText,
+		"timeISO":        timeISO,
+		"money":          money,
+		"excerpt":        excerpt,
+		"joinLines":      func(v []string) string { return strings.Join(v, "\n") },
+		"rubricIdeas":    rubricIdeas,
+		"rubricCues":     rubricCues,
+		"rubricClaims":   rubricClaims,
+		"rubricFeedback": rubricFeedback,
+		"outcome":        outcomeText,
+		"kind":           kindText,
+		"jobLabel":       jobLabel,
+		"jobPending":     jobPending,
+		"retryable":      retryable,
 	}
 	t, err := template.New("scry").Funcs(funcs).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("web templates: %w", err)
 	}
-	app := &server{store: s, cfg: cfg, origin: u, peers: peers, templates: t}
+	if cfg.Semantic == nil {
+		cfg.Semantic = semantic.NewAssessor(s, semantic.NewClient(semantic.Config{}), semantic.DefaultModel, semantic.Spending{})
+	}
+	app := &server{store: s, semantic: cfg.Semantic, cfg: cfg, origin: u, peers: peers, templates: t}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", app.review)
 	mux.HandleFunc("GET /review/preview", app.preview)
@@ -446,4 +456,48 @@ func retryable(status string) bool {
 	default:
 		return false
 	}
+}
+
+func rubricIdeas(rubric *store.Rubric) string {
+	if rubric == nil {
+		return ""
+	}
+	lines := make([]string, len(rubric.Required))
+	for i, idea := range rubric.Required {
+		lines[i] = idea.Text
+	}
+	return strings.Join(lines, "\n")
+}
+
+func rubricCues(rubric *store.Rubric) string {
+	if rubric == nil {
+		return ""
+	}
+	lines := make([]string, len(rubric.Required))
+	for i, idea := range rubric.Required {
+		lines[i] = idea.Cue
+	}
+	return strings.Join(lines, "\n")
+}
+
+func rubricClaims(rubric *store.Rubric) string {
+	if rubric == nil {
+		return ""
+	}
+	lines := make([]string, len(rubric.Contradictions))
+	for i, claim := range rubric.Contradictions {
+		lines[i] = claim.Text
+	}
+	return strings.Join(lines, "\n")
+}
+
+func rubricFeedback(rubric *store.Rubric) string {
+	if rubric == nil {
+		return ""
+	}
+	lines := make([]string, len(rubric.Contradictions))
+	for i, claim := range rubric.Contradictions {
+		lines[i] = claim.Feedback
+	}
+	return strings.Join(lines, "\n")
 }
