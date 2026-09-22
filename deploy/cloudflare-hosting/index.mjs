@@ -41,4 +41,12 @@ export default {
     const container = getContainer(env.SCRY_CONTAINER, "singleton");
     return container.fetch(request);
   },
+  async scheduled(_event, env) {
+    // Cron is platform-owned, not an HTTP route or an additional writer.
+    const result = await getContainer(env.SCRY_CONTAINER, "singleton").scheduledBackup();
+    if (result.state === "idle_stale") {
+      console.warn("[scry-recovery] no running writer; last snapshot exceeds 24h", result);
+    }
+    console.log("[scry-recovery] daily check", result);
+  },
 };
