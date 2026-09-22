@@ -6,22 +6,16 @@
 import { getContainer } from "@cloudflare/containers";
 import { accessAuthorized } from "./auth.mjs";
 import { ScryContainer } from "./container.mjs";
+import { timingSafeStringEqual } from "./timing-safe-equal.mjs";
 
 export { ScryContainer };
 
 const PROBE_PATHS = new Set(["/healthz", "/readyz"]);
 
-function constantTimeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 function probeAuthorized(request, env) {
   if (!env.SCRY_PROBE_TOKEN) return false;
   const supplied = request.headers.get("authorization") || "";
-  return constantTimeEqual(supplied, `Bearer ${env.SCRY_PROBE_TOKEN}`);
+  return timingSafeStringEqual(supplied, `Bearer ${env.SCRY_PROBE_TOKEN}`);
 }
 
 function denied(body, status) {

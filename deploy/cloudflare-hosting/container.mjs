@@ -3,7 +3,7 @@
 // private R2 snapshot key and injects it as SCRY_CONTAINER_RESTORE_KEY, so
 // the container always wakes with the latest acknowledged state.
 import { Container } from "@cloudflare/containers";
-import { fatalContainerError } from "./container-lifecycle.mjs";
+import { createStartupOnlyFetch, fatalContainerError } from "./container-lifecycle.mjs";
 import { latestSnapshotKey } from "./recovery-key.mjs";
 import { appEnvVars, containerSleepAfter } from "./runtime-env.mjs";
 
@@ -18,16 +18,22 @@ export class ScryContainer extends Container {
     super(ctx, env);
     this.sleepAfter = containerSleepAfter(env);
     this.envVars = appEnvVars(env);
+    this.startupOnlyFetch = createStartupOnlyFetch({
+      baseEnvVars: this.envVars,
+      bootMode: env.SCRY_BOOT_MODE,
+      getState: () => this.getState(),
+      isRunning: () => this.ctx.container.running,
+      resolveSnapshotKey: () => latestSnapshotKey(this.env.RECOVERY),
+      startAndWaitForPorts: options => this.startAndWaitForPorts(options),
+      forward: request => this.forwardToContainer(request),
+    });
   }
 
   async fetch(request) {
-    // A restore-required cold start cannot reach the container until a complete
-    // immutable object key has been resolved. Listing failures and empty buckets
-    // therefore keep edge readiness false instead of opening an empty writer.
-    const key = this.env.SCRY_BOOT_MODE === "synthetic-fresh"
-      ? ""
-      : await latestSnapshotKey(this.env.RECOVERY);
-    this.envVars = { ...this.envVars, SCRY_CONTAINER_RESTORE_KEY: key };
+    return this.startupOnlyFetch(request);
+  }
+
+  forwardToContainer(request) {
     return super.fetch(request);
   }
 

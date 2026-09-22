@@ -1,21 +1,15 @@
 // A narrow recovery capability, not an application server. Callers can create
 // and read snapshots, never replace/delete them or access Cloudflare's account API.
+import { timingSafeStringEqual } from "../cloudflare-hosting/timing-safe-equal.mjs";
+
 const MAX_BYTES = 16 * 1024 * 1024;
 const KEY = /^scry-\d{8}T\d{6}\.\d{9}Z-[a-f0-9]{32}\.scry-backup\.zip$/;
-const encoder = new TextEncoder();
 
 function response(body, status, headers = {}) {
   return new Response(body, {
     status,
     headers: { "cache-control": "private, no-store", "x-content-type-options": "nosniff", ...headers },
   });
-}
-
-function timingSafeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let difference = 0;
-  for (let index = 0; index < a.length; index++) difference |= a[index] ^ b[index];
-  return difference === 0;
 }
 
 async function authorized(request, env) {
@@ -27,8 +21,7 @@ async function authorized(request, env) {
     const secret = env[name];
     if (!secret || secret.length < 32) continue;
     const expected = `Bearer ${secret}`;
-    if (supplied.length !== expected.length) continue;
-    if (timingSafeEqual(encoder.encode(supplied), encoder.encode(expected))) return true;
+    if (timingSafeStringEqual(supplied, expected)) return true;
   }
   return false;
 }

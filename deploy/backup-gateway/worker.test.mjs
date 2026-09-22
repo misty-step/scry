@@ -3,6 +3,13 @@ import test from "node:test";
 
 import worker from "./worker.mjs";
 
+if (typeof crypto.subtle.timingSafeEqual !== "function") {
+  Object.defineProperty(crypto.subtle, "timingSafeEqual", {
+    configurable: true,
+    value: (left, right) => Buffer.from(left).equals(Buffer.from(right)),
+  });
+}
+
 const vmToken = "v".repeat(64);
 const containerToken = "c".repeat(64);
 const key = "scry-20260922T140000.000000000Z-00000000000000000000000000000000.scry-backup.zip";
