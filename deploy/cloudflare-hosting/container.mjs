@@ -3,6 +3,7 @@
 // private R2 snapshot key and injects it as SCRY_CONTAINER_RESTORE_KEY, so
 // the container always wakes with the latest acknowledged state.
 import { Container } from "@cloudflare/containers";
+import { runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
 import { createStartupOnlyFetch, fatalContainerError } from "./container-lifecycle.mjs";
 import { latestSnapshotKey } from "./recovery-key.mjs";
 import { appEnvVars, containerSleepAfter } from "./runtime-env.mjs";
@@ -35,6 +36,38 @@ export class ScryContainer extends Container {
 
   forwardToContainer(request) {
     return super.fetch(request);
+  }
+
+  async scheduledBackup() {
+    if (this.backupInFlight) return this.backupInFlight;
+    const task = runBackupCycle({
+      running: () => this.ctx.container.running,
+      latest: () => latestSnapshotKey(this.env.RECOVERY),
+      head: key => this.env.RECOVERY.head(key),
+      execute: async () => {
+        // The existing CLI snapshots SQLite consistently and checks the exact
+        // uploaded bytes. Do not log stdout/stderr: the receipt has local paths.
+        const process = await this.ctx.container.exec([
+          "/usr/local/bin/scry", "backup", "--db", "/var/lib/scry/data/scry.sqlite", "--require-remote",
+        ]);
+        const output = await process.output();
+        return { exitCode: output.exitCode, stdout: new TextDecoder().decode(output.stdout) };
+      },
+    });
+    this.backupInFlight = task;
+    try {
+      return await task;
+    } finally {
+      if (this.backupInFlight === task) this.backupInFlight = undefined;
+    }
+  }
+
+  async onActivityExpired() {
+    await stopAfterBackup({
+      backup: () => this.scheduledBackup(),
+      stop: () => this.stop(),
+      log: message => console.error(message),
+    });
   }
 
   // Lifecycle observability: the platform reports container start/stop/error

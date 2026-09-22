@@ -399,8 +399,21 @@ metadata is packaged into a unique completed archive. The app uploads the
 exact bytes and requires an authenticated SHA-256-matching GET readback before
 marking remote success. An interrupted or corrupt upload is not a backup.
 
-`SCRY_BACKUP_INTERVAL=24h` and `SCRY_BACKUP_KEEP=30` govern current cadence and
-local completed-snapshot count. Time-based remote retention is a separate R2
+`SCRY_BACKUP_INTERVAL=24h` and `SCRY_BACKUP_KEEP=30` govern in-process cadence
+and local completed-snapshot count. Production Worker `scry-app-host` also has
+a native UTC cron at 00:00 and 12:00. While the singleton Container is running,
+the cron executes the existing `scry backup --require-remote` command in that
+instance, checks its success receipt against R2 metadata, and logs the result.
+A failed invocation fails the scheduled event; it does not claim a remote
+snapshot. If the Container is stopped, the cron checks the newest R2 object
+without waking it. An object older than 24 hours is reported as `idle_stale`;
+that age alone does not show data loss when the writer has been stopped.
+Before a planned idle stop, the Container runs a remote-verified backup and
+defers the stop if this fails. Other stops attempt the entrypoint's final
+backup, but host failure or a force stop may still lose recent writes. A
+scheduled run and a successful idle stop do not guarantee the RPO objective.
+Check the latest remote archive and exact readback before every planned
+instance replacement. Time-based remote retention is a separate R2
 lifecycle policy; a count of local snapshots is not proof of 30-day off-VM
 retention. The app/gateway cannot delete, overwrite, or change bucket policy.
 Use only the dedicated new-app bucket for this lifecycle policy, never the

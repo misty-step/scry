@@ -78,6 +78,7 @@
     "production": {
       "name": "scry-app-host",
       "workers_dev": false,
+      "triggers": { "crons": ["0 */12 * * *"] },
       "routes": [
         { "pattern": "scry.study", "custom_domain": true },
         { "pattern": "www.scry.study", "custom_domain": true },
