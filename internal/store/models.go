@@ -102,24 +102,33 @@ type ReviewEvent struct {
 }
 
 type Job struct {
-	ID               string `json:"id"`
-	SourceID         string `json:"source_id"`
-	Status           string `json:"status"`
-	Error            string `json:"error"`
-	Model            string `json:"model"`
-	LeaseToken       string `json:"-"`
-	SourceText       string `json:"source_text"`
-	SourceKind       string `json:"source_kind"`
-	SourceRevision   int    `json:"source_revision"`
-	Attempts         int    `json:"attempts"`
-	CreatedAt        int64  `json:"created_at"`
-	UpdatedAt        int64  `json:"updated_at"`
-	CostMicros       int64  `json:"cost_micros"`
-	ReservedMicros   int64  `json:"reserved_micros"`
-	Published        int    `json:"published"`
-	CostUnknown      bool   `json:"cost_unknown"`
-	Foundation       bool   `json:"foundation"`
-	FoundationTarget *Quiz  `json:"-"`
+	ID               string          `json:"id"`
+	SourceID         string          `json:"source_id"`
+	Status           string          `json:"status"`
+	Error            string          `json:"error"`
+	Model            string          `json:"model"`
+	LeaseToken       string          `json:"-"`
+	SourceText       string          `json:"source_text"`
+	SourceKind       string          `json:"source_kind"`
+	SourceRevision   int             `json:"source_revision"`
+	Attempts         int             `json:"attempts"`
+	CreatedAt        int64           `json:"created_at"`
+	UpdatedAt        int64           `json:"updated_at"`
+	CostMicros       int64           `json:"cost_micros"`
+	ReservedMicros   int64           `json:"reserved_micros"`
+	Published        int             `json:"published"`
+	CostUnknown      bool            `json:"cost_unknown"`
+	Foundation       bool            `json:"foundation"`
+	FoundationTarget *Quiz           `json:"-"`
+	CriticStatus     string          `json:"critic_status"`
+	Candidates       *CandidateBatch `json:"-"`
+}
+
+// CandidateBatch preserves validated generator output and its usage before any
+// critic transmission. Critic retries never generate this material again.
+type CandidateBatch struct {
+	Result     GenerationResult `json:"result"`
+	CostMicros *int64           `json:"cost_micros"`
 }
 
 type GeneratedQuiz struct {

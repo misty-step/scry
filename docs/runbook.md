@@ -250,6 +250,40 @@ fact-checking. Rejected candidates and incomplete coverage remain visible as
 partial/failure, not invented completion. The private acceptance receipt
 records representative live generation; it is not a longitudinal efficacy claim.
 
+### Prepublication critic
+
+The same semantic endpoint, model, key, and reservation configure the content
+critic. A configured endpoint requires a positive semantic reservation.
+No endpoint records `skipped`, reserves nothing, and retains existing generation
+behavior. A pending batch cannot bypass criticism if configuration later disappears.
+This code path is not evidence of production activation.
+
+The worker saves up to twelve validated candidates before criticism. Larger
+configured batches publish only that bounded selection and report partial work.
+Each candidate gets an independent defect battery. The frozen `critic-v1`
+threshold is 0.80 for hard defects; explanation value never vetoes.
+Any missing or malformed judgment blocks publication of the batch until retry.
+Accepted candidates publish only after transactional revalidation. Rejected
+candidates retain their reasons; an entirely rejected batch publishes nothing.
+
+Unavailable criticism preserves candidates with `critic_status=pending`.
+The next automatic claim runs only criticism, not generation. A new critic
+assessment reserves the semantic amount, never another generation reservation.
+Three total job attempts bound automatic work. Explicit Retry resumes the same
+batch up to five total attempts and reuses judged candidates. Restores remain
+paused until explicit retry. Fully rejected batches require revised input.
+Each assessment row remains single-send forever. New attempts use new rows;
+unknown prior outcomes remain charged, rather than becoming free retries.
+Expired orphan leases become failed during allowance reconciliation.
+
+Inspect `jobs.candidates_json`, `critic_status`, and exported `content_assessments`
+for candidate content, requests, responses, reasons, model, and spend. Job cost
+readouts include critic usage. `Store.ContentHistory` retains candidate attempts;
+review history remains learner events. Export omits content-assessment lease tokens.
+The bounded live control test is opt-in and uses synthetic/public text only.
+Record its source revision, returned model, raw receipts, errors, and cost.
+Do not treat a small control set as broad accuracy or activation proof.
+
 Too advanced foundation requests share the existing serial worker and spending
 authority. Reuse is exact source revision plus quiz ID/version; saved material
 does not become a scheduled quiz. Inspect `/foundations` for saved progress,

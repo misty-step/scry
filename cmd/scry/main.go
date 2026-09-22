@@ -220,6 +220,13 @@ func serve(args []string) error {
 		HTTPClient: &http.Client{Timeout: 8 * time.Second, CheckRedirect: noRedirect},
 	})
 	semanticSpending := semantic.Spending{ReservationMicros: semanticReservation, DailyBudgetMicros: budget}
+	var critic semantic.Client
+	if strings.TrimSpace(os.Getenv("SCRY_SEMANTIC_ENDPOINT")) != "" {
+		if semanticReservation == 0 {
+			return errors.New("configured semantic assessments require a positive SCRY_SEMANTIC_RESERVATION_MICROS")
+		}
+		critic = semanticClient
+	}
 	if os.Getenv("SCRY_SEMANTIC_ENDPOINT") == "" {
 		// No endpoint means no request can leave the process: reserve nothing.
 		semanticSpending = semantic.Spending{}
@@ -249,6 +256,7 @@ func serve(args []string) error {
 		Model: os.Getenv("SCRY_MODEL"), Provider: os.Getenv("SCRY_MODEL_PROVIDER"),
 		DailyBudgetMicros: budget,
 		ReservationMicros: reservation, PollInterval: time.Second,
+		Critic: critic, CriticModel: semanticModel, CriticSpending: semanticSpending,
 		HTTPClient: &http.Client{Timeout: 60 * time.Second, CheckRedirect: noRedirect},
 	})
 	backups := recovery.New(db, backupConfig)
