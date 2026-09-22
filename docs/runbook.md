@@ -197,16 +197,34 @@ tokens through their actual authority. Do not print their values in receipts.
 ## Generation and spending
 
 The ignored workstation `.env` retains `OPENROUTER_API_KEY` with mode `0600`.
-The Scry-only key has a $1/day UTC provider limit. The app receives it through
-`scry-model`; no provider management key belongs in the VM. The application
-uses a $1 rolling 24-hour allowance with $0.20 conservative reservations per
-attempt. Provider and app windows differ; neither is an invented token price.
+The Scry-only key has a $1/day UTC provider limit. The app receives generation
+access through `scry-model`; no provider management key belongs in the VM. The
+application uses a $1 rolling 24-hour allowance with $0.20 conservative
+reservations per generation attempt. Provider and app windows differ; neither is
+an invented token price.
 
-Review/grading never waits on a model. Saved capture creates a durable bounded
-job. Leases and recorded operation identities prevent stale publication or
-retries from manufacturing duplicate work. Unknown provider outcomes retain
-their reservation; do not release spend or resend merely because a request
-lost its response. Inspect the recorded job/error and reconcile explicitly.
+Generation uses `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, and `SCRY_MODEL`.
+Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
+`SCRY_SEMANTIC_API_KEY` (empty reuses `SCRY_MODEL_API_KEY`), and
+`SCRY_SEMANTIC_MODEL` (default `typesafe/jev-1.13`). An empty semantic endpoint
+means no Decisions request is sent and the saved answer remains ungraded. Before
+production activation, prove that the configured private integration forwards
+`POST /api/alpha/decisions`; generation access alone does not prove that route.
+Learner answers sent for semantic assessment are private provider-bound text:
+state contains only prompt, expected answer, variants, rubric, and learner answer,
+not identity or review history.
+
+Saved capture creates a durable bounded generation job. Semantic Check instead
+stages a durable assessment, calls the model outside SQL with an eight-second
+limit, then re-fences the occurrence/content/schedule in a second transaction.
+Exact operation replay permits at most two recorded transmissions; failures keep
+the answer ungraded for deliberate retry or reveal. Returned semantic cost is
+rounded up to micro-dollars, stored per assessment, and included in the rolling
+24-hour allowance accounting; missing provider cost stays unknown, never zero.
+Leases and recorded operation identities prevent stale publication or semantic
+finalization from manufacturing duplicate work. Unknown provider outcomes retain
+their reservation or assessment record; do not resend merely because a request
+lost its response. Inspect the recorded state and reconcile explicitly.
 
 Source-backed quizzes keep exact supplied evidence. Topic expansions are
 labeled as model knowledge. Structural/provenance checks are not independent

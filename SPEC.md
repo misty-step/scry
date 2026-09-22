@@ -66,7 +66,7 @@ and reason here; remove obsolete alternatives rather than retaining two designs.
 | Decision | Adopted choice | Basis / remaining evidence |
 | --- | --- | --- |
 | D1: personal material and failures | Build around what the operator wants to remember, not old QA datasets | The accepted candidate used photosynthesis, HTTP caching, and DNS examples. Specific future learning goals and sustained usefulness come from real use, not invented frustrations. |
-| D2: initial response styles | Tap-choice and short cued recall; no model grading in the fast path | Initial phone flow approved. Changes to styles or typing burden need renewed review. |
+| D2: response grading | Tap-choice and explicitly versioned exact or semantic cued recall; exact stays local, while semantic recall uses a bounded Jev rubric outside the grading transaction | Principal authorization 2026-09-22 adopted meaning-sensitive recall with durable pending state, transactional re-fencing, and honest ungraded failure. This does not authorize liberal grading or a hidden model call for deterministic tasks. |
 | D3: assistance and correction | Answer-bearing help marks the occurrence assisted; disputes are explicit, not automatic successes | Durable reveal, edit/archive, and dispute behavior exercised; historical events remain unchanged. |
 | D4: experience approval | One question stage, persistent feedback, deliberate Next | Operator approved the real-phone flow. Swipe is neither required nor an implicit grade. |
 | D5: recovery / spend | Daily and pre-release off-VM backups; 30-day new-app retention; RPO 24h / RTO 60m targets; bounded generation spend | Operator selected daily backups. Separate-VM data restore, full unprivileged service activation, private HTTPS/export equality, and restored UI passed. Provisioning/DNS outage recovery and an availability SLA are not claimed. |
@@ -187,9 +187,21 @@ interaction teaches me something without taking away control.
 - **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
   read-only requests do not fabricate answers. If no next item is ready, the
   learner sees an honest end/pending state.
+- **S02.5:** Each free-response content version explicitly chooses exact or
+  semantic grading. Exact answers, authored variants, and case-only uncertainty
+  resolve locally first. Semantic grading applies only to prose recall with an
+  authored, versioned rubric; numeric, symbolic, identifier, spelling, choice,
+  and other deterministic tasks remain exact.
+- **S02.6:** Semantic grading records success only when independent required-idea
+  and overall-relation judgments meet the versioned policy. Unclear, malformed,
+  unavailable, or failed judgments stay ungraded with the learner answer saved;
+  they never become an invented correct or wrong result. A missing-idea cue is
+  shown only after assistance is durably fenced, so a later correct response on
+  that occurrence is warm/helped rather than cold success.
 
 Proof: actual browser interactions plus deterministic learning/SQLite boundary
-checks for ambiguous answers and reveal/submit races.
+checks for ambiguous answers, semantic policy thresholds, pending/failure
+recovery, assistance cues, and reveal/submit races.
 
 ### S03 — Add something without configuring it
 
@@ -265,9 +277,16 @@ so that I do not have to remember which answers actually saved.
   unknown network outcome offer safe recovery without losing the in-page
   answer. Offline review pauses; there is no invisible queue of uncommitted
   answers. Only one unresolved browser mutation is permitted.
+- **S06.4:** Semantic submission first saves one pending assessment and immutable
+  operation receipt, calls the model outside SQL, then rechecks current
+  occurrence, content version, schedule version, ungraded state, and pending
+  ownership before finalization. The same operation resumes at most two recorded
+  transmissions; a competing operation conflicts, and stale work is superseded
+  without an event or schedule change.
 
-Proof: network interruption/reordering, two browser tabs, and real restart with
-SQLite state inspected through consumer-visible history/results.
+Proof: network interruption/reordering, two browser tabs, semantic timeout and
+stale-finalization cases, and real restart with SQLite state inspected through
+consumer-visible history/results.
 
 ### S07 — Find and manage what I am learning
 
@@ -463,8 +482,9 @@ documented fixed backport); a Go module version alone is not that evidence.
 The constructor can silently fall back for invalid parameters, so the adapter
 validates pinned configuration first. Versioned reference trajectories, including
 misses/relearning and equivalent-time replay, are exercised by the Go gate.
-`internal/learning.Algorithm` identifies policy. No old-engine parity or
-personalized-retention claim is inherited.
+`internal/learning.Algorithm` identifies the unchanged scheduler policy;
+`semantic-v1` separately identifies the pure rubric decision policy. No
+old-engine parity, personalized-retention, or learning-efficacy claim is inherited.
 
 ### Generation and learning policy
 
@@ -484,9 +504,14 @@ otherwise preserve uncertainty and use a conservative bounded/manual-retry polic
 Choose one model/provider by results on D1 material. Preserve input, model/prompt
 version, generated content and corrections for diagnosis; do not build a generic
 AI platform. Topic expansion and source-grounded generation have different
-provenance claims. Initial grading stays deterministic for supported formats;
-semantic model grading is a distinct, slower product decision, not a hidden
-network call in the fast review path.
+provenance claims. Deterministic tasks and exact/variant matches stay local.
+By principal authorization on 2026-09-22, an explicitly semantic prose-recall
+version may stage one durable assessment, call the pinned Jev Decisions model
+outside SQL, and finalize only after re-fencing the current content and schedule.
+The bounded path has an eight-second timeout, at most two recorded transmissions
+for the same operation, saved answer on failure, no automatic wrong decision,
+and assistance-fenced missing-idea cues. It is a distinct slower product path,
+not liberal grading or a hidden network call inside the grading transaction.
 
 Too advanced can request reusable foundation instruction and warm practice
 without first recording a miss. The bounded MIS-59 detour below does not imply

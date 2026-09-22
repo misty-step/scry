@@ -61,3 +61,37 @@ change, no removal of foundations data or routes, no restyle of pages outside
 the review surface.
 
 Evidence: `internal/web/review_test.go`
+
+## US-003 Answer meaning-sensitive recall without invented certainty
+
+Statement: When a prose recall question can be answered correctly in different
+words, I want Scry to check the authored meaning rather than require one phrase,
+while preserving my answer and learning history whenever that check is uncertain.
+
+Criteria:
+1. EACH quiz content version SHALL explicitly choose exact or semantic grading;
+   choice, numeric, symbolic, identifier, spelling, and other deterministic
+   answers SHALL remain exact.
+2. WHEN an exact answer, authored variant, or case-only uncertainty resolves
+   locally, THE SYSTEM SHALL NOT call the semantic assessor. OTHERWISE a semantic
+   prose answer SHALL be saved as a durable pending assessment before one bounded
+   external request is made outside SQL.
+3. THE semantic-v1 policy SHALL record Correct only when all authored required
+   ideas and the overall relation independently meet their thresholds with no
+   contradiction or injection signal. It SHALL NOT record an automatic miss by
+   default; unclear, malformed, unavailable, and timed-out checks remain ungraded.
+4. WHEN exactly one required idea is clearly missing, THE surface SHALL show
+   Almost and its authored cue only after the occurrence is durably marked
+   assisted. A later correct response on that occurrence SHALL use the helped
+   warm contract, not an FSRS success.
+5. A failed check SHALL keep the answer, offer retry and reveal, and show no model
+   probabilities. Replaying the same operation SHALL resume or return its durable
+   assessment without duplicate review/schedule transitions; stale finalization
+   SHALL be superseded without changing learning state.
+
+No-gos: no liberal similarity grading, no model call inside a SQL transaction,
+no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.
+
+Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
+`internal/semantic/client_test.go`, `internal/web/semantic_test.go`
+

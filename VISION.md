@@ -84,6 +84,12 @@ The accepted initial experience has one learning moment at a time:
 5. Continue deliberately; return later without losing committed progress.
 6. Fix, remove, or inspect material without making maintenance the main product.
 
+Meaning-sensitive recall may accept different wording only for an explicitly
+semantic prose question with an authored, versioned rubric. Exact tasks stay
+exact; model uncertainty stays ungraded; and a missing-idea cue counts as help
+before it is shown. This is bounded evidence about one answer, not liberal
+similarity grading, automatic mastery, or proof that the learner knows more.
+
 The initial phone flow is approved, not a permanent freeze on design. Changes
 to question styles, gestures, visual direction, or ambiguous-answer behavior
 should follow real use and renewed operator review.
