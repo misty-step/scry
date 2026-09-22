@@ -7,7 +7,7 @@ No private learner data is present.
 ## Files
 
 - `corpus.json` contains 14 concepts, 14 questions, and 199 authored responses.
-- `gold.json` contains the human-style labels that were frozen before the first Jev call.
+- `gold.json` contains the agent-authored, human-style labels that were frozen before the first Jev call. No human reviewed them before the run.
 - `raw.jsonl` contains one full pass and three added holdout passes.
 - `report.md` contains the findings and the frozen recommendation.
 - `../../../scripts/evals/jev-recall/main.go` validates, runs, and summarizes the evaluation.
@@ -33,6 +33,14 @@ Run from the repository root:
 
 ```sh
 go run ./scripts/evals/jev-recall validate
+```
+
+## Shipped policy verification
+
+This replays the committed raw responses through the product's `learning.GradeSemantic` and sends nothing:
+
+```sh
+go run ./scripts/evals/jev-recall verify
 ```
 
 ## Exact live run sequence

@@ -273,6 +273,8 @@ func main() {
 		err = runCommand(os.Args[2:])
 	case "summarize":
 		err = summarizeCommand(os.Args[2:])
+	case "verify":
+		err = verifyCommand(os.Args[2:])
 	default:
 		usage()
 		err = fmt.Errorf("unknown subcommand %q", os.Args[1])
@@ -284,7 +286,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: jev-recall <validate|run|summarize> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: jev-recall <validate|run|summarize|verify> [flags]")
 }
 
 func validateCommand(args []string) error {
@@ -526,7 +528,10 @@ func runCommand(args []string) error {
 
 func evaluateOne(client *http.Client, apiKey string, job runJob) RawRecord {
 	item := job.Item
-	baselineOutcome, baselineRating := learning.Grade("recall", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
+	// Baseline is the legacy exact grader on purpose: it is the behavior the
+	// evaluation measures Jev against, and it keeps new runs comparable with
+	// the committed raw records.
+	baselineOutcome, baselineRating := learning.Grade("recall", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
 	req := buildRecallRequest(item.Question, item.Response.Text)
 	result := callDecisionAPI(client, apiKey, req)
 	record := RawRecord{
@@ -986,9 +991,13 @@ func validateEvaluation(items []WorkItem, corpus Corpus) error {
 				return fmt.Errorf("gold truth shape mismatch for %q", item.Response.ID)
 			}
 			if item.Response.Bucket == "concise_correct_synonym" {
-				outcome, _ := learning.Grade("recall", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
+				// The corpus must target the legacy failure: the pre-Jev exact
+				// grader called these correct synonyms WRONG. The check pins
+				// legacy exact mode on purpose; shipped semantic mode leaves
+				// them ungraded (see verify) instead of manufacturing a miss.
+				outcome, _ := learning.Grade("recall", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
 				if outcome != "wrong" {
-					return fmt.Errorf("concise synonym %q must be wrong under baseline; got %q", item.Response.ID, outcome)
+					return fmt.Errorf("concise synonym %q must be wrong under the legacy exact baseline; got %q", item.Response.ID, outcome)
 				}
 			}
 		} else if len(item.Gold.IdeaTruth) != 0 || len(item.Gold.ContradictionTruth) != 0 {
@@ -1782,4 +1791,131 @@ func sortedKeys[V any](values map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// verifyCommand replays every recorded raw response through the shipped
+// learning.GradeSemantic policy and compares it with the runner's own policy
+// column and with the frozen gold label. It sends nothing. It is the proof that
+// the report's numbers describe the code that ships, not a runner-only copy.
+func verifyCommand(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	evalDir := fs.String("eval-dir", defaultEvalDir, "evaluation artifact directory")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	records, err := loadRawOptional(filepath.Join(*evalDir, "raw.jsonl"))
+	if err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		return fmt.Errorf("no raw records in %s", *evalDir)
+	}
+	shipped := learning.SemanticV1Params()
+	if shipped.RelationThreshold != frozenParams.TRel || shipped.IdeaThreshold != frozenParams.TIdea ||
+		shipped.IdeaLowThreshold != frozenParams.TIdeaLow || shipped.ContradictionLow != frozenParams.TContraLow ||
+		shipped.ContradictionHigh != frozenParams.TContraHigh || shipped.PartialRelationThreshold != frozenParams.TPartial ||
+		shipped.InjectionThreshold != frozenParams.TInj {
+		return fmt.Errorf("shipped policy parameters differ from the frozen evaluation parameters: shipped=%+v frozen=%+v", shipped, frozenParams)
+	}
+	type cell struct{ applied, shadow, gold, agree, total int }
+	holdout := map[string]*cell{}
+	mismatches := 0
+	compared := 0
+	for _, record := range records {
+		if record.Grading != "semantic" || record.Error != "" || record.Answers == nil {
+			continue
+		}
+		judgments, ok := judgmentsFromAnswers(record.Answers)
+		if !ok {
+			continue
+		}
+		decision := learning.GradeSemantic(judgments, shipped)
+		compared++
+		runner := record.PolicyIncorrectDisabled.Action
+		// The shipped policy classifies incomplete/incorrect as shadow while the
+		// runner's disabled column reports incomplete as an action; compare the
+		// class names, then check the applied bit separately.
+		if decision.Decision != runner && !(runner == "ungraded" && decision.Decision == "incorrect") {
+			mismatches++
+			fmt.Printf("MISMATCH %s run=%s seq=%d shipped=%s(applied=%v) runner=%s\n", record.ResponseID, record.RunID, record.Sequence, decision.Decision, decision.Applied, runner)
+		}
+		if decision.Applied && decision.Decision != "correct" {
+			return fmt.Errorf("shipped policy applied a shadow class %q on %s", decision.Decision, record.ResponseID)
+		}
+		if record.Split != "holdout" {
+			continue
+		}
+		c := holdout[decision.Decision]
+		if c == nil {
+			c = &cell{}
+			holdout[decision.Decision] = c
+		}
+		c.total++
+		if decision.Applied {
+			c.applied++
+		} else if decision.Decision != "ungraded" {
+			c.shadow++
+		}
+		if record.GoldAction == decision.Decision {
+			c.agree++
+		}
+		if record.GoldAction == "correct" {
+			c.gold++
+		}
+	}
+	fmt.Printf("Shipped policy %s replayed on %d recorded semantic responses; %d class mismatches against the runner column.\n", shipped.PolicyVersion, compared, mismatches)
+	fmt.Println("| Holdout shipped class | N | Applied | Shadow | Matches gold | Gold-correct in class |")
+	fmt.Println("|---|---:|---:|---:|---:|---:|")
+	for _, name := range []string{"correct", "incomplete", "incorrect", "ungraded"} {
+		c := holdout[name]
+		if c == nil {
+			c = &cell{}
+		}
+		fmt.Printf("| %s | %d | %d | %d | %d | %d |\n", name, c.total, c.applied, c.shadow, c.agree, c.gold)
+	}
+	if c := holdout["correct"]; c != nil && c.agree != c.total {
+		return fmt.Errorf("shipped policy produced %d false successes on holdout", c.total-c.agree)
+	}
+	if mismatches != 0 {
+		return fmt.Errorf("%d class mismatches between shipped policy and runner", mismatches)
+	}
+	return nil
+}
+
+// judgmentsFromAnswers converts a recorded D8 answer battery into the shipped
+// policy's input shape. Ideas and contradictions are ordered by their index.
+func judgmentsFromAnswers(answers map[string]DecisionAnswer) (learning.SemanticJudgments, bool) {
+	var judgments learning.SemanticJudgments
+	for index := 0; ; index++ {
+		answer, ok := answers[fmt.Sprintf("idea_%d", index)]
+		if !ok {
+			break
+		}
+		if answer.Noul == nil {
+			return judgments, false
+		}
+		judgments.Ideas = append(judgments.Ideas, *answer.Noul)
+	}
+	for index := 0; ; index++ {
+		answer, ok := answers[fmt.Sprintf("contradiction_%d", index)]
+		if !ok {
+			break
+		}
+		if answer.Noul == nil {
+			return judgments, false
+		}
+		judgments.Contradictions = append(judgments.Contradictions, *answer.Noul)
+	}
+	relation, ok := answers["relation"]
+	if !ok || relation.Probabilities == nil {
+		return judgments, false
+	}
+	injection, ok := answers["injection"]
+	if !ok || injection.Noul == nil {
+		return judgments, false
+	}
+	judgments.Relation = relation.Choice
+	judgments.RelationProbabilities = relation.Probabilities
+	judgments.Injection = *injection.Noul
+	return judgments, len(judgments.Ideas) > 0
 }

@@ -74,7 +74,10 @@ The tune split has 85 responses.
 The holdout split has 114 responses.
 The semantic policy tables use 71 tune responses and 100 holdout responses.
 
-A human-style gold label was written before the first Jev call.
+The gold label was written before the first Jev call.
+The labels were authored by the Hermes evaluation agent (claude-fable-5-1 via Anthropic) from the public source facts and the authored rubric, in the style of a human rater.
+No human reviewed the labels before the run.
+The label does not use model consensus, and Jev never saw the gold.
 Each label records the objective app action.
 Each semantic label also records every required-idea truth and every contradiction truth.
 Each label has a rationale.
@@ -132,7 +135,9 @@ Three questions also have a non-English correct response.
 ## Current grader baseline
 
 This table uses the one full pass.
-It shows the raw `learning.Grade` outcomes.
+It shows the raw `learning.Grade` outcomes in legacy exact mode.
+The shipped semantic mode no longer emits WRONG for prose recall; it leaves unmatched prose ungraded.
+The exact-mode baseline stays in this table because it is the failure the evaluation measures Jev against.
 The two exact controls remain in the table.
 
 | Bucket | N | correct | close | wrong | ungraded | Gold correct | False-WRONG |
@@ -307,7 +312,7 @@ The two false `incomplete` results came from the vaccine question.
 The short canonical answer said that antigen exposure builds faster memory responses.
 The first rubric idea also stated that vaccination does not require the full disease.
 Jev treated this as one missing idea.
-The frozen human label treated the prompt context and canonical wording as sufficient.
+The frozen agent-authored label treated the prompt context and canonical wording as sufficient.
 This result shows that short canonical answers and detailed rubric atoms need exact alignment before runtime use.
 
 ## Non-English behavior
@@ -437,3 +442,32 @@ It does not add new semantic coverage.
 
 The exact-control Jev calls are diagnostic only.
 Scry must continue to keep deterministic questions exact.
+
+## Shipped policy verification
+
+`go run ./scripts/evals/jev-recall verify` replays every recorded response through the shipped `learning.GradeSemantic` with `learning.SemanticV1Params()`.
+It sends nothing.
+It refuses to run if the shipped thresholds differ from the frozen table above.
+
+Result on the committed `raw.jsonl` (471 recorded semantic responses, one full pass plus three holdout passes):
+
+- 0 class mismatches between the shipped policy and the runner column.
+- The shipped policy applied only `correct`.
+- Every `incomplete` and `incorrect` class was recorded as shadow (`applied=false`) and never reached the learner.
+
+| Holdout shipped class | N | Applied | Shadow | Matches gold | Gold-correct in class |
+|---|---:|---:|---:|---:|---:|
+| correct | 103 | 103 | 0 | 103 | 103 |
+| incomplete | 24 | 0 | 24 | 16 | 8 |
+| incorrect | 71 | 0 | 71 | 71 | 0 |
+| ungraded | 202 | 0 | 0 | 0 | 65 |
+
+The holdout counts cover four passes of the holdout split.
+The 103 applied `correct` decisions had 0 false successes.
+The 8 gold-correct responses in the `incomplete` shadow class are the reason `incomplete` stays in shadow.
+The 65 gold-correct responses left ungraded are the coverage cost of the frozen gates.
+
+Hybrid path: the exact and variant buckets never reach Jev in the product.
+They resolve locally before any assessment is staged.
+The report's `correct` support is therefore only for the prose buckets that the local grader leaves ungraded.
+
