@@ -405,7 +405,10 @@ a native UTC cron at 00:00 and 12:00. While the singleton Container is running,
 the cron executes the existing `scry backup --require-remote` command in that
 instance, checks its success receipt against R2 metadata, and logs the result.
 A failed invocation fails the scheduled event; it does not claim a remote
-snapshot. If the Container is stopped, the cron checks the newest R2 object
+snapshot. Its `[scry-recovery]` log carries the exit code and a redacted last
+stderr line, never stdout. The exec does not inherit the container start
+environment; it receives only the five `SCRY_BACKUP_*` settings. If the
+Container is stopped, the cron checks the newest R2 object
 without waking it. An object older than 24 hours is reported as `idle_stale`;
 that age alone does not show data loss when the writer has been stopped.
 Before a planned idle stop, the Container runs a remote-verified backup and
