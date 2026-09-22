@@ -94,4 +94,3 @@ no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.
 
 Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
 `internal/semantic/client_test.go`, `internal/web/semantic_test.go`
-

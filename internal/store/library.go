@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/misty-step/scry/internal/learning"
 )
@@ -374,8 +375,11 @@ func validateGrading(q GeneratedQuiz) error {
 		if err := validText("required idea", idea.Text, 1024, true); err != nil {
 			return err
 		}
-		if err := validText("missing-idea cue", idea.Cue, 200, false); err != nil {
+		if err := validText("missing-idea cue", idea.Cue, 800, false); err != nil {
 			return err
+		}
+		if utf8.RuneCountInString(idea.Cue) > 200 {
+			return fmt.Errorf("%w: missing-idea cue must be at most 200 characters", ErrInvalid)
 		}
 		if idea.Cue != "" && (strings.Contains(idea.Cue, strings.TrimSpace(q.Answer)) || strings.Contains(idea.Cue, strings.TrimSpace(idea.Text))) {
 			return fmt.Errorf("%w: a missing-idea cue must not contain the expected answer or required idea verbatim", ErrInvalid)
@@ -385,8 +389,11 @@ func validateGrading(q GeneratedQuiz) error {
 		if err := validText("contradiction", claim.Text, 1024, true); err != nil {
 			return err
 		}
-		if err := validText("contradiction feedback", claim.Feedback, 400, false); err != nil {
+		if err := validText("contradiction feedback", claim.Feedback, 1600, false); err != nil {
 			return err
+		}
+		if utf8.RuneCountInString(claim.Feedback) > 400 {
+			return fmt.Errorf("%w: contradiction feedback must be at most 400 characters", ErrInvalid)
 		}
 	}
 	return nil

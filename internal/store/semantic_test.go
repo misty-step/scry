@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -260,6 +261,20 @@ func TestEditQuizValidatesSemanticRubricAndDeterministicTaskBoundary(t *testing.
 	}
 }
 
+func TestSemanticRubricLimitsCountCharactersNotUTF8Bytes(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	src := publishFixture(t, s, GeneratedQuiz{
+		Kind: "recall", Prompt: "Original exact recall?", Answer: "Original answer", Explanation: "Original explanation.", Basis: "topic",
+	})
+	q := authoredSemantic()
+	q.Rubric.Required[0].Cue = strings.Repeat("界", 200)
+	q.Rubric.Contradictions[0].Feedback = strings.Repeat("界", 400)
+	if _, err := s.EditQuiz(ctx, src.Quizzes[0].ID, 1, q); err != nil {
+		t.Fatalf("valid character-bounded rubric rejected: %v", err)
+	}
+}
+
 func TestSchemaV3ToV4MigrationAndAssessmentExport(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "populated-v3.sqlite")
@@ -288,6 +303,8 @@ func TestSchemaV3ToV4MigrationAndAssessmentExport(t *testing.T) {
 		`INSERT INTO quizzes VALUES('quiz','src',1,0,1700000000000,'job',0)`,
 		`INSERT INTO quiz_versions VALUES('quiz',1,'` + quizJSON + `','old-model','old-prompt',1700000000000)`,
 		`INSERT INTO schedules VALUES('quiz',1,'` + card + `',1700000000000,'` + learning.Algorithm + `')`,
+		`INSERT INTO presentations VALUES('presentation','quiz',1,1,'` + quizJSON + `',1700000000001,'Old answer','correct',0,1,3,1700000000000,1700000000002,'review')`,
+		`INSERT INTO review_events VALUES('review','presentation','` + quizJSON + `','Old answer','correct',3,0,1700000000002,1700000000000,'` + learning.Algorithm + `','` + card + `','` + card + `',1,1)`,
 		`INSERT INTO concepts VALUES('concept','Old concept','Preserved',1700000000000)`,
 		`INSERT INTO concept_quizzes VALUES('concept','quiz',1700000000000)`,
 	}
@@ -326,15 +343,19 @@ func TestSchemaV3ToV4MigrationAndAssessmentExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	var version, sources, concepts int
+	var version, sources, concepts, reviews int
+	var migratedGrading string
 	if err = s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err == nil {
 		err = s.db.QueryRowContext(ctx, "SELECT count(*) FROM sources").Scan(&sources)
 	}
 	if err == nil {
 		err = s.db.QueryRowContext(ctx, "SELECT count(*) FROM concepts").Scan(&concepts)
 	}
-	if err != nil || version != 4 || sources != 1 || concepts != 1 {
-		t.Fatalf("migration did not preserve v3 rows: version=%d sources=%d concepts=%d err=%v", version, sources, concepts, err)
+	if err == nil {
+		err = s.db.QueryRowContext(ctx, "SELECT count(*),min(grading) FROM review_events").Scan(&reviews, &migratedGrading)
+	}
+	if err != nil || version != 4 || sources != 1 || concepts != 1 || reviews != 1 || migratedGrading != "exact-v1" {
+		t.Fatalf("migration did not preserve v3 rows: version=%d sources=%d concepts=%d reviews=%d grading=%q err=%v", version, sources, concepts, reviews, migratedGrading, err)
 	}
 
 	// Add a semantic assessment in the migrated store and prove both new export
