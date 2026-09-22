@@ -48,3 +48,7 @@ bun-debug.log*
 # Local provider handoff state
 .pi/state/
 .harness-kit/traces/
+
+# Container image build context carries the release binary copied from the
+# operator release; it is never source (deploy/cloudflare-hosting/README.md).
+deploy/cloudflare-hosting/scry

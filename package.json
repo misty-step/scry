@@ -4,8 +4,12 @@
   "description": "Scry's private Go, SQLite and HTMX learning application.",
   "license": "MIT",
   "private": true,
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "jose": "^6.2.12",
     "wrangler": "4.129.0"
   },
   "scripts": {

@@ -8,5 +8,12 @@
   "preview_urls": false,
   "send_metrics": false,
   "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false } },
-  "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }]
+  "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }],
+  "env": {
+    "staging": {
+      "name": "scry-go-backups-staging",
+      "workers_dev": true,
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery-staging" }]
+    }
+  }
 }
