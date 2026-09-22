@@ -10,9 +10,20 @@ import (
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v4"
 )
 
-// Algorithm pins the dependency, its default weights, and all policy choices.
-// Recognition and recall share scheduling, but remain distinct in quiz history.
-const Algorithm = "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1"
+// Scheduler pins the FSRS dependency, its default weights, and every scheduling
+// policy choice. It is the identity of the schedule-card contract.
+const Scheduler = "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m"
+
+// Algorithm is the historical combined identity: the scheduler plus the exact
+// grading policy. Its value is frozen because schedule cards and every review
+// event written before semantic grading carry it verbatim. Recognition and
+// recall share scheduling, but remain distinct in quiz history.
+const Algorithm = Scheduler + ";grading=exact-v1"
+
+// EventAlgorithm names the effective policy behind one review event: the pinned
+// scheduler joined with the grading policy that produced the event. Exact events
+// keep the historical Algorithm value; semantic events name their own policy.
+func EventAlgorithm(grading string) string { return Scheduler + ";grading=" + grading }
 
 // Card is the complete portable scheduler state, not a second scheduling model.
 type Card = fsrs.Card

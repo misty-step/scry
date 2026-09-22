@@ -22,8 +22,9 @@ type RubricClaim struct {
 }
 
 // Params freezes the code-owned thresholds used to turn Jev judgments into a
-// scheduling decision. Incorrect is intentionally disabled until holdout
-// evidence supports granting Jev authority to record misses.
+// scheduling decision. Incomplete and incorrect are shadow classes until holdout
+// evidence supports granting Jev authority over cues or misses: the decision is
+// recorded, but the learner sees plain ungraded and no assistance is charged.
 type Params struct {
 	PolicyVersion            string
 	IdeaThreshold            float64
@@ -33,11 +34,14 @@ type Params struct {
 	RelationThreshold        float64
 	PartialRelationThreshold float64
 	InjectionThreshold       float64
+	IncompleteEnabled        bool
 	IncorrectEnabled         bool
 }
 
-// SemanticV1Params is the single source of the initial semantic-v1 policy
-// parameters authorized for the bounded rollout.
+// SemanticV1Params is the single source of the semantic-v1 policy parameters
+// authorized for the bounded rollout. RelationThreshold was raised from the
+// initial 0.75 to the tune-split frozen 0.85 on 2026-09-22; no threshold was
+// ever lowered to widen acceptance.
 func SemanticV1Params() Params {
 	return Params{
 		PolicyVersion:            SemanticPolicyVersion,
@@ -45,9 +49,10 @@ func SemanticV1Params() Params {
 		IdeaLowThreshold:         0.35,
 		ContradictionLow:         0.20,
 		ContradictionHigh:        0.90,
-		RelationThreshold:        0.75,
+		RelationThreshold:        0.85,
 		PartialRelationThreshold: 0.60,
 		InjectionThreshold:       0.20,
+		IncompleteEnabled:        false,
 		IncorrectEnabled:         false,
 	}
 }
@@ -62,14 +67,24 @@ type SemanticJudgments struct {
 	Injection             float64
 }
 
-// SemanticDecision is policy output, not provider output. MissingIdea and
-// Contradiction are rubric indexes; -1 means no authored cue/feedback applies.
+// SemanticDecision is policy output, not provider output. Decision names the
+// policy class the evidence supports. Applied reports whether these Params grant
+// that class authority over the occurrence; a shadow class is recorded for
+// evaluation but the learner outcome stays ungraded with no assistance charged.
+// MissingIdea and Contradiction are rubric indexes; -1 means no authored
+// cue/feedback applies.
 type SemanticDecision struct {
 	Decision      string
+	Applied       bool
 	Outcome       string
 	Rating        int
 	MissingIdea   int
 	Contradiction int
+}
+
+func shadow(d SemanticDecision) SemanticDecision {
+	d.Applied, d.Outcome, d.Rating = false, "ungraded", 0
+	return d
 }
 
 // GradeSemantic applies semantic-v1 without HTTP, storage, logging, or other
@@ -109,13 +124,19 @@ func GradeSemantic(j SemanticJudgments, p Params) SemanticDecision {
 		contradictionsLow = contradictionsLow && probability <= p.ContradictionLow
 	}
 	if ideasComplete && contradictionsLow && j.Relation == "equivalent" && relationProbability >= p.RelationThreshold && j.Injection <= p.InjectionThreshold {
-		return SemanticDecision{Decision: "correct", Outcome: "correct", Rating: 3, MissingIdea: -1, Contradiction: -1}
+		return SemanticDecision{Decision: "correct", Applied: true, Outcome: "correct", Rating: 3, MissingIdea: -1, Contradiction: -1}
 	}
 
-	if p.IncorrectEnabled && j.Relation == "different" && relationProbability >= p.RelationThreshold {
+	// Shadow classes are always evaluated so the recorded decision is comparable
+	// with holdout evidence; only enabled classes gain authority.
+	if j.Relation == "different" && relationProbability >= p.RelationThreshold {
 		for index, probability := range j.Contradictions {
 			if probability >= p.ContradictionHigh {
-				return SemanticDecision{Decision: "incorrect", Outcome: "wrong", Rating: 1, MissingIdea: -1, Contradiction: index}
+				decision := SemanticDecision{Decision: "incorrect", Applied: true, Outcome: "wrong", Rating: 1, MissingIdea: -1, Contradiction: index}
+				if !p.IncorrectEnabled {
+					return shadow(decision)
+				}
+				return decision
 			}
 		}
 	}
@@ -132,7 +153,11 @@ func GradeSemantic(j SemanticJudgments, p Params) SemanticDecision {
 			}
 		}
 		if missing >= 0 {
-			return SemanticDecision{Decision: "incomplete", Outcome: "incomplete", MissingIdea: missing, Contradiction: -1}
+			decision := SemanticDecision{Decision: "incomplete", Applied: true, Outcome: "incomplete", MissingIdea: missing, Contradiction: -1}
+			if !p.IncompleteEnabled {
+				return shadow(decision)
+			}
+			return decision
 		}
 	}
 	return ungraded
