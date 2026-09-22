@@ -8,47 +8,73 @@
   "preview_urls": false,
   "send_metrics": false,
   "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false } },
-  "containers": [
-    {
-      "name": "scry-app-container",
-      "class_name": "ScryContainer",
-      "image": "./Dockerfile",
-      "max_instances": 1,
-      "instance_type": "lite"
-    }
-  ],
-  "durable_objects": {
-    "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScryContainer"] }],
   "env": {
-    // Staging: workers.dev hostname, synthetic environment, NO R2 binding.
-    // Proves the container shape boots and the Access gate denies anonymous
-    // traffic before any production name or data is touched.
+    // Isolated synthetic staging. The final staged state always restores from
+    // its own R2 bucket; synthetic-fresh exists only as an explicit bootstrap
+    // mode and is never configured for recovered/live environments.
     "staging": {
       "name": "scry-app-host-staging",
       "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScryContainer"] }],
+      "containers": [
+        {
+          "name": "scry-app-container-staging",
+          "class_name": "ScryContainer",
+          "image": "./Dockerfile",
+          "max_instances": 1,
+          "instance_type": "lite"
+        }
+      ],
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery-staging" }],
       "vars": {
+        "SCRY_BOOT_MODE": "restore-required",
+        "SCRY_DATA_CLASS": "synthetic",
+        "SCRY_SLEEP_AFTER": "1m",
         "SCRY_BASE_URL": "https://scry-app-host-staging.misty-step.workers.dev",
-        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
-        "SCRY_ACCESS_AUD": "set-after-access-app-creation",
-        "SCRY_REDIRECT_HOSTS": ""
+        "SCRY_REDIRECT_HOSTS": "",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step-pantry.cloudflareaccess.com",
+        "SCRY_BACKUP_REMOTE_URL": "https://scry-go-backups-staging.misty-step.workers.dev",
+        "SCRY_GENERATION_DAILY_BUDGET_MICROS": "1000000",
+        "SCRY_GENERATION_RESERVATION_MICROS": "200000"
       }
     },
-    // First production attach: mistystep.io zone (active, CF NS). Proves the
-    // whole stack with real data before the scry.study NS flip.
+    // First real-data pre-cutover attach. Do not deploy until the retained
+    // origin is write-paused and a fresh, independently verified snapshot exists.
     "mistystep-prod": {
       "name": "scry-app-host",
       "workers_dev": false,
       "routes": [{ "pattern": "scry.mistystep.io", "custom_domain": true }],
-      "vars": {
-        "SCRY_BASE_URL": "https://scry.mistystep.io",
-        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
-        "SCRY_ACCESS_AUD": "set-after-access-app-creation"
+      "durable_objects": {
+        "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
       },
-      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }]
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScryContainer"] }],
+      "containers": [
+        {
+          "name": "scry-app-container",
+          "class_name": "ScryContainer",
+          "image": "./Dockerfile",
+          "max_instances": 1,
+          "instance_type": "lite"
+        }
+      ],
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }],
+      "vars": {
+        "SCRY_BOOT_MODE": "restore-required",
+        "SCRY_DATA_CLASS": "recovered",
+        "SCRY_SLEEP_AFTER": "24h",
+        "SCRY_BASE_URL": "https://scry.mistystep.io",
+        "SCRY_REDIRECT_HOSTS": "",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step-pantry.cloudflareaccess.com",
+        "SCRY_BACKUP_REMOTE_URL": "https://scry-go-backups.misty-step.workers.dev",
+        "SCRY_GENERATION_DAILY_BUDGET_MICROS": "1000000",
+        "SCRY_GENERATION_RESERVATION_MICROS": "200000"
+      }
     },
-    // Final production: canonical scry.study + www alias.
+    // Final production. The two alternate hosts redirect reads only; Scry's
+    // canonical-host guard rejects mutation replay across origins.
     "production": {
       "name": "scry-app-host",
       "workers_dev": false,
@@ -57,12 +83,31 @@
         { "pattern": "www.scry.study", "custom_domain": true },
         { "pattern": "scry.mistystep.io", "custom_domain": true }
       ],
-      "vars": {
-        "SCRY_BASE_URL": "https://scry.study",
-        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step.cloudflareaccess.com",
-        "SCRY_ACCESS_AUD": "set-after-access-app-creation"
+      "durable_objects": {
+        "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
       },
-      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }]
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ScryContainer"] }],
+      "containers": [
+        {
+          "name": "scry-app-container",
+          "class_name": "ScryContainer",
+          "image": "./Dockerfile",
+          "max_instances": 1,
+          "instance_type": "lite"
+        }
+      ],
+      "r2_buckets": [{ "binding": "RECOVERY", "bucket_name": "scry-go-recovery" }],
+      "vars": {
+        "SCRY_BOOT_MODE": "restore-required",
+        "SCRY_DATA_CLASS": "recovered",
+        "SCRY_SLEEP_AFTER": "24h",
+        "SCRY_BASE_URL": "https://scry.study",
+        "SCRY_REDIRECT_HOSTS": "www.scry.study,scry.mistystep.io",
+        "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step-pantry.cloudflareaccess.com",
+        "SCRY_BACKUP_REMOTE_URL": "https://scry-go-backups.misty-step.workers.dev",
+        "SCRY_GENERATION_DAILY_BUDGET_MICROS": "1000000",
+        "SCRY_GENERATION_RESERVATION_MICROS": "200000"
+      }
     }
   }
 }

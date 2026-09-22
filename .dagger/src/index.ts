@@ -32,6 +32,13 @@ export class Scry {
       .withExec(['mkdir', '-p', '/opt/scry-critics'])
       .withWorkdir('/opt/scry-critics')
       .withExec(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', `playwright@${PLAYWRIGHT_VERSION}`]);
+    // Resolve Worker/runtime imports from the committed lockfile. Keep this
+    // outside /input/source so the frozen source inventory remains unchanged.
+    const workerDependencies = dag.container({ platform: 'linux/amd64' as Platform })
+      .from(NODE_IMAGE)
+      .withDirectory('/input', source)
+      .withWorkdir('/input/source')
+      .withExec(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error']);
     const node = dag.container({ platform: 'linux/amd64' as Platform }).from(NODE_IMAGE);
     return dag.container({ platform: 'linux/amd64' as Platform })
       .from(GO_IMAGE)
@@ -42,6 +49,7 @@ export class Scry {
       .withMountedCache('/go/pkg/mod', dag.cacheVolume('scry-go-mod-1.27'))
       .withMountedCache('/root/.cache/go-build', dag.cacheVolume('scry-go-build-1.27'))
       .withDirectory('/input', source)
+      .withDirectory('/input/node_modules', workerDependencies.directory('/input/source/node_modules'))
       .withNewFile('/input/gitleaks.txt', secretsProof)
       .withWorkdir('/input/source')
       .withExec([

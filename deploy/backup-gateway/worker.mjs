@@ -11,6 +11,13 @@ function response(body, status, headers = {}) {
   });
 }
 
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index++) difference |= a[index] ^ b[index];
+  return difference === 0;
+}
+
 async function authorized(request, env) {
   const supplied = request.headers.get("authorization") || "";
   // The original token keeps the VM/exe-integration path unchanged; the
@@ -21,7 +28,7 @@ async function authorized(request, env) {
     if (!secret || secret.length < 32) continue;
     const expected = `Bearer ${secret}`;
     if (supplied.length !== expected.length) continue;
-    if (crypto.subtle.timingSafeEqual(encoder.encode(supplied), encoder.encode(expected))) return true;
+    if (timingSafeEqual(encoder.encode(supplied), encoder.encode(expected))) return true;
   }
   return false;
 }

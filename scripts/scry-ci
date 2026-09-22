@@ -213,11 +213,18 @@ def gate(args):
     for command in (["go", "test", "-count=1", "-mod=readonly", "./..."],
                     ["go", "vet", "-mod=readonly", "./..."],
                     ["node", "--check", "internal/web/assets/app.js"],
-                    ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"],
-                    ["node", "--check", "deploy/backup-gateway/worker.mjs"],
-                    ["node", "--check", "deploy/cloudflare-hosting/index.mjs"],
-                    ["node", "--check", "deploy/cloudflare-hosting/container.mjs"]):
+                    ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"]):
         run(command, cwd=source, env=env, log=log)
+    deployment_js = sorted(
+        str(path.relative_to(source))
+        for pattern in ("deploy/backup-gateway/*.mjs", "deploy/cloudflare-hosting/*.mjs")
+        for path in source.glob(pattern))
+    require(deployment_js, "no hosting JavaScript found")
+    for path in deployment_js:
+        run(["node", "--check", path], cwd=source, env=env, log=log)
+    deployment_tests = [path for path in deployment_js if ".test." in path]
+    require(deployment_tests, "no hosting regression tests found")
+    run(["node", "--test", "--test-timeout=180000", *deployment_tests], cwd=source, env=env, log=log)
     critic_files = sorted(
         str(path.relative_to(source))
         for pattern in ("scripts/critics/run.mjs", "scripts/critics/lib/*.mjs", "scripts/critics/tests/**/*.mjs")
@@ -265,7 +272,7 @@ def gate(args):
         "binary_sha256": binary_sha256, "build_command": build,
         "build_environment": {key: env[key] for key in ("GOOS", "GOARCH", "GOAMD64", "CGO_ENABLED", "GOTOOLCHAIN")},
         "go_version": go_version, "node_version": node_version,
-        "checks": ["gofmt", "go test", "go vet", "browser/gateway JavaScript syntax", "critic suite with real Chromium (pinned Playwright)", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
+        "checks": ["gofmt", "go test", "go vet", "browser/hosting JavaScript syntax and regressions", "critic suite with real Chromium (pinned Playwright)", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
     })
     (output / "proof.json").write_bytes(encoded(proof))
     files = sorted(path for path in output.iterdir() if path.is_file())
@@ -304,6 +311,12 @@ def delivery(args):
             require(scan.returncode == 0, "redacted Gitleaks scan failed")
             secrets_proof = work / "gitleaks.txt"
             secrets_proof.write_bytes(scan_output)
+            # Install the lockfile-pinned Worker dependencies one directory above
+            # the frozen source. Node resolves bare ESM imports from that parent,
+            # while source verification and the release archive remain byte-exact.
+            shutil.copyfile(package / "source/package.json", package / "package.json")
+            shutil.copyfile(package / "source/package-lock.json", package / "package-lock.json")
+            run(["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=package, env=env)
             run([sys.executable, package / "source/scripts/scry-ci", "gate",
                  "--source", package / "source", "--metadata", package / "source.json",
                  "--secrets-proof", secrets_proof, "--out", output], cwd=package / "source", env=env)
