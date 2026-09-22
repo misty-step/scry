@@ -38,6 +38,51 @@ function boot(extra = {}) {
   });
 }
 
+test("nginx uses inherited stderr when the platform forbids reopening its device path", () => {
+  const f = fixture();
+  try {
+    const state = path.join(f.root, "state");
+    const template = path.join(f.root, "nginx.conf");
+    const server = path.join(f.root, "listen.mjs");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(template, "owner __SCRY_OWNER_ID__\n");
+    writeFileSync(
+      server,
+      'import net from "node:net";\nconst listener = net.createServer();\nlistener.listen(8081, "127.0.0.1");\nsetTimeout(() => listener.close(), 2500);\n',
+    );
+    writeFileSync(
+      f.scry,
+      '#!/bin/sh\ncase "$1" in\n  serve) exec "$NODE_BIN" "$TCP_SERVER" ;;\n  *) exit 0 ;;\nesac\n',
+    );
+    chmodSync(f.scry, 0o755);
+    command(
+      f.bin,
+      "nginx",
+      'log_target=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in\n    -e) log_target=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nif [ "$log_target" != stderr ]; then\n  printf \'nginx: open() "/dev/stderr" failed (6: No such device or address)\\n\' >&2\n  exit 1\nfi\nprintf "%s\\n" "$$" > "$SCRY_STATE_DIR/nginx.pid"',
+    );
+
+    const result = boot({
+      PATH: `${f.bin}:${process.env.PATH}`,
+      SCRY_BOOT_MODE: "synthetic-fresh",
+      SCRY_DATA_CLASS: "synthetic",
+      SCRY_STATE_DIR: state,
+      SCRY_BIN: f.scry,
+      SCRY_NGINX_TEMPLATE: template,
+      SCRY_STARTUP_TIMEOUT_SECONDS: "5",
+      SCRY_BACKUP_REMOTE_URL: "",
+      SCRY_OWNER_ID: "synthetic-owner",
+      NODE_BIN: process.execPath,
+      TCP_SERVER: server,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /application listener ready/);
+    assert.doesNotMatch(result.stderr, /open\(\) "\/dev\/stderr" failed/);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("restore-required boot refuses missing recovery configuration before serving", () => {
   const result = boot();
 

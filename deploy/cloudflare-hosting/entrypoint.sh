@@ -159,9 +159,10 @@ SCRY_PID=$!
 say "scry process started on loopback; waiting for listener"
 wait_for_scry
 
-# -e redirects the early-startup error log (opened before the config is
-# read) so the unprivileged default path under /var/lib/nginx is never used.
-"$NGINX_BIN" -e /dev/stderr -c "$CONF"
+# -e redirects the early-startup error log (opened before the config is read)
+# to nginx's inherited stderr descriptor. Do not name the stderr device here:
+# socket-backed container log descriptors cannot be reopened by pathname.
+"$NGINX_BIN" -e stderr -c "$CONF"
 NGINX_PID=$(cat "$state_dir/nginx.pid")
 
 shutdown() {
