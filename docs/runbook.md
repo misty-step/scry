@@ -66,8 +66,12 @@ proof that a newer acknowledged write survived.
 Production Access without credentials redirects to login. A temporary service
 identity could only reach the readiness probe; owner root returned 403 and a
 wrong probe token returned 401. The temporary policy and token were deleted;
-the owner-only policy remained. A real owner login and physical-phone flow on
-the new audience have not yet been observed. Do not mark that acceptance passed.
+the owner-only policy remained. In response to the production-phone checklist
+for entry, retained material, one review and deliberate Next, the principal
+reported "the phone works." This satisfies the human-input condition as an
+owner-reported phone pass, not independent observation of a fresh Cloudflare
+Access challenge or of each UI step. Do not ask for a repeat login. The
+machine-owned alias authentication/mutation probes remain separate.
 An unnecessary new OpenRouter key was briefly issued at $1/day instead of the
 existing Scry key's $0.25/week cap; it made no paid calls and was reduced and
 disabled. A temporary replacement app secret and generated probe/backup values
@@ -541,8 +545,8 @@ Private cutover archives and compatible binaries live under the operator's
   `04-production-remote-snapshot-proof.json`, and `CLOSEOUT-READBACK.md`) live in
   the private operator reports directory, not this public repository. The
   machine-owned Access probes are not instructions for a human to manufacture
-  authenticated HTTP mutations. The remaining phone check is an actual owner
-  sign-in and normal review/Next, not an automated acceptance claim.
+  authenticated HTTP mutations. The principal's phone report is human
+  acceptance, not an automated/fresh-login proof or Jev feature activation.
 - [Earlier private Go acceptance](qa/personal-go-acceptance-20260909.json): live
   generation, trusted touch, interrupted access/response recovery, data restore.
 - [September 9–10 cutover acceptance](qa/personal-go-cutover-20260910.json):
