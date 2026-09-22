@@ -455,17 +455,31 @@ Result on the committed `raw.jsonl` (471 recorded semantic responses, one full p
 - The shipped policy applied only `correct`.
 - Every `incomplete` and `incorrect` class was recorded as shadow (`applied=false`) and never reached the learner.
 
-| Holdout shipped class | N | Applied | Shadow | Matches gold | Gold-correct in class |
-|---|---:|---:|---:|---:|---:|
-| correct | 103 | 103 | 0 | 103 | 103 |
-| incomplete | 24 | 0 | 24 | 16 | 8 |
-| incorrect | 71 | 0 | 71 | 71 | 0 |
-| ungraded | 202 | 0 | 0 | 0 | 65 |
+The holdout split has 100 semantic responses.
+The four passes repeat those same 100 responses.
+`N` counts decisions across the four passes.
+`Unique` counts distinct responses.
+The 103 `correct` decisions are 26 unique responses, not 103 independent examples.
 
-The holdout counts cover four passes of the holdout split.
-The 103 applied `correct` decisions had 0 false successes.
-The 8 gold-correct responses in the `incomplete` shadow class are the reason `incomplete` stays in shadow.
-The 65 gold-correct responses left ungraded are the coverage cost of the frozen gates.
+| Holdout shipped class | N | Unique | Applied | Shadow | Matches gold | Gold-correct in class |
+|---|---:|---:|---:|---:|---:|---:|
+| correct | 103 | 26 | 103 | 0 | 103 | 103 |
+| incomplete | 24 | 6 | 0 | 24 | 16 | 8 |
+| incorrect | 71 | 18 | 0 | 71 | 71 | 0 |
+| ungraded | 202 | 52 | 0 | 0 | 0 | 65 |
+
+| Pass | correct | incomplete | incorrect | ungraded |
+|---|---:|---:|---:|---:|
+| full | 25 | 6 | 18 | 51 |
+| holdout-repeat-1 | 26 | 6 | 18 | 50 |
+| holdout-repeat-2 | 26 | 6 | 17 | 51 |
+| holdout-repeat-3 | 26 | 6 | 18 | 50 |
+
+One response moved between `ungraded` and `correct` across passes.
+One response moved between `incorrect` and `ungraded` across passes.
+No pass produced a false success.
+The 8 gold-correct decisions in the `incomplete` shadow class are 2 unique responses seen four times; they are the reason `incomplete` stays in shadow.
+The 65 gold-correct decisions left ungraded are about 17 unique responses per pass; that is the coverage cost of the frozen gates.
 
 Hybrid path: the exact and variant buckets never reach Jev in the product.
 They resolve locally before any assessment is staged.

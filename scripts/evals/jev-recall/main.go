@@ -1819,6 +1819,10 @@ func verifyCommand(args []string) error {
 	}
 	type cell struct{ applied, shadow, gold, agree, total int }
 	holdout := map[string]*cell{}
+	// Unique holdout responses per shipped class, so repeated passes are not
+	// misread as independent examples.
+	unique := map[string]map[string]bool{}
+	perRun := map[string]map[string]int{}
 	mismatches := 0
 	compared := 0
 	for _, record := range records {
@@ -1851,6 +1855,14 @@ func verifyCommand(args []string) error {
 			holdout[decision.Decision] = c
 		}
 		c.total++
+		if unique[decision.Decision] == nil {
+			unique[decision.Decision] = map[string]bool{}
+		}
+		unique[decision.Decision][record.ResponseID] = true
+		if perRun[record.RunID] == nil {
+			perRun[record.RunID] = map[string]int{}
+		}
+		perRun[record.RunID][decision.Decision]++
 		if decision.Applied {
 			c.applied++
 		} else if decision.Decision != "ungraded" {
@@ -1864,14 +1876,25 @@ func verifyCommand(args []string) error {
 		}
 	}
 	fmt.Printf("Shipped policy %s replayed on %d recorded semantic responses; %d class mismatches against the runner column.\n", shipped.PolicyVersion, compared, mismatches)
-	fmt.Println("| Holdout shipped class | N | Applied | Shadow | Matches gold | Gold-correct in class |")
-	fmt.Println("|---|---:|---:|---:|---:|---:|")
+	runIDs := make([]string, 0, len(perRun))
+	for id := range perRun {
+		runIDs = append(runIDs, id)
+	}
+	sort.Strings(runIDs)
+	fmt.Printf("Holdout rows below sum %d passes (%s); N counts decisions, Unique counts distinct responses.\n", len(runIDs), strings.Join(runIDs, ", "))
+	fmt.Println("| Holdout shipped class | N | Unique | Applied | Shadow | Matches gold | Gold-correct in class |")
+	fmt.Println("|---|---:|---:|---:|---:|---:|---:|")
 	for _, name := range []string{"correct", "incomplete", "incorrect", "ungraded"} {
 		c := holdout[name]
 		if c == nil {
 			c = &cell{}
 		}
-		fmt.Printf("| %s | %d | %d | %d | %d | %d |\n", name, c.total, c.applied, c.shadow, c.agree, c.gold)
+		fmt.Printf("| %s | %d | %d | %d | %d | %d | %d |\n", name, c.total, len(unique[name]), c.applied, c.shadow, c.agree, c.gold)
+	}
+	fmt.Println("| Pass | correct | incomplete | incorrect | ungraded |")
+	fmt.Println("|---|---:|---:|---:|---:|")
+	for _, id := range runIDs {
+		fmt.Printf("| %s | %d | %d | %d | %d |\n", id, perRun[id]["correct"], perRun[id]["incomplete"], perRun[id]["incorrect"], perRun[id]["ungraded"])
 	}
 	if c := holdout["correct"]; c != nil && c.agree != c.total {
 		return fmt.Errorf("shipped policy produced %d false successes on holdout", c.total-c.agree)
