@@ -67,4 +67,6 @@ test("idle stop requires a verified backup and keeps the writer on failure", asy
   await stopAfterBackup({ backup: async () => { throw new Error("remote unavailable"); }, stop, log });
   assert.equal(stopped, 1);
   assert.deepEqual(messages, ["[scry-recovery] idle stop deferred: remote backup failed"]);
+  await stopAfterBackup({ backup: async () => ({ state: "backed_up" }), stop, log, canStop: () => false });
+  assert.equal(stopped, 1, "a request during the backup must cancel the idle stop");
 });

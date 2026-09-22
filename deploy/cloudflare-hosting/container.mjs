@@ -31,7 +31,14 @@ export class ScryContainer extends Container {
   }
 
   async fetch(request) {
-    return this.startupOnlyFetch(request);
+    this.activityGeneration = (this.activityGeneration || 0) + 1;
+    this.activeRequests = (this.activeRequests || 0) + 1;
+    try {
+      return await this.startupOnlyFetch(request);
+    } finally {
+      this.activeRequests--;
+      this.activityGeneration++;
+    }
   }
 
   forwardToContainer(request) {
@@ -63,10 +70,12 @@ export class ScryContainer extends Container {
   }
 
   async onActivityExpired() {
+    const before = this.activityGeneration || 0;
     await stopAfterBackup({
       backup: () => this.scheduledBackup(),
       stop: () => this.stop(),
       log: message => console.error(message),
+      canStop: () => this.activityGeneration === before && !this.activeRequests,
     });
   }
 

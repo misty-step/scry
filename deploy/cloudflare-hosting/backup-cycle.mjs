@@ -36,7 +36,7 @@ export async function runBackupCycle({ running, execute, latest, head, now = Dat
   return { state: "backed_up", key: record.remote_key, sha256: record.sha256, bytes: record.bytes };
 }
 
-export async function stopAfterBackup({ backup, stop, log }) {
+export async function stopAfterBackup({ backup, stop, log, canStop = () => true }) {
   let result;
   try {
     result = await backup();
@@ -47,5 +47,6 @@ export async function stopAfterBackup({ backup, stop, log }) {
     log("[scry-recovery] idle stop deferred: remote backup failed");
     return;
   }
+  if (!canStop()) return;
   await stop();
 }
