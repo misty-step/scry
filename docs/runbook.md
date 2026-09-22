@@ -9,27 +9,84 @@ The [September 12 operator assessment](design/concept-centered-study.md#operator
 rejects the foundations experience and calls for design reset, not another
 technical gate. Earlier phone-flow approval does not cover that experience.
 
-The recorded production baseline below is from the
-[September 11 rollout and live QA receipt](qa/foundation-rollout-20260911.json),
-not a fresh runtime probe. Scry is one private Go process and SQLite database
-on **`scry-app.exe.xyz`**. The canonical application is **https://scry.study**.
-`www.scry.study` and `scry-app.exe.xyz`
-redirect reads to that origin; mutations on aliases are rejected, not replayed.
-The old Worker is not the live learner store. `scry-dev.exe.xyz` remains an
-isolated development/recovery environment, not a second production writer; its
-restored rehearsal service is stopped/disabled.
+As of September 22, the canonical application is **https://scry.study** on
+Cloudflare Worker `scry-app-host` and singleton Container `scry-app-container`.
+Cloudflare Access gates `scry.study`, `www.scry.study`, and `scry.mistystep.io`
+with one audience and one exact owner-email policy. The Worker checks the
+owner subject before forwarding to nginx; nginx injects the preserved Scry
+owner ID. The two alternate hosts redirect reads only and reject mutations.
+The old `scry-app.exe.xyz` VM service is stopped and disabled with its schema-3
+database intact.
+Do not start it while the target can write schema 4. The old Rust Worker is not
+the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance.
 
 | Boundary | Authority |
 | --- | --- |
-| Application | `cmd/scry`, `internal/`, one unprivileged `scry.service` on `scry-app` |
-| Live data | `/var/lib/scry/scry.sqlite` and SQLite sidecars on `scry-app` |
-| Browser identity | Private exe.dev ingress, exact stable owner UserID, trusted proxy peer, Host/origin and CSRF checks |
-| Model requests | Scry-only `scry-model` exe integration; OpenRouter key remains outside the VM |
+| Application | `cmd/scry`, `internal/`, one Cloudflare Container behind `scry-app-host` |
+| Live data | Container SQLite at `/var/lib/scry/data/scry.sqlite`; one writer |
+| Browser identity | Cloudflare Access owner policy and immutable subject guard, then exact app owner ID, loopback ingress, Host/origin and CSRF checks |
+| Model requests | Existing Scry-only OpenRouter key; direct HTTPS chat completions from the Container |
 | Recovery | Local consistent archives plus append/read-only `scry-go-backups` Worker and private `scry-go-recovery` R2 bucket |
-| DNS | Existing DigitalOcean `scry.study` zone; exe.dev handles custom-domain TLS and private ingress |
+| DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-The release observed on September 11 was `mis59-4e13cafef7c3`, compiled from committed revision
+### September 22 hosting cutover state
+
+Protected PR [168](https://github.com/misty-step/scry/pull/168) merged at
+`e1a981d3bfff518d96dbcc4306c135fb62a96901`. Its tree equals the tested
+`a36e796e241cdc3612e7b7a2bd422d32263dbdba` integration tree; the merge
+SHA is source provenance, not a rebuild of the staged binary. The complete
+candidate also includes Jev product PRs 170/171 and the schema-4 migration;
+the narrow final nginx fix alone did not change application behavior. Hosted
+master CI run `35781708916` passed. The production
+binary SHA-256 is `294b61aeefbb16a11a39c6d5467527c1067fefd3dfccdd2a7f2f8445c3651e75`;
+the pinned image digest is `sha256:1b165833050cc194ff09146d4c312540ac9b7afd83fad9ab637d3cf706376209`.
+The production Worker version at cutover is
+`0920a47f-fe9a-432f-b465-e32f21483102`. The production Container uses
+restore-required mode, the recovered data class, and a 24-hour idle window.
+The final VM snapshot `scry-20260922T210233.992750553Z-5bf7ed2a33dd3452b2ae76f9a4c054be.scry-backup.zip`
+was read back independently from R2 with SHA-256
+`6b664324fed9039d922a6b27b76129af6e7139e9f612014fbdbfbaaf625d34b7`.
+The target restored it and migrated schema 3 to 4. The target's remote snapshot
+`scry-20260922T212025.301631528Z-c1cd0425e5a4677b4b0842168a9b70e2.scry-backup.zip`
+was read back and checked at schema 4. Every source table's historical columns
+retained its rows except the expected appended backup ledger. A subsequent cold
+wake restored that exact target snapshot. The source service remains disabled;
+verify both `systemctl is-enabled` and `systemctl is-active` before any recovery.
+
+A credential rotation ahead of the running container briefly caused one failed
+idle-stop backup. No owner session had written to the target. The target
+restored its last verified schema-4 snapshot, then used the corrected gateway
+credential to publish
+`scry-20260922T212025.301631528Z-c1cd0425e5a4677b4b0842168a9b70e2.scry-backup.zip`.
+Confirm the newest remote key and checksum before recovery, since later daily
+or shutdown snapshots can supersede this receipt. A failed final backup is not
+proof that a newer acknowledged write survived.
+
+Production Access without credentials redirects to login. A temporary service
+identity could only reach the readiness probe; owner root returned 403 and a
+wrong probe token returned 401. The temporary policy and token were deleted;
+the owner-only policy remained. A real owner login and physical-phone flow on
+the new audience have not yet been observed. Do not mark that acceptance passed.
+An unnecessary new OpenRouter key was briefly issued at $1/day instead of the
+existing Scry key's $0.25/week cap; it made no paid calls and was reduced and
+disabled. A temporary replacement app secret and generated probe/backup values
+were exposed in a diagnostic transcript. The source signing secret and original
+Scry provider key were restored in the prepared target configuration; generated
+probe/backup values were rotated and a corrected cold restore and remote backup
+succeeded. Do not reuse any exposed generated value. See the private sanitized
+closeout readback for what provider/runtime evidence does and does not prove.
+The semantic endpoint is unset on first activation. Schema-4 Jev code and
+rubric/content paths exist, but live semantic grading and criticism are not
+enabled or proven. The product program owns endpoint compatibility, capped
+provider access, representative behavior, and acceptance before enablement.
+Keep one production writer. The old `mis157-76202e78aef2` binary cannot read
+target schema 4. If the target fails after writes, preserve its state and use
+the compatible pinned artifact with an independently checked fresh snapshot
+restored to an unused path. Do not point the old binary at schema 4 or overwrite
+either live database.
+
+The earlier VM release observed on September 11 was `mis59-4e13cafef7c3`, compiled from committed revision
 `4e13cafef7c3e7eac1c6f6fbd1fa8e5bfbc087df`. The retained, smoke-tested binary's
 SHA-256 is `79da084c9ea9a024b45b508861d72b82a99bf2e54570f2fc3f468d1c900fdc08`.
 September 11 protected activation required the previous binary's fresh off-VM
@@ -68,13 +125,14 @@ material is at canonical `https://scry.study/foundations` under normal private
 login. The revoked QA tokens and earlier permission are not authority for a new
 exercise.
 
-There is no public signup, magic-link mail, separate frontend, public service
+There is no public signup, application-owned magic-link mail, separate frontend, public service
 session, maintained legacy CLI/MCP contract, or second application database.
-The backend listener is `127.0.0.1:8080`. Do not open it publicly or trust an
-identity header from an arbitrary peer. `deploy/scry.env.example` documents the
+The target backend listens at `127.0.0.1:8081` behind nginx; the retained VM
+listened at `127.0.0.1:8080`. Do not open either publicly or trust an identity
+header from an arbitrary peer. `deploy/scry.env.example` documents the
 configuration; populated files and provider capabilities are private.
 
-## Build once, exercise, stage those bytes
+## Release provenance and retained VM procedure (not the current Cloudflare deploy)
 
 ```sh
 bun run ci
@@ -93,10 +151,12 @@ source; a `worktree-...` label is not committed release proof. Preserve the
 artifact outside the VM. Do not rebuild between smoke and activation, substitute
 an artifact from a different revision, or bypass the pre-push/hosted gate.
 
-Transfer the exact tested binary and reviewed `deploy/` scripts to a private
-staging directory on the intended VM. Supply a complete private environment
-only for first installation. From that directory, with operator-approved
-administrative authority:
+The following install/activate steps describe the retained exe.dev VM release
+path; they are **not** Cloudflare deployment or permission to restart its
+schema-3 writer. Transfer the exact tested binary and reviewed `deploy/`
+scripts to a private staging directory on the intended VM. Supply a complete
+private environment only for first installation. From that directory, with
+operator-approved administrative authority:
 
 ```sh
 sudo bash deploy/install.sh --binary ./scry --release RELEASE --env /private/scry.env
@@ -166,9 +226,9 @@ backup.
 not a production bypass. Initial installation with no database has nothing to
 back up; existing SQLite sidecars without the main database fail closed.
 
-## Private configuration and domain changes
+## Retained exe.dev VM configuration (historical; do not run at cutover)
 
-The service runs as `scry`, not root. Production configuration is
+On the retained VM, the service ran as `scry`, not root. Its configuration is
 `/etc/scry/scry.env`, root-owned mode `0600`, parsed by systemd as an
 `EnvironmentFile`. It is not executable shell: do not source it, place secrets
 in argv, or copy production capabilities into a preview.
@@ -190,15 +250,21 @@ retire old Caddy ingress blocks that specifically served Scry; leave unrelated
 sites untouched. Never proxy the private app through the old public Worker or
 accept forged owner headers as a shortcut.
 
-Browser login/logout is owned by exe.dev. A separately scoped VM API token is
-independent of browser login and is not revoked by logging out. Revoke temporary
-tokens through their actual authority. Do not print their values in receipts.
+For the retained VM, browser login/logout was owned by exe.dev. A separately
+scoped VM API token is independent of browser login and is not revoked by
+logging out. Revoke temporary tokens through their actual authority. Do not
+print their values in receipts.
+Current production identity is the single three-domain Cloudflare Access
+application plus Worker owner-subject guard, not an exe.dev session or QA token.
 
 ## Generation and spending
 
 The ignored workstation `.env` retains `OPENROUTER_API_KEY` with mode `0600`.
-The Scry-only key has a $1/day UTC provider limit. The app receives generation
-access through `scry-model`; no provider management key belongs in the VM. The
+The existing dedicated Scry key has a $0.25/week provider limit with a weekly
+reset. The Cloudflare target is configured to use that same key directly; the
+stopped VM used `scry-model`. A redundant newly issued key is disabled with
+zero usage and is not the authorized additional allowance.
+No provider management key belongs in either application runtime. The
 application uses a $1 rolling 24-hour allowance with $0.20 conservative
 reservations per generation attempt. Provider and app windows differ; neither is
 an invented token price.
@@ -338,7 +404,17 @@ historical recovery buckets. Keep independently recoverable gateway capability,
 compatible release artifact, and required configuration outside the VM.
 The dedicated bucket's enabled `scry-go-recovery-retention` rule was read back
 with an object age of 2,592,000 seconds (30 days). This is configured retention,
-not an observation of a month of successful backups.
+not an observation of a month of successful backups. Committed `appEnvVars`
+for the deployed source forwards `SCRY_BACKUP_INTERVAL=24h` and
+`SCRY_BACKUP_KEEP=30` to the container; `Manager.Run` attempts a snapshot at
+startup and every 24 hours **while the process runs**. The Worker has no cron
+trigger, and the container's 24-hour idle sleep can stop that loop; therefore
+the configured interval and the verified cutover snapshot do **not** prove a
+wall-clock daily backup on an idle instance. A fresh off-VM backup must be
+confirmed before planned release/rollout, and backup freshness monitored; a
+separately authorized durable daily wake/schedule is needed for a literal
+calendar-day backup guarantee. Do not silently create a cron or wake the owner
+app just to turn this documentation claim green.
 
 `GET /healthz` returns `ok`; `GET /readyz` returns `ready`. These are plaintext
 liveness/readiness checks, not backup freshness. Settings exposes the last
@@ -348,15 +424,17 @@ monitor is claimed; the retired Worker monitor is disabled, not repointed to
 an incompatible response format. Native backup monitoring remains separate.
 
 Manual app commands are `scry version`, `check --db PATH`, `export --db PATH`,
-and `backup --db PATH --require-remote`. Run live maintenance with the service's
-private environment and unprivileged account through systemd, not a shell-sourced
-secret file. Export contains private learning content; protect it like the DB.
+and `backup --db PATH --require-remote`. For retained VM procedures, use the
+service's private environment and unprivileged account through systemd, not a
+shell-sourced secret file; do not start that writer now. Export contains private
+learning content; protect it like the DB.
 
-## Independent restore
+## Retained VM independent restore drill (not current target recovery)
 
-Retrieve a completed `.scry-backup.zip` from private off-VM recovery using
-independently retained authority, and verify its SHA-256. Keep a compatible
-reviewed binary and configuration independently of the lost VM. On an isolated
+For a **new isolated VM** drill, retrieve a completed `.scry-backup.zip` from
+private off-VM recovery using independently retained authority, and verify its
+SHA-256. Keep a compatible reviewed binary and configuration independently of
+the lost VM. On an isolated
 VM, stage that binary and a fresh private environment, with no production model
 or backup integrations attached. Stop the application before restoring its
 canonical database path.
@@ -380,6 +458,13 @@ counts. The archive contains the whole SQLite state; no remote reference content
 or external diagram assets exist. A schema-2 candidate may restore a schema-1
 archive into an unused path and migrate it before publication; use the retained
 schema-1 binary instead when rehearsing recovery to the pre-upgrade state.
+
+For Cloudflare production schema 4, use the pinned digest-compatible artifact,
+the newest independently checksummed R2 snapshot, and restore-required boot in
+an unused target; do not run the retained VM's schema-3 binary or overwrite a
+live database. Preserve the current target before any config rollout. The
+cutover receipt proved a target-written snapshot and cold restore, not a future
+RTO or physical-phone session.
 
 Activate separately when ready. Synthetic rehearsals without remote backup
 capability may explicitly use `--allow-local-backup`; real recovery must restore
@@ -451,6 +536,13 @@ Private cutover archives and compatible binaries live under the operator's
 
 ## Evidence
 
+- The September 22 production-cutover sanitized reports
+  (`REPORT.md`, `03-production-access-proof.json`,
+  `04-production-remote-snapshot-proof.json`, and `CLOSEOUT-READBACK.md`) live in
+  the private operator reports directory, not this public repository. The
+  machine-owned Access probes are not instructions for a human to manufacture
+  authenticated HTTP mutations. The remaining phone check is an actual owner
+  sign-in and normal review/Next, not an automated acceptance claim.
 - [Earlier private Go acceptance](qa/personal-go-acceptance-20260909.json): live
   generation, trusted touch, interrupted access/response recovery, data restore.
 - [September 9–10 cutover acceptance](qa/personal-go-cutover-20260910.json):
