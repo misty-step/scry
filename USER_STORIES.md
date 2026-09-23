@@ -76,9 +76,10 @@ Criteria:
    complete-set output SHALL stay exact, and a rubric on them SHALL be rejected.
    THE SYSTEM SHALL NOT infer or override the mode from digits, symbols,
    keywords, or answer length, and SHALL NOT offer the learner a grading control
-   or rubric field. A learner edit that changes the prompt, expected answer, or
-   response style SHALL publish an exact version rather than keep a stale
-   rubric; earlier versions and review history SHALL NOT be rewritten.
+   or rubric field. A learner edit that changes the prompt, expected answer,
+   quoted evidence, or response style SHALL publish an exact version rather than
+   keep a stale rubric; earlier versions and review history SHALL NOT be
+   rewritten.
 2. WHEN an exact answer, authored variant, or case-only uncertainty resolves
    locally, THE SYSTEM SHALL NOT call the semantic assessor. OTHERWISE a semantic
    prose answer SHALL be saved as a durable pending assessment before one bounded

@@ -195,8 +195,8 @@ interaction teaches me something without taking away control.
   conceptual prose recall, and choice, exact-text, and complete-set tasks stay
   exact by task contract. No heuristic on digits, symbols, keywords, or answer
   length chooses or overrides the mode. A learner edit keeps a generated rubric
-  only while the prompt, expected answer, and response style are unchanged;
-  otherwise the new version is exact.
+  only while the prompt, expected answer, quoted evidence, and response style
+  are unchanged; otherwise the new version is exact.
 - **S02.6:** Semantic grading records success only when independent required-idea
   and overall-relation judgments meet the versioned policy. Unclear, malformed,
   unavailable, or failed judgments stay ungraded with the learner answer saved;

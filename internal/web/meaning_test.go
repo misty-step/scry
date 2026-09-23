@@ -81,7 +81,7 @@ func TestEditorHasNoGradingControls(t *testing.T) {
 				`name="contradictions"`, `name="contradiction_feedback"`, "Jev", "rubric")
 			const help = "Answers in your own words count for this question."
 			if quiz.Grading == "semantic" {
-				requirePresent(t, page, "meaning editor", help, `aria-describedby="answer-help"`)
+				requirePresent(t, page, "meaning editor", help, `aria-describedby="answer-help"`, "the expected answer, or the quotation")
 			} else {
 				requireAbsent(t, page, "exact editor", help)
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 // generatedMeaning is what ordinary generation now publishes for conceptual
@@ -74,6 +75,50 @@ func TestLearnerEditNeverRetainsARubricForChangedWording(t *testing.T) {
 				t.Fatalf("original version was rewritten: %s", content)
 			}
 		})
+	}
+}
+
+// A generated rubric is supported by one quotation. Pointing the same wording
+// at a different quotation must not keep ideas the new evidence never stated.
+func TestLearnerEditOfQuotedEvidenceDropsRubric(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newTestStore(t)
+	text := "Regular sleep may improve recall in some adults.\nRegular sleep can improve memory retention, according to this note.\nThese two sentences are a saved source, not a topic."
+	src, err := s.Capture(ctx, text, newID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := s.ClaimJob(ctx, time.Minute, 100, 10_000)
+	if err != nil || claim == nil {
+		t.Fatalf("claim: %+v %v", claim, err)
+	}
+	original := GeneratedQuiz{
+		Kind: "recall", Grading: "semantic", Basis: "source",
+		Prompt:      "According to your note, what may regular sleep do for some adults?",
+		Answer:      "It may improve recall in some adults.",
+		Explanation: "The note is hedged: sleep may improve recall, and only in some adults.",
+		Evidence:    "Regular sleep may improve recall in some adults.",
+		Rubric:      &Rubric{Required: []RubricIdea{{Text: "Regular sleep may improve recall in some adults"}}},
+	}
+	cost := int64(1)
+	if err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, GenerationResult{Quizzes: []GeneratedQuiz{original}, Model: "authored-test-fixture", PromptVersion: "fixture-v1"}, &cost); err != nil {
+		t.Fatal(err)
+	}
+	published, err := s.Source(ctx, src.ID)
+	if err != nil || len(published.Quizzes) != 1 || published.Quizzes[0].Grading != "semantic" {
+		t.Fatalf("publish: %+v %v", published, err)
+	}
+	same := learnerEdit(original)
+	same.Explanation = "Only some adults, and only may: the note does not promise better recall."
+	kept, err := s.EditQuiz(ctx, published.Quizzes[0].ID, 1, same)
+	if err != nil || kept.Grading != "semantic" || kept.Rubric == nil {
+		t.Fatalf("unchanged quotation lost its rubric: %+v %v", kept, err)
+	}
+	moved := learnerEdit(original)
+	moved.Evidence = "Regular sleep can improve memory retention, according to this note."
+	edited, err := s.EditQuiz(ctx, kept.ID, kept.Version, moved)
+	if err != nil || edited.Grading != "" || edited.Rubric != nil {
+		t.Fatalf("changed quotation kept an unsupported rubric: %+v %v", edited, err)
 	}
 }
 
