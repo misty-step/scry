@@ -258,6 +258,12 @@ not establish production remote-backup success. Never use it for live cutover.
 
 ## Evidence and historical material
 
+[The MIS-162 v5 receipt](concept-study-20260923.json) binds the concept-centered
+build (`757acdf`) to its committed-source gate, a 146-shot synthetic state matrix
+on an isolated VM, and a bounded live run in which all four capture modes
+published through real generation, Exa and Jev. It lists what remains
+unverified, including the production-data migration rehearsal and activation.
+
 [The earlier Go acceptance receipt](personal-go-acceptance-20260909.json) records
 bounded live generation, trusted touch, interrupted-response/access recovery,
 and independent data restoration. Its original observation predates subsequent

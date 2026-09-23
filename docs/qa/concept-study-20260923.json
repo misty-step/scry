@@ -1,0 +1,80 @@
+{
+  "format": "scry-mis162-v5-acceptance-v1",
+  "date": "2026-09-23",
+  "issue": "MIS-162",
+  "status": "Branch verified; not deployed. Schema v5 activation on production data needs explicit operator approval.",
+  "compiled_source_revision": "757acdf35b1838229d557921bc031fc0fe57b278",
+  "source_state": "committed",
+  "binary_sha256": "27c4c41f87a46494604e0c6532dabf36901996be81d60e762a9daecb03c80707",
+  "source_inventory_sha256": "a10e6e56b7ef2a7076f685d29a650abfe90d343e757a32fdccd4eb8f47d0fde0",
+  "publication": "Evidence-only commit after the tested revision; every run below used the exact gate-built binary unless noted.",
+  "environment": {
+    "host": "isolated exe.dev VM scry-v5-qa-mis162 (4 vCPU, 8 GiB), destroyed after this run",
+    "toolchain": "go1.27.1 linux/amd64, Node v22.22.0, Playwright 1.63.0, Chromium 153, Gitleaks 8.30.1 (checksum-verified downloads)",
+    "data": "synthetic only: authored seed-fixture databases and synthetic live captures; no production data, integrations, or scheduler ownership"
+  },
+  "gate": {
+    "command": "python3 scripts/scry-ci local --require-committed",
+    "result": "PASS 757acdf35b1838229d557921bc031fc0fe57b278",
+    "checks": ["gofmt", "go test", "go vet", "browser/hosting JavaScript syntax and regressions", "critic suite with real Chromium (pinned Playwright)", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
+    "smoke": "seeded v5 fixture renders /review/answer; unassisted correct grade; exact retry, restart and backup/restore preserve feedback and the full learning export; remote backup not exercised"
+  },
+  "synthetic_visual_states": {
+    "result": "PASS: 146 shots, 169 recorded checks, 0 failed",
+    "renderer": "real Chromium via pinned Playwright; native pointer, keyboard and clipboard input, never DOM click()",
+    "matrix": "dark and light at 390x844 and 1280x800, plus 320x640 for question, capture, map and first-run",
+    "stream_states": ["question-choice", "question-recall-empty", "question-recall-typed", "checking", "self-check-close", "self-check-unsure", "self-check-failed", "result-correct", "result-miss-automatic", "result-overridden", "result-overridden-missed", "result-shown", "result-self", "result-self-missed", "preparing-running", "preparing-failed", "first-run", "caught-up", "conflict-error", "gate", "focus-visible", "nojs-result-correct"],
+    "other_surfaces": ["capture-empty", "capture-share-prefill", "capture-typed-short", "capture-pasted-text", "capture-pasted-link", "capture-error", "map", "map-search", "map-search-empty", "map-empty", "concept pages", "source-ready", "source-preparing", "source-failed", "history", "settings", "edit-fix-open", "not-found"],
+    "behavior_checks": [
+      "no-JS form answer is saved and held (plain navigation POST)",
+      "stale tabs are refused with 409 and create no extra review event",
+      "one override per review",
+      "reduced motion computes no result animation; no-preference animates the surface for 0.2s",
+      "Enter/Space on a result opens Next",
+      "capture never preselects Topic or Link; pasted non-link text selects My text; share prefill chooses no mode",
+      "recall button reads Show me when empty and Check when typed"
+    ],
+    "fakes": "deterministic loopback fakes for the checking (in flight), unsure and failed states; no network"
+  },
+  "live": {
+    "result": "PASS 13/13 checks on the exact gate binary",
+    "configuration": "google/gemini-3.7-flash via OpenRouter (production model and endpoint shape); Jev typesafe/jev-1.13 at /api/alpha/decisions; Exa search and contents; daily allowance capped at $1.50 for QA; keys only in the scry process environment",
+    "chains": {
+      "topic": "Exa search returned 6 results -> plan -> questions (partial: 1 question dropped, unsupported_source_answer); notes basis web with citations",
+      "text": "plan -> questions (partial: 2 dropped, overlapping_distractors and unsupported_source_answer); no research step",
+      "link": "Exa contents read exactly one page (en.wikipedia.org Domain Name System) -> plan -> questions (partial: 5 dropped, unsupported_source_answer)",
+      "photo": "transcribe -> plan -> questions, complete"
+    },
+    "published": "22 questions (11 choice, 11 recall, 8 flexible); question basis web 7, source 15; notes basis web 4 (all cited), source 11",
+    "answers": "5 graded unassisted: 3 choices by exact match; 2 flexible recall paraphrases accepted by Jev short-v1",
+    "spend_final_run_usd": 0.127,
+    "spend_all_live_runs_usd": 0.565,
+    "unknown_cost_outcomes": 0,
+    "provider_key": "Scry personal (exe.dev): limit raised from $7 to $25/week on 2026-09-23; $24.42 remaining after QA"
+  },
+  "defects_found_and_fixed_before_this_revision": [
+    "real generation failed 7/7 chains (all-or-nothing batches, byte-exact quotes, strict word/name rules, source-answer rule on web evidence); topic plans ignored web excerpts",
+    "no-JS mutations were always rejected: Referrer-Policy no-referrer makes browsers send Origin: null on form posts (pre-existing)",
+    "answer secrecy: /map JSON, sibling concept JSON and Stream receipts exposed the cold question's capture text or goal title; contrast concepts were not gated; store did not hide distractor tags",
+    "privacy: capture JS preselected Topic for short text and Link for URLs, share target preselected modes, and research treated unknown modes as web search",
+    "override could strand a re-presented occurrence; late output could publish into an archived concept",
+    "unconfigured semantic checks reported unknown spend; History listed superseded held attempts and omitted who decided each grade",
+    "copy: duplicated 'stopped', misleading Settings instruction, every chain step labeled 'Questions ready', raw publication timestamps, engineering check codes on the Stream"
+  ],
+  "reviews": [
+    "independent web review (security, secrecy, routes, progressive enhancement): 5 findings, all fixed with regression tests",
+    "independent store/learning review (migration, atomicity, fences, spend, selection): 3 findings, all fixed with mutation-checked tests",
+    "System One diff review: 0 blocks (advisory warnings only)"
+  ],
+  "not_verified": [
+    "schema v5 migration of the real production database (needs an operator-authorized isolated restore rehearsal of the latest snapshot before activation)",
+    "production activation, private ingress through Cloudflare Access, and access loss on this build",
+    "physical-phone touch acceptance and iOS Safari rendering",
+    "photo capture from a real camera image (a rendered page of notes was used)",
+    "remote backup readback on this build"
+  ],
+  "known_quality_gaps": [
+    "source-basis questions drop often on unsupported_source_answer (5 of Link's batch); the fence is correct, prompt tuning can raise the yield",
+    "recall estimate reads 100% immediately after a review (FSRS retrievability at t=0); labeled as an estimate"
+  ]
+}
