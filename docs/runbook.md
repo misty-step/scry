@@ -30,6 +30,28 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
+### September 23 recovery closeout state
+
+Production Worker `scry-app-host` serves version
+`c077459c-72a4-4b6a-b94f-1fda7f5c9a28`, deployed Worker-only from master
+`70db046091fd7bc5000b1d662b648d7249ab0c47` (PRs
+[174](https://github.com/misty-step/scry/pull/174),
+[175](https://github.com/misty-step/scry/pull/175) and
+[176](https://github.com/misty-step/scry/pull/176)) with
+`--containers-rollout=none --keep-vars --strict`. The singleton Container
+instance and the pinned image digest below did not change. The image inputs
+(`cmd/`, `internal/`, `go.mod`, `go.sum`, and the hosting `Dockerfile`,
+`entrypoint.sh` and `nginx.conf`) are unchanged since `a36e796`, so this Worker
+and the pinned image are a matched pair. A deploy without
+`--containers-rollout=none` may roll out a new Container version and replace
+the live instance; treat it as a planned replacement under
+[Recovery policy and observation](#recovery-policy-and-observation).
+After this deploy, a temporary non-identity Access probe returned `ready`
+twice, owner root returned 403, and a wrong probe token returned 401. The
+instance stayed running. The temporary policy and token were deleted, and the
+owner policy was unchanged. The newest verified snapshot and the observed daily
+cycle are in the recovery section.
+
 ### September 22 hosting cutover state
 
 Protected PR [168](https://github.com/misty-step/scry/pull/168) merged at
