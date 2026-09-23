@@ -64,3 +64,30 @@ export async function stopAfterBackup({ backup, stop, log, canStop = () => true 
   if (!canStop()) return;
   await stop();
 }
+
+// Tracks owner requests for the idle stop. Counters start at zero so a fresh
+// Durable Object instance, which every deploy creates, can still stop after a
+// verified idle backup. A request during that backup keeps the writer awake.
+export function createActivityGate() {
+  let generation = 0;
+  let active = 0;
+  return {
+    async track(work) {
+      generation++;
+      active++;
+      try {
+        return await work();
+      } finally {
+        active--;
+        generation++;
+      }
+    },
+    mark: () => generation,
+    idleSince: mark => generation === mark && active === 0,
+  };
+}
+
+export function stopWhenIdle({ gate, backup, stop, log = (...values) => console.error(...values) }) {
+  const mark = gate.mark();
+  return stopAfterBackup({ backup, stop, log, canStop: () => gate.idleSince(mark) });
+}
