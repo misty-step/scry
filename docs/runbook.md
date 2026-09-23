@@ -30,7 +30,41 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-### September 23 recovery closeout state
+### September 23 automatic meaning recall release
+
+Production Worker `scry-app-host` serves version
+`49affb5b-a787-4009-9038-16e80f4efa75`, deployed from master
+`b9836cf8fd9bc078110c8a906e066664c4f79f38`
+([PR 179](https://github.com/misty-step/scry/pull/179)). This release changes
+the image. The container application is at version 2 with image digest
+`sha256:0a59a1b59ee48d0cf2128672315debbdf552cb291d2af7cdbf4216097e3dbe32`.
+It carries the committed-gate binary `scry b9836cf`, SHA-256
+`4c3a326e2f87c84fc3b645bd05a89a6f95500d9b8ad59f21f6aa03afbc661470`. The
+same digest first passed two synthetic staging cold-wake cycles. Planned
+replacement order:
+
+1. Read back the newest R2 snapshot independently.
+2. Deploy Worker-only with the one-minute proof window. The old instance
+   stopped after a verified backup.
+3. Read back that snapshot. Only the backup ledger changed.
+4. Restore a private copy with the new binary. Both the new binary and the
+   pinned `a36e796` rollback binary passed `check`, with equal export counts.
+5. Deploy the committed 24-hour configuration with the pinned new image.
+
+The rollout also stopped the instance started by the first cold wake. It wrote
+a verified final backup first. A second planned cold wake restored
+`scry-20260923T153256.061901797Z-8574070ca6a3df05f7117ba4de81757f.scry-backup.zip`
+on the new image. Its start log showed semantic mode on. Readiness returned
+`ready` twice. The owner root returned 403 to the temporary service identity,
+and a wrong probe token returned 401. The temporary policy and token were
+deleted, and the owner policy did not change. The Worker bindings and the
+`0 */12 * * *` schedule did not change.
+
+Rollback stays schema 4. Deploy the previous image digest (below) with the
+same planned replacement. Do not restore a pre-release snapshot over newer
+writes.
+
+### September 23 recovery closeout state (superseded)
 
 Production Worker `scry-app-host` serves version
 `c077459c-72a4-4b6a-b94f-1fda7f5c9a28`, deployed Worker-only from master
@@ -42,7 +76,7 @@ Production Worker `scry-app-host` serves version
 instance and the pinned image digest below did not change. The image inputs
 (`cmd/`, `internal/`, `go.mod`, `go.sum`, and the hosting `Dockerfile`,
 `entrypoint.sh` and `nginx.conf`) are unchanged since `a36e796`, so this Worker
-and the pinned image are a matched pair. A deploy without
+and the pinned image were a matched pair until the image release above. A deploy without
 `--containers-rollout=none` may roll out a new Container version and replace
 the live instance; treat it as a planned replacement under
 [Recovery policy and observation](#recovery-policy-and-observation).
