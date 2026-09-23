@@ -180,17 +180,16 @@ func conceptBriefs(ctx context.Context, tx *sql.Tx, ids []string, now int64) ([]
 
 var stageLabels = map[string]string{
 	"research": "Searching the web", "transcribe": "Reading your photo", "plan": "Mapping the ideas",
-	"questions": "Writing questions", "note": "Writing a note", "contrast": "Writing a comparison",
-	"fix": "Fixing a question", "quizzes": "Writing questions",
+	"questions": "Writing questions", "note": "Writing a note", "contrast": "Writing a comparison", "quizzes": "Writing questions",
 }
 
 // preparingFor describes a source's live preparation, or one that stopped
 // within window milliseconds (0 means at any age).
 func preparingFor(ctx context.Context, tx *sql.Tx, src Source, jobs []Job, now, window int64) (*Preparing, error) {
-	if src.Archived || len(jobs) == 0 {
+	last, ok := lastPreparation(jobs)
+	if src.Archived || !ok {
 		return nil, nil
 	}
-	last := jobs[len(jobs)-1]
 	live := last.Status == "queued" || last.Status == "running" || last.Status == "retry"
 	stopped := last.Status == "failed" || last.Status == "paused" || (last.Status == "canceled" && last.Kind != "quizzes")
 	if !live && !(stopped && (window == 0 || last.UpdatedAt >= now-window)) {
@@ -223,7 +222,7 @@ func preparingFor(ctx context.Context, tx *sql.Tx, src Source, jobs []Job, now, 
 // preparingList describes captures still being prepared, and ones whose
 // preparation stopped within the last day.
 func preparingList(ctx context.Context, tx *sql.Tx, now int64) ([]Preparing, error) {
-	ids, err := stringSet(ctx, tx, `SELECT DISTINCT j.source_id FROM jobs j JOIN sources s ON s.id=j.source_id WHERE s.archived=0
+	ids, err := stringSet(ctx, tx, `SELECT DISTINCT j.source_id FROM jobs j JOIN sources s ON s.id=j.source_id WHERE s.archived=0 AND j.kind<>'fix'
 	 AND (j.status IN ('queued','running','retry') OR (j.status IN ('failed','paused','canceled') AND j.updated_at>=?))`, now-remedialWindow)
 	if err != nil {
 		return nil, err
@@ -871,6 +870,12 @@ func (s *Store) RequestFix(ctx context.Context, quizID, instruction, operationID
 		}
 		var revision int
 		if err = tx.QueryRowContext(ctx, "SELECT revision FROM sources WHERE id=?", q.SourceID).Scan(&revision); err != nil {
+			return "", err
+		}
+		// Asking again is the explicit retry of this question's paused fix,
+		// as Try again is for a capture: the paused request is canceled first.
+		if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status='canceled',lease_token='',lease_until=0,updated_at=?
+		 WHERE kind='fix' AND status='paused' AND json_extract(payload,'$.quiz_id')=?`, now, quizID); err != nil {
 			return "", err
 		}
 		payload := struct {

@@ -406,7 +406,12 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, path := range []string{"/", "/map", "/map?q=certificate", "/concepts/" + sibling} {
+	siblingPage, err := s.ConceptPage(ctx, sibling)
+	if err != nil || len(siblingPage.Questions) != 1 {
+		t.Fatalf("sibling concept: %+v %v", siblingPage, err)
+	}
+	siblingQuiz := siblingPage.Questions[0].ID
+	for _, path := range []string{"/", "/map", "/map?q=certificate"} {
 		body := get(path, http.StatusOK)
 		if strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "GOAL-TITLE") {
 			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
@@ -422,7 +427,13 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 			t.Fatalf("search %q found the cold question's own capture: %s", q, body)
 		}
 	}
-	get("/concepts/"+cold.Concept.ID, http.StatusConflict)
+	// The cold question's concept, and every concept and question drawn from
+	// its capture, open only behind the gate.
+	for _, path := range []string{"/concepts/" + cold.Concept.ID, "/concepts/" + sibling, "/quizzes/" + siblingQuiz + "/edit"} {
+		if body := get(path, http.StatusConflict); strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "The host") {
+			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
+		}
+	}
 	// Once assistance is recorded, the material is the learner's again.
 	if _, err = s.Submit(ctx, cold.ID, randomToken(), "", true); err != nil {
 		t.Fatal(err)
@@ -432,6 +443,23 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	}
 	if body := get("/map?q=host", http.StatusOK); strings.Contains(body, `"hits":[]`) {
 		t.Fatalf("search stayed empty after assistance: %s", body)
+	}
+	get("/concepts/"+sibling, http.StatusOK)
+	get("/quizzes/"+siblingQuiz+"/edit", http.StatusOK)
+	// When the next question from the same capture waits for an unaided
+	// answer, the answer shown for the first stays out of history.
+	state, err := s.Next(ctx, cold.ID)
+	for state.Current == nil {
+		if err != nil || state.Intro == nil {
+			t.Fatalf("next question not reached: %+v %v", state, err)
+		}
+		state, err = s.AcknowledgeIntro(ctx, state.Intro.Concept.ID, randomToken(), false)
+	}
+	if err != nil || state.Current.Quiz.ID != siblingQuiz || state.Current.Graded {
+		t.Fatalf("second cold question: %+v %v", state.Current, err)
+	}
+	if body := get("/history", http.StatusOK); strings.Contains(body, "A root") || strings.Contains(body, "At a trusted root.") {
+		t.Fatalf("history showed an answer from the cold question's capture: %s", body)
 	}
 }
 
@@ -508,5 +536,51 @@ func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
 	}
 	if body := edit(); strings.Contains(body, "Scry suggests a fix") {
 		t.Fatal("an accepted suggestion is still offered")
+	}
+}
+
+// A fix that stops is reported on its question, and its capture offers no
+// retry for it: re-running a fix is asking again from the question.
+func TestStoppedFixIsReportedOnItsQuestion(t *testing.T) {
+	s, app := privateApp(t)
+	ctx := context.Background()
+	src, err := s.Capture(ctx, store.CaptureInput{Text: "Synthetic records", Mode: "topic"}, randomToken())
+	if err != nil {
+		t.Fatal(err)
+	}
+	completeSyntheticQuiz(t, s, store.GeneratedQuiz{Kind: "choice", Prompt: "Which record maps a hostname to an IPv4 address?", Answer: "A", Choices: []string{"A", "MX", "TXT"}, Explanation: "An A record holds an IPv4 address.", Basis: "topic"})
+	saved, err := s.Source(ctx, src.ID)
+	if err != nil || len(saved.Quizzes) != 1 {
+		t.Fatalf("fixture question: %+v %v", saved.Quizzes, err)
+	}
+	q := saved.Quizzes[0]
+	if err = s.RequestFix(ctx, q.ID, "Shorter prompt, please", randomToken()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.ClaimJob(ctx, time.Minute, 1, 1000000)
+	if err != nil || job == nil || job.Kind != "fix" {
+		t.Fatalf("claim fix: %+v %v", job, err)
+	}
+	zero := int64(0)
+	if err = s.FailJob(ctx, job.ID, job.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
+		t.Fatal(err)
+	}
+	cookie, _, _ := bootstrapForm(t, app)
+	get := func(path string) string {
+		t.Helper()
+		r := ownerRequest(http.MethodGet, path, nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	if body := get("/quizzes/" + q.ID + "/edit"); !strings.Contains(body, "synthetic provider failure") {
+		t.Fatalf("the question does not say why its fix stopped: %s", body)
+	}
+	if body := get("/sources/" + src.ID); strings.Contains(body, "/sources/"+src.ID+"/retry") {
+		t.Fatalf("the capture offers to retry a question's fix: %s", body)
 	}
 }

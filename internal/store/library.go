@@ -278,6 +278,18 @@ func sourceJobs(ctx context.Context, tx *sql.Tx, sourceID string) ([]Job, error)
 	return jobs, rows.Err()
 }
 
+// lastPreparation is a capture's latest preparation job. A question's fix
+// belongs to that question: the chain lists it, but it never becomes the
+// capture's status, receipt, or retry.
+func lastPreparation(jobs []Job) (Job, bool) {
+	for i := len(jobs) - 1; i >= 0; i-- {
+		if jobs[i].Kind != "fix" {
+			return jobs[i], true
+		}
+	}
+	return Job{}, false
+}
+
 func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, error) {
 	var src Source
 	err := tx.QueryRowContext(ctx, `SELECT s.id,s.text,s.kind,s.mode,s.web,s.revision,s.archived,s.created_at,COALESCE(g.id,''),
@@ -290,8 +302,7 @@ func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, e
 	if err != nil {
 		return src, err
 	}
-	if len(jobs) > 0 {
-		last := jobs[len(jobs)-1]
+	if last, ok := lastPreparation(jobs); ok {
 		src.Job, src.Status = &last, last.Status
 		if src.Status == "complete" {
 			src.Status = "ready"
@@ -484,8 +495,8 @@ func writeEdit(ctx context.Context, tx *sql.Tx, q Quiz, content GeneratedQuiz, m
 	return quiz(ctx, tx, q.ID)
 }
 
-// QuizFix reports whether a correction is being written for a question and
-// the suggestion awaiting the learner's decision, if any.
+// QuizFix reports whether a correction is being written for a question, the
+// suggestion awaiting the learner's decision, and a request that stopped.
 func (s *Store) QuizFix(ctx context.Context, quizID string) (QuizFix, error) {
 	var fix QuizFix
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -508,6 +519,34 @@ func (s *Store) QuizFix(ctx context.Context, quizID string) (QuizFix, error) {
 		fix.Proposal = &p
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fix, err
+	}
+	latest, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM jobs j JOIN sources src ON src.id=j.source_id
+	 JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision
+	 WHERE j.kind='fix' AND json_extract(j.payload,'$.quiz_id')=? ORDER BY j.created_at DESC,j.rowid DESC LIMIT 1`, quizID))
+	report := false
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return fix, err
+	case latest.Status == "paused":
+		// Uncertain work stays reported until the learner asks again.
+		report = true
+	case latest.Status == "failed":
+		var asked struct {
+			Version int `json:"version"`
+		}
+		var version int
+		if err = json.Unmarshal([]byte(latest.Payload), &asked); err != nil {
+			return fix, err
+		}
+		if err = tx.QueryRowContext(ctx, "SELECT version FROM quizzes WHERE id=?", quizID).Scan(&version); err != nil {
+			return fix, err
+		}
+		// A later edit makes a failed request moot, as it does a suggestion.
+		report = asked.Version == version
+	}
+	if report {
+		fix.Stopped = &FixStop{Status: latest.Status, Error: latest.Error, CostMicros: latest.CostMicros, CostUnknown: latest.CostUnknown}
 	}
 	return fix, tx.Commit()
 }

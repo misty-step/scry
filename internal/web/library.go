@@ -174,7 +174,9 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, page{})
 		return
 	}
-	if current != nil && current.Quiz.ID == q.ID {
+	// Every question drawn from the cold question's own capture carries
+	// material that may contain its answer, as its Source page does.
+	if current != nil && current.Quiz.SourceID == q.SourceID {
 		s.gate(w, r, current)
 		return
 	}
@@ -187,7 +189,7 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"quiz": q, "fix": fix, "csrf": r.Context().Value(csrfKey{})})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, Fix: fix, FixOpen: r.URL.Query().Get("fix") == "1"})
+	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, Fix: fix, FixOpen: r.URL.Query().Get("fix") == "1" || fix.Stopped != nil})
 }
 
 func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
@@ -272,8 +274,10 @@ func (s *server) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if current != nil {
+		// Past answers to any question from the cold question's own capture
+		// stay hidden until assistance is recorded.
 		for i := range events {
-			if events[i].Quiz.ID == current.Quiz.ID {
+			if events[i].Quiz.SourceID == current.Quiz.SourceID {
 				events[i].Quiz = withoutAnswer(events[i].Quiz)
 				events[i].Answer = ""
 			}

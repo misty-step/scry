@@ -318,17 +318,13 @@ func (s *Store) CompleteJob(ctx context.Context, jobID, leaseToken string, resul
 	if result.Partial {
 		status = "partial"
 	}
-	note := result.Note
-	if a.job.Kind == "fix" {
-		note = "A suggested fix is ready. Open the question to review it."
-	}
 	encoded, err := marshal(result)
 	if err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status=?,error=?,model=?,prompt_version=?,published=?,result_json=?,
 	 critic_status=CASE WHEN critic_status='pending' THEN 'judged' ELSE critic_status END,
-	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, note, result.Model, result.PromptVersion, published, encoded, now, jobID)
+	 lease_token='',lease_until=0,updated_at=? WHERE id=?`, status, result.Note, result.Model, result.PromptVersion, published, encoded, now, jobID)
 	if err != nil {
 		return err
 	}

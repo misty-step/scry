@@ -439,10 +439,21 @@ type QuizProposal struct {
 }
 
 // QuizFix is the fix state of one question: a correction being written, a
-// suggestion awaiting the learner's decision, or neither.
+// suggestion awaiting the learner's decision, and the latest request if it
+// stopped (paused until asked again, or failed for the current version).
 type QuizFix struct {
 	Writing  bool          `json:"writing"`
 	Proposal *QuizProposal `json:"proposal,omitempty"`
+	Stopped  *FixStop      `json:"stopped,omitempty"`
+}
+
+// FixStop is why a fix request stopped and what it cost; it carries nothing
+// from the capture or the job beyond that.
+type FixStop struct {
+	Status      string `json:"status"`
+	Error       string `json:"error"`
+	CostMicros  int64  `json:"cost_micros"`
+	CostUnknown bool   `json:"cost_unknown"`
 }
 
 type MapView struct {

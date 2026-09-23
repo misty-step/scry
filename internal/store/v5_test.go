@@ -846,3 +846,115 @@ func TestFixIsASuggestionUntilAccepted(t *testing.T) {
 		t.Fatalf("a discarded suggestion is still offered: %+v %v", fix, err)
 	}
 }
+
+// A fix belongs to its question. When it stops, the question reports why,
+// and the capture's preparation state, receipts, and retry are untouched.
+// A restore stops unfinished fixes without holding the capture's job slot.
+func TestStoppedFixStaysWithItsQuestion(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	src, _, _ := textPack(t, s)
+	var q Quiz
+	for _, candidate := range src.Quizzes {
+		if candidate.Kind == "choice" {
+			q = candidate
+		}
+	}
+	before, err := s.Source(ctx, src.ID)
+	if err != nil || before.Job == nil {
+		t.Fatalf("capture: %+v %v", before, err)
+	}
+	if err = s.RequestFix(ctx, q.ID, "Make the prompt shorter", "fix-stop-1"); err != nil {
+		t.Fatal(err)
+	}
+	j := claimKind(t, s, "fix")
+	zero := int64(0)
+	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.Source(ctx, src.ID)
+	if err != nil || after.Status != before.Status || after.Job == nil || after.Job.ID != before.Job.ID {
+		t.Fatalf("a stopped fix changed the capture's preparation: %+v -> %+v %v", before.Job, after.Job, err)
+	}
+	if _, err = s.RetrySource(ctx, src.ID, "retry-fix-as-capture"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("the capture offered to retry a question's fix: %v", err)
+	}
+	state, err := s.Review(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range state.Preparing {
+		if p.SourceID == src.ID {
+			t.Fatalf("a stopped fix produced a capture receipt: %+v", p)
+		}
+	}
+	fix, err := s.QuizFix(ctx, q.ID)
+	if err != nil || fix.Writing || fix.Stopped == nil || fix.Stopped.Error != "synthetic provider failure" {
+		t.Fatalf("the question does not report its stopped fix: %+v %v", fix, err)
+	}
+	if err = s.RequestFix(ctx, q.ID, "Make the prompt shorter", "fix-stop-2"); err != nil {
+		t.Fatal(err)
+	}
+	if fix, err = s.QuizFix(ctx, q.ID); err != nil || !fix.Writing || fix.Stopped != nil {
+		t.Fatalf("a new request still reports the old stop: %+v %v", fix, err)
+	}
+	// A restore leaves the unfinished fix paused, and the question keeps
+	// reporting it, even across an edit, until the learner asks again.
+	if err = s.PauseRestoredJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	edited := GeneratedQuiz{Kind: "choice", Prompt: "Which condition makes a TLS client trust a server certificate?", Answer: q.Answer, Choices: q.Choices, Explanation: q.Explanation, Basis: "source", Evidence: q.Evidence}
+	if q, err = s.EditQuiz(ctx, q.ID, q.Version, edited); err != nil {
+		t.Fatal(err)
+	}
+	if fix, err = s.QuizFix(ctx, q.ID); err != nil || fix.Writing || fix.Stopped == nil || fix.Stopped.Status != "paused" {
+		t.Fatalf("a restored fix is not reported on its question: %+v %v", fix, err)
+	}
+	if state, err = s.Review(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range state.Preparing {
+		if p.SourceID == src.ID {
+			t.Fatalf("a paused fix produced a capture receipt: %+v", p)
+		}
+	}
+	// Asking again is the explicit retry: it replaces the paused request,
+	// which otherwise holds the capture's one job slot.
+	if err = s.RequestFix(ctx, q.ID, "Make the prompt shorter", "fix-stop-3"); err != nil {
+		t.Fatalf("asking again did not replace the paused fix: %v", err)
+	}
+	if fix, err = s.QuizFix(ctx, q.ID); err != nil || !fix.Writing || fix.Stopped != nil {
+		t.Fatalf("the replaced fix is still reported: %+v %v", fix, err)
+	}
+	// A failed request is moot once the question is edited.
+	j = claimKind(t, s, "fix")
+	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
+		t.Fatal(err)
+	}
+	edited.Prompt = "When does a TLS client trust a server certificate?"
+	if _, err = s.EditQuiz(ctx, q.ID, q.Version, edited); err != nil {
+		t.Fatal(err)
+	}
+	if fix, err = s.QuizFix(ctx, q.ID); err != nil || fix.Stopped != nil {
+		t.Fatalf("a failed fix for an earlier version is still reported: %+v %v", fix, err)
+	}
+	// A legacy capture's Map entry, kept for any stopped preparation, ignores
+	// a stopped fix too.
+	legacy := publishFixture(t, s, authoredChoice("Legacy prompt?"))
+	if err = s.RequestFix(ctx, legacy.Quizzes[0].ID, "Make the prompt shorter", "fix-legacy"); err != nil {
+		t.Fatal(err)
+	}
+	j = claimKind(t, s, "fix")
+	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Map(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range m.Goals {
+		if g.Goal.SourceID == legacy.ID {
+			t.Fatalf("a stopped fix put a legacy capture's receipt on the Map: %+v", g.Preparing)
+		}
+	}
+}
