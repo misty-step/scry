@@ -15,6 +15,12 @@ Cloudflare Access gates `scry.study`, `www.scry.study`, and `scry.mistystep.io`
 with one audience and one exact owner-email policy. The Worker checks the
 owner subject before forwarding to nginx; nginx injects the preserved Scry
 owner ID. The two alternate hosts redirect reads only and reject mutations.
+
+The Access team domain is `misty-step-pantry.cloudflareaccess.com`, the shared
+Cloudflare Access login/JWKS authority—not a Pantry application Worker or Scry
+origin. The canonical application origin remains `https://scry.study` after
+the Access handoff.
+
 The old `scry-app.exe.xyz` VM service is stopped and disabled with its schema-3
 database intact.
 Do not start it while the target can write schema 4. The old Rust Worker is not

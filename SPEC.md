@@ -339,14 +339,15 @@ and operator use. Efficacy claims require separate delayed unaided recall data.
 As the owner, I want easy private access from my phone and computer without
 maintaining a signup product or exposing my learning material.
 
-- **S09.1:** Approved exe identity can access the app; missing, unapproved, or
-  forged identity cannot read/export material or mutate it through any exposed
-  hostname, backend listener, or alternate port. Verify the actual ingress trust
-  boundary before accepting personal data.
+- **S09.1:** Only the approved owner identity can access the app; missing,
+  unapproved, or forged identity cannot read/export material or mutate it
+  through any exposed hostname, backend listener, or alternate port. Verify
+  the actual ingress trust boundary before accepting personal data.
 - **S09.2:** Cross-site mutation and user/model script or HTMX-attribute injection
   are rejected or rendered inert. Back/history/cache after sign-out or identity
-  change does not expose a previous private session. Prove exe logout/account
-  switching behavior rather than assume header presence solves session lifecycle.
+  change does not expose a previous private session. Prove upstream logout and
+  account-switching behavior rather than assume header presence solves session
+  lifecycle.
 - **S09.3:** Build/preview agents have synthetic data and no production database,
   model, backup, or deployment authority by default. If machine access is added,
   it uses an explicitly scoped/revocable app credential, not VM management/root
@@ -596,43 +597,42 @@ a universal prerequisite graph, recursive tutor, automatic curriculum,
 cross-item estimator, or personalization optimizer.
 
 Use durable job status with bounded HTMX polling. SSE is optional only after
-proving useful incremental delivery through exe's actual proxy; streaming and
-proxy timeout behavior were not established by this specification research.
+proving useful incremental delivery through the Cloudflare Worker/Container
+path; streaming and proxy timeout behavior remain unverified by this research.
 
-### exe.dev and the small Cloudflare role
+### Cloudflare production hosting and recovery
 
-Build and preview on an isolated exe development workspace with synthetic data.
-Deploy the reviewed binary to the application environment without giving coding
-agents live data or production authority by default. Do not clone an active
-scheduler, credentials, or attached integrations into a second writing owner.
-A single production instance is sufficient; no HA or automatic failover claim.
+Production requests to `scry.study` pass through Cloudflare Access and Worker
+`scry-app-host`. Access's owner-email policy is not sufficient by itself: the
+Worker verifies the JWT issuer, audience, and exact immutable owner subject
+before forwarding to one `ScryContainer` Durable Object instance. nginx strips
+client-provided identity/authority headers, injects the fixed application
+owner ID, and proxies to Go on loopback. Go still checks canonical Host, the
+trusted ingress peer, exact owner ID, its signed app session, and CSRF on
+writes. Keep the backend private; a caller-supplied identity header is never
+authentication.
 
-Exe's private HTTPS and exact stable owner UserID form the identity boundary.
-Keep the backend private/loopback as supported; before use, prove that spoofed
-identity headers cannot enter through alternate routes. Header presence alone
-is not authentication. Application ownership checks and CSRF protection remain.
-Do not add Cloudflare Access in front of exe auth without a reason to maintain
-two access systems. The runbook owns approved domains and observed ingress.
+Build and preview in isolated environments with synthetic data. exe.dev may
+host development or recovery work, but it is not the production app origin.
+Keep one production Container writer; no HA or automatic failover claim. Never
+clone live jobs, model credentials, or recovery authority into previews.
 
-systemd owns restart/startup. On shutdown stop job claims, drain HTTP with a
-bound, join/cancel the job worker, then close the database. Mutable data and
-secrets live outside immutable release directories. Migrations finish before
-readiness; a prior binary is a rollback option only if compatible with the
-current schema. Do not run the build directly over the active release.
+Container storage is ephemeral. A cold start restores the newest complete
+SQLite snapshot from private R2 through the append/read-only `scry-go-backups`
+Worker. The production Worker runs `backup --require-remote` at 00:00 and
+12:00 UTC and validates the remote receipt; graceful stop attempts an
+additional remote backup. A crash, forced stop, or failed egress can lose writes
+newer than the last verified snapshot. R2 is recovery, not the live database;
+the application cannot delete snapshots or alter bucket policy. Archives use
+SQLite-consistent backup, integrity/checksum and schema/binary metadata, unique
+keys, and exact remote readback. Never copy only the live `.db` while WAL
+writes continue; include separately stored assets in recovery.
 
-Cloudflare R2 owns private off-VM archives, not a live SQLite filesystem or a
-second primary. The append/read-only recovery gateway provides the application
-no delete or bucket-policy authority. Recovery uses completed VACUUM INTO,
-checks integrity/checksum and schema/binary metadata, uploads under a unique key,
-and marks off-VM completion only after exact remote readback. Never copy only the
-live .db while WAL writes continue. Include separately stored assets in recovery.
-
-Recovery credentials/material must remain available without the lost VM. Restore
-into a fresh isolated environment and reconcile uncertain jobs before enabling
-external effects. VM persistence, VM copying, R2 availability and a recent
-backup timestamp each fall short of a tested restore. Backup failures should
-be visible without disabling ordinary review. D5 owns data-loss tolerance,
-retention and recovery time; no provider SLA is asserted here.
+Restore into an unused isolated path and reconcile uncertain jobs before
+enabling external effects. A recent snapshot alone is not proof of successful
+service recovery. Backup failures should be visible without disabling ordinary
+review. D5 owns data-loss tolerance, retention and recovery time; no provider
+SLA is asserted here.
 
 ## Foundation detour: MIS-59
 
@@ -868,10 +868,11 @@ Primary technical references, consulted for feasibility rather than runtime proo
 - [HTMX](https://htmx.org/docs/), [request synchronization](https://htmx.org/attributes/hx-sync/),
   and [preload](https://htmx.org/extensions/preload/): browser coordination is not
   server transactionality or an offline sync protocol.
-- [exe private HTTPS](https://exe.dev/docs/proxy.md),
+- Former exe.dev VM references: [private HTTPS](https://exe.dev/docs/proxy.md),
   [identity](https://exe.dev/docs/login-with-exe.md),
   [machine tokens](https://exe.dev/docs/https-tokens-for-vms.md), and
   [migration/listener guidance](https://exe.dev/docs/migrating-to-exe.md).
+  These document the retained VM workflow, not current production ingress.
 - [Pinned Go FSRS release](https://github.com/open-spaced-repetition/go-fsrs/releases/tag/v4.0.0)
   and [selected pure-Go SQLite driver](https://gitlab.com/cznic/sqlite).
 - [R2 consistency](https://developers.cloudflare.com/r2/reference/consistency/)

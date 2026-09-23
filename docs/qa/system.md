@@ -1,8 +1,9 @@
 # Scry verification
 
-The current application is Go/SQLite/HTMX on private exe.dev ingress. Choose
-proof for the changed behavior; a build, a fixture, a browser observation, a
-live provider result, and physical-phone acceptance establish different things.
+The production application is Go/SQLite/HTMX behind Cloudflare Access and Worker
+`scry-app-host`, which forwards to one singleton Container. Choose proof for the
+changed behavior; a build, fixture, browser observation, live provider result,
+and physical-phone acceptance establish different claims.
 [VISION](../../VISION.md) owns product intent, [SPEC](../../SPEC.md) owns
 acceptance, and [the runbook](../runbook.md) owns deployment/recovery procedures.
 Linear owns current work ownership, status, and pause; a procedure or old receipt
@@ -69,7 +70,7 @@ exclusive-create. A successful process launch is not release evidence: inspect
 | Prepublication critic (US-004) | `go test ./internal/learning ./internal/semantic ./internal/store ./internal/generation` | Candidate persistence before HTTP, one send lease, shared allowance, interrupted unknown spend, critic-only automatic/manual retry, hard veto and skipped publication. Run the opt-in bounded live control test separately; report false accepts/rejects/abstentions, raw requests/responses, model and cost. No production activation or broad accuracy claim. |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
 | Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |
-| Deployment | Current shell syntax plus exact-binary gate | Actual unprivileged process/readiness after protected activation |
+| Deployment | Current shell/config syntax and exact-binary gate | Actual Worker version, Access-owner/anonymous denial, Container readiness after restore, and remote backup readback after an approved rollout |
 | Historical recovery | `bun run test:recovery` | Use the corresponding historical store/tooling; never reinterpret old formats as Go snapshots |
 
 Do not add permanent tests for wiring or source text. Keep regressions for

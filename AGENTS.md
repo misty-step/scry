@@ -1,16 +1,20 @@
 # Scry
 
 Scry is a personal, quiz-first learning app. `VISION.md` owns product direction;
-`SPEC.md` owns behavior, acceptance, and architecture. The application is one Go
-process, SQLite, server-rendered HTML, HTMX, and a small browser controller on
-exe.dev. The operator approved the phone flow and daily recovery policy.
+`SPEC.md` owns behavior, acceptance, and architecture. The production
+application is a Go/SQLite process with server-rendered HTML, HTMX, and a small
+browser controller in a singleton Cloudflare Container behind Worker
+`scry-app-host` and Cloudflare Access. The operator approved the phone flow and
+daily recovery policy.
 
 ## Product and runtime
 
 - One private application instance owns learning writes and background work.
-  exe.dev provides HTTPS and identity; Scry checks the exact owner UserID,
-  canonical Host, and explicitly trusted ingress peer. No public signup,
-  waitlist, billing, or five-face compatibility is implied.
+  Cloudflare Access gates production ingress; `scry-app-host` validates the
+  JWT issuer, audience, and exact owner subject before forwarding to the
+  singleton Container. nginx strips client identity headers and injects the
+  fixed Scry owner ID; Go checks canonical Host, trusted peer, and exact owner
+  ID. No public signup, waitlist, billing, or five-face compatibility is implied.
 - `docs/runbook.md` owns current origins, activation, recovery, and retirement
   evidence. Never infer a deployment from source changes or a green gate.
 - The old production/staging Rust Workers are paused and their cron triggers
@@ -51,14 +55,17 @@ exe.dev. The operator approved the phone flow and daily recovery policy.
   No Rust parity, personalized retention, or learning-gain claim is inherited.
 - Review feedback remains until deliberate Next. Offline work pauses; unknown
   responses reconcile by the same operation ID rather than inventing success.
-- Keep new-app daily and pre-release off-VM snapshots with 30-day remote
+- Keep daily and pre-release SQLite snapshots in private R2 with 30-day remote
   retention. Approved targets are RPO 24 hours / RTO 60 minutes, not guarantees.
-  Retain compatible binaries and private configuration independently of the VM.
+  Retain compatible binaries and private configuration independently of the
+  ephemeral Container.
 - Restore into an unused path. Uncertain jobs stay paused; never clone live
   integrations or scheduler ownership into a development/recovery instance.
 - `.env` is ignored private operator material, not a deployment input to copy
-  wholesale. Production `/etc/scry/scry.env` is root-owned mode 0600 and is
-  parsed by systemd, never sourced as shell. Do not expose credentials.
+  wholesale. Production secrets are Cloudflare Worker/container bindings;
+  never place them in source, flags, logs, or container images. Any retained
+  VM's `/etc/scry/scry.env` is historical recovery-only, root-owned mode 0600,
+  parsed by systemd, and never sourced as shell. Do not expose credentials.
 
 ## Gates and proof
 
@@ -76,10 +83,12 @@ exe.dev. The operator approved the phone flow and daily recovery policy.
 - Use `--require-committed` for release artifacts. Worktree-labeled output is
   development evidence, not production source provenance. Stage only tested
   bytes; never rebuild between proof and activation.
-- `deploy/install.sh` stages immutable releases. `deploy/activate.sh` drains,
-  verifies remote backup and schema compatibility, switches the release, and
-  verifies the actual process/readiness. Never bypass these guards or overwrite
-  the live database during rollback.
+- `deploy/install.sh`, `deploy/activate.sh`, and `deploy/restore.sh` support the
+  retained exe.dev VM recovery path; they are not the current production
+  deployment path. Cloudflare releases follow `docs/runbook.md` and
+  `deploy/cloudflare-hosting/README.md`, with committed-source proof, the exact
+  smoke-tested binary, remote-backup verification, and explicit activation
+  approval. Never restart the stopped old writer or overwrite a live database.
 - Exercise the changed real surface. Existing Go tests protect behavior; model
   quality, private ingress, physical-phone acceptance, and independent restore
   need their own evidence. Reuse valid receipts; unverified is not passed.

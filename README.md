@@ -9,13 +9,18 @@ SQLite, the phone-first HTML/HTMX interface, bounded AI generation, and recovery
 
 ## Access and scope
 
-The private application is at **https://scry.study**, behind exe.dev login and
-an exact owner-identity check. The operator approved the earlier phone flow,
-not every later experience; [current product authority](VISION.md) records the
-foundations rejection and design reset.
-`www.scry.study` and `scry-app.exe.xyz` redirect reads to the canonical origin;
-alternate-host mutations are rejected, not replayed. Old production/staging
-Workers are paused and their recovery material is preserved, not imported.
+The private production app is at **https://scry.study**, behind Cloudflare
+Access and the exact owner-subject check in Worker `scry-app-host`. The shared
+Access team domain is `misty-step-pantry.cloudflareaccess.com`; it is the
+identity/login domain, not a Pantry application Worker URL. The
+[runbook](docs/runbook.md) owns deployed origins and state; see the
+[Cloudflare hosting notes](deploy/cloudflare-hosting/README.md) for the request path.
+The operator approved the earlier phone flow, not every later experience;
+[current product authority](VISION.md) records the foundations rejection and
+design reset. `www.scry.study` and `scry.mistystep.io` redirect reads to the
+canonical origin; alternate-host mutations are rejected, not replayed. The
+former exe.dev app service is stopped and disabled; its database and the old
+Rust Worker/Postgres stores remain recovery material, not active writers.
 
 There is no public signup, billing, separate frontend service, or public
 CLI/MCP/API compatibility requirement. The old Rust workspace and clients are

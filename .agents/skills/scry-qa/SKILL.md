@@ -9,10 +9,13 @@ argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 
 # Scry QA
 
-Scry is one private Go/SQLite/HTMX application on exe.dev, with an append/read
-Cloudflare Worker over private R2 for recovery. Read `docs/qa/system.md` and the
-relevant `docs/runbook.md` section. The old Rust Workers and native Postgres are
-frozen recovery material, not current application test/deployment targets.
+Scry is a private Go/SQLite/HTMX app on Cloudflare: Cloudflare Access gates
+Worker `scry-app-host`, which forwards to one singleton Container. An
+append/read-only backup Worker exposes the private R2 recovery store. Read
+`docs/qa/system.md` and the relevant `docs/runbook.md` section. The former
+exe.dev app service is disabled; its retained database, the old Rust Workers,
+and native Postgres are recovery material, not active application writers or
+current production deployment targets.
 
 ## Choose meaningful proof
 
@@ -34,7 +37,8 @@ bun run ci:full -- --out target/ci-release --require-committed
 It uses pinned Dagger tooling, freezes actual source, runs shared checks and
 redacted Gitleaks, and exports the same binary exercised by the synthetic smoke.
 Worktree-labeled artifacts are not committed release proof. Never rebuild
-between smoke and deployment or bypass protected activation/remote backup.
+between smoke and deployment or bypass Cloudflare's protected release gates or
+remote-backup verification.
 Scheduled or exploratory critic passes use `scripts/critics/` with run
 instructions in [docs/qa/critics.md](../../../docs/qa/critics.md); treat their
 output as advisory.
@@ -53,13 +57,17 @@ Use native pointer/keyboard input. A DOM `.click()` bypass is not touch proof.
 Diagnose a stalled harness or start a fresh isolated browser; do not erase the
 acceptance gap. Physical-phone acceptance belongs to the operator.
 
-Use only approved login or VM-scoped authority on the deployed private origin.
-Keep credentials out of URLs, argv, screenshots, logs, and committed receipts.
-Verify anonymous/forged access, wrong Host/peer, cross-site or stale mutations,
-and private content after provider-access loss. Alternate hosts redirect reads,
-never replay writes. Browser logout does not revoke independent VM API tokens.
+Use only the operator-approved Cloudflare Access owner login on production.
+VM-scoped credentials belong only to explicitly authorized recovery work, never
+as a substitute for Access. Keep credentials out of URLs, argv, screenshots,
+logs, and committed receipts.
+Verify anonymous/forged Access denial, wrong Host/peer, cross-site or stale
+mutations, and private content after access loss. Alternate hosts redirect reads,
+never replay writes. Do not assume Access sign-out, the Go session cookie, or
+independent provider/recovery credentials revoke one another; verify each at its
+own authority.
 
-Health/readiness are plaintext `ok`/`ready`; they do not prove fresh off-VM
+Health/readiness are plaintext `ok`/`ready`; they do not prove a fresh remote R2
 backup, model usefulness, or learning. Settings exposes backup status. There is
 no Go `/statusz`, public `/v1`, or maintained Rust CLI/MCP contract.
 

@@ -125,15 +125,20 @@ Their exclusion is not a permanent ban if later use justifies them.
 
 ## Technical Direction and Current Runtime
 
-One Go application owns SQLite on persistent disk, server-rendered HTML with
-HTMX, and a small browser-side interaction layer on exe.dev. Cloudflare provides
-private off-VM R2 recovery through a narrow append/read gateway; it is not the
-interactive application runtime.
+The Go application is served at `https://scry.study` by Cloudflare Worker
+`scry-app-host`, which gates requests through Cloudflare Access and forwards
+the exact owner to one `ScryContainer`. A single Go/SQLite writer renders the
+HTML/HTMX phone experience. Container storage is ephemeral: cold starts restore
+the latest complete snapshot from private R2 through the append/read-only
+backup gateway, and the Worker schedules remote backups. `docs/runbook.md`
+owns production origins, release evidence, and recovery procedures.
 
-The old Rust application and five-face implementation are retired. Its Worker
-stores, frozen native Postgres, backups, and compatible historical source remain
-recovery material, not alternative live writers. Current operation and proof
-belong in [the runbook](docs/runbook.md) and [QA guide](docs/qa/system.md).
+The old Rust application and five-face clients are retired. Its production and
+staging Rust Workers are paused with cron triggers removed; their stores, frozen
+native Postgres, backups, and compatible historical source remain recovery
+material, not alternative live writers. The Go Worker `scry-app-host` is the
+current interactive runtime. Current verification belongs in the
+[QA guide](docs/qa/system.md).
 
 No old QA data is imported and unused APIs have no compatibility requirement.
 The operator chose to preserve old data and historical recovery separately.
