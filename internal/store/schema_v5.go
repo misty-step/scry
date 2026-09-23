@@ -124,6 +124,20 @@ CREATE TRIGGER immutable_evidence_update BEFORE UPDATE ON evidence BEGIN SELECT 
 CREATE TRIGGER immutable_evidence_delete BEFORE DELETE ON evidence BEGIN SELECT RAISE(ABORT,'evidence is immutable'); END;
 CREATE TRIGGER immutable_override_update BEFORE UPDATE ON grade_overrides BEGIN SELECT RAISE(ABORT,'grade overrides are immutable'); END;
 CREATE TRIGGER immutable_override_delete BEFORE DELETE ON grade_overrides BEGIN SELECT RAISE(ABORT,'grade overrides are immutable'); END;
+CREATE TABLE quiz_proposals (
+ id TEXT PRIMARY KEY,
+ quiz_id TEXT NOT NULL REFERENCES quizzes(id),
+ base_version INTEGER NOT NULL,
+ job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id),
+ instruction TEXT NOT NULL,
+ content TEXT NOT NULL CHECK(json_valid(content)),
+ model TEXT NOT NULL,
+ prompt_version TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','discarded','superseded')),
+ created_at INTEGER NOT NULL,
+ decided_at INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE UNIQUE INDEX one_pending_proposal ON quiz_proposals(quiz_id) WHERE status='pending';
 PRAGMA user_version=5;
 `
 

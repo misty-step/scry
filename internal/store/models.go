@@ -422,6 +422,27 @@ type SearchHit struct {
 	ConceptID string `json:"concept_id,omitempty"`
 	Title     string `json:"title"`
 	Snippet   string `json:"snippet"`
+	// SourceIDs names every capture the hit's text derives from, so callers
+	// can withhold a cold question's own material. Never serialized.
+	SourceIDs []string `json:"-"`
+}
+
+// QuizProposal is a suggested correction written by a fix job. It changes
+// nothing until the learner accepts it.
+type QuizProposal struct {
+	ID          string        `json:"id"`
+	QuizID      string        `json:"quiz_id"`
+	BaseVersion int           `json:"base_version"`
+	Instruction string        `json:"instruction"`
+	Proposed    GeneratedQuiz `json:"proposed"`
+	CreatedAt   int64         `json:"created_at"`
+}
+
+// QuizFix is the fix state of one question: a correction being written, a
+// suggestion awaiting the learner's decision, or neither.
+type QuizFix struct {
+	Writing  bool          `json:"writing"`
+	Proposal *QuizProposal `json:"proposal,omitempty"`
 }
 
 type MapView struct {

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -415,6 +416,19 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if q.Version != expectedVersion {
 		return Quiz{}, fmt.Errorf("%w: the quiz was already edited; reload before editing", ErrConflict)
 	}
+	if q, err = writeEdit(ctx, tx, q, content, "", "manual-edit", s.now()); err != nil {
+		return Quiz{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Quiz{}, err
+	}
+	return q, nil
+}
+
+// writeEdit installs content as the question's next version under the same
+// fences as publication, retires an unanswered occurrence of the old wording,
+// and supersedes any suggestion written for the version it replaces.
+func writeEdit(ctx context.Context, tx *sql.Tx, q Quiz, content GeneratedQuiz, model, promptVersion string, now int64) (Quiz, error) {
 	m, err := loadMaterial(ctx, tx, q.SourceID, 1)
 	if err != nil {
 		return Quiz{}, err
@@ -452,27 +466,113 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if err != nil {
 		return Quiz{}, err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO quiz_versions(quiz_id,version,content,model,prompt_version,created_at) VALUES(?,?,?,'','manual-edit',?)", id, q.Version+1, encoded, s.now())
+	if _, err = tx.ExecContext(ctx, "INSERT INTO quiz_versions(quiz_id,version,content,model,prompt_version,created_at) VALUES(?,?,?,?,?,?)", q.ID, q.Version+1, encoded, model, promptVersion, now); err != nil {
+		return Quiz{}, err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE quizzes SET version=version+1 WHERE id=?", q.ID); err != nil {
+		return Quiz{}, err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE quiz_proposals SET status='superseded',decided_at=? WHERE quiz_id=? AND status='pending' AND base_version=?", now, q.ID, q.Version); err != nil {
+		return Quiz{}, err
+	}
+	if err = retireUnanswered(ctx, tx, q.ID, ""); err != nil {
+		return Quiz{}, err
+	}
+	if err = indexQuizContent(ctx, tx, q.ID, content); err != nil {
+		return Quiz{}, err
+	}
+	return quiz(ctx, tx, q.ID)
+}
+
+// QuizFix reports whether a correction is being written for a question and
+// the suggestion awaiting the learner's decision, if any.
+func (s *Store) QuizFix(ctx context.Context, quizID string) (QuizFix, error) {
+	var fix QuizFix
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fix, err
+	}
+	defer tx.Rollback()
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs WHERE kind='fix' AND status IN ('queued','running','retry')
+	 AND json_extract(payload,'$.quiz_id')=?)`, quizID).Scan(&fix.Writing); err != nil {
+		return fix, err
+	}
+	var p QuizProposal
+	var content string
+	err = tx.QueryRowContext(ctx, "SELECT id,quiz_id,base_version,instruction,content,created_at FROM quiz_proposals WHERE quiz_id=? AND status='pending'", quizID).
+		Scan(&p.ID, &p.QuizID, &p.BaseVersion, &p.Instruction, &content, &p.CreatedAt)
+	if err == nil {
+		if err = json.Unmarshal([]byte(content), &p.Proposed); err != nil {
+			return fix, err
+		}
+		fix.Proposal = &p
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fix, err
+	}
+	return fix, tx.Commit()
+}
+
+// DecideProposal applies or discards a suggested correction. Accepting writes
+// it as the next version through the same fences as a manual edit, and only
+// while the question is still the version the suggestion was written for.
+func (s *Store) DecideProposal(ctx context.Context, quizID, proposalID, operationID string, accept bool) (Quiz, error) {
+	if err := validOperation(operationID); err != nil {
+		return Quiz{}, err
+	}
+	hash := payloadHash(struct {
+		Quiz, Proposal string
+		Accept         bool
+	}{quizID, proposalID, accept})
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Quiz{}, err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE quizzes SET version=version+1 WHERE id=?", id); err != nil {
-		return Quiz{}, err
+	defer tx.Rollback()
+	var status, content, model, promptVersion string
+	var baseVersion int
+	if err = tx.QueryRowContext(ctx, "SELECT status,base_version,content,model,prompt_version FROM quiz_proposals WHERE id=? AND quiz_id=?", proposalID, quizID).
+		Scan(&status, &baseVersion, &content, &model, &promptVersion); err != nil {
+		return Quiz{}, notFound(err, "suggested fix")
 	}
-	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
-		return Quiz{}, err
-	}
-	if err = indexQuizContent(ctx, tx, id, content); err != nil {
-		return Quiz{}, err
-	}
-	q, err = quiz(ctx, tx, id)
+	_, _, found, err := existingOperation(ctx, tx, operationID, "proposal", hash)
 	if err != nil {
 		return Quiz{}, err
 	}
-	if err = tx.Commit(); err != nil {
+	now := s.now()
+	if !found {
+		if status != "pending" {
+			return Quiz{}, fmt.Errorf("%w: this suggestion was already decided or replaced", ErrConflict)
+		}
+		q, err := quiz(ctx, tx, quizID)
+		if err != nil {
+			return Quiz{}, err
+		}
+		decision := "discarded"
+		if accept {
+			if q.Archived || q.Version != baseVersion {
+				return Quiz{}, fmt.Errorf("%w: the question changed after this suggestion; ask for a new fix", ErrConflict)
+			}
+			var proposed GeneratedQuiz
+			if err = json.Unmarshal([]byte(content), &proposed); err != nil {
+				return Quiz{}, err
+			}
+			if _, err = writeEdit(ctx, tx, q, proposed, model, promptVersion, now); err != nil {
+				return Quiz{}, err
+			}
+			decision = "accepted"
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE quiz_proposals SET status=?,decided_at=? WHERE id=?", decision, now, proposalID); err != nil {
+			return Quiz{}, err
+		}
+		if err = saveOperation(ctx, tx, operationID, "proposal", hash, proposalID, nil, now); err != nil {
+			return Quiz{}, err
+		}
+	}
+	q, err := quiz(ctx, tx, quizID)
+	if err != nil {
 		return Quiz{}, err
 	}
-	return q, nil
+	return q, tx.Commit()
 }
 
 func (s *Store) ArchiveQuiz(ctx context.Context, id string) error {

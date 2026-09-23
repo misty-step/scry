@@ -178,11 +178,16 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		s.gate(w, r, current)
 		return
 	}
-	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"quiz": q, "csrf": r.Context().Value(csrfKey{})})
+	fix, err := s.store.QuizFix(r.Context(), q.ID)
+	if err != nil {
+		s.fail(w, r, err, page{})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, FixOpen: r.URL.Query().Get("fix") == "1"})
+	if wantsJSON(r) {
+		jsonResponse(w, http.StatusOK, map[string]any{"quiz": q, "fix": fix, "csrf": r.Context().Value(csrfKey{})})
+		return
+	}
+	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, Fix: fix, FixOpen: r.URL.Query().Get("fix") == "1"})
 }
 
 func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {

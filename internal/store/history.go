@@ -162,6 +162,7 @@ func (s *Store) Export(ctx context.Context) ([]byte, error) {
 		{"capture_images", "SELECT * FROM capture_images ORDER BY created_at,source_id"},
 		{"evidence", "SELECT * FROM evidence ORDER BY created_at,id"},
 		{"grade_overrides", "SELECT * FROM grade_overrides ORDER BY created_at,id"},
+		{"quiz_proposals", "SELECT * FROM quiz_proposals ORDER BY created_at,id"},
 		{"preferences", "SELECT * FROM preferences"},
 		{"semantic_assessments", "SELECT * FROM semantic_assessments ORDER BY created_at,id"},
 		{"content_assessments", "SELECT id,job_id,candidate_index,candidate_json,purpose,status,policy_version,request_model,response_model,request_json,response_json,decision,reasons,error,input_tokens,output_tokens,cost_micros,latency_ms,transmissions,reserved_micros,lease_until,created_at,finished_at FROM content_assessments ORDER BY created_at,id"},

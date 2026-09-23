@@ -858,10 +858,14 @@ func publishQuizzes(ctx context.Context, tx *sql.Tx, j Job, result GenerationRes
 	return len(result.Quizzes), nil
 }
 
+// publishFix saves a fix job's corrected question as a proposal. The live
+// question is unchanged until the learner accepts it (DecideProposal); a newer
+// suggestion supersedes an undecided older one.
 func publishFix(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, now int64) (int, error) {
 	var payload struct {
-		QuizID  string `json:"quiz_id"`
-		Version int    `json:"version"`
+		QuizID      string `json:"quiz_id"`
+		Version     int    `json:"version"`
+		Instruction string `json:"instruction"`
 	}
 	if err := json.Unmarshal([]byte(j.Payload), &payload); err != nil {
 		return 0, err
@@ -871,26 +875,18 @@ func publishFix(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult,
 		return 0, err
 	}
 	if current.Archived || current.Version != payload.Version {
-		return 0, fmt.Errorf("%w: the question changed before this fix was ready; nothing was replaced", ErrInvalid)
+		return 0, fmt.Errorf("%w: the question changed before this fix was ready; nothing was suggested", ErrInvalid)
 	}
-	content := result.Quizzes[0]
-	content = carryRubric(current, content)
-	encoded, err := marshal(content)
+	encoded, err := marshal(carryRubric(current, result.Quizzes[0]))
 	if err != nil {
 		return 0, err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO quiz_versions(quiz_id,version,content,model,prompt_version,created_at) VALUES(?,?,?,?,?,?)",
-		current.ID, current.Version+1, encoded, result.Model, result.PromptVersion, now); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE quiz_proposals SET status='superseded',decided_at=? WHERE quiz_id=? AND status='pending'", now, current.ID); err != nil {
 		return 0, err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE quizzes SET version=version+1 WHERE id=?", current.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO quiz_proposals(id,quiz_id,base_version,job_id,instruction,content,model,prompt_version,created_at)
+	 VALUES(?,?,?,?,?,?,?,?,?)`, newID(), current.ID, current.Version, j.ID, payload.Instruction, encoded, result.Model, result.PromptVersion, now); err != nil {
 		return 0, err
 	}
-	if err = retireUnanswered(ctx, tx, current.ID, ""); err != nil {
-		return 0, err
-	}
-	if err = indexQuizContent(ctx, tx, current.ID, content); err != nil {
-		return 0, err
-	}
-	return 1, nil
+	return 0, nil
 }

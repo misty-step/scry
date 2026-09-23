@@ -184,14 +184,16 @@ var stageLabels = map[string]string{
 	"fix": "Fixing a question", "quizzes": "Writing questions",
 }
 
-func preparingFor(ctx context.Context, tx *sql.Tx, src Source, jobs []Job, now int64) (*Preparing, error) {
+// preparingFor describes a source's live preparation, or one that stopped
+// within window milliseconds (0 means at any age).
+func preparingFor(ctx context.Context, tx *sql.Tx, src Source, jobs []Job, now, window int64) (*Preparing, error) {
 	if src.Archived || len(jobs) == 0 {
 		return nil, nil
 	}
 	last := jobs[len(jobs)-1]
 	live := last.Status == "queued" || last.Status == "running" || last.Status == "retry"
 	stopped := last.Status == "failed" || last.Status == "paused" || (last.Status == "canceled" && last.Kind != "quizzes")
-	if !live && !(stopped && last.UpdatedAt >= now-remedialWindow) {
+	if !live && !(stopped && (window == 0 || last.UpdatedAt >= now-window)) {
 		return nil, nil
 	}
 	p := &Preparing{SourceID: src.ID, Stage: last.Kind, Label: stageLabels[last.Kind]}
@@ -236,7 +238,7 @@ func preparingList(ctx context.Context, tx *sql.Tx, now int64) ([]Preparing, err
 		if err != nil {
 			return nil, err
 		}
-		p, err := preparingFor(ctx, tx, src, jobs, now)
+		p, err := preparingFor(ctx, tx, src, jobs, now, remedialWindow)
 		if err != nil {
 			return nil, err
 		}
@@ -421,7 +423,23 @@ func (s *Store) Map(ctx context.Context, query string) (MapView, error) {
 			}
 		}
 		if len(gv.Concepts) == 0 && gv.Preparing == nil {
-			continue // legacy goals without concepts are listed under unmapped material
+			// A capture whose preparation stopped stays reachable here at any
+			// age, so its retry is never lost; other concept-less goals are
+			// legacy material listed under unmapped questions.
+			src, err := source(ctx, tx, g.SourceID, false)
+			if err != nil {
+				return view, err
+			}
+			jobs, err := sourceJobs(ctx, tx, g.SourceID)
+			if err != nil {
+				return view, err
+			}
+			if gv.Preparing, err = preparingFor(ctx, tx, src, jobs, now, 0); err != nil {
+				return view, err
+			}
+			if gv.Preparing == nil {
+				continue
+			}
 		}
 		view.Goals = append(view.Goals, gv)
 	}
@@ -473,15 +491,28 @@ func searchHits(ctx context.Context, tx *sql.Tx, query string, limit int) ([]Sea
 	for _, h := range raw {
 		switch h.Kind {
 		case "concept", "note":
+			// Note rows are keyed by their concept: one current standard note each.
 			h.ConceptID = h.ID
 		case "question":
 			// Question hits never show answer-bearing text.
 			h.Snippet = ""
-			if err = tx.QueryRowContext(ctx, "SELECT COALESCE((SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role='assesses'),'')", h.ID).Scan(&h.ConceptID); err != nil {
+			var source string
+			if err = tx.QueryRowContext(ctx, "SELECT COALESCE((SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role='assesses'),''),(SELECT source_id FROM quizzes WHERE id=?)", h.ID, h.ID).Scan(&h.ConceptID, &source); err != nil {
 				return nil, err
 			}
+			h.SourceIDs = append(h.SourceIDs, source)
 		case "source":
 			h.Title, h.Snippet = excerptRunes(h.Title, 140), ""
+			h.SourceIDs = append(h.SourceIDs, h.ID)
+		}
+		if h.ConceptID != "" {
+			// A concept's text derives from every capture whose goal holds it.
+			goals, err := orderedIDs(ctx, tx, `SELECT g.source_id FROM goal_concepts gc JOIN goals g ON g.id=gc.goal_id WHERE gc.concept_id=?
+			 UNION SELECT source_id FROM concepts WHERE id=? AND source_id<>''`, h.ConceptID, h.ConceptID)
+			if err != nil {
+				return nil, err
+			}
+			h.SourceIDs = append(h.SourceIDs, goals...)
 		}
 		hits = append(hits, h)
 	}

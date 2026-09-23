@@ -60,6 +60,7 @@ type page struct {
 	Summary                                                                       store.Summary
 	Preferences                                                                   store.Preferences
 	Gate                                                                          *store.Presentation
+	Fix                                                                           store.QuizFix
 	ReturnTo, ReviewID, Note                                                      string
 	Reset, JobPending, BackupStale, FixOpen                                       bool
 	PollRemaining, Status                                                         int
@@ -245,6 +246,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("POST /quizzes/{id}/edit", app.saveQuiz)
 	mux.HandleFunc("POST /quizzes/{id}/archive", app.archiveQuiz)
 	mux.HandleFunc("POST /quizzes/{id}/fix", app.fixQuiz)
+	mux.HandleFunc("POST /quizzes/{id}/proposal", app.decideProposal)
 	mux.HandleFunc("GET /history", app.history)
 	mux.HandleFunc("GET /reviews/{id}/dispute", app.disputePage)
 	mux.HandleFunc("POST /reviews/{id}/dispute", app.dispute)

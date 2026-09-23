@@ -235,6 +235,23 @@ func TestConceptChainAndIntroUS006(t *testing.T) {
 			t.Fatalf("question search leaked answer-bearing text: %+v", h)
 		}
 	}
+	// A note hit opens its concept, not a page named after the note.
+	notes, err := s.Map(ctx, "authority behind")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, h := range notes.Hits {
+		if h.Kind == "note" {
+			found = true
+			if h.ConceptID != chain || len(h.SourceIDs) == 0 || h.SourceIDs[0] != src.ID {
+				t.Fatalf("note hit points at %q (sources %v), want concept %s from %s", h.ConceptID, h.SourceIDs, chain, src.ID)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("note text was not searchable: %+v", notes.Hits)
+	}
 }
 
 // Provenance fences hold at publication: material-based notes quote the
@@ -450,19 +467,15 @@ func TestConfusionsScheduleContrastUS012(t *testing.T) {
 	s, now := newTestStore(t)
 	ctx := context.Background()
 	_, chain, hostname := textPack(t, s)
-	for _, id := range []string{chain, hostname} {
-		if _, err := s.AcknowledgeIntro(ctx, id, "intro-"+id, false); err != nil {
-			t.Fatal(err)
-		}
-	}
 	confuse := func(op string) {
 		t.Helper()
-		for i := 0; i < 4; i++ {
-			state, err := s.Review(ctx)
-			if err != nil || state.Current == nil {
-				t.Fatalf("no current question: %+v %v", state, err)
+		for i := 0; i < 6; i++ {
+			state := introduceOffered(t, s)
+			if state.Current == nil {
+				t.Fatalf("no current question: %+v", state)
 			}
 			p := *state.Current
+			var err error
 			if p.Quiz.Kind == "choice" {
 				if _, err = s.Submit(ctx, p.ID, op, "When the certificate names the host", false); err != nil {
 					t.Fatal(err)
@@ -655,16 +668,11 @@ func TestLateQuestionsForArchivedConceptAreRefused(t *testing.T) {
 func TestUngradedChoiceHidesDistractorConcepts(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
-	_, chain, hostname := textPack(t, s)
-	for _, id := range []string{chain, hostname} {
-		if _, err := s.AcknowledgeIntro(ctx, id, "tags-intro-"+id, false); err != nil {
-			t.Fatal(err)
-		}
-	}
+	textPack(t, s)
 	for i := 0; i < 3; i++ {
-		state, err := s.Review(ctx)
-		if err != nil || state.Current == nil {
-			t.Fatalf("no question: %+v %v", state, err)
+		state := introduceOffered(t, s)
+		if state.Current == nil {
+			t.Fatalf("no question: %+v", state)
 		}
 		current, err := s.Current(ctx)
 		if err != nil {
@@ -684,4 +692,157 @@ func TestUngradedChoiceHidesDistractorConcepts(t *testing.T) {
 		}
 	}
 	t.Fatal("the choice question never came up")
+}
+
+// introduceOffered reads each intro the stream offers, in the order it offers
+// them, and returns the first state that is not an intro.
+func introduceOffered(t *testing.T, s *Store) ReviewState {
+	t.Helper()
+	ctx := context.Background()
+	state, err := s.Review(ctx)
+	for i := 0; err == nil && state.Intro != nil && i < 12; i++ {
+		state, err = s.AcknowledgeIntro(ctx, state.Intro.Concept.ID, "intro-"+newID(), false)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+// US-011: only the intro the stream offers can be acknowledged, so "I know
+// this already" cannot unlock a dependent concept ahead of its prerequisite.
+func TestOnlyTheOfferedIntroCanBeAcknowledgedUS011(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	_, chain, hostname := textPack(t, s)
+	if _, err := s.AcknowledgeIntro(ctx, hostname, "skip-ahead", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a dependent concept was acknowledged before its prerequisite: %v", err)
+	}
+	var known int
+	if err := s.db.QueryRow("SELECT count(*) FROM evidence WHERE kind='know'").Scan(&known); err != nil || known != 0 {
+		t.Fatalf("a refused acknowledgment recorded evidence: %d %v", known, err)
+	}
+	state, err := s.AcknowledgeIntro(ctx, chain, "read-chain", false)
+	if err != nil || state.Current == nil {
+		t.Fatalf("the offered intro was refused: %+v %v", state, err)
+	}
+	// With a question on screen, no intro is offered at all.
+	if _, err = s.AcknowledgeIntro(ctx, hostname, "skip-ahead-2", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("an intro was acknowledged over a current question: %v", err)
+	}
+}
+
+// A capture whose preparation stopped stays on the Map at any age, so its
+// retry is never lost; only the Stream's receipt goes quiet after a day.
+func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
+	s, now := newTestStore(t)
+	ctx := context.Background()
+	src, err := s.Capture(ctx, CaptureInput{Text: tlsMaterial, Mode: "text"}, "stopped-capture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := claimKind(t, s, "plan")
+	zero := int64(0)
+	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "Preparation is not set up on this server yet.", false, &zero); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(25 * time.Hour)
+	state, err := s.Review(ctx)
+	if err != nil || len(state.Preparing) != 0 {
+		t.Fatalf("the Stream still shows a day-old stopped receipt: %+v %v", state.Preparing, err)
+	}
+	m, err := s.Map(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reachable := false
+	for _, g := range m.Goals {
+		if g.Goal.SourceID == src.ID && g.Preparing != nil && g.Preparing.Failed {
+			reachable = true
+		}
+	}
+	if !reachable {
+		t.Fatalf("a day-old stopped capture vanished from the Map: %+v", m.Goals)
+	}
+	retried, err := s.RetrySource(ctx, src.ID, "retry-stopped")
+	if err != nil || retried.Job == nil || retried.Job.Kind != "plan" || retried.Job.Status != "queued" {
+		t.Fatalf("the stopped capture could not be retried: %+v %v", retried.Job, err)
+	}
+}
+
+// A requested fix is a suggestion: it changes nothing until the learner
+// accepts it, accepting installs it once, and an edit or a discard leaves the
+// live question as the learner chose.
+func TestFixIsASuggestionUntilAccepted(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	src, chain, hostname := textPack(t, s)
+	var q Quiz
+	for _, candidate := range src.Quizzes {
+		if candidate.Kind == "choice" {
+			q = candidate
+		}
+	}
+	suggest := func(op, prompt string) {
+		t.Helper()
+		if err := s.RequestFix(ctx, q.ID, "Make the prompt shorter", op); err != nil {
+			t.Fatal(err)
+		}
+		if fix, err := s.QuizFix(ctx, q.ID); err != nil || !fix.Writing {
+			t.Fatalf("fix request not shown as being written: %+v %v", fix, err)
+		}
+		j := claimKind(t, s, "fix")
+		complete(t, s, j, GenerationResult{Quizzes: []GeneratedQuiz{{Kind: "choice", Level: "recognize", Concept: chain, Prompt: prompt,
+			Answer: "When it chains to a root the client already trusts", Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"},
+			ChoiceConcepts: []string{"", "", hostname}, Explanation: "Trust comes from the chain to a known root.", Basis: "source", Evidence: "chains to a root authority the client already trusts"}}})
+	}
+	version := func() int {
+		t.Helper()
+		current, err := s.Quiz(ctx, q.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return current.Version
+	}
+	suggest("fix-1", "When does a TLS client trust a certificate?")
+	fix, err := s.QuizFix(ctx, q.ID)
+	if err != nil || fix.Writing || fix.Proposal == nil || fix.Proposal.Proposed.Prompt != "When does a TLS client trust a certificate?" || version() != q.Version {
+		t.Fatalf("a finished fix changed the question or was not offered: %+v version=%d %v", fix, version(), err)
+	}
+	accepted, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-1", true)
+	if err != nil || accepted.Version != q.Version+1 || accepted.Prompt != "When does a TLS client trust a certificate?" {
+		t.Fatalf("accepting did not install the suggestion: %+v %v", accepted, err)
+	}
+	if replay, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-1", true); err != nil || replay.Version != accepted.Version {
+		t.Fatalf("an exact replay changed the result: %+v %v", replay, err)
+	}
+	if _, err = s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-again", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a decided suggestion was applied twice: %v", err)
+	}
+	q = accepted
+	// An edit made while a suggestion waits supersedes it.
+	suggest("fix-2", "When is a server certificate trusted?")
+	fix, err = s.QuizFix(ctx, q.ID)
+	if err != nil || fix.Proposal == nil {
+		t.Fatalf("second suggestion missing: %+v %v", fix, err)
+	}
+	edited := GeneratedQuiz{Kind: "choice", Prompt: "Which condition makes a TLS client trust a server certificate?", Answer: q.Answer, Choices: q.Choices, Explanation: q.Explanation, Basis: "source", Evidence: q.Evidence}
+	if q, err = s.EditQuiz(ctx, q.ID, q.Version, edited); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-stale", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a suggestion written for an older version was applied: %v", err)
+	}
+	// Keeping the current question changes nothing.
+	suggest("fix-3", "When does trust hold?")
+	fix, err = s.QuizFix(ctx, q.ID)
+	if err != nil || fix.Proposal == nil {
+		t.Fatalf("third suggestion missing: %+v %v", fix, err)
+	}
+	if kept, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "discard-3", false); err != nil || kept.Version != q.Version || kept.Prompt != edited.Prompt {
+		t.Fatalf("discarding changed the question: %+v %v", kept, err)
+	}
+	if fix, err = s.QuizFix(ctx, q.ID); err != nil || fix.Proposal != nil {
+		t.Fatalf("a discarded suggestion is still offered: %+v %v", fix, err)
+	}
 }

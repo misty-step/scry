@@ -555,7 +555,11 @@ flexible short recall. Explain prose alone gets required-idea rubric. Choice
 distractors can identify the contrasting concept. `questions` can be requested
 for one concept, `note` for simpler/deeper level, `fix` for a specified quiz
 version, and after two observations of the same confusion `contrast` for the
-pair. Only one live job per source; busy requests return conflict. Completing
+pair. A `fix` only suggests: its corrected question waits beside the current
+one on the question's edit page and changes nothing until the learner uses it
+(then it is written as the next version under the same fences as a manual
+edit) or keeps theirs; a later edit or suggestion supersedes an undecided one.
+Only one live job per source; busy requests return conflict. Completing
 each stage atomically publishes validated content and enqueues its successor.
 Validation is per item: an invalid concept or question is dropped (with any
 relation naming it) and the valid remainder publishes as a partial stage whose

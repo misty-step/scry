@@ -1048,6 +1048,22 @@ func (s *Store) AcknowledgeIntro(ctx context.Context, conceptID, operationID str
 		if !active {
 			return ReviewState{}, fmt.Errorf("%w: concept", ErrNotFound)
 		}
+		// Only the intro the stream offers now may be acknowledged: "I know
+		// this" counts toward prerequisites, so an out-of-turn or stale
+		// acknowledgment would bypass their ordering.
+		var current sql.NullString
+		if err = tx.QueryRowContext(ctx, "SELECT current_id FROM review_session WHERE singleton=1").Scan(&current); err != nil {
+			return ReviewState{}, err
+		}
+		offered := nextChoice{}
+		if !current.Valid {
+			if offered, err = selectNext(ctx, tx, now, ""); err != nil {
+				return ReviewState{}, err
+			}
+		}
+		if offered.intro == nil || offered.intro.Concept.ID != conceptID {
+			return ReviewState{}, fmt.Errorf("%w: this idea is no longer the one to read; reload", ErrConflict)
+		}
 		note, err := currentNote(ctx, tx, conceptID, "standard")
 		if err != nil {
 			return ReviewState{}, err

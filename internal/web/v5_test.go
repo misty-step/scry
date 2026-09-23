@@ -21,7 +21,7 @@ import (
 func TestNewMutationsRequireOwnerAndCSRF(t *testing.T) {
 	_, app := privateApp(t)
 	cookie, csrf, _ := bootstrapForm(t, app)
-	for _, path := range []string{"/review/self", "/review/override", "/review/intro", "/concepts/c/practice", "/concepts/c/note", "/concepts/c/questions", "/concepts/c/archive", "/goals/g", "/quizzes/q/fix", "/settings"} {
+	for _, path := range []string{"/review/self", "/review/override", "/review/intro", "/concepts/c/practice", "/concepts/c/note", "/concepts/c/questions", "/concepts/c/archive", "/goals/g", "/quizzes/q/fix", "/quizzes/q/proposal", "/settings"} {
 		t.Run(path, func(t *testing.T) {
 			for _, change := range []struct {
 				name  string
@@ -415,6 +415,13 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	if body := get("/", http.StatusOK); !strings.Contains(body, currentMaterial) {
 		t.Fatalf("stream receipt was not relabeled: %s", body)
 	}
+	// Searching the cold question's answer, or anything else from its
+	// capture (sibling concepts, notes, questions), finds nothing yet.
+	for _, q := range []string{"root", "host", "trust", "synthetic"} {
+		if body := get("/map?q="+q, http.StatusOK); !strings.Contains(body, `"hits":[]`) {
+			t.Fatalf("search %q found the cold question's own capture: %s", q, body)
+		}
+	}
 	get("/concepts/"+cold.Concept.ID, http.StatusConflict)
 	// Once assistance is recorded, the material is the learner's again.
 	if _, err = s.Submit(ctx, cold.ID, randomToken(), "", true); err != nil {
@@ -422,5 +429,73 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	}
 	if body := get("/map", http.StatusOK); !strings.Contains(body, "GOAL-TITLE") {
 		t.Fatalf("goal title stayed hidden after assistance: %s", body)
+	}
+	if body := get("/map?q=host", http.StatusOK); strings.Contains(body, `"hits":[]`) {
+		t.Fatalf("search stayed empty after assistance: %s", body)
+	}
+}
+
+// A requested fix is shown as a suggestion beside the current question and
+// changes nothing until the learner chooses "Use this version".
+func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
+	s, app := privateApp(t)
+	ctx := context.Background()
+	src, err := s.Capture(ctx, store.CaptureInput{Text: "Synthetic records", Mode: "topic"}, randomToken())
+	if err != nil {
+		t.Fatal(err)
+	}
+	completeSyntheticQuiz(t, s, store.GeneratedQuiz{Kind: "choice", Prompt: "Which record maps a hostname to an IPv4 address?", Answer: "A", Choices: []string{"A", "MX", "TXT"}, Explanation: "An A record holds an IPv4 address.", Basis: "topic"})
+	saved, err := s.Source(ctx, src.ID)
+	if err != nil || len(saved.Quizzes) != 1 {
+		t.Fatalf("fixture question: %+v %v", saved.Quizzes, err)
+	}
+	q := saved.Quizzes[0]
+	if err = s.RequestFix(ctx, q.ID, "Shorter prompt, please", randomToken()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.ClaimJob(ctx, time.Minute, 1, 1000000)
+	if err != nil || job == nil || job.Kind != "fix" {
+		t.Fatalf("claim fix: %+v %v", job, err)
+	}
+	zero := int64(0)
+	if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5", Quizzes: []store.GeneratedQuiz{{Kind: "choice", Level: "recall",
+		Concept: q.ConceptID, Prompt: "SUGGESTED which record holds an IPv4 address?", Answer: "A", Choices: []string{"A", "MX", "TXT"}, Explanation: "An A record holds an IPv4 address.", Basis: "topic"}}}, &zero); err != nil {
+		t.Fatal(err)
+	}
+	cookie, csrf, operation := bootstrapForm(t, app)
+	edit := func() string {
+		t.Helper()
+		r := ownerRequest(http.MethodGet, "/quizzes/"+q.ID+"/edit", nil)
+		r.AddCookie(cookie)
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("edit page: %d %s", w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	if body := edit(); !strings.Contains(body, "Scry suggests a fix") || !strings.Contains(body, "SUGGESTED which record") {
+		t.Fatalf("the suggestion was not offered: %s", body)
+	}
+	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version || strings.HasPrefix(current.Prompt, "SUGGESTED") {
+		t.Fatalf("the suggestion replaced the question before it was accepted: %+v %v", current, err)
+	}
+	fix, err := s.QuizFix(ctx, q.ID)
+	if err != nil || fix.Proposal == nil {
+		t.Fatalf("pending suggestion: %+v %v", fix, err)
+	}
+	r := ownerRequest(http.MethodPost, "/quizzes/"+q.ID+"/proposal", url.Values{"csrf": {csrf}, "operation_id": {operation}, "proposal_id": {fix.Proposal.ID}, "decision": {"accept"}})
+	r.AddCookie(cookie)
+	r.Header.Set("Origin", "https://scry.example")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("accepting the suggestion: %d %s", w.Code, w.Body.String())
+	}
+	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version+1 || !strings.HasPrefix(current.Prompt, "SUGGESTED") {
+		t.Fatalf("the accepted suggestion was not installed: %+v %v", current, err)
+	}
+	if body := edit(); strings.Contains(body, "Scry suggests a fix") {
+		t.Fatal("an accepted suggestion is still offered")
 	}
 }

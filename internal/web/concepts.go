@@ -45,11 +45,20 @@ func (s *server) mapPage(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err, page{})
 			return
 		}
+		// Every hit drawn from the cold question's own capture is withheld,
+		// as the retired library withheld the whole current source.
 		hits := view.Hits[:0]
+	hitLoop:
 		for _, hit := range view.Hits {
-			if !linked[hit.ConceptID] && hit.ID != current.Quiz.ID && (hit.Kind != "source" || hit.ID != current.Quiz.SourceID) {
-				hits = append(hits, hit)
+			if linked[hit.ConceptID] || hit.ID == current.Quiz.ID {
+				continue
 			}
+			for _, source := range hit.SourceIDs {
+				if source == current.Quiz.SourceID {
+					continue hitLoop
+				}
+			}
+			hits = append(hits, hit)
 		}
 		view.Hits = hits
 		for i := range view.Unmapped {
@@ -202,4 +211,24 @@ func (s *server) fixQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.finish(w, r, "/quizzes/"+r.PathValue("id")+"/edit", map[string]any{"requested": true})
+}
+
+// decideProposal applies or discards a suggested fix; nothing changes until
+// the learner chooses.
+func (s *server) decideProposal(w http.ResponseWriter, r *http.Request) {
+	id, proposal, decision := r.PathValue("id"), r.PostForm.Get("proposal_id"), r.PostForm.Get("decision")
+	if proposal == "" || (decision != "accept" && decision != "keep") {
+		s.fail(w, r, fmt.Errorf("%w: choose to use the suggested version or keep yours", store.ErrInvalid), page{})
+		return
+	}
+	op, err := conceptOperation(r)
+	var q store.Quiz
+	if err == nil {
+		q, err = s.store.DecideProposal(r.Context(), id, proposal, op, decision == "accept")
+	}
+	if err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	s.finish(w, r, "/quizzes/"+id+"/edit", q)
 }
