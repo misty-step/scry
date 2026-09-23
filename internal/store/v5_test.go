@@ -45,11 +45,11 @@ func complete(t *testing.T, s *Store, j *Job, result GenerationResult) {
 func tlsPlan() *PlanContent {
 	return &PlanContent{Goal: "How a TLS client trusts a server", Concepts: []PlannedConcept{
 		{Key: "chain", Name: "Certificate chain of trust", Summary: "A certificate is trusted when it chains to a root the client already trusts.",
-			Note: &NoteContent{Level: "standard", Title: "Chains of trust", Basis: "source",
+			Note: &NoteContent{Title: "Chains of trust", Basis: "source",
 				Body:     "A server certificate is only as good as the authority behind it. The client follows the chain upward until it reaches a root it already trusts; if it never does, the certificate is not trusted.",
 				Evidence: []string{"chains to a root authority the client already trusts"}}},
 		{Key: "hostname", Name: "Hostname verification", Summary: "The certificate must name the host the client meant to reach.", Requires: []string{"chain"}, ConfusedWith: []string{"chain"},
-			Note: &NoteContent{Level: "standard", Title: "Right certificate, right host", Basis: "source",
+			Note: &NoteContent{Title: "Right certificate, right host", Basis: "source",
 				Body:     "A valid chain is not enough: the certificate must also name the host the client asked for, otherwise a trusted certificate for another site could impersonate this one.",
 				Evidence: []string{"names the host it meant to reach"}}},
 	}}
@@ -215,7 +215,7 @@ func TestConceptChainAndIntroUS006(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.Notes["standard"] == nil || len(view.Questions) != 1 || len(view.Requires) != 1 || view.Requires[0].ID != chain || len(view.ConfusedWith) != 1 {
+	if view.Note == nil || len(view.Questions) != 1 || len(view.Requires) != 1 || view.Requires[0].ID != chain || len(view.ConfusedWith) != 1 {
 		t.Fatalf("concept page missing note, questions, or relations: %+v", view)
 	}
 	chainView, err := s.ConceptPage(ctx, chain)
@@ -283,7 +283,7 @@ func TestPublicationProvenanceFences(t *testing.T) {
 	}
 	complete(t, s, claimKind(t, s, "research"), GenerationResult{Note: "Web search was unavailable; general knowledge only."})
 	topicPlan := &PlanContent{Goal: "How HTTPS works", Concepts: []PlannedConcept{{Key: "tls", Name: "TLS", Summary: "The protocol HTTPS runs over.",
-		Note: &NoteContent{Level: "standard", Title: "TLS", Basis: "topic", Body: "TLS wraps HTTP in an encrypted, authenticated channel so neither eavesdroppers nor impostors can read or alter it.", Evidence: []string{"quoted"}}}}}
+		Note: &NoteContent{Title: "TLS", Basis: "topic", Body: "TLS wraps HTTP in an encrypted, authenticated channel so neither eavesdroppers nor impostors can read or alter it.", Evidence: []string{"quoted"}}}}}
 	j = claimKind(t, s, "plan")
 	if err = s.CompleteJob(ctx, j.ID, j.LeaseToken, GenerationResult{Plan: topicPlan, Model: "m", PromptVersion: "p"}, &cost); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("general knowledge claimed evidence: %v", err)
@@ -319,7 +319,7 @@ func TestWebBasisCitesStoredResults(t *testing.T) {
 	}
 	doc := jc.Documents[0]
 	complete(t, s, planJob, GenerationResult{Plan: &PlanContent{Goal: "How HTTPS works", Concepts: []PlannedConcept{{Key: "tls", Name: "TLS authentication", Summary: "Certificates let TLS authenticate the server.",
-		Note: &NoteContent{Level: "standard", Title: "TLS", Basis: "web", Body: "TLS does two jobs at once: it encrypts the traffic and it authenticates the server using certificates.",
+		Note: &NoteContent{Title: "TLS", Basis: "web", Body: "TLS does two jobs at once: it encrypts the traffic and it authenticates the server using certificates.",
 			Evidence: []string{"authenticates the server with certificates"}, Citations: []Citation{{DocumentID: doc.ID, Title: "spoofed", URL: "https://evil.example"}}}}}}})
 	view, err := s.Map(ctx, "")
 	if err != nil || len(view.Goals) != 1 {
@@ -329,7 +329,7 @@ func TestWebBasisCitesStoredResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	note := page.Notes["standard"]
+	note := page.Note
 	if note == nil || len(note.Citations) != 1 || note.Citations[0].Title != "TLS explained" || note.Citations[0].URL != "https://example.org/tls" {
 		t.Fatalf("citation was not normalized from the stored document: %+v", note)
 	}
@@ -576,29 +576,17 @@ func TestPracticeFocusAndOnDemandRequests(t *testing.T) {
 	if err != nil || state.Current == nil || state.Current.Concept == nil || state.Current.Concept.ID != hostname {
 		t.Fatalf("practice focus did not serve its concept: %+v %v", state, err)
 	}
-	if err = s.RequestNote(ctx, chain, "simpler", "note-simpler"); err != nil {
+	if err = s.RequestQuestions(ctx, chain, "more-questions"); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.RequestNote(ctx, chain, "simpler", "note-simpler"); err != nil {
+	if err = s.RequestQuestions(ctx, chain, "more-questions"); err != nil {
 		t.Fatalf("request replay failed: %v", err)
 	}
-	if err = s.RequestQuestions(ctx, chain, "more-questions"); !errors.Is(err, ErrConflict) {
+	if err = s.RequestQuestions(ctx, hostname, "more-host-questions"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("a second live job on the same material was accepted: %v", err)
 	}
-	page, err := s.ConceptPage(ctx, chain)
-	if err != nil || len(page.PendingLevels) != 1 || page.PendingLevels[0] != "simpler" {
-		t.Fatalf("pending note level not shown: %+v %v", page.PendingLevels, err)
-	}
-	j := claimKind(t, s, "note")
-	jc, err := s.JobContext(ctx, j.ID)
-	if err != nil || jc.Level != "simpler" || len(jc.Concepts) != 1 || jc.Concepts[0].ID != chain {
-		t.Fatalf("note context: %+v %v", jc, err)
-	}
-	complete(t, s, j, GenerationResult{StudyNote: &NoteContent{Level: "simpler", Title: "Who vouches for whom", Basis: "source",
-		Body: "Think of a chain of people vouching for each other: you trust the stranger because someone you already trust vouched for them.", Evidence: []string{"chains to a root authority"}}})
-	page, err = s.ConceptPage(ctx, chain)
-	if err != nil || page.Notes["simpler"] == nil || page.Notes["standard"] == nil {
-		t.Fatalf("simpler note not published beside the standard note: %+v %v", page.Notes, err)
+	if page, err := s.ConceptPage(ctx, chain); err != nil || !page.QuestionsPending {
+		t.Fatalf("pending questions not shown: %+v %v", page.QuestionsPending, err)
 	}
 	if err = s.ArchiveConcept(ctx, hostname); err != nil {
 		t.Fatal(err)

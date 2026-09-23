@@ -295,15 +295,9 @@ func validateGrading(q GeneratedQuiz) error {
 	return nil
 }
 
-func validateNote(n *NoteContent, m material, level string) error {
+func validateNote(n *NoteContent, m material) error {
 	if n == nil {
 		return fmt.Errorf("%w: a new concept needs a note", ErrInvalid)
-	}
-	if n.Level == "" {
-		n.Level = level
-	}
-	if n.Level != level {
-		return fmt.Errorf("%w: note level does not match the request", ErrInvalid)
 	}
 	if err := validText("note title", n.Title, 200, true); err != nil {
 		return err
@@ -404,7 +398,7 @@ func quizTargets(ctx context.Context, tx *sql.Tx, j Job) (map[string]bool, []str
 // validateQuizBatch checks every question of a quizzes-producing job against
 // its material and concept targets. It normalizes citations in place.
 func validateQuizBatch(ctx context.Context, tx *sql.Tx, j Job, result *GenerationResult) error {
-	if result.Plan != nil || result.StudyNote != nil || len(result.Documents) != 0 {
+	if result.Plan != nil || len(result.Documents) != 0 {
 		return fmt.Errorf("%w: unexpected content for a questions job", ErrInvalid)
 	}
 	limit := MaxGeneratedQuizzes
@@ -538,13 +532,13 @@ func validatePlan(ctx context.Context, tx *sql.Tx, p *PlanContent, m material) e
 				return fmt.Errorf("%w: a plan reuses an unknown concept", ErrInvalid)
 			}
 			if c.Note != nil {
-				if err := validateNote(c.Note, m, "standard"); err != nil {
+				if err := validateNote(c.Note, m); err != nil {
 					return err
 				}
 			}
 			continue
 		}
-		if err := validateNote(c.Note, m, "standard"); err != nil {
+		if err := validateNote(c.Note, m); err != nil {
 			return fmt.Errorf("concept %q: %w", c.Name, err)
 		}
 	}
@@ -589,7 +583,7 @@ func publish(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, no
 func publishKind(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, now int64) (int, error) {
 	switch j.Kind {
 	case "research", "transcribe":
-		if len(result.Quizzes) != 0 || result.Plan != nil || result.StudyNote != nil {
+		if len(result.Quizzes) != 0 || result.Plan != nil {
 			return 0, fmt.Errorf("%w: unexpected content for a reading step", ErrInvalid)
 		}
 		if err := validateDocuments(j, result.Documents); err != nil {
@@ -604,7 +598,7 @@ func publishKind(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult
 		}
 		return len(result.Documents), nil
 	case "plan":
-		if len(result.Quizzes) != 0 || result.StudyNote != nil || len(result.Documents) != 0 {
+		if len(result.Quizzes) != 0 || len(result.Documents) != 0 {
 			return 0, fmt.Errorf("%w: unexpected content for a plan", ErrInvalid)
 		}
 		m, err := loadMaterial(ctx, tx, j.SourceID, j.SourceRevision)
@@ -619,11 +613,6 @@ func publishKind(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult
 			return 0, err
 		}
 		return publishPlan(ctx, tx, j, plan, result, now)
-	case "note":
-		if len(result.Quizzes) != 0 || result.Plan != nil || len(result.Documents) != 0 {
-			return 0, fmt.Errorf("%w: unexpected content for a note", ErrInvalid)
-		}
-		return publishNote(ctx, tx, j, result, now)
 	default:
 		if !quizKind(j.Kind) {
 			return 0, fmt.Errorf("%w: unknown job kind", ErrInvalid)
@@ -654,7 +643,7 @@ func ensureGoal(ctx context.Context, tx *sql.Tx, sourceID, title string, now int
 
 func insertNote(ctx context.Context, tx *sql.Tx, conceptID, sourceID, jobID string, n NoteContent, model, promptVersion string, now int64) (string, error) {
 	var supersedes string
-	err := tx.QueryRowContext(ctx, `SELECT id FROM notes WHERE concept_id=? AND level=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, conceptID, n.Level).Scan(&supersedes)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM notes WHERE concept_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, conceptID).Scan(&supersedes)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
@@ -667,15 +656,13 @@ func insertNote(ctx context.Context, tx *sql.Tx, conceptID, sourceID, jobID stri
 		return "", err
 	}
 	id := newID()
-	_, err = tx.ExecContext(ctx, `INSERT INTO notes(id,concept_id,level,title,body,basis,evidence,citations,source_id,job_id,model,prompt_version,supersedes,created_at)
-	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, conceptID, n.Level, n.Title, n.Body, n.Basis, evidence, citations, sourceID, jobID, model, promptVersion, supersedes, now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO notes(id,concept_id,title,body,basis,evidence,citations,source_id,job_id,model,prompt_version,supersedes,created_at)
+	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, conceptID, n.Title, n.Body, n.Basis, evidence, citations, sourceID, jobID, model, promptVersion, supersedes, now)
 	if err != nil {
 		return "", err
 	}
-	if n.Level == "standard" {
-		if err = index(ctx, tx, "note", conceptID, n.Title, n.Body); err != nil {
-			return "", err
-		}
+	if err = index(ctx, tx, "note", conceptID, n.Title, n.Body); err != nil {
+		return "", err
 	}
 	return id, nil
 }
@@ -742,7 +729,7 @@ func publishPlan(ctx context.Context, tx *sql.Tx, j Job, plan PlanContent, resul
 		}
 		if c.Note != nil {
 			var hasStandard bool
-			if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM notes WHERE concept_id=? AND level='standard')", id).Scan(&hasStandard); err != nil {
+			if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM notes WHERE concept_id=?)", id).Scan(&hasStandard); err != nil {
 				return 0, err
 			}
 			if !hasStandard {
@@ -777,39 +764,6 @@ func publishPlan(ctx context.Context, tx *sql.Tx, j Job, plan PlanContent, resul
 		}
 	}
 	return len(plan.Concepts), nil
-}
-
-func publishNote(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, now int64) (int, error) {
-	var payload struct {
-		ConceptID string `json:"concept_id"`
-		Level     string `json:"level"`
-	}
-	if err := json.Unmarshal([]byte(j.Payload), &payload); err != nil {
-		return 0, err
-	}
-	var active bool
-	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM concepts WHERE id=? AND status='active')", payload.ConceptID).Scan(&active); err != nil {
-		return 0, err
-	}
-	if !active {
-		return 0, fmt.Errorf("%w: this concept is no longer active", ErrInvalid)
-	}
-	m, err := loadMaterial(ctx, tx, j.SourceID, j.SourceRevision)
-	if err != nil {
-		return 0, err
-	}
-	note := result.StudyNote
-	if note == nil {
-		return 0, fmt.Errorf("%w: missing note", ErrInvalid)
-	}
-	copy := *note
-	if err = validateNote(&copy, m, payload.Level); err != nil {
-		return 0, err
-	}
-	if _, err = insertNote(ctx, tx, payload.ConceptID, j.SourceID, j.ID, copy, result.Model, result.PromptVersion, now); err != nil {
-		return 0, err
-	}
-	return 1, nil
 }
 
 func publishQuizzes(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, now int64) (int, error) {

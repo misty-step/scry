@@ -65,7 +65,7 @@ exclusive-create. A successful process launch is not release evidence: inspect
 | Design/prose only | Meaning, relative-link and authority review; native readback | Operator design agreement when sought; no runtime claim or default test/model/VM exercise |
 | Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
 | Semantic grading / short-v1 / overrides | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Exact/variant local, Jev short accept/reject/unsure thresholds and injection/identity fences, rubric semantic-v1, saved answer → self-check or failed Retry, authority in history, one-tap correction with immutable original event and schedule, interruption/exact replay. Bounded Jev holdout quality is separate evidence. |
-| Generation, research, and notes | `go test ./internal/generation ./internal/store` | Topic Exa search vs pasted text no-search; Link chosen-page fetch, Photo transcription, absent Exa key, exact quotes/citations, zero-document fallback, sequential plan/questions, immutable note levels, interruption and bounded spending. Live Exa/model quality requires separate authorization. |
+| Generation, research, and notes | `go test ./internal/generation ./internal/store` | Topic Exa search vs pasted text no-search; Link chosen-page fetch, Photo transcription, absent Exa key, exact quotes/citations, zero-document fallback, sequential plan/questions, immutable notes, interruption and bounded spending. Live Exa/model quality requires separate authorization. |
 | Prepublication critic (US-004) | `go test ./internal/learning ./internal/semantic ./internal/store ./internal/generation` | Candidate persistence before HTTP, one send lease, shared allowance, interrupted unknown spend, critic-only automatic/manual retry, hard veto and skipped publication. Run the opt-in bounded live control test separately; report false accepts/rejects/abstentions, raw requests/responses, model and cost. No production activation or broad accuracy claim. |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
 | Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |
@@ -227,7 +227,7 @@ or headless Chromium on the workstation.
    “I know this already” records an observation, not a cold review. Open Map,
    search across concept/note/question/source, focus/pause a goal, and inspect
    prerequisite-first order, status words and estimates. Open a Concept page:
-   note levels (request Simpler/Deeper, pending and completed), citations,
+   its note, citations,
    related ideas, practice and gated question details. Two recorded confusions
    should produce one targeted contrast preparation.
 5. Open Add via `/add?text=&url=&title=` as a share target; the prefilled fields

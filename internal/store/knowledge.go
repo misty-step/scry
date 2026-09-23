@@ -16,7 +16,7 @@ import (
 func scanNote(row interface{ Scan(...any) error }) (Note, error) {
 	var n Note
 	var evidence, citations string
-	err := row.Scan(&n.ID, &n.ConceptID, &n.Level, &n.Title, &n.Body, &n.Basis, &evidence, &citations, &n.SourceID, &n.JobID, &n.Model, &n.PromptVersion, &n.Supersedes, &n.CreatedAt)
+	err := row.Scan(&n.ID, &n.ConceptID, &n.Title, &n.Body, &n.Basis, &evidence, &citations, &n.SourceID, &n.JobID, &n.Model, &n.PromptVersion, &n.Supersedes, &n.CreatedAt)
 	if err != nil {
 		return n, err
 	}
@@ -27,10 +27,10 @@ func scanNote(row interface{ Scan(...any) error }) (Note, error) {
 	return n, err
 }
 
-const noteColumns = `id,concept_id,level,title,body,basis,evidence,citations,source_id,job_id,model,prompt_version,supersedes,created_at`
+const noteColumns = `id,concept_id,title,body,basis,evidence,citations,source_id,job_id,model,prompt_version,supersedes,created_at`
 
-func currentNote(ctx context.Context, tx *sql.Tx, conceptID, level string) (*Note, error) {
-	n, err := scanNote(tx.QueryRowContext(ctx, `SELECT `+noteColumns+` FROM notes WHERE concept_id=? AND level=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, conceptID, level))
+func currentNote(ctx context.Context, tx *sql.Tx, conceptID string) (*Note, error) {
+	n, err := scanNote(tx.QueryRowContext(ctx, `SELECT `+noteColumns+` FROM notes WHERE concept_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, conceptID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -180,7 +180,7 @@ func conceptBriefs(ctx context.Context, tx *sql.Tx, ids []string, now int64) ([]
 
 var stageLabels = map[string]string{
 	"research": "Searching the web", "transcribe": "Reading your photo", "plan": "Mapping the ideas",
-	"questions": "Writing questions", "note": "Writing a note", "contrast": "Writing a comparison", "quizzes": "Writing questions",
+	"questions": "Writing questions", "contrast": "Writing a comparison", "quizzes": "Writing questions",
 }
 
 // preparingFor describes a source's live preparation, or one that stopped
@@ -577,7 +577,7 @@ func (s *Store) ConceptPage(ctx context.Context, id string) (ConceptView, error)
 	if !ok {
 		return ConceptView{}, fmt.Errorf("%w: concept", ErrNotFound)
 	}
-	view := ConceptView{Concept: c.Concept, Notes: map[string]*Note{}, Goals: []Goal{}, PendingLevels: []string{},
+	view := ConceptView{Concept: c.Concept, Goals: []Goal{},
 		Requires: []ConceptBrief{}, RequiredBy: []ConceptBrief{}, PartOf: []ConceptBrief{}, Parts: []ConceptBrief{}, ConfusedWith: []ConceptBrief{},
 		Questions: []Quiz{}, Documents: []SourceDocument{}}
 	states, err := conceptStates(ctx, tx, nil, now)
@@ -588,14 +588,8 @@ func (s *Store) ConceptPage(ctx context.Context, id string) (ConceptView, error)
 	if view.State.Status == "" {
 		view.State = learning.ComputeConceptState(nil, time.UnixMilli(now))
 	}
-	for _, level := range []string{"simpler", "standard", "deeper"} {
-		note, err := currentNote(ctx, tx, id, level)
-		if err != nil {
-			return view, err
-		}
-		if note != nil {
-			view.Notes[level] = note
-		}
+	if view.Note, err = currentNote(ctx, tx, id); err != nil {
+		return view, err
 	}
 	relations, err := liveRelations(ctx, tx)
 	if err != nil {
@@ -652,36 +646,13 @@ func (s *Store) ConceptPage(ctx context.Context, id string) (ConceptView, error)
 		}
 		view.Questions = append(view.Questions, q)
 	}
-	pending, err := tx.QueryContext(ctx, `SELECT kind,payload FROM jobs WHERE status IN ('queued','running','retry') AND kind IN ('note','questions')
-	 AND (json_extract(payload,'$.concept_id')=? OR (kind='questions' AND payload='{}' AND source_id=?))`, id, c.SourceID)
-	if err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs WHERE status IN ('queued','running','retry') AND kind='questions'
+	 AND (json_extract(payload,'$.concept_id')=? OR (payload='{}' AND source_id=?)))`, id, c.SourceID).Scan(&view.QuestionsPending); err != nil {
 		return view, err
 	}
-	for pending.Next() {
-		var kind, payload string
-		if err = pending.Scan(&kind, &payload); err != nil {
-			pending.Close()
-			return view, err
-		}
-		if kind == "questions" {
-			view.QuestionsPending = true
-			continue
-		}
-		var p struct {
-			Level string `json:"level"`
-		}
-		if json.Unmarshal([]byte(payload), &p) == nil && p.Level != "" {
-			view.PendingLevels = append(view.PendingLevels, p.Level)
-		}
-	}
-	if err = pending.Err(); err != nil {
-		pending.Close()
-		return view, err
-	}
-	pending.Close()
 	cited := map[string]bool{}
-	for _, note := range view.Notes {
-		for _, citation := range note.Citations {
+	if view.Note != nil {
+		for _, citation := range view.Note.Citations {
 			cited[citation.DocumentID] = true
 		}
 	}
@@ -816,29 +787,6 @@ func (s *Store) PracticeConcept(ctx context.Context, conceptID, operationID stri
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO evidence(id,kind,concept_id,created_at) VALUES(?,?,?,?)`, newID(), "practice", conceptID, now)
 		return conceptID, err
-	})
-}
-
-func (s *Store) RequestNote(ctx context.Context, conceptID, level, operationID string) error {
-	if level != "simpler" && level != "deeper" {
-		return fmt.Errorf("%w: choose a simpler or deeper note", ErrInvalid)
-	}
-	return s.onceOperation(ctx, operationID, "request-note", struct{ Concept, Level string }{conceptID, level}, func(tx *sql.Tx, now int64) (string, error) {
-		c, err := activeConcept(ctx, tx, conceptID)
-		if err != nil {
-			return "", err
-		}
-		if note, err := currentNote(ctx, tx, conceptID, level); err != nil || note != nil {
-			if err == nil {
-				err = fmt.Errorf("%w: that version is already written", ErrConflict)
-			}
-			return "", err
-		}
-		sourceID, revision, err := conceptSource(ctx, tx, c)
-		if err != nil {
-			return "", err
-		}
-		return conceptID, enqueue(ctx, tx, sourceID, revision, "note", map[string]string{"concept_id": conceptID, "level": level}, now)
 	})
 }
 
@@ -980,7 +928,7 @@ func conceptContext(ctx context.Context, tx *sql.Tx, id string, relations []rela
 		return ConceptContext{}, fmt.Errorf("%w: concept", ErrNotFound)
 	}
 	cc := ConceptContext{ID: id, Name: c.Name, Summary: c.Description, Requires: []string{}, ExistingPrompts: []string{}}
-	note, err := currentNote(ctx, tx, id, "standard")
+	note, err := currentNote(ctx, tx, id)
 	if err != nil {
 		return cc, err
 	}
@@ -1042,7 +990,6 @@ func (s *Store) JobContext(ctx context.Context, jobID string) (JobContext, error
 	}
 	var payload struct {
 		ConceptID   string   `json:"concept_id"`
-		Level       string   `json:"level"`
 		Concepts    []string `json:"concepts"`
 		QuizID      string   `json:"quiz_id"`
 		Instruction string   `json:"instruction"`
@@ -1109,11 +1056,6 @@ func (s *Store) JobContext(ctx context.Context, jobID string) (JobContext, error
 			if err = addConcept(id); err != nil {
 				return result, err
 			}
-		}
-	case "note":
-		result.Level = payload.Level
-		if err = addConcept(payload.ConceptID); err != nil {
-			return result, err
 		}
 	case "contrast":
 		for _, id := range payload.Concepts {

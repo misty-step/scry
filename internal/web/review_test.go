@@ -30,7 +30,7 @@ func completeSyntheticQuiz(t *testing.T, s *store.Store, quiz store.GeneratedQui
 		t.Fatal(err)
 	}
 	plan := claim("plan")
-	note := &store.NoteContent{Level: "standard", Title: "Synthetic concept", Body: "This synthetic concept gives the question a place in the map and a short explanation of its meaning.", Basis: "topic"}
+	note := &store.NoteContent{Title: "Synthetic concept", Body: "This synthetic concept gives the question a place in the map and a short explanation of its meaning.", Basis: "topic"}
 	result := store.GenerationResult{Plan: &store.PlanContent{Goal: "Synthetic learning goal", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Synthetic concept", Summary: "A synthetic concept for a controlled browser test.", Note: note}}}, Model: "authored-test-fixture", PromptVersion: "fixture-v5"}
 	if err := s.CompleteJob(ctx, plan.ID, plan.LeaseToken, result, &cost); err != nil {
 		t.Fatal(err)

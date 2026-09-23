@@ -324,7 +324,7 @@ func publishReviewable(t *testing.T, s *store.Store, prompt string) {
 	publish("research", func(*store.Job) store.GenerationResult { return store.GenerationResult{} })
 	publish("plan", func(*store.Job) store.GenerationResult {
 		return store.GenerationResult{Plan: &store.PlanContent{Goal: "SQL terminology", Concepts: []store.PlannedConcept{{Key: "sql", Name: "SQL", Summary: "SQL is the language relational databases use for queries.",
-			Note: &store.NoteContent{Level: "standard", Title: "SQL", Basis: "topic", Body: "SQL, Structured Query Language, is how you ask a relational database to find, add, or change rows."}}}}}
+			Note: &store.NoteContent{Title: "SQL", Basis: "topic", Body: "SQL, Structured Query Language, is how you ask a relational database to find, add, or change rows."}}}}}
 	})
 	publish("questions", func(job *store.Job) store.GenerationResult {
 		jc, err := s.JobContext(ctx, job.ID)

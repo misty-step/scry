@@ -43,7 +43,6 @@ CREATE INDEX goal_concept_lookup ON goal_concepts(concept_id,goal_id);
 CREATE TABLE notes (
  id TEXT PRIMARY KEY,
  concept_id TEXT NOT NULL REFERENCES concepts(id),
- level TEXT NOT NULL CHECK(level IN ('simpler','standard','deeper')),
  title TEXT NOT NULL,
  body TEXT NOT NULL,
  basis TEXT NOT NULL CHECK(basis IN ('source','web','topic')),
@@ -56,7 +55,7 @@ CREATE TABLE notes (
  supersedes TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL
 ) STRICT;
-CREATE INDEX concept_notes ON notes(concept_id,level,created_at);
+CREATE INDEX concept_notes ON notes(concept_id,created_at);
 CREATE TABLE source_documents (
  id TEXT PRIMARY KEY,
  source_id TEXT NOT NULL REFERENCES sources(id),
@@ -80,7 +79,7 @@ CREATE TABLE capture_images (
 ) STRICT;
 ALTER TABLE sources ADD COLUMN mode TEXT NOT NULL DEFAULT '' CHECK(mode IN ('','topic','text','link','photo'));
 ALTER TABLE sources ADD COLUMN web INTEGER NOT NULL DEFAULT 0 CHECK(web IN (0,1));
-ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'quizzes' CHECK(kind IN ('quizzes','research','transcribe','plan','questions','note','contrast','fix'));
+ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'quizzes' CHECK(kind IN ('quizzes','research','transcribe','plan','questions','contrast','fix'));
 ALTER TABLE jobs ADD COLUMN payload TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(payload));
 CREATE TABLE evidence (
  id TEXT PRIMARY KEY,

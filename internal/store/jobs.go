@@ -15,7 +15,7 @@ import (
 // (note, questions for one concept, contrast, fix) reuse the same queue,
 // lease, spend reservation, and settlement rules. "quizzes" is the legacy
 // single-call kind kept for historical rows and critic-pending batches.
-var jobKinds = map[string]bool{"quizzes": true, "research": true, "transcribe": true, "plan": true, "questions": true, "note": true, "contrast": true, "fix": true}
+var jobKinds = map[string]bool{"quizzes": true, "research": true, "transcribe": true, "plan": true, "questions": true, "contrast": true, "fix": true}
 
 func quizKind(kind string) bool {
 	return kind == "quizzes" || kind == "questions" || kind == "contrast" || kind == "fix"

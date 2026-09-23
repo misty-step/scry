@@ -39,8 +39,8 @@ func TestV5PartialPlanPublishesOneWordConceptAndShortGoal(t *testing.T) {
 		t.Fatalf("plan claim: %+v %v", job, err)
 	}
 	plan := store.PlanContent{Goal: strings.Repeat("Learn certificate trust and its careful decisions ", 7), Concepts: []store.PlannedConcept{
-		{Key: "c1", Name: "TLS", Summary: "Trust comes from a verified certificate chain.", Requires: []string{"c2"}, Note: &store.NoteContent{Level: "standard", Title: "Certificate trust", Body: standardNoteBody, Basis: "topic"}},
-		{Key: "c2", Name: "Broken note", Summary: "This lacks an explanation.", Note: &store.NoteContent{Level: "standard", Title: "Incomplete", Body: "Short", Basis: "topic"}},
+		{Key: "c1", Name: "TLS", Summary: "Trust comes from a verified certificate chain.", Requires: []string{"c2"}, Note: &store.NoteContent{Title: "Certificate trust", Body: standardNoteBody, Basis: "topic"}},
+		{Key: "c2", Name: "Broken note", Summary: "This lacks an explanation.", Note: &store.NoteContent{Title: "Incomplete", Body: "Short", Basis: "topic"}},
 	}}
 	result, err := validateV5Output(job, store.JobContext{}, modelJSON(t, plan))
 	if err != nil || !result.Partial || len(result.Plan.Concepts) != 1 || result.Plan.Concepts[0].Name != "TLS" || len(result.Plan.Concepts[0].Requires) != 0 || !strings.Contains(result.Note, "invalid note content") || utf8.RuneCountInString(result.Plan.Goal) > 120 || !strings.HasSuffix(result.Plan.Goal, "…") {
@@ -58,7 +58,7 @@ func TestV5PartialPlanPublishesOneWordConceptAndShortGoal(t *testing.T) {
 
 func TestV5PlanKeepsWellFormedConceptBesideMalformedOne(t *testing.T) {
 	job := &store.Job{Kind: "plan", SourceKind: "topic", SourceMode: "topic", SourceText: "TLS trust"}
-	good := store.PlannedConcept{Key: "c1", Name: "TLS", Summary: "Certificate trust requires a name check.", Note: &store.NoteContent{Level: "standard", Title: "Certificate checks", Body: standardNoteBody, Basis: "topic"}}
+	good := store.PlannedConcept{Key: "c1", Name: "TLS", Summary: "Certificate trust requires a name check.", Note: &store.NoteContent{Title: "Certificate checks", Body: standardNoteBody, Basis: "topic"}}
 	content := modelJSON(t, map[string]any{"goal": "Understand TLS", "concepts": []any{good, map[string]any{"key": "bad", "name": 27, "summary": "Invalid shape"}}})
 	result, err := validateV5Output(job, store.JobContext{}, content)
 	if err != nil || !result.Partial || len(result.Plan.Concepts) != 1 || !strings.Contains(result.Note, "invalid concept fields") {
@@ -78,7 +78,7 @@ func TestV5CurlyQuoteAndWhitespaceEvidenceSnapsBeforePublication(t *testing.T) {
 	if err != nil || job == nil || job.Kind != "plan" {
 		t.Fatalf("plan claim: %+v %v", job, err)
 	}
-	plan := store.PlanContent{Goal: "Understand certificate trust", Concepts: []store.PlannedConcept{{Key: "c1", Name: "TLS", Summary: "A client verifies a server certificate before trust.", Note: &store.NoteContent{Level: "standard", Title: "Certificate verification", Body: "A client verifies a signed certificate and then checks the server name. In practice these are separate checks, so a signature alone does not prove the expected server name.", Basis: "source", Evidence: []string{`A "TLS" client verifies a signed certificate. It then checks the server name carefully.`}}}}}
+	plan := store.PlanContent{Goal: "Understand certificate trust", Concepts: []store.PlannedConcept{{Key: "c1", Name: "TLS", Summary: "A client verifies a server certificate before trust.", Note: &store.NoteContent{Title: "Certificate verification", Body: "A client verifies a signed certificate and then checks the server name. In practice these are separate checks, so a signature alone does not prove the expected server name.", Basis: "source", Evidence: []string{`A "TLS" client verifies a signed certificate. It then checks the server name carefully.`}}}}}
 	result, err := validateV5Output(job, store.JobContext{}, modelJSON(t, plan))
 	if err != nil || result.Plan.Concepts[0].Note.Evidence[0] != material {
 		t.Fatalf("source quotation did not snap to original bytes: %+v %v", result, err)
@@ -134,7 +134,7 @@ func TestV5WebQuotationSnapsAndPublishesWithTrueCitation(t *testing.T) {
 	if err != nil || len(input.Documents) != 1 {
 		t.Fatalf("web material unavailable: %+v %v", input, err)
 	}
-	plan := store.PlanContent{Goal: "Understand certificate trust", Concepts: []store.PlannedConcept{{Key: "c1", Name: "TLS", Summary: "A client verifies both the certificate and the server name.", Note: &store.NoteContent{Level: "standard", Title: "Certificate checks", Body: "A client verifies a signed certificate and then checks the server name. These checks are separate, so a signature alone cannot prove that a response came from the expected server.", Basis: "web", Evidence: []string{`A "TLS" client verifies a signed certificate. It checks the server name.`}, Citations: []store.Citation{{DocumentID: "wrong", Title: "Unknown", URL: "https://invalid.test"}}}}}}
+	plan := store.PlanContent{Goal: "Understand certificate trust", Concepts: []store.PlannedConcept{{Key: "c1", Name: "TLS", Summary: "A client verifies both the certificate and the server name.", Note: &store.NoteContent{Title: "Certificate checks", Body: "A client verifies a signed certificate and then checks the server name. These checks are separate, so a signature alone cannot prove that a response came from the expected server.", Basis: "web", Evidence: []string{`A "TLS" client verifies a signed certificate. It checks the server name.`}, Citations: []store.Citation{{DocumentID: "wrong", Title: "Unknown", URL: "https://invalid.test"}}}}}}
 	result, err := validateV5Output(job, input, modelJSON(t, plan))
 	if err != nil || result.Plan.Concepts[0].Note.Evidence[0] != excerpt || len(result.Plan.Concepts[0].Note.Citations) != 1 || result.Plan.Concepts[0].Note.Citations[0].DocumentID != input.Documents[0].ID {
 		t.Fatalf("web evidence/citation not reconciled: %+v %v", result, err)
@@ -164,7 +164,7 @@ func TestV5QuestionsDropInvalidSortLevelsClearCoversAndPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "ATP", Summary: "ATP supports cellular energy transfer.", Note: &store.NoteContent{Level: "standard", Title: "ATP", Body: standardNoteBody, Basis: "topic"}}}}
+	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "ATP", Summary: "ATP supports cellular energy transfer.", Note: &store.NoteContent{Title: "ATP", Body: standardNoteBody, Basis: "topic"}}}}
 	if err := s.CompleteJob(ctx, planJob.ID, planJob.LeaseToken, store.GenerationResult{Plan: &plan, Model: "fixture", PromptVersion: "scry-plan-v1", Note: "Ready."}, &zero); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestV5SourceQuestionDropsUnsupportedAndPromptCopiedVariants(t *testing.T) {
 
 func TestV5UnmatchedWebQuoteDowngradesTopicButDropsSource(t *testing.T) {
 	doc := store.SourceDocument{ID: "web-1", Kind: "search_result", Title: "Energy", URL: "https://example.test/energy", Text: "ATP transfers energy in cells."}
-	note := store.NoteContent{Level: "standard", Title: "ATP", Body: standardNoteBody, Basis: "web", Evidence: []string{"ATP guarantees perfect memory."}, Citations: []store.Citation{{DocumentID: doc.ID, Title: doc.Title, URL: doc.URL}}}
+	note := store.NoteContent{Title: "ATP", Body: standardNoteBody, Basis: "web", Evidence: []string{"ATP guarantees perfect memory."}, Citations: []store.Citation{{DocumentID: doc.ID, Title: doc.Title, URL: doc.URL}}}
 	topic := &store.Job{Kind: "plan", SourceKind: "topic", SourceMode: "topic", SourceText: "cell energy"}
 	if err := validateV5Note(&note, topic, store.JobContext{Documents: []store.SourceDocument{doc}}); err != nil || note.Basis != "topic" || len(note.Evidence) != 0 || len(note.Citations) != 0 {
 		t.Fatalf("topic was not honestly downgraded: %+v %v", note, err)

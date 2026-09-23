@@ -55,8 +55,7 @@ a claim that the earlier phone approval covered this experience.
 
 Open into one useful question or a clear Add invitation. Before a new concept's
 first question, offer a short note and an honest “I know this already” observation.
-If the concept remains confusing, the note and its simpler/deeper versions are
-one tap away after grading; navigating there must not consume the occurrence.
+If the concept remains confusing, its note is one tap away after grading; navigating there must not consume the occurrence.
 Prepare work can take time without hiding the existing Stream. When caught up,
 show when something is next and permit adding more, rather than inventing work.
 

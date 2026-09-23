@@ -148,22 +148,6 @@ func (s *server) practiceConcept(w http.ResponseWriter, r *http.Request) {
 	}
 	s.finish(w, r, "/", map[string]any{"practicing": r.PathValue("id")})
 }
-func (s *server) requestNote(w http.ResponseWriter, r *http.Request) {
-	level := r.PostForm.Get("level")
-	if level != "simpler" && level != "deeper" {
-		s.fail(w, r, fmt.Errorf("%w: choose a note level", store.ErrInvalid), page{})
-		return
-	}
-	op, err := conceptOperation(r)
-	if err == nil {
-		err = s.store.RequestNote(r.Context(), r.PathValue("id"), level, op)
-	}
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	s.finish(w, r, "/concepts/"+r.PathValue("id"), map[string]any{"level": level})
-}
 func (s *server) requestQuestions(w http.ResponseWriter, r *http.Request) {
 	op, err := conceptOperation(r)
 	if err == nil {

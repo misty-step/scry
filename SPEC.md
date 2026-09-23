@@ -99,7 +99,7 @@ or understanding the implementation.
 The Stream opens into a question, a concept introduction, a preparing receipt,
 or an honest first-run/caught-up state; never an administration dashboard.
 Concepts are teachable ideas, goals express intent, and notes are durable
-reference material at standard, simpler, or deeper level. The Map is the place
+reference material, one current note per concept. The Map is the place
 to search, inspect goals/concepts, focus or pause, and see a labeled estimate
 from real observations, not a certified mastery score.
 
@@ -133,8 +133,7 @@ I was right (quiet, automatic miss only)
   own capture (source text, goal title, preparation receipts, search hits) are
   replaced on every route until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
-  without consuming a review occurrence. A note request preserves the current
-  standard note until its new level is ready.
+  without consuming a review occurrence.
 - Add requires explicit Topic / My text / Link / Photo mode. Topic alone may
   start Exa search; Link fetches its chosen page; Photo transcribes; pasted
   text goes straight to planning, never web search. Only private modes may be
@@ -553,7 +552,7 @@ Questions ascend recognize → recall → explain/apply (2–3 per concept where
 appropriate). Exact answer form is for exact identity/wording; otherwise use
 flexible short recall. Explain prose alone gets required-idea rubric. Choice
 distractors can identify the contrasting concept. `questions` can be requested
-for one concept, `note` for simpler/deeper level, `fix` for a specified quiz
+for one concept, `fix` for a specified quiz
 version, and after two observations of the same confusion `contrast` for the
 pair. A `fix` only suggests: its corrected question waits beside the current
 one on the question's edit page and changes nothing until the learner uses it

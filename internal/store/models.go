@@ -228,14 +228,12 @@ type GenerationResult struct {
 	PromptVersion string            `json:"prompt_version"`
 	Documents     []DocumentContent `json:"documents,omitempty"`
 	Plan          *PlanContent      `json:"plan,omitempty"`
-	StudyNote     *NoteContent      `json:"study_note,omitempty"`
 }
 
 // NoteContent is generated reference material for one concept. Evidence holds
 // exact quotations from the learner's material or a stored web document;
 // Citations name the web documents a web-basis note relies on.
 type NoteContent struct {
-	Level     string     `json:"level"`
 	Title     string     `json:"title"`
 	Body      string     `json:"body"`
 	Basis     string     `json:"basis"`
@@ -371,7 +369,6 @@ type ConceptState = learning.ConceptState
 type Note struct {
 	ID            string     `json:"id"`
 	ConceptID     string     `json:"concept_id"`
-	Level         string     `json:"level"`
 	Title         string     `json:"title"`
 	Body          string     `json:"body"`
 	Basis         string     `json:"basis"`
@@ -468,8 +465,7 @@ type ConceptView struct {
 	Concept          Concept          `json:"concept"`
 	State            ConceptState     `json:"state"`
 	Goals            []Goal           `json:"goals"`
-	Notes            map[string]*Note `json:"notes"`
-	PendingLevels    []string         `json:"pending_levels"`
+	Note             *Note            `json:"note"`
 	QuestionsPending bool             `json:"questions_pending"`
 	Requires         []ConceptBrief   `json:"requires"`
 	RequiredBy       []ConceptBrief   `json:"required_by"`
@@ -510,7 +506,6 @@ type JobContext struct {
 	Concepts         []ConceptContext
 	Quiz             *Quiz
 	Instruction      string
-	Level            string
 }
 
 type Reference struct {

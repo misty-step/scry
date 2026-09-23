@@ -20,7 +20,7 @@ func TestV5TopicChainResearchPlanQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Level: "standard", Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
+	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
 	var conceptID string
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +102,7 @@ func TestV5PlanDedupeReusesActiveConcept(t *testing.T) {
 	if err := s.CompleteJob(ctx, research.ID, research.LeaseToken, store.GenerationResult{Model: "exa", PromptVersion: "scry-research-v1", Note: "Web search unavailable."}, &zero); err != nil {
 		t.Fatal(err)
 	}
-	original := store.PlanContent{Goal: "Learn cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Level: "standard", Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic"}}}}
+	original := store.PlanContent{Goal: "Learn cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic"}}}}
 	firstPlan, err := s.ClaimJob(ctx, jobLease, 100_000, 1_000_000)
 	if err != nil || firstPlan == nil {
 		t.Fatalf("plan claim: %v", err)
@@ -156,7 +156,7 @@ func TestV5PlanDedupeReusesActiveConcept(t *testing.T) {
 		return semantic.Response{Model: "fixture-jev", Raw: json.RawMessage(`{"same":"c0"}`), Answers: map[string]semantic.Answer{"same": {Type: "choice", Choice: "c0", Probabilities: map[string]float64{"c0": .91, "none": .09}}}, Usage: semantic.Usage{CostMicros: &cost}}, nil
 	})
 	worker := New(s, cfg)
-	proposed := &store.PlanContent{Goal: "Learn cell energy again", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Level: "standard", Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic"}}}}
+	proposed := &store.PlanContent{Goal: "Learn cell energy again", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic"}}}}
 	if err := worker.dedupePlan(ctx, planJob, proposed); err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 const standardNoteBody = "ATP transfers energy during cellular work. Cells can couple a change in ATP to a process that needs energy, such as moving material across a membrane. The energy transfer happens through a chemical reaction rather than by ATP carrying genetic instructions. A common confusion is to treat ATP as the material being built by every process; instead it participates in reactions that help drive the work. This distinction separates an energy carrier from a store of hereditary information."
 
 func TestV5StrictSchemasAreValidJSON(t *testing.T) {
-	for _, kind := range []string{"plan", "questions", "note", "contrast", "fix", "transcribe"} {
+	for _, kind := range []string{"plan", "questions", "contrast", "fix", "transcribe"} {
 		_, schema, err := v5Prompt(kind)
 		if err != nil || !json.Valid([]byte(schema)) {
 			t.Errorf("%s has invalid strict schema: %v", kind, err)
@@ -21,7 +21,7 @@ func TestV5StrictSchemasAreValidJSON(t *testing.T) {
 func TestV5PlanRejectsHostileEvidenceAndRelations(t *testing.T) {
 	job := &store.Job{Kind: "plan", SourceText: standardNoteBody, SourceKind: "source"}
 	input := store.JobContext{}
-	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy within cells.", Note: &store.NoteContent{Level: "standard", Title: "Cell energy transfer", Body: standardNoteBody, Basis: "source", Evidence: []string{"ATP transfers energy during cellular work."}}}}}
+	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy within cells.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "source", Evidence: []string{"ATP transfers energy during cellular work."}}}}}
 	encode := func() string {
 		t.Helper()
 		data, err := json.Marshal(plan)
@@ -46,32 +46,37 @@ func TestV5PlanRejectsHostileEvidenceAndRelations(t *testing.T) {
 }
 
 func TestV5WebNoteRequiresMatchingExcerptAndCitation(t *testing.T) {
-	job := &store.Job{Kind: "note", SourceKind: "topic", SourceText: "cell energy"}
-	input := store.JobContext{Level: "deeper", Concepts: []store.ConceptContext{{ID: "concept-1"}}, Documents: []store.SourceDocument{{ID: "doc-1", Kind: "search_result", Title: "Energy", URL: "https://example.test/energy", Text: "ATP transfers energy in cellular reactions."}}}
-	note := store.NoteContent{Level: "deeper", Title: "Energy in cells", Body: "ATP transfers energy during cell reactions, and its chemical transformation can enable work. For example, a cell may couple ATP use to an energy-consuming step.", Basis: "web", Evidence: []string{"ATP transfers energy in cellular reactions."}, Citations: []store.Citation{{DocumentID: "doc-1", Title: "Energy", URL: "https://example.test/energy"}}}
-	encode := func() string {
+	job := &store.Job{Kind: "plan", SourceKind: "topic", SourceText: "cell energy"}
+	input := store.JobContext{Documents: []store.SourceDocument{{ID: "doc-1", Kind: "search_result", Title: "Energy", URL: "https://example.test/energy", Text: "ATP transfers energy in cellular reactions."}}}
+	note := store.NoteContent{Title: "Energy in cells", Body: "ATP transfers energy during cell reactions, and its chemical transformation can enable work. For example, a cell may couple ATP use to an energy-consuming step.", Basis: "web", Evidence: []string{"ATP transfers energy in cellular reactions."}, Citations: []store.Citation{{DocumentID: "doc-1", Title: "Energy", URL: "https://example.test/energy"}}}
+	validate := func() (*store.NoteContent, error) {
 		t.Helper()
-		data, err := json.Marshal(map[string]any{"note": note})
+		plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Requires: []string{}, PartOf: []string{}, ConfusedWith: []string{}, Note: &note}}}
+		data, err := json.Marshal(plan)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return string(data)
+		result, err := validateV5Output(job, input, string(data))
+		if err != nil {
+			return nil, err
+		}
+		return result.Plan.Concepts[0].Note, nil
 	}
-	if _, err := validateV5Output(job, input, encode()); err != nil {
+	if _, err := validate(); err != nil {
 		t.Fatalf("valid web note failed: %v", err)
 	}
 	note.Citations[0].DocumentID = "another-doc"
-	result, err := validateV5Output(job, input, encode())
-	if err != nil || len(result.StudyNote.Citations) != 1 || result.StudyNote.Citations[0].DocumentID != "doc-1" {
-		t.Fatalf("quotation was not reconciled with its real document: %+v %v", result, err)
+	got, err := validate()
+	if err != nil || len(got.Citations) != 1 || got.Citations[0].DocumentID != "doc-1" {
+		t.Fatalf("quotation was not reconciled with its real document: %+v %v", got, err)
 	}
 	note.Citations = []store.Citation{}
-	result, err = validateV5Output(job, input, encode())
-	if err != nil || len(result.StudyNote.Citations) != 1 || result.StudyNote.Citations[0].DocumentID != "doc-1" {
-		t.Fatalf("uncited supplied excerpt was not cited truthfully: %+v %v", result, err)
+	got, err = validate()
+	if err != nil || len(got.Citations) != 1 || got.Citations[0].DocumentID != "doc-1" {
+		t.Fatalf("uncited supplied excerpt was not cited truthfully: %+v %v", got, err)
 	}
 	note.Basis = "topic"
-	if _, err := validateV5Output(job, input, encode()); err == nil {
+	if _, err := validate(); err == nil {
 		t.Fatal("topic claim with web evidence accepted")
 	}
 }

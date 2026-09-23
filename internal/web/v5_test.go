@@ -349,7 +349,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		}
 	}
 	note := func(title string) *store.NoteContent {
-		return &store.NoteContent{Level: "standard", Title: title, Basis: "topic", Body: "A synthetic note long enough to explain this concept in a controlled test of the web layer."}
+		return &store.NoteContent{Title: title, Basis: "topic", Body: "A synthetic note long enough to explain this concept in a controlled test of the web layer."}
 	}
 	publish("research", func(*store.Job) store.GenerationResult { return store.GenerationResult{} })
 	publish("plan", func(*store.Job) store.GenerationResult {

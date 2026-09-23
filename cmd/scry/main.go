@@ -463,7 +463,7 @@ func seedFixture(args []string) error {
 		return err
 	}
 	note := func(title, body string) *store.NoteContent {
-		return &store.NoteContent{Level: "standard", Title: title, Body: body, Basis: "topic"}
+		return &store.NoteContent{Title: title, Body: body, Basis: "topic"}
 	}
 	plan, err := claim("plan")
 	if err == nil {

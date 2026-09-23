@@ -42,7 +42,7 @@ func (w *Worker) generateV5(ctx context.Context, job *store.Job, input store.Job
 		}
 		return store.GenerationResult{Documents: documents, Note: note, Model: provider, PromptVersion: "scry-research-v1"}, cost, nil
 	}
-	if job.Kind != "plan" && job.Kind != "questions" && job.Kind != "note" && job.Kind != "contrast" && job.Kind != "fix" && job.Kind != "transcribe" {
+	if job.Kind != "plan" && job.Kind != "questions" && job.Kind != "contrast" && job.Kind != "fix" && job.Kind != "transcribe" {
 		return store.GenerationResult{}, &zero, &generationFailure{message: "This study preparation type is not supported."}
 	}
 	var request []byte

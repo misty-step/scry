@@ -464,7 +464,7 @@ func selectNext(ctx context.Context, tx *sql.Tx, now int64, exclude string) (nex
 	}
 	c := byID[chosen.QuizID]
 	if c.New && c.ConceptID != "" && !in.Introduced[c.ConceptID] {
-		note, err := currentNote(ctx, tx, c.ConceptID, "standard")
+		note, err := currentNote(ctx, tx, c.ConceptID)
 		if err != nil {
 			return nextChoice{}, err
 		}
@@ -1064,7 +1064,7 @@ func (s *Store) AcknowledgeIntro(ctx context.Context, conceptID, operationID str
 		if offered.intro == nil || offered.intro.Concept.ID != conceptID {
 			return ReviewState{}, fmt.Errorf("%w: this idea is no longer the one to read; reload", ErrConflict)
 		}
-		note, err := currentNote(ctx, tx, conceptID, "standard")
+		note, err := currentNote(ctx, tx, conceptID)
 		if err != nil {
 			return ReviewState{}, err
 		}

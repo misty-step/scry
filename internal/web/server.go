@@ -136,14 +136,6 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			return fmt.Sprintf("b%d", v)
 		},
 		"percent": func(v float64) int { return int(v*100 + .5) },
-		"hasLevel": func(level string, levels []string) bool {
-			for _, item := range levels {
-				if item == level {
-					return true
-				}
-			}
-			return false
-		},
 		"constellation": constellation, "starX": starX, "starY": starY, "constellationHeight": constellationHeight,
 		"tallyCount": func(tally []string, code string) int {
 			n := 0
@@ -174,23 +166,6 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			}
 			return 3 + v
 		},
-		"listLevels": func() []string { return []string{"simpler", "standard", "deeper"} },
-		"levelText": func(v string) string {
-			switch v {
-			case "simpler":
-				return "Simpler"
-			case "deeper":
-				return "Deeper"
-			default:
-				return "Standard"
-			}
-		},
-		"levelPending": func(v string) string {
-			if v == "simpler" {
-				return "Writing a simpler version…"
-			}
-			return "Writing a deeper version…"
-		},
 		"stageText": func(v string) string {
 			switch v {
 			case "research":
@@ -201,9 +176,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 				return "Finding ideas"
 			case "questions":
 				return "Writing questions"
-			case "note":
-				return "Writing an explanation"
-			case "contrast":
+				case "contrast":
 				return "Connecting ideas"
 			case "fix":
 				return "Fixing a question"
@@ -234,7 +207,6 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("GET /map", app.mapPage)
 	mux.HandleFunc("GET /concepts/{id}", app.conceptPage)
 	mux.HandleFunc("POST /concepts/{id}/practice", app.practiceConcept)
-	mux.HandleFunc("POST /concepts/{id}/note", app.requestNote)
 	mux.HandleFunc("POST /concepts/{id}/questions", app.requestQuestions)
 	mux.HandleFunc("POST /concepts/{id}/archive", app.archiveConcept)
 	mux.HandleFunc("POST /goals/{id}", app.updateGoal)

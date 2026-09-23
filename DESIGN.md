@@ -88,10 +88,8 @@ The wordmark, SVG star, and icons are local embedded assets.
   are deliberate goal actions. Archived goals stay out of active browsing.
 - **Concept:** title and status, tally marks (filled unaided, hollow helped,
   slash missed), estimate explicitly labeled “Estimated recall now 88%” rather
-  than truth, current notes with Simpler / Standard / Deeper tabs, citations,
-  related concepts, gated question details, Practice this, and quiet archive.
-  Missing note level offers a request; pending level says “Writing a simpler
-  version…” while the standard note remains available. Source shows captured
+  than truth, the current note with citations, related concepts, gated
+  question details, Practice this, and quiet archive. Source shows captured
   input, documents, provenance, and recoverable preparation status.
 
 ## Interaction and motion

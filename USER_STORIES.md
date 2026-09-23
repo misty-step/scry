@@ -188,7 +188,6 @@ Statement: When one idea depends on another, I want a useful introduction and si
 Criteria:
 1. WHEN a goal's concepts have prerequisites, THE SYSTEM SHALL order unseen introductions prerequisite-first and show the standard note before that concept's first question.
 2. WHEN I choose "I know this already" on the intro, THE SYSTEM SHALL record that observation without scoring a cold review or skipping later due questions.
-3. WHEN I request a simpler or deeper note, THE SYSTEM SHALL retain the standard note during preparation and publish the new immutable level only for its target concept.
 
 No-gos: no compulsory foundation detour or reading counted as a graded success.
 

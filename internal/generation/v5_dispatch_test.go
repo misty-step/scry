@@ -18,8 +18,7 @@ func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
 	recognize["kind"], recognize["level"], recognize["answer_form"] = "choice", "recognize", ""
 	recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
 	recognize["choice_concepts"] = []string{"", "", ""}
-	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Level: "standard", Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
-	note := store.NoteContent{Level: "simpler", Title: "Energy in cells", Body: "ATP helps cells do work by transferring energy. A cell may spend ATP to move material. It is not the same thing as genetic instructions.", Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}
+	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
 	cases := []struct {
 		kind    string
 		content any
@@ -27,7 +26,6 @@ func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
 	}{
 		{"plan", plan, store.JobContext{}},
 		{"questions", map[string]any{"quizzes": []any{recognize, question}}, store.JobContext{Concepts: []store.ConceptContext{{ID: "a", Name: "Cell energy transfer"}}}},
-		{"note", map[string]any{"note": note}, store.JobContext{Level: "simpler", Concepts: []store.ConceptContext{{ID: "a"}}}},
 		{"contrast", map[string]any{"quizzes": []any{withAlso(question, "b")}}, store.JobContext{Concepts: []store.ConceptContext{{ID: "a"}, {ID: "b"}}}},
 		{"fix", map[string]any{"quizzes": []any{question}}, store.JobContext{Quiz: &store.Quiz{ConceptID: "a"}, Concepts: []store.ConceptContext{{ID: "a"}}}},
 		{"transcribe", map[string]any{"title": "My notebook", "text": "ATP transfers energy."}, store.JobContext{Image: &store.CaptureImage{MIME: "image/png", Bytes: []byte("synthetic-image")}}},

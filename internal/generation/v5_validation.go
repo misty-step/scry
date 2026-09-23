@@ -78,8 +78,6 @@ func validateV5Output(job *store.Job, input store.JobContext, content string) (s
 				reason = errors.New("unknown existing concept")
 			case c.ExistingID == "" && c.Note == nil:
 				reason = errors.New("missing concept note")
-			case c.Note != nil && c.Note.Level != "standard":
-				reason = errors.New("concept note must be standard")
 			case c.Note != nil:
 				reason = validateV5Note(c.Note, job, input)
 			}
@@ -124,24 +122,6 @@ func validateV5Output(job *store.Job, input store.JobContext, content string) (s
 			result.Partial = true
 			result.Note = rejectionNote("concepts", rejected)
 		}
-	case "note":
-		var envelope struct {
-			Note json.RawMessage `json:"note"`
-		}
-		if strictObject(data, &envelope, "note") != nil {
-			return result, errors.New("invalid note envelope")
-		}
-		var note store.NoteContent
-		if strictObject(envelope.Note, &note, "level", "title", "body", "basis", "evidence", "citations") != nil {
-			return result, errors.New("invalid study note fields")
-		}
-		if len(input.Concepts) != 1 || note.Level != input.Level {
-			return result, errors.New("study note does not match the requested concept and level")
-		}
-		if err := validateV5Note(&note, job, input); err != nil {
-			return result, fmt.Errorf("study note: %w", err)
-		}
-		result.StudyNote = &note
 	case "questions", "contrast", "fix":
 		var envelope struct {
 			Quizzes []json.RawMessage `json:"quizzes"`
@@ -283,7 +263,7 @@ func plainV5(text string, limit int) bool {
 }
 
 func validateV5Note(note *store.NoteContent, job *store.Job, input store.JobContext) error {
-	if note.Level != "simpler" && note.Level != "standard" && note.Level != "deeper" || !plainV5(note.Title, 200) || !plainV5(note.Body, 2400) || len(note.Body) < 40 || len(note.Evidence) > 6 {
+	if !plainV5(note.Title, 200) || !plainV5(note.Body, 2400) || len(note.Body) < 40 || len(note.Evidence) > 6 {
 		return errors.New("invalid note content or length")
 	}
 	basis, quotes, citations, err := snapV5Evidence(note.Basis, note.Evidence, note.Citations, job, input)

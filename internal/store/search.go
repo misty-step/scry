@@ -39,8 +39,8 @@ func rebuildSearchIndex(ctx context.Context, tx *sql.Tx) error {
 		// One row per concept's current standard note, keyed by the concept,
 		// exactly as publication indexes it.
 		`INSERT INTO search_index(kind,ref,title,body) SELECT 'note',n.concept_id,n.title,n.body FROM notes n JOIN concepts c ON c.id=n.concept_id
-		 WHERE c.status='active' AND c.origin<>'foundation' AND n.level='standard'
-		 AND n.rowid=(SELECT x.rowid FROM notes x WHERE x.concept_id=n.concept_id AND x.level='standard' ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1)`,
+		 WHERE c.status='active' AND c.origin<>'foundation'
+		 AND n.rowid=(SELECT x.rowid FROM notes x WHERE x.concept_id=n.concept_id ORDER BY x.created_at DESC,x.rowid DESC LIMIT 1)`,
 		`INSERT INTO search_index(kind,ref,title,body) SELECT 'source',id,text,'' FROM sources WHERE archived=0`,
 	}
 	for _, statement := range statements {
