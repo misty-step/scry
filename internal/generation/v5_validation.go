@@ -122,7 +122,7 @@ func validateV5Output(job *store.Job, input store.JobContext, content string) (s
 			result.Partial = true
 			result.Note = rejectionNote("concepts", rejected)
 		}
-	case "questions", "contrast", "fix":
+	case "questions", "fix":
 		var envelope struct {
 			Quizzes []json.RawMessage `json:"quizzes"`
 		}
@@ -145,16 +145,10 @@ func validateV5Output(job *store.Job, input store.JobContext, content string) (s
 		if job.Kind == "fix" && (input.Quiz == nil || len(envelope.Quizzes) != 1) {
 			return result, errors.New("invalid correction")
 		}
-		if job.Kind == "contrast" && len(targets) != 2 {
-			return result, errors.New("invalid contrast pair")
-		}
 		seen := make(map[string]bool, len(envelope.Quizzes))
 		exact := job.Kind == "questions" && len(contract.Units) > 0
 		var rejected []string
 		limit := store.MaxCriticCandidates
-		if job.Kind == "contrast" {
-			limit = 3
-		}
 		for i, raw := range envelope.Quizzes {
 			if len(result.Quizzes) >= limit {
 				if exact {

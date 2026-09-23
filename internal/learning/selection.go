@@ -34,8 +34,7 @@ type Candidate struct {
 	Retrievability float64
 	CreatedAt      int64
 	Order          int64 // stable tie-break (row order)
-	Contrast       bool
-	RecentlySeen   bool // presented within the last few minutes
+	RecentlySeen   bool  // presented within the last few minutes
 }
 
 // SelectionInput carries everything the policy may consider. Maps are keyed by
@@ -183,9 +182,6 @@ func sortFocus(items []Candidate) {
 func sortNew(items []Candidate) {
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
-		if a.Contrast != b.Contrast {
-			return a.Contrast
-		}
 		if a.GoalFocus != b.GoalFocus {
 			return a.GoalFocus
 		}

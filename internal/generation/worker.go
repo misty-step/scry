@@ -209,7 +209,7 @@ func (w *Worker) process(ctx context.Context, job *store.Job) error {
 			result, cost, failure = w.generateV5(ctx, job, input)
 		}
 	}
-	if failure == nil && (job.Kind == "questions" || job.Kind == "contrast" || job.Kind == "fix") {
+	if failure == nil && (job.Kind == "questions" || job.Kind == "fix") {
 		return w.processCandidates(ctx, job, result, cost)
 	}
 	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)

@@ -28,27 +28,26 @@ type RubricIdea = learning.RubricIdea
 type RubricClaim = learning.RubricClaim
 
 type Quiz struct {
-	ID             string           `json:"id"`
-	SourceID       string           `json:"source_id"`
-	Kind           string           `json:"kind"`
-	Grading        string           `json:"grading,omitempty"`
-	Rubric         *learning.Rubric `json:"rubric,omitempty"`
-	Prompt         string           `json:"prompt"`
-	Answer         string           `json:"answer"`
-	Explanation    string           `json:"explanation"`
-	Evidence       string           `json:"evidence"`
-	Basis          string           `json:"basis"`
-	Choices        []string         `json:"choices"`
-	Variants       []string         `json:"variants"`
-	Level          string           `json:"level,omitempty"`
-	AnswerForm     string           `json:"answer_form,omitempty"`
-	ChoiceConcepts []string         `json:"choice_concepts,omitempty"`
-	Citations      []Citation       `json:"citations,omitempty"`
-	ConceptID      string           `json:"concept_id,omitempty"`
-	Version        int              `json:"version"`
-	Archived       bool             `json:"archived"`
-	DueAt          int64            `json:"due_at"`
-	AvailableAt    int64            `json:"available_at"`
+	ID          string           `json:"id"`
+	SourceID    string           `json:"source_id"`
+	Kind        string           `json:"kind"`
+	Grading     string           `json:"grading,omitempty"`
+	Rubric      *learning.Rubric `json:"rubric,omitempty"`
+	Prompt      string           `json:"prompt"`
+	Answer      string           `json:"answer"`
+	Explanation string           `json:"explanation"`
+	Evidence    string           `json:"evidence"`
+	Basis       string           `json:"basis"`
+	Choices     []string         `json:"choices"`
+	Variants    []string         `json:"variants"`
+	Level       string           `json:"level,omitempty"`
+	AnswerForm  string           `json:"answer_form,omitempty"`
+	Citations   []Citation       `json:"citations,omitempty"`
+	ConceptID   string           `json:"concept_id,omitempty"`
+	Version     int              `json:"version"`
+	Archived    bool             `json:"archived"`
+	DueAt       int64            `json:"due_at"`
+	AvailableAt int64            `json:"available_at"`
 }
 
 // Citation points at a stored source document (a web search result or a
@@ -202,22 +201,20 @@ type CandidateBatch struct {
 }
 
 type GeneratedQuiz struct {
-	Kind           string           `json:"kind"`
-	Grading        string           `json:"grading,omitempty"`
-	Rubric         *learning.Rubric `json:"rubric,omitempty"`
-	Prompt         string           `json:"prompt"`
-	Answer         string           `json:"answer"`
-	Explanation    string           `json:"explanation"`
-	Evidence       string           `json:"evidence"`
-	Basis          string           `json:"basis"`
-	Choices        []string         `json:"choices"`
-	Variants       []string         `json:"variants"`
-	Concept        string           `json:"concept,omitempty"`
-	Also           []string         `json:"also,omitempty"`
-	Level          string           `json:"level,omitempty"`
-	AnswerForm     string           `json:"answer_form,omitempty"`
-	ChoiceConcepts []string         `json:"choice_concepts,omitempty"`
-	Citations      []Citation       `json:"citations,omitempty"`
+	Kind        string           `json:"kind"`
+	Grading     string           `json:"grading,omitempty"`
+	Rubric      *learning.Rubric `json:"rubric,omitempty"`
+	Prompt      string           `json:"prompt"`
+	Answer      string           `json:"answer"`
+	Explanation string           `json:"explanation"`
+	Evidence    string           `json:"evidence"`
+	Basis       string           `json:"basis"`
+	Choices     []string         `json:"choices"`
+	Variants    []string         `json:"variants"`
+	Concept     string           `json:"concept,omitempty"`
+	Level       string           `json:"level,omitempty"`
+	AnswerForm  string           `json:"answer_form,omitempty"`
+	Citations   []Citation       `json:"citations,omitempty"`
 }
 
 type GenerationResult struct {

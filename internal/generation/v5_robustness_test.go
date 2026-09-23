@@ -97,7 +97,7 @@ func TestV5CurlyQuoteAndWhitespaceEvidenceSnapsBeforePublication(t *testing.T) {
 func TestV5WebEvidenceAllowsUnquotedAnswerButNotInventedNumbers(t *testing.T) {
 	job := &store.Job{Kind: "questions", SourceKind: "topic", SourceMode: "topic", SourceText: "certificate trust"}
 	input := store.JobContext{Concepts: []store.ConceptContext{{ID: "c1"}}, Documents: []store.SourceDocument{{ID: "doc-1", Kind: "search_result", Title: "Certificates", URL: "https://example.test/certs", Text: "Certificates bind public keys to domain names."}}}
-	question := map[string]any{"concept": "c1", "also": []string{}, "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "What system organizes trust in certificates and keys?", "answer": "PKI", "explanation": "PKI connects certificate authorities, public keys, and names within a trust system.", "basis": "web", "evidence": "Certificates bind public keys to domain names.", "choices": []string{}, "variants": []string{}, "choice_concepts": []string{}, "citations": []store.Citation{{DocumentID: "doc-1", Title: "Certificates", URL: "https://example.test/certs"}}, "required_ideas": []string{}, "covers": []string{}}
+	question := map[string]any{"concept": "c1", "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "What system organizes trust in certificates and keys?", "answer": "PKI", "explanation": "PKI connects certificate authorities, public keys, and names within a trust system.", "basis": "web", "evidence": "Certificates bind public keys to domain names.", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{{DocumentID: "doc-1", Title: "Certificates", URL: "https://example.test/certs"}}, "required_ideas": []string{}, "covers": []string{}}
 	content := func() string { return modelJSON(t, map[string]any{"quizzes": []any{question}}) }
 
 	result, err := validateV5Output(job, input, content())
@@ -178,7 +178,7 @@ func TestV5QuestionsDropInvalidSortLevelsClearCoversAndPublish(t *testing.T) {
 	}
 	id := input.Concepts[0].ID
 	makeQuestion := func(prompt, level, answer string) map[string]any {
-		return map[string]any{"concept": id, "also": []string{}, "level": level, "answer_form": "exact", "kind": "recall", "prompt": prompt, "answer": answer, "explanation": "ATP transfers energy through its chemical reactions during cellular work.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "choice_concepts": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
+		return map[string]any{"concept": id, "level": level, "answer_form": "exact", "kind": "recall", "prompt": prompt, "answer": answer, "explanation": "ATP transfers energy through its chemical reactions during cellular work.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
 	}
 	late := makeQuestion("Which molecule supports energy transfer during cellular work?", "explain", "ATP")
 	bad := makeQuestion("ATP is the answer to which cell energy question?", "recall", "ATP")
@@ -204,12 +204,12 @@ func TestV5SourceQuestionDropsUnsupportedAndPromptCopiedVariants(t *testing.T) {
 	job := &store.Job{Kind: "questions", SourceKind: "source", SourceMode: "text", SourceText: material}
 	input := store.JobContext{Concepts: []store.ConceptContext{{ID: "atp"}}}
 	question := map[string]any{
-		"concept": "atp", "also": []string{}, "level": "recall", "answer_form": "flexible", "kind": "recall",
+		"concept": "atp", "level": "recall", "answer_form": "flexible", "kind": "recall",
 		"prompt": "Which molecule transfers cellular energy rather than the mentioned ADP?", "answer": "ATP",
 		"explanation": "ATP transfers energy through chemical reactions during cellular work.",
 		"basis":       "source", "evidence": material, "choices": []string{},
-		"variants":        []string{"ADP", "ATP", "adenosine triphosphate", "adenosine triphosphate", " fictitious molecule ", "fictitious molecule", "bad*pattern"},
-		"choice_concepts": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{},
+		"variants":  []string{"ADP", "ATP", "adenosine triphosphate", "adenosine triphosphate", " fictitious molecule ", "fictitious molecule", "bad*pattern"},
+		"citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{},
 	}
 	result, err := validateV5Output(job, input, modelJSON(t, map[string]any{"quizzes": []any{question}}))
 	if err != nil || len(result.Quizzes) != 1 || len(result.Quizzes[0].Variants) != 1 || result.Quizzes[0].Variants[0] != "adenosine triphosphate" {

@@ -13,11 +13,10 @@ import (
 )
 
 func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
-	question := map[string]any{"concept": "a", "also": []string{}, "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule supplies energy during many cellular processes?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "choice_concepts": []string{}, "citations": []string{}, "required_ideas": []string{}, "covers": []string{}}
+	question := map[string]any{"concept": "a", "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule supplies energy during many cellular processes?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []string{}, "required_ideas": []string{}, "covers": []string{}}
 	recognize := withPrompt(question, "Which molecule is commonly used to transfer cellular energy?")
 	recognize["kind"], recognize["level"], recognize["answer_form"] = "choice", "recognize", ""
 	recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
-	recognize["choice_concepts"] = []string{"", "", ""}
 	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
 	cases := []struct {
 		kind    string
@@ -26,7 +25,6 @@ func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
 	}{
 		{"plan", plan, store.JobContext{}},
 		{"questions", map[string]any{"quizzes": []any{recognize, question}}, store.JobContext{Concepts: []store.ConceptContext{{ID: "a", Name: "Cell energy transfer"}}}},
-		{"contrast", map[string]any{"quizzes": []any{withAlso(question, "b")}}, store.JobContext{Concepts: []store.ConceptContext{{ID: "a"}, {ID: "b"}}}},
 		{"fix", map[string]any{"quizzes": []any{question}}, store.JobContext{Quiz: &store.Quiz{ConceptID: "a"}, Concepts: []store.ConceptContext{{ID: "a"}}}},
 		{"transcribe", map[string]any{"title": "My notebook", "text": "ATP transfers energy."}, store.JobContext{Image: &store.CaptureImage{MIME: "image/png", Bytes: []byte("synthetic-image")}}},
 	}
@@ -65,15 +63,6 @@ func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
 			}
 		})
 	}
-}
-
-func withAlso(question map[string]any, id string) map[string]any {
-	clone := make(map[string]any, len(question))
-	for key, value := range question {
-		clone[key] = value
-	}
-	clone["also"] = []string{id}
-	return clone
 }
 
 func withPrompt(question map[string]any, prompt string) map[string]any {

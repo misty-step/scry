@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -76,8 +75,7 @@ func textPack(t *testing.T, s *Store) (Source, string, string) {
 	}
 	complete(t, s, questions, GenerationResult{Quizzes: []GeneratedQuiz{
 		{Kind: "choice", Level: "recognize", Concept: chain, Prompt: "When does a TLS client trust a server certificate's issuer?", Answer: "When it chains to a root the client already trusts",
-			Choices:        []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"},
-			ChoiceConcepts: []string{"", "", hostname}, Explanation: "Trust comes from the chain to a known root, not from encryption or the name alone.",
+			Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"}, Explanation: "Trust comes from the chain to a known root, not from encryption or the name alone.",
 			Basis: "source", Evidence: "chains to a root authority the client already trusts"},
 		{Kind: "recall", Level: "recall", AnswerForm: "flexible", Concept: hostname, Prompt: "Besides the chain of trust, what must a TLS certificate match?", Answer: "The hostname",
 			Explanation: "The certificate must name the host the client meant to reach.", Basis: "source", Evidence: "names the host it meant to reach"},
@@ -434,77 +432,6 @@ func shortJudgments(verdict string, p float64) learning.ShortJudgments {
 	return learning.ShortJudgments{Verdict: verdict, Probabilities: map[string]float64{verdict: p}, Identity: 0.02, Injection: 0.01}
 }
 
-// US-012: choosing a distractor that stands for another concept records a
-// confusion; the second confusion between the same pair schedules one
-// contrast job, and further confusions do not schedule more.
-func TestConfusionsScheduleContrastUS012(t *testing.T) {
-	s, now := newTestStore(t)
-	ctx := context.Background()
-	_, chain, hostname := textPack(t, s)
-	confuse := func(op string) {
-		t.Helper()
-		for i := 0; i < 6; i++ {
-			state := introduceOffered(t, s)
-			if state.Current == nil {
-				t.Fatalf("no current question: %+v", state)
-			}
-			p := *state.Current
-			var err error
-			if p.Quiz.Kind == "choice" {
-				if _, err = s.Submit(ctx, p.ID, op, "When the certificate names the host", false); err != nil {
-					t.Fatal(err)
-				}
-				if _, err = s.Next(ctx, p.ID); err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			if _, err = s.Submit(ctx, p.ID, op+"-skip", "", true); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = s.Next(ctx, p.ID); err != nil {
-				t.Fatal(err)
-			}
-			*now = now.Add(20 * time.Minute)
-		}
-		t.Fatal("the choice question never came up")
-	}
-	confuse("confuse-1")
-	var contrasts int
-	if err := s.db.QueryRow("SELECT count(*) FROM jobs WHERE kind='contrast'").Scan(&contrasts); err != nil || contrasts != 0 {
-		t.Fatalf("one confusion scheduled a contrast: %d %v", contrasts, err)
-	}
-	*now = now.Add(24 * time.Hour)
-	confuse("confuse-2")
-	*now = now.Add(24 * time.Hour)
-	confuse("confuse-3")
-	var confusions int
-	var payload string
-	if err := s.db.QueryRow("SELECT (SELECT count(*) FROM evidence WHERE kind='confusion'),(SELECT count(*) FROM jobs WHERE kind='contrast'),(SELECT payload FROM jobs WHERE kind='contrast')").Scan(&confusions, &contrasts, &payload); err != nil {
-		t.Fatal(err)
-	}
-	var pair struct {
-		Concepts []string `json:"concepts"`
-	}
-	if confusions != 3 || contrasts != 1 || json.Unmarshal([]byte(payload), &pair) != nil || len(pair.Concepts) != 2 || pair.Concepts[0] != chain || pair.Concepts[1] != hostname {
-		t.Fatalf("confusions=%d contrasts=%d payload=%s", confusions, contrasts, payload)
-	}
-	// The contrast question links both concepts, so answer-secrecy gates
-	// cover the one it contrasts with as well as the one it assesses.
-	contrast := claimKind(t, s, "contrast")
-	complete(t, s, contrast, GenerationResult{Quizzes: []GeneratedQuiz{{Kind: "recall", Level: "recall", AnswerForm: "flexible", Concept: chain, Also: []string{hostname},
-		Prompt: "Which check proves the server is the host you asked for, not just trusted by someone?", Answer: "Hostname verification",
-		Explanation: "A trusted chain alone can belong to another site; the name check ties it to this host.", Basis: "source", Evidence: "names the host it meant to reach"}}})
-	var quizID string
-	if err := s.db.QueryRow("SELECT quiz_id FROM concept_quizzes WHERE role='contrasts'").Scan(&quizID); err != nil {
-		t.Fatal(err)
-	}
-	linked, err := s.QuizConcepts(context.Background(), quizID)
-	if err != nil || len(linked) != 2 || !reflect.DeepEqual(map[string]bool{linked[0]: true, linked[1]: true}, map[string]bool{chain: true, hostname: true}) {
-		t.Fatalf("contrast question links %v, want both %s and %s: %v", linked, chain, hostname, err)
-	}
-}
-
 // US-010: pausing a goal stops its new material; resuming brings it back.
 func TestGoalPauseStopsNewMaterialUS010(t *testing.T) {
 	s, _ := newTestStore(t)
@@ -625,37 +552,6 @@ func TestLateQuestionsForArchivedConceptAreRefused(t *testing.T) {
 	}
 }
 
-// The store hides distractor tags until the answer is graded: the correct
-// choice is the one untagged, so the tags alone would reveal it.
-func TestUngradedChoiceHidesDistractorConcepts(t *testing.T) {
-	s, _ := newTestStore(t)
-	ctx := context.Background()
-	textPack(t, s)
-	for i := 0; i < 3; i++ {
-		state := introduceOffered(t, s)
-		if state.Current == nil {
-			t.Fatalf("no question: %+v", state)
-		}
-		current, err := s.Current(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if state.Current.Quiz.Kind == "choice" {
-			if len(state.Current.Quiz.ChoiceConcepts) != 0 || len(current.Quiz.ChoiceConcepts) != 0 {
-				t.Fatalf("ungraded choice exposed its distractor tags: %v %v", state.Current.Quiz.ChoiceConcepts, current.Quiz.ChoiceConcepts)
-			}
-			return
-		}
-		if _, err = s.Submit(ctx, state.Current.ID, "tags-skip-"+state.Current.ID, "", true); err != nil {
-			t.Fatal(err)
-		}
-		if _, err = s.Next(ctx, state.Current.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Fatal("the choice question never came up")
-}
-
 // introduceOffered reads each intro the stream offers, in the order it offers
 // them, and returns the first state that is not an intro.
 func introduceOffered(t *testing.T, s *Store) ReviewState {
@@ -738,7 +634,7 @@ func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
 func TestFixIsASuggestionUntilAccepted(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
-	src, chain, hostname := textPack(t, s)
+	src, chain, _ := textPack(t, s)
 	var q Quiz
 	for _, candidate := range src.Quizzes {
 		if candidate.Kind == "choice" {
@@ -755,8 +651,7 @@ func TestFixIsASuggestionUntilAccepted(t *testing.T) {
 		}
 		j := claimKind(t, s, "fix")
 		complete(t, s, j, GenerationResult{Quizzes: []GeneratedQuiz{{Kind: "choice", Level: "recognize", Concept: chain, Prompt: prompt,
-			Answer: "When it chains to a root the client already trusts", Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"},
-			ChoiceConcepts: []string{"", "", hostname}, Explanation: "Trust comes from the chain to a known root.", Basis: "source", Evidence: "chains to a root authority the client already trusts"}}})
+			Answer: "When it chains to a root the client already trusts", Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"}, Explanation: "Trust comes from the chain to a known root.", Basis: "source", Evidence: "chains to a root authority the client already trusts"}}})
 	}
 	version := func() int {
 		t.Helper()

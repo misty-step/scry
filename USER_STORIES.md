@@ -84,7 +84,6 @@ Criteria:
 
 No-gos: no generator-v4 change, pairwise duplicate checks,
 practice-coverage UI, production activation, or general accuracy claim.
-Contrast questions (US-012) are generated and pass the same critic fence.
 
 Evidence: `internal/learning/critic_test.go`,
 `internal/semantic/critic_request_test.go`, `internal/store/critic_test.go`,
@@ -112,7 +111,7 @@ Evidence: `internal/store/v5_test.go`, `internal/generation/exa_test.go`,
 Statement: When a question assumes an idea I do not understand, I want a note for that concept one tap away, so studying can be more than repeating the answer.
 
 Criteria:
-1. WHEN a newly generated question publishes, THE SYSTEM SHALL link exactly one primary concept and an existing standard note; a contrast question SHALL link its second concept separately.
+1. WHEN a newly generated question publishes, THE SYSTEM SHALL link exactly one primary concept and an existing standard note.
 2. WHEN I open a concept from a graded question, THE SYSTEM SHALL show its note and linked questions without changing the current review occurrence.
 3. WHEN a note quotes my material or a web excerpt, THE SYSTEM SHALL keep exact evidence and inspectable provenance; general-knowledge notes SHALL be labeled and SHALL NOT claim quoted source support.
 
@@ -192,16 +191,8 @@ No-gos: no compulsory foundation detour or reading counted as a graded success.
 Evidence: `internal/learning/selection_test.go`, `internal/store/v5_test.go`,
 `internal/web/review_test.go`
 
-## US-012 Practice a real confusion
+## US-012 Practice a real confusion (retired)
 
-Statement: When I keep mixing two ideas up, I want a focused contrast question, so I can tell them apart.
-
-Criteria:
-1. WHEN two recorded confusions identify the same pair, THE SYSTEM SHALL queue one bounded contrast preparation for those concepts without replacing normal due review.
-2. WHEN a contrast question publishes, THE SYSTEM SHALL link one primary and one contrasting concept and explain the distinction without leaking the answer in the prompt.
-3. WHEN the source is busy or a preparation fails, THE SYSTEM SHALL preserve earlier questions and observations, and SHALL NOT duplicate the contrast on retry.
-
-No-gos: no inferred confusion from one wrong answer, random pairwise quiz generation, or hidden paid retry.
-
-Evidence: `internal/store/v5_test.go`, `internal/store/jobs_test.go`,
-`internal/generation/worker_test.go`, `internal/web/review_test.go`
+Retired on 2026-09-23 by the operator's simplification decision (MIS-162): Scry
+no longer generates contrast questions from recorded confusions. The id stays
+reserved.

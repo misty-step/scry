@@ -228,11 +228,8 @@ func validateQuiz(q *GeneratedQuiz, m material) error {
 		if matches != 1 {
 			return fmt.Errorf("%w: answer must exactly equal one displayed choice", ErrInvalid)
 		}
-		if len(q.ChoiceConcepts) != 0 && len(q.ChoiceConcepts) != len(q.Choices) {
-			return fmt.Errorf("%w: choice concepts must align with the choices", ErrInvalid)
-		}
 	case "recall":
-		if len(q.Choices) != 0 || len(q.ChoiceConcepts) != 0 {
+		if len(q.Choices) != 0 {
 			return fmt.Errorf("%w: recall quizzes cannot contain choices", ErrInvalid)
 		}
 		switch q.AnswerForm {
@@ -330,17 +327,15 @@ func validateNote(n *NoteContent, m material) error {
 	return nil
 }
 
-// quizTargets returns the concepts a quizzes-producing job may assess, and
-// for contrast jobs the required pair.
-func quizTargets(ctx context.Context, tx *sql.Tx, j Job) (map[string]bool, []string, error) {
+// quizTargets returns the concepts a quizzes-producing job may assess.
+func quizTargets(ctx context.Context, tx *sql.Tx, j Job) (map[string]bool, error) {
 	targets := map[string]bool{}
 	var payload struct {
-		ConceptID string   `json:"concept_id"`
-		Concepts  []string `json:"concepts"`
-		QuizID    string   `json:"quiz_id"`
+		ConceptID string `json:"concept_id"`
+		QuizID    string `json:"quiz_id"`
 	}
 	if err := json.Unmarshal([]byte(j.Payload), &payload); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// Only active concepts may receive new questions: a concept archived while
 	// its job was generating must not come back through late output.
@@ -356,42 +351,30 @@ func quizTargets(ctx context.Context, tx *sql.Tx, j Job) (map[string]bool, []str
 			if ok {
 				targets[payload.ConceptID] = true
 			}
-			return targets, nil, err
+			return targets, err
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT gc.concept_id FROM goal_concepts gc JOIN goals g ON g.id=gc.goal_id JOIN concepts c ON c.id=gc.concept_id
 		 WHERE g.source_id=? AND c.status='active'`, j.SourceID)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var id string
 			if err = rows.Scan(&id); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			targets[id] = true
 		}
-		return targets, nil, rows.Err()
-	case "contrast":
-		for _, id := range payload.Concepts {
-			ok, err := active(id)
-			if err != nil {
-				return nil, nil, err
-			}
-			if !ok {
-				return map[string]bool{}, nil, nil
-			}
-			targets[id] = true
-		}
-		return targets, payload.Concepts, nil
+		return targets, rows.Err()
 	case "fix":
 		var concept string
 		err := tx.QueryRowContext(ctx, "SELECT COALESCE((SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role='assesses'),'')", payload.QuizID).Scan(&concept)
 		targets[concept] = true
-		return targets, nil, err
+		return targets, err
 	default: // legacy quizzes: no concept links
 		targets[""] = true
-		return targets, nil, nil
+		return targets, nil
 	}
 }
 
@@ -402,10 +385,7 @@ func validateQuizBatch(ctx context.Context, tx *sql.Tx, j Job, result *Generatio
 		return fmt.Errorf("%w: unexpected content for a questions job", ErrInvalid)
 	}
 	limit := MaxGeneratedQuizzes
-	switch j.Kind {
-	case "contrast":
-		limit = 3
-	case "fix":
+	if j.Kind == "fix" {
 		limit = 1
 	}
 	if len(result.Quizzes) == 0 || len(result.Quizzes) > limit {
@@ -415,7 +395,7 @@ func validateQuizBatch(ctx context.Context, tx *sql.Tx, j Job, result *Generatio
 	if err != nil {
 		return err
 	}
-	targets, pair, err := quizTargets(ctx, tx, j)
+	targets, err := quizTargets(ctx, tx, j)
 	if err != nil {
 		return err
 	}
@@ -427,25 +407,6 @@ func validateQuizBatch(ctx context.Context, tx *sql.Tx, j Job, result *Generatio
 		}
 		if !targets[q.Concept] {
 			return fmt.Errorf("%w: quiz %d assesses a concept outside this request", ErrInvalid, i+1)
-		}
-		if j.Kind == "contrast" {
-			if len(pair) != 2 || q.Concept != pair[0] || len(q.Also) != 1 || q.Also[0] != pair[1] {
-				return fmt.Errorf("%w: a contrast question must compare exactly the requested pair", ErrInvalid)
-			}
-		} else if len(q.Also) != 0 {
-			return fmt.Errorf("%w: only contrast questions compare concepts", ErrInvalid)
-		}
-		for _, id := range q.ChoiceConcepts {
-			if id == "" {
-				continue
-			}
-			var active bool
-			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM concepts WHERE id=? AND status='active' AND origin<>'foundation')", id).Scan(&active); err != nil {
-				return err
-			}
-			if !active {
-				return fmt.Errorf("%w: a choice names an unknown concept", ErrInvalid)
-			}
 		}
 		key := strings.TrimSpace(q.Prompt)
 		if seen[key] {
@@ -795,11 +756,6 @@ func publishQuizzes(ctx context.Context, tx *sql.Tx, j Job, result GenerationRes
 		if content.Concept != "" {
 			if _, err = tx.ExecContext(ctx, "INSERT INTO concept_quizzes(concept_id,quiz_id,created_at,role) VALUES(?,?,?,'assesses')", content.Concept, id, now); err != nil {
 				return 0, err
-			}
-			for _, other := range content.Also {
-				if _, err = tx.ExecContext(ctx, "INSERT INTO concept_quizzes(concept_id,quiz_id,created_at,role) VALUES(?,?,?,'contrasts')", other, id, now); err != nil {
-					return 0, err
-				}
 			}
 		}
 	}

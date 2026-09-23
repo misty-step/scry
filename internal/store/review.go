@@ -210,8 +210,6 @@ func hideAnswer(p *Presentation) {
 		p.Quiz.Variants = nil
 		p.Quiz.Rubric = nil
 		p.Quiz.Citations = nil
-		// Distractor tags reveal the answer: only the correct choice is untagged.
-		p.Quiz.ChoiceConcepts = nil
 	}
 }
 
@@ -281,8 +279,7 @@ func selectNext(ctx context.Context, tx *sql.Tx, now int64, exclude string) (nex
 		return nextChoice{}, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT q.id,q.created_at,q.rowid,sc.card,`+quizAvailableAtSQL+`,v.content,
-	 COALESCE(cq.concept_id,''),COALESCE(g.id,''),COALESCE(g.focus,0),COALESCE(g.status,'active'),COALESCE(g.created_at,0),
-	 EXISTS(SELECT 1 FROM concept_quizzes x WHERE x.quiz_id=q.id AND x.role='contrasts')
+	 COALESCE(cq.concept_id,''),COALESCE(g.id,''),COALESCE(g.focus,0),COALESCE(g.status,'active'),COALESCE(g.created_at,0)
 	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN schedules sc ON sc.quiz_id=q.id
 	 JOIN quiz_versions v ON v.quiz_id=q.id AND v.version=q.version
 	 LEFT JOIN concept_quizzes cq ON cq.quiz_id=q.id AND cq.role='assesses'
@@ -296,7 +293,7 @@ func selectNext(ctx context.Context, tx *sql.Tx, now int64, exclude string) (nex
 	for rows.Next() {
 		var c learning.Candidate
 		var cardJSON, content, goalStatus string
-		if err = rows.Scan(&c.QuizID, &c.CreatedAt, &c.Order, &cardJSON, &c.AvailableAt, &content, &c.ConceptID, &c.GoalID, &c.GoalFocus, &goalStatus, &c.GoalCreated, &c.Contrast); err != nil {
+		if err = rows.Scan(&c.QuizID, &c.CreatedAt, &c.Order, &cardJSON, &c.AvailableAt, &content, &c.ConceptID, &c.GoalID, &c.GoalFocus, &goalStatus, &c.GoalCreated); err != nil {
 			rows.Close()
 			return nextChoice{}, err
 		}
@@ -794,11 +791,6 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	if err = applyGrade(ctx, tx, &p, cardJSON, scheduleVersion, "exact-v1", now); err != nil {
 		return Presentation{}, err
 	}
-	if p.Quiz.Kind == "choice" && outcome == "wrong" && !reveal {
-		if err = recordConfusion(ctx, tx, p, answer, now); err != nil {
-			return Presentation{}, err
-		}
-	}
 	hideAnswer(&p)
 	if err = saveOperation(ctx, tx, operationID, "submit", hash, p.ID, p, now); err != nil {
 		return Presentation{}, err
@@ -807,68 +799,6 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 		return Presentation{}, err
 	}
 	return p, nil
-}
-
-// recordConfusion notes that a wrong choice stood for another concept, and
-// after two such confusions between the same pair schedules one bounded
-// contrast job for them.
-func recordConfusion(ctx context.Context, tx *sql.Tx, p Presentation, answer string, now int64) error {
-	if p.Concept == nil || len(p.Quiz.ChoiceConcepts) != len(p.Quiz.Choices) {
-		return nil
-	}
-	other := ""
-	for i, choice := range p.Quiz.Choices {
-		if choice == answer {
-			other = p.Quiz.ChoiceConcepts[i]
-		}
-	}
-	primary := p.Concept.ID
-	if other == "" || other == primary {
-		return nil
-	}
-	detail, err := marshal(map[string]string{"with": other})
-	if err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO evidence(id,kind,concept_id,quiz_id,presentation_id,review_id,detail,created_at) VALUES(?,?,?,?,?,?,?,?)`,
-		newID(), "confusion", primary, p.Quiz.ID, p.ID, p.ReviewID, detail, now); err != nil {
-		return err
-	}
-	var confusions int
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM evidence WHERE kind='confusion' AND
-	 ((concept_id=? AND json_extract(detail,'$.with')=?) OR (concept_id=? AND json_extract(detail,'$.with')=?))`, primary, other, other, primary).Scan(&confusions); err != nil {
-		return err
-	}
-	if confusions < 2 {
-		return nil
-	}
-	pair, reverse := contrastPayload(primary, other), contrastPayload(other, primary)
-	var exists bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM jobs WHERE kind='contrast' AND payload IN (?,?))
-	 OR EXISTS(SELECT 1 FROM concept_quizzes x JOIN concept_quizzes y ON y.quiz_id=x.quiz_id JOIN quizzes q ON q.id=x.quiz_id
-	 WHERE q.archived=0 AND x.role='assesses' AND y.role='contrasts' AND ((x.concept_id=? AND y.concept_id=?) OR (x.concept_id=? AND y.concept_id=?)))`,
-		pair, reverse, primary, other, other, primary).Scan(&exists); err != nil || exists {
-		return err
-	}
-	var sourceID string
-	var revision int
-	err = tx.QueryRowContext(ctx, `SELECT src.id,src.revision FROM concepts c JOIN sources src ON src.id=c.source_id WHERE c.id=? AND src.archived=0`, primary).Scan(&sourceID, &revision)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	err = enqueue(ctx, tx, sourceID, revision, "contrast", json.RawMessage(pair), now)
-	if errors.Is(err, ErrConflict) {
-		return nil // the source is busy; a later confusion will try again
-	}
-	return err
-}
-
-func contrastPayload(a, b string) string {
-	encoded, _ := json.Marshal(map[string][]string{"concepts": {a, b}})
-	return string(encoded)
 }
 
 // SelfGrade records the learner's own judgment after comparing their saved

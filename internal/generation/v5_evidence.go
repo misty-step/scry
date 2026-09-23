@@ -114,7 +114,7 @@ func snapV5Evidence(basis string, provided []string, citations []store.Citation,
 			}
 			original := item.text[mapped.starts[at]:mapped.ends[at+len(needle)-1]]
 			limit := 1024
-			if job.Kind == "questions" || job.Kind == "contrast" || job.Kind == "fix" {
+			if job.Kind == "questions" || job.Kind == "fix" {
 				limit = 8192
 			}
 			if len(original) > limit || !plainV5(original, limit) {

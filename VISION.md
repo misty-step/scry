@@ -39,8 +39,7 @@ are not evidence of sustained use or learning gains.
    authority. Never accept a different fact through broad text similarity.
 5. Introduce unseen concepts in prerequisite order; distinguish exposure,
    helped practice, misses, and unaided attempts. The Map shows status and a
-   labeled recall estimate, not a declaration of knowledge. Two recorded
-   confusions can lead to targeted contrast practice.
+   labeled recall estimate, not a declaration of knowledge.
 6. Keep history, privacy, bounded spending, and recovery true even through a
    refresh, competing tab, outage, failed generation, or deployment. Paid work
    and unknown usage are not retried invisibly.

@@ -179,7 +179,7 @@ func conceptBriefs(ctx context.Context, tx *sql.Tx, ids []string, now int64) ([]
 
 var stageLabels = map[string]string{
 	"research": "Searching the web", "transcribe": "Reading your photo", "plan": "Mapping the ideas",
-	"questions": "Writing questions", "contrast": "Writing a comparison", "quizzes": "Writing questions",
+	"questions": "Writing questions", "quizzes": "Writing questions",
 }
 
 // preparingFor describes a source's live preparation, or one that stopped
@@ -636,15 +636,15 @@ func orderedIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]s
 	return ids, rows.Err()
 }
 
-// QuizConcepts lists every concept a question is linked to: the one it
-// assesses and any it contrasts with. Answer-secrecy gates cover all of them.
+// QuizConcepts lists the concepts a question assesses; answer-secrecy gates
+// cover all of them.
 func (s *Store) QuizConcepts(ctx context.Context, quizID string) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	ids, err := orderedIDs(ctx, tx, `SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role IN ('assesses','contrasts') ORDER BY concept_id`, quizID)
+	ids, err := orderedIDs(ctx, tx, `SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role='assesses' ORDER BY concept_id`, quizID)
 	if err != nil {
 		return nil, err
 	}
@@ -922,10 +922,9 @@ func (s *Store) JobContext(ctx context.Context, jobID string) (JobContext, error
 		return result, err
 	}
 	var payload struct {
-		ConceptID   string   `json:"concept_id"`
-		Concepts    []string `json:"concepts"`
-		QuizID      string   `json:"quiz_id"`
-		Instruction string   `json:"instruction"`
+		ConceptID   string `json:"concept_id"`
+		QuizID      string `json:"quiz_id"`
+		Instruction string `json:"instruction"`
 	}
 	if err = json.Unmarshal([]byte(j.Payload), &payload); err != nil {
 		return result, err
@@ -986,12 +985,6 @@ func (s *Store) JobContext(ctx context.Context, jobID string) (JobContext, error
 			missing = ordered
 		}
 		for _, id := range missing {
-			if err = addConcept(id); err != nil {
-				return result, err
-			}
-		}
-	case "contrast":
-		for _, id := range payload.Concepts {
 			if err = addConcept(id); err != nil {
 				return result, err
 			}

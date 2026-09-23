@@ -11,7 +11,7 @@ import (
 const standardNoteBody = "ATP transfers energy during cellular work. Cells can couple a change in ATP to a process that needs energy, such as moving material across a membrane. The energy transfer happens through a chemical reaction rather than by ATP carrying genetic instructions. A common confusion is to treat ATP as the material being built by every process; instead it participates in reactions that help drive the work. This distinction separates an energy carrier from a store of hereditary information."
 
 func TestV5StrictSchemasAreValidJSON(t *testing.T) {
-	for _, kind := range []string{"plan", "questions", "contrast", "fix", "transcribe"} {
+	for _, kind := range []string{"plan", "questions", "fix", "transcribe"} {
 		_, schema, err := v5Prompt(kind)
 		if err != nil || !json.Valid([]byte(schema)) {
 			t.Errorf("%s has invalid strict schema: %v", kind, err)
@@ -98,17 +98,17 @@ func TestV5TranscriptionPreservesSourceAndRejectsInventedFields(t *testing.T) {
 }
 
 func TestV5WebQuestionNeedsQuotedCitedResult(t *testing.T) {
-	job := &store.Job{Kind: "contrast", SourceKind: "topic", SourceMode: "topic", SourceText: "energy carriers"}
+	job := &store.Job{Kind: "questions", SourceKind: "topic", SourceMode: "topic", SourceText: "energy carriers"}
 	input := store.JobContext{
-		Concepts:  []store.ConceptContext{{ID: "a"}, {ID: "b"}},
+		Concepts:  []store.ConceptContext{{ID: "a"}},
 		Documents: []store.SourceDocument{{ID: "web-1", Kind: "search_result", URL: "https://example.test/atp", Title: "ATP", Text: "ATP transfers energy during cellular reactions, while DNA stores genetic instructions."}},
 	}
 	q := map[string]any{
-		"concept": "a", "also": []string{"b"}, "level": "recall", "answer_form": "exact",
+		"concept": "a", "level": "recall", "answer_form": "exact",
 		"kind": "recall", "prompt": "Which molecule transfers energy during cellular reactions rather than storing genetic instructions?",
 		"answer": "ATP", "explanation": "ATP transfers energy in reactions, whereas DNA stores genetic instructions for the cell.",
 		"basis": "web", "evidence": "ATP transfers energy during cellular reactions, while DNA stores genetic instructions.",
-		"choices": []string{}, "variants": []string{}, "choice_concepts": []string{},
+		"choices": []string{}, "variants": []string{},
 		"citations":      []store.Citation{{DocumentID: "web-1", Title: "ATP", URL: "https://example.test/atp"}},
 		"required_ideas": []string{}, "covers": []string{},
 	}
@@ -141,10 +141,10 @@ func TestV5ExactTextKeepsEveryUnitAndOriginalOrder(t *testing.T) {
 	input := store.JobContext{Concepts: []store.ConceptContext{{ID: "poem"}}}
 	makeQuestion := func(unit, answer, prompt, evidence string) map[string]any {
 		return map[string]any{
-			"concept": "poem", "also": []string{}, "level": "recall", "answer_form": "exact", "kind": "recall",
+			"concept": "poem", "level": "recall", "answer_form": "exact", "kind": "recall",
 			"prompt": prompt, "answer": answer, "explanation": "This line follows the saved poem wording rather than an invented paraphrase.",
 			"basis": "source", "evidence": evidence, "choices": []string{}, "variants": []string{},
-			"choice_concepts": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{unit},
+			"citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{unit},
 		}
 	}
 	first := makeQuestion("u1", "So much depends", "Recite the opening line of the poem you saved.", "So much depends\nupon")

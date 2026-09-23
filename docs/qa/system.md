@@ -228,8 +228,7 @@ or headless Chromium on the workstation.
    focus/pause a goal, and inspect
    prerequisite-first order, status words and estimates. Open a Concept page:
    its note, citations,
-   related ideas, practice and gated question details. Two recorded confusions
-   should produce one targeted contrast preparation.
+   related ideas, practice and gated question details.
 5. Open Add via `/add?text=&url=&title=` as a share target; the prefilled fields
    remain editable and **mode choice remains explicit**. Exercise without JS,
    with reduced motion, both color schemes, keyboard focus, 320px/390px and

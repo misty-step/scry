@@ -34,11 +34,10 @@ func TestV5TopicChainResearchPlanQuestions(t *testing.T) {
 		case containsSchema(body, "scry_plan"):
 			content, err = json.Marshal(plan)
 		case containsSchema(body, "scry_questions"):
-			question := map[string]any{"concept": conceptID, "also": []string{}, "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule transfers energy during cellular work?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "choice_concepts": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
+			question := map[string]any{"concept": conceptID, "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule transfers energy during cellular work?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
 			recognize := withPrompt(question, "Which molecule is commonly used to transfer cellular energy?")
 			recognize["kind"], recognize["level"], recognize["answer_form"] = "choice", "recognize", ""
 			recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
-			recognize["choice_concepts"] = []string{"", "", ""}
 			content, err = json.Marshal(map[string]any{"quizzes": []any{recognize, question}})
 		default:
 			t.Errorf("unexpected generation schema: %s", body)

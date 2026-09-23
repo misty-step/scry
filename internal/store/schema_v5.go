@@ -23,7 +23,7 @@ CREATE TABLE concept_relations (
 ) STRICT;
 CREATE UNIQUE INDEX one_live_relation ON concept_relations(from_id,to_id,kind) WHERE retired_at=0;
 CREATE INDEX relation_target ON concept_relations(to_id,kind);
-ALTER TABLE concept_quizzes ADD COLUMN role TEXT NOT NULL DEFAULT 'assesses' CHECK(role IN ('assesses','contrasts','foundation'));
+ALTER TABLE concept_quizzes ADD COLUMN role TEXT NOT NULL DEFAULT 'assesses' CHECK(role IN ('assesses','foundation'));
 CREATE TABLE goals (
  id TEXT PRIMARY KEY,
  title TEXT NOT NULL,
@@ -79,11 +79,11 @@ CREATE TABLE capture_images (
 ) STRICT;
 ALTER TABLE sources ADD COLUMN mode TEXT NOT NULL DEFAULT '' CHECK(mode IN ('','topic','text','link','photo'));
 ALTER TABLE sources ADD COLUMN web INTEGER NOT NULL DEFAULT 0 CHECK(web IN (0,1));
-ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'quizzes' CHECK(kind IN ('quizzes','research','transcribe','plan','questions','contrast','fix'));
+ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'quizzes' CHECK(kind IN ('quizzes','research','transcribe','plan','questions','fix'));
 ALTER TABLE jobs ADD COLUMN payload TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(payload));
 CREATE TABLE evidence (
  id TEXT PRIMARY KEY,
- kind TEXT NOT NULL CHECK(kind IN ('read','know','dismiss','practice','confusion')),
+ kind TEXT NOT NULL CHECK(kind IN ('read','know','dismiss','practice')),
  concept_id TEXT NOT NULL DEFAULT '',
  quiz_id TEXT NOT NULL DEFAULT '',
  presentation_id TEXT NOT NULL DEFAULT '',

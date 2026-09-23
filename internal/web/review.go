@@ -37,7 +37,6 @@ func withoutAnswer(q store.Quiz) store.Quiz {
 	q.Evidence = ""
 	q.Variants = nil
 	q.Rubric = nil
-	q.ChoiceConcepts = nil
 	q.Citations = nil
 	return q
 }
@@ -55,7 +54,7 @@ func hideCurrentMaterial(cold *store.Presentation, receipts []store.Preparing) {
 }
 
 // linkedConcepts names every concept the cold question's answer could be read
-// from: the one it assesses and any it contrasts with.
+// from: the ones it assesses.
 func (s *server) linkedConcepts(r *http.Request, cold *store.Presentation) (map[string]bool, error) {
 	ids, err := s.store.QuizConcepts(r.Context(), cold.Quiz.ID)
 	if err != nil {

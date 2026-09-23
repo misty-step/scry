@@ -176,8 +176,6 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 				return "Finding ideas"
 			case "questions":
 				return "Writing questions"
-			case "contrast":
-				return "Connecting ideas"
 			case "fix":
 				return "Fixing a question"
 			default:

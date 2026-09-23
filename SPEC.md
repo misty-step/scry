@@ -128,10 +128,10 @@ I was right (quiet, automatic miss only)
   attempt and correction both remain in history.
 - Intro presents a standard note before an unseen concept's first question;
   “I know this already” records an observation without scoring a cold answer.
-  While a question awaits an unaided answer, every concept it assesses or
-  contrasts opens behind the Look it up gate, and text or titles drawn from its
-  own capture (source text, goal title, preparation receipts) are
-  replaced on every route until assistance is recorded; a concept page links to
+  While a question awaits an unaided answer, every concept it assesses opens
+  behind the Look it up gate, and text or titles drawn from its own capture
+  (source text, goal title, preparation receipts) are replaced on every route
+  until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
 - Add requires explicit Topic / My text / Link / Photo mode. Topic alone may
@@ -323,23 +323,22 @@ and revisit the material I care about.
 
 Proof: browser edit/archive and an inspected export across a restart.
 
-### S08 — Return to worthwhile practice (US-009/US-011/US-012)
+### S08 — Return to worthwhile practice (US-009/US-011)
 
 As the learner, I want Scry to introduce prerequisites first and choose
 appropriate review from honest evidence, without mistaking exposure for recall.
 
 - **S08.1:** The pinned FSRS algorithm, state, rating and time yield the same
   next schedule. A miss/help follows its conservative policy; read, know,
-  practice, and confusion observations remain separate from graded attempts.
+  and practice observations remain separate from graded attempts.
 - **S08.2:** Selection v2 introduces unseen concepts prerequisite-first,
   interleaves eligible due practice, honors focused/paused goals, and caps new
-  concepts per rolling day at 3/6/12 for light/steady/intense pace. One recorded
-  confusion is not a grade; two for one pair can queue a contrast question.
+  concepts per rolling day at 3/6/12 for light/steady/intense pace.
 - **S08.3:** Concept state distinguishes new/learning/solid/fading and tallies
   unaided/helped/missed events. Predicted recall is explicitly an estimate;
   navigation, animation, or a note read never manufactures a learning event.
 
-Proof: prerequisite/pace/confusion selection, concept evidence and next-day
+Proof: prerequisite/pace selection, concept evidence and next-day
 resume in focused learning/store checks and browser use. Efficacy claims
 require separate delayed unaided recall data.
 
@@ -510,10 +509,10 @@ retention, or learning-efficacy claim is inherited.
 
 Schema v5 adds goals and goal-concept membership; generated/learner concepts
 with status and source origin; `requires`, `part_of`, and symmetric
-`confused_with` relations; immutable per-level notes and source documents;
+`confused_with` relations; immutable notes and source documents;
 private bounded capture images; question concept roles/level/answer form/
-citations; evidence observations; grade overrides; preferences and search
-index. One primary concept is required for each new question. Old foundation
+citations; evidence observations; grade overrides; preferences and a concept
+index for reuse. One primary concept is required for each new question. Old foundation
 rows and links remain with historical origin but stay out of Map/Stream.
 Migration v4→v5 is additive and transactional, with `user_version=5`, full
 schema/reference validation and FTS rebuild. Once migrated a v4 binary cannot
@@ -548,11 +547,9 @@ tasks retain their unit ordering contract.
 
 Questions ascend recognize → recall → explain/apply (2–3 per concept where
 appropriate). Exact answer form is for exact identity/wording; otherwise use
-flexible short recall. Explain prose alone gets required-idea rubric. Choice
-distractors can identify the contrasting concept. `questions` can be requested
-for one concept, `fix` for a specified quiz
-version, and after two observations of the same confusion `contrast` for the
-pair. A `fix` only suggests: its corrected question waits beside the current
+flexible short recall. Explain prose alone gets required-idea rubric.
+`questions` can be requested for one concept and `fix` for a specified quiz
+version. A `fix` only suggests: its corrected question waits beside the current
 one on the question's edit page and changes nothing until the learner uses it
 (then it is written as the next version under the same fences as a manual
 edit) or keeps theirs; a later edit or suggestion supersedes an undecided one.
@@ -613,7 +610,7 @@ exact-text, flexible short-recall, and complete-set output; source-basis
 ideas must be supported by the candidate's evidence without strengthening
 qualifications. Generated rubrics never leak hints. Under `semantic-v1`,
 incomplete and incorrect remain ungraded; rubric alignment is judged in the
-same bounded critic call. Contrast candidates use the same critic fence.
+same bounded critic call.
 
 The code-owned `critic-v1` policy freezes the hard threshold at 0.80.
 Any hard judgment at or above that threshold rejects the candidate.

@@ -90,7 +90,7 @@ func requirePresent(t *testing.T, page, label string, wants ...string) {
 }
 
 func TestPrivateReviewAnswerBoundary(t *testing.T) {
-	secret := store.Quiz{Answer: "private-answer", Explanation: "private-explanation", Evidence: "private-evidence", Variants: []string{"private-variant"}, ChoiceConcepts: []string{"answer-concept"}, Citations: []store.Citation{{Title: "Published source", URL: "https://example.org"}}}
+	secret := store.Quiz{Answer: "private-answer", Explanation: "private-explanation", Evidence: "private-evidence", Variants: []string{"private-variant"}, Citations: []store.Citation{{Title: "Published source", URL: "https://example.org"}}}
 	for _, tc := range []struct {
 		name         string
 		graded, self bool
@@ -105,7 +105,7 @@ func TestPrivateReviewAnswerBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			current := state.Current.Quiz
-			if (current.Answer != "") != tc.visible || (current.Explanation != "") != tc.visible || (len(current.Variants) > 0) != tc.visible || (len(current.ChoiceConcepts) > 0) != tc.visible || (len(current.Citations) > 0) != tc.visible {
+			if (current.Answer != "") != tc.visible || (current.Explanation != "") != tc.visible || (len(current.Variants) > 0) != tc.visible || (len(current.Citations) > 0) != tc.visible {
 				t.Fatalf("answer boundary failed: %s", encoded)
 			}
 			if state.Preview.ID != "" || state.Preview.Quiz.Answer != "" || state.Preview.Answer != "" {
