@@ -3,7 +3,7 @@
 // private R2 snapshot key and injects it as SCRY_CONTAINER_RESTORE_KEY, so
 // the container always wakes with the latest acknowledged state.
 import { Container } from "@cloudflare/containers";
-import { runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
+import { createActivityGate, runBackupCycle, stopWhenIdle } from "./backup-cycle.mjs";
 import { createStartupOnlyFetch, fatalContainerError } from "./container-lifecycle.mjs";
 import { latestSnapshotKey } from "./recovery-key.mjs";
 import { appEnvVars, backupExec, containerSleepAfter } from "./runtime-env.mjs";
@@ -19,6 +19,7 @@ export class ScryContainer extends Container {
     super(ctx, env);
     this.sleepAfter = containerSleepAfter(env);
     this.envVars = appEnvVars(env);
+    this.activity = createActivityGate();
     this.startupOnlyFetch = createStartupOnlyFetch({
       baseEnvVars: this.envVars,
       bootMode: env.SCRY_BOOT_MODE,
@@ -31,14 +32,7 @@ export class ScryContainer extends Container {
   }
 
   async fetch(request) {
-    this.activityGeneration = (this.activityGeneration || 0) + 1;
-    this.activeRequests = (this.activeRequests || 0) + 1;
-    try {
-      return await this.startupOnlyFetch(request);
-    } finally {
-      this.activeRequests--;
-      this.activityGeneration++;
-    }
+    return this.activity.track(() => this.startupOnlyFetch(request));
   }
 
   forwardToContainer(request) {
@@ -72,12 +66,10 @@ export class ScryContainer extends Container {
   }
 
   async onActivityExpired() {
-    const before = this.activityGeneration || 0;
-    await stopAfterBackup({
+    await stopWhenIdle({
+      gate: this.activity,
       backup: () => this.scheduledBackup(),
       stop: () => this.stop(),
-      log: message => console.error(message),
-      canStop: () => this.activityGeneration === before && !this.activeRequests,
     });
   }
 

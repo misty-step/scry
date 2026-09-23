@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { failureReason, runBackupCycle, stopAfterBackup } from "./backup-cycle.mjs";
+import { createActivityGate, failureReason, runBackupCycle, stopAfterBackup, stopWhenIdle } from "./backup-cycle.mjs";
 
 const key = "scry-20260922T210000.000000000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scry-backup.zip";
 const sha256 = "b".repeat(64);
@@ -91,4 +91,68 @@ test("idle stop requires a verified backup and keeps the writer on failure", asy
   assert.deepEqual(messages, [["[scry-recovery] idle stop deferred: remote backup failed", { reason: "remote unavailable" }]]);
   await stopAfterBackup({ backup: async () => ({ state: "backed_up" }), stop, log, canStop: () => false });
   assert.equal(stopped, 1, "a request during the backup must cancel the idle stop");
+});
+
+const verified = async () => ({ state: "backed_up" });
+
+test("a fresh instance with no requests stops after a verified idle backup", async () => {
+  // Every deploy creates a fresh Durable Object before any owner request.
+  const gate = createActivityGate();
+  let stopped = 0;
+  await stopWhenIdle({
+    gate, backup: verified, stop: async () => { stopped++; },
+    log: () => assert.fail("a verified backup must not log a failure"),
+  });
+  assert.equal(stopped, 1);
+});
+
+test("owner requests during or across the idle backup keep the writer awake", async () => {
+  const gate = createActivityGate();
+  let stopped = 0;
+  const stop = async () => { stopped++; };
+
+  await stopWhenIdle({ gate, stop, backup: async () => {
+    await gate.track(async () => "served while the backup ran");
+    return { state: "backed_up" };
+  } });
+  assert.equal(stopped, 0, "a request that began and ended during the backup");
+
+  let release;
+  const inflight = gate.track(() => new Promise(done => { release = done; }));
+  await stopWhenIdle({ gate, stop, backup: verified });
+  assert.equal(stopped, 0, "a request still in flight when the backup ends");
+  release("ok");
+  assert.equal(await inflight, "ok");
+
+  await assert.rejects(gate.track(async () => { throw new Error("upstream failed"); }), /upstream failed/);
+  await stopWhenIdle({ gate, stop, backup: verified });
+  assert.equal(stopped, 1, "a quiet gate stops again, even after a failed request");
+});
+
+test("a failed idle backup logs its redacted reason and keeps the writer", async () => {
+  const gate = createActivityGate();
+  const messages = [];
+  let stopped = 0;
+  await stopWhenIdle({
+    gate, stop: async () => { stopped++; }, log: (...values) => messages.push(values),
+    backup: async () => { throw new Error(`upload failed at https://gateway.example/${key}`); },
+  });
+  assert.equal(stopped, 0);
+  assert.deepEqual(messages, [["[scry-recovery] idle stop deferred: remote backup failed", { reason: "upload failed at <url>" }]]);
+});
+
+test("the default idle log keeps the failure reason for Workers Logs", async () => {
+  const original = console.error;
+  const seen = [];
+  console.error = (...values) => seen.push(values);
+  try {
+    await stopWhenIdle({
+      gate: createActivityGate(),
+      stop: async () => assert.fail("a failed backup must not stop the writer"),
+      backup: async () => { throw new Error("remote unavailable"); },
+    });
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(seen, [["[scry-recovery] idle stop deferred: remote backup failed", { reason: "remote unavailable" }]]);
 });

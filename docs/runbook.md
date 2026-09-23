@@ -405,8 +405,8 @@ a native UTC cron at 00:00 and 12:00. While the singleton Container is running,
 the cron executes the existing `scry backup --require-remote` command in that
 instance, checks its success receipt against R2 metadata, and logs the result.
 A failed invocation fails the scheduled event; it does not claim a remote
-snapshot. Its `[scry-recovery]` log carries the exit code and a redacted last
-stderr line, never stdout. The exec does not inherit the container start
+snapshot. The event's error carries the exit code and a redacted last stderr
+line, never stdout. The exec does not inherit the container start
 environment; it receives only the five `SCRY_BACKUP_*` settings. If the
 Container is stopped, the cron checks the newest R2 object
 without waking it. An object older than 24 hours is reported as `idle_stale`;
@@ -425,16 +425,28 @@ compatible release artifact, and required configuration outside the VM.
 The dedicated bucket's enabled `scry-go-recovery-retention` rule was read back
 with an object age of 2,592,000 seconds (30 days). This is configured retention,
 not an observation of a month of successful backups. Committed `appEnvVars`
-for the deployed source forwards `SCRY_BACKUP_INTERVAL=24h` and
-`SCRY_BACKUP_KEEP=30` to the container; `Manager.Run` attempts a snapshot at
-startup and every 24 hours **while the process runs**. The Worker has no cron
-trigger, and the container's 24-hour idle sleep can stop that loop; therefore
-the configured interval and the verified cutover snapshot do **not** prove a
-wall-clock daily backup on an idle instance. A fresh off-VM backup must be
-confirmed before planned release/rollout, and backup freshness monitored; a
-separately authorized durable daily wake/schedule is needed for a literal
-calendar-day backup guarantee. Do not silently create a cron or wake the owner
-app just to turn this documentation claim green.
+forwards `SCRY_BACKUP_INTERVAL=24h` and `SCRY_BACKUP_KEEP=30` to the
+container; `Manager.Run` attempts a snapshot at startup and every 24 hours
+**while the process runs**. The 24-hour idle window can end that loop, so the
+Worker cron and the idle stop carry the daily policy: a running Container gets
+a remote-verified backup at the next 00:00 or 12:00 UTC run, and an idle
+Container stops only after one more verified backup. A stopped Container has
+no writer, so the cron reports its newest R2 object and never wakes it.
+Failures are visible in Workers Logs as failed scheduled events and
+`[scry-recovery] idle stop deferred` entries; there is no external alert. A
+host failure or force stop can still lose writes made after the last verified
+archive.
+
+Observed September 22-23, 2026 (single runs, not a guarantee): the 00:00 UTC
+production cron wrote
+`scry-20260923T000047.310173185Z-8c4def576aa81711cdc00f428e799874.scry-backup.zip`
+(SHA-256 `bb1dff3639e527b597dfb3ad950f7d0931251e691f8dafd12b0ce60c5f263565`,
+485,090 bytes) without replacing the running Container. An independent R2
+readback matched its size and checksum, passed SQLite `integrity_check` at
+schema 4, and found more review events than the pre-phone cutover snapshot.
+On synthetic staging, a fresh instance idle-stopped only after a verified
+backup, and the next cron reported `idle` without a wake. Confirm the newest
+key and checksum again before any planned instance replacement.
 
 `GET /healthz` returns `ok`; `GET /readyz` returns `ready`. These are plaintext
 liveness/readiness checks, not backup freshness. Settings exposes the last
