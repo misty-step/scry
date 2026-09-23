@@ -264,6 +264,11 @@ on an isolated VM, and a bounded live run in which all four capture modes
 published through real generation, Exa and Jev. It lists what remains
 unverified, including the production-data migration rehearsal and activation.
 
+[The MIS-162 advisory receipt](concept-study-advisories-20260923.json) binds
+the follow-up (`bc35504`): fixes as learner-chosen suggestions that belong to
+their question, whole-capture withholding while a question waits for an
+unaided answer, and 17 named states on the exact gate binary with one live fix.
+
 [The earlier Go acceptance receipt](personal-go-acceptance-20260909.json) records
 bounded live generation, trusted touch, interrupted-response/access recovery,
 and independent data restoration. Its original observation predates subsequent
