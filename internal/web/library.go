@@ -187,7 +187,18 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"quiz": q, "fix": fix, "csrf": r.Context().Value(csrfKey{})})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, Fix: fix, FixOpen: r.URL.Query().Get("fix") == "1" || fix.Stopped != nil})
+	// A draft pre-fills the ordinary form; the hidden version stays the current
+	// one, so saving goes through the same fence as any edit.
+	shown, draftShown := q, fix.Draft != nil && r.URL.Query().Get("draft") != "off"
+	if draftShown {
+		d := fix.Draft
+		shown.Kind, shown.Prompt, shown.Answer, shown.Explanation = d.Kind, d.Prompt, d.Answer, d.Explanation
+		shown.Choices, shown.Variants = d.Choices, d.Variants
+		if d.Basis == q.Basis {
+			shown.Evidence = d.Evidence
+		}
+	}
+	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: shown, Fix: fix, DraftShown: draftShown, FixOpen: r.URL.Query().Get("fix") == "1" || fix.Stopped != nil})
 }
 
 func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {

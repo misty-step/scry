@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ import (
 func TestNewMutationsRequireOwnerAndCSRF(t *testing.T) {
 	_, app := privateApp(t)
 	cookie, csrf, _ := bootstrapForm(t, app)
-	for _, path := range []string{"/review/self", "/review/override", "/review/intro", "/concepts/c/practice", "/concepts/c/note", "/concepts/c/questions", "/concepts/c/archive", "/goals/g", "/quizzes/q/fix", "/quizzes/q/proposal", "/settings"} {
+	for _, path := range []string{"/review/self", "/review/override", "/review/intro", "/concepts/c/practice", "/concepts/c/questions", "/concepts/c/archive", "/goals/g", "/quizzes/q/fix", "/settings"} {
 		t.Run(path, func(t *testing.T) {
 			for _, change := range []struct {
 				name  string
@@ -391,6 +392,23 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	if sibling == cold.Concept.ID {
 		sibling = m.Goals[0].Concepts[1].ID
 	}
+	// A sibling question from the same capture, with a fix that stopped:
+	// its edit page stays reachable but carries nothing from the capture.
+	siblingPage, err := s.ConceptPage(ctx, sibling)
+	if err != nil || len(siblingPage.Questions) != 1 {
+		t.Fatalf("sibling concept: %+v %v", siblingPage, err)
+	}
+	siblingQuiz := siblingPage.Questions[0].ID
+	if err = s.RequestFix(ctx, siblingQuiz, "Make it shorter", randomToken()); err != nil {
+		t.Fatal(err)
+	}
+	fixJob, err := s.ClaimJob(ctx, time.Minute, 1, 1000000)
+	if err != nil || fixJob == nil || fixJob.Kind != "fix" {
+		t.Fatalf("claim fix: %+v %v", fixJob, err)
+	}
+	if err = s.FailJob(ctx, fixJob.ID, fixJob.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
+		t.Fatal(err)
+	}
 	// A live preparation for the same capture puts its receipt beside the question.
 	if err = s.RequestQuestions(ctx, sibling, randomToken()); err != nil {
 		t.Fatal(err)
@@ -406,7 +424,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, path := range []string{"/", "/map", "/concepts/" + sibling} {
+	for _, path := range []string{"/", "/map", "/concepts/" + sibling, "/quizzes/" + siblingQuiz + "/edit"} {
 		body := get(path, http.StatusOK)
 		if strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "GOAL-TITLE") {
 			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
@@ -425,9 +443,9 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	}
 }
 
-// A requested fix is shown as a suggestion beside the current question and
-// changes nothing until the learner chooses "Use this version".
-func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
+// A finished fix pre-fills the ordinary edit form and changes nothing until
+// the learner saves it; the current version stays one click away.
+func TestFixDraftPrefillsTheEditForm(t *testing.T) {
 	s, app := privateApp(t)
 	ctx := context.Background()
 	src, err := s.Capture(ctx, store.CaptureInput{Text: "Synthetic records", Mode: "topic"}, randomToken())
@@ -453,9 +471,9 @@ func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
 		t.Fatal(err)
 	}
 	cookie, csrf, operation := bootstrapForm(t, app)
-	edit := func() string {
+	edit := func(query string) string {
 		t.Helper()
-		r := ownerRequest(http.MethodGet, "/quizzes/"+q.ID+"/edit", nil)
+		r := ownerRequest(http.MethodGet, "/quizzes/"+q.ID+"/edit"+query, nil)
 		r.AddCookie(cookie)
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
@@ -464,40 +482,33 @@ func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	body := edit()
-	start := strings.Index(body, `class="proposal`)
-	if start < 0 || !strings.Contains(body, "Scry suggests a fix") {
-		t.Fatalf("the suggestion was not offered: %s", body)
-	}
-	// Accepting installs every field, so the comparison shows every field on
-	// both sides: style, choices, accepted variants, and explanation.
-	panel := body[start : start+strings.Index(body[start:], "</section>")]
-	for _, want := range []string{"Pick an answer", "MX", "An A record holds an IPv4 address.",
-		"Answer from memory", "SUGGESTED which record", "Address record", "SUGGESTED An A record stores one IPv4 address."} {
-		if !strings.Contains(panel, want) {
-			t.Fatalf("the comparison hides %q: %s", want, panel)
+	body := edit("")
+	for _, want := range []string{">SUGGESTED which record holds an IPv4 address?</textarea>", ">Address record</textarea>", "Shorter prompt, please", "?draft=off"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the draft does not fill the form (%q): %s", want, body)
 		}
 	}
+	if current := edit("?draft=off"); !strings.Contains(current, ">Which record maps a hostname to an IPv4 address?</textarea>") {
+		t.Fatalf("the current version is not one click away: %s", current)
+	}
 	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version || strings.HasPrefix(current.Prompt, "SUGGESTED") {
-		t.Fatalf("the suggestion replaced the question before it was accepted: %+v %v", current, err)
+		t.Fatalf("the draft replaced the question before it was saved: %+v %v", current, err)
 	}
-	fix, err := s.QuizFix(ctx, q.ID)
-	if err != nil || fix.Proposal == nil {
-		t.Fatalf("pending suggestion: %+v %v", fix, err)
-	}
-	r := ownerRequest(http.MethodPost, "/quizzes/"+q.ID+"/proposal", url.Values{"csrf": {csrf}, "operation_id": {operation}, "proposal_id": {fix.Proposal.ID}, "decision": {"accept"}})
+	form := url.Values{"csrf": {csrf}, "operation_id": {operation}, "version": {strconv.Itoa(q.Version)}, "kind": {"recall"},
+		"prompt": {"SUGGESTED which record holds an IPv4 address?"}, "answer": {"A"}, "variants": {"Address record"}, "explanation": {"SUGGESTED An A record stores one IPv4 address."}}
+	r := ownerRequest(http.MethodPost, "/quizzes/"+q.ID+"/edit", form)
 	r.AddCookie(cookie)
 	r.Header.Set("Origin", "https://scry.example")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, r)
 	if w.Code != http.StatusSeeOther {
-		t.Fatalf("accepting the suggestion: %d %s", w.Code, w.Body.String())
+		t.Fatalf("saving the draft: %d %s", w.Code, w.Body.String())
 	}
 	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version+1 || !strings.HasPrefix(current.Prompt, "SUGGESTED") {
-		t.Fatalf("the accepted suggestion was not installed: %+v %v", current, err)
+		t.Fatalf("the saved draft was not installed: %+v %v", current, err)
 	}
-	if body := edit(); strings.Contains(body, "Scry suggests a fix") {
-		t.Fatal("an accepted suggestion is still offered")
+	if body := edit(""); strings.Contains(body, "?draft=off") {
+		t.Fatal("a saved draft is still offered")
 	}
 }
 

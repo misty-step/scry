@@ -172,20 +172,3 @@ func (s *server) fixQuiz(w http.ResponseWriter, r *http.Request) {
 
 // decideProposal applies or discards a suggested fix; nothing changes until
 // the learner chooses.
-func (s *server) decideProposal(w http.ResponseWriter, r *http.Request) {
-	id, proposal, decision := r.PathValue("id"), r.PostForm.Get("proposal_id"), r.PostForm.Get("decision")
-	if proposal == "" || (decision != "accept" && decision != "keep") {
-		s.fail(w, r, fmt.Errorf("%w: choose to use the suggested version or keep yours", store.ErrInvalid), page{})
-		return
-	}
-	op, err := conceptOperation(r)
-	var q store.Quiz
-	if err == nil {
-		q, err = s.store.DecideProposal(r.Context(), id, proposal, op, decision == "accept")
-	}
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	s.finish(w, r, "/quizzes/"+id+"/edit", q)
-}

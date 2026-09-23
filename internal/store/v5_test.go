@@ -628,10 +628,10 @@ func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
 	}
 }
 
-// A requested fix is a suggestion: it changes nothing until the learner
-// accepts it, accepting installs it once, and an edit or a discard leaves the
-// live question as the learner chose.
-func TestFixIsASuggestionUntilAccepted(t *testing.T) {
+// A completed fix is a draft: the question is unchanged until the learner
+// saves it through the ordinary version-fenced edit, and any later edit makes
+// an unsaved draft moot.
+func TestFixIsADraftUntilSaved(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
 	src, chain, _ := textPack(t, s)
@@ -641,72 +641,52 @@ func TestFixIsASuggestionUntilAccepted(t *testing.T) {
 			q = candidate
 		}
 	}
-	suggest := func(op, prompt string) {
+	draft := func(op, prompt string) GeneratedQuiz {
 		t.Helper()
 		if err := s.RequestFix(ctx, q.ID, "Make the prompt shorter", op); err != nil {
 			t.Fatal(err)
 		}
-		if fix, err := s.QuizFix(ctx, q.ID); err != nil || !fix.Writing {
+		if fix, err := s.QuizFix(ctx, q.ID); err != nil || !fix.Writing || fix.Draft != nil {
 			t.Fatalf("fix request not shown as being written: %+v %v", fix, err)
 		}
 		j := claimKind(t, s, "fix")
 		complete(t, s, j, GenerationResult{Quizzes: []GeneratedQuiz{{Kind: "choice", Level: "recognize", Concept: chain, Prompt: prompt,
 			Answer: "When it chains to a root the client already trusts", Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"}, Explanation: "Trust comes from the chain to a known root.", Basis: "source", Evidence: "chains to a root authority the client already trusts"}}})
-	}
-	version := func() int {
-		t.Helper()
-		current, err := s.Quiz(ctx, q.ID)
-		if err != nil {
-			t.Fatal(err)
+		fix, err := s.QuizFix(ctx, q.ID)
+		if err != nil || fix.Writing || fix.Draft == nil || fix.Draft.Prompt != prompt || fix.Instruction != "Make the prompt shorter" {
+			t.Fatalf("a finished fix was not offered as a draft: %+v %v", fix, err)
 		}
-		return current.Version
+		if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version || current.Prompt != q.Prompt {
+			t.Fatalf("a finished fix changed the question before it was saved: %+v %v", current, err)
+		}
+		return *fix.Draft
 	}
-	suggest("fix-1", "When does a TLS client trust a certificate?")
-	fix, err := s.QuizFix(ctx, q.ID)
-	if err != nil || fix.Writing || fix.Proposal == nil || fix.Proposal.Proposed.Prompt != "When does a TLS client trust a certificate?" || version() != q.Version {
-		t.Fatalf("a finished fix changed the question or was not offered: %+v version=%d %v", fix, version(), err)
+	d := draft("fix-1", "When does a TLS client trust a certificate?")
+	saved, err := s.EditQuiz(ctx, q.ID, q.Version, d)
+	if err != nil || saved.Version != q.Version+1 || saved.Prompt != d.Prompt {
+		t.Fatalf("saving the draft did not install it: %+v %v", saved, err)
 	}
-	accepted, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-1", true)
-	if err != nil || accepted.Version != q.Version+1 || accepted.Prompt != "When does a TLS client trust a certificate?" {
-		t.Fatalf("accepting did not install the suggestion: %+v %v", accepted, err)
+	if fix, err := s.QuizFix(ctx, q.ID); err != nil || fix.Draft != nil {
+		t.Fatalf("a saved draft is still offered: %+v %v", fix, err)
 	}
-	if replay, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-1", true); err != nil || replay.Version != accepted.Version {
-		t.Fatalf("an exact replay changed the result: %+v %v", replay, err)
+	if _, err = s.EditQuiz(ctx, q.ID, q.Version, d); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a form for an older version was saved: %v", err)
 	}
-	if _, err = s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-again", true); !errors.Is(err, ErrConflict) {
-		t.Fatalf("a decided suggestion was applied twice: %v", err)
-	}
-	q = accepted
-	// An edit made while a suggestion waits supersedes it.
-	suggest("fix-2", "When is a server certificate trusted?")
-	fix, err = s.QuizFix(ctx, q.ID)
-	if err != nil || fix.Proposal == nil {
-		t.Fatalf("second suggestion missing: %+v %v", fix, err)
-	}
+	q = saved
+	draft("fix-2", "When is a server certificate trusted?")
 	edited := GeneratedQuiz{Kind: "choice", Prompt: "Which condition makes a TLS client trust a server certificate?", Answer: q.Answer, Choices: q.Choices, Explanation: q.Explanation, Basis: "source", Evidence: q.Evidence}
-	if q, err = s.EditQuiz(ctx, q.ID, q.Version, edited); err != nil {
+	if _, err = s.EditQuiz(ctx, q.ID, q.Version, edited); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "accept-stale", true); !errors.Is(err, ErrConflict) {
-		t.Fatalf("a suggestion written for an older version was applied: %v", err)
-	}
-	// Keeping the current question changes nothing.
-	suggest("fix-3", "When does trust hold?")
-	fix, err = s.QuizFix(ctx, q.ID)
-	if err != nil || fix.Proposal == nil {
-		t.Fatalf("third suggestion missing: %+v %v", fix, err)
-	}
-	if kept, err := s.DecideProposal(ctx, q.ID, fix.Proposal.ID, "discard-3", false); err != nil || kept.Version != q.Version || kept.Prompt != edited.Prompt {
-		t.Fatalf("discarding changed the question: %+v %v", kept, err)
-	}
-	if fix, err = s.QuizFix(ctx, q.ID); err != nil || fix.Proposal != nil {
-		t.Fatalf("a discarded suggestion is still offered: %+v %v", fix, err)
+	if fix, err := s.QuizFix(ctx, q.ID); err != nil || fix.Draft != nil {
+		t.Fatalf("a draft for an earlier version is still offered: %+v %v", fix, err)
 	}
 }
 
 // A fix belongs to its question. When it stops, the question reports why,
 // and the capture's preparation state, receipts, and retry are untouched.
-// A restore stops unfinished fixes without holding the capture's job slot.
+// A restored fix stays paused, holding the capture's one job slot, until the
+// learner asks again.
 func TestStoppedFixStaysWithItsQuestion(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()

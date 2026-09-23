@@ -410,24 +410,15 @@ type GoalView struct {
 	Preparing *Preparing     `json:"preparing,omitempty"`
 }
 
-// QuizProposal is a suggested correction written by a fix job. It changes
-// nothing until the learner accepts it.
-type QuizProposal struct {
-	ID          string        `json:"id"`
-	QuizID      string        `json:"quiz_id"`
-	BaseVersion int           `json:"base_version"`
-	Instruction string        `json:"instruction"`
-	Proposed    GeneratedQuiz `json:"proposed"`
-	CreatedAt   int64         `json:"created_at"`
-}
-
-// QuizFix is the fix state of one question: a correction being written, a
-// suggestion awaiting the learner's decision, and the latest request if it
-// stopped (paused until asked again, or failed for the current version).
+// QuizFix is the fix state of one question, read from its latest fix request:
+// being written, a draft for the current version that pre-fills the edit form
+// until the learner saves or edits, or a stop (paused until asked again, or
+// failed for the current version).
 type QuizFix struct {
-	Writing  bool          `json:"writing"`
-	Proposal *QuizProposal `json:"proposal,omitempty"`
-	Stopped  *FixStop      `json:"stopped,omitempty"`
+	Writing     bool           `json:"writing"`
+	Instruction string         `json:"instruction,omitempty"`
+	Draft       *GeneratedQuiz `json:"draft,omitempty"`
+	Stopped     *FixStop       `json:"stopped,omitempty"`
 }
 
 // FixStop is why a fix request stopped and what it cost; it carries nothing

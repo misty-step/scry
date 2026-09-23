@@ -582,7 +582,8 @@ func publishKind(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult
 			return 0, err
 		}
 		if j.Kind == "fix" {
-			return publishFix(ctx, tx, j, result, now)
+			// A validated fix is a draft for the edit form; its job result holds it.
+			return 0, nil
 		}
 		return publishQuizzes(ctx, tx, j, result, now)
 	}
@@ -760,37 +761,4 @@ func publishQuizzes(ctx context.Context, tx *sql.Tx, j Job, result GenerationRes
 		}
 	}
 	return len(result.Quizzes), nil
-}
-
-// publishFix saves a fix job's corrected question as a proposal. The live
-// question is unchanged until the learner accepts it (DecideProposal); a newer
-// suggestion supersedes an undecided older one.
-func publishFix(ctx context.Context, tx *sql.Tx, j Job, result GenerationResult, now int64) (int, error) {
-	var payload struct {
-		QuizID      string `json:"quiz_id"`
-		Version     int    `json:"version"`
-		Instruction string `json:"instruction"`
-	}
-	if err := json.Unmarshal([]byte(j.Payload), &payload); err != nil {
-		return 0, err
-	}
-	current, err := quiz(ctx, tx, payload.QuizID)
-	if err != nil {
-		return 0, err
-	}
-	if current.Archived || current.Version != payload.Version {
-		return 0, fmt.Errorf("%w: the question changed before this fix was ready; nothing was suggested", ErrInvalid)
-	}
-	encoded, err := marshal(carryRubric(current, result.Quizzes[0]))
-	if err != nil {
-		return 0, err
-	}
-	if _, err = tx.ExecContext(ctx, "UPDATE quiz_proposals SET status='superseded',decided_at=? WHERE quiz_id=? AND status='pending'", now, current.ID); err != nil {
-		return 0, err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO quiz_proposals(id,quiz_id,base_version,job_id,instruction,content,model,prompt_version,created_at)
-	 VALUES(?,?,?,?,?,?,?,?,?)`, newID(), current.ID, current.Version, j.ID, payload.Instruction, encoded, result.Model, result.PromptVersion, now); err != nil {
-		return 0, err
-	}
-	return 0, nil
 }

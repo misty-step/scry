@@ -549,15 +549,15 @@ Questions ascend recognize → recall → explain/apply (2–3 per concept where
 appropriate). Exact answer form is for exact identity/wording; otherwise use
 flexible short recall. Explain prose alone gets required-idea rubric.
 `questions` can be requested for one concept and `fix` for a specified quiz
-version. A `fix` only suggests: its corrected question waits beside the current
-one on the question's edit page and changes nothing until the learner uses it
-(then it is written as the next version under the same fences as a manual
-edit) or keeps theirs; a later edit or suggestion supersedes an undecided one.
-A fix belongs to its question: the capture's chain lists it, but it never
-becomes the capture's status, receipt, or Try again. A stopped fix is reported
-on the question with its accounted use; a failed request is moot after an
-edit, while one paused by a restore stays paused and reported until the
-learner asks again, which is its explicit retry.
+version. A completed `fix` changes nothing: its validated result pre-fills the
+question's ordinary edit form, labeled as Scry's draft with the current version
+one click away, and only Save writes it, through the same version fence as any
+edit; a later edit or newer request makes an unsaved draft moot. A fix belongs
+to its question: the capture's chain lists it, but it never becomes the
+capture's status, receipt, or Try again. A stopped fix is reported on the
+question with its accounted use; a failed request is moot after an edit, while
+one paused by a restore stays paused and reported until the learner asks again,
+which is its explicit retry.
 Only one live job per source; busy requests return conflict. Completing
 each stage atomically publishes validated content and enqueues its successor.
 Validation is per item: an invalid concept or question is dropped (with any
