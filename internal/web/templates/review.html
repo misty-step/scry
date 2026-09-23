@@ -29,7 +29,7 @@
       {{else}}
         <label class="field-caption" for="recall-answer">Your answer</label>
         <textarea id="recall-answer" name="answer" rows="2" maxlength="1024" required autocomplete="off" spellcheck="false" aria-describedby="recall-help">{{$p.Draft}}</textarea>
-        <p id="recall-help" class="small muted">A short answer is enough. Nothing is saved until you submit.</p>
+        <p id="recall-help" class="small muted">{{if eq $p.Quiz.Grading "semantic"}}Answer in your own words.{{else}}A short answer is enough.{{end}} Nothing is saved until you submit.</p>
         <button type="submit" class="primary" data-pending="{{if eq $p.Quiz.Grading "semantic"}}Checking meaning…{{else}}Saving your answer…{{end}}">{{if $p.Pending}}Refresh result{{else if eq $p.AssessmentStatus "failed"}}Retry meaning check{{else}}Check answer{{end}}</button>
       {{end}}
     </form>

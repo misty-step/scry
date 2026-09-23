@@ -158,13 +158,12 @@ func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrInvalid, page{})
 		return
 	}
+	// Grading is internal. The form never carries a grading mode or rubric;
+	// Store.EditQuiz keeps a generated rubric only for unchanged wording.
 	q := store.GeneratedQuiz{
-		Kind: r.PostForm.Get("kind"), Grading: r.PostForm.Get("grading"), Prompt: r.PostForm.Get("prompt"), Answer: r.PostForm.Get("answer"),
+		Kind: r.PostForm.Get("kind"), Prompt: r.PostForm.Get("prompt"), Answer: r.PostForm.Get("answer"),
 		Explanation: r.PostForm.Get("explanation"), Evidence: r.PostForm.Get("evidence"), Basis: original.Basis,
 		Choices: nonemptyLines(r.PostForm.Get("choices")), Variants: nonemptyLines(r.PostForm.Get("variants")),
-	}
-	if q.Grading == "semantic" {
-		q.Rubric = formRubric(r.PostForm.Get("required_ideas"), r.PostForm.Get("idea_cues"), r.PostForm.Get("contradictions"), r.PostForm.Get("contradiction_feedback"))
 	}
 	if q.Kind == "recall" {
 		q.Choices = nil
@@ -176,7 +175,7 @@ func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
 	// claim. A source-backed edit must still cite an exact saved quotation.
 	updated, err := s.store.EditQuiz(r.Context(), id, version, q)
 	if err != nil {
-		original.Kind, original.Grading, original.Rubric, original.Prompt, original.Answer = q.Kind, q.Grading, q.Rubric, q.Prompt, q.Answer
+		original.Kind, original.Prompt, original.Answer = q.Kind, q.Prompt, q.Answer
 		original.Explanation, original.Evidence = q.Explanation, q.Evidence
 		original.Choices, original.Variants, original.Version = q.Choices, q.Variants, version
 		s.fail(w, r, err, page{View: "edit", Title: "Edit question", Active: "library", Quiz: original})
@@ -196,32 +195,8 @@ func nonemptyLines(raw string) []string {
 	return lines
 }
 
-func formRubric(requiredRaw, cuesRaw, contradictionsRaw, feedbackRaw string) *store.Rubric {
-	required, cues := formLines(requiredRaw), formLines(cuesRaw)
-	claims, feedback := formLines(contradictionsRaw), formLines(feedbackRaw)
-	rubric := &store.Rubric{}
-	for index, text := range required {
-		if text = strings.TrimSpace(text); text != "" {
-			rubric.Required = append(rubric.Required, store.RubricIdea{Text: text, Cue: strings.TrimSpace(lineAt(cues, index))})
-		}
-	}
-	for index, text := range claims {
-		if text = strings.TrimSpace(text); text != "" {
-			rubric.Contradictions = append(rubric.Contradictions, store.RubricClaim{Text: text, Feedback: strings.TrimSpace(lineAt(feedback, index))})
-		}
-	}
-	return rubric
-}
-
 func formLines(raw string) []string {
 	return strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
-}
-
-func lineAt(lines []string, index int) string {
-	if index < len(lines) {
-		return lines[index]
-	}
-	return ""
 }
 
 func (s *server) archiveQuiz(w http.ResponseWriter, r *http.Request) {

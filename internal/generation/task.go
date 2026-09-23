@@ -131,11 +131,14 @@ A requested complete set is never a sample. required_units are the source's orde
 For exact_text, use recall only. answer must be the EXACT required unit text, preserving punctuation, spelling and sequence; variants and choices must be empty. Test production of the original wording, not literary facts or paraphrases. Do not reproduce the target line in its prompt. If exact text or a complete authoritative set is not actually supplied, do not invent it or claim coverage.complete=true; record the missing input. If there is no deterministic inventory, covers must be empty. Never mark a finite task complete solely because your own invented list was covered. coverage.missing identifies unhandled task requirements honestly. For ordinary concepts complete means the useful bounded selection is delivered, not exhaustive knowledge of the subject.
 
 QUIZ QUALITY
-Use recall for a short, objectively checkable answer, or choice for recognition with 3–5 plausible, same-category, mutually exclusive choices and exactly one defensible answer. answer for choice must equal one displayed option, never a letter/index. Distractors should target real confusions, not nonsense, catch-all options, synonyms of the right answer, overlapping numeric ranges, or a visibly longer correct answer. Prefer recall when credible distractors are unavailable. Do not leak the answer in the prompt through quotation, parenthesis, acrostic, keyed initial or a tautological question.
+Use recall for an answer the learner must produce: a short, objectively checkable fact, or a brief explanation described by required_ideas below. Use choice for recognition with 3–5 plausible, same-category, mutually exclusive choices and exactly one defensible answer. answer for choice must equal one displayed option, never a letter/index. Distractors should target real confusions, not nonsense, catch-all options, synonyms of the right answer, overlapping numeric ranges, or a visibly longer correct answer. Prefer recall when credible distractors are unavailable. Do not leak the answer in the prompt through quotation, parenthesis, acrostic, keyed initial or a tautological question.
 Compare the meanings of every pair of distractors before returning a choice quiz. Each must represent a different misconception: inverse restatements and stronger/weaker versions of the same proposition are overlapping, even when the words differ. Use three choices instead of padding with redundant alternatives; use recall if two genuinely distinct distractors are unavailable.
 Default variants to an empty array. Add at most 8 only for genuinely different equivalent short answers, such as a defined acronym and its full name, supported by the same evidence. The grader only trims surrounding whitespace; it does not silently normalize case, internal spacing, or punctuation. Never repeat the canonical answer, wrap it in extra label words, include it as a whole phrase inside a variant, or provide a variant that is a whole phrase inside the canonical answer or prompt. Related concepts, partial answers, wildcards, and wishful semantic acceptance are not equivalents. Leave variants empty whenever uncertain. No variants for choice or exact_text. Each prompt tests one answer, not an essay or ambiguous opinion.
 The explanation must teach why the answer is right and distinguish a likely confusion, using the actual evidence when source-based. It must be more than "X is correct" or a paraphrase of the question. All fields are plain text, never HTML, Markdown links, citations to unseen documents, or code fences.
-Bounds in UTF-8 bytes: prompt 4096, answer/each choice/variant 1024, explanation/evidence 8192. If a requirement cannot fit, report missing coverage rather than truncate. Do not output unknown JSON keys.`
+
+MEANING-CHECKED RECALL
+Every quiz has required_ideas. Leave it [] for choice, for exact_text and complete_set, and for any recall answer that must be produced exactly: a name, term, identifier, symbol, number, date, spelling, formula, list item or quoted wording. Only when a recall answer is an explanation, reason, mechanism, distinction or consequence that a learner could state correctly in different words, write 1–4 required_ideas: the atomic claims a correct answer must express, each one short standalone plain sentence. Together they must mean exactly the expected answer: not stricter, not looser, with no extra facts, examples or hints. The answer still gets checked against these ideas by a separate grader, so never copy an idea into the prompt. For provenance=source every idea must be supported by that quiz's evidence and keep its qualifications. When unsure, use []: the question then accepts only its answer and variants.
+Bounds in UTF-8 bytes: prompt 4096, answer/each choice/variant/required idea 1024, explanation/evidence 8192. If a requirement cannot fit, report missing coverage rather than truncate. Do not output unknown JSON keys.`
 
 // Large maxItems schemas have been rejected by Gemini before generation in the
 // existing provider integration. Enforce the 60-unit limit locally and retain
@@ -147,14 +150,15 @@ const outputSchema = `{
    "kind":{"type":"string","enum":["concepts","vocabulary","procedure","complete_set","exact_text"]},
    "complete":{"type":"boolean"},"missing":{"type":"array","items":{"type":"string"}}}},
   "quizzes":{"type":"array","items":{"type":"object","additionalProperties":false,
-   "required":["evidence","basis","kind","prompt","answer","explanation","choices","variants","covers"],
+   "required":["evidence","basis","kind","prompt","answer","explanation","choices","variants","covers","required_ideas"],
    "properties":{
     "evidence":{"type":"string"},"basis":{"type":"string","enum":["topic","source"]},
     "kind":{"type":"string","enum":["choice","recall"]},"prompt":{"type":"string"},
     "answer":{"type":"string"},"explanation":{"type":"string"},
     "choices":{"type":"array","items":{"type":"string"},"maxItems":5},
     "variants":{"type":"array","items":{"type":"string"},"maxItems":8},
-    "covers":{"type":"array","items":{"type":"string"},"maxItems":1}
+    "covers":{"type":"array","items":{"type":"string"},"maxItems":1},
+    "required_ideas":{"type":"array","items":{"type":"string"},"maxItems":4}
    }}}
  }
 }`

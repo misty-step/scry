@@ -409,6 +409,30 @@ func validateGrading(q GeneratedQuiz) error {
 	return nil
 }
 
+// carryRubric settles grading for an edit that does not author it. The learner
+// never chooses grading or writes rubric ideas. A generated rubric describes
+// one prompt, expected answer, and quoted evidence, so it carries forward only
+// while the response style, prompt, expected answer, and evidence are unchanged.
+// Any change to them makes the new version exact; nothing silently keeps a
+// rubric written for other wording or no longer supported by its quotation.
+// Content that explicitly authors grading (fixtures, tests) is left as given.
+func carryRubric(current Quiz, edited GeneratedQuiz) GeneratedQuiz {
+	if edited.Grading != "" || edited.Rubric != nil {
+		return edited
+	}
+	if current.Grading == "semantic" && current.Rubric != nil && edited.Kind == current.Kind &&
+		strings.TrimSpace(edited.Prompt) == strings.TrimSpace(current.Prompt) &&
+		strings.TrimSpace(edited.Answer) == strings.TrimSpace(current.Answer) &&
+		strings.TrimSpace(edited.Evidence) == strings.TrimSpace(current.Evidence) {
+		rubric := Rubric{
+			Required:       append([]RubricIdea(nil), current.Rubric.Required...),
+			Contradictions: append([]RubricClaim(nil), current.Rubric.Contradictions...),
+		}
+		edited.Grading, edited.Rubric = "semantic", &rubric
+	}
+	return edited
+}
+
 func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, content GeneratedQuiz) (Quiz, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -426,6 +450,7 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if err != nil {
 		return Quiz{}, err
 	}
+	content = carryRubric(q, content)
 	if err = validateQuiz(content, src); err != nil {
 		return Quiz{}, err
 	}

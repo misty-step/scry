@@ -286,8 +286,10 @@ application plus Worker owner-subject guard, not an exe.dev session or QA token.
 ## Generation and spending
 
 The ignored workstation `.env` retains `OPENROUTER_API_KEY` with mode `0600`.
-The existing dedicated Scry key has a $0.25/week provider limit with a weekly
-reset. The Cloudflare target is configured to use that same key directly; the
+The existing dedicated Scry key has a $7/week provider limit with a weekly
+reset (raised from $0.25/week on 2026-09-23 so it can carry both content
+generation and Jev checks). That limit is shared capacity for both paid paths;
+it is not evidence that either one works. The Cloudflare target is configured to use that same key directly; the
 stopped VM used `scry-model`. A redundant newly issued key is disabled with
 zero usage and is not the authorized additional allowance.
 No provider management key belongs in either application runtime. The
@@ -315,8 +317,8 @@ Production `wrangler.jsonc` sets three plain vars: `SCRY_SEMANTIC_ENDPOINT`
 (`https://openrouter.ai/api/alpha/decisions`), `SCRY_SEMANTIC_MODEL`
 (`typesafe/jev-1.13`), and `SCRY_SEMANTIC_RESERVATION_MICROS` (`2000`).
 `SCRY_SEMANTIC_API_KEY` is not set, so the application reuses
-`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $0.25/week
-provider cap. No new secret is involved. Staging and `mistystep-prod` set no
+`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $7/week
+provider cap, shared with generation. No new secret is involved. Staging and `mistystep-prod` set no
 semantic var, so they send nothing.
 
 `appEnvVars` forwards all four names, always: empty strings when the endpoint

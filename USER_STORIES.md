@@ -65,14 +65,21 @@ Evidence: `internal/web/review_test.go`
 ## US-003 Answer meaning-sensitive recall without invented certainty
 
 Statement: When a prose recall question can be answered correctly in different
-words, I want Scry to check the authored meaning rather than require one phrase,
-while preserving my answer and learning history whenever that check is uncertain.
+words, I want Scry to check the meaning rather than require one phrase, without
+asking me to pick a grading mode or write a rubric, while preserving my answer
+and learning history whenever that check is uncertain.
 
 Criteria:
-1. EACH quiz content version SHALL explicitly choose exact or semantic grading.
-   THE authored mode SHALL be the task contract: choice and deterministic
-   answers stay exact by authoring, and THE SYSTEM SHALL NOT infer or override
-   the mode from digits, symbols, or answer length.
+1. EACH quiz content version SHALL explicitly record exact or semantic grading.
+   Ordinary generation SHALL author required ideas in the same generation
+   request only for conceptual prose recall; choice, exact-text, and
+   complete-set output SHALL stay exact, and a rubric on them SHALL be rejected.
+   THE SYSTEM SHALL NOT infer or override the mode from digits, symbols,
+   keywords, or answer length, and SHALL NOT offer the learner a grading control
+   or rubric field. A learner edit that changes the prompt, expected answer,
+   quoted evidence, or response style SHALL publish an exact version rather than
+   keep a stale rubric; earlier versions and review history SHALL NOT be
+   rewritten.
 2. WHEN an exact answer, authored variant, or case-only uncertainty resolves
    locally, THE SYSTEM SHALL NOT call the semantic assessor. OTHERWISE a semantic
    prose answer SHALL be saved as a durable pending assessment before one bounded
@@ -101,7 +108,9 @@ No-gos: no liberal similarity grading, no model call inside a SQL transaction,
 no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.
 
 Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
-`internal/semantic/client_test.go`, `internal/web/semantic_test.go`
+`internal/semantic/client_test.go`, `internal/web/semantic_test.go`,
+`internal/generation/meaning_test.go`, `internal/store/meaning_edit_test.go`,
+`internal/web/meaning_test.go`
 
 ## US-004 Check generated candidates before publication
 
