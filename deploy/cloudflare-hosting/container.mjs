@@ -6,7 +6,7 @@ import { Container } from "@cloudflare/containers";
 import { createActivityGate, runBackupCycle, stopWhenIdle } from "./backup-cycle.mjs";
 import { createStartupOnlyFetch, fatalContainerError } from "./container-lifecycle.mjs";
 import { latestSnapshotKey } from "./recovery-key.mjs";
-import { appEnvVars, backupExec, containerSleepAfter } from "./runtime-env.mjs";
+import { appEnvVars, backupExec, containerSleepAfter, semanticStartSummary } from "./runtime-env.mjs";
 
 export class ScryContainer extends Container {
   defaultPort = 8080;
@@ -76,7 +76,9 @@ export class ScryContainer extends Container {
   // Lifecycle observability: the platform reports container start/stop/error
   // through these hooks; surface them in the Worker log tail.
   onStart() {
-    console.log("[scry-container] started");
+    // envVars reach the process only at start; record which semantic mode
+    // this instance received, without any credential.
+    console.log("[scry-container] started", semanticStartSummary(this.envVars));
   }
   onStop({ exitCode, reason } = {}) {
     console.log("[scry-container] stopped", { exitCode, reason });

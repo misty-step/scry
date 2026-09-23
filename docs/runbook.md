@@ -102,10 +102,10 @@ Scry provider key were restored in the prepared target configuration; generated
 probe/backup values were rotated and a corrected cold restore and remote backup
 succeeded. Do not reuse any exposed generated value. See the private sanitized
 closeout readback for what provider/runtime evidence does and does not prove.
-The semantic endpoint is unset on first activation. Schema-4 Jev code and
-rubric/content paths exist, but live semantic grading and criticism are not
-enabled or proven. The product program owns endpoint compatibility, capped
-provider access, representative behavior, and acceptance before enablement.
+The semantic endpoint was unset on first activation. Committed production
+configuration now sets the Jev Decisions route (see
+[Semantic assessments on Cloudflare](#semantic-assessments-on-cloudflare)); it
+reaches the application only when a new Container instance starts.
 Keep one production writer. The old `mis157-76202e78aef2` binary cannot read
 target schema 4. If the target fails after writes, preserve its state and use
 the compatible pinned artifact with an independently checked fresh snapshot
@@ -308,6 +308,34 @@ carries the bearer key and private learner text; plaintext HTTP is accepted
 only for a loopback gateway, and the service refuses to start otherwise. Before
 production activation, prove that the configured private integration forwards
 `POST /api/alpha/decisions`; generation access alone does not prove that route.
+
+### Semantic assessments on Cloudflare
+
+Production `wrangler.jsonc` sets three plain vars: `SCRY_SEMANTIC_ENDPOINT`
+(`https://openrouter.ai/api/alpha/decisions`), `SCRY_SEMANTIC_MODEL`
+(`typesafe/jev-1.13`), and `SCRY_SEMANTIC_RESERVATION_MICROS` (`2000`).
+`SCRY_SEMANTIC_API_KEY` is not set, so the application reuses
+`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $0.25/week
+provider cap. No new secret is involved. Staging and `mistystep-prod` set no
+semantic var, so they send nothing.
+
+`appEnvVars` forwards all four names, always: empty strings when the endpoint
+is unset. It refuses to start the Container when the configuration is partial
+or unsafe: any semantic setting without an endpoint; a non-HTTPS, credentialed,
+query, or fragment URL; a path other than `/api/alpha/decisions` (so a chat
+completions URL cannot stand in); an empty, whitespace, or `openrouter/auto`
+model; a reservation that is not a positive integer no larger than the daily
+allowance; or no usable key. `backupExecEnv` stays limited to the five
+`SCRY_BACKUP_*` settings.
+
+A Container receives `envVars` only when it starts. A Worker-only deploy with
+`--containers-rollout=none` stores the new vars but the running instance keeps
+its old environment. Enabling, disabling, or changing semantic settings is
+therefore a planned instance replacement: confirm the newest R2 key and
+checksum with an independent readback, let the instance stop through the
+verified-backup idle path (not a force stop), read the new archive back, then
+cold-start the instance. To disable, remove the three vars and repeat the same
+replacement; the image and schema need no change.
 Learner answers sent for semantic assessment are private provider-bound text:
 state contains only prompt, expected answer, variants, rubric, and learner answer,
 not identity or review history.
@@ -348,7 +376,10 @@ The same semantic endpoint, model, key, and reservation configure the content
 critic. A configured endpoint requires a positive semantic reservation.
 No endpoint records `skipped`, reserves nothing, and retains existing generation
 behavior. A pending batch cannot bypass criticism if configuration later disappears.
-This code path is not evidence of production activation.
+This code path is not evidence of production activation. The critic's evaluation
+corpus was agent-authored, not human-validated, and it once accepted an
+answer-leaking candidate that independent generation validation rejected.
+Treat critic acceptance as one check, not proof of quality.
 
 The worker saves up to twelve validated candidates before criticism. Larger
 configured batches publish only that bounded selection and report partial work.

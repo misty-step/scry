@@ -84,6 +84,17 @@ remains `$1.00` (`1000000` micros) with a conservative `$0.20` reservation
 owned by the application; hosting must not synthesize cost, clamp tokens, or
 invent a completion status.
 
+## Semantic contract
+
+Only `production` sets the Jev Decisions vars: `SCRY_SEMANTIC_ENDPOINT`
+(an HTTPS URL ending in `/api/alpha/decisions`), one explicit
+`SCRY_SEMANTIC_MODEL`, and a positive `SCRY_SEMANTIC_RESERVATION_MICROS` no
+larger than the daily allowance. An empty `SCRY_SEMANTIC_API_KEY` reuses
+`SCRY_MODEL_API_KEY`. Without an endpoint every semantic name is forwarded
+empty and nothing is sent; any other partial or unsafe combination fails
+closed. New values reach the application only in a new Container instance; see
+the runbook's "Semantic assessments on Cloudflare".
+
 ## Exact-binary isolated staging
 
 No production data or live model credential belongs in this flow.
