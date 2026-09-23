@@ -458,8 +458,8 @@ func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
 		t.Fatalf("claim fix: %+v %v", job, err)
 	}
 	zero := int64(0)
-	if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5", Quizzes: []store.GeneratedQuiz{{Kind: "choice", Level: "recall",
-		Concept: q.ConceptID, Prompt: "SUGGESTED which record holds an IPv4 address?", Answer: "A", Choices: []string{"A", "MX", "TXT"}, Explanation: "An A record holds an IPv4 address.", Basis: "topic"}}}, &zero); err != nil {
+	if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5", Quizzes: []store.GeneratedQuiz{{Kind: "recall", Level: "recall", AnswerForm: "exact",
+		Concept: q.ConceptID, Prompt: "SUGGESTED which record holds an IPv4 address?", Answer: "A", Variants: []string{"Address record"}, Explanation: "SUGGESTED An A record stores one IPv4 address.", Basis: "topic"}}}, &zero); err != nil {
 		t.Fatal(err)
 	}
 	cookie, csrf, operation := bootstrapForm(t, app)
@@ -474,8 +474,19 @@ func TestSuggestedFixWaitsForTheLearner(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	if body := edit(); !strings.Contains(body, "Scry suggests a fix") || !strings.Contains(body, "SUGGESTED which record") {
+	body := edit()
+	start := strings.Index(body, `class="proposal`)
+	if start < 0 || !strings.Contains(body, "Scry suggests a fix") {
 		t.Fatalf("the suggestion was not offered: %s", body)
+	}
+	// Accepting installs every field, so the comparison shows every field on
+	// both sides: style, choices, accepted variants, and explanation.
+	panel := body[start : start+strings.Index(body[start:], "</section>")]
+	for _, want := range []string{"Pick an answer", "MX", "An A record holds an IPv4 address.",
+		"Answer from memory", "SUGGESTED which record", "Address record", "SUGGESTED An A record stores one IPv4 address."} {
+		if !strings.Contains(panel, want) {
+			t.Fatalf("the comparison hides %q: %s", want, panel)
+		}
 	}
 	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version || strings.HasPrefix(current.Prompt, "SUGGESTED") {
 		t.Fatalf("the suggestion replaced the question before it was accepted: %+v %v", current, err)
