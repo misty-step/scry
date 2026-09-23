@@ -17,8 +17,8 @@ const complete = {
   SCRY_MODEL_API_KEY: "m".repeat(64),
   SCRY_MODEL: "google/gemini-3.7-flash",
   SCRY_MODEL_PROVIDER: "openrouter",
-  SCRY_GENERATION_DAILY_BUDGET_MICROS: "1000000",
-  SCRY_GENERATION_RESERVATION_MICROS: "200000",
+  SCRY_GENERATION_DAILY_BUDGET_MICROS: "3500000",
+  SCRY_GENERATION_RESERVATION_MICROS: "500000",
 };
 
 test("container runtime forwards the existing configurable model contract", () => {
@@ -30,8 +30,8 @@ test("container runtime forwards the existing configurable model contract", () =
   assert.equal(vars.SCRY_MODEL_API_KEY, complete.SCRY_MODEL_API_KEY);
   assert.equal(vars.SCRY_MODEL, "google/gemini-3.7-flash");
   assert.equal(vars.SCRY_MODEL_PROVIDER, "openrouter");
-  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "1000000");
-  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "200000");
+  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "3500000");
+  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "500000");
   assert.equal(vars.SCRY_BACKUP_KEEP, "30");
 });
 
@@ -45,8 +45,8 @@ test("synthetic staging disables generation without inventing a provider", () =>
   assert.equal(vars.SCRY_MODEL_API_KEY, "");
   assert.equal(vars.SCRY_MODEL, "");
   assert.equal(vars.SCRY_MODEL_PROVIDER, "");
-  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "1000000");
-  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "200000");
+  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "3500000");
+  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "500000");
 });
 
 test("recovered hosting refuses a missing or partial model capability", () => {
@@ -94,8 +94,8 @@ test("semantic mode forwards a complete Decisions configuration and reuses the m
   assert.equal(vars.SCRY_SEMANTIC_API_KEY, "");
   assert.equal(vars.SCRY_MODEL_API_KEY, complete.SCRY_MODEL_API_KEY);
   // Generation limits stay pinned; semantic checks share that allowance.
-  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "1000000");
-  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "200000");
+  assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "3500000");
+  assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "500000");
 
   const dedicated = appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "j".repeat(64) });
   assert.equal(dedicated.SCRY_SEMANTIC_API_KEY, "j".repeat(64));
@@ -157,14 +157,14 @@ test("semantic model and reservation are explicit and bounded", () => {
   for (const model of ["openrouter/auto", "jev 1.13", "jev\n1.13", "m".repeat(201)]) {
     assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_MODEL: model }), /SCRY_SEMANTIC_MODEL/);
   }
-  for (const reservation of ["0", "-1", "2000.5", "1e3", "02000", "1000001", "two"]) {
+  for (const reservation of ["0", "-1", "2000.5", "1e3", "02000", "3500001", "two"]) {
     assert.throws(
       () => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_RESERVATION_MICROS: reservation }),
       /SCRY_SEMANTIC_RESERVATION_MICROS/,
       reservation,
     );
   }
-  assert.equal(appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_RESERVATION_MICROS: "1000000" }).SCRY_SEMANTIC_RESERVATION_MICROS, "1000000");
+  assert.equal(appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_RESERVATION_MICROS: "3500000" }).SCRY_SEMANTIC_RESERVATION_MICROS, "3500000");
   assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "short" }), /SCRY_SEMANTIC_API_KEY/);
 });
 
@@ -200,6 +200,39 @@ test("committed environments: only production configures Decisions, and it valid
   assert.equal(vars.SCRY_SEMANTIC_MODEL, "typesafe/jev-1.13");
   assert.equal(vars.SCRY_SEMANTIC_RESERVATION_MICROS, "2000");
   assert.equal(vars.SCRY_SEMANTIC_API_KEY, "");
+});
+
+test("optional Exa settings reach only the application, never the scheduled backup", () => {
+  const absent = appEnvVars(complete);
+  assert.equal(absent.SCRY_EXA_API_KEY, "");
+  assert.equal(absent.SCRY_EXA_ENDPOINT, "");
+  const configured = appEnvVars({
+    ...complete,
+    SCRY_EXA_API_KEY: "e".repeat(64),
+    SCRY_EXA_ENDPOINT: "https://api.exa.ai",
+  });
+  assert.equal(configured.SCRY_EXA_API_KEY, "e".repeat(64));
+  assert.equal(configured.SCRY_EXA_ENDPOINT, "https://api.exa.ai");
+  for (const name of ["SCRY_EXA_API_KEY", "SCRY_EXA_ENDPOINT"]) {
+    assert.equal(name in backupExecEnv(configured), false);
+    assert.equal(name in backupExec(configured).options.env, false);
+  }
+});
+
+test("invalid Exa secrets and endpoints fail closed", () => {
+  for (const key of ["short", "x".repeat(4097), "x".repeat(32) + "\n", " ".repeat(32), 42]) {
+    assert.throws(() => appEnvVars({ ...complete, SCRY_EXA_API_KEY: key }), /SCRY_EXA_API_KEY/);
+  }
+  for (const endpoint of [
+    "http://api.exa.ai", "http://127.0.0.1:9000", "https://user:pass@api.exa.ai",
+    "https://api.exa.ai/other", "https://api.exa.ai?key=x", "https://api.exa.ai#x",
+    " api.exa.ai", "https://api.exa.ai ",
+  ]) {
+    assert.throws(() => appEnvVars({ ...complete, SCRY_EXA_ENDPOINT: endpoint }), /SCRY_EXA_ENDPOINT/, endpoint);
+  }
+  assert.throws(() => appEnvVars({ ...complete, SCRY_EXA_ENDPOINT: null }), /SCRY_EXA_ENDPOINT/);
+  assert.throws(() => appEnvVars({ ...complete, SCRY_GENERATION_DAILY_BUDGET_MICROS: "1000000" }), /generation limits/);
+  assert.throws(() => appEnvVars({ ...complete, SCRY_GENERATION_RESERVATION_MICROS: "200000" }), /generation limits/);
 });
 
 test("container idle policy is explicit and bounded", () => {

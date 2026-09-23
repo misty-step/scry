@@ -1,157 +1,92 @@
 # Scry Product Vision
 
-Status: adopted personal Go/SQLite/HTMX product direction. The operator approved
-the initial phone flow on 2026-09-09, not the later foundations experience:
-on 2026-09-12 they rejected that experience and called for a design reset before
-further implementation. [Concept-centered study](docs/design/concept-centered-study.md)
-separates the new operator direction from proposals and open choices.
-[SPEC.md](SPEC.md) owns stories and acceptance;
-[the runbook](docs/runbook.md) owns deployed origins and recovery.
+Status: concept-centered v5 direction authorized by the operator on 2026-09-23:
+“Execute this reimagining in full” (MIS-162). This supersedes the rejected
+foundations experience, not its preserved data or the earlier phone-flow proof.
+[Stories](USER_STORIES.md) own the learner contract; [SPEC](SPEC.md) owns behavior;
+[the runbook](docs/runbook.md) owns deployed state and release approval. This
+source change does **not** authorize production activation or claim that v5 is live.
 
-## The Product
+## The product
 
-Scry is a personal, quiz-first learning app. It turns something I want to know
-into useful questions and brings those questions back when reviewing them is
-worthwhile. AI helps create and improve the material; my attempts drive the
-learning history and next review.
+Scry is a private, quiz-first way to learn what matters to one person. Add a
+topic, your own text, a link, or a photo. Scry makes a goal, maps a few teachable
+concepts, writes notes that can be revisited, and asks questions worth returning
+to. Recall attempts and explicit learner judgments shape future practice; a
+note read or revealed answer never masquerades as independent recall.
 
-The desired outcome is knowledge I can recall, not a larger card collection,
-a longer session, or a reusable learning platform. The interface should take
-almost no effort to operate while leaving room for the effort of remembering.
+The desired outcome is understanding and later recall, not collection size,
+engagement time, an accuracy badge, or a general learning platform. The operator
+reported no active users at the rewrite decision; fixture and deployment success
+are not evidence of sustained use or learning gains.
 
-At the rewrite decision, the operator reported no active users, including the
-operator. That is the adoption baseline. Phone acceptance, generated fixtures,
-passing checks, and historical production receipts are not evidence of sustained
-use or learning gains.
+## Principles
 
-## Product principles
+1. One question, one answer action, held result, deliberate Next. Add and Map
+   stay in the masthead; maintenance is available without overwhelming study.
+2. Concepts are the navigable unit. A goal is what I want to know; a note teaches
+   one idea at a chosen depth; questions test it. Related ideas and prerequisites
+   are explicit, but their generated links are claims, not proven mastery.
+3. My input keeps its provenance. Only an explicit Topic choice starts Exa web
+   search; a Link fetches its chosen page, a Photo is transcribed, and pasted
+   text is never sent to search. A source quote must match the source; a web
+   quote must match a saved excerpt and cite it; otherwise label it “General
+   knowledge.”
+4. Grade honestly both ways. Exact and authored variants resolve locally;
+   flexible short answers use a bounded Jev check; explain-level prose retains
+   its authored rubric. Close/unsure/failed checks invite self-check, and an
+   automatic grade can be corrected with one tap. Every grade names its
+   authority. Never accept a different fact through broad text similarity.
+5. Introduce unseen concepts in prerequisite order; distinguish exposure,
+   helped practice, misses, and unaided attempts. The Map shows status and a
+   labeled recall estimate, not a declaration of knowledge. Two recorded
+   confusions can lead to targeted contrast practice.
+6. Keep history, privacy, bounded spending, and recovery true even through a
+   refresh, competing tab, outage, failed generation, or deployment. Paid work
+   and unknown usage are not retried invisibly.
 
-1. Learning effort is the point; interface effort is not.
-2. History and assistance stay durable and truthful: no invented success, no
-   rewritten history.
-3. Fewer concepts, fewer controls, fewer moving parts; prefer simple coherent
-   design over patches.
-4. Failure is recoverable: retry, resume, restore without losing truth.
-5. Measure useful recall, not session time or card volume.
+## Experience direction
 
-The contract chain is VISION.md (intent) -> [USER_STORIES.md](USER_STORIES.md)
-(root story artifact) -> [SPEC.md](SPEC.md) (criteria, behavior, architecture)
--> [docs/qa/*](docs/qa/system.md) (verification). Linear owns work state.
+The operator's smoothness bar is immediacy and continuity, not a compulsive feed.
+The [Direction A design](DESIGN.md) is dark-first “Scrying glass”: a generous
+reading column, warm ember action, restrained status color, daylight alternative,
+and motion only in response to a learner action. It is a new design decision, not
+a claim that the earlier phone approval covered this experience.
 
-## Approved knowledge-centered direction and bounded delivery
+Open into one useful question or a clear Add invitation. Before a new concept's
+first question, offer a short note and an honest “I know this already” observation.
+If the concept remains confusing, the note and its simpler/deeper versions are
+one tap away after grading; navigating there must not consume the occurrence.
+Prepare work can take time without hiding the existing Stream. When caught up,
+show when something is next and permit adding more, rather than inventing work.
 
-The operator approved a future personal learning map: chosen goals, durable
-instruction/reference material alongside quizzes, explicit coverage and
-foundations, and uncertain context-dependent evidence rather than a single
-mastery score. That broader direction is not a shipped engine or an authorization
-to silently widen goals, spending, access, or historical-data changes.
+## What must remain true
 
-MIS-59's bounded Too advanced detour implements saved foundations and warm
-practice with return to the retained question. Its implemented flow is not the
-approved future experience: the operator rejected its usability. The
-[concept-centered study note](docs/design/concept-centered-study.md) records the
-quiz/reference library and concept relationships now being fleshed out, not an
-authorization to resume engineering. Requesting help is not a failed answer;
-reading is not cold recall. Direct quiz-owned FSRS remains the scheduler baseline.
-Capture-time foundation planning, cross-item evidence/estimates, autonomous
-planning and suggestions remain unimplemented successor scope. See
-[SPEC.md](SPEC.md#foundation-detour-mis-59) for the existing bounded contract;
-Linear owns the design pause and remaining acceptance.
+- Answer, recorded outcome, schedule, and idempotent operation agree durably.
+- A reveal, cue, or note read cannot become an unaided success; immutable past
+  presentations remain inspectable even after edits and grade overrides.
+- Generated content quotes exactly, renders as escaped text, and does not claim
+  source support from a topic word or fabricated citation.
+- Captured input survives failure; uncertain paid calls retain reservations and
+  require deliberate resolution. The provider key is capped at $25/week; the
+  application allows $3.50 per rolling day and conservatively reserves $0.50
+  per generation attempt.
+- A short smoke run establishes mechanics, not usefulness, model calibration,
+  delayed recall, or production activation.
 
-On 2026-09-18 the operator set the review screen itself as the bar: one
-question, one way to answer it, one check, then the result and a single Next.
-The review surface therefore drops kind and due-count chrome, Too advanced,
-Saved-foundations links, flag/inspect controls, and schedule lectures; the five
-navigation destinations (Review, Add, Library, History, Settings) punch out
-behind one Menu control beside the wordmark instead of filling the surface,
-and one quiet overflow carries reveal, edit, and archive. That supersedes the
-MIS-59 review UI, not the saved-foundations backend: foundations data, jobs, and
-routes remain, reachable from the Library.
+## Scope and runtime
 
-## Experience Direction
+The audience is the operator, primarily on a phone. Go/SQLite renders private
+HTML/HTMX with a small presentation controller in one writer behind Cloudflare
+Access and `scry-app-host`. Container storage restores from private R2; the
+approved daily/pre-release backup and 30-day retention targets RPO 24 hours and
+RTO 60 minutes without guaranteeing either. The old Rust stores and retained
+exe.dev VM remain historical recovery material, never simultaneous writers.
 
-The operator's bar is **TikTok-level smoothness**, with a simple interface and
-intentional aesthetics. Borrow immediacy, clear focus, and continuity, not
-engagement-maximizing mechanics.
-
-The accepted initial experience has one learning moment at a time:
-
-1. Open directly into something useful to review, or one clear way to add it.
-2. Add a word, a goal, or pasted material without configuring a project or deck.
-3. Receive useful AI-generated quizzes with honest progress and recoverable
-   failure, rather than manage a generation pipeline.
-4. Answer or ask for help. Understand the result without losing the question.
-5. Continue deliberately; return later without losing committed progress.
-6. Fix, remove, or inspect material without making maintenance the main product.
-
-Meaning-sensitive recall may accept different wording only for an explicitly
-semantic prose question with a versioned rubric that Scry writes with the
-question; the learner never picks a grading mode or writes a rubric. Exact tasks
-stay exact; model uncertainty stays ungraded; and a missing-idea cue counts as
-help before it is shown. This is bounded evidence about one answer, not liberal
-similarity grading, automatic mastery, or proof that the learner knows more.
-
-The initial phone flow is approved, not a permanent freeze on design. Changes
-to question styles, gestures, visual direction, or ambiguous-answer behavior
-should follow real use and renewed operator review.
-
-## What Must Remain True
-
-- Generated knowledge is not falsely presented as a quotation or verified fact.
-- Revealed or otherwise answer-assisted work is not recorded as unaided recall.
-- An answer, its recorded result, and its schedule change agree durably.
-- Retried requests do not manufacture additional learning events.
-- Content correction does not silently rewrite what was previously presented.
-- Failed generation does not lose captured input, invent success, or spend
-  without a bound.
-- Learning material remains private and recoverable.
-- UI responsiveness, content quality, voluntary use, and delayed recall are
-  different claims requiring different evidence.
-
-Carry these lessons forward without treating the old implementation's exact
-policies, public APIs, crate boundaries, or fixtures as a parity requirement.
-
-## Scope
-
-The initial audience is the operator. The phone web experience is primary.
-Agent capture or a CLI can be added when an actual personal workflow needs it;
-five independent product faces are not a launch obligation.
-
-The current scope is capture, generation, review, correction, library,
-learning history, private access, and recovery. Public signup, waitlists,
-billing, collaboration, generalized import, full course generation, a chat
-product, and an offline synchronization engine are not initial requirements.
-Their exclusion is not a permanent ban if later use justifies them.
-
-## Technical Direction and Current Runtime
-
-The Go application is served at `https://scry.study` by Cloudflare Worker
-`scry-app-host`, which gates requests through Cloudflare Access and forwards
-the exact owner to one `ScryContainer`. A single Go/SQLite writer renders the
-HTML/HTMX phone experience. Container storage is ephemeral: cold starts restore
-the latest complete snapshot from private R2 through the append/read-only
-backup gateway, and the Worker schedules remote backups. `docs/runbook.md`
-owns production origins, release evidence, and recovery procedures.
-
-The old Rust application and five-face clients are retired. Its production and
-staging Rust Workers are paused with cron triggers removed; their stores, frozen
-native Postgres, backups, and compatible historical source remain recovery
-material, not alternative live writers. The Go Worker `scry-app-host` is the
-current interactive runtime. Current verification belongs in the
-[QA guide](docs/qa/system.md).
-
-No old QA data is imported and unused APIs have no compatibility requirement.
-The operator chose to preserve old data and historical recovery separately.
-New-app snapshots use the approved daily/pre-release, 30-day retention policy.
-
-## Specification and Proof
-
-[SPEC.md](SPEC.md) owns accepted user stories, stable acceptance identifiers,
-experience budgets, architecture decisions, delivery slices, and the independent
-QA contract. Linear owns accepted work, priorities, and execution state, not a
-second copy of product truth.
-
-The first product decision is whether the operator wants to keep using the
-actual experience. A polished demo and green tests cannot answer that. Repeated
-personal use and later unassisted recall should inform the next revision; do
-not promise efficacy from a scheduler setting or a short smoke run.
+No public signup, billing, collaboration, universal import, course generation,
+chat product, manual graph editor, or offline mutation queue is required. The
+foundation detour was rejected on 2026-09-12 and its routes are retired in v5;
+old rows survive the additive migration but do not appear as newly generated
+concepts. Further activation of schema v5 on live data needs separate explicit
+release approval. [QA](docs/qa/system.md) separates synthetic, private-browser,
+provider, and independent-restore evidence.

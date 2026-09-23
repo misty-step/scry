@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/misty-step/scry/internal/store"
 )
@@ -45,7 +44,7 @@ func ownerRequest(method, path string, form url.Values) *http.Request {
 func TestPrivateIdentityCannotBeForgedThroughAnotherPeerOrHeader(t *testing.T) {
 	s, app := privateApp(t)
 	const secretMaterial = "private-boundary-canary-material"
-	if _, err := s.Capture(context.Background(), secretMaterial, randomToken()); err != nil {
+	if _, err := s.Capture(context.Background(), store.CaptureInput{Text: secretMaterial, Mode: "text"}, randomToken()); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -144,14 +143,14 @@ func TestMutationRequiresCanonicalOriginAndSessionBoundCSRF(t *testing.T) {
 			}
 		})
 	}
-	before, err := s.Sources(context.Background(), "")
+	before, err := s.Summary(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(before) != 0 {
+	if before.Sources != 0 {
 		t.Fatal("rejected cross-site requests changed stored content")
 	}
-	r := ownerRequest(http.MethodPost, "/add", url.Values{"text": {"native form saved input"}, "operation_id": {operation}, "csrf": {csrf}})
+	r := ownerRequest(http.MethodPost, "/add", url.Values{"text": {"native form saved input"}, "mode": {"text"}, "operation_id": {operation}, "csrf": {csrf}})
 	r.AddCookie(cookie)
 	r.Header.Set("Origin", "https://scry.example")
 	r.Header.Set("X-Forwarded-Proto", "http")
@@ -160,11 +159,11 @@ func TestMutationRequiresCanonicalOriginAndSessionBoundCSRF(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("ordinary form did not redirect to saved input: %d", w.Code)
 	}
-	after, err := s.Sources(context.Background(), "")
+	after, err := s.Summary(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 1 || after[0].Text != "native form saved input" {
+	if after.Sources != 1 {
 		t.Fatal("valid private form was not durably captured")
 	}
 }
@@ -175,7 +174,7 @@ func TestOversizedCapturePreservesInputWithoutSavingOrTruncating(t *testing.T) {
 	const attack = `</textarea><script id="injected-script">alert(1)</script>`
 	padding := strings.Repeat("a", 32769)
 	text := padding + attack
-	r := ownerRequest(http.MethodPost, "/add", url.Values{"text": {text}, "operation_id": {operation}, "csrf": {csrf}})
+	r := ownerRequest(http.MethodPost, "/add", url.Values{"text": {text}, "mode": {"text"}, "operation_id": {operation}, "csrf": {csrf}})
 	r.AddCookie(cookie)
 	r.Header.Set("Origin", "https://scry.example")
 	w := httptest.NewRecorder()
@@ -189,97 +188,12 @@ func TestOversizedCapturePreservesInputWithoutSavingOrTruncating(t *testing.T) {
 	if strings.Contains(w.Body.String(), attack) || !strings.Contains(w.Body.String(), "&lt;/textarea&gt;&lt;script") {
 		t.Fatal("untrusted input was activated or erased instead of escaped in the error form")
 	}
-	items, err := s.Sources(context.Background(), "")
+	items, err := s.Summary(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 0 {
+	if items.Sources != 0 {
 		t.Fatal("oversized capture was saved or silently truncated")
-	}
-}
-
-func TestUngradedDisputeDoesNotRequireHelpOrChangeSchedule(t *testing.T) {
-	s, app := privateApp(t)
-	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic semantic recall fixture", randomToken()); err != nil {
-		t.Fatal(err)
-	}
-	claim, err := s.ClaimJob(ctx, time.Minute, 100, 10000)
-	if err != nil || claim == nil {
-		t.Fatalf("claim fixture: %v %v", claim, err)
-	}
-	const expected = "A process that releases stored chemical energy for cellular work"
-	const explanation = "The authored explanation must remain hidden during an unresolved attempt."
-	cost := int64(70)
-	err = s.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
-		Quizzes: []store.GeneratedQuiz{{Kind: "recall", Prompt: "Explain the synthetic process.", Answer: expected, Explanation: explanation, Basis: "topic"}},
-		Model:   "authored-test-fixture", PromptVersion: "fixture-v1",
-	}, &cost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := s.Review(ctx)
-	if err != nil || state.Current == nil {
-		t.Fatalf("open fixture review: %+v %v", state, err)
-	}
-	attempt, err := s.Submit(ctx, state.Current.ID, randomToken(), "Cells convert the energy they have stored into usable work", false)
-	if err != nil || attempt.Outcome != "ungraded" || attempt.Graded {
-		t.Fatalf("expected unresolved semantic attempt: %+v %v", attempt, err)
-	}
-	schedules := func() string {
-		t.Helper()
-		raw, err := s.Export(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var exported struct {
-			Schedules json.RawMessage `json:"schedules"`
-		}
-		if err := json.Unmarshal(raw, &exported); err != nil {
-			t.Fatal(err)
-		}
-		return string(exported.Schedules)
-	}
-	before := schedules()
-	cookie, csrf, _ := bootstrapForm(t, app)
-	path := "/reviews/" + attempt.ReviewID + "/dispute"
-	for _, accept := range []string{"text/html", "application/json"} {
-		r := ownerRequest(http.MethodGet, path, nil)
-		r.AddCookie(cookie)
-		r.Header.Set("Accept", accept)
-		w := httptest.NewRecorder()
-		app.ServeHTTP(w, r)
-		if w.Code != http.StatusOK {
-			t.Fatalf("%s dispute requires an extra transition: %d", accept, w.Code)
-		}
-		if strings.Contains(w.Body.String(), expected) || strings.Contains(w.Body.String(), explanation) {
-			t.Fatalf("%s dispute exposed answer-bearing material", accept)
-		}
-		if accept == "text/html" && !strings.Contains(w.Body.String(), `name="note"`) {
-			t.Fatal("unresolved dispute did not offer a problem-note field")
-		}
-	}
-	r := ownerRequest(http.MethodPost, path, url.Values{"csrf": {csrf}, "note": {"My semantic answer cannot be graded reliably."}})
-	r.AddCookie(cookie)
-	r.Header.Set("Origin", "https://scry.example")
-	w := httptest.NewRecorder()
-	app.ServeHTTP(w, r)
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("record unresolved dispute: %d", w.Code)
-	}
-	history, err := s.History(ctx, 100)
-	if err != nil || len(history) != 1 {
-		t.Fatalf("dispute manufactured a review: %+v %v", history, err)
-	}
-	if history[0].ID != attempt.ReviewID || history[0].Outcome != "ungraded" || history[0].Assisted || history[0].Rating != 0 || !history[0].Disputed {
-		t.Fatalf("dispute changed the original unresolved attempt: %+v", history[0])
-	}
-	if after := schedules(); after != before {
-		t.Fatal("dispute without reset changed the schedule")
-	}
-	current, err := s.Current(ctx)
-	if err != nil || current == nil || current.ID != state.Current.ID || current.Graded || current.Assisted {
-		t.Fatalf("dispute consumed or helped the unresolved occurrence: %+v %v", current, err)
 	}
 }
 
@@ -298,7 +212,7 @@ func TestAlternateHostsDoNotExposeContentOrReplayMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	const material = "private-alternate-host-canary"
-	if _, err := s.Capture(context.Background(), material, randomToken()); err != nil {
+	if _, err := s.Capture(context.Background(), store.CaptureInput{Text: material, Mode: "text"}, randomToken()); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/export", "//attacker.example/export?download=1"} {
@@ -330,11 +244,11 @@ func TestAlternateHostsDoNotExposeContentOrReplayMutations(t *testing.T) {
 	if w.Code != http.StatusConflict || w.Header().Get("Location") != "" {
 		t.Fatalf("alternate-address mutation was accepted or redirected: %d", w.Code)
 	}
-	sources, err := s.Sources(context.Background(), "")
+	summary, err := s.Summary(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sources) != 1 || sources[0].Text != material {
+	if summary.Sources != 1 {
 		t.Fatal("alternate-address mutation changed stored content")
 	}
 }

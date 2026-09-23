@@ -1,26 +1,118 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/misty-step/scry/internal/learning"
 )
 
-func (s *Store) Capture(ctx context.Context, text, operationID string) (Source, error) {
+const maxTopicBytes = 2048
+
+// firstJob is where each capture mode's chain starts. Only an explicit topic
+// may be researched on the web; pasted text is private material and is never
+// sent to search.
+func firstJob(mode string) string {
+	switch mode {
+	case "topic", "link":
+		return "research"
+	case "photo":
+		return "transcribe"
+	default:
+		return "plan"
+	}
+}
+
+func imageMIME(data []byte) string {
+	switch {
+	case len(data) >= 3 && bytes.Equal(data[:3], []byte{0xFF, 0xD8, 0xFF}):
+		return "image/jpeg"
+	case len(data) >= 8 && bytes.Equal(data[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'}):
+		return "image/png"
+	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	}
+	return ""
+}
+
+func normalizeLink(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || len(raw) > 2048 || strings.ContainsAny(raw, " \t\r\n") {
+		return "", fmt.Errorf("%w: use a complete web address that starts with https://", ErrInvalid)
+	}
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+func goalTitle(text, mode string) string {
+	switch mode {
+	case "link":
+		if u, err := url.Parse(text); err == nil {
+			return excerptRunes(u.Host+u.Path, 120)
+		}
+	case "photo":
+		if strings.TrimSpace(text) == "" {
+			return "Photo"
+		}
+	}
+	return excerptRunes(text, 120)
+}
+
+func excerptRunes(text string, limit int) string {
+	r := []rune(strings.Join(strings.Fields(text), " "))
+	if len(r) <= limit {
+		return string(r)
+	}
+	return string(r[:limit-1]) + "…"
+}
+
+// Capture saves one explicit learner capture and starts its preparation chain
+// in the same transaction. Retrying the same operation returns the same source.
+func (s *Store) Capture(ctx context.Context, in CaptureInput, operationID string) (Source, error) {
 	if err := validOperation(operationID); err != nil {
 		return Source{}, err
 	}
-	if err := validText("source (split longer material into separate captures)", text, MaxSourceBytes, true); err != nil {
-		return Source{}, err
+	text, kind := in.Text, "source"
+	switch in.Mode {
+	case "topic":
+		kind = "topic"
+		if err := validText("topic (paste longer material as your text instead)", text, maxTopicBytes, true); err != nil {
+			return Source{}, err
+		}
+	case "text":
+		if err := validText("text (split longer material into separate captures)", text, MaxSourceBytes, true); err != nil {
+			return Source{}, err
+		}
+	case "link":
+		link, err := normalizeLink(text)
+		if err != nil {
+			return Source{}, err
+		}
+		text = link
+	case "photo":
+		if err := validText("photo caption", text, 1024, false); err != nil {
+			return Source{}, err
+		}
+		if len(in.Image) == 0 || len(in.Image) > MaxImageBytes {
+			return Source{}, fmt.Errorf("%w: choose a photo up to 4 MiB", ErrInvalid)
+		}
+		if mime := imageMIME(in.Image); mime == "" || (in.ImageMIME != "" && in.ImageMIME != mime) {
+			return Source{}, fmt.Errorf("%w: use a JPEG, PNG, or WebP photo", ErrInvalid)
+		}
+	default:
+		return Source{}, fmt.Errorf("%w: choose Topic, My text, Link, or Photo", ErrInvalid)
 	}
-	hash := payloadHash(text)
+	sum := sha256.Sum256(in.Image)
+	hash := payloadHash(struct{ Mode, Text, Image string }{in.Mode, text, hex.EncodeToString(sum[:])})
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Source{}, err
@@ -33,11 +125,8 @@ func (s *Store) Capture(ctx context.Context, text, operationID string) (Source, 
 	if !found {
 		id = newID()
 		now := s.now()
-		kind := "topic"
-		if len(strings.TrimSpace(text)) >= 280 || strings.Contains(strings.TrimSpace(text), "\n") {
-			kind = "source"
-		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO sources(id,text,kind,revision,created_at) VALUES(?,?,?,1,?)", id, text, kind, now)
+		web := in.Mode == "topic"
+		_, err = tx.ExecContext(ctx, "INSERT INTO sources(id,text,kind,revision,created_at,mode,web) VALUES(?,?,?,1,?,?,?)", id, text, kind, now, in.Mode, web)
 		if err != nil {
 			return Source{}, err
 		}
@@ -45,7 +134,18 @@ func (s *Store) Capture(ctx context.Context, text, operationID string) (Source, 
 		if err != nil {
 			return Source{}, err
 		}
-		if err = enqueue(ctx, tx, id, 1, now); err != nil {
+		if in.Mode == "photo" {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO capture_images(source_id,mime,bytes,created_at) VALUES(?,?,?,?)", id, imageMIME(in.Image), in.Image, now); err != nil {
+				return Source{}, err
+			}
+		}
+		if _, err = ensureGoal(ctx, tx, id, goalTitle(text, in.Mode), now); err != nil {
+			return Source{}, err
+		}
+		if err = enqueue(ctx, tx, id, 1, firstJob(in.Mode), nil, now); err != nil {
+			return Source{}, err
+		}
+		if err = index(ctx, tx, "source", id, text, ""); err != nil {
 			return Source{}, err
 		}
 		if err = saveOperation(ctx, tx, operationID, "capture", hash, id, nil, now); err != nil {
@@ -62,6 +162,9 @@ func (s *Store) Capture(ctx context.Context, text, operationID string) (Source, 
 	return result, nil
 }
 
+// RetrySource retries the stopped step of a source's chain. Candidate batches
+// resume their saved critic work; other steps get a new job of the same kind,
+// at most three per kind.
 func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source, error) {
 	if err := validOperation(operationID); err != nil {
 		return Source{}, err
@@ -81,48 +184,48 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 		return Source{}, err
 	}
 	if !found {
-		if result.Job != nil && result.Job.FoundationTarget != nil {
-			return Source{}, fmt.Errorf("%w: retry foundation work from its saved bridge", ErrConflict)
+		last := result.Job
+		if result.Archived || last == nil || (last.Status != "failed" && last.Status != "canceled" && last.Status != "paused") {
+			return Source{}, fmt.Errorf("%w: only stopped preparation can be retried", ErrConflict)
 		}
-		if result.Archived || result.Job == nil || result.Job.Published != 0 ||
-			(result.Job.Status != "failed" && result.Job.Status != "canceled" && result.Job.Status != "paused") {
-			return Source{}, fmt.Errorf("%w: only unpublished failed or explicitly reconciled paused work can be retried", ErrConflict)
+		if quizKind(last.Kind) && last.Published != 0 {
+			return Source{}, fmt.Errorf("%w: these questions were already published; ask for more questions from a concept instead", ErrConflict)
 		}
-		if result.Job.Candidates != nil {
+		now := s.now()
+		if last.Candidates != nil {
 			// Continue the same immutable batch. The first three attempts are
 			// automatic; at most two more require deliberate manual retries.
 			// Monotonic attempt numbers preserve every prior send/spend record.
-			if result.Job.Attempts >= 5 || result.Job.CriticStatus == "judged" {
+			if last.Attempts >= 5 || last.CriticStatus == "judged" {
 				return Source{}, fmt.Errorf("%w: saved candidate checks are exhausted or rejected; inspect and revise the input", ErrConflict)
 			}
-			now := s.now()
-			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status='queued',error='Explicit retry of saved candidates',lease_token='',lease_until=0,available_at=?,updated_at=? WHERE id=?`, now, now, result.Job.ID); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status='queued',error='Explicit retry of saved candidates',lease_token='',lease_until=0,available_at=?,updated_at=? WHERE id=?`, now, now, last.ID); err != nil {
 				return Source{}, err
 			}
-			if err = saveOperation(ctx, tx, operationID, "retry", hash, id, nil, now); err != nil {
+		} else {
+			kind := last.Kind
+			if kind == "quizzes" {
+				kind = "plan" // legacy single-call work retries through the v5 chain
+			}
+			var runs int
+			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=? AND kind=? AND payload=? AND id NOT IN (SELECT job_id FROM foundation_requests)", id, kind, last.Payload).Scan(&runs); err != nil {
 				return Source{}, err
 			}
-			result, err = source(ctx, tx, id, true)
-			if err != nil {
+			if runs >= 3 {
+				return Source{}, fmt.Errorf("%w: this step has been tried three times; inspect the failure before capturing a revised input", ErrConflict)
+			}
+			if last.Status == "paused" {
+				if _, err = tx.ExecContext(ctx, "UPDATE jobs SET status='canceled',lease_token='',lease_until=0,updated_at=? WHERE id=?", now, last.ID); err != nil {
+					return Source{}, err
+				}
+			}
+			var payload any
+			if last.Kind != "quizzes" {
+				payload = json.RawMessage(last.Payload)
+			}
+			if err = enqueue(ctx, tx, id, result.Revision, kind, payload, now); err != nil {
 				return Source{}, err
 			}
-			return result, tx.Commit()
-		}
-		var jobs int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=? AND id NOT IN (SELECT job_id FROM foundation_requests)", id).Scan(&jobs); err != nil {
-			return Source{}, err
-		}
-		if jobs >= 3 {
-			return Source{}, fmt.Errorf("%w: this source has reached its three manual generation runs; inspect the failure before capturing a revised input", ErrConflict)
-		}
-		now := s.now()
-		if result.Job.Status == "paused" {
-			if _, err = tx.ExecContext(ctx, "UPDATE jobs SET status='canceled',lease_token='',lease_until=0,updated_at=? WHERE id=?", now, result.Job.ID); err != nil {
-				return Source{}, err
-			}
-		}
-		if err = enqueue(ctx, tx, id, result.Revision, now); err != nil {
-			return Source{}, err
 		}
 		if err = saveOperation(ctx, tx, operationID, "retry", hash, id, nil, now); err != nil {
 			return Source{}, err
@@ -134,52 +237,6 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 	}
 	if err = tx.Commit(); err != nil {
 		return Source{}, err
-	}
-	return result, nil
-}
-
-func (s *Store) Sources(ctx context.Context, query string) ([]Source, error) {
-	if err := validText("search", query, 1024, false); err != nil {
-		return nil, err
-	}
-	query = strings.TrimSpace(query)
-	pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(query) + "%"
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT src.id FROM sources src WHERE ?='' OR src.text LIKE ? ESCAPE '\'
-	 OR EXISTS(SELECT 1 FROM quizzes q JOIN quiz_versions v ON v.quiz_id=q.id AND v.version=q.version
-	 WHERE q.source_id=src.id AND (json_extract(v.content,'$.prompt') LIKE ? ESCAPE '\' OR json_extract(v.content,'$.answer') LIKE ? ESCAPE '\'
-	 OR json_extract(v.content,'$.explanation') LIKE ? ESCAPE '\')) ORDER BY src.created_at DESC,src.id`, query, pattern, pattern, pattern, pattern)
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err = rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
-	result := make([]Source, 0, len(ids))
-	for _, id := range ids {
-		src, err := source(ctx, tx, id, false)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, src)
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
 	}
 	return result, nil
 }
@@ -200,31 +257,53 @@ func (s *Store) Source(ctx context.Context, id string) (Source, error) {
 	return result, nil
 }
 
+// sourceJobs lists a source's jobs oldest first, excluding retired foundation work.
+func sourceJobs(ctx context.Context, tx *sql.Tx, sourceID string) ([]Job, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT `+jobColumns+` FROM jobs j JOIN sources src ON src.id=j.source_id
+	 JOIN source_revisions r ON r.source_id=j.source_id AND r.revision=j.source_revision
+	 WHERE j.source_id=? AND NOT `+retiredJob+` ORDER BY j.created_at,j.rowid`, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs := []Job{}
+	for rows.Next() {
+		j, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
 func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, error) {
 	var src Source
-	err := tx.QueryRowContext(ctx, "SELECT id,text,kind,revision,archived,created_at FROM sources WHERE id=?", id).
-		Scan(&src.ID, &src.Text, &src.Kind, &src.Revision, &src.Archived, &src.CreatedAt)
+	err := tx.QueryRowContext(ctx, `SELECT s.id,s.text,s.kind,s.mode,s.web,s.revision,s.archived,s.created_at,COALESCE(g.id,''),
+	 EXISTS(SELECT 1 FROM capture_images i WHERE i.source_id=s.id) FROM sources s LEFT JOIN goals g ON g.source_id=s.id WHERE s.id=?`, id).
+		Scan(&src.ID, &src.Text, &src.Kind, &src.Mode, &src.Web, &src.Revision, &src.Archived, &src.CreatedAt, &src.GoalID, &src.HasImage)
 	if err != nil {
 		return src, notFound(err, "source")
 	}
-	var jobID string
-	err = tx.QueryRowContext(ctx, "SELECT id FROM jobs WHERE source_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", id).Scan(&jobID)
-	if err == nil {
-		j, err := job(ctx, tx, jobID)
-		if err != nil {
-			return src, err
-		}
-		src.Job, src.Status = &j, j.Status
+	jobs, err := sourceJobs(ctx, tx, id)
+	if err != nil {
+		return src, err
+	}
+	if len(jobs) > 0 {
+		last := jobs[len(jobs)-1]
+		src.Job, src.Status = &last, last.Status
 		if src.Status == "complete" {
 			src.Status = "ready"
 		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return src, err
 	}
 	if src.Archived {
 		src.Status = "archived"
 	}
 	if details {
+		src.Jobs = jobs
+		if src.Documents, err = sourceDocuments(ctx, tx, id); err != nil {
+			return src, err
+		}
 		rows, err := tx.QueryContext(ctx, "SELECT id FROM quizzes WHERE source_id=? ORDER BY created_at,rowid", id)
 		if err != nil {
 			return src, err
@@ -271,12 +350,19 @@ func (s *Store) Quiz(ctx context.Context, id string) (Quiz, error) {
 	return q, nil
 }
 
+func applyContent(q *Quiz, generated GeneratedQuiz) {
+	q.Kind, q.Grading, q.Rubric, q.Prompt, q.Answer, q.Explanation, q.Evidence, q.Basis = generated.Kind, generated.Grading, generated.Rubric, generated.Prompt, generated.Answer, generated.Explanation, generated.Evidence, generated.Basis
+	q.Choices, q.Variants = generated.Choices, generated.Variants
+	q.Level, q.AnswerForm, q.ChoiceConcepts, q.Citations = generated.Level, generated.AnswerForm, generated.ChoiceConcepts, generated.Citations
+}
+
 func quiz(ctx context.Context, tx *sql.Tx, id string) (Quiz, error) {
 	var q Quiz
 	var content string
-	err := tx.QueryRowContext(ctx, `SELECT q.id,q.source_id,q.version,(q.archived OR src.archived),v.content,sc.due_at,`+quizAvailableAtSQL+`
+	err := tx.QueryRowContext(ctx, `SELECT q.id,q.source_id,q.version,(q.archived OR src.archived),v.content,sc.due_at,`+quizAvailableAtSQL+`,
+	 COALESCE((SELECT concept_id FROM concept_quizzes WHERE quiz_id=q.id AND role='assesses'),'')
 	 FROM quizzes q JOIN sources src ON src.id=q.source_id JOIN quiz_versions v ON v.quiz_id=q.id AND v.version=q.version
-	 JOIN schedules sc ON sc.quiz_id=q.id WHERE q.id=?`, id).Scan(&q.ID, &q.SourceID, &q.Version, &q.Archived, &content, &q.DueAt, &q.AvailableAt)
+	 JOIN schedules sc ON sc.quiz_id=q.id WHERE q.id=?`, id).Scan(&q.ID, &q.SourceID, &q.Version, &q.Archived, &content, &q.DueAt, &q.AvailableAt, &q.ConceptID)
 	if err != nil {
 		return q, notFound(err, "quiz")
 	}
@@ -284,129 +370,8 @@ func quiz(ctx context.Context, tx *sql.Tx, id string) (Quiz, error) {
 	if err = json.Unmarshal([]byte(content), &generated); err != nil {
 		return q, err
 	}
-	q.Kind, q.Grading, q.Rubric, q.Prompt, q.Answer, q.Explanation, q.Evidence, q.Basis = generated.Kind, generated.Grading, generated.Rubric, generated.Prompt, generated.Answer, generated.Explanation, generated.Evidence, generated.Basis
-	q.Choices, q.Variants = generated.Choices, generated.Variants
+	applyContent(&q, generated)
 	return q, nil
-}
-
-func validateQuiz(q GeneratedQuiz, src Source) error {
-	for _, field := range []struct {
-		name, value string
-		max         int
-		required    bool
-	}{
-		{"prompt", q.Prompt, 4096, true}, {"answer", q.Answer, 1024, true}, {"explanation", q.Explanation, 8192, true}, {"evidence", q.Evidence, 8192, q.Basis == "source"},
-	} {
-		if err := validText(field.name, field.value, field.max, field.required); err != nil {
-			return err
-		}
-	}
-	if q.Basis != src.Kind {
-		return fmt.Errorf("%w: quiz basis must honestly match the captured %s input", ErrInvalid, src.Kind)
-	}
-	if q.Basis == "source" && !strings.Contains(src.Text, q.Evidence) {
-		return fmt.Errorf("%w: source evidence must be an exact quotation from the saved input", ErrInvalid)
-	}
-	if q.Basis == "topic" && q.Evidence != "" {
-		return fmt.Errorf("%w: topic knowledge must not claim source evidence", ErrInvalid)
-	}
-	if len(q.Variants) > 16 {
-		return fmt.Errorf("%w: at most 16 explicit answer variants", ErrInvalid)
-	}
-	seen := map[string]bool{}
-	for _, variant := range q.Variants {
-		if err := validText("answer variant", variant, 1024, true); err != nil {
-			return err
-		}
-		key := strings.TrimSpace(variant)
-		if key == strings.TrimSpace(q.Answer) || seen[key] {
-			return fmt.Errorf("%w: answer variants must be distinct", ErrInvalid)
-		}
-		seen[key] = true
-	}
-	if err := validateGrading(q); err != nil {
-		return err
-	}
-	switch q.Kind {
-	case "choice":
-		if len(q.Choices) < 2 || len(q.Choices) > 6 || len(q.Variants) != 0 {
-			return fmt.Errorf("%w: a choice quiz needs 2–6 choices and no typed variants", ErrInvalid)
-		}
-		seen = map[string]bool{}
-		matches := 0
-		for _, choice := range q.Choices {
-			if err := validText("choice", choice, 1024, true); err != nil {
-				return err
-			}
-			key := strings.TrimSpace(choice)
-			if seen[key] {
-				return fmt.Errorf("%w: choices must be distinct", ErrInvalid)
-			}
-			seen[key] = true
-			if choice == q.Answer {
-				matches++
-			}
-		}
-		if matches != 1 {
-			return fmt.Errorf("%w: answer must exactly equal one displayed choice", ErrInvalid)
-		}
-	case "recall":
-		if len(q.Choices) != 0 {
-			return fmt.Errorf("%w: recall quizzes cannot contain choices", ErrInvalid)
-		}
-	default:
-		return fmt.Errorf("%w: quiz kind must be choice or recall", ErrInvalid)
-	}
-	return nil
-}
-
-// validateGrading enforces the structural contract only. The author's explicit
-// grading mode is the task contract: a semantic explanation may legitimately
-// contain digits or symbols, and a letter-only identifier may need exactness,
-// so no heuristic on the answer text overrides the authored mode.
-func validateGrading(q GeneratedQuiz) error {
-	switch q.Grading {
-	case "", "exact":
-		if q.Rubric != nil {
-			return fmt.Errorf("%w: exact grading cannot carry a semantic rubric", ErrInvalid)
-		}
-		return nil
-	case "semantic":
-	default:
-		return fmt.Errorf("%w: grading must be exact or semantic", ErrInvalid)
-	}
-	if q.Kind != "recall" || q.Rubric == nil {
-		return fmt.Errorf("%w: semantic grading requires a recall quiz and rubric", ErrInvalid)
-	}
-	if len(q.Rubric.Required) < 1 || len(q.Rubric.Required) > 6 || len(q.Rubric.Contradictions) > 6 {
-		return fmt.Errorf("%w: a semantic rubric needs 1–6 required ideas and at most 6 contradictions", ErrInvalid)
-	}
-	for _, idea := range q.Rubric.Required {
-		if err := validText("required idea", idea.Text, 1024, true); err != nil {
-			return err
-		}
-		if err := validText("missing-idea cue", idea.Cue, 800, false); err != nil {
-			return err
-		}
-		if utf8.RuneCountInString(idea.Cue) > 200 {
-			return fmt.Errorf("%w: missing-idea cue must be at most 200 characters", ErrInvalid)
-		}
-		if idea.Cue != "" && (strings.Contains(idea.Cue, strings.TrimSpace(q.Answer)) || strings.Contains(idea.Cue, strings.TrimSpace(idea.Text))) {
-			return fmt.Errorf("%w: a missing-idea cue must not contain the expected answer or required idea verbatim", ErrInvalid)
-		}
-	}
-	for _, claim := range q.Rubric.Contradictions {
-		if err := validText("contradiction", claim.Text, 1024, true); err != nil {
-			return err
-		}
-		if err := validText("contradiction feedback", claim.Feedback, 1600, false); err != nil {
-			return err
-		}
-		if utf8.RuneCountInString(claim.Feedback) > 400 {
-			return fmt.Errorf("%w: contradiction feedback must be at most 400 characters", ErrInvalid)
-		}
-	}
-	return nil
 }
 
 // carryRubric settles grading for an edit that does not author it. The learner
@@ -433,6 +398,10 @@ func carryRubric(current Quiz, edited GeneratedQuiz) GeneratedQuiz {
 	return edited
 }
 
+// EditQuiz saves a learner edit as a new version. The concept, level, answer
+// form, choice concepts, and citations carry over unless the edit changes the
+// choices (then choice concepts are dropped) or the quotation (then citations
+// are re-derived from the stored documents).
 func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, content GeneratedQuiz) (Quiz, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -446,12 +415,37 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if q.Version != expectedVersion {
 		return Quiz{}, fmt.Errorf("%w: the quiz was already edited; reload before editing", ErrConflict)
 	}
-	src, err := source(ctx, tx, q.SourceID, false)
+	m, err := loadMaterial(ctx, tx, q.SourceID, 1)
 	if err != nil {
 		return Quiz{}, err
 	}
+	var revision int
+	if err = tx.QueryRowContext(ctx, "SELECT revision FROM sources WHERE id=?", q.SourceID).Scan(&revision); err != nil {
+		return Quiz{}, err
+	}
+	if revision != 1 {
+		if m, err = loadMaterial(ctx, tx, q.SourceID, revision); err != nil {
+			return Quiz{}, err
+		}
+	}
 	content = carryRubric(q, content)
-	if err = validateQuiz(content, src); err != nil {
+	content.Concept = q.ConceptID
+	if content.Level == "" {
+		content.Level = q.Level
+	}
+	if content.Kind == "recall" && content.AnswerForm == "" && q.Kind == "recall" {
+		content.AnswerForm = q.AnswerForm
+	}
+	if content.Kind != "recall" {
+		content.AnswerForm = ""
+	}
+	if content.ChoiceConcepts == nil && content.Kind == "choice" && strings.Join(content.Choices, "\x00") == strings.Join(q.Choices, "\x00") {
+		content.ChoiceConcepts = q.ChoiceConcepts
+	}
+	if content.Citations == nil && content.Basis == "web" {
+		content.Citations = q.Citations
+	}
+	if err = validateQuiz(&content, m); err != nil {
 		return Quiz{}, err
 	}
 	encoded, err := marshal(content)
@@ -466,6 +460,9 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 		return Quiz{}, err
 	}
 	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
+		return Quiz{}, err
+	}
+	if err = indexQuizContent(ctx, tx, id, content); err != nil {
 		return Quiz{}, err
 	}
 	q, err = quiz(ctx, tx, id)
@@ -493,6 +490,9 @@ func (s *Store) ArchiveQuiz(ctx context.Context, id string) error {
 	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
 		return err
 	}
+	if err = unindex(ctx, tx, "question", id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -509,6 +509,9 @@ func (s *Store) ArchiveSource(ctx context.Context, id string) error {
 		return err
 	}
 	now := s.now()
+	if _, err = tx.ExecContext(ctx, "UPDATE goals SET status='archived',updated_at=? WHERE source_id=?", now, id); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE job_attempts SET state='unknown',finished_at=? WHERE state='active'
 	 AND job_id IN (SELECT id FROM jobs WHERE source_id=?)`, now, id); err != nil {
 		return err
@@ -518,6 +521,9 @@ func (s *Store) ArchiveSource(ctx context.Context, id string) error {
 		return err
 	}
 	if err = retireUnanswered(ctx, tx, "", id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM search_index WHERE (kind='source' AND ref=?) OR (kind='question' AND ref IN (SELECT id FROM quizzes WHERE source_id=?))`, id, id); err != nil {
 		return err
 	}
 	return tx.Commit()

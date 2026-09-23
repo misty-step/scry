@@ -38,6 +38,11 @@ func CheckSchema(ctx context.Context, tx *sql.Tx, version int) error {
 			return err
 		}
 	}
+	if version >= 5 {
+		if _, err = reference.ExecContext(ctx, schemaV5); err != nil {
+			return err
+		}
+	}
 	const query = "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
 	expected, err := reference.QueryContext(ctx, query)
 	if err != nil {

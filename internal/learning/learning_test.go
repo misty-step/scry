@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-func TestConservativeGradeBoundaries(t *testing.T) {
+// US-003: exact-form recall keeps local authority. A clear short miss is a miss,
+// while a case-only difference or a long unmatched answer asks the learner to
+// compare with the key instead of inventing either result.
+func TestExactFormGradeBoundaries(t *testing.T) {
 	cases := []struct {
 		name, expected, answer string
 		variants               []string
@@ -15,27 +18,40 @@ func TestConservativeGradeBoundaries(t *testing.T) {
 		rating                 int
 	}{
 		{"explicit variant", "sodium chloride", "NaCl", []string{"NaCl"}, false, "correct", 3},
-		{"meaningful case", "Polish", "polish", nil, false, "close", 0},
+		{"meaningful case goes to self-check", "Polish", "polish", nil, false, "selfcheck", 0},
+		{"spacing-only difference goes to self-check", "New  York", "new york", nil, false, "selfcheck", 0},
 		{"negation is not normalized away", "oxygen", "not oxygen", nil, false, "wrong", 1},
 		{"short factual miss", "Paris", "Berlin", nil, false, "wrong", 1},
 		{"punctuation is not discarded", "C++", "C", nil, false, "wrong", 1},
-		{"semantic ambiguity", "A process that releases stored chemical energy for cellular work", "Cells convert the energy they have stored into usable work", nil, false, "ungraded", 0},
+		{"long unmatched answer goes to self-check", "A process that releases stored chemical energy for cellular work", "Cells convert the energy they have stored into usable work", nil, false, "selfcheck", 0},
 		{"help is never cold success", "oxygen", "oxygen", nil, true, "revealed", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			outcome, rating := Grade("recall", "exact", tc.expected, tc.variants, tc.answer, tc.reveal)
-			if outcome != tc.outcome || rating != tc.rating {
-				t.Fatalf("got %s/%d, want %s/%d", outcome, rating, tc.outcome, tc.rating)
+			for _, form := range []string{"", "exact"} {
+				outcome, rating := Grade("recall", "exact", form, tc.expected, tc.variants, tc.answer, tc.reveal)
+				if outcome != tc.outcome || rating != tc.rating {
+					t.Fatalf("form %q: got %s/%d, want %s/%d", form, outcome, rating, tc.outcome, tc.rating)
+				}
 			}
 		})
 	}
 }
 
-func TestSemanticGradeDefersUnmatchedShortAnswer(t *testing.T) {
-	outcome, rating := Grade("recall", "semantic", "Paris", nil, "Berlin", false)
-	if outcome != "ungraded" || rating != 0 {
-		t.Fatalf("got %s/%d, want ungraded/0", outcome, rating)
+// US-008: a flexible short answer that does not match exactly is left for the
+// meaning check rather than marked wrong; exact matches stay local.
+func TestFlexibleAndSemanticGradeDeferUnmatchedAnswers(t *testing.T) {
+	if outcome, rating := Grade("recall", "", "flexible", "TLS", nil, "the TLS protocol", false); outcome != "ungraded" || rating != 0 {
+		t.Fatalf("flexible synonym got %s/%d, want ungraded/0", outcome, rating)
+	}
+	if outcome, rating := Grade("recall", "", "flexible", "TLS", nil, "TLS", false); outcome != "correct" || rating != 3 {
+		t.Fatalf("flexible exact match got %s/%d, want correct/3", outcome, rating)
+	}
+	if outcome, rating := Grade("recall", "semantic", "", "Paris", nil, "Berlin", false); outcome != "ungraded" || rating != 0 {
+		t.Fatalf("semantic got %s/%d, want ungraded/0", outcome, rating)
+	}
+	if outcome, rating := Grade("choice", "", "", "IPv4 address", nil, "IPv6 address", false); outcome != "wrong" || rating != 1 {
+		t.Fatalf("choice got %s/%d, want wrong/1", outcome, rating)
 	}
 }
 

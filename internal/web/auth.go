@@ -20,13 +20,16 @@ func securityHeaders(w http.ResponseWriter, secure bool) {
 	w.Header().Set("Cache-Control", "private, no-store, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin, not no-referrer: under no-referrer a same-origin form POST
+	// sends Origin: null, so the origin check would reject every mutation made
+	// without JavaScript. Cross-origin requests still carry no referrer.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=()")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'self'; connect-src 'self'; form-action 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
 	if secure {
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 	}

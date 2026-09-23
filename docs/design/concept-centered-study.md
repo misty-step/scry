@@ -9,6 +9,9 @@ owns the rejection, design pause, and next acceptance decision;
 [MIS-48](https://linear.app/misty-step/issue/MIS-48/execute-the-personal-go-sqlite-htmx-scry-rewrite)
 retains umbrella acceptance.
 
+This is a dated exploration. Its “not yet accepted” labels and pause describe
+the 2026-09-12 state, not the later authorization recorded in the outcome below.
+
 ## Operator findings and direction
 
 The operator tried the foundations experience and rejected it as bad, awkward,
@@ -108,12 +111,22 @@ learning-evidence boundaries above before selecting engineering work. A working
 transition, generated relation, or successful assisted answer alone does not
 establish that outcome.
 
-If that review leads to a separately authorized implementation slice, first map
-saved foundations to the agreed model without discarding them or rewriting
-immutable learning, content, or spend history. Record unresolved mappings rather
-than inventing evidence. Paused paid work stays paused; a redesign does not
-authorize replay. Any schema transition needs the existing
-[QA migration/recovery proof](../qa/system.md#foundation-detour-mis-59) and
-[runbook recovery boundary](../runbook.md#schema-2-foundation-release-boundary),
-not a second migration or rollback procedure here. This is a conditional
-transition plan, not a migration already implemented or permission to resume.
+The conditional September 12 handoff required preserving saved foundations,
+immutable learning/content/spend history, and paused uncertain work. The v5
+decision retains those safeguards; see current [QA journeys](../qa/system.md#concept-centered-v5-journeys-mis-162)
+and [migration/rollback boundary](../runbook.md#schema-v5-release-boundary).
+The former proposal was not implementation permission at the time.
+
+## Outcome 2026-09-23
+
+The operator authorized **“Execute this reimagining in full”** as
+[MIS-162](https://linear.app/misty-step/issue/MIS-162). The accepted cutover is
+concept-centered v5: goals, concepts, durable notes, explicit relations, honest
+evidence, question-first Stream, searchable Map, self-check/grade correction,
+and Direction A “Scrying glass” ([VISION](../../VISION.md),
+[SPEC](../../SPEC.md), [DESIGN](../../DESIGN.md)). This supersedes the
+September 12 design pause and the assistant-only status of proposals adopted
+there; it does **not** turn the old foundations usability trial into a pass.
+Historical foundation data remain preserved in schema v5 while their UI/routes
+retire. Live production migration and activation still require a separate
+release decision and [schema v5 boundary](../runbook.md#schema-v5-release-boundary).

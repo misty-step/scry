@@ -110,9 +110,16 @@
       const button = form ? submitters.get(form) : null;
       const values = {};
       for (const [name, value] of Object.entries(config.parameters)) values[name] = Array.isArray(value) ? value.slice() : value;
-      pending = { path: config.path, verb: config.verb, values, controls: freeze(), xhr: detail.xhr, unknown: false };
+      const multipart = form?.enctype === 'multipart/form-data';
+      const payload = multipart ? new FormData(form) : null;
+      pending = { path: config.path, verb: config.verb, values, payload, controls: freeze(), xhr: detail.xhr, unknown: false };
+      const outgoing = document.querySelector('.review-stage');
+      if (outgoing && !form?.hasAttribute('data-next')) {
+        outgoing.classList.add('is-outgoing');
+        setTimeout(() => outgoing.classList.remove('is-outgoing'), 150);
+      }
       if (button?.classList.contains('choice')) button.classList.add('is-selected');
-      recoverLink.href = config.path === '/add' ? '/library' : config.path.startsWith('/review/') ? '/' : window.location.pathname;
+      recoverLink.href = config.path === '/add' ? '/map' : config.path.startsWith('/review/') ? '/' : window.location.pathname;
       if (form?.hasAttribute('data-next')) {
         const preview = document.getElementById('next-preview');
         const stage = document.querySelector('.review-stage');
@@ -164,7 +171,7 @@
     if (xhr.status === 413) {
       event.preventDefault();
       release();
-      announce('The input is too large. Nothing was saved. Use at most 32 KiB; split a long passage into smaller sections.');
+      announce('The input is too large. Nothing was saved. Shorten the text or choose a smaller photo.');
       return;
     }
     if ([400, 404, 409, 422, 429].includes(xhr.status)) {
@@ -185,11 +192,27 @@
     }
   });
 
-  retryButton.addEventListener('click', () => {
+  retryButton.addEventListener('click', async () => {
     if (!pending?.unknown || navigator.onLine === false) return;
+    if (pending.payload) {
+      const attempt = pending;
+      attempt.unknown = false;
+      announce('Retrying the same request…');
+      try {
+        const response = await fetch(attempt.path, { method: attempt.verb, body: attempt.payload, credentials: 'same-origin', cache: 'no-store' });
+        if (response.status >= 500) { unknown(); return; }
+        if (response.ok) {
+          if (new URL(response.url).origin !== location.origin) throw new Error('Unexpected destination');
+          location.assign(response.url);
+          return;
+        }
+        release();
+        location.reload();
+      } catch { unknown(); }
+      return;
+    }
     replayPermit = true;
-    // Values are the original encoded form fields, including operation and
-    // occurrence IDs. This never edits an answer or invents a new operation.
+    // Values include the original operation and occurrence IDs.
     const request = htmx.ajax(pending.verb, pending.path, {
       source: body, target: '#main', select: '#main', swap: 'outerHTML', values: pending.values,
     });
@@ -264,4 +287,101 @@
     if (body.classList.contains('private-hidden')) checkSession();
     else if (!pending) banner.hidden = true;
   });
+  function enhance(root) {
+    const recall = root.querySelector('#recall-answer');
+    const recallButton = root.querySelector('.recall-submit');
+    const updateLabel = () => { if (recallButton) recallButton.textContent = recall?.value.trim() ? 'Check' : 'Show me'; };
+    if (recall) {
+      recall.addEventListener('input', updateLabel);
+      updateLabel();
+      recall.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && matchMedia('(pointer: fine)').matches) {
+          event.preventDefault();
+          recall.form.requestSubmit(recallButton);
+        }
+      });
+    }
+    const capture = root.querySelector('[data-capture]');
+    if (capture) {
+      const text = capture.querySelector('#capture-text');
+      const modes = [...capture.querySelectorAll('input[name="mode"]')];
+      let explicit = modes.some((mode) => mode.checked);
+      // Only private modes may be chosen for the learner. Topic and Link send
+      // material to web research, so they are selected by the learner alone.
+      const choose = (value) => { if (!explicit) modes.find((mode) => mode.value === value).checked = true; };
+      modes.forEach((mode) => mode.addEventListener('change', () => { explicit = true; }));
+      text.addEventListener('paste', (event) => {
+        const pasted = event.clipboardData?.getData('text')?.trim() || '';
+        if (pasted && !/^https?:\/\/\S+$/i.test(pasted)) choose('text');
+      });
+      const photo = capture.querySelector('#capture-photo');
+      photo?.addEventListener('change', async () => {
+        if (photo.files.length !== 1) return;
+        if (!explicit) choose('photo');
+        const source = photo.files[0];
+        if (!source.type.startsWith('image/')) return;
+        try {
+          const image = await createImageBitmap(source);
+          const scale = Math.min(1, 1600 / Math.max(image.width, image.height));
+          if (scale === 1 && source.size <= 4 * 1024 * 1024) { image.close(); return; }
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(image.width * scale);
+          canvas.height = Math.round(image.height * scale);
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          image.close();
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', .82));
+          if (!blob) return;
+          const transfer = new DataTransfer();
+          transfer.items.add(new File([blob], source.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }));
+          photo.files = transfer.files;
+        } catch { /* The original file remains selected for server validation. */ }
+      });
+    }
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (Recognition) for (const button of root.querySelectorAll('[data-voice-target]')) {
+      button.hidden = false;
+      button.addEventListener('click', () => {
+        const target = root.querySelector('#' + button.dataset.voiceTarget);
+        if (!target) return;
+        const speech = new Recognition();
+        speech.lang = document.documentElement.lang || 'en';
+        speech.onresult = (event) => {
+          target.value = [target.value, event.results[0][0].transcript].filter(Boolean).join(' ');
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.focus();
+        };
+        speech.start();
+      });
+    }
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.repeat || event.target.closest('input, textarea, select, button, a, summary, [contenteditable]')) return;
+    const stage = document.querySelector('.review-stage');
+    if (!stage || pending) return;
+    if (stage.dataset.graded === 'true' && (event.key === ' ' || event.key === 'Enter')) {
+      event.preventDefault();
+      stage.querySelector('.next-form button')?.click();
+    } else if (/^[1-6]$/.test(event.key)) {
+      const choice = stage.querySelectorAll('.choice-fieldset button')[Number(event.key) - 1];
+      if (choice) { event.preventDefault(); choice.click(); }
+    }
+  });
+  document.addEventListener('htmx:beforeSwap', (event) => {
+    if (event.detail.target?.id === 'main' && !pending?.unknown) event.detail.target.classList.add('is-outgoing');
+  });
+  document.addEventListener('htmx:afterSwap', () => {
+    const root = document.getElementById('main');
+    if (root) {
+      root.classList.remove('is-outgoing');
+      root.classList.add('is-surfacing');
+      setTimeout(() => root.classList.remove('is-surfacing'), 220);
+      enhance(root);
+      if (root.querySelector('.feedback-correct')) {
+        const chip = root.querySelector('.concept-chip .star');
+        chip?.classList.add('chip-glow');
+        if (chip) setTimeout(() => chip.classList.remove('chip-glow'), 610);
+      }
+    }
+  });
+  enhance(document);
 })();

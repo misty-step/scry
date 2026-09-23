@@ -15,6 +15,7 @@ const MODEL_FIELDS = [
   "SCRY_MODEL",
   "SCRY_MODEL_PROVIDER",
 ];
+const EXA_FIELDS = ["SCRY_EXA_API_KEY", "SCRY_EXA_ENDPOINT"];
 // Jev Decisions for semantic recall and the prepublication critic. The key is
 // optional: empty means the application reuses SCRY_MODEL_API_KEY.
 const SEMANTIC_FIELDS = [
@@ -114,6 +115,34 @@ function semanticEnvVars(env, modelApiKey) {
   }
   return semantic;
 }
+// Web research is optional. A missing key means no Exa request; a supplied
+// endpoint is still validated so accidental credential disclosure fails closed.
+function exaEnvVars(env) {
+  for (const name of EXA_FIELDS) {
+    if (env[name] !== undefined && typeof env[name] !== "string") {
+      throw new Error(`${name} must be a string when configured`);
+    }
+  }
+  const exa = Object.fromEntries(EXA_FIELDS.map(name => [name, env[name] ?? ""]));
+  if (exa.SCRY_EXA_API_KEY && (!boundedSecret(exa.SCRY_EXA_API_KEY) || /\s/.test(exa.SCRY_EXA_API_KEY))) {
+    throw new Error("SCRY_EXA_API_KEY must be a bounded non-control secret");
+  }
+  if (exa.SCRY_EXA_ENDPOINT) {
+    let url;
+    try {
+      url = new URL(exa.SCRY_EXA_ENDPOINT);
+    } catch {
+      throw new Error("SCRY_EXA_ENDPOINT must be a complete HTTPS URL");
+    }
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password ||
+        url.search || url.hash || url.pathname !== "/" ||
+        exa.SCRY_EXA_ENDPOINT !== exa.SCRY_EXA_ENDPOINT.trim()) {
+      throw new Error("SCRY_EXA_ENDPOINT must be an HTTPS origin without credentials, path, query, or fragment");
+    }
+  }
+  return exa;
+}
+
 
 // A non-secret summary of the semantic settings a Container starts with, for
 // the Worker log. It names the key source, never a key or learner text.
@@ -192,10 +221,11 @@ export function appEnvVars(env) {
       throw new Error("SCRY_MODEL_PROVIDER must be openrouter or openai");
     }
   }
-  if (env.SCRY_GENERATION_DAILY_BUDGET_MICROS !== "1000000" || env.SCRY_GENERATION_RESERVATION_MICROS !== "200000") {
-    throw new Error("generation limits must remain pinned to the product's $1 daily allowance and $0.20 conservative reservation");
+  if (env.SCRY_GENERATION_DAILY_BUDGET_MICROS !== "3500000" || env.SCRY_GENERATION_RESERVATION_MICROS !== "500000") {
+    throw new Error("generation limits must remain pinned to the product's $3.50 rolling-day allowance and $0.50 conservative reservation");
   }
   const semantic = semanticEnvVars(env, model.SCRY_MODEL_API_KEY);
+  const exa = exaEnvVars(env);
   return {
     SCRY_MODE: "production",
     SCRY_BOOT_MODE: env.SCRY_BOOT_MODE,
@@ -212,6 +242,8 @@ export function appEnvVars(env) {
     SCRY_MODEL_API_KEY: model.SCRY_MODEL_API_KEY,
     SCRY_MODEL: model.SCRY_MODEL,
     SCRY_MODEL_PROVIDER: model.SCRY_MODEL_PROVIDER,
+    SCRY_EXA_API_KEY: exa.SCRY_EXA_API_KEY,
+    SCRY_EXA_ENDPOINT: exa.SCRY_EXA_ENDPOINT,
     SCRY_SEMANTIC_ENDPOINT: semantic.SCRY_SEMANTIC_ENDPOINT,
     SCRY_SEMANTIC_API_KEY: semantic.SCRY_SEMANTIC_API_KEY,
     SCRY_SEMANTIC_MODEL: semantic.SCRY_SEMANTIC_MODEL,

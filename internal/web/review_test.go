@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,22 +16,58 @@ import (
 func completeSyntheticQuiz(t *testing.T, s *store.Store, quiz store.GeneratedQuiz) {
 	t.Helper()
 	ctx := context.Background()
-	job, err := s.ClaimJob(ctx, time.Minute, 1, 100)
-	if err != nil || job == nil {
-		t.Fatalf("claim quiz job: %+v %v", job, err)
+	cost := int64(0)
+	claim := func(kind string) *store.Job {
+		t.Helper()
+		job, err := s.ClaimJob(ctx, time.Minute, 1, 1000000)
+		if err != nil || job == nil || job.Kind != kind {
+			t.Fatalf("claim %s: %+v %v", kind, job, err)
+		}
+		return job
 	}
-	cost := int64(70)
-	if err := s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{
-		Quizzes:       []store.GeneratedQuiz{quiz},
-		Model:         "synthetic-authored",
-		PromptVersion: "fixture-v1",
-	}, &cost); err != nil {
+	research := claim("research")
+	if err := s.CompleteJob(ctx, research.ID, research.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5"}, &cost); err != nil {
+		t.Fatal(err)
+	}
+	plan := claim("plan")
+	note := &store.NoteContent{Level: "standard", Title: "Synthetic concept", Body: "This synthetic concept gives the question a place in the map and a short explanation of its meaning.", Basis: "topic"}
+	result := store.GenerationResult{Plan: &store.PlanContent{Goal: "Synthetic learning goal", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Synthetic concept", Summary: "A synthetic concept for a controlled browser test.", Note: note}}}, Model: "authored-test-fixture", PromptVersion: "fixture-v5"}
+	if err := s.CompleteJob(ctx, plan.ID, plan.LeaseToken, result, &cost); err != nil {
+		t.Fatal(err)
+	}
+	questions := claim("questions")
+	context, err := s.JobContext(ctx, questions.ID)
+	if err != nil || len(context.Concepts) != 1 {
+		t.Fatalf("question concept: %+v %v", context, err)
+	}
+	quiz.Concept = context.Concepts[0].ID
+	quiz.Level = "recall"
+	if quiz.Kind == "recall" {
+		quiz.AnswerForm = "exact"
+	}
+	if err := s.CompleteJob(ctx, questions.ID, questions.LeaseToken, store.GenerationResult{Quizzes: []store.GeneratedQuiz{quiz}, Model: "authored-test-fixture", PromptVersion: "fixture-v5"}, &cost); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// reviewPage renders the real browser document (not the HTMX main swap) so the
-// assertions cover the page chrome around the focused review stage.
+func openReviewState(t *testing.T, s *store.Store) *store.Presentation {
+	t.Helper()
+	state, err := s.Review(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Intro != nil {
+		state, err = s.AcknowledgeIntro(context.Background(), state.Intro.Concept.ID, randomToken(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state.Current == nil {
+		t.Fatalf("no review occurrence: %+v", state)
+	}
+	return state.Current
+}
+
 func reviewPage(t *testing.T, app http.Handler, cookie *http.Cookie) string {
 	t.Helper()
 	w := httptest.NewRecorder()
@@ -38,7 +75,7 @@ func reviewPage(t *testing.T, app http.Handler, cookie *http.Cookie) string {
 	r.AddCookie(cookie)
 	app.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
-		t.Fatalf("render review page: %d", w.Code)
+		t.Fatalf("review page: %d %s", w.Code, w.Body.String())
 	}
 	return w.Body.String()
 }
@@ -52,206 +89,78 @@ func requirePresent(t *testing.T, page, label string, wants ...string) {
 	}
 }
 
-func requireAbsent(t *testing.T, page, label string, gone ...string) {
-	t.Helper()
-	for _, g := range gone {
-		if strings.Contains(page, g) {
-			t.Errorf("%s: still contains removed chrome %q", label, g)
+func TestPrivateReviewAnswerBoundary(t *testing.T) {
+	secret := store.Quiz{Answer: "private-answer", Explanation: "private-explanation", Evidence: "private-evidence", Variants: []string{"private-variant"}, ChoiceConcepts: []string{"answer-concept"}, Citations: []store.Citation{{Title: "Published source", URL: "https://example.org"}}}
+	for _, tc := range []struct {
+		name         string
+		graded, self bool
+		visible      bool
+	}{
+		{"question", false, false, false}, {"self-check", false, true, true}, {"graded", true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := privateReview(store.ReviewState{Current: &store.Presentation{Quiz: secret, Graded: tc.graded, SelfCheck: tc.self}, Preview: &store.Presentation{ID: "next-id", Quiz: secret, Answer: "private-answer"}})
+			encoded, err := json.Marshal(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current := state.Current.Quiz
+			if (current.Answer != "") != tc.visible || (current.Explanation != "") != tc.visible || (len(current.Variants) > 0) != tc.visible || (len(current.ChoiceConcepts) > 0) != tc.visible || (len(current.Citations) > 0) != tc.visible {
+				t.Fatalf("answer boundary failed: %s", encoded)
+			}
+			if state.Preview.ID != "" || state.Preview.Quiz.Answer != "" || state.Preview.Answer != "" {
+				t.Fatalf("preview disclosed answer or occurrence: %s", encoded)
+			}
+		})
+	}
+}
+
+// Release-smoke contract: with a question awaiting an answer, the first GET /
+// renders the answer form and the JSON keeps {review, csrf, operation_id};
+// neither carries the answer or explanation.
+func TestStreamJSONShapeAndForm(t *testing.T) {
+	s, app := privateApp(t)
+	if _, err := s.Capture(context.Background(), store.CaptureInput{Text: "Synthetic protocols", Mode: "topic"}, randomToken()); err != nil {
+		t.Fatal(err)
+	}
+	completeSyntheticQuiz(t, s, store.GeneratedQuiz{Kind: "recall", Prompt: "Which protocol secures HTTPS?", Answer: "ANSWER-TLS", Explanation: "EXPLANATION-HTTPS runs over TLS.", Basis: "topic"})
+	openReviewState(t, s)
+	r := ownerRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, r)
+	var response struct {
+		Review    *store.ReviewState `json:"review"`
+		CSRF      string             `json:"csrf"`
+		Operation string             `json:"operation_id"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &response) != nil || response.Review == nil || response.Review.Current == nil || response.Review.Current.Graded || response.CSRF == "" || response.Operation == "" {
+		t.Fatalf("stream JSON: %d %s", w.Code, w.Body.String())
+	}
+	cookie, _, _ := bootstrapForm(t, app)
+	html := reviewPage(t, app, cookie)
+	if !strings.Contains(html, `action="/review/answer"`) {
+		t.Fatal("stream with a current question did not render the answer form")
+	}
+	for _, body := range []string{w.Body.String(), html} {
+		if strings.Contains(body, "ANSWER-TLS") || strings.Contains(body, "EXPLANATION-HTTPS") {
+			t.Fatalf("ungraded stream exposed the answer: %s", body)
 		}
 	}
 }
 
-// reviewRemovals is the MIS-157 contract: this chrome must not appear anywhere
-// on the review document (page or empty state), in any review state.
-var reviewRemovals = []string{
-	"Too advanced",
-	"Fix or inspect",
-	"Stop reviewing this question",
-	"Saved foundations",
-	"/foundations",
-	"Flag a problem",
-	"Inspect the question",
-	"scheduled a review for",
-	"Helped, not unaided recall",
-	// Navigation punches out; it is never an always-visible bar on review.
-	`class="utility-nav"`,
-	`<nav class="dock"`,
-}
-
-func openReviewState(t *testing.T, s *store.Store) *store.Presentation {
-	t.Helper()
-	state, err := s.Review(context.Background())
-	if err != nil || state.Current == nil {
-		t.Fatalf("open review state: %+v %v", state, err)
-	}
-	return state.Current
-}
-
-func TestReviewUngradedSurfaceIsQuestionAnswerAndSingleSubmit(t *testing.T) {
-	s, app := privateApp(t)
-	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic focused-flow topic", randomToken()); err != nil {
-		t.Fatal(err)
-	}
-	completeSyntheticQuiz(t, s, store.GeneratedQuiz{
-		Kind: "recall", Prompt: "Name the synthetic electron carrier.",
-		Answer: "NADPH", Explanation: "NADPH carries reducing equivalents to the fixing reactions.", Basis: "topic",
-	})
-	current := openReviewState(t, s)
-	cookie, _, _ := bootstrapForm(t, app)
-	page := reviewPage(t, app, cookie)
-
-	requirePresent(t, page, "ungraded recall surface",
-		// The question dominates: it is the focused h1 of the stage.
-		`<h1 class="question" tabindex="-1" data-focus>Name the synthetic electron carrier.</h1>`,
-		// Exactly one answer control: the recall field with one submit.
-		`id="recall-answer"`,
-		`name="answer"`,
-		`>Check answer</button>`,
-		// Navigation punches out beside the wordmark, not as an always-visible bar.
-		`<details class="menu-punchout"><summary>Menu</summary>`,
-		// Reachability moved into the one overflow, not removed.
-		`<details class="overflow">`,
-		"I don't know yet",
-		`/quizzes/`+current.Quiz.ID+`/edit`,
-		`/quizzes/`+current.Quiz.ID+`/archive`,
-	)
-	if got := strings.Count(page, ">Check answer</button>"); got != 1 {
-		t.Fatalf("expected exactly one recall submit control, got %d", got)
-	}
-	requireAbsent(t, page, "ungraded recall surface", reviewRemovals...)
-	requireAbsent(t, page, "ungraded recall surface", `class="review-context"`)
-}
-
-func TestReviewUngradedChoiceSubmitsByTapWithoutExtraControls(t *testing.T) {
-	s, app := privateApp(t)
-	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic focused-flow choice topic", randomToken()); err != nil {
-		t.Fatal(err)
-	}
-	completeSyntheticQuiz(t, s, store.GeneratedQuiz{
-		Kind: "choice", Prompt: "Pick the synthetic electron carrier.",
-		Answer: "NADPH", Choices: []string{"ATP", "NADPH", "FADH2"}, Explanation: "NADPH is the reducing equivalent.", Basis: "topic",
-	})
-	cookie, _, _ := bootstrapForm(t, app)
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "ungraded choice surface",
-		`>Pick the synthetic electron carrier.</h1>`,
-		`<button class="choice" type="submit" name="answer" value="ATP"`,
-		`<button class="choice" type="submit" name="answer" value="NADPH"`,
-	)
-	// Tapping a choice submits; there is no separate submit or recall field.
-	requireAbsent(t, page, "ungraded choice surface",
-		`id="recall-answer"`, ">Check answer</button>")
-	requireAbsent(t, page, "ungraded choice surface", reviewRemovals...)
-}
-
-// TestReviewNavigationIsOnePunchOut pins the menu contract: the five
-// destinations (Review, Add, Library, History, Settings) live behind one or
-// two punch-out controls, and the review document never ships the
-// always-visible dock plus utility-nav combo.
-func TestReviewNavigationIsOnePunchOut(t *testing.T) {
+func TestRetiredRoutesAreGone(t *testing.T) {
 	_, app := privateApp(t)
-	cookie, _, _ := bootstrapForm(t, app)
-	page := reviewPage(t, app, cookie)
-	// The always-visible combo is gone from the review document.
-	requireAbsent(t, page, "review nav", `<nav class="dock"`, `class="utility-nav"`)
-	// One or two punch-out controls, not zero.
-	if count := strings.Count(page, `<details class="menu-punchout">`); count < 1 || count > 2 {
-		t.Fatalf("menu punch-out controls = %d, want 1 or 2", count)
+	for _, path := range []string{"/foundations", "/foundations/old", "/library"} {
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, ownerRequest("GET", path, nil))
+		if w.Code != 404 {
+			t.Errorf("%s returned %d", path, w.Code)
+		}
 	}
-	// All five destinations are inside the punch-out nav.
-	requirePresent(t, page, "review nav",
-		`<nav aria-label="Main menu">`,
-		`href="/"`, `>Review</a>`,
-		`href="/add"`, `>Add</a>`,
-		`href="/library"`, `>Library</a>`,
-		`href="/history"`, `>History</a>`,
-		`href="/settings"`, `>Settings</a>`,
-	)
-}
-
-func TestReviewResultShowsOutcomeAndNextOnly(t *testing.T) {
-	s, app := privateApp(t)
-	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic focused-flow graded topic", randomToken()); err != nil {
-		t.Fatal(err)
-	}
-	completeSyntheticQuiz(t, s, store.GeneratedQuiz{
-		Kind: "choice", Prompt: "Pick the graded carrier.",
-		Answer: "NADPH", Choices: []string{"ATP", "NADPH", "FADH2"}, Explanation: "NADPH carries reducing equivalents.", Basis: "topic",
-	})
-	current := openReviewState(t, s)
-	cookie, csrf, operation := bootstrapForm(t, app)
-	r := ownerRequest(http.MethodPost, "/review/answer", url.Values{
-		"presentation_id": {current.ID},
-		"answer":          {"NADPH"},
-		"csrf":            {csrf},
-		"operation_id":    {operation},
-	})
-	r.AddCookie(cookie)
-	r.Header.Set("Origin", "https://scry.example")
 	w := httptest.NewRecorder()
-	app.ServeHTTP(w, r)
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("submit answer: %d %s", w.Code, w.Body.String())
+	app.ServeHTTP(w, ownerRequest("POST", "/review/foundation", url.Values{}))
+	if w.Code != 403 {
+		t.Fatalf("retired mutation bypassed CSRF: %d", w.Code)
 	}
-
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "graded surface",
-		`>Pick the graded carrier.</h1>`,
-		`>Correct</h2>`,
-		`data-next`,
-		`>Next</button>`,
-		// Overflow keeps edit/archive reachable; reveal is gone once graded.
-		`<details class="overflow">`,
-		`/quizzes/`+current.Quiz.ID+`/edit`,
-		`/quizzes/`+current.Quiz.ID+`/archive`,
-	)
-	requireAbsent(t, page, "graded surface", append(reviewRemovals, "FSRS", "I don't know yet")...)
-}
-
-func TestReviewRevealRecordsHelpedResultWithNextOnly(t *testing.T) {
-	s, app := privateApp(t)
-	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic focused-flow reveal topic", randomToken()); err != nil {
-		t.Fatal(err)
-	}
-	completeSyntheticQuiz(t, s, store.GeneratedQuiz{
-		Kind: "recall", Prompt: "Name the revealed carrier.", Answer: "NADPH", Explanation: "NADPH carries reducing equivalents.", Basis: "topic",
-	})
-	current := openReviewState(t, s)
-	cookie, csrf, operation := bootstrapForm(t, app)
-	r := ownerRequest(http.MethodPost, "/review/reveal", url.Values{
-		"presentation_id": {current.ID},
-		"csrf":            {csrf},
-		"operation_id":    {operation},
-	})
-	r.AddCookie(cookie)
-	r.Header.Set("Origin", "https://scry.example")
-	w := httptest.NewRecorder()
-	app.ServeHTTP(w, r)
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("reveal: %d %s", w.Code, w.Body.String())
-	}
-
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "revealed surface",
-		`>Name the revealed carrier.</h1>`,
-		`>Answer revealed</h2>`,
-		`>NADPH</p>`,
-		`>Next</button>`,
-	)
-	requireAbsent(t, page, "revealed surface", reviewRemovals...)
-}
-
-func TestReviewEmptyStateHasNoFoundationChrome(t *testing.T) {
-	_, app := privateApp(t)
-	cookie, _, _ := bootstrapForm(t, app)
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "empty review",
-		`>No active questions.</h1>`,
-		`<a class="button primary" href="/add">Add something</a>`,
-	)
-	requireAbsent(t, page, "empty review", reviewRemovals...)
 }

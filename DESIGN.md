@@ -1,225 +1,159 @@
-# Scry design system
+# Scry design system — Direction A, “Scrying glass”
 
-Status: historical design record for the retired Rust renderer
-`crates/memory-engine-api-render`, not the current Go application’s contract.
-For that renderer, the operator’s authorization to implement and ship the
-comprehensive PWA redesign superseded the July 2026 Ledger aesthetic lock.
-The aesthetic decisions and route, wire, storage, environment, asset, and DOM
-identifiers below are preserved as history, not current requirements or shipping
-authorization.
+Adopted for the concept-centered v5 experience (MIS-162, operator authorization
+2026-09-23). [Stories](USER_STORIES.md) define learner progress and
+[SPEC](SPEC.md#experience-contract) owns behavior. The retired Rust renderer's
+Ledger design is historical Git material, not the Go UI contract. This document
+specifies the new visual direction; it does not claim a production rollout.
 
-[SPEC.md](SPEC.md) owns current behavior and design, including the
-[experience contract](SPEC.md#experience-contract) and
-[browser/server boundary](SPEC.md#the-browserserver-boundary).
-The Go UI lives in [internal/web](internal/web/), with
-[templates](internal/web/templates/) and
-[visual tokens](internal/web/assets/app.css).
+## Composition and visual hierarchy
 
-## Direction: a reading-first study instrument
+Dark-first, with an automatic Daylight scheme via `prefers-color-scheme: light`.
+Set `color-scheme: dark light` and matching theme-color values. A single centered
+40rem column has generous top space and left-aligned reading content. On Stream,
+the question dominates; answer controls sit low, full-width, within thumb reach.
+The masthead is an italic Fraunces “scry” wordmark, a small ember scrying mark,
+and exactly two destinations: `+` Add and Map. Do not turn review into a metric
+dashboard, card grid, or five-destination navigation bar.
 
-Scry is for understanding and recalling material the learner cares about. It
-should feel like opening a well-set reading page with a few reliable study
-controls, not administering a database or checking a score dashboard.
+| CSS role | Dark | Daylight |
+| --- | --- | --- |
+| `--ground` | `#0B0D10` | `#F4F1EA` |
+| `--ground-2` | `#12151A` | `#FBF9F4` |
+| `--ground-3` | `#191D24` | `#FFFFFF` |
+| `--line` | `#262C36` | `#DDD6C8` |
+| `--line-strong` | `#3B4351` | `#B7AE9C` |
+| `--ink` | `#EDE7DB` | `#17181C` |
+| `--ink-2` | `#B9B2A5` | `#4A4841` |
+| `--ink-3` | `#8C867B` | `#66625A` |
+| `--ember` | `#FF8A3D` | `#B8440F` |
+| `--on-ember` | `#160B04` | `#FFFFFF` |
+| `--ember-soft` | `rgba(255,138,61,.14)` | `rgba(184,68,15,.12)` |
+| `--correct` | `#86D7AE` | `#1E6B47` |
+| `--miss` | `#F3A6A0` | `#A33A32` |
+| `--helped` | `#B8B6F2` | `#4B479C` |
+| `--pending` | `#9FB7D9` | `#34557F` |
 
-The initial design plan paired a cool reading ground, a single left-aligned
-content column, serif study text, and a quiet thumb-reachable dock. Reviewing
-that plan against the frontend-design guidance removed the generic dashboard
-hero count, repeated rounded-card grid, uppercase labels, monospace metadata,
-and decorative motion. The revised emphasis is the material itself: an actual
-question, an actual source passage, or the next deliberate study action.
+All text/control pairs must meet WCAG AA in each scheme. State is always written
+in words, never color alone. A semantic-colored label on a surface must still
+meet contrast; do not make incorrect options illegible by reducing opacity.
 
-```text
-Review                          Add
-Scry       Due      Add / More   Scry              Review
+## Type and assets
 
-The current question            Anything you want to learn
-                                A word, phrase, or essay
-Answer / I don’t know yet        Learn this
+Self-host variable **Fraunces** for questions, verdicts, note/concept titles,
+and reading text, with optical sizing and `"SOFT" 40, "WONK" 0` settings.
+Question: `clamp(1.75rem, 1.15rem + 2.6vw, 2.6rem)` / 1.16, weight about 430.
+Reading: 1.125rem / 1.62. Self-host variable **Instrument Sans** for UI,
+labels, and metadata at 1rem, with tabular numerals where they align. Use
+sentence case; no tracked uppercase labels. Preserve paragraph breaks and wrap
+long tokens. Use font fallbacks while assets load. Variable WOFF2 files live in
+[`internal/web/assets/fonts/`](internal/web/assets/fonts/) with the actual font
+copyright notices and SIL Open Font License in `OFL.txt`; no remote font fetch.
+The wordmark, SVG star, and icons are local embedded assets.
 
-Feedback, then Next question     Generation opens review
-```
+## Components and named states
 
-Left-align content and controls. Center the reading column in the viewport,
-not the text within it. Long material gets vertical space, not extra columns.
-Structure reflects content: saved Sources, Quiz answer choices, feedback,
-and a dedicated Study note are different surfaces, not identical
-cards with different labels.
+- **Stream:** concept chip above question, with star brightness class `b0..b5`.
+  Inert before grading; linked to its Concept page afterward. Render just the
+  answer-bearing control for that question. Choice buttons submit on tap; recall
+  offers one field and Check, changing to Show me when empty. More holds Show me,
+  Look it up (ungraded and safely gated), edit, archive, and correction actions.
+- **Question states:** choice; recall; checking; self-check (`close`, `unsure`,
+  `failed` with Retry check); result-correct; result-miss-automatic;
+  result-overridden; result-shown; result-self. Before grading/self-check do not
+  include expected answer, explanation, or evidence in visible or accessible
+  markup. Self-check shows answer/explanation and asks the learner to judge.
+- **Result:** Fraunces italic verdict (“Correct.”, “Not quite.”, “Shown.”), bold
+  answer, readable explanation, modest citation links, a full-width ember Next.
+  The automatic miss alone gets a quiet “I was right” beneath Next; automatic
+  correct offers “Count as a miss” in More. No automatic transition. Show the
+  authority of a grade in detail without making the verdict sound certain when
+  the learner chose it.
+- **Intro:** a standard note for an unseen concept before its questions; “Got
+  it” primary and “I know this already” quiet. The latter is an observation, not
+  a passing answer.
+- **Preparing receipts:** compact stage/status above the Stream or its empty
+  state. Error shows a usable remedy and preserves captured input. First-run
+  empty offers Add; caught-up shows a next-time hint and Add; conflict/unknown
+  result reconciles the same operation instead of asserting success.
+- **Capture:** one input and visible required Topic / My text / Link / Photo
+  choice. Suggest a mode on input; never hide or lock the chosen mode. URL and
+  share-target text/title prefill are editable. A photo is reduced to at most
+  1600px JPEG near quality .82 by browser JS where available; server limits
+  still govern. Mic controls appear only when native SpeechRecognition is
+  supported; never make them prerequisites for capture or recall.
+- **Map:** search first. Each goal section includes title, a decorative
+  aria-hidden SVG constellation (brightness stars, faint prerequisite lines),
+  and an accessible list of concept name, status word, and due hint. Focus/pause
+  are deliberate goal actions. Archived goals stay out of active browsing.
+- **Concept:** title and status, tally marks (filled unaided, hollow helped,
+  slash missed), estimate explicitly labeled “Estimated recall now 88%” rather
+  than truth, current notes with Simpler / Standard / Deeper tabs, citations,
+  related concepts, gated question details, Practice this, and quiet archive.
+  Missing note level offers a request; pending level says “Writing a simpler
+  version…” while the standard note remains available. Source shows captured
+  input, documents, provenance, and recoverable preparation status.
 
-## Product vocabulary
+## Interaction and motion
 
-- **Quiz**: a question and answer used in deliberate retrieval practice. An
-  easier Quiz is still a Quiz, not an automatically approved remediation pack.
-- **Study note**: readable material and source context supporting the same Quiz.
-- **Source**: saved material or a topic from which study material is prepared.
-- **Concept**: the exact normalized learning concept, not an entire Source.
-- **Progress**: the learner-facing navigation label for `/app/analytics`.
+The browser controller in [`internal/web/assets/app.js`](internal/web/assets/app.js)
+may toggle recall button copy, submit Enter (Shift+Enter inserts a newline on
+non-touch), accept keys 1–6 for choices, and use Space/Enter for Next only when
+focus is not in a field. Code may preselect only private modes: pasting
+non-link text selects My text and choosing a file selects Photo, unless the
+learner has already chosen. Topic and Link send material to web research, so
+they are selected by the learner alone, never inferred from length or a URL
+shape, and a share-target prefill chooses no mode. With JavaScript disabled, a
+required unselected radio makes the learner choose.
+HTMX swaps may add/remove motion classes; browser JS owns presentation only,
+never durable learning state or offline mutation queues.
 
-Use sentence case and plain action verbs. Do not expose internal card, deck,
-workspace, ledger, or provider vocabulary as the primary product model.
-Provider/model provenance may appear in a purposeful technical disclosure.
-Never promise perfect memory, fabricated recall scores, or automatic mastery.
+All motion must be under `prefers-reduced-motion: no-preference`; reduced-motion
+has none. On a user-triggered result, surface once over 200ms with
+`cubic-bezier(.2,.7,.2,1)`, opacity 0→1, blur 6px→0, translateY 8px→0.
+Choice press scales .985 for 80ms; outgoing card fades/lifts 140ms; concept chip
+may glow once for 600ms after a correct answer. No ambient animation, loading
+pulse, confetti, swipe grading, or timed advance.
 
-## Color and type
+## Copy, access, and trust
 
-The stable stylesheet is `assets/ledger.css`, served at `/static/ledger.css`.
-The legacy `--lg-*` token prefix is an internal compatibility identifier.
+Use plain sentences in study. Provenance labels are “From your material”,
+“From the web”, and “General knowledge”; a topic word is never cited as evidence.
+No provider/money disclaimer in a question flow: spend belongs in Settings
+(this week) and failed receipts. No engineering words (job, lease, schema,
+token, micros, FSRS, model name) in learner-facing study copy. Distinguish
+uncertain checking, known failure, preparation in progress, and actually caught
+up; do not call missing work success. Preserve the typed answer after a 422 or
+network interruption. Never render untrusted material as HTML.
 
-| Role | Light | Dark |
-|---|---|---|
-| Reading ground (`--lg-paper`) | `#F4F8FA` | `#0F2430` |
-| Tidal surface (`--lg-paper-2`) | `#E3EFF3` | `#1C3948` |
-| Field (`--lg-field`) | `#FFFFFF` | `#142F3E` |
-| Petrol ink (`--lg-ink`) | `#153746` | `#E8F3F6` |
-| Secondary ink (`--lg-ink-2`) | `#466574` | `#B3CDD8` |
-| Action (`--lg-accent`) | `#256581` | `#91C5DB` |
-| Correct (`--lg-pine`) | `#28664E` | `#8FD2B1` |
-| Try again (`--lg-clay`) | `#983F49` | `#F1A8B0` |
-| Close (`--lg-ochre`) | `#805719` | `#E2C28C` |
-| Assisted / Revealed (`--lg-slate`) | `#555B8B` | `#BEC3ED` |
+Use native buttons, links, radio labels, form actions, and focus order; 44px
+minimum touch targets (larger for answer/Next). Provide one page heading, a
+skip link, a visible focus ring in both schemes and forced colors, readable
+semantic labels, and polite atomic result announcements. Respect 320px, 390px,
+and desktop; long notes and disclosures flow vertically without clipped text.
+Focus must not jump on a pending result; a completed result can receive focus.
+CSP disallows inline styles; SVG uses attributes/classes, not `style=`.
+Keyboard, touch, and no-JS forms must preserve equivalent core behavior.
 
-Dark mode follows `prefers-color-scheme` and is deep blue, not warm-black or
-acid-neon. Primary, secondary, semantic, and control text must meet WCAG AA in
-both modes. Controls have a stronger boundary token than decorative dividers.
-State must be conveyed in words, not color alone. Wrong MCQ choices retain
-readable contrast; do not lower text opacity to simulate dimming.
+## Implementation and validation
 
-**Literata**, variable normal 200–900, is for actual Quiz questions, answer
-choices, explanations, captured passages, and Study note reading. Body reading
-uses 18px with approximately 1.85 line-height; questions use a responsive
-23–29px scale and 1.55 line-height. Keep reading below about 65 characters per
-line. Preserve paragraph breaks and wrap long tokens without clipping them.
+[`internal/web/templates/`](internal/web/templates/) owns escaped markup for
+Stream, Capture, Map, Concept, Source, History and Settings;
+[`internal/web/assets/app.css`](internal/web/assets/app.css) owns both token
+sets, type and reduced-motion behavior; `app.js` adds progressive enhancements.
+The manifest/icons/fonts live in the same embedded assets tree. Server routes,
+CSRF, private caching, and answer-exposure gates are not client-only effects.
 
-**Manrope**, variable normal 200–800, is for headings, controls, labels, and
-supporting UI. Page headings use a responsive 28–40px scale; the entry headline
-may reach 48px. Body UI is 16px; support is 13–15px. Labels are readable sentence
-case, never tracked-out uppercase. Counts use tabular numerals only where
-alignment helps, not a separate monospace visual system.
+Inspect actual pages at 320px, 390px and desktop in both schemes, with actual
+choice/recall answers, self-check and correction, long notes, empty/preparing/
+error states, keyboard focus, reduced motion, and JS off. Exercise a real
+browser on an isolated exe.dev QA VM and inspect screens rather than equating
+source assertions with layout proof. Run `bun ~/.local/bin/design-check
+internal/web/templates` if that CLI exists; otherwise review template hierarchy,
+copy, accessibility, and link targets manually and record the limitation. QA is
+not a substitute for operator acceptance or release authorization.
 
-Both variable Latin WOFF2 fonts are self-hosted. Fallbacks include Charter,
-Iowan Old Style, Georgia, Segoe UI, and platform sans-serif. There are no remote
-font requests or runtime font dependencies.
-
-- `/static/fonts/literata-latin-variable.woff2`
-- `/static/fonts/manrope-latin-variable.woff2`
-- `/static/fonts/OFL.txt` carries the font copyright notices and complete license.
-- Source files and their shared SIL Open Font License are in
-  `crates/memory-engine-api-render/assets/fonts/`.
-- The renderer exports `LITERATA_WOFF2`, `MANROPE_WOFF2`, and `FONT_LICENSE`
-  for static serving.
-
-The original Scry monogram uses light lettering on a solid petrol ground,
-with its content inside the maskable safe area. Its SVG source and 512px,
-192px, 180px Apple touch, and 32px favicon PNGs are in
-`crates/memory-engine-api-render/assets/icons/`. Raster bytes are exported as
-`PWA_ICON_512`, `PWA_ICON_192`, `APPLE_TOUCH_ICON`, and `FAVICON`; serving paths
-and the web manifest stay owned by the application boundary.
-
-## Layout, access, and motion
-
-Standing pages use a maximum 48rem column; Quiz and Study note use 44rem.
-Mobile gutters are 16–20px. All flex/grid children can shrink. Source sections
-are block-flow content, permission controls take a full line, labels wrap, and
-nested disclosures stay within the available width. The Library must reflow
-at **320px and 390px**, including long Source titles, open permission/removal
-controls, MCQ drafts, and generation failures. `overflow-x: hidden` or `clip`
-on the viewport is not a layout fix.
-
-Every interactive target is at least 44px high, including compact controls,
-navigation, retries, account actions, and disclosure summaries. Answer choices
-are at least 64px high and the deliberate Continue control is at least 56px.
-Use native buttons, forms, links, labels, and details/summary semantics. Keep
-one page-level heading and a visible keyboard focus ring. The skip link targets
-`#me-main`; heading and verdict focus can move programmatically without
-requiring a mouse. Announcements are polite and atomic where the changed
-result needs to be read together.
-
-Review is the default destination and has no standing-view dock, competing
-analytics, or draft triage. The question takes the available viewport and
-answer controls sit within thumb reach. Add and More remain available in the
-header. Secondary pages use a quiet Review/Add dock.
-Disclosures expand in the document instead of a clipped floating action grid.
-The account menu is bounded to the viewport.
-
-There is no ambient animation, loading pulse, celebratory drawing, or timed
-advance. Pending feedback is immediate and still. Small user-triggered color
-transitions may last 120ms. `prefers-reduced-motion` removes animation and
-transitions. Forced-color mode retains selected and accepted-answer outlines.
-
-## Surface contract
-
-| Surface | Primary job and required next action |
-|---|---|
-| Signed out | Explain Source → Quiz / Study note → practice; request a magic link with an explicit invite/waitlist explanation. |
-| Request received | Explain the invited-email or waitlist outcome without disclosing account eligibility; use the newest link or return to start. |
-| Recovery | Render the real error safely; provide the correct retry/link action rather than a dead end. Never print a secret. |
-| Home, due | Open the actual next question; preserve an existing graded result until Next. |
-| Home, new | Show the capture field directly. No Start review or Create navigation gate. |
-| Home, caught up | State nothing is due and let the learner add more or leave. |
-| Create | One field accepts a word, phrase, or essay; Learn this saves and generates. Model use is explicit. |
-| Capture waiting | Follow one durable job; keep failed input recoverable and show an authorized retry. Only successful completion navigates to review. |
-| Library | Secondary Source management, published inventory, permission/removal, and generation activity. No approval inbox. |
-| Quiz management | Optional edits/removal preserve identity, attempts, and schedules; provenance remains available. |
-| Quiz | Actual question and one-tap choices or a labelled response field. “I don’t know yet” saves assisted practice in one intent. |
-| Graded Quiz | Hold the canonical verdict, accepted answer, concise feedback, and Next question. Details stays collapsed. |
-| Study note | A dedicated reading surface for `current.reference_text`, escaped and preserving line breaks, returning to the same Quiz. State absence honestly. |
-| Progress | Filterable, bounded Concept evidence list with real recall history and pagination. Distinguish untried from struggling; no invented score. |
-| Account / reminders | Browser sign-out scope is explicit; service sessions remain separate. Reminder actions stay native protected forms behind a Home disclosure. |
-
-## Learning-loop invariants
-
-- **One tap answers an MCQ.** The exact choice value submits; no separate confirm
-  and no letter-guessing interface.
-- Free response is type, then submit. Browser timing starts from actual
-  presentation; a missing time stays missing rather than becoming a fake fast
-  recall measurement.
-- A revealed answer is assisted practice for that occurrence. Submitting after
-  reveal must produce `Revealed` with the conservative scheduling result; do
-  not fabricate exposure for historical attempts.
-- The four visible verdict literals remain **Correct**, **Close**, **Try again**,
-  and **Revealed**. The graded page holds indefinitely. **No auto-advance.**
-- Only deliberate Continue advances the review. Quiz-quality feedback saves in
-  place, with its stable idempotency and superseding identifiers preserved.
-- The verdict and accepted answer stay visible. Details contains the original
-  choice recap, schedule horizon, Concept progress, recall history, the Study
-  note entry, and Quiz-quality controls. No dossier is shown before grading.
-- More offers Study note, Skip, Snooze quiz, exact Concept snooze, manual Bridge,
-  Edit, Create, and confirmed Delete. Each touch-visible description tells the
-  truth about scope: Skip is later in this session; Snooze is until tomorrow;
-  Concept snooze is the exact Concept only; Source removal affects every Quiz
-  generated from that Source.
-- Bridge generates genuinely easier quizzes through the same quality gates and
-  automatic publication path. No learner admission ceremony is required.
-- Study notes reuse durable source-backed material. Never invent quotes or
-  render untrusted material as HTML. `render_reference_page(account, view)`
-  consumes resolved data, not a loader. Its return form is POST `/app/resume`
-  with `csrfToken` and the same `reviewUnitId`; it does not call Continue.
-  Preserve model-expanded/source-informed provenance labels and critique text
-  supplied in the note. A captured topic seed is not evidence for generated
-  claims. Keep span labels visible and use neutral Source context headings,
-  never label all generated input as verified evidence.
-
-## Integration and verification
-
-Preserve `.ae-view`, `footer.ae-bar`, `.me-due`, `.me-verdict`, `form.me-next`,
-answer-form actions, CSRF fields, response-time fields, and idempotency fields.
-Fresh answer/result views include an empty `[data-review-status]` live region.
-`.me-verdict` is programmatically focusable. Generation retains `#me-jobs`,
-`.me-job`, `data-job-id`, `data-status`, and the title/meta/retry hooks.
-`render_capture_waiting_page(account, job)` adds one
-`[data-generation-job-id][data-terminal-url="/app/library"]` container and a
-`[data-generation-status]` live region. Only a terminal event for that exact
-job may navigate automatically. Library has editable draft/source forms and
-must not receive this terminal-navigation hook. The waiting renderer does not
-load account state or invent a due count when the job provides none.
-
-Home and Quiz render from an already resolved study view; they do not load the
-Source catalog. A live generation notice may consult jobs to avoid stale
-status. Do not introduce loaders for display-only concerns.
-
-Behavior/security/accessibility tests protect the form and study invariants,
-not incidental wording, exact CSS token strings, or the old aesthetic lock.
-Visual acceptance is the actual PWA at 320px, 390px, and desktop in both color
-schemes, including open disclosures, long content, focus, pending/error
-feedback, grading, and same-Quiz Study note return. Check with JavaScript both
-available and unavailable; normal forms must remain usable. Rendering a
-preview or passing a source-string assertion is not proof of mobile reflow.
+Document structure (direction, tokens, typography/license, surfaces/states,
+interaction, accessibility, implementation and verification) was reviewed
+manually on 2026-09-23; the `design-md` CLI was unavailable. This does not
+stand in for the browser or template design check above.

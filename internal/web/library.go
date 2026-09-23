@@ -2,6 +2,8 @@ package web
 
 import (
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,64 +12,72 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
+// add prefills shared material but never chooses a mode: Topic and Link send
+// material to web research, so only the learner may select them.
 func (s *server) add(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	text := query.Get("url")
+	if text == "" {
+		text = query.Get("text")
+	}
+	if text == "" {
+		text = query.Get("title")
+	}
+	if len(text) > store.MaxSourceBytes {
+		text = ""
+	}
 	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken(), "max_bytes": 32768})
+		jsonResponse(w, http.StatusOK, map[string]any{"csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken(), "max_bytes": store.MaxSourceBytes, "text": text, "mode": ""})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "add", Title: "Add something", Active: "add"})
+	s.render(w, r, http.StatusOK, page{View: "add", Title: "Add", Active: "add", Text: text})
 }
 
 func (s *server) capture(w http.ResponseWriter, r *http.Request) {
-	text, op := r.PostForm.Get("text"), r.PostForm.Get("operation_id")
-	p := page{View: "add", Title: "Add something", Active: "add", Text: text, Operation: op}
-	if len(text) > 32768 || !utf8.ValidString(text) || strings.TrimSpace(text) == "" || op == "" || len(op) > 128 {
-		p.Error = "Add a word, goal, or passage of at most 32 KiB. Split longer material into self-contained sections. Nothing has been truncated or saved."
-		if wantsJSON(r) {
-			jsonResponse(w, http.StatusUnprocessableEntity, map[string]any{"error": p.Error, "operation_id": op})
-			return
-		}
-		s.render(w, r, http.StatusUnprocessableEntity, p)
+	text, mode, op := r.PostForm.Get("text"), r.PostForm.Get("mode"), r.PostForm.Get("operation_id")
+	p := page{View: "add", Title: "Add", Active: "add", Text: text, CaptureMode: mode, Operation: op}
+	if op == "" || len(op) > 128 || !utf8.ValidString(text) || len(text) > store.MaxSourceBytes || (mode != "topic" && mode != "text" && mode != "link" && mode != "photo") || (mode != "photo" && strings.TrimSpace(text) == "") {
+		s.fail(w, r, fmt.Errorf("%w: choose a kind and add up to 32 KiB of text, a link, or a photo", store.ErrInvalid), p)
 		return
 	}
-	source, err := s.store.Capture(r.Context(), text, op)
+	in := store.CaptureInput{Text: text, Mode: mode}
+	var file multipart.File
+	var header *multipart.FileHeader
+	var err error
+	if r.MultipartForm != nil {
+		file, header, err = r.FormFile("photo")
+	}
+	if err == nil && file != nil {
+		defer file.Close()
+		if mode != "photo" || header.Size > store.MaxImageBytes {
+			s.fail(w, r, fmt.Errorf("%w: choose Photo and an image no larger than 4 MiB", store.ErrInvalid), p)
+			return
+		}
+		in.Image, err = io.ReadAll(io.LimitReader(file, store.MaxImageBytes+1))
+		if err != nil || len(in.Image) == 0 || len(in.Image) > store.MaxImageBytes {
+			s.fail(w, r, fmt.Errorf("%w: choose an image no larger than 4 MiB", store.ErrInvalid), p)
+			return
+		}
+		// Detect the bytes, not the upload's untrusted Content-Type header.
+		in.ImageMIME = http.DetectContentType(in.Image)
+		if in.ImageMIME != "image/jpeg" && in.ImageMIME != "image/png" && in.ImageMIME != "image/webp" {
+			s.fail(w, r, fmt.Errorf("%w: use JPEG, PNG, or WebP", store.ErrInvalid), p)
+			return
+		}
+	} else if err != nil && err != http.ErrMissingFile {
+		s.fail(w, r, fmt.Errorf("%w: photo could not be read", store.ErrInvalid), p)
+		return
+	}
+	if mode == "photo" && len(in.Image) == 0 {
+		s.fail(w, r, fmt.Errorf("%w: add a photo", store.ErrInvalid), p)
+		return
+	}
+	source, err := s.store.Capture(r.Context(), in, op)
 	if err != nil {
 		s.fail(w, r, err, p)
 		return
 	}
 	s.finish(w, r, "/sources/"+source.ID, source)
-}
-
-func (s *server) library(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(query) > 1024 {
-		s.fail(w, r, store.ErrInvalid, page{View: "library", Title: "Library", Active: "library", Query: query})
-		return
-	}
-	sources, err := s.store.Sources(r.Context(), query)
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	current, err := s.coldReview(r)
-	if err != nil {
-		s.fail(w, r, err, page{})
-		return
-	}
-	for i := range sources {
-		// Search can find the current material, but its snippet must not reveal
-		// the answer. Opening it requires explicit assistance first.
-		if current != nil && sources[i].ID == current.Quiz.SourceID {
-			sources[i].Text = "Material in your current review"
-			sources[i].Quizzes = nil
-			sources[i].Job = nil
-		}
-	}
-	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"sources": sources, "query": query})
-		return
-	}
-	s.render(w, r, http.StatusOK, page{View: "library", Title: "Library", Active: "library", Query: query, Sources: sources})
 }
 
 func (s *server) source(w http.ResponseWriter, r *http.Request) {
@@ -89,12 +99,41 @@ func (s *server) source(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"source": item, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})
 		return
 	}
-	p := page{View: "source", Title: "Your material", Active: "library", Source: item, JobPending: item.Job != nil && jobPending(item.Job.Status), PollRemaining: 20}
+	p := page{View: "source", Title: "Your material", Active: "map", Source: item, JobPending: item.Job != nil && jobPending(item.Job.Status), PollRemaining: 20}
 	if r.URL.Query().Get("status") == "1" && isHTMX(r) {
 		s.renderJob(w, r, p)
 		return
 	}
 	s.render(w, r, http.StatusOK, p)
+}
+
+func (s *server) sourceImage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	current, err := s.coldReview(r)
+	if err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	if current != nil && current.Quiz.SourceID == id {
+		s.gate(w, r, current)
+		return
+	}
+	image, err := s.store.CaptureImage(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	if image == nil {
+		s.fail(w, r, store.ErrNotFound, page{})
+		return
+	}
+	if image.MIME != "image/jpeg" && image.MIME != "image/png" && image.MIME != "image/webp" {
+		s.fail(w, r, store.ErrInvalid, page{})
+		return
+	}
+	w.Header().Set("Content-Type", image.MIME)
+	w.Header().Set("Content-Disposition", "inline")
+	w.Write(image.Bytes)
 }
 
 func (s *server) retrySource(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +182,7 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"quiz": q, "csrf": r.Context().Value(csrfKey{})})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "library", Quiz: q})
+	s.render(w, r, http.StatusOK, page{View: "edit", Title: "Edit question", Active: "map", Quiz: q, FixOpen: r.URL.Query().Get("fix") == "1"})
 }
 
 func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +217,7 @@ func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
 		original.Kind, original.Prompt, original.Answer = q.Kind, q.Prompt, q.Answer
 		original.Explanation, original.Evidence = q.Explanation, q.Evidence
 		original.Choices, original.Variants, original.Version = q.Choices, q.Variants, version
-		s.fail(w, r, err, page{View: "edit", Title: "Edit question", Active: "library", Quiz: original})
+		s.fail(w, r, err, page{View: "edit", Title: "Edit question", Active: "map", Quiz: original})
 		return
 	}
 	s.finish(w, r, "/sources/"+updated.SourceID, updated)

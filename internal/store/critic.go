@@ -11,7 +11,10 @@ import (
 	"github.com/misty-step/scry/internal/learning"
 )
 
-const MaxCriticCandidates = 12
+// MaxCriticCandidates bounds one critic batch. It equals the generation bound
+// so an explicit complete set or exact text (up to 60 units) is judged whole
+// rather than silently truncated.
+const MaxCriticCandidates = MaxGeneratedQuizzes
 const criticJobLease = 2 * time.Minute
 
 // SaveCandidates is the durable boundary between generation and criticism.
@@ -22,7 +25,7 @@ func (s *Store) SaveCandidates(ctx context.Context, jobID, token string, result 
 		return ErrInvalid
 	}
 	if configured && len(result.Quizzes) > MaxCriticCandidates {
-		return fmt.Errorf("%w: critic batch exceeds twelve candidates", ErrInvalid)
+		return fmt.Errorf("%w: critic batch exceeds %d candidates", ErrInvalid, MaxCriticCandidates)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -34,7 +37,7 @@ func (s *Store) SaveCandidates(ctx context.Context, jobID, token string, result 
 	if err != nil {
 		return err
 	}
-	if !a.live || a.job.Foundation {
+	if !a.live || !quizKind(a.job.Kind) {
 		return ErrConflict
 	}
 	batch := CandidateBatch{Result: result, CostMicros: cost}
@@ -44,7 +47,12 @@ func (s *Store) SaveCandidates(ctx context.Context, jobID, token string, result 
 		}
 		return tx.Commit()
 	}
-	if err = validateGeneration(result, Source{Text: a.job.SourceText, Kind: a.job.SourceKind}); err != nil {
+	if err = validResultAttribution(result); err != nil {
+		return err
+	}
+	checked := result
+	checked.Quizzes = append([]GeneratedQuiz(nil), result.Quizzes...)
+	if err = validateQuizBatch(ctx, tx, a.job, &checked); err != nil {
 		return err
 	}
 	encoded, err := marshal(batch)
@@ -108,7 +116,7 @@ func readContent(ctx context.Context, tx *sql.Tx, id string) (ContentAssessment,
 }
 
 func latestContent(ctx context.Context, tx *sql.Tx, jobID string, index int) (ContentAssessment, error) {
-	return scanContent(tx.QueryRowContext(ctx, `SELECT `+contentColumns+` FROM content_assessments WHERE job_id=? AND candidate_index=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, jobID, index))
+	return scanContent(tx.QueryRowContext(ctx, `SELECT `+contentColumns+` FROM content_assessments WHERE job_id=? AND candidate_index=? AND purpose='critic' ORDER BY created_at DESC,rowid DESC LIMIT 1`, jobID, index))
 }
 
 // PrepareContentAssessments reuses judged results. A retry may create a NEW row
@@ -235,6 +243,10 @@ func (s *Store) BeginContentTransmission(ctx context.Context, id, jobToken, mode
 	token := newID()
 	_, err = tx.ExecContext(ctx, `UPDATE content_assessments SET request_model=?,request_json=?,transmissions=1,reserved_micros=?,lease_token=?,lease_until=? WHERE id=? AND transmissions=0`, model, string(request), spending.ReservationMicros, token, now+semanticLease.Milliseconds(), id)
 	if err != nil {
+		return "", false, err
+	}
+	// Each send keeps the owning job alive for the rest of a long battery.
+	if _, err = tx.ExecContext(ctx, `UPDATE jobs SET lease_until=max(lease_until,?) WHERE id=?`, now+criticJobLease.Milliseconds(), a.JobID); err != nil {
 		return "", false, err
 	}
 	return token, true, tx.Commit()

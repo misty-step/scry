@@ -166,6 +166,18 @@ func (s *Store) initialize(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, schemaV4); err != nil {
 			return fmt.Errorf("migration 4: %w", err)
 		}
+		version = 4
+	}
+	if version == 4 {
+		if _, err = tx.ExecContext(ctx, schemaV5); err != nil {
+			return fmt.Errorf("migration 5 DDL: %w", err)
+		}
+		if _, err = tx.ExecContext(ctx, migrationV4ToV5); err != nil {
+			return fmt.Errorf("migration 5 data: %w", err)
+		}
+		if err = rebuildSearchIndex(ctx, tx); err != nil {
+			return fmt.Errorf("migration 5 search index: %w", err)
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return err

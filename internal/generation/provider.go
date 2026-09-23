@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/misty-step/scry/internal/store"
 )
 
 type completionEnvelope struct {
@@ -40,58 +38,6 @@ type completion struct {
 	cost    *int64
 }
 
-func (w *Worker) generate(ctx context.Context, job *store.Job) (store.GenerationResult, *int64, *generationFailure) {
-	if job.FoundationTarget != nil {
-		return w.generateFoundation(ctx, job)
-	}
-	zero := int64(0)
-	plan, err := planTask(job.SourceText, job.SourceKind)
-	if err != nil {
-		return store.GenerationResult{}, &zero, &generationFailure{message: err.Error()}
-	}
-	repair := job.Attempts == 2 && strings.HasPrefix(job.Error, repairMarker)
-	request, err := makeRequest(w.cfg.Model, job, plan, repair, w.openRouter)
-	if err != nil {
-		return store.GenerationResult{}, &zero, &generationFailure{message: "Generation request exceeds its safe size limit. Split the saved material into smaller captures, then retry."}
-	}
-	response, failure := w.call(ctx, request)
-	if failure != nil {
-		return store.GenerationResult{}, response.cost, failure
-	}
-	result, issues, parseErr := validateOutput(response.content, job, plan)
-	if parseErr != nil {
-		// Syntax errors, truncation, refusals, and adversarial envelopes do not earn
-		// a second paid request. In particular, never recover fenced substrings.
-		return store.GenerationResult{}, response.cost, &generationFailure{message: "The provider returned malformed or unsupported quiz JSON. No quizzes were published; usage was retained. Retry explicitly after checking the model's structured-output support."}
-	}
-	if len(result.Quizzes) == 0 {
-		if job.Attempts == 1 && len(issues) > 0 && len(issues) <= 4 && response.cost != nil {
-			// One earned quality repair is a NEW durable attempt with its own spend
-			// reservation. Store preserves the safe code-only error on that claim.
-			return store.GenerationResult{}, response.cost, &generationFailure{
-				message: repairMarker + strings.Join(issues, ", ") + ". No usable quizzes passed; one separately reserved repair may run.",
-				retry:   true,
-			}
-		}
-		message := "No usable quizzes passed the source, task-coverage, or answerability checks. The source and paid usage are saved. Clarify the learning task or provide an authoritative excerpt before retrying."
-		if len(issues) > 0 {
-			message += " Checks: " + strings.Join(issues[:min(4, len(issues))], ", ") + "."
-		}
-		return store.GenerationResult{}, response.cost, &generationFailure{message: message}
-	}
-	result.Model = response.model
-	if result.Model == "" {
-		result.Model = w.cfg.Model
-	} else if result.Model != w.cfg.Model {
-		result.Note += " Requested model: " + w.cfg.Model + "."
-	}
-	result.PromptVersion = promptVersion
-	if repair {
-		result.PromptVersion += "-repair1"
-	}
-	return result, response.cost, nil
-}
-
 func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generationFailure) {
 	response := completion{}
 	requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
@@ -100,12 +46,12 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 	if err != nil {
 		zero := int64(0)
 		response.cost = &zero
-		return response, &generationFailure{message: "Generation request configuration is invalid. Update the endpoint and retry."}
+		return response, &generationFailure{message: "Preparation could not start. Check the connection settings and retry."}
 	}
 	if requestCtx.Err() != nil {
 		zero := int64(0)
 		response.cost = &zero
-		return response, &generationFailure{message: "Generation stopped before transmission; the source is saved and can be retried."}
+		return response, &generationFailure{message: "Preparation stopped before anything was sent. Your material is saved and can be retried."}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -122,12 +68,12 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 		if res != nil && res.Body != nil {
 			res.Body.Close()
 		}
-		return response, &generationFailure{message: "The generation request failed or timed out after transmission may have begun. Spend is unknown; no automatic paid retry was scheduled. Check the provider receipt before retrying this saved source."}
+		return response, &generationFailure{message: "The request failed or timed out after it may have been sent. Cost is unknown, so it will not retry automatically. Check your receipt before retrying."}
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil || len(body) > maxResponseBytes {
-		return response, &generationFailure{message: "The provider response was interrupted or exceeded the 1 MiB limit. Spend is unknown; no quizzes were published. Check the provider receipt before retrying."}
+		return response, &generationFailure{message: "The response was interrupted or too large to read. Cost is unknown and nothing was published. Check your receipt before retrying."}
 	}
 	var envelope completionEnvelope
 	jsonValid := utf8.Valid(body) && checkJSON(body, 24) == nil
@@ -146,21 +92,21 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 		readable = json.Unmarshal(body, &envelope) == nil
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		message := "The provider rejected generation. Check provider configuration and retry this saved source."
+		message := "Preparation was rejected. Check your connection settings before retrying."
 		switch res.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
-			message = "The provider rejected authentication or model access. Update the private API key or model permissions, then retry this saved source."
+			message = "Access was denied. Check your private key and account access before retrying."
 		case http.StatusPaymentRequired:
-			message = "The provider has insufficient credit. Check provider billing and the recorded attempt before retrying this saved source."
+			message = "The account has insufficient credit. Check billing and your receipt before retrying."
 		case http.StatusTooManyRequests:
-			message = "The provider rate-limited generation. The source and reported usage are saved; retry after the provider limit clears."
+			message = "Too many requests were sent at once. Your material and reported cost are saved; retry later."
 		case http.StatusBadRequest, http.StatusUnprocessableEntity:
-			message = "The provider does not accept this model or structured-output request. Choose a compatible model and chat-completions endpoint, then retry."
+			message = "The preparation service did not accept the request. Check your connection settings before retrying."
 		default:
 			if res.StatusCode >= 300 && res.StatusCode < 400 {
-				message = "The provider attempted a redirect, which was not followed to protect source data and credentials. Configure the final HTTPS chat-completions endpoint and retry."
+				message = "The preparation service tried to change destinations. No material was sent to the new address. Check your connection settings."
 			} else if res.StatusCode >= 500 {
-				message = "The provider is temporarily unavailable. The source and reported usage are saved; retry when the provider recovers."
+				message = "The preparation service is temporarily unavailable. Your material and reported cost are saved; retry later."
 			}
 		}
 		// A lost/unknown-cost response is never silently billed again. An
@@ -169,20 +115,20 @@ func (w *Worker) call(ctx context.Context, payload []byte) (completion, *generat
 		return response, &generationFailure{message: message, retry: retry}
 	}
 	if !readable {
-		return response, &generationFailure{message: "The provider returned an unreadable response. Reported usage was retained; any missing price remains unknown. No quizzes were published. Check provider health and the receipt before retrying."}
+		return response, &generationFailure{message: "The response could not be read. Reported cost was saved; any missing cost remains unknown. Nothing was published. Check your receipt before retrying."}
 	}
 	if nonNull(envelope.Error) || len(envelope.Choices) != 1 {
-		return response, &generationFailure{message: "The provider returned an error or an ambiguous completion envelope. Usage was retained; no quizzes were published. Check provider compatibility before retrying."}
+		return response, &generationFailure{message: "The response was incomplete or unclear. Reported cost was saved and nothing was published. Check your receipt before retrying."}
 	}
 	choice := envelope.Choices[0]
 	if nonNull(choice.Error) || choice.FinishReason != "stop" || (choice.Message.Role != "" && choice.Message.Role != "assistant") || nonEmpty(choice.Message.Refusal) || nonEmpty(choice.Message.ToolCalls) {
-		return response, &generationFailure{message: "The provider refused, truncated, or did not finish an ordinary text completion. Usage was retained; no quizzes were published. Clarify or split the source before retrying."}
+		return response, &generationFailure{message: "The response was refused or cut short. Reported cost was saved and nothing was published. Clarify or split your material before retrying."}
 	}
 	if json.Unmarshal(choice.Message.Content, &response.content) != nil || response.content == "" || len(response.content) > maxContentBytes || !utf8.ValidString(response.content) {
-		return response, &generationFailure{message: "The provider returned missing, oversized, or unsupported completion content. Usage was retained; no quizzes were published. Check structured-output support or split the source before retrying."}
+		return response, &generationFailure{message: "The response was missing, too large, or could not be read. Reported cost was saved and nothing was published. Split your material before retrying."}
 	}
 	if len(envelope.Model) > 200 || strings.ContainsAny(envelope.Model, "\r\n\x00") {
-		return response, &generationFailure{message: "The provider returned invalid model provenance. Usage was retained; no quizzes were published."}
+		return response, &generationFailure{message: "The response was missing its source details. Reported cost was saved and nothing was published."}
 	}
 	response.model = envelope.Model
 	return response, nil

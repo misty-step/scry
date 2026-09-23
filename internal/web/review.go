@@ -14,8 +14,10 @@ import (
 func privateReview(state store.ReviewState) store.ReviewState {
 	if state.Current != nil {
 		copy := *state.Current
-		if !copy.Graded {
+		if !copy.Graded && !copy.SelfCheck {
 			copy.Quiz = withoutAnswer(copy.Quiz)
+			state.Preparing = append([]store.Preparing(nil), state.Preparing...)
+			hideCurrentMaterial(&copy, state.Preparing)
 		}
 		state.Current = &copy
 	}
@@ -35,7 +37,41 @@ func withoutAnswer(q store.Quiz) store.Quiz {
 	q.Evidence = ""
 	q.Variants = nil
 	q.Rubric = nil
+	q.ChoiceConcepts = nil
+	q.Citations = nil
 	return q
+}
+
+// currentMaterial stands in for titles and text drawn from the cold question's
+// own capture, which may contain its answer, until assistance is recorded.
+const currentMaterial = "Material in your current question"
+
+func hideCurrentMaterial(cold *store.Presentation, receipts []store.Preparing) {
+	for i := range receipts {
+		if receipts[i].SourceID == cold.Quiz.SourceID {
+			receipts[i].Title = currentMaterial
+		}
+	}
+}
+
+// linkedConcepts names every concept the cold question's answer could be read
+// from: the one it assesses and any it contrasts with.
+func (s *server) linkedConcepts(r *http.Request, cold *store.Presentation) (map[string]bool, error) {
+	ids, err := s.store.QuizConcepts(r.Context(), cold.Quiz.ID)
+	if err != nil {
+		return nil, err
+	}
+	linked := map[string]bool{}
+	for _, id := range ids {
+		linked[id] = true
+	}
+	if cold.Quiz.ConceptID != "" {
+		linked[cold.Quiz.ConceptID] = true
+	}
+	if cold.Concept != nil {
+		linked[cold.Concept.ID] = true
+	}
+	return linked, nil
 }
 
 func (s *server) review(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +130,16 @@ func (s *server) reveal(w http.ResponseWriter, r *http.Request) {
 func (s *server) submit(w http.ResponseWriter, r *http.Request, reveal bool) {
 	id, op := r.PostForm.Get("presentation_id"), r.PostForm.Get("operation_id")
 	answer := r.PostForm.Get("answer")
+	if !reveal && strings.TrimSpace(answer) == "" {
+		current, err := s.store.Current(r.Context())
+		if err != nil {
+			s.reviewFailure(w, r, err, op, answer)
+			return
+		}
+		if current != nil && current.ID == id && current.Quiz.Kind == "recall" {
+			reveal = true
+		}
+	}
 	if reveal {
 		answer = ""
 	}
@@ -139,8 +185,9 @@ func (s *server) reviewFailure(w http.ResponseWriter, r *http.Request, err error
 	}
 	state = privateReview(state)
 	// Preserve the entered text on a definite rejection; never attach it to a
-	// different occurrence after a competing tab moved the session forward.
-	if state.Current != nil && state.Current.ID == r.PostForm.Get("presentation_id") && !state.Current.Graded {
+	// different occurrence after a competing tab moved the session forward,
+	// and never blank a self-check's saved answer.
+	if answer != "" && state.Current != nil && state.Current.ID == r.PostForm.Get("presentation_id") && !state.Current.Graded && !state.Current.SelfCheck {
 		state.Current.Answer = answer
 		state.Current.Draft = answer
 	}
@@ -164,12 +211,55 @@ func (s *server) next(w http.ResponseWriter, r *http.Request) {
 	s.reviewResponse(w, r, state, "")
 }
 
+func (s *server) selfGrade(w http.ResponseWriter, r *http.Request) {
+	s.grade(w, r, false)
+}
+func (s *server) overrideGrade(w http.ResponseWriter, r *http.Request) {
+	s.grade(w, r, true)
+}
+func (s *server) grade(w http.ResponseWriter, r *http.Request, override bool) {
+	id, op, correct := r.PostForm.Get("presentation_id"), r.PostForm.Get("operation_id"), r.PostForm.Get("correct")
+	if id == "" || op == "" || len(op) > 128 || (correct != "yes" && correct != "no") {
+		s.reviewFailure(w, r, store.ErrInvalid, op, "")
+		return
+	}
+	var err error
+	if override {
+		_, err = s.store.OverrideGrade(r.Context(), id, op, correct == "yes")
+	} else {
+		_, err = s.store.SelfGrade(r.Context(), id, op, correct == "yes")
+	}
+	if err != nil {
+		s.reviewFailure(w, r, err, op, "")
+		return
+	}
+	state, err := s.store.Review(r.Context())
+	if err != nil {
+		s.fail(w, r, err, page{Operation: op})
+		return
+	}
+	s.reviewResponse(w, r, state, "")
+}
+func (s *server) intro(w http.ResponseWriter, r *http.Request) {
+	id, op, known := r.PostForm.Get("concept_id"), r.PostForm.Get("operation_id"), r.PostForm.Get("known")
+	if id == "" || op == "" || len(op) > 128 || (known != "yes" && known != "no") {
+		s.fail(w, r, store.ErrInvalid, page{})
+		return
+	}
+	state, err := s.store.AcknowledgeIntro(r.Context(), id, op, known == "yes")
+	if err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	s.reviewResponse(w, r, state, "")
+}
+
 func safeReturn(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.IsAbs() || u.Host != "" || u.RawQuery != "" || u.Fragment != "" || strings.Contains(raw, "\\") {
 		return ""
 	}
-	if raw == "/history" || raw == "/library" || strings.HasPrefix(raw, "/sources/") || strings.HasPrefix(raw, "/quizzes/") || strings.HasPrefix(raw, "/reviews/") {
+	if raw == "/history" || raw == "/map" || strings.HasPrefix(raw, "/concepts/") || strings.HasPrefix(raw, "/sources/") || strings.HasPrefix(raw, "/quizzes/") || strings.HasPrefix(raw, "/reviews/") {
 		return raw
 	}
 	return ""
@@ -180,7 +270,7 @@ func (s *server) coldReview(r *http.Request) (*store.Presentation, error) {
 	if err != nil {
 		return nil, err
 	}
-	if current != nil && !current.Graded {
+	if current != nil && !current.Graded && !current.SelfCheck {
 		return current, nil
 	}
 	return nil, nil
@@ -194,5 +284,5 @@ func (s *server) gate(w http.ResponseWriter, r *http.Request, current *store.Pre
 		})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "gate", Title: "Inspect this material", Active: "library", Gate: current, ReturnTo: r.URL.Path})
+	s.render(w, r, http.StatusOK, page{View: "gate", Title: "Look it up", Active: "map", Gate: current, ReturnTo: r.URL.Path})
 }

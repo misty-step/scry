@@ -1,17 +1,15 @@
-# Scry Rewrite Specification
+# Scry concept-centered specification
 
-Status: implemented private Go/SQLite/HTMX application; initial phone flow and
-daily recovery policy approved by the operator on 2026-09-09. The active app is
-at `https://scry.study`, with append-only R2 recovery through `scry-go-backups`.
-The committed source-bound Go release and canonical-domain cutover are active.
-Alternate-host reads redirect; mutations are rejected rather than replayed.
-The old production/staging Workers remain paused with no cron triggers and
-final verified recovery copies. Historical data is preserved, not imported or
-deleted. [Criterion-level evidence](docs/qa/personal-go-cutover-20260910.json)
-records the cutover, corrected browser paths, and open S04.2/S09.2 evidence.
+Status: v5 direction authorized on 2026-09-23 by the operator: “Execute this
+reimagining in full” (MIS-162). This is an implementation contract, not a
+production activation receipt. Live schema migration needs separate release-time
+approval. The current deployed state and compatible artifacts remain owned by
+[the runbook](docs/runbook.md); previously approved phone-flow and recovery proof
+are not v5 acceptance.
 
-[Product direction](VISION.md) is upstream. Historical extraction strategy
-remains in Git and [the Rust migration record](docs/rust-migration.md).
+[VISION](VISION.md) owns intent; [USER_STORIES](USER_STORIES.md) owns the learner
+stories; [Direction A](DESIGN.md) owns visual decisions; the earlier Rust
+extraction strategy remains historical in [its migration record](docs/rust-migration.md).
 
 ## Authority and open decisions
 
@@ -21,27 +19,21 @@ accepted direction: smooth, simple, aesthetically intentional, and enhanced by
 AI content generation. Full execution was authorized. The initial real-phone
 flow was subsequently approved, followed by the daily recovery policy below.
 
-**Latest foundations assessment (2026-09-12):** the operator tried the experience
-and rejected it as bad, awkward, and clunky; this is not merely unreviewed
-usability. They called for a product-design reset before regrouping and further
-implementation. [Concept-centered study](docs/design/concept-centered-study.md)
-captures operator direction, assistant-only proposals, unresolved choices, and a
-proposed design-review journey—not accepted behavior or build authorization.
-Earlier phone approval applies only to the earlier flow. MIS-59 owns this pause;
-historical receipts, stable criteria, and existing safeguards remain unchanged.
+**2026-09-23 decision (MIS-162):** after rejecting the MIS-59 foundations
+experience on 2026-09-12, the operator explicitly authorized the complete
+concept-centered redesign. The accepted design is one question, Add and Map,
+concepts with durable notes, selected capture modes, honest short-answer
+checking/self-check/grade override, and the “Scrying glass” visual system.
+US-001–003 change intent under this explicit authorization; US-005–012 add
+failable contracts. The old foundations data/history survive v5 migration but
+its UI and routes retire. Production activation is separately gated.
 
-**Implemented and accepted defaults:** tap-choice and short cued recall; reveal
-marks the occurrence assisted; one question stage with held feedback and
-deliberate Next; daily and pre-release off-VM snapshots with 30-day new-app
-retention; RPO 24 hours / RTO 60 minutes as targets, not guarantees; $1/day
-generation ceiling with $0.20 conservative reservation; fresh target data.
-
-Private generation now uses a Scry-only OpenRouter key, retained in ignored
-`.env` and supplied to the application through the private exe integration.
-The provider adds a $1/day UTC limit alongside the application's rolling
-24-hour allowance. Session-access checks are bounded and can be retried in
-place after reconnecting without discarding unsaved input. The
-[private acceptance receipt](docs/qa/personal-go-acceptance-20260909.json)
+**Spending decision:** the existing Scry personal (exe.dev) provider key limit
+was raised to $25/week on 2026-09-23; the application permits $3.50 per rolling
+24 hours with $0.50 conservative generation reservations. Jev assessments
+still reserve from that same allowance; an unknown sent request keeps its
+reservation. Topic capture may use Exa web search; pasted text never does.
+The [private acceptance receipt](docs/qa/personal-go-acceptance-20260909.json)
 records native touch, live generation, and independent-VM data restoration at
 that earlier observation. Subsequent phone approval and full restored-service
 activation are separate evidence: the recovered private HTTPS export matched
@@ -49,16 +41,11 @@ exactly and the restored Review UI rendered. Approximately 117 seconds elapsed
 through private HTTPS on an existing recovery VM; provisioning and DNS recovery
 were not timed, and the synthetic rehearsal received no production integrations.
 
-**Open acceptance:** generated-material usefulness (S04.2) is not generally
-established; the foundations experience now has the negative operator assessment
-above, not just pending review. This does not judge all generation quality.
-Switching to another exe account with private-history return (S09.2) remains
-unverified. Global sign-out hid private content, but history return hit an upstream
-authentication redirect loop; fresh navigation reached sign-in. MIS-48 remains
-open. Proposed p95/accessibility budgets and held-out AI acceptance are recorded
-separately in the receipt, not inferred from phone-flow approval. Future material
-quality and longitudinal learning outcomes are not established by the examples.
-Old data remains preserved separately; import or deletion needs a new decision.
+**Open acceptance:** useful material, short-v1 holdout quality, real browser
+interaction, independent recovery and live provider outcomes need evidence for
+v5. A passing fixture or prior phone report does not establish them. The
+earlier S09.2 different-account history-return observation remains unverified.
+Old stores remain preserved separately; import or deletion needs a new decision.
 
 Resolve these decisions as the relevant slice becomes ready. Record the decision
 and reason here; remove obsolete alternatives rather than retaining two designs.
@@ -66,10 +53,10 @@ and reason here; remove obsolete alternatives rather than retaining two designs.
 | Decision | Adopted choice | Basis / remaining evidence |
 | --- | --- | --- |
 | D1: personal material and failures | Build around what the operator wants to remember, not old QA datasets | The accepted candidate used photosynthesis, HTTP caching, and DNS examples. Specific future learning goals and sustained usefulness come from real use, not invented frustrations. |
-| D2: response grading | Tap-choice and explicitly versioned exact or semantic cued recall; exact stays local, while semantic recall uses a bounded Jev rubric outside the grading transaction | Principal authorization 2026-09-22 adopted meaning-sensitive recall with durable pending state, transactional re-fencing, and honest ungraded failure. This does not authorize liberal grading or a hidden model call for deterministic tasks. |
-| D3: assistance and correction | Answer-bearing help marks the occurrence assisted; disputes are explicit, not automatic successes | Durable reveal, edit/archive, and dispute behavior exercised; historical events remain unchanged. |
-| D4: experience approval | One question stage, persistent feedback, deliberate Next | Operator approved the real-phone flow. Swipe is neither required nor an implicit grade. |
-| D5: recovery / spend | Daily and pre-release off-VM backups; 30-day new-app retention; RPO 24h / RTO 60m targets; bounded generation spend | Operator selected daily backups. Separate-VM data restore, full unprivileged service activation, private HTTPS/export equality, and restored UI passed. Provisioning/DNS outage recovery and an availability SLA are not claimed. |
+| D2: response grading | Choice and exact/variant recall resolve locally; flexible short recall uses bounded Jev `short-v1`; explain-level prose retains rubric `semantic-v1`. Close/unsure/failed checks offer self-check, and automatic grades allow one-tap correction. Every recorded grade names exact, Jev, learner, or reveal authority. | Operator authorized 2026-09-23; short-v1 accepts p≥0.85 with identity≤0.35 and injection≤0.20, rejects p≥0.90 with injection≤0.20, otherwise self-check. No liberal similarity or model call inside SQL; holdout quality remains to prove. |
+| D3: assistance and correction | Reveal, answer-bearing cues and self-check exposure remain honest; immutable original grade plus separate override adjusts the current schedule without rewriting history. | Exact operation replay is durable; reading/intro is not cold success. |
+| D4: experience approval | One question and one answer action, retained feedback and deliberate Next; Add/Map masthead and Direction A visual system | v5 phone/usefulness requires new observation; earlier approved flow is not blanket acceptance. |
+| D5: recovery / spend | Daily/pre-release off-VM backups, 30-day retention, RPO 24h/RTO 60m targets; provider key $25/week, application $3.50/rolling day, $0.50 generation reservation | Limit raised on 2026-09-23 for Scry personal (exe.dev). Unknown cost retains reservation, not free retry; backup targets are not guarantees. |
 | D6: replacement boundary | Fresh target data, no legacy API parity; preserve historical stores and backups separately | Operator explicitly directed preservation. Both old Workers are paused; native Postgres remains disabled with recovery backups active. No old data import or deletion. |
 
 Unresolved decisions block only work that depends on them. They do not require
@@ -109,41 +96,61 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-Implemented surface:
+The Stream opens into a question, a concept introduction, a preparing receipt,
+or an honest first-run/caught-up state; never an administration dashboard.
+Concepts are teachable ideas, goals express intent, and notes are durable
+reference material at standard, simpler, or deeper level. The Map is the place
+to search, inspect goals/concepts, focus or pause, and see a labeled estimate
+from real observations, not a certified mastery score.
 
 ```text
-Review                         Add / Library
+scry                                  + Add   Map
+concept chip (inert before grading)
+One question or first-time concept introduction
+One answer control OR Got it / I know this already
 
-One question or recall cue
-Only the context needed to answer
-
-Answer choices or a short response
-I don't know yet
-
-After answering, in the same stage:
-Result + concise explanation
-Next                         Fix / Inspect
+checking → self-check (if unsure/close/failed) → held result
+Correct. / Not quite. / Shown.
+expected answer · explanation · citations
+Next
+I was right (quiet, automatic miss only)
 ```
 
-- Maintain spatial continuity between question and feedback. Feedback remains
-  until Next; do not auto-dismiss it or require chasing a moving control.
-- Keep controls reachable one-handed. Support buttons and keyboard before an
-  optional gesture; swiping while reading must not submit or erase an answer.
-- Keep generation, account machinery, and library maintenance out of review.
-- End honestly when nothing useful is ready. Extra practice or new material is
-  deliberate, not an infinite feed engineered to extend a session.
-- Prefer a few excellent prompt forms to a universal activity framework. A
-  finite list, exact wording, and a causal explanation need different quizzes.
-- No large dashboard cards, decorative metrics, confetti, or fake progress as
-  substitutes for clarity. Motion explains a user action and yields to reduced
-  motion settings. Question length may require scrolling; small screens must
-  not clip content merely to imitate a fixed-height feed.
-
-The initial phone experience is approved: a white reading surface, deep ink,
-cobalt actions, restrained feedback, local system typography, and a prominent
-question stage rather than a branded dashboard. `internal/web/assets/app.css`
-owns exact visual tokens. Approval is not a permanent freeze; review subsequent
-changes against the brief with real questions and actual phone interaction.
+- One choice tap submits, or a recall field uses Check (empty → Show me).
+  `question`, `checking`, `self-check`, `result`, `intro`, `preparing`,
+  `empty-first-run`, `caught-up`, and `conflict/error` are distinct states.
+  Feedback stays until deliberate Next; no auto-dismiss, swipe grade, or
+  ungraded answer/explanation preloading.
+- Self-check is learner authority on close exact-form near misses, Jev unsure,
+  or failed check. Failed check also offers Retry check using a new deliberate
+  operation, not a duplicate send. An automatic miss offers quiet “I was right”
+  under Next; automatic correct offers “Count as a miss” in More. Immutable
+  attempt and correction both remain in history.
+- Intro presents a standard note before an unseen concept's first question;
+  “I know this already” records an observation without scoring a cold answer.
+  While a question awaits an unaided answer, every concept it assesses or
+  contrasts opens behind the Look it up gate, and text or titles drawn from its
+  own capture (source text, goal title, preparation receipts, search hits) are
+  replaced on every route until assistance is recorded; a concept page links to
+  its capture but never carries the capture's text. Navigate to a concept page
+  without consuming a review occurrence. A note request preserves the current
+  standard note until its new level is ready.
+- Add requires explicit Topic / My text / Link / Photo mode. Topic alone may
+  start Exa search; Link fetches its chosen page; Photo transcribes; pasted
+  text goes straight to planning, never web search. Only private modes may be
+  preselected (pasted text, a chosen photo); Topic and Link are never inferred
+  from length or URL shape, and research refuses any other mode before a
+  request leaves. Captures and preparing failures remain inspectable on Source
+  and Map. Share-target prefill via `/add?text=&url=&title=` remains editable
+  and chooses no mode.
+- Map starts with search, shows goal sections and an accessible concept list
+  alongside a decorative constellation. Concept pages show status, separate
+  unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
+  questions, provenance, and Practice. Status words and focus/pause never
+  depend on color alone.
+- Keep private browser controller presentation-only; without JS, forms and
+  required mode radios remain functional. Design tokens, responsive behavior,
+  reduced motion, and accessible targets live in [DESIGN](DESIGN.md).
 
 ## User stories and acceptance criteria
 
@@ -163,8 +170,8 @@ that I can start without organizing the app first.
 - **S01.2:** With no material, the screen offers capture. With material but none
   currently due/eligible, it explains that state and offers a deliberate next
   action; it does not invent due work or silently reset schedules.
-- **S01.3:** Returning from Add/Library preserves an unfinished occurrence or
-  held result. Navigation and status reads do not consume it.
+- **S01.3:** Returning from Add/Map/Concept preserves an unfinished occurrence
+  or held result. Navigation and status reads do not consume it.
 
 Proof: browser journeys through empty, due, exhausted, and returning states.
 
@@ -187,44 +194,43 @@ interaction teaches me something without taking away control.
 - **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
   read-only requests do not fabricate answers. If no next item is ready, the
   learner sees an honest end/pending state.
-- **S02.5:** Each free-response content version explicitly records exact or
-  semantic grading. Exact answers, authored variants, and case-only uncertainty
-  resolve locally first. Semantic grading applies only to prose recall with a
-  versioned required-idea rubric. The learner never chooses grading or writes a
-  rubric: the ordinary generation request authors required ideas only for
-  conceptual prose recall, and choice, exact-text, and complete-set tasks stay
-  exact by task contract. No heuristic on digits, symbols, keywords, or answer
-  length chooses or overrides the mode. A learner edit keeps a generated rubric
-  only while the prompt, expected answer, quoted evidence, and response style
-  are unchanged; otherwise the new version is exact.
-- **S02.6:** Semantic grading records success only when independent required-idea
-  and overall-relation judgments meet the versioned policy. Unclear, malformed,
-  unavailable, or failed judgments stay ungraded with the learner answer saved;
-  they never become an invented correct or wrong result. Under the frozen
-  `semantic-v1` policy only Correct is applied; incomplete and incorrect are
-  recorded as shadow classes for evaluation and the learner sees ungraded.
-  When a class is enabled, its cue or feedback is shown only after assistance
-  and a durable exposure record are written in the same transaction, so a
-  later correct response on that content within 24 hours is warm/helped
-  rather than cold success.
+- **S02.5 (US-003/US-008):** Content versions distinguish exact, flexible
+  short recall, and explain-level prose. Choices/exact/variants resolve locally;
+  exact-form case/whitespace near misses ask for self-check. Flexible recall
+  stages one bounded Jev `short-v1` battery and accepts only with accept
+  probability ≥0.85, identity risk ≤0.35, injection risk ≤0.20, or rejects
+  only with reject probability ≥0.90 and injection risk ≤0.20. Otherwise it
+  stays ungraded for learner self-check. Explain-level authored required-idea
+  rubrics retain `semantic-v1`: only independently supported correct judgments
+  become success; incomplete/incorrect shadow classes stay ungraded.
+- **S02.6 (US-002/US-007):** A close, unsure, or failed check preserves the
+  answer, opens self-check with expected answer/explanation, and offers Retry
+  check on failure. A graded result names `exact`, `jev`, `learner`, or `reveal`
+  authority. Automatic misses offer “I was right” and automatic correct grades
+  offer “Count as a miss”; one immutable correction adjusts the current
+  schedule without rewriting the original attempt. Assistance and answer
+  exposure remain fenced before display; neither a self-check nor a note read
+  becomes an unassisted success by accident.
 
 Proof: actual browser interactions plus deterministic learning/SQLite boundary
 checks for ambiguous answers, semantic policy thresholds, pending/failure
 recovery, assistance cues, and reveal/submit races.
 
-### S03 — Add something without configuring it
+### S03 — Add something without configuring it (US-005)
 
-As the learner, I want to add a word, goal, phrase, or pasted material in one
-place so that capture is faster than making my own flashcards.
+As the learner, I want to add a topic, text, link, or photo with an explicit
+choice of what it is, so I do not have to create a deck or card template.
 
-- **S03.1:** One field accepts the supported inputs without mandatory title,
-  deck, taxonomy, or prompt-type decisions. The saved input remains inspectable.
-- **S03.2:** Capture returns a durable saved/job state. Leaving the page or
-  restarting the app does not lose an acknowledged capture. Retrying an
-  ambiguous submission does not create duplicate generation work.
-- **S03.3:** Oversize/unsupported input gets a specific remedy without silent
-  truncation. Generation failure preserves the input and offers retry/edit;
-  zero usable questions is not reported as ready.
+- **S03.1:** Capture requires a visible Topic / My text / Link / Photo choice,
+  one input or photo, and no mandatory taxonomy/title. Share-target prefill
+  remains editable. The source and its goal persist under one operation ID.
+- **S03.2:** Topic alone may trigger Exa search when configured; Link fetches
+  only its chosen page; Photo transcribes before planning; pasted text never
+  goes to web search. Zero research documents is valid, with topic knowledge
+  labeled honestly. Preparation stages remain inspectable after leaving/restart.
+- **S03.3:** Unsupported/oversize input is rejected without truncation or
+  creating a source. Failed work preserves input, permits bounded retry and
+  never reports zero usable questions as ready.
 
 Proof: browser capture/navigation, interrupted response, process restart, and
 honest invalid/empty/provider-failure outcomes.
@@ -234,9 +240,10 @@ honest invalid/empty/provider-failure outcomes.
 As the learner, I want AI to produce material worth reviewing so that I do not
 become a full-time editor of generated cards.
 
-- **S04.1:** Topic expansion is identified as generated knowledge, not proof
-  supplied by the topic word. Source-based content retains inspectable source
-  evidence and does not invent quotations or strengthen qualified claims.
+- **S04.1:** Source-basis material quotes exact saved source/page/transcript
+  text; web-basis material quotes exact saved Exa search excerpts and cites their
+  URLs/documents. Topic-basis material carries no fabricated evidence and is
+  labeled “General knowledge”; a topic word is not a factual source.
 - **S04.2:** Published prompts are answerable, standalone where appropriate,
   non-leaking, and aligned with the requested learning task. MCQs have one
   defensible answer and useful non-overlapping distractors. Explicit complete
@@ -299,16 +306,19 @@ Proof: network interruption/reordering, two browser tabs, semantic timeout and
 stale-finalization cases, and real restart with SQLite state inspected through
 consumer-visible history/results.
 
-### S07 — Find and manage what I am learning
+### S07 — Find and manage what I am learning (US-001/US-009/US-010)
 
-As the learner, I want a small searchable library so that I can find, inspect,
-edit, and stop reviewing material without managing a database.
+As the learner, I want a searchable Map and concept pages so I can inspect,
+focus, pause, and revisit the material I care about.
 
-- **S07.1:** Search finds source/quiz text and opens the relevant material,
-  provenance and future review state without exposing implementation vocabulary.
-- **S07.2:** Archive stops future selection after refresh/restart and invalidates
-  pending publication for that source. It preserves historical evidence and is
-  labeled archive, not permanent erasure.
+- **S07.1:** Search finds concept, note, question, and source text with linked
+  destinations; question hits never reveal answer snippets. Map lists active
+  goals before paused goals, omits archived goals, shows a readable status/due
+  list beside its decorative constellation, and does not mutate learning on
+  navigation.
+- **S07.2:** Pausing/focusing a goal changes selection without erasing notes or
+  history. Archiving source/concept stops future selection and invalidates stale
+  publication while retaining old content and evidence.
 - **S07.3:** Personal export includes source text, current content, review history,
   and schedule/version information in a documented portable form. Export is
   read-only and does not alter the review session. Full erasure/backup retention
@@ -316,23 +326,25 @@ edit, and stop reviewing material without managing a database.
 
 Proof: browser search/edit/archive and an inspected export across a restart.
 
-### S08 — Return to worthwhile practice
+### S08 — Return to worthwhile practice (US-009/US-011/US-012)
 
-As the learner, I want Scry to choose useful future reviews and show honest
-progress so that returning improves recall rather than just my activity count.
+As the learner, I want Scry to introduce prerequisites first and choose
+appropriate review from honest evidence, without mistaking exposure for recall.
 
-- **S08.1:** The same documented algorithm version, state, rating and time give
-  the same next schedule. A miss/help leads to the declared relearning policy;
-  a refresh, snooze, flag, or animation never creates a learning event.
-- **S08.2:** Selection respects due/availability state, avoids repeatedly serving
-  removed/superseded material, and uses meaningful variation rather than random
-  mixing for its own sake. An empty queue has an exit, not a progression dead end.
-- **S08.3:** History distinguishes attempts, assistance, recognition, and disputed
-  outcomes. Due counts, streaks, predicted retention, and same-session success
-  are not labeled proof of knowledge or improved long-term retention.
+- **S08.1:** The pinned FSRS algorithm, state, rating and time yield the same
+  next schedule. A miss/help follows its conservative policy; read, know,
+  practice, and confusion observations remain separate from graded attempts.
+- **S08.2:** Selection v2 introduces unseen concepts prerequisite-first,
+  interleaves eligible due practice, honors focused/paused goals, and caps new
+  concepts per rolling day at 3/6/12 for light/steady/intense pace. One recorded
+  confusion is not a grade; two for one pair can queue a contrast question.
+- **S08.3:** Concept state distinguishes new/learning/solid/fading and tallies
+  unaided/helped/missed events. Predicted recall is explicitly an estimate;
+  navigation, animation, or a note read never manufactures a learning event.
 
-Proof: versioned reference scheduling trajectories, next-day/resume scenarios,
-and operator use. Efficacy claims require separate delayed unaided recall data.
+Proof: prerequisite/pace/confusion selection, concept evidence and next-day
+resume in focused learning/store checks and browser use. Efficacy claims
+require separate delayed unaided recall data.
 
 ### S09 — Keep the application private
 
@@ -397,31 +409,28 @@ repeatable browser emulation is not evidence of the owner's physical-phone feel.
 The owner approves aesthetics and usefulness; QA agents can surface defects and
 measure contracts but cannot manufacture that approval.
 
-## Implemented architecture
+## V5 architecture and durable boundaries
 
 ### One application and one state authority
 
 ```text
-Phone browser
-  HTML + pinned HTMX + small review interaction controller
+Phone browser — HTML/HTMX, embedded assets, small presentation controller
        |
-exe private HTTPS / owner identity
+Cloudflare Access → Worker scry-app-host (exact subject) → singleton Container
        |
-One Go binary, supervised by systemd
-  HTTP/rendering + learning policy + model-job loop
-       |                         |
-Local SQLite (WAL)          Model provider over HTTPS
+nginx (strip client authority; inject owner) → Go/SQLite (one writer)
+       |                       |                   |
+SQLite WAL           Model / Jev HTTPS      Exa HTTPS (selected captures)
        |
-Consistent snapshot -> append/read gateway -> private Cloudflare R2
+consistent snapshot → append/read gateway → private R2
 ```
 
-One Go module uses ordinary internal packages: net/http, html/template,
-embedded templates/assets/migrations, SQLite, a small deterministic learning
-package, and one model HTTP boundary. There is no service framework.
-Use one implementation of each workflow. Interfaces should isolate real external
-boundaries, not mirror every table with a repository/service/controller stack.
-No React runtime, client build step, Redis, Postgres, event bus, vector database,
-application Worker/Durable Object, or orchestration platform is required.
+The Go module uses net/http, html/template, embedded assets/migrations,
+`internal/learning` pure policy, `internal/store` short SQLite transactions,
+`internal/generation` and `internal/semantic` bounded external calls, and
+`internal/web` private routes. No React/frontend build, second writer, vector
+database, event bus, or generic AI orchestration layer. Use existing
+Cloudflare Worker/Container ingress, not an app Worker database.
 
 HTMX handles HTML forms, fragments, ordinary navigation and bounded job polling.
 Initial rich content is escaped text/controlled formatting, not model-generated
@@ -497,47 +506,93 @@ misses/relearning and equivalent-time replay, are exercised by the Go gate.
 `internal/learning.Scheduler` identifies the unchanged scheduler policy on
 every schedule card; `internal/learning.Algorithm` is that identity plus the
 default `exact-v1` grading and remains byte-identical to pre-Jev history.
-Each review event names the grading policy that produced it (`exact-v1` or
-`semantic-v1`); old events are never relabeled. No old-engine parity,
-personalized-retention, or learning-efficacy claim is inherited.
+Each event names `exact-v1`, `short-v1`, `semantic-v1`, or `learner-v1` as
+appropriate; a `grade_overrides` row retains a separate correction and before/
+after schedule. Old events remain immutable. No old-engine parity, personalized
+retention, or learning-efficacy claim is inherited.
+
+Schema v5 adds goals and goal-concept membership; generated/learner concepts
+with status and source origin; `requires`, `part_of`, and symmetric
+`confused_with` relations; immutable per-level notes and source documents;
+private bounded capture images; question concept roles/level/answer form/
+citations; evidence observations; grade overrides; preferences and search
+index. One primary concept is required for each new question. Old foundation
+rows and links remain with historical origin but stay out of Map/Stream.
+Migration v4→v5 is additive and transactional, with `user_version=5`, full
+schema/reference validation and FTS rebuild. Once migrated a v4 binary cannot
+open the live DB; see [release boundary](docs/runbook.md#schema-v5-release-boundary).
+
+The private HTTP surface is Stream `/`, Capture `/add`, Map `/map`, Concept
+`/concepts/{id}` (note, questions, practice and
+archive actions), Goal `/goals/{id}` (pause/resume/focus), Source
+`/sources/{id}` (input/documents/image/retry/archive), and History/Settings.
+Review writes use `/review/answer`, `/review/reveal`, `/review/next`,
+`/review/self`, `/review/override`, and `/review/intro`, each with CSRF and
+idempotent operation handling. Question fix/edit/archive and source export
+retain their authorized routes. Foundation routes and `/library` are removed.
 
 ### Generation and learning policy
 
-One bounded worker loop claims SQL jobs and persists attempt/lease ownership
-before making provider calls outside a transaction. Its timeout is shorter than
-the lease or the lease is renewed. Completion rechecks the claim and source
-revision/lifecycle, then atomically publishes validated content and final state.
-Expired claims are recoverable after restart; stale workers cannot publish.
-Use explicit queue/input/output/retry limits and account for failed or uncertain
-paid calls within the approved spending ceiling.
+Capture creates one goal/source and a sequential chain per mode:
+`topic → research (Exa search) → plan → questions`,
+`link → research (Exa contents) → plan → questions`,
+`photo → transcribe → plan → questions`,
+`text → plan → questions`. Topic research with zero documents proceeds as
+general knowledge, with no invented citation. Link research needs the chosen
+page; a missing Exa key or unreadable page fails the preparation with a
+recoverable message (paste the text as My text, or retry), never a plan about a
+URL nobody read. The content client sends a bounded search
+or chosen-link fetch only for those explicit modes. A plan produces 1–12 atomic
+concepts with a standard note and justified relations; reuse an existing active
+concept only when it is the same idea, not merely adjacent. Dedupe judgments use
+Jev only for candidate matches, with p≥0.80 to reuse; absent endpoint skips
+dedupe. Ordinary goals should aim for 3–10 concepts, and exact/complete-set
+tasks retain their unit ordering contract.
 
-Local publication can be idempotent; remote model billing is not magically
-exactly once. If the process dies after provider acceptance, retry may spend
-again. Use provider idempotency/result lookup only when actually supported;
-otherwise preserve uncertainty and use a conservative bounded/manual-retry policy.
+Questions ascend recognize → recall → explain/apply (2–3 per concept where
+appropriate). Exact answer form is for exact identity/wording; otherwise use
+flexible short recall. Explain prose alone gets required-idea rubric. Choice
+distractors can identify the contrasting concept. `questions` can be requested
+for one concept, `note` for simpler/deeper level, `fix` for a specified quiz
+version, and after two observations of the same confusion `contrast` for the
+pair. Only one live job per source; busy requests return conflict. Completing
+each stage atomically publishes validated content and enqueues its successor.
+Validation is per item: an invalid concept or question is dropped (with any
+relation naming it) and the valid remainder publishes as a partial stage whose
+note names each failed check; a stage fails only when nothing valid remains.
+Exact-text and complete-set tasks stay all-or-nothing. Model output is
+normalized where no honesty is lost (goal cut to 120 characters, levels sorted,
+unsupported or prompt-copied recall variants removed, fill-in coverage cleared).
+When search excerpts are supplied, notes and questions ground in them.
 
-Choose one model/provider by results on D1 material. Preserve input, model/prompt
-version, generated content and corrections for diagnosis; do not build a generic
-AI platform. Topic expansion and source-grounded generation have different
-provenance claims. Deterministic tasks and exact/variant matches stay local.
-By principal authorization on 2026-09-22, an explicitly semantic prose-recall
-version may stage one durable assessment, call the pinned Jev Decisions model
-outside SQL, and finalize only after re-fencing the current content and schedule.
-The bounded path has an eight-second timeout, exactly one send lease per
-assessment, a reservation taken atomically from the shared 24-hour allowance
-before any request leaves the process, saved answer on failure, no automatic
-wrong decision under the frozen policy, and assistance-fenced cues. It is a
-distinct slower product path, not liberal grading or a hidden network call
-inside the grading transaction.
+Jobs claim durable attempt/lease ownership before Exa, model, or Jev HTTP
+outside SQL; publication rechecks owner, source revision, and source lifecycle.
+Published quotes are byte-exact substrings of the learner's material or a saved
+search excerpt: a model quote that matches only after whitespace, quote-mark,
+dash, or ellipsis normalization is replaced by the original text, and an
+unmatched quote is dropped. An item left without evidence is dropped for the
+learner's own material, or labeled General knowledge (no evidence, no citation)
+for a topic. Web quotes cite the saved result that contains them; topic notes
+carry no evidence. Untrusted input stays serialized data, not instructions or
+HTML. Candidate critic US-004 remains prepublication, with shared spend
+accounting. Known cost settles reservations; unknown sent outcomes stay charged
+and paused, never silently retried.
+
+Selection v2 uses prerequisite-first unseen intros, due reviews, focused goals,
+light/steady/intense rolling-day new-concept caps (3/6/12), and concept state
+`new|learning|solid|fading` from graded and non-graded observations. Recall
+probability/brightness are estimates, never mastery. Reveal/reading stays
+assisted or observational, and `internal/learning.Algorithm` remains pinned.
 
 ### Prepublication content critic: US-004
 
-The configured semantic endpoint also checks validated generation candidates.
-The worker retains at most twelve candidates per batch and marks truncation
-as partial. It saves candidate content, generator attribution, and usage before
-criticism. Without an endpoint, it records `critic_status=skipped` and preserves
-the existing generation capacity and publication behavior. Foundations are not
-scheduled quiz candidates and do not enter this critic.
+The configured semantic endpoint checks validated generation candidates.
+The absolute batch bound is 60 for exact-text and complete-set tasks; ordinary
+concept question jobs produce at most 36 (12 concepts × 3). No silent
+truncation: a larger batch fails validation rather than claiming complete
+coverage. Candidates, generator attribution, and usage persist before
+criticism. With no endpoint, `critic_status=skipped` preserves existing
+publication behavior. Historical foundation rows are not candidates.
 
 `BuildCriticRequest` sends only candidate prompt, answer, explanation, choices,
 rubric, basis, and evidence. Each applicable defect receives an independent
@@ -546,16 +601,13 @@ evidence, changed qualifications, missing context, ambiguous answers, indefensib
 answers, leaked answers, overlapping choices, misaligned rubrics, and adversarial
 content. Source support applies only to source-basis candidates. Choice overlap
 and rubric alignment apply only to their corresponding quiz types. The leakage
-check also covers authored rubric cues. Generator v4 (`scry-go-quiz-v4`) authors
-zero to four required ideas in the same generation request for conceptual prose
-recall only; the validator rejects any rubric on choice, exact-text, or
-complete-set output and requires each source-basis idea to be supported by that
-candidate's evidence without strengthening a qualification. Generated rubrics
-have no cues or contradiction feedback, so a missing idea never reveals a hint;
-under `semantic-v1` incomplete and incorrect stay ungraded. Rubric alignment is
-judged by the same bounded critic call per candidate; the known false accept is
-unchanged (structural validation, not the critic, blocked that example). No
-contrast candidates are generated.
+check also covers authored rubric cues. Required ideas remain exclusive to
+explain-level authored prose. The validator rejects rubrics on choice,
+exact-text, flexible short-recall, and complete-set output; source-basis
+ideas must be supported by the candidate's evidence without strengthening
+qualifications. Generated rubrics never leak hints. Under `semantic-v1`,
+incomplete and incorrect remain ungraded; rubric alignment is judged in the
+same bounded critic call. Contrast candidates use the same critic fence.
 
 The code-owned `critic-v1` policy freezes the hard threshold at 0.80.
 Any hard judgment at or above that threshold rejects the candidate.
@@ -591,10 +643,6 @@ tests; real HTTP worker integration; and bounded live public/synthetic controls.
 Live controls report false accepts, false rejects, abstentions, model, and cost.
 They do not establish broad publication quality or authorize activation.
 
-Too advanced can request reusable foundation instruction and warm practice
-without first recording a miss. The bounded MIS-59 detour below does not imply
-a universal prerequisite graph, recursive tutor, automatic curriculum,
-cross-item estimator, or personalization optimizer.
 
 Use durable job status with bounded HTMX polling. SSE is optional only after
 proving useful incremental delivery through the Cloudflare Worker/Container
@@ -634,88 +682,17 @@ service recovery. Backup failures should be visible without disabling ordinary
 review. D5 owns data-loss tolerance, retention and recovery time; no provider
 SLA is asserted here.
 
-## Foundation detour: MIS-59
+## Foundation detour: MIS-59 (historical)
 
-The bounded implementation below records the existing foundations contract,
-not an approved future experience. On 2026-09-12 the operator rejected its
-usability and requested design regroup before further engineering or closure.
-[Concept-centered study](docs/design/concept-centered-study.md) distinguishes the
-new operator direction from unaccepted proposals; its concept model does not
-silently replace these implementation details or settle a new warmth policy.
-MIS-59 owns the pause and remaining acceptance. MIS-60–63 (capture-time preparation,
-cross-item evidence, estimates, and broader planning) remain separate unimplemented
-work. Original S01–S10/KC identifiers, historical observations, and technical
-release facts remain unchanged. Implementation and technical proof are not
-operator usefulness acceptance or evidence of learning gain.
-
-### Durable contract
-
-- **KC03/KC04, scoped:** immutable foundation bundles bind an exact source ID and
-  revision plus quiz ID/version. Materials and independently meaningful units
-  have immutable version identities; many-to-many coverage records distinguish
-  teaches, directly-assesses, assumes, and mentions with provenance. New units
-  start at version 1; this slice does not expose a knowledge editor. Historical
-  quiz coverage remains unmapped rather than invented.
-- Instruction, reference text, an ordered plain-text process diagram when
-  appropriate, and warm practice are saved separately from quiz feedback.
-  Inspect producer/prompt/source lineage and exact coverage in Saved foundations.
-  HTTPS references are unfetched pointers: no verified citation, retrieved body,
-  quotation, transcript, generated video, or external asset is implied.
-- **KC11, scoped:** Too advanced saves a request without grading, assistance,
-  Again, or schedule change. The exact current presentation remains the target;
-  a typed in-page target draft is included by the enhanced browser and retained
-  separately from submitted answers. A repeated request saves the latest
-  acknowledged draft (including clearing it), guarded by the observed bridge
-  revision. Exact old operation retries cannot revert newer drafts or progress;
-  stale new requests must reload before changing either. An empty draft never
-  prevents asking for help. Opening instruction explicitly acknowledges
-  exposure. A finite bridge has 1–6 units, 2–12 materials, instruction before
-  1–4 warm practice questions, held feedback, and deliberate Next/return.
-- Reading and bridge practice append observations, never FSRS reviews. An
-  original-target response after instruction is marked warm and held without
-  changing its schedule. The explicit conservative warmth policy is 24 hours
-  across new occurrences of the same quiz version; an already-exposed retained
-  occurrence stays warm. This is an assistance fence, not an efficacy estimate.
-  Explicit Reveal keeps its existing durable assisted/Again behavior.
-- A completed warm target is unavailable for practice until 24 hours after its
-  persisted completion time. This derives from existing warm, assisted,
-  rating-zero history for the exact content and schedule version; it never
-  changes FSRS or asserts mastery. Selection, preview, counts, empty state,
-  next availability and Library share this fence. A newer real review or
-  deliberate schedule reset supersedes an old version's warm consumption.
-- Returning never changes the global current occurrence. If another tab already
-  advanced review, the bridge says Return to current review; it cannot replace
-  the newer target. Opening an old material URL during a later cold occurrence
-  requires a fresh exposure acknowledgment. That transport gate also withholds
-  historical graded target answers, explanations, variants and submitted answers,
-  plus old warm feedback; it does not rewrite immutable history or explicit past
-  records. Compatible bundles are reused without new paid jobs.
-
-### Jobs, recovery, and remaining proof
-
-- **KC13/KC14, scoped:** foundation work uses the existing serial job queue,
-  lease, provider boundary, token/request limits, conservative reservation,
-  rolling daily allowance and settlement records. No model call occurs while
-  grading or holding a write transaction. A target revision/archive fence runs
-  before claims and publication. Exact publication and operation retries cannot
-  duplicate content or observations.
-- Pending/failed work leaves ordinary review and saved drafts available. A
-  known-cost failed foundation job can be deliberately retried within its
-  existing three-attempt maximum. Unknown/expired foundation outcomes and restored
-  work stay paused with allowance retained; this slice has no automatic
-  reconciliation or authority to discard uncertain cost. Inspect provider
-  outcomes before any separately authorized operator intervention.
-- **KC15/KC16, scoped:** schema 2 adds foundation records atomically without
-  rewriting v1 history, content versions, FSRS, corrections, receipts, or spend.
-  Read-only `check` validates the complete known v1/v2 schema; startup alone
-  migrates v1. Export and SQLite archives include all new records. Restore only
-  into an unused path, pause nonterminal work, and verify restored service use.
-  See the runbook for the irreversible schema boundary and guarded rollback.
-- **KC17/KC18, scoped:** local authored/provider-boundary fixtures and local
-  browser tests are not actual private-ingress, real selected-provider quality,
-  operator usefulness, independent review, exact-binary release-gate, or protected
-  activation proof. Those remain UNVERIFIED until separately exercised. There is
-  no authorization here to start successors, increase spending, or deploy.
+The operator rejected the saved-foundations interaction on 2026-09-12.
+Its earlier technical evidence remains dated history in
+[the design study](docs/design/concept-centered-study.md) and
+[the rollout receipt](docs/qa/foundation-rollout-20260911.json).
+The 2026-09-23 authorized concept-centered design replaces its routes and UI
+without deleting original rows, changing immutable reviews, or claiming the
+old usability trial succeeded. The v5 migration preserves historical
+foundation-origin data, hidden from current Map/Stream; an older binary cannot
+run after migration. It does not authorize production activation.
 
 ## Delivery slices and Linear mapping
 

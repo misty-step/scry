@@ -72,25 +72,38 @@ Container secrets:
 - `SCRY_BACKUP_REMOTE_TOKEN` — the isolated container's append/read capability;
   set the same value as `SCRY_CONTAINER_BACKUP_TOKEN` on the matching backup
   gateway Worker.
-- `SCRY_MODEL_API_KEY` — the product provider credential for recovered/live
-  environments only. Do not substitute fleet OAuth, another provider, or a new
-  gateway when it is unavailable.
+- `SCRY_MODEL_API_KEY` — the Scry-only provider credential for recovered/live
+  environments, shared with Jev when its dedicated key is empty.
+- `SCRY_EXA_API_KEY` — optional private Exa credential for explicit Topic web
+  research and chosen Link contents. Never put it in a plain Wrangler var.
+  Absent key means Topic research yields zero documents and planning continues
+  on labeled general knowledge, while Link captures fail recoverably; it never
+  authorizes another provider or search of pasted text.
 
 The Access application audience is not confidential, but it is deployment-specific;
 inject `SCRY_ACCESS_AUD` as a Worker secret binding after creating each Access
 application rather than committing an environment identifier. An absent audience
 or owner subject fails closed.
 
-## Generation contract
+## Generation and Exa contract
 
 Synthetic staging disables all four model settings together. Recovered/live
-hosting uses Scry's existing configurable HTTPS chat-completions path:
+hosting uses Scry's configurable HTTPS chat-completions path:
 `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, one explicit `SCRY_MODEL`, and
-`SCRY_MODEL_PROVIDER` (`openrouter` or `openai`). The product's daily allowance
-remains `$1.00` (`1000000` micros) with a conservative `$0.20` reservation
-(`200000` micros). Provider-reported cost and unknown paid outcomes remain
-owned by the application; hosting must not synthesize cost, clamp tokens, or
-invent a completion status.
+`SCRY_MODEL_PROVIDER` (`openrouter` or `openai`). The Scry personal (exe.dev)
+provider key limit was raised on 2026-09-23 to **$25/week**. The separate
+application allowance is **$3.50 per rolling day** (`3500000` micros), with
+**$0.50** conservative reservation (`500000` micros) per generation attempt.
+Known costs replace reservations; unknown sent outcomes retain them.
+
+`runtime-env.mjs` forwards optional `SCRY_EXA_API_KEY` (32–4096 characters,
+without control characters) and `SCRY_EXA_ENDPOINT` (optional HTTPS origin)
+only to the app Container, never scheduled `backup` exec. An empty endpoint
+uses `https://api.exa.ai` inside generation. Topic alone initiates web search;
+Link retrieves the selected page, Photo transcribes, and pasted My text is
+never searched. Keep key values in private secret bindings; the endpoint may
+be a reviewed plain var if a different HTTPS origin is required. No redirect
+or implicit search fallback broadens the private-data boundary.
 
 ## Semantic contract
 
@@ -98,10 +111,12 @@ Only `production` sets the Jev Decisions vars: `SCRY_SEMANTIC_ENDPOINT`
 (an HTTPS URL ending in `/api/alpha/decisions`), one explicit
 `SCRY_SEMANTIC_MODEL`, and a positive `SCRY_SEMANTIC_RESERVATION_MICROS` no
 larger than the daily allowance. An empty `SCRY_SEMANTIC_API_KEY` reuses
-`SCRY_MODEL_API_KEY`. Without an endpoint every semantic name is forwarded
-empty and nothing is sent; any other partial or unsafe combination fails
-closed. New values reach the application only in a new Container instance; see
-the runbook's "Semantic assessments on Cloudflare".
+`SCRY_MODEL_API_KEY`. With no endpoint, semantic/short checks do not send.
+Partial or unsafe settings fail closed. These settings serve short-v1 flexible
+recall, rubric semantic-v1 prose, dedupe, and the prepublication critic; no
+configuration switch licenses liberal similarity grading.
+New values reach the application only in a new Container instance; see
+[the runbook](../../docs/runbook.md#schema-v5-release-boundary).
 
 ## Exact-binary isolated staging
 

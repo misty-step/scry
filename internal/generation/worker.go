@@ -18,16 +18,14 @@ import (
 )
 
 const (
-	requestTimeout   = 60 * time.Second
-	jobLease         = 90 * time.Second
+	requestTimeout   = 180 * time.Second
+	jobLease         = 240 * time.Second
 	settleTimeout    = 10 * time.Second
-	promptVersion    = "scry-go-quiz-v4"
-	maxSourceBytes   = 32 << 10
-	maxRequestBytes  = 128 << 10
+	maxSourceBytes   = 128 << 10
+	maxRequestBytes  = 512 << 10
 	maxResponseBytes = 1 << 20
 	maxContentBytes  = 512 << 10
 	maxQuizzes       = 60
-	repairMarker     = "Generation quality repair pending: "
 )
 
 // Config requires an explicit provider endpoint, model, and spending allowance.
@@ -43,6 +41,8 @@ type Config struct {
 	Model             string
 	Provider          string
 	DailyBudgetMicros int64
+	ExaEndpoint       string
+	ExaAPIKey         string
 	ReservationMicros int64
 	PollInterval      time.Duration
 	HTTPClient        *http.Client
@@ -58,6 +58,8 @@ type Worker struct {
 	cfg         Config
 	client      *http.Client
 	configError string
+	exaError    string
+	exa         *exaClient
 	openRouter  bool
 }
 
@@ -77,6 +79,11 @@ func New(s *store.Store, cfg Config) *Worker {
 	}
 	w := &Worker{store: s, cfg: cfg}
 	w.configError = w.validateConfig()
+	exa, err := newExaClient(cfg.ExaEndpoint, cfg.ExaAPIKey, cfg.HTTPClient)
+	w.exa = exa
+	if err != nil {
+		w.exaError = err.Error()
+	}
 	client := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{Transport: &http.Transport{
@@ -104,34 +111,34 @@ func New(s *store.Store, cfg Config) *Worker {
 
 func (w *Worker) validateConfig() string {
 	if w.cfg.Endpoint == "" {
-		return "Generation is not configured: set the full HTTPS chat-completions endpoint, model, credentials, and spending limits, then retry this saved source."
+		return "Preparation is not set up on this server yet. Try again once it is."
 	}
 	u, err := url.Parse(w.cfg.Endpoint)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return "Generation endpoint is invalid: use a complete HTTPS URL without embedded credentials, query, or fragment, then retry."
+		return "The preparation address is invalid. Check it in Settings, then retry."
 	}
 	loopback := strings.EqualFold(u.Hostname(), "localhost")
 	if ip := net.ParseIP(u.Hostname()); ip != nil {
 		loopback = ip.IsLoopback()
 	}
 	if u.Scheme != "https" && !(u.Scheme == "http" && loopback) {
-		return "Generation endpoint must use HTTPS; HTTP is permitted only for a loopback gateway. Update configuration and retry."
+		return "The preparation address must be secure. Check it in Settings, then retry."
 	}
 	directOpenRouter := strings.EqualFold(u.Hostname(), "openrouter.ai") || strings.HasSuffix(strings.ToLower(u.Hostname()), ".openrouter.ai")
 	switch w.cfg.Provider {
 	case "", "openai", "openrouter":
 	default:
-		return "Generation provider is invalid: select openai for a compatible gateway or openrouter for OpenRouter routing safeguards, then retry."
+		return "The preparation service setting is invalid. Check it in Settings, then retry."
 	}
 	w.openRouter = directOpenRouter || w.cfg.Provider == "openrouter"
 	if w.cfg.Model == "" || len(w.cfg.Model) > 200 || strings.IndexFunc(w.cfg.Model, unicode.IsControl) >= 0 || w.cfg.Model == "openrouter/auto" {
-		return "Generation model is missing or invalid: choose one explicit model supporting structured JSON output, then retry."
+		return "The study model is missing or unavailable. Choose one in Settings, then retry."
 	}
 	if len(w.cfg.APIKey) > 4096 || strings.IndexFunc(w.cfg.APIKey, unicode.IsControl) >= 0 || (directOpenRouter && strings.TrimSpace(w.cfg.APIKey) == "") {
-		return "Generation credentials are missing or invalid: configure the provider API key privately, then retry."
+		return "The private key is missing or invalid. Check it in Settings, then retry."
 	}
 	if w.cfg.DailyBudgetMicros <= 0 || w.cfg.ReservationMicros <= 0 || w.cfg.ReservationMicros > w.cfg.DailyBudgetMicros {
-		return "Generation spending is not configured: set positive daily and per-attempt USD-micro allowances, with a reservation no larger than the daily limit, then retry."
+		return "Spending limits are missing or invalid. Set a daily limit and a smaller per-attempt allowance, then retry."
 	}
 	return ""
 }
@@ -150,7 +157,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 		reservation, budget := w.cfg.ReservationMicros, w.cfg.DailyBudgetMicros
 		if w.configError != "" {
-			reservation, budget = 0, 0 // No network; explicitly known zero-cost failure.
+			reservation, budget = 0, 0
 		}
 		job, err := w.store.ClaimJob(ctx, jobLease, reservation, budget)
 		if err != nil && !errors.Is(err, store.ErrBudget) {
@@ -180,34 +187,35 @@ func (w *Worker) process(ctx context.Context, job *store.Job) error {
 	var result store.GenerationResult
 	var failure *generationFailure
 	var cost *int64
-	if w.configError != "" {
+	if job.Kind == "" || job.Kind == "quizzes" {
+		zero := int64(0)
+		cost = &zero
+		failure = &generationFailure{message: "This older preparation needs a retry."}
+	} else if w.configError != "" {
 		zero := int64(0)
 		cost = &zero
 		failure = &generationFailure{message: w.configError}
 	} else if ctx.Err() != nil {
 		zero := int64(0)
 		cost = &zero
-		failure = &generationFailure{message: "Generation stopped before transmission; the source is saved and can be retried."}
+		failure = &generationFailure{message: "Preparation stopped before anything was sent; the material is saved and can be retried."}
 	} else {
-		result, cost, failure = w.generate(ctx, job)
+		input, err := w.store.JobContext(ctx, job.ID)
+		if err != nil {
+			zero := int64(0)
+			cost = &zero
+			failure = &generationFailure{message: "Saved study material could not be loaded. Nothing was sent; retry this source when storage is available."}
+		} else {
+			result, cost, failure = w.generateV5(ctx, job, input)
+		}
 	}
-	if failure == nil && job.FoundationTarget == nil {
+	if failure == nil && (job.Kind == "questions" || job.Kind == "contrast" || job.Kind == "fix") {
 		return w.processCandidates(ctx, job, result, cost)
 	}
 	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
 	defer cancel()
 	var err error
 	if failure != nil {
-		if w.configError == "" {
-			version := promptVersion
-			if job.Attempts == 2 && strings.HasPrefix(job.Error, repairMarker) {
-				version += "-repair1"
-			}
-			if job.FoundationTarget != nil {
-				version = foundationPromptVersion
-			}
-			failure.message += " Requested model: " + w.cfg.Model + "; prompt: " + version + "."
-		}
 		err = w.store.FailJob(settleCtx, job.ID, job.LeaseToken, failure.message, failure.retry, cost)
 	} else {
 		err = w.store.CompleteJob(settleCtx, job.ID, job.LeaseToken, result, cost)

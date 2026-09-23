@@ -84,7 +84,7 @@ func TestLearnerEditOfQuotedEvidenceDropsRubric(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newTestStore(t)
 	text := "Regular sleep may improve recall in some adults.\nRegular sleep can improve memory retention, according to this note.\nThese two sentences are a saved source, not a topic."
-	src, err := s.Capture(ctx, text, newID())
+	src, err := legacyCapture(ctx, s, text, newID())
 	if err != nil {
 		t.Fatal(err)
 	}
