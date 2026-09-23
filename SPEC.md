@@ -129,12 +129,10 @@ I was right (quiet, automatic miss only)
 - Intro presents a standard note before an unseen concept's first question;
   “I know this already” records an observation without scoring a cold answer.
   While a question awaits an unaided answer, every concept it assesses or
-  contrasts, and every concept and question drawn from its own capture, opens
-  behind the Look it up gate, and text or titles drawn from that capture
-  (source text, goal title, preparation receipts, search hits, past answers in
-  history) are replaced on every route until assistance is recorded; export is
-  the deliberate exception. A concept page links to its capture but never
-  carries the capture's text. Navigate to a concept page
+  contrasts opens behind the Look it up gate, and text or titles drawn from its
+  own capture (source text, goal title, preparation receipts, search hits) are
+  replaced on every route until assistance is recorded; a concept page links to
+  its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence. A note request preserves the current
   standard note until its new level is ready.
 - Add requires explicit Topic / My text / Link / Photo mode. Topic alone may

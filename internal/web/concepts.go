@@ -111,22 +111,17 @@ func (s *server) conceptPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, page{})
 		return
 	}
-	// A concept drawn from the cold question's own capture, by origin or by a
-	// goal holding it, is withheld as that capture's search hits are.
-	if current != nil {
-		drawn := view.Source != nil && view.Source.ID == current.Quiz.SourceID
-		for _, g := range view.Goals {
-			drawn = drawn || g.SourceID == current.Quiz.SourceID
-		}
-		if drawn {
-			s.gate(w, r, current)
-			return
-		}
-	}
 	// A concept page links to its capture; the capture's text is served only
 	// by the gated Source page.
 	if view.Source != nil {
 		view.Source = &store.Source{ID: view.Source.ID}
+	}
+	if current != nil {
+		for i := range view.Goals {
+			if view.Goals[i].SourceID == current.Quiz.SourceID {
+				view.Goals[i].Title = currentMaterial
+			}
+		}
 	}
 	if wantsJSON(r) {
 		jsonResponse(w, http.StatusOK, map[string]any{"concept": view, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})

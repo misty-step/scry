@@ -406,12 +406,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	siblingPage, err := s.ConceptPage(ctx, sibling)
-	if err != nil || len(siblingPage.Questions) != 1 {
-		t.Fatalf("sibling concept: %+v %v", siblingPage, err)
-	}
-	siblingQuiz := siblingPage.Questions[0].ID
-	for _, path := range []string{"/", "/map", "/map?q=certificate"} {
+	for _, path := range []string{"/", "/map", "/map?q=certificate", "/concepts/" + sibling} {
 		body := get(path, http.StatusOK)
 		if strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "GOAL-TITLE") {
 			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
@@ -427,13 +422,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 			t.Fatalf("search %q found the cold question's own capture: %s", q, body)
 		}
 	}
-	// The cold question's concept, and every concept and question drawn from
-	// its capture, open only behind the gate.
-	for _, path := range []string{"/concepts/" + cold.Concept.ID, "/concepts/" + sibling, "/quizzes/" + siblingQuiz + "/edit"} {
-		if body := get(path, http.StatusConflict); strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "The host") {
-			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
-		}
-	}
+	get("/concepts/"+cold.Concept.ID, http.StatusConflict)
 	// Once assistance is recorded, the material is the learner's again.
 	if _, err = s.Submit(ctx, cold.ID, randomToken(), "", true); err != nil {
 		t.Fatal(err)
@@ -443,23 +432,6 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	}
 	if body := get("/map?q=host", http.StatusOK); strings.Contains(body, `"hits":[]`) {
 		t.Fatalf("search stayed empty after assistance: %s", body)
-	}
-	get("/concepts/"+sibling, http.StatusOK)
-	get("/quizzes/"+siblingQuiz+"/edit", http.StatusOK)
-	// When the next question from the same capture waits for an unaided
-	// answer, the answer shown for the first stays out of history.
-	state, err := s.Next(ctx, cold.ID)
-	for state.Current == nil {
-		if err != nil || state.Intro == nil {
-			t.Fatalf("next question not reached: %+v %v", state, err)
-		}
-		state, err = s.AcknowledgeIntro(ctx, state.Intro.Concept.ID, randomToken(), false)
-	}
-	if err != nil || state.Current.Quiz.ID != siblingQuiz || state.Current.Graded {
-		t.Fatalf("second cold question: %+v %v", state.Current, err)
-	}
-	if body := get("/history", http.StatusOK); strings.Contains(body, "A root") || strings.Contains(body, "At a trusted root.") {
-		t.Fatalf("history showed an answer from the cold question's capture: %s", body)
 	}
 }
 
