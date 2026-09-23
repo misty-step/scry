@@ -21,12 +21,7 @@ func constellationHeight(n int) int          { return 60 + (max(n, 1)-1)/4*49 }
 func constellation(view store.GoalView) bool { return len(view.Concepts) > 0 }
 
 func (s *server) mapPage(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(query) > 1024 {
-		s.fail(w, r, fmt.Errorf("%w: use a shorter search", store.ErrInvalid), page{View: "map", Title: "Map", Active: "map"})
-		return
-	}
-	view, err := s.store.Map(r.Context(), query)
+	view, err := s.store.Map(r.Context())
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
@@ -36,31 +31,9 @@ func (s *server) mapPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, page{})
 		return
 	}
-	// Material from the current question's own capture, and search excerpts
-	// for any concept its answer could be read from, stay hidden until
+	// Material from the current question's own capture stays hidden until
 	// assistance has been recorded.
 	if current != nil {
-		linked, err := s.linkedConcepts(r, current)
-		if err != nil {
-			s.fail(w, r, err, page{})
-			return
-		}
-		// Every hit drawn from the cold question's own capture is withheld,
-		// as the retired library withheld the whole current source.
-		hits := view.Hits[:0]
-	hitLoop:
-		for _, hit := range view.Hits {
-			if linked[hit.ConceptID] || hit.ID == current.Quiz.ID {
-				continue
-			}
-			for _, source := range hit.SourceIDs {
-				if source == current.Quiz.SourceID {
-					continue hitLoop
-				}
-			}
-			hits = append(hits, hit)
-		}
-		view.Hits = hits
 		for i := range view.Unmapped {
 			// Replace the whole value so fields added later stay hidden too.
 			if u := view.Unmapped[i]; u.ID == current.Quiz.SourceID {
@@ -85,7 +58,7 @@ func (s *server) mapPage(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"map": view, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "map", Title: "Map", Active: "map", Map: view, Query: query})
+	s.render(w, r, http.StatusOK, page{View: "map", Title: "Map", Active: "map", Map: view})
 }
 
 func (s *server) conceptPage(w http.ResponseWriter, r *http.Request) {

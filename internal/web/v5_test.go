@@ -383,7 +383,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	if err != nil || len(page.Goals) != 1 {
 		t.Fatalf("current concept: %+v %v", page, err)
 	}
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil || len(m.Goals) != 1 || len(m.Goals[0].Concepts) != 2 {
 		t.Fatalf("map: %+v %v", m, err)
 	}
@@ -406,7 +406,7 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, path := range []string{"/", "/map", "/map?q=certificate", "/concepts/" + sibling} {
+	for _, path := range []string{"/", "/map", "/concepts/" + sibling} {
 		body := get(path, http.StatusOK)
 		if strings.Contains(body, "CAPTURE-TEXT") || strings.Contains(body, "GOAL-TITLE") {
 			t.Fatalf("%s exposed the cold question's capture material: %s", path, body)
@@ -415,13 +415,6 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	if body := get("/", http.StatusOK); !strings.Contains(body, currentMaterial) {
 		t.Fatalf("stream receipt was not relabeled: %s", body)
 	}
-	// Searching the cold question's answer, or anything else from its
-	// capture (sibling concepts, notes, questions), finds nothing yet.
-	for _, q := range []string{"root", "host", "trust", "synthetic"} {
-		if body := get("/map?q="+q, http.StatusOK); !strings.Contains(body, `"hits":[]`) {
-			t.Fatalf("search %q found the cold question's own capture: %s", q, body)
-		}
-	}
 	get("/concepts/"+cold.Concept.ID, http.StatusConflict)
 	// Once assistance is recorded, the material is the learner's again.
 	if _, err = s.Submit(ctx, cold.ID, randomToken(), "", true); err != nil {
@@ -429,9 +422,6 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	}
 	if body := get("/map", http.StatusOK); !strings.Contains(body, "GOAL-TITLE") {
 		t.Fatalf("goal title stayed hidden after assistance: %s", body)
-	}
-	if body := get("/map?q=host", http.StatusOK); strings.Contains(body, `"hits":[]`) {
-		t.Fatalf("search stayed empty after assistance: %s", body)
 	}
 }
 

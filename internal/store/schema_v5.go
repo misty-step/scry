@@ -112,7 +112,7 @@ CREATE TABLE preferences (
  updated_at INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 INSERT INTO preferences(singleton) VALUES(1);
-CREATE VIRTUAL TABLE search_index USING fts5(kind UNINDEXED, ref UNINDEXED, title, body, tokenize='unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE concept_index USING fts5(ref UNINDEXED, name, summary, tokenize='unicode61 remove_diacritics 2');
 CREATE TRIGGER immutable_note_update BEFORE UPDATE ON notes BEGIN SELECT RAISE(ABORT,'notes are immutable'); END;
 CREATE TRIGGER immutable_note_delete BEFORE DELETE ON notes BEGIN SELECT RAISE(ABORT,'notes are immutable'); END;
 CREATE TRIGGER immutable_document_update BEFORE UPDATE ON source_documents BEGIN SELECT RAISE(ABORT,'source documents are immutable'); END;

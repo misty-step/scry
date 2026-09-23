@@ -661,9 +661,6 @@ func insertNote(ctx context.Context, tx *sql.Tx, conceptID, sourceID, jobID stri
 	if err != nil {
 		return "", err
 	}
-	if err = index(ctx, tx, "note", conceptID, n.Title, n.Body); err != nil {
-		return "", err
-	}
 	return id, nil
 }
 
@@ -719,7 +716,7 @@ func publishPlan(ctx context.Context, tx *sql.Tx, j Job, plan PlanContent, resul
 			if err != nil {
 				return 0, err
 			}
-			if err = index(ctx, tx, "concept", id, c.Name, c.Summary); err != nil {
+			if err = indexConcept(ctx, tx, id, c.Name, c.Summary); err != nil {
 				return 0, err
 			}
 		}
@@ -804,9 +801,6 @@ func publishQuizzes(ctx context.Context, tx *sql.Tx, j Job, result GenerationRes
 					return 0, err
 				}
 			}
-		}
-		if err = indexQuizContent(ctx, tx, id, content); err != nil {
-			return 0, err
 		}
 	}
 	return len(result.Quizzes), nil

@@ -413,17 +413,6 @@ type GoalView struct {
 	Preparing *Preparing     `json:"preparing,omitempty"`
 }
 
-type SearchHit struct {
-	Kind      string `json:"kind"`
-	ID        string `json:"id"`
-	ConceptID string `json:"concept_id,omitempty"`
-	Title     string `json:"title"`
-	Snippet   string `json:"snippet"`
-	// SourceIDs names every capture the hit's text derives from, so callers
-	// can withhold a cold question's own material. Never serialized.
-	SourceIDs []string `json:"-"`
-}
-
 // QuizProposal is a suggested correction written by a fix job. It changes
 // nothing until the learner accepts it.
 type QuizProposal struct {
@@ -454,9 +443,7 @@ type FixStop struct {
 }
 
 type MapView struct {
-	Query     string      `json:"query"`
 	Goals     []GoalView  `json:"goals"`
-	Hits      []SearchHit `json:"hits"`
 	Unmapped  []Source    `json:"unmapped"`
 	Preparing []Preparing `json:"preparing"`
 }

@@ -82,7 +82,7 @@ The wordmark, SVG star, and icons are local embedded assets.
   1600px JPEG near quality .82 by browser JS where available; server limits
   still govern. Mic controls appear only when native SpeechRecognition is
   supported; never make them prerequisites for capture or recall.
-- **Map:** search first. Each goal section includes title, a decorative
+- **Map:** each goal section includes title, a decorative
   aria-hidden SVG constellation (brightness stars, faint prerequisite lines),
   and an accessible list of concept name, status word, and due hint. Focus/pause
   are deliberate goal actions. Archived goals stay out of active browsing.

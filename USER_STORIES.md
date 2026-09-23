@@ -15,12 +15,11 @@ centered experience, and US-005–012 are new, never recycled identifiers.
 
 ## US-001 Find and reuse saved understanding
 
-Statement: When I explore what I am learning, I want saved concepts and notes searchable and revisitable, so that I can connect prerequisites across questions without losing earlier study.
+Statement: When I explore what I am learning, I want saved concepts and notes revisitable, so that I can connect prerequisites across questions without losing earlier study.
 
 Criteria:
 1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
-2. WHEN I search the Map for a concept, note, question, or source text, THE SYSTEM SHALL return matching linked results without answer-bearing question snippets; IF none match, THEN THE SYSTEM SHALL show an empty search result without error.
-3. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
+2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
 
 No-gos: no manual graph editor, no automatic replanner.
 
@@ -160,7 +159,6 @@ Statement: When I return to study, I want to see where my concepts stand, so I c
 Criteria:
 1. WHEN I open Map, THE SYSTEM SHALL show active and paused goals with concept status, due indication, and an accessible list alongside any decorative constellation.
 2. WHEN I inspect a concept, THE SYSTEM SHALL distinguish new, learning, solid, and fading, show unaided/helped/missed observations separately, and label predicted recall explicitly as an estimate.
-3. WHEN I search, THE SYSTEM SHALL return relevant concept, note, question, or source hits without adding a learning event.
 
 No-gos: no guaranteed mastery score, color-only meaning, or synthetic review events from navigation.
 

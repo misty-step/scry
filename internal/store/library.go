@@ -146,9 +146,6 @@ func (s *Store) Capture(ctx context.Context, in CaptureInput, operationID string
 		if err = enqueue(ctx, tx, id, 1, firstJob(in.Mode), nil, now); err != nil {
 			return Source{}, err
 		}
-		if err = index(ctx, tx, "source", id, text, ""); err != nil {
-			return Source{}, err
-		}
 		if err = saveOperation(ctx, tx, operationID, "capture", hash, id, nil, now); err != nil {
 			return Source{}, err
 		}
@@ -489,9 +486,6 @@ func writeEdit(ctx context.Context, tx *sql.Tx, q Quiz, content GeneratedQuiz, m
 	if err = retireUnanswered(ctx, tx, q.ID, ""); err != nil {
 		return Quiz{}, err
 	}
-	if err = indexQuizContent(ctx, tx, q.ID, content); err != nil {
-		return Quiz{}, err
-	}
 	return quiz(ctx, tx, q.ID)
 }
 
@@ -629,9 +623,6 @@ func (s *Store) ArchiveQuiz(ctx context.Context, id string) error {
 	if err = retireUnanswered(ctx, tx, id, ""); err != nil {
 		return err
 	}
-	if err = unindex(ctx, tx, "question", id); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
@@ -660,9 +651,6 @@ func (s *Store) ArchiveSource(ctx context.Context, id string) error {
 		return err
 	}
 	if err = retireUnanswered(ctx, tx, "", id); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM search_index WHERE (kind='source' AND ref=?) OR (kind='question' AND ref IN (SELECT id FROM quizzes WHERE source_id=?))`, id, id); err != nil {
 		return err
 	}
 	return tx.Commit()

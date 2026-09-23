@@ -216,9 +216,9 @@ func TestSchemaV4ToV5MigrationUS001(t *testing.T) {
 		t.Fatalf("a foundation concept could be introduced: %v", err)
 	}
 
-	// Map: foundation concepts are not listed, searchable, or openable; their
+	// Map: foundation concepts are not listed, reusable, or openable; their
 	// questions stay reachable under unmapped material.
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,14 +230,8 @@ func TestSchemaV4ToV5MigrationUS001(t *testing.T) {
 	if len(m.Unmapped) != 1 || m.Unmapped[0].ID != "src" {
 		t.Fatalf("legacy questions are not reachable as unmapped material: %+v", m.Unmapped)
 	}
-	hits, err := s.Map(ctx, "trust anchors")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, h := range hits.Hits {
-		if h.Kind == "concept" || h.Kind == "note" || h.ConceptID != "" {
-			t.Fatalf("search surfaced a foundation concept: %+v", h)
-		}
+	if reuse, err := s.SearchConcepts(ctx, "trust anchors", 12); err != nil || len(reuse) != 0 {
+		t.Fatalf("a foundation concept was offered for reuse: %+v %v", reuse, err)
 	}
 	if _, err = s.ConceptPage(ctx, "unit-a"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("foundation concept page opened: %v", err)

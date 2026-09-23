@@ -175,7 +175,7 @@ func (s *Store) initialize(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, migrationV4ToV5); err != nil {
 			return fmt.Errorf("migration 5 data: %w", err)
 		}
-		if err = rebuildSearchIndex(ctx, tx); err != nil {
+		if err = rebuildConceptIndex(ctx, tx); err != nil {
 			return fmt.Errorf("migration 5 search index: %w", err)
 		}
 	}

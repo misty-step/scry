@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/misty-step/scry/internal/learning"
@@ -331,17 +330,14 @@ func questionStats(ctx context.Context, tx *sql.Tx, now int64) (map[string]quest
 	return stats, rows.Err()
 }
 
-func (s *Store) Map(ctx context.Context, query string) (MapView, error) {
-	if err := validText("search", query, 1024, false); err != nil {
-		return MapView{}, err
-	}
+func (s *Store) Map(ctx context.Context) (MapView, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return MapView{}, err
 	}
 	defer tx.Rollback()
 	now := s.now()
-	view := MapView{Query: strings.TrimSpace(query), Goals: []GoalView{}, Hits: []SearchHit{}, Unmapped: []Source{}}
+	view := MapView{Goals: []GoalView{}, Unmapped: []Source{}}
 	concepts, err := loadConcepts(ctx, tx)
 	if err != nil {
 		return view, err
@@ -455,67 +451,7 @@ func (s *Store) Map(ctx context.Context, query string) (MapView, error) {
 		view.Unmapped = append(view.Unmapped, src)
 	}
 	sort.Slice(view.Unmapped, func(i, j int) bool { return view.Unmapped[i].CreatedAt > view.Unmapped[j].CreatedAt })
-	if view.Query != "" {
-		if view.Hits, err = searchHits(ctx, tx, view.Query, 30); err != nil {
-			return view, err
-		}
-	}
 	return view, tx.Commit()
-}
-
-func searchHits(ctx context.Context, tx *sql.Tx, query string, limit int) ([]SearchHit, error) {
-	hits := []SearchHit{}
-	match := ftsQuery(query)
-	if match == "" {
-		return hits, nil
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT kind,ref,title,snippet(search_index,3,'','','…',14) FROM search_index WHERE search_index MATCH ? ORDER BY rank LIMIT ?`, match, limit)
-	if err != nil {
-		return nil, err
-	}
-	var raw []SearchHit
-	for rows.Next() {
-		var h SearchHit
-		if err = rows.Scan(&h.Kind, &h.ID, &h.Title, &h.Snippet); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		raw = append(raw, h)
-	}
-	if err = rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
-	for _, h := range raw {
-		switch h.Kind {
-		case "concept", "note":
-			// Note rows are keyed by their concept: one current standard note each.
-			h.ConceptID = h.ID
-		case "question":
-			// Question hits never show answer-bearing text.
-			h.Snippet = ""
-			var source string
-			if err = tx.QueryRowContext(ctx, "SELECT COALESCE((SELECT concept_id FROM concept_quizzes WHERE quiz_id=? AND role='assesses'),''),(SELECT source_id FROM quizzes WHERE id=?)", h.ID, h.ID).Scan(&h.ConceptID, &source); err != nil {
-				return nil, err
-			}
-			h.SourceIDs = append(h.SourceIDs, source)
-		case "source":
-			h.Title, h.Snippet = excerptRunes(h.Title, 140), ""
-			h.SourceIDs = append(h.SourceIDs, h.ID)
-		}
-		if h.ConceptID != "" {
-			// A concept's text derives from every capture whose goal holds it.
-			goals, err := orderedIDs(ctx, tx, `SELECT g.source_id FROM goal_concepts gc JOIN goals g ON g.id=gc.goal_id WHERE gc.concept_id=?
-			 UNION SELECT source_id FROM concepts WHERE id=? AND source_id<>''`, h.ConceptID, h.ConceptID)
-			if err != nil {
-				return nil, err
-			}
-			h.SourceIDs = append(h.SourceIDs, goals...)
-		}
-		hits = append(hits, h)
-	}
-	return hits, nil
 }
 
 // SearchConcepts finds active concepts related to text, for reuse during
@@ -541,7 +477,7 @@ func searchConcepts(ctx context.Context, tx *sql.Tx, text string, limit int, now
 	if match == "" {
 		return []ConceptBrief{}, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT ref FROM search_index WHERE search_index MATCH ? AND kind='concept' ORDER BY rank LIMIT ?`, match, limit)
+	rows, err := tx.QueryContext(ctx, `SELECT ref FROM concept_index WHERE concept_index MATCH ? ORDER BY rank LIMIT ?`, match, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -859,11 +795,8 @@ func (s *Store) ArchiveConcept(ctx context.Context, conceptID string) error {
 		if err = retireUnanswered(ctx, tx, qid, ""); err != nil {
 			return err
 		}
-		if err = unindex(ctx, tx, "question", qid); err != nil {
-			return err
-		}
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM search_index WHERE kind IN ('concept','note') AND ref=?", conceptID); err != nil {
+	if _, err = tx.ExecContext(ctx, "DELETE FROM concept_index WHERE ref=?", conceptID); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO evidence(id,kind,concept_id,created_at) VALUES(?,?,?,?)`, newID(), "dismiss", conceptID, now); err != nil {

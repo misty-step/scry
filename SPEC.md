@@ -100,7 +100,7 @@ The Stream opens into a question, a concept introduction, a preparing receipt,
 or an honest first-run/caught-up state; never an administration dashboard.
 Concepts are teachable ideas, goals express intent, and notes are durable
 reference material, one current note per concept. The Map is the place
-to search, inspect goals/concepts, focus or pause, and see a labeled estimate
+to inspect goals/concepts, focus or pause, and see a labeled estimate
 from real observations, not a certified mastery score.
 
 ```text
@@ -130,7 +130,7 @@ I was right (quiet, automatic miss only)
   “I know this already” records an observation without scoring a cold answer.
   While a question awaits an unaided answer, every concept it assesses or
   contrasts opens behind the Look it up gate, and text or titles drawn from its
-  own capture (source text, goal title, preparation receipts, search hits) are
+  own capture (source text, goal title, preparation receipts) are
   replaced on every route until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
@@ -142,7 +142,7 @@ I was right (quiet, automatic miss only)
   request leaves. Captures and preparing failures remain inspectable on Source
   and Map. Share-target prefill via `/add?text=&url=&title=` remains editable
   and chooses no mode.
-- Map starts with search, shows goal sections and an accessible concept list
+- Map shows goal sections and an accessible concept list
   alongside a decorative constellation. Concept pages show status, separate
   unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
   questions, provenance, and Practice. Status words and focus/pause never
@@ -305,16 +305,14 @@ Proof: network interruption/reordering, two browser tabs, semantic timeout and
 stale-finalization cases, and real restart with SQLite state inspected through
 consumer-visible history/results.
 
-### S07 — Find and manage what I am learning (US-001/US-009/US-010)
+### S07 — Manage what I am learning (US-001/US-009/US-010)
 
-As the learner, I want a searchable Map and concept pages so I can inspect,
-focus, pause, and revisit the material I care about.
+As the learner, I want a Map and concept pages so I can inspect, focus, pause,
+and revisit the material I care about.
 
-- **S07.1:** Search finds concept, note, question, and source text with linked
-  destinations; question hits never reveal answer snippets. Map lists active
-  goals before paused goals, omits archived goals, shows a readable status/due
-  list beside its decorative constellation, and does not mutate learning on
-  navigation.
+- **S07.1:** Map lists active goals before paused goals, omits archived
+  goals, shows a readable status/due list beside its decorative constellation,
+  and does not mutate learning on navigation.
 - **S07.2:** Pausing/focusing a goal changes selection without erasing notes or
   history. Archiving source/concept stops future selection and invalidates stale
   publication while retaining old content and evidence.
@@ -323,7 +321,7 @@ focus, pause, and revisit the material I care about.
   read-only and does not alter the review session. Full erasure/backup retention
   semantics are a separate explicit decision, not an archive side effect.
 
-Proof: browser search/edit/archive and an inspected export across a restart.
+Proof: browser edit/archive and an inspected export across a restart.
 
 ### S08 — Return to worthwhile practice (US-009/US-011/US-012)
 

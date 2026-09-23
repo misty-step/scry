@@ -225,7 +225,7 @@ or headless Chromium on the workstation.
    operation rejection, assisted reveal, and rubric explain-level behavior.
 4. A new concept intro shows the standard note before its first question.
    “I know this already” records an observation, not a cold review. Open Map,
-   search across concept/note/question/source, focus/pause a goal, and inspect
+   focus/pause a goal, and inspect
    prerequisite-first order, status words and estimates. Open a Concept page:
    its note, citations,
    related ideas, practice and gated question details. Two recorded confusions

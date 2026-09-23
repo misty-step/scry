@@ -2,14 +2,6 @@
 {{define "map"}}
 <section class="map-stage">
   <p class="eyebrow">Your map</p><h1 tabindex="-1" data-focus>What you're learning.</h1>
-  <form class="search-form" action="/map" method="get" hx-get="/map" hx-push-url="true">
-    <label for="map-search" class="sr-only">Search your map</label>
-    <input id="map-search" type="search" name="q" value="{{.Query}}" placeholder="Find an idea or question" maxlength="1024">
-    <button type="submit">Search</button>
-  </form>
-  {{if .Query}}<p>Results for “{{.Query}}” · <a href="/map">Clear</a></p>
-    {{range .Map.Hits}}<a class="search-hit" href="{{if .ConceptID}}/concepts/{{.ConceptID}}{{else if eq .Kind "source"}}/sources/{{.ID}}{{else}}/map{{end}}"><strong>{{.Title}}</strong><span>{{.Snippet}}</span></a>{{else}}<p>No matches yet. Try another word.</p>{{end}}
-  {{end}}
   {{$root := .}}{{range .Map.Goals}}
   <section class="goal-card">
     <div class="goal-heading"><h2>{{.Goal.Title}}</h2>{{if .Goal.Focus}}<span class="status-label">In focus</span>{{end}}</div>
@@ -28,7 +20,7 @@
     </div>
   </section>{{end}}
   {{if .Map.Unmapped}}<section><h2>Earlier material</h2><p>These saved questions haven't been placed on your map yet.</p><ul>{{range .Map.Unmapped}}<li><a href="/sources/{{.ID}}">{{excerpt .Text}}</a></li>{{end}}</ul></section>{{end}}
-  {{if not .Map.Goals}}{{if not .Query}}<div class="empty-stage compact"><h2>Your map starts with an idea.</h2><a class="button primary" href="/add">Add something</a></div>{{end}}{{end}}
+  {{if not .Map.Goals}}<div class="empty-stage compact"><h2>Your map starts with an idea.</h2><a class="button primary" href="/add">Add something</a></div>{{end}}
 </section>{{end}}
 {{define "concept"}}
 {{$root := .}}{{$c := .Concept}}

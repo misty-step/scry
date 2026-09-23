@@ -222,35 +222,9 @@ func TestConceptChainAndIntroUS006(t *testing.T) {
 	if err != nil || len(chainView.RequiredBy) != 1 || len(chainView.ConfusedWith) != 1 {
 		t.Fatalf("reverse relations missing: %+v %v", chainView, err)
 	}
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil || len(m.Goals) != 1 || m.Goals[0].Goal.Title != "How a TLS client trusts a server" || len(m.Goals[0].Concepts) != 2 || len(m.Goals[0].Edges) != 1 {
 		t.Fatalf("map did not show the goal constellation: %+v %v", m, err)
-	}
-	hits, err := s.Map(ctx, "hostnam")
-	if err != nil || len(hits.Hits) == 0 {
-		t.Fatalf("prefix search found nothing: %+v %v", hits.Hits, err)
-	}
-	for _, h := range hits.Hits {
-		if h.Kind == "question" && h.Snippet != "" {
-			t.Fatalf("question search leaked answer-bearing text: %+v", h)
-		}
-	}
-	// A note hit opens its concept, not a page named after the note.
-	notes, err := s.Map(ctx, "authority behind")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, h := range notes.Hits {
-		if h.Kind == "note" {
-			found = true
-			if h.ConceptID != chain || len(h.SourceIDs) == 0 || h.SourceIDs[0] != src.ID {
-				t.Fatalf("note hit points at %q (sources %v), want concept %s from %s", h.ConceptID, h.SourceIDs, chain, src.ID)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("note text was not searchable: %+v", notes.Hits)
 	}
 }
 
@@ -321,7 +295,7 @@ func TestWebBasisCitesStoredResults(t *testing.T) {
 	complete(t, s, planJob, GenerationResult{Plan: &PlanContent{Goal: "How HTTPS works", Concepts: []PlannedConcept{{Key: "tls", Name: "TLS authentication", Summary: "Certificates let TLS authenticate the server.",
 		Note: &NoteContent{Title: "TLS", Basis: "web", Body: "TLS does two jobs at once: it encrypts the traffic and it authenticates the server using certificates.",
 			Evidence: []string{"authenticates the server with certificates"}, Citations: []Citation{{DocumentID: doc.ID, Title: "spoofed", URL: "https://evil.example"}}}}}}})
-	view, err := s.Map(ctx, "")
+	view, err := s.Map(ctx)
 	if err != nil || len(view.Goals) != 1 {
 		t.Fatalf("goal missing: %+v %v", view, err)
 	}
@@ -536,7 +510,7 @@ func TestGoalPauseStopsNewMaterialUS010(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
 	textPack(t, s)
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil || len(m.Goals) != 1 {
 		t.Fatal(err)
 	}
@@ -739,7 +713,7 @@ func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
 	if err != nil || len(state.Preparing) != 0 {
 		t.Fatalf("the Stream still shows a day-old stopped receipt: %+v %v", state.Preparing, err)
 	}
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -936,7 +910,7 @@ func TestStoppedFixStaysWithItsQuestion(t *testing.T) {
 	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "synthetic provider failure", false, &zero); err != nil {
 		t.Fatal(err)
 	}
-	m, err := s.Map(ctx, "")
+	m, err := s.Map(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

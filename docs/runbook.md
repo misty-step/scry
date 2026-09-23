@@ -204,7 +204,8 @@ configuration; populated files and provider capabilities are private.
 The v5 candidate transactionally migrates complete schema 4 to 5, preserving
 foundation-origin rows, old source/quiz/review/FSRS/spend history and pausing
 old foundation jobs; it adds concept relations, goals, immutable notes,
-documents, capture images, evidence, grade overrides, preferences and search.
+documents, capture images, evidence, grade overrides, preferences and a concept
+index for reuse.
 The retired foundation routes/UI do not erase their data. Migration is
 irreversible: after `user_version=5` a v4 binary cannot read the upgraded
 database. There is no down-migration.

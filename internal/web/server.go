@@ -50,21 +50,21 @@ type server struct {
 }
 
 type page struct {
-	Title, View, Active, CSRF, Operation, Error, Notice, Query, Text, CaptureMode string
-	Review                                                                        store.ReviewState
-	Map                                                                           store.MapView
-	Concept                                                                       store.ConceptView
-	Source                                                                        store.Source
-	Quiz                                                                          store.Quiz
-	History                                                                       []store.ReviewEvent
-	Summary                                                                       store.Summary
-	Preferences                                                                   store.Preferences
-	Gate                                                                          *store.Presentation
-	Fix                                                                           store.QuizFix
-	ReturnTo, ReviewID, Note                                                      string
-	Reset, JobPending, BackupStale, FixOpen                                       bool
-	PollRemaining, Status                                                         int
-	RecordedModels                                                                []string
+	Title, View, Active, CSRF, Operation, Error, Notice, Text, CaptureMode string
+	Review                                                                 store.ReviewState
+	Map                                                                    store.MapView
+	Concept                                                                store.ConceptView
+	Source                                                                 store.Source
+	Quiz                                                                   store.Quiz
+	History                                                                []store.ReviewEvent
+	Summary                                                                store.Summary
+	Preferences                                                            store.Preferences
+	Gate                                                                   *store.Presentation
+	Fix                                                                    store.QuizFix
+	ReturnTo, ReviewID, Note                                               string
+	Reset, JobPending, BackupStale, FixOpen                                bool
+	PollRemaining, Status                                                  int
+	RecordedModels                                                         []string
 }
 
 // New validates the private boundary before exposing any application route.
@@ -135,7 +135,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			}
 			return fmt.Sprintf("b%d", v)
 		},
-		"percent": func(v float64) int { return int(v*100 + .5) },
+		"percent":       func(v float64) int { return int(v*100 + .5) },
 		"constellation": constellation, "starX": starX, "starY": starY, "constellationHeight": constellationHeight,
 		"tallyCount": func(tally []string, code string) int {
 			n := 0
@@ -176,7 +176,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 				return "Finding ideas"
 			case "questions":
 				return "Writing questions"
-				case "contrast":
+			case "contrast":
 				return "Connecting ideas"
 			case "fix":
 				return "Fixing a question"
