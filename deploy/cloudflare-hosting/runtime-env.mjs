@@ -15,6 +15,15 @@ const MODEL_FIELDS = [
   "SCRY_MODEL",
   "SCRY_MODEL_PROVIDER",
 ];
+// Jev Decisions for semantic recall and the prepublication critic. The key is
+// optional: empty means the application reuses SCRY_MODEL_API_KEY.
+const SEMANTIC_FIELDS = [
+  "SCRY_SEMANTIC_ENDPOINT",
+  "SCRY_SEMANTIC_API_KEY",
+  "SCRY_SEMANTIC_MODEL",
+  "SCRY_SEMANTIC_RESERVATION_MICROS",
+];
+const DECISIONS_PATH = "/api/alpha/decisions";
 // Exactly what `scry backup` reads (cmd/scry recoveryConfig). The shared
 // directory also keeps the CLI and the in-process timer behind one lock.
 const BACKUP_EXEC_FIELDS = [
@@ -54,6 +63,69 @@ export function containerSleepAfter(env) {
     throw new Error("SCRY_SLEEP_AFTER must be the staged 1m proof window or the reviewed 24h production policy");
   }
   return env.SCRY_SLEEP_AFTER;
+}
+
+function boundedSecret(value) {
+  return value.length >= 32 && value.length <= 4096 && !/[\r\n\0]/.test(value);
+}
+
+// Semantic mode is off unless an endpoint is configured. Off means every
+// semantic setting is empty, so the application provably sends nothing. On
+// requires a complete HTTPS Decisions URL, one explicit model, a positive
+// reservation inside the daily allowance, and a bearer key. Every request
+// carries that key and private learner text, so partial or unsafe settings
+// refuse to start the container rather than degrade.
+function semanticEnvVars(env, modelApiKey) {
+  const semantic = Object.fromEntries(SEMANTIC_FIELDS.map(name => [name, typeof env[name] === "string" ? env[name] : ""]));
+  if (semantic.SCRY_SEMANTIC_ENDPOINT.length === 0) {
+    const stray = SEMANTIC_FIELDS.filter(name => semantic[name].length > 0);
+    if (stray.length > 0) {
+      throw new Error(`semantic configuration without SCRY_SEMANTIC_ENDPOINT is incomplete; unset ${stray.join(", ")} or configure the endpoint`);
+    }
+    return semantic;
+  }
+  let endpoint;
+  try {
+    endpoint = new URL(semantic.SCRY_SEMANTIC_ENDPOINT);
+  } catch {
+    throw new Error("SCRY_SEMANTIC_ENDPOINT must be a complete HTTPS URL");
+  }
+  if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash
+      || semantic.SCRY_SEMANTIC_ENDPOINT !== semantic.SCRY_SEMANTIC_ENDPOINT.trim()) {
+    throw new Error("SCRY_SEMANTIC_ENDPOINT must be a complete HTTPS URL without credentials, query, or fragment");
+  }
+  if (!endpoint.pathname.endsWith(DECISIONS_PATH)) {
+    throw new Error(`SCRY_SEMANTIC_ENDPOINT must be a Jev Decisions route ending in ${DECISIONS_PATH}`);
+  }
+  const model = semantic.SCRY_SEMANTIC_MODEL;
+  if (model.length === 0 || model.length > 200 || /[\s\0]/.test(model) || model === "openrouter/auto") {
+    throw new Error("SCRY_SEMANTIC_MODEL must be one explicit bounded model identifier");
+  }
+  const reservation = semantic.SCRY_SEMANTIC_RESERVATION_MICROS;
+  if (!/^[1-9][0-9]{0,15}$/.test(reservation) || Number(reservation) > Number(env.SCRY_GENERATION_DAILY_BUDGET_MICROS)) {
+    throw new Error("SCRY_SEMANTIC_RESERVATION_MICROS must be a positive integer no larger than SCRY_GENERATION_DAILY_BUDGET_MICROS");
+  }
+  if (semantic.SCRY_SEMANTIC_API_KEY.length > 0) {
+    if (!boundedSecret(semantic.SCRY_SEMANTIC_API_KEY)) {
+      throw new Error("SCRY_SEMANTIC_API_KEY must be a bounded non-control secret");
+    }
+  } else if (modelApiKey.length === 0) {
+    throw new Error("semantic assessments require SCRY_SEMANTIC_API_KEY or the complete model configuration's SCRY_MODEL_API_KEY");
+  }
+  return semantic;
+}
+
+// A non-secret summary of the semantic settings a Container starts with, for
+// the Worker log. It names the key source, never a key or learner text.
+export function semanticStartSummary(vars) {
+  if (!vars.SCRY_SEMANTIC_ENDPOINT) return { semantic: "off" };
+  return {
+    semantic: "on",
+    host: new URL(vars.SCRY_SEMANTIC_ENDPOINT).host,
+    model: vars.SCRY_SEMANTIC_MODEL,
+    reservation_micros: vars.SCRY_SEMANTIC_RESERVATION_MICROS,
+    key: vars.SCRY_SEMANTIC_API_KEY ? "semantic" : "model",
+  };
 }
 
 export function appEnvVars(env) {
@@ -110,7 +182,7 @@ export function appEnvVars(env) {
     if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
       throw new Error("SCRY_MODEL_ENDPOINT must be a complete HTTPS URL without credentials, query, or fragment");
     }
-    if (model.SCRY_MODEL_API_KEY.length < 32 || model.SCRY_MODEL_API_KEY.length > 4096 || /[\r\n\0]/.test(model.SCRY_MODEL_API_KEY)) {
+    if (!boundedSecret(model.SCRY_MODEL_API_KEY)) {
       throw new Error("SCRY_MODEL_API_KEY must be a bounded non-control secret");
     }
     if (model.SCRY_MODEL.length > 200 || /[\r\n\0]/.test(model.SCRY_MODEL) || model.SCRY_MODEL === "openrouter/auto") {
@@ -123,6 +195,7 @@ export function appEnvVars(env) {
   if (env.SCRY_GENERATION_DAILY_BUDGET_MICROS !== "1000000" || env.SCRY_GENERATION_RESERVATION_MICROS !== "200000") {
     throw new Error("generation limits must remain pinned to the product's $1 daily allowance and $0.20 conservative reservation");
   }
+  const semantic = semanticEnvVars(env, model.SCRY_MODEL_API_KEY);
   return {
     SCRY_MODE: "production",
     SCRY_BOOT_MODE: env.SCRY_BOOT_MODE,
@@ -139,6 +212,10 @@ export function appEnvVars(env) {
     SCRY_MODEL_API_KEY: model.SCRY_MODEL_API_KEY,
     SCRY_MODEL: model.SCRY_MODEL,
     SCRY_MODEL_PROVIDER: model.SCRY_MODEL_PROVIDER,
+    SCRY_SEMANTIC_ENDPOINT: semantic.SCRY_SEMANTIC_ENDPOINT,
+    SCRY_SEMANTIC_API_KEY: semantic.SCRY_SEMANTIC_API_KEY,
+    SCRY_SEMANTIC_MODEL: semantic.SCRY_SEMANTIC_MODEL,
+    SCRY_SEMANTIC_RESERVATION_MICROS: semantic.SCRY_SEMANTIC_RESERVATION_MICROS,
     SCRY_GENERATION_DAILY_BUDGET_MICROS: env.SCRY_GENERATION_DAILY_BUDGET_MICROS,
     SCRY_GENERATION_RESERVATION_MICROS: env.SCRY_GENERATION_RESERVATION_MICROS,
     SCRY_DB: "/var/lib/scry/data/scry.sqlite",

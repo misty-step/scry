@@ -107,7 +107,14 @@
         "SCRY_ACCESS_TEAM_DOMAIN": "https://misty-step-pantry.cloudflareaccess.com",
         "SCRY_BACKUP_REMOTE_URL": "https://scry-go-backups.misty-step.workers.dev",
         "SCRY_GENERATION_DAILY_BUDGET_MICROS": "1000000",
-        "SCRY_GENERATION_RESERVATION_MICROS": "200000"
+        "SCRY_GENERATION_RESERVATION_MICROS": "200000",
+        // Jev Decisions for semantic recall and the prepublication critic.
+        // SCRY_SEMANTIC_API_KEY stays unset: the app reuses SCRY_MODEL_API_KEY,
+        // the dedicated capped Scry provider key. Takes effect only when a
+        // Container starts (planned replacement), never on a running instance.
+        "SCRY_SEMANTIC_ENDPOINT": "https://openrouter.ai/api/alpha/decisions",
+        "SCRY_SEMANTIC_MODEL": "typesafe/jev-1.13",
+        "SCRY_SEMANTIC_RESERVATION_MICROS": "2000"
       }
     }
   }
