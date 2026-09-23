@@ -19,7 +19,7 @@
     </svg>{{end}}
     <ul class="concept-list">{{range .Concepts}}<li><a href="/concepts/{{.ID}}"><span class="star {{brightness .Brightness}}" aria-hidden="true">✦</span><strong>{{.Name}}</strong><span class="status-label">{{.Status}}</span></a></li>{{end}}</ul>
     <p class="small muted">{{.Questions}} questions · {{.Due}} ready now</p>
-    {{with .Preparing}}<p class="small">{{.Label}}{{if not .Failed}}…{{end}} <a href="/sources/{{.SourceID}}">See source</a></p>{{end}}
+    {{with .Preparing}}<p class="small">{{.Label}}{{if .Failed}}.{{else}}…{{end}} <a href="/sources/{{.SourceID}}">See source</a></p>{{end}}
     <div class="goal-actions"><a href="/sources/{{.Goal.SourceID}}">Original input</a>
       <form action="/goals/{{.Goal.ID}}" method="post" hx-post="/goals/{{.Goal.ID}}">{{template "tokens" $root}}
         <button class="quiet" name="action" value="{{if .Goal.Focus}}unfocus{{else}}focus{{end}}">{{if .Goal.Focus}}Remove focus{{else}}Focus on this{{end}}</button>
