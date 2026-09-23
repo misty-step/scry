@@ -28,6 +28,13 @@ func outputJSON(t *testing.T, kind string, drafts ...quizDraft) string {
 	if drafts == nil {
 		drafts = []quizDraft{}
 	}
+	drafts = append([]quizDraft(nil), drafts...)
+	for index := range drafts {
+		// The strict schema requires the field; nil means an exact quiz.
+		if drafts[index].RequiredIdeas == nil {
+			drafts[index].RequiredIdeas = []string{}
+		}
+	}
 	body, err := json.Marshal(struct {
 		Coverage outputCoverage `json:"coverage"`
 		Quizzes  []quizDraft    `json:"quizzes"`

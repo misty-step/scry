@@ -134,20 +134,16 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		redirectHosts = append(redirectHosts, host)
 	}
 	funcs := template.FuncMap{
-		"timeText":       timeText,
-		"timeISO":        timeISO,
-		"money":          money,
-		"excerpt":        excerpt,
-		"joinLines":      func(v []string) string { return strings.Join(v, "\n") },
-		"rubricIdeas":    rubricIdeas,
-		"rubricCues":     rubricCues,
-		"rubricClaims":   rubricClaims,
-		"rubricFeedback": rubricFeedback,
-		"outcome":        outcomeText,
-		"kind":           kindText,
-		"jobLabel":       jobLabel,
-		"jobPending":     jobPending,
-		"retryable":      retryable,
+		"timeText":   timeText,
+		"timeISO":    timeISO,
+		"money":      money,
+		"excerpt":    excerpt,
+		"joinLines":  func(v []string) string { return strings.Join(v, "\n") },
+		"outcome":    outcomeText,
+		"kind":       kindText,
+		"jobLabel":   jobLabel,
+		"jobPending": jobPending,
+		"retryable":  retryable,
 	}
 	t, err := template.New("scry").Funcs(funcs).ParseFS(files, "templates/*.html")
 	if err != nil {
@@ -456,48 +452,4 @@ func retryable(status string) bool {
 	default:
 		return false
 	}
-}
-
-func rubricIdeas(rubric *store.Rubric) string {
-	if rubric == nil {
-		return ""
-	}
-	lines := make([]string, len(rubric.Required))
-	for i, idea := range rubric.Required {
-		lines[i] = idea.Text
-	}
-	return strings.Join(lines, "\n")
-}
-
-func rubricCues(rubric *store.Rubric) string {
-	if rubric == nil {
-		return ""
-	}
-	lines := make([]string, len(rubric.Required))
-	for i, idea := range rubric.Required {
-		lines[i] = idea.Cue
-	}
-	return strings.Join(lines, "\n")
-}
-
-func rubricClaims(rubric *store.Rubric) string {
-	if rubric == nil {
-		return ""
-	}
-	lines := make([]string, len(rubric.Contradictions))
-	for i, claim := range rubric.Contradictions {
-		lines[i] = claim.Text
-	}
-	return strings.Join(lines, "\n")
-}
-
-func rubricFeedback(rubric *store.Rubric) string {
-	if rubric == nil {
-		return ""
-	}
-	lines := make([]string, len(rubric.Contradictions))
-	for i, claim := range rubric.Contradictions {
-		lines[i] = claim.Feedback
-	}
-	return strings.Join(lines, "\n")
 }

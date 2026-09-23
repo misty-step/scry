@@ -187,12 +187,16 @@ interaction teaches me something without taking away control.
 - **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
   read-only requests do not fabricate answers. If no next item is ready, the
   learner sees an honest end/pending state.
-- **S02.5:** Each free-response content version explicitly chooses exact or
+- **S02.5:** Each free-response content version explicitly records exact or
   semantic grading. Exact answers, authored variants, and case-only uncertainty
-  resolve locally first. Semantic grading applies only to prose recall with an
-  authored, versioned rubric. The authored mode is the task contract: choice
-  and any deterministic task stay exact because the author says so, and no
-  heuristic on digits, symbols, or answer length overrides that choice.
+  resolve locally first. Semantic grading applies only to prose recall with a
+  versioned required-idea rubric. The learner never chooses grading or writes a
+  rubric: the ordinary generation request authors required ideas only for
+  conceptual prose recall, and choice, exact-text, and complete-set tasks stay
+  exact by task contract. No heuristic on digits, symbols, keywords, or answer
+  length chooses or overrides the mode. A learner edit keeps a generated rubric
+  only while the prompt, expected answer, and response style are unchanged;
+  otherwise the new version is exact.
 - **S02.6:** Semantic grading records success only when independent required-idea
   and overall-relation judgments meet the versioned policy. Unclear, malformed,
   unavailable, or failed judgments stay ungraded with the learner answer saved;
@@ -541,8 +545,16 @@ evidence, changed qualifications, missing context, ambiguous answers, indefensib
 answers, leaked answers, overlapping choices, misaligned rubrics, and adversarial
 content. Source support applies only to source-basis candidates. Choice overlap
 and rubric alignment apply only to their corresponding quiz types. The leakage
-check also covers authored rubric cues. Generator v3 still authors exact items;
-this increment does not add semantic rubric generation or contrast candidates.
+check also covers authored rubric cues. Generator v4 (`scry-go-quiz-v4`) authors
+zero to four required ideas in the same generation request for conceptual prose
+recall only; the validator rejects any rubric on choice, exact-text, or
+complete-set output and requires each source-basis idea to be supported by that
+candidate's evidence without strengthening a qualification. Generated rubrics
+have no cues or contradiction feedback, so a missing idea never reveals a hint;
+under `semantic-v1` incomplete and incorrect stay ungraded. Rubric alignment is
+judged by the same bounded critic call per candidate; the known false accept is
+unchanged (structural validation, not the critic, blocked that example). No
+contrast candidates are generated.
 
 The code-owned `critic-v1` policy freezes the hard threshold at 0.80.
 Any hard judgment at or above that threshold rejects the candidate.

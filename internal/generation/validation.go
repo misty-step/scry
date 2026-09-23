@@ -30,7 +30,13 @@ type quizDraft struct {
 	Choices     []string `json:"choices"`
 	Variants    []string `json:"variants"`
 	Covers      []string `json:"covers"`
+	// RequiredIdeas is empty for exact tasks. A nonempty list is the bounded
+	// meaning rubric for a prose recall answer, authored in the same request.
+	RequiredIdeas []string `json:"required_ideas"`
 }
+
+// maxRequiredIdeas bounds each generated rubric and its Jev battery size.
+const maxRequiredIdeas = 4
 
 var (
 	markup         = regexp.MustCompile(`(?i)<[/!]?[a-z][^>]*>|\[[^\]]+\]\([^\)]+\)|` + "```")
@@ -94,7 +100,7 @@ func validateOutput(content string, job *store.Job, plan coveragePlan) (store.Ge
 	}
 	drafts := make([]quizDraft, len(raw.Quizzes))
 	for index, rawQuiz := range raw.Quizzes {
-		if err := strictObject(rawQuiz, &drafts[index], "evidence", "basis", "kind", "prompt", "answer", "explanation", "choices", "variants", "covers"); err != nil {
+		if err := strictObject(rawQuiz, &drafts[index], "evidence", "basis", "kind", "prompt", "answer", "explanation", "choices", "variants", "covers", "required_ideas"); err != nil {
 			return result, nil, err
 		}
 	}
@@ -111,6 +117,12 @@ func validateOutput(content string, job *store.Job, plan coveragePlan) (store.Ge
 	issues := make([]string, 0)
 	lastUnit, lastExactOffset := -1, -1
 	for _, draft := range drafts {
+		// Choice, exact-text, and complete-set tasks stay deterministic: the
+		// grading contract comes from the task, not from the model's rubric.
+		if len(draft.RequiredIdeas) > 0 && (draft.Kind != "recall" || finite) {
+			issues = append(issues, "rubric_on_exact_task")
+			continue
+		}
 		if issue := validateQuiz(draft, job); issue != "" {
 			issues = append(issues, issue)
 			continue
@@ -159,11 +171,19 @@ func validateOutput(content string, job *store.Job, plan coveragePlan) (store.Ge
 		if unit >= 0 {
 			covered[draft.Covers[0]], lastUnit = true, unit
 		}
-		result.Quizzes = append(result.Quizzes, store.GeneratedQuiz{
+		quiz := store.GeneratedQuiz{
 			Kind: draft.Kind, Prompt: draft.Prompt, Answer: draft.Answer,
 			Explanation: draft.Explanation, Evidence: draft.Evidence, Basis: draft.Basis,
 			Choices: draft.Choices, Variants: draft.Variants,
-		})
+		}
+		if len(draft.RequiredIdeas) > 0 {
+			rubric := &store.Rubric{Required: make([]store.RubricIdea, len(draft.RequiredIdeas))}
+			for index, idea := range draft.RequiredIdeas {
+				rubric.Required[index] = store.RubricIdea{Text: idea}
+			}
+			quiz.Grading, quiz.Rubric = "semantic", rubric
+		}
+		result.Quizzes = append(result.Quizzes, quiz)
 	}
 	unverifiable := finite && (plan.Unverified || len(plan.Units) == 0)
 	missingUnits := len(plan.Units) - len(covered)
@@ -196,6 +216,9 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 		return "quiz_bounds"
 	}
 	prompt, answer, explanation := normalized(q.Prompt), normalized(q.Answer), normalized(q.Explanation)
+	if issue := validateRequiredIdeas(q.RequiredIdeas, prompt); issue != "" {
+		return issue
+	}
 	leaksAnswer := phraseContains(prompt, answer)
 	// Preserve case for single-letter identifiers: an ordinary article does
 	// not reveal an uppercase label, but naming that label explicitly does.
@@ -251,7 +274,7 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 	} else {
 		return "unsupported_quiz_kind"
 	}
-	combined := q.Prompt + "\n" + q.Answer + "\n" + q.Explanation + "\n" + strings.Join(q.Choices, "\n") + "\n" + strings.Join(q.Variants, "\n")
+	combined := q.Prompt + "\n" + q.Answer + "\n" + q.Explanation + "\n" + strings.Join(q.Choices, "\n") + "\n" + strings.Join(q.Variants, "\n") + "\n" + strings.Join(q.RequiredIdeas, "\n")
 	for _, citation := range citations.FindAllString(combined, -1) {
 		if job.SourceKind != "source" || !strings.Contains(job.SourceText, citation) {
 			return "invented_citation"
@@ -275,6 +298,11 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 			return "unsupported_source_variant"
 		}
 	}
+	for _, idea := range q.RequiredIdeas {
+		if !answerSupported(normalized(idea), evidence) || !numbersSupported(idea, q.Evidence) {
+			return "unsupported_source_idea"
+		}
+	}
 	for _, match := range quotedText.FindAllStringSubmatch(combined, -1) {
 		for _, quote := range match[1:] {
 			if quote != "" && !strings.Contains(job.SourceText, quote) {
@@ -282,8 +310,35 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 			}
 		}
 	}
-	if qualifications.MatchString(q.Evidence) && strengthensQualification(answer+" "+explanation, evidence) {
-		return "strengthened_source_claim"
+	if qualifications.MatchString(q.Evidence) {
+		// The answer check is unchanged. Required ideas are then added to the
+		// same claim, so they can only make it stricter, never looser.
+		claim := answer + " " + explanation
+		if strengthensQualification(claim, evidence) || (len(q.RequiredIdeas) > 0 && strengthensQualification(claim+" "+normalized(strings.Join(q.RequiredIdeas, " ")), evidence)) {
+			return "strengthened_source_claim"
+		}
+	}
+	return ""
+}
+
+// validateRequiredIdeas checks only the structure of a generated rubric: its
+// size, plain text, distinct ideas, and that no idea is printed in the prompt.
+// Whether a quiz should be meaning-checked is the generator's task decision,
+// bounded by validateOutput to prose recall outside deterministic tasks.
+func validateRequiredIdeas(ideas []string, prompt string) string {
+	if len(ideas) > maxRequiredIdeas {
+		return "quiz_bounds"
+	}
+	seen := make(map[string]bool, len(ideas))
+	for _, idea := range ideas {
+		key := normalized(idea)
+		if key == "" || strings.TrimSpace(idea) != idea || len(idea) > 1024 || hasUnsafeControl(idea) || markup.MatchString(idea) || seen[key] {
+			return "invalid_required_idea"
+		}
+		if phraseContains(prompt, key) {
+			return "answer_leakage_or_vague_prompt"
+		}
+		seen[key] = true
 	}
 	return ""
 }
