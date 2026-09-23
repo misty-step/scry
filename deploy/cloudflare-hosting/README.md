@@ -54,8 +54,16 @@ Worker-only secrets:
 - `SCRY_ACCESS_OWNER_SUB` — the one immutable Cloudflare Access user UUID. The
   Access policy's email allow-list is not sufficient by itself; a JWT with the
   same email and a different `sub` remains denied.
+
 - `SCRY_PROBE_TOKEN` — grants only GET/HEAD access to `/healthz` and `/readyz`
   after the outer Access application has admitted the request.
+
+The `SCRY_ACCESS_TEAM_DOMAIN` values in `wrangler.jsonc` name the shared
+Cloudflare Access team `misty-step-pantry.cloudflareaccess.com`. This is the
+JWT issuer/JWKS authority and may appear during the Access login handoff; it is
+not a Pantry Worker or Scry application origin. Production requests still use
+`https://scry.study`; successful authentication should return to that app
+origin.
 
 Container secrets:
 
