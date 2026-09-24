@@ -16,8 +16,9 @@ confusion-triggered contrast) and then confirmed "go for it": US-005 criterion 3
 criterion 2, US-009 criterion 3, and US-011 criterion 3 removed; US-012 retired
 with its id reserved) are accepted intent. Later on 2026-09-24 the operator
 rejected self-check for "water" against the key "Water" ("jev should absolutely
-be able to tell that this was correct"). US-003 criteria 1 and 2 now send every
-unmatched recall answer, exact-form or flexible, to the `short-v1` check.
+be able to tell that this was correct"). US-003 criteria 1 and 2 now send unmatched
+legacy (no authored form) and flexible recall answers to the `short-v1`
+check; an authored exact form keeps local authority.
 
 ## Capability: Concept-centered study
 
@@ -56,8 +57,8 @@ Evidence: `internal/web/review_test.go`
 Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
 
 Criteria:
-1. WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; THE SYSTEM SHALL NOT award or mark wrong any other recall answer locally, whether it differs by case, spacing, or wording.
-2. WHEN any recall answer (exact-form or flexible) does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
+1. WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; an authored exact-form near miss SHALL go to self-check and a short clear exact-form mismatch SHALL be a miss, never sent to a meaning check; THE SYSTEM SHALL NOT award or mark wrong any other recall answer locally.
+2. WHEN a flexible or legacy (no authored form) recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
 3. WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.
 4. WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.
 5. WHEN a result is recorded, THE SYSTEM SHALL name its authority as exact, Jev, learner, or reveal; it SHALL preserve original attempts and grade corrections across restart without silently rewriting history.
