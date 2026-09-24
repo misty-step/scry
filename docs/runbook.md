@@ -7,9 +7,11 @@ permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
 current intent and acceptance; Linear owns current owner, status, and pause.
 The operator rejected the foundations UI on 2026-09-12; on 2026-09-23 they
 authorized the concept-centered v5 implementation (MIS-162), and on 2026-09-24
-approved its release ("go for it"). The release followed the
-[schema v5 activation checklist](#schema-v5-release-boundary) and is recorded
-below. The [design study](design/concept-centered-study.md#outcome-2026-09-23)
+approved its release ("go for it"). The release completed steps 1–4 of the
+[schema v5 activation checklist](#schema-v5-release-boundary).
+Step 5 is partial: binary, schema, readiness, ingress denial and remote readback
+were verified, but no owner-authenticated flow was (see below). The
+[design study](design/concept-centered-study.md#outcome-2026-09-23)
 records the product change.
 
 As of September 22, the canonical application is **https://scry.study** on
@@ -72,7 +74,9 @@ What was done, in order:
    (SHA-256 `345c398c3ab884ba0cce350cfd5c8e0a2d551ec714b1da487e131d1b3528c559`).
    Compared with 12:00, only the backup ledger changed.
 3. Rehearsed on the VM in unused paths. Both binaries restored the snapshot and
-   passed `check`. The v5 restore migrated it to `user_version=5`. Every v4
+   passed `check`. Separately, on an untouched v4 restore of the rollback-point
+   snapshot, v5's read-only `check` reported compatible and left the file
+   byte-identical at `user_version=4`. The v5 restore migrated it to `user_version=5`. Every v4
    export section kept every row. The only additions were code-owned catalog
    ids (`dedupe-v1`, `short-v1`, `learner-v1`) and new v5 sections. The
    migration created 13 goals, one per source; the 6 unarchived sources show
