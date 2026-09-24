@@ -1,0 +1,70 @@
+{
+  "format": "scry-mis162-v5-simplify-v1",
+  "date": "2026-09-24",
+  "issue": "MIS-162",
+  "status": "Branch verified; not deployed. Schema v5 activation on production data needs explicit operator approval.",
+  "compiled_source_revision": "a644f3e65bf42eff1f7ea48e557c577fcc28874d",
+  "source_state": "committed",
+  "binary_sha256": "e7eaa3b3a4d626d9a38b6b7c8e45f988d59c8d07813627b21e92bd9556bdcbb6",
+  "source_sha256": "1c1dd50f7e585fc0d3824541d2dc0c14c1a1966b4f609ac90bb779ec8a81eb42",
+  "relation": "Follows concept-study-advisories-20260923.json (bc35504). Earlier receipts stay bound to their revisions; the fix flow they describe is superseded here.",
+  "publication": "Evidence-only commit after the tested revision; every run below used the exact gate-built binary.",
+  "operator_direction": "On 2026-09-23 the operator chose to drop Map search, comparison notes, and simpler/deeper notes, to make a fix a drafted edit, to keep the SPEC secrecy boundary narrow, and to skip the legacy-to-concepts migration.",
+  "changes": [
+    "5da3531 secrecy back to the SPEC boundary: sibling concept pages, sibling edit pages, and other questions' history stay reachable; the minimal stopped-fix payload stays",
+    "2b71d5b one standard note per concept: note job kind, level column, level tabs, and request route removed; US-011 criterion 3 removed",
+    "8d43d71 Map search removed; a concept-only FTS index (concept_index) remains for plan reuse; US-001 criterion 2 and US-009 criterion 3 removed",
+    "aaa0cdc confusion-triggered contrast questions removed, with the contrasts role, confusion evidence, and the also/choice_concepts question fields; US-012 retired",
+    "076cf21 a completed fix pre-fills the ordinary edit form from its job result; quiz_proposals, DecideProposal, the proposal route, and the comparison panel removed",
+    "be00c3a questions prompt names the concept id each question assesses (regression from the contrast cut, caught live)",
+    "a644f3e concept page says 'No questions yet' unless questions are being written"
+  ],
+  "not_done": [
+    "single validation layer: generation's shape rules encode a stricter model-output policy interleaved with quality checks the store lacks; replacing them would loosen publication and removing them would turn per-item drops into batch failures; real duplication was about two lines",
+    "legacy-to-concepts migration: skipped at the operator's direction (about 45-75 runtime lines for new risk in the unrehearsed production migration)"
+  ],
+  "size": {
+    "since_advisory_receipt": "39 files, +418/-1339 (net -921); non-test Go net -677",
+    "branch_vs_master": "112 files, +10669/-6521 (net +4148), down from +5069"
+  },
+  "environment": {
+    "host": "isolated exe.dev VM scry-v5-qa3-mis162 (4 vCPU, 8 GiB), destroyed after this run",
+    "toolchain": "go1.27.1 linux/amd64, Node v22.22.0, Playwright 1.63.0, Chromium 153, Gitleaks 8.30.1 (checksum-verified downloads)",
+    "data": "synthetic only: authored seed-fixture databases and one synthetic live Topic capture; no production data, integrations, or scheduler ownership"
+  },
+  "gate": {
+    "command": "python3 scripts/scry-ci local --require-committed",
+    "result": "PASS a644f3e65bf42eff1f7ea48e557c577fcc28874d",
+    "ci": "GitHub Actions run 35953472118 succeeded on a644f3e"
+  },
+  "mutation_checks": "Each new or rewritten regression test failed with its behavior reverted and passed once restored (byte-identical): stopped-fix capture isolation 5, draft overlay 1, draft moot after save 1, stopped-fix payload without capture text 1. The migration reuse test's foundation exclusion is also enforced by loadConcepts, so its single mutation survives by design.",
+  "synthetic_visual_states": {
+    "renderer": "Playwright 1.63.0 with Chromium 153, full page, dark/light at 390 and 1280 where listed",
+    "states": 20,
+    "checks": 68,
+    "result": "68/68",
+    "groups": ["map (4)", "concept (4)", "edit-fix-stopped (2)", "edit-fix-writing (2)", "edit-fix-draft (4, live)", "edit-fix-current (1, live)", "edit-fix-saved (1, live)", "concept-live (2, live)"],
+    "not_captured": "concept with no questions and nothing pending: the live batch kept a question for each new concept this run",
+    "gallery": "local run artifact simplify-20260924T035531Z (PNG kept outside Git)"
+  },
+  "live": {
+    "configuration": "OpenRouter google/gemini-3.7-flash, Jev typesafe/jev-1.13, Exa key present; generation allowance 2,000,000 micros/day, reservation 500,000",
+    "result": "a real fix produced a draft that left the question unchanged until Save installed it as the next version; a Topic capture ran research, plan, and questions (partial: invalid items dropped, the rest published) with a web-grounded note citing its stored result",
+    "first_attempt": "on 076cf21 every question failed its concept target; fixed in be00c3a and re-run",
+    "spend_micros_final_run": 55828,
+    "spend_note": "job-attempt totals minus the fixture's 110 authored micros; the critic's content checks are accounted separately",
+    "unknown_cost_outcomes": 0,
+    "provider_key": "weekly limit $25; $24.26 remaining after these runs"
+  },
+  "not_verified": [
+    "schema v5 migration of the real production database (needs an operator-authorized isolated restore rehearsal of the latest snapshot before activation)",
+    "production activation, private ingress through Cloudflare Access, and access loss on this build",
+    "physical-phone touch acceptance and iOS Safari rendering",
+    "the full 146-shot matrix on this revision (bound to 757acdf; unchanged surfaces were not re-captured)",
+    "design-studio exploration for Direction A"
+  ],
+  "known_quality_gaps": [
+    "a fix can reword the answer or add accepted variants despite an instruction not to; the draft shows it in the form and nothing changes until the learner saves",
+    "question batches still publish partially when some items fail validation"
+  ]
+}

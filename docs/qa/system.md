@@ -268,6 +268,11 @@ the follow-up (`bc35504`): fixes as learner-chosen suggestions that belong to
 their question, whole-capture withholding while a question waits for an
 unaided answer, and 17 named states on the exact gate binary with one live fix.
 
+[The MIS-162 simplification receipt](concept-study-simplify-20260924.json)
+binds `a644f3e`: Map search, comparison notes, and note levels removed, a fix
+as a drafted edit, the SPEC secrecy boundary, 20 named states and a live Topic
+chain on the exact gate binary.
+
 [The earlier Go acceptance receipt](personal-go-acceptance-20260909.json) records
 bounded live generation, trusted touch, interrupted-response/access recovery,
 and independent data restoration. Its original observation predates subsequent
