@@ -141,3 +141,33 @@ func containsAll(text string, parts ...string) bool {
 	}
 	return true
 }
+
+// Saving Scry's fix draft as drafted keeps the key ideas it was validated
+// with, even when the current version had none; rewording the draft before
+// saving drops them like any learner edit.
+func TestSavedFixDraftKeepsItsValidatedRubric(t *testing.T) {
+	ctx := context.Background()
+	for _, reword := range []bool{false, true} {
+		s, _ := newTestStore(t)
+		src := publishFixture(t, s, learnerEdit(generatedMeaning()))
+		current := src.Quizzes[0]
+		if err := s.RequestFix(ctx, current.ID, "Make the prompt plainer", "fix-meaning"); err != nil {
+			t.Fatal(err)
+		}
+		draft := generatedMeaning()
+		draft.Prompt = "Why may a browser reuse its stored page after a conditional request?"
+		complete(t, s, claimKind(t, s, "fix"), GenerationResult{Quizzes: []GeneratedQuiz{draft}})
+		form := learnerEdit(draft)
+		if reword {
+			form.Prompt = "What lets a browser reuse its stored page after a conditional request?"
+		}
+		saved, err := s.EditQuiz(ctx, current.ID, current.Version, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept := saved.Grading == "semantic" && saved.Rubric != nil && len(saved.Rubric.Required) == 2
+		if kept == reword {
+			t.Fatalf("reword=%v: saved grading %q rubric %+v", reword, saved.Grading, saved.Rubric)
+		}
+	}
+}

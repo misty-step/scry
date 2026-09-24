@@ -194,6 +194,7 @@ func (s *server) editQuiz(w http.ResponseWriter, r *http.Request) {
 		d := fix.Draft
 		shown.Kind, shown.Prompt, shown.Answer, shown.Explanation = d.Kind, d.Prompt, d.Answer, d.Explanation
 		shown.Choices, shown.Variants = d.Choices, d.Variants
+		shown.Grading, shown.Rubric = d.Grading, d.Rubric
 		if d.Basis == q.Basis {
 			shown.Evidence = d.Evidence
 		}

@@ -424,6 +424,18 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if q.Version != expectedVersion {
 		return Quiz{}, fmt.Errorf("%w: the quiz was already edited; reload before editing", ErrConflict)
 	}
+	// Saving Scry's draft for this version as drafted keeps the grading it was
+	// validated with; any other wording is settled by carryRubric.
+	if content.Grading == "" && content.Rubric == nil {
+		draft, _, err := fixDraft(ctx, tx, id, q.Version)
+		if err != nil {
+			return Quiz{}, err
+		}
+		if draft != nil && draft.Kind == content.Kind && strings.TrimSpace(draft.Prompt) == strings.TrimSpace(content.Prompt) &&
+			strings.TrimSpace(draft.Answer) == strings.TrimSpace(content.Answer) && strings.TrimSpace(draft.Evidence) == strings.TrimSpace(content.Evidence) {
+			content.Grading, content.Rubric = draft.Grading, draft.Rubric
+		}
+	}
 	if q, err = writeEdit(ctx, tx, q, content, "", "manual-edit", s.now()); err != nil {
 		return Quiz{}, err
 	}
@@ -483,6 +495,34 @@ func writeEdit(ctx context.Context, tx *sql.Tx, q Quiz, content GeneratedQuiz, m
 	return quiz(ctx, tx, q.ID)
 }
 
+// fixDraft is the validated result of a question's latest fix when that fix
+// completed for version; nil otherwise.
+func fixDraft(ctx context.Context, tx *sql.Tx, quizID string, version int) (*GeneratedQuiz, string, error) {
+	var status, payload string
+	var encoded sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT status,payload,result_json FROM jobs WHERE kind='fix' AND json_extract(payload,'$.quiz_id')=?
+	 ORDER BY created_at DESC,rowid DESC LIMIT 1`, quizID).Scan(&status, &payload, &encoded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	var asked struct {
+		Version     int    `json:"version"`
+		Instruction string `json:"instruction"`
+	}
+	if err = json.Unmarshal([]byte(payload), &asked); err != nil {
+		return nil, "", err
+	}
+	var result GenerationResult
+	if (status != "complete" && status != "partial") || asked.Version != version || !encoded.Valid ||
+		json.Unmarshal([]byte(encoded.String), &result) != nil || len(result.Quizzes) != 1 {
+		return nil, "", nil
+	}
+	return &result.Quizzes[0], asked.Instruction, nil
+}
+
 // QuizFix reports the state of a question's latest fix request. A completed
 // fix changes nothing: its validated result is a draft the learner saves
 // through the ordinary version-fenced edit, so a later edit makes it moot.
@@ -518,15 +558,8 @@ func (s *Store) QuizFix(ctx context.Context, quizID string) (QuizFix, error) {
 	case "queued", "running", "retry":
 		fix.Writing = true
 	case "complete", "partial":
-		if current {
-			var encoded sql.NullString
-			if err = tx.QueryRowContext(ctx, "SELECT result_json FROM jobs WHERE id=?", latest.ID).Scan(&encoded); err != nil {
-				return fix, err
-			}
-			var result GenerationResult
-			if encoded.Valid && json.Unmarshal([]byte(encoded.String), &result) == nil && len(result.Quizzes) == 1 {
-				fix.Draft, fix.Instruction = &result.Quizzes[0], asked.Instruction
-			}
+		if fix.Draft, fix.Instruction, err = fixDraft(ctx, tx, quizID, version); err != nil {
+			return fix, err
 		}
 	case "failed", "paused":
 		// Uncertain paused work stays reported until the learner asks again.
