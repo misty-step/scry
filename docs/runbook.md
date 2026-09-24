@@ -41,6 +41,46 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
+### September 24 Ink notebook interface release
+
+This release changes only the interface. The schema is unchanged at 5. The
+Worker serves version `9dfb05ff-e829-4258-8ef6-51437760aa95`: the committed
+24-hour configuration, deployed as `986d5831…`, plus a probe-token rotation.
+The container application is at version 4 with image digest
+`sha256:b287bf39e914d80c583002f2964952832c1d53993ce0f304567da7b78eb0bbc0`.
+It carries the committed-gate binary `scry 0877687` (PR
+[185](https://github.com/misty-step/scry/pull/185)), SHA-256
+`81b6d1a84809630ec0abe512da8b7bf1b9ef06180f7918b2000b7f70d2b83ea4`.
+
+The binary was built by `ci:full --require-committed` on an isolated exe.dev
+VM. `registry.dagger.io` was returning HTTP 500 at the time, so the pinned
+engine `v0.21.6` ran from its `ghcr.io/dagger/engine` mirror.
+
+After the rollout, readiness returned `ready` and health `ok` to a temporary
+service identity. The owner root returned 403, a wrong probe token 401, and an
+anonymous request was redirected to Access login. The temporary policy and
+token were deleted, and the probe token was rotated.
+
+**Rollout race ([MIS-164](https://linear.app/misty-step/issue/MIS-164)).** This
+deploy went straight to `--containers-rollout=immediate` without first
+quiescing with the one-minute window. The new instance fetched
+`scry-20260924T133048.201650106Z-8f378963aa56b9b9c258dc10d40f9bbd.scry-backup.zip`
+at 17:14:04.8. The outgoing instance's final backup
+`scry-20260924T171400.753013739Z-6a4e374099cf208e85f12e10f4cd744d.scry-backup.zip`
+finished uploading 3 seconds later. An independent export diff of the two
+snapshots showed that only the backup ledger changed, so no learning write was
+lost.
+
+Until MIS-164 adds a structural guard, every image rollout must quiesce first:
+
+1. Deploy the Worker only with the one-minute window.
+2. Confirm the instance is `inactive`.
+3. Read back its final backup.
+4. Only then deploy the image.
+
+Rollback is the previous image `sha256:9e461ab8…fe73` (binary `cdd8212`),
+which is schema-5 compatible. Use the same quiesced replacement.
+
 ### September 24 concept-centered v5 release
 
 Receipt: [v5-release-20260924.json](qa/v5-release-20260924.json).
