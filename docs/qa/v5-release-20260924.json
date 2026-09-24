@@ -28,6 +28,7 @@
     "v4_binary": "b9836cf8fd9bc078110c8a906e066664c4f79f38 (4c3a326e2f87c84fc3b645bd05a89a6f95500d9b8ad59f21f6aa03afbc661470)",
     "results": [
       "v4 and v5 restore + check: compatible, integrity ok",
+      "v5 read-only check on an untouched v4 restore of the rollback-point snapshot: compatible, integrity ok; DB byte-identical afterwards, user_version still 4 (run after activation, locally, against the R2 readback)",
       "v5 restore migrated schema 4 -> 5 (user_version 5, integrity ok)",
       "every v4 export section preserved row-for-row; additions only code-owned catalog ids dedupe-v1, short-v1, learner-v1 and v5-only sections",
       "13 goals backfilled (one per source); 6 unarchived sources appear as Map unmapped; old jobs paused",
