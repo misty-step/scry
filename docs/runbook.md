@@ -41,7 +41,41 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-### September 24 Ink notebook interface release
+### September 24 grading release (current)
+
+The Worker serves `411db3f6-4cf1-425e-82cc-a356425dfec5`, the 24-hour
+configuration plus a rotated probe token. The container application is at
+version 6 with image
+`sha256:a73f981c4bcd8460f84aa17178e465cc44d646b554ed3a960ec480425ad0611f`. It
+carries committed-gate binary `scry 124e8f2`, SHA-256
+`9fbb5b414f7aad4b5f79c22c486b6a88901a445523fce10d664efa61d7a3d02d`.
+
+This release changes grading, not the schema. It fixes a legacy recall
+question (one with no authored answer form) that sent "water" for the key
+"Water" to self-check. Under this release:
+- A legacy or `flexible` recall answer that doesn't match the key goes to the
+  Jev `short-v1` check. All 11 production recall questions are legacy.
+- An authored `exact` form keeps the local rule.
+
+PRs [187](https://github.com/misty-step/scry/pull/187) and
+[188](https://github.com/misty-step/scry/pull/188) made the change. Live Jev
+on the reported prompt judged "water" and "H2O" correct and "carbon dioxide"
+wrong.
+
+The rollout order followed the MIS-164 rule:
+1. Quiesced with the one-minute window.
+2. The final backup `scry-20260924T173455…` read back (SHA-256 `68d3d425…`) and
+   passed `check`.
+3. Deployed `f5cfcb7` (#187). No instance started on it before #188 superseded
+   it.
+4. A probe woke that stale version before `124e8f2` propagated. The rollout
+   stopped it after a verified backup, `scry-20260924T174342…`, which
+   `124e8f2` restored at 17:46:16.
+
+Only probe traffic reached `f5cfcb7`. CI now falls back to the GHCR mirror of
+the pinned Dagger engine when `registry.dagger.io` fails.
+
+### September 24 Ink notebook interface release (superseded)
 
 This release changes only the interface. The schema is unchanged at 5. The
 Worker serves version `9dfb05ff-e829-4258-8ef6-51437760aa95`: the committed
