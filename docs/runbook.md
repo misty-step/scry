@@ -70,8 +70,10 @@ The rollout order followed the MIS-164 rule:
    instance stayed inactive.
 4. A readiness probe at 17:43:27 cold-started an instance that restored
    `scry-20260924T173455…` on the stale `f5cfcb7` revision, because `124e8f2`
-   had not yet propagated. The rollout stopped that instance at 17:43:41 after
-   a verified final backup, `scry-20260924T174342…`. At 17:46:15 the next
+   had not yet propagated. The rollout began shutting that instance down at
+   17:43:41; its final backup `scry-20260924T174342…` (key named when the
+   snapshot started) was uploaded and verified at 17:43:47, and the Worker
+   logged the stop at 17:43:51. At 17:46:15 the next
    instance restored that backup on revision `124e8f2`, and its listener was
    ready at 17:46:16.
 
