@@ -332,10 +332,10 @@ func answerCurrent(t *testing.T, s *Store, op, answer string) Presentation {
 func TestOverrideAutomaticGradeUS007(t *testing.T) {
 	s, now := newTestStore(t)
 	ctx := context.Background()
-	publishFixture(t, s, GeneratedQuiz{Kind: "recall", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
-	missed := answerCurrent(t, s, "miss", "the TLS protocol")
+	publishFixture(t, s, GeneratedQuiz{Kind: "choice", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Choices: []string{"TLS", "SSH", "FTP"}, Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
+	missed := answerCurrent(t, s, "miss", "SSH")
 	if !missed.Graded || missed.Outcome != "wrong" || missed.Rating != 1 || missed.Authority != "exact" {
-		t.Fatalf("exact short mismatch should be an automatic miss: %+v", missed)
+		t.Fatalf("a wrong choice should be an automatic miss: %+v", missed)
 	}
 	var before string
 	if err := s.db.QueryRow("SELECT card FROM schedules").Scan(&before); err != nil {
@@ -369,7 +369,7 @@ func TestOverrideAutomaticGradeUS007(t *testing.T) {
 		t.Fatal(err)
 	}
 	*now = now.Add(30 * 24 * time.Hour)
-	later := answerCurrent(t, s, "later-miss", "SSL")
+	later := answerCurrent(t, s, "later-miss", "FTP")
 	if _, err = s.Next(ctx, later.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -503,8 +503,8 @@ func TestPracticeFocusAndOnDemandRequests(t *testing.T) {
 func TestOverrideRetiresStrandedOccurrence(t *testing.T) {
 	s, now := newTestStore(t)
 	ctx := context.Background()
-	publishFixture(t, s, GeneratedQuiz{Kind: "recall", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
-	missed := answerCurrent(t, s, "first-miss", "SSL")
+	publishFixture(t, s, GeneratedQuiz{Kind: "choice", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Choices: []string{"TLS", "SSH", "FTP"}, Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
+	missed := answerCurrent(t, s, "first-miss", "SSH")
 	if _, err := s.Next(ctx, missed.ID); err != nil {
 		t.Fatal(err)
 	}

@@ -733,7 +733,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	}
 	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Grading, p.Quiz.AnswerForm, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
 	now := s.now()
-	if outcome == "ungraded" && !reveal && (p.Quiz.Grading == "semantic" || (p.Quiz.Kind == "recall" && p.Quiz.AnswerForm == "flexible")) {
+	if outcome == "ungraded" && !reveal && (p.Quiz.Grading == "semantic" || p.Quiz.Kind == "recall") {
 		policy := learning.ShortPolicyVersion
 		if p.Quiz.Grading == "semantic" {
 			policy = learning.SemanticPolicyVersion
