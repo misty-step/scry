@@ -41,7 +41,42 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-### September 24 grading release (current)
+### September 24 single grading rule release (current)
+
+The Worker serves `eaba737e-2b70-4b40-bbfd-b7199ce5fc89`: the 24-hour
+configuration plus a rotated probe token. The container application is at
+version 7 with image
+`sha256:ac4bba4d2ba0d7c6d010c5d1c4993ab4fe6d03fec3524c647eb2a6871d6d2168`. It
+carries committed-gate binary `scry f9667eb`
+([PR 190](https://github.com/misty-step/scry/pull/190)), SHA-256
+`0ae6b941174cb7f2c55fb380773f55bd7c76c8ec06695f04e851a97a1d7d6b31`.
+
+The exact/flexible answer form is gone. Locally, only the exact key or an
+authored variant is correct and a wrong choice is a miss. Every other recall
+answer goes to Jev `short-v1`, with unchanged thresholds.
+
+Before activation, a held-out live check ran through the production builder
+and policy with 14 cases:
+- **10 exact-form misses** (spelling, year, symbol, symbol case, verbatim
+  line, number, status code, precision): none was accepted. 8 were rejected,
+  and 2 spelling slips went to self-check. Identity risk was 0.97–0.98.
+- **4 same-meaning answers:** 2 were accepted ("CO2", "the mitochondrion").
+  2 went to self-check ("paris" at identity 0.50, "in 1989" at 0.40), which
+  errs on the conservative side, not toward a false success.
+
+Rollout:
+1. Quiesced with the one-minute window.
+2. The final backup
+   `scry-20260924T190414.558669067Z-fbac8c29db711d846a31b60786f10dfc.scry-backup.zip`
+   (SHA-256 `7ad40d07…`) read back and passed `check`.
+3. Deployed the image. The first probe came after the image propagated, at
+   application version 7.
+4. At 19:23:40 the new instance restored that snapshot on revision `f9667eb`.
+
+Readiness returned `ready` and health `ok`. The owner root returned 403, a
+wrong probe token 401, and the temporary Access policy and token were deleted.
+
+### September 24 grading release (superseded)
 
 The Worker serves `411db3f6-4cf1-425e-82cc-a356425dfec5`, the 24-hour
 configuration plus a rotated probe token. The container application is at
