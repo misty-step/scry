@@ -1,0 +1,52 @@
+{
+  "format": "scry-release-receipt",
+  "issue": "MIS-162",
+  "date": "2026-09-24",
+  "status": "released",
+  "operator_direction": "\"go for it\" (2026-09-24): release v5 after an isolated rehearsal on the latest production snapshot, per docs/runbook.md#schema-v5-release-boundary",
+  "compiled_source_revision": "cdd8212b2bf84c6c23f96fc19ec036d2ad598944",
+  "source_state": "committed",
+  "binary_sha256": "fdb628f92afd6243652c2c150a7a9f6919774716b622b4ece9b66471b6d1c259",
+  "gate": "ci:full --require-committed on isolated exe.dev VM (pinned Dagger v0.21.6); SHA256SUMS verified after transfer; binary copied to deploy/cloudflare-hosting/scry without rebuild",
+  "production": {
+    "worker_version": "0df3cd48-689b-4200-9c92-cc9e62744dd3",
+    "worker_config_version": "4786a6c7-cdc7-472f-972e-77e29e2258c9",
+    "container_application_version": 3,
+    "image_digest": "sha256:9e461ab8d82783c303b46f1b7c23f13ba4c991bd139ed8f6f7dde59ab710fe73",
+    "sleep_after": "24h",
+    "new_secret_binding": "SCRY_EXA_API_KEY",
+    "provider_weekly_limit_usd": 25
+  },
+  "snapshots": {
+    "pre_quiesce_v4": {"key": "scry-20260924T120041.335564850Z-2587444dece0c8d52f12216e32da8f1e.scry-backup.zip", "sha256": "5f284af45ed99a18b6eb8713f058ceac4756c3465c0bd2b264164c2b87566053"},
+    "rehearsed_final_v4": {"key": "scry-20260924T132001.273153794Z-ad32f0cd61e81a2a909737dea1647a5f.scry-backup.zip", "sha256": "345c398c3ab884ba0cce350cfd5c8e0a2d551ec714b1da487e131d1b3528c559"},
+    "rollback_point_v4": {"key": "scry-20260924T132341.741963310Z-6697e710d45033856c844e0a54156288.scry-backup.zip", "sha256": "4cf452367b9e6232360d316e086d7d10382bcf438b54078b9bc86de6bf672609", "note": "written by the transient v4 instance the rollout stopped; one ledger row newer than the rehearsed snapshot; rehearsed separately"},
+    "first_v5_readback": {"key": "scry-20260924T132931.946091435Z-0202f65a1db001a01a8d0cf474d38fe5.scry-backup.zip", "sha256": "338c34998aab5bf21df6b0931c4cc14b62e9673c908969cba03372be970b3e29", "bytes": 624354}
+  },
+  "rehearsal": {
+    "environment": "isolated exe.dev VM, unused paths, no integrations, env -i",
+    "v4_binary": "b9836cf8fd9bc078110c8a906e066664c4f79f38 (4c3a326e2f87c84fc3b645bd05a89a6f95500d9b8ad59f21f6aa03afbc661470)",
+    "results": [
+      "v4 and v5 restore + check: compatible, integrity ok",
+      "v5 restore migrated schema 4 -> 5 (user_version 5, integrity ok)",
+      "every v4 export section preserved row-for-row; additions only code-owned catalog ids dedupe-v1, short-v1, learner-v1 and v5-only sections",
+      "13 goals backfilled (one per source); 6 unarchived sources appear as Map unmapped; old jobs paused",
+      "serve on migrated copy: readyz ready; Stream, Add, Map, History, Settings, 3 sources and all 19 live-source question edit pages (18 edit forms, 1 look-up gate) rendered 200 without template errors"
+    ]
+  },
+  "live": [
+    "v5 start log: revision cdd8212, restored the v4 rollback-point snapshot, semantic on (typesafe/jev-1.13, provider key reuse)",
+    "first v5 remote backup read back independently from R2: v5 check at schema 5; export equals the rehearsed migration except the backup ledger and generated goal ids; v4 binary refuses it",
+    "cold wake on committed 24h config restored that v5 snapshot on revision cdd8212",
+    "probe readyz ready, healthz ok; owner root 403 to the temporary service identity; wrong probe token 401; anonymous request 302 to Access login",
+    "temporary Access policy and service token deleted (the token then got 302); owner-only policy unchanged; probe token rotated to an unretained value",
+    "all requests during the release window were operator probes; no owner writes are absent from the rollback point"
+  ],
+  "not_verified": [
+    "owner-authenticated production flows: capture modes, held Stream result with self-check and override, intro, Map/Concept notes, share target, CSRF, Settings backup status",
+    "a live Topic request through the new Exa binding",
+    "physical-phone / iOS Safari pass and a real camera photo",
+    "the full 146-shot visual matrix on cdd8212",
+    "a staging cold wake of this image digest"
+  ]
+}

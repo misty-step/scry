@@ -7,11 +7,10 @@ permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
 current intent and acceptance; Linear owns current owner, status, and pause.
 The operator rejected the foundations UI on 2026-09-12; on 2026-09-23 they
 authorized the concept-centered v5 implementation (MIS-162), and on 2026-09-24
-approved its release ("go for it"): the [schema v5 activation checklist](#schema-v5-release-boundary),
-including an isolated rehearsal on the final production snapshot, governs it.
-The [design study](design/concept-centered-study.md#outcome-2026-09-23)
-records that change; current deployed receipts below remain v4 observations
-until the v5 release record replaces them.
+approved its release ("go for it"). The release followed the
+[schema v5 activation checklist](#schema-v5-release-boundary) and is recorded
+below. The [design study](design/concept-centered-study.md#outcome-2026-09-23)
+records the product change.
 
 As of September 22, the canonical application is **https://scry.study** on
 Cloudflare Worker `scry-app-host` and singleton Container `scry-app-container`.
@@ -40,7 +39,87 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
-### September 23 automatic meaning recall release
+### September 24 concept-centered v5 release
+
+Receipt: [v5-release-20260924.json](qa/v5-release-20260924.json).
+
+Production Worker `scry-app-host` serves version
+`0df3cd48-689b-4200-9c92-cc9e62744dd3`. That version is the probe-token
+rotation on top of `4786a6c7-cdc7-472f-972e-77e29e2258c9`, the committed
+24-hour configuration from master `cdd8212b2bf84c6c23f96fc19ec036d2ad598944`
+([PR 182](https://github.com/misty-step/scry/pull/182)). The container
+application is at version 3 with image digest
+`sha256:9e461ab8d82783c303b46f1b7c23f13ba4c991bd139ed8f6f7dde59ab710fe73`.
+It carries the committed-gate binary `scry cdd8212`, SHA-256
+`fdb628f92afd6243652c2c150a7a9f6919774716b622b4ece9b66471b6d1c259`, built by
+`ci:full --require-committed` on an isolated exe.dev VM. `SCRY_EXA_API_KEY`
+is now a production secret binding; the model, semantic, and budget settings
+match the committed configuration ($3.50 rolling day, $0.50 reservation). The
+provider key's weekly limit read back as $25. The image went straight to
+production without a staging cold wake. `Dockerfile`, `entrypoint.sh`, and
+`nginx.conf` are unchanged since `b9836cf`.
+
+What was done, in order:
+
+1. Read back the 12:00 UTC snapshot
+   `scry-20260924T120041.335564850Z-2587444dece0c8d52f12216e32da8f1e.scry-backup.zip`
+   (SHA-256 `5f284af45ed99a18b6eb8713f058ceac4756c3465c0bd2b264164c2b87566053`).
+   The v4 binary's `check` passed on a copy.
+2. Deployed the Worker only, with the one-minute window, then woke the
+   instance with a readiness probe. The v4 instance stopped after verified
+   backups; the last was
+   `scry-20260924T132001.273153794Z-ad32f0cd61e81a2a909737dea1647a5f.scry-backup.zip`
+   (SHA-256 `345c398c3ab884ba0cce350cfd5c8e0a2d551ec714b1da487e131d1b3528c559`).
+   Compared with 12:00, only the backup ledger changed.
+3. Rehearsed on the VM in unused paths. Both binaries restored the snapshot and
+   passed `check`. The v5 restore migrated it to `user_version=5`. Every v4
+   export section kept every row. The only additions were code-owned catalog
+   ids (`dedupe-v1`, `short-v1`, `learner-v1`) and new v5 sections. The
+   migration created 13 goals, one per source; the 6 unarchived sources show
+   as unmapped on the Map. Old jobs stayed paused. `serve` on the migrated copy
+   returned `ready`, and every page (Stream, Add, Map, History, Settings,
+   sources, question edits) rendered without template errors.
+4. Deployed the image with `--containers-rollout=immediate`. A probe had
+   already cold-started a v4 instance, so the rollout stopped it after a
+   verified final backup,
+   `scry-20260924T132341.741963310Z-6697e710d45033856c844e0a54156288.scry-backup.zip`
+   (SHA-256 `4cf452367b9e6232360d316e086d7d10382bcf438b54078b9bc86de6bf672609`).
+   That is the last v4 snapshot and the rollback point. It differs from the
+   rehearsed snapshot only by one ledger row, and its own rehearsal passed.
+   v5 restored and migrated it; the start log shows revision `cdd8212` with
+   semantic mode on.
+5. Cycled the instance once through the one-minute window. It stopped after
+   the verified v5 backup
+   `scry-20260924T132931.946091435Z-0202f65a1db001a01a8d0cf474d38fe5.scry-backup.zip`
+   (SHA-256 `338c34998aab5bf21df6b0931c4cc14b62e9673c908969cba03372be970b3e29`,
+   624,354 bytes). An independent R2 readback passed v5 `check` at schema 5.
+   Its export equals the rehearsed migration except the ledger and the
+   generated goal ids. The v4 binary refuses it.
+6. Redeployed the committed 24-hour configuration. The next cold wake restored
+   that v5 snapshot on revision `cdd8212`. Readiness returned `ready`, health
+   returned `ok`, the owner root returned 403 to the temporary service
+   identity, a wrong probe token returned 401, and an anonymous request
+   redirected to Access login. The temporary policy and service token were
+   then deleted; the owner-only policy is unchanged. The probe token was
+   rotated to a value no one retained.
+
+All requests in the release window were operator probes, so no owner writes
+are missing from the rollback point. A rollback to v4 follows the
+[failure procedure](#schema-v5-release-boundary): restore that v4 snapshot
+into an unused path with the retained `b9836cf` binary (SHA-256
+`4c3a326e…1470`), quantify any v5 writes it lacks, and get operator approval.
+The previous image digest `sha256:0a59a1b5…3be32` cannot read the v5
+snapshots now newest in R2.
+
+Not verified by this release: owner-authenticated flows on production (the
+capture modes, a held Stream result with self-check and override, intro,
+Map/Concept notes, share target, and the Settings backup status); a live Topic
+request using the new Exa binding; a physical-phone pass; and the full
+146-shot visual matrix on this revision. The exact binary passed these flows
+on the VM and locally with synthetic data and the production model shape, but
+that does not prove live production behavior.
+
+### September 23 automatic meaning recall release (superseded)
 
 Production Worker `scry-app-host` serves version
 `49affb5b-a787-4009-9038-16e80f4efa75`, deployed from master
@@ -70,9 +149,8 @@ and a wrong probe token returned 401. The temporary policy and token were
 deleted, and the owner policy did not change. The Worker bindings and the
 `0 */12 * * *` schedule did not change.
 
-Rollback stays schema 4. Deploy the previous image digest (below) with the
-same planned replacement. Do not restore a pre-release snapshot over newer
-writes.
+That schema-4 rollback no longer applies. The v4 image cannot read the v5
+snapshots now in R2; follow the September 24 rollback path above.
 
 ### September 23 recovery closeout state (superseded)
 
@@ -204,7 +282,10 @@ configuration; populated files and provider capabilities are private.
 
 ## Schema v5 release boundary
 
-The v5 candidate transactionally migrates complete schema 4 to 5, preserving
+v5 was released on 2026-09-24 (see
+[the release record](#september-24-concept-centered-v5-release)). The failure
+and rollback rules below still apply to v5 production. The v5 release
+transactionally migrates complete schema 4 to 5, preserving
 foundation-origin rows, old source/quiz/review/FSRS/spend history and pausing
 old foundation jobs; it adds concept relations, goals, immutable notes,
 documents, capture images, evidence, grade overrides, preferences and a concept
