@@ -188,9 +188,10 @@ func TestRevealFence(t *testing.T) {
 	}
 }
 
-// US-007/US-003: an exact-form answer that cannot be graded locally shows the
-// key and asks the learner; after the key is visible no new answer is taken,
-// and the learner's grade is recorded under learner authority.
+// US-007/US-003: an answer that does not match the key is staged for the
+// meaning check, never graded by similarity. When that check cannot run, the
+// key is shown and the learner decides; after the key is visible no new answer
+// is taken, and the learner's grade is recorded under learner authority.
 func TestSelfCheckAfterUnclearExactAnswerUS007(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -201,9 +202,14 @@ func TestSelfCheckAfterUnclearExactAnswerUS007(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := state.Current.ID
-	unclear, err := s.Submit(ctx, id, "unclear", "Cells convert the energy they have stored into usable work", false)
-	if err != nil || unclear.Graded || !unclear.SelfCheck || unclear.SelfCheckReason != "close" || unclear.Quiz.Answer != recall.Answer {
-		t.Fatalf("unclear answer did not become a self-check with the key visible: %+v %v", unclear, err)
+	staged, err := s.Submit(ctx, id, "unclear", "Cells convert the energy they have stored into usable work", false)
+	if err != nil || staged.Graded || !staged.Pending || staged.Quiz.Answer != "" {
+		t.Fatalf("an unmatched exact-form answer was not staged for the meaning check: %+v %v", staged, err)
+	}
+	lease := beginSemantic(t, s, staged.AssessmentID)
+	unclear, err := s.FailAssessment(ctx, staged.AssessmentID, lease.Token, AssessmentResult{Error: "unconfigured", NoSend: true})
+	if err != nil || unclear.Graded || !unclear.SelfCheck || unclear.SelfCheckReason != "failed" || unclear.Quiz.Answer != recall.Answer {
+		t.Fatalf("an unavailable check did not become a self-check with the key visible: %+v %v", unclear, err)
 	}
 	state, err = s.Next(ctx, id)
 	if err != nil || state.Current == nil || state.Current.ID != id || !state.Current.SelfCheck {
@@ -238,8 +244,8 @@ func TestSelfCheckAfterUnclearExactAnswerUS007(t *testing.T) {
 		outcomes = append(outcomes, o)
 	}
 	rows.Close()
-	if !reflect.DeepEqual(outcomes, []string{"selfcheck:0:exact-v1", "self_missed:1:learner-v1"}) {
-		t.Fatalf("self-check did not keep its immutable pair: %v", outcomes)
+	if !reflect.DeepEqual(outcomes, []string{"self_missed:1:learner-v1"}) {
+		t.Fatalf("self-check did not record exactly the learner's grade: %v", outcomes)
 	}
 	history, err := s.History(ctx, 20)
 	if err != nil || len(history) != 1 || history[0].Rating != 1 || history[0].Authority != "learner" {

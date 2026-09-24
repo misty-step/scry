@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v4"
 )
@@ -59,15 +58,16 @@ func Schedule(card Card, rating int, now time.Time) (Card, error) {
 	return result.Card, nil
 }
 
-// Grade is deliberately local. Variants must be explicitly authored; punctuation,
-// accents, case, negation and word order are never silently discarded.
+// Grade is deliberately local and only ever awards an exact match. Variants
+// must be explicitly authored; punctuation, accents, case, negation and word
+// order are never silently discarded here.
 //
-// answerForm "flexible" means the question accepts the same meaning in other
-// words: an unmatched answer is left ungraded for the short-answer assessor.
-// Exact form (the default, and every legacy question) keeps local authority: a
-// short clear mismatch is a miss, while a case/spacing-only difference or a long
-// unmatched answer asks the learner to compare it with the key ("selfcheck").
-// An unmatched semantic (rubric) answer remains ungraded for the rubric assessor.
+// Any other recall answer is left ungraded for the short-answer (or rubric)
+// assessor, whatever its answer form. The short-v1 battery judges meaning and,
+// separately, whether the prompt demands an exact value or form the answer
+// does not reproduce, so "water" for "Water" can pass while "polish" for
+// "Polish" or a changed number cannot. When no assessor is configured the
+// staged check fails closed to a learner self-check.
 func Grade(kind, grading, answerForm, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
 	if reveal {
 		return "revealed", int(fsrs.Again)
@@ -88,32 +88,5 @@ func Grade(kind, grading, answerForm, expected string, variants []string, answer
 			return "correct", int(fsrs.Good)
 		}
 	}
-	if grading == "semantic" || answerForm == "flexible" {
-		return "ungraded", 0
-	}
-	// A possible case- or spacing-only difference deserves the learner's
-	// judgment, not a false success or a false miss (e.g. Polish/polish).
-	if strings.EqualFold(collapseSpace(answer), collapseSpace(expected)) {
-		return "selfcheck", 0
-	}
-	if shortFact(answer) && shortFact(expected) {
-		return "wrong", int(fsrs.Again)
-	}
-	return "selfcheck", 0
-}
-
-func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-func shortFact(s string) bool {
-	if s == "" || utf8.RuneCountInString(s) > 80 || strings.ContainsAny(s, "\n\r;?!") {
-		return false
-	}
-	words := 0
-	for range strings.FieldsSeq(s) {
-		words++
-		if words > 8 {
-			return false
-		}
-	}
-	return true
+	return "ungraded", 0
 }

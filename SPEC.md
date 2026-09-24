@@ -122,8 +122,8 @@ I was right (quiet, automatic miss only)
   `empty-first-run`, `caught-up`, and `conflict/error` are distinct states.
   Feedback stays until deliberate Next; no auto-dismiss, swipe grade, or
   ungraded answer/explanation preloading.
-- Self-check is learner authority on close exact-form near misses, Jev unsure,
-  or failed check. Failed check also offers Retry check using a new deliberate
+- Self-check is learner authority on Jev unsure or a failed or unavailable
+  check. Failed check also offers Retry check using a new deliberate
   operation, not a duplicate send. An automatic miss offers quiet “I was right”
   under Next; automatic correct offers “Count as a miss” in More. Immutable
   attempt and correction both remain in history.
@@ -196,8 +196,8 @@ interaction teaches me something without taking away control.
   learner sees an honest end/pending state.
 - **S02.5 (US-003/US-008):** Content versions distinguish exact, flexible
   short recall, and explain-level prose. Choices/exact/variants resolve locally;
-  exact-form case/whitespace near misses ask for self-check. Flexible recall
-  stages one bounded Jev `short-v1` battery and accepts only with accept
+  any other recall answer, exact-form or flexible, stages one bounded Jev
+  `short-v1` battery, whose identity judgment guards exact values and forms, and accepts only with accept
   probability ≥0.85, identity risk ≤0.35, injection risk ≤0.20, or rejects
   only with reject probability ≥0.90 and injection risk ≤0.20. Otherwise it
   stays ungraded for learner self-check. Explain-level authored required-idea
