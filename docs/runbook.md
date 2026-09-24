@@ -6,9 +6,12 @@ This runbook owns deployment/recovery procedures, not product acceptance or
 permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
 current intent and acceptance; Linear owns current owner, status, and pause.
 The operator rejected the foundations UI on 2026-09-12; on 2026-09-23 they
-authorized the concept-centered v5 implementation (MIS-162). This is not
-authorization to migrate live data or activate production. The [design study](design/concept-centered-study.md#outcome-2026-09-23)
-records that change; current deployed receipts below remain v4 observations.
+authorized the concept-centered v5 implementation (MIS-162), and on 2026-09-24
+approved its release ("go for it"): the [schema v5 activation checklist](#schema-v5-release-boundary),
+including an isolated rehearsal on the final production snapshot, governs it.
+The [design study](design/concept-centered-study.md#outcome-2026-09-23)
+records that change; current deployed receipts below remain v4 observations
+until the v5 release record replaces them.
 
 As of September 22, the canonical application is **https://scry.study** on
 Cloudflare Worker `scry-app-host` and singleton Container `scry-app-container`.

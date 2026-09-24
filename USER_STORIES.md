@@ -10,6 +10,11 @@ cite both US ids and S ids. -->
 Intent revision authority: on 2026-09-23 the operator authorized "Execute this
 reimagining in full" (MIS-162). US-001–003 are revised to the approved concept-
 centered experience, and US-005–012 are new, never recycled identifiers.
+On 2026-09-24 the operator simplified v5 (dropping Map search, note levels, and
+confusion-triggered contrast) and then confirmed "go for it": US-005 criterion 3
+(an unreadable Link fails recoverably) and the resulting story edits (US-001
+criterion 2, US-009 criterion 3, and US-011 criterion 3 removed; US-012 retired
+with its id reserved) are accepted intent.
 
 ## Capability: Concept-centered study
 
