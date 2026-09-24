@@ -43,7 +43,16 @@
     "states": 20,
     "checks": 68,
     "result": "68/68",
-    "groups": ["map (4)", "concept (4)", "edit-fix-stopped (2)", "edit-fix-writing (2)", "edit-fix-draft (4, live)", "edit-fix-current (1, live)", "edit-fix-saved (1, live)", "concept-live (2, live)"],
+    "groups": [
+      "map (4)",
+      "concept (4)",
+      "edit-fix-stopped (2)",
+      "edit-fix-writing (2)",
+      "edit-fix-draft (4, live)",
+      "edit-fix-current (1, live)",
+      "edit-fix-saved (1, live)",
+      "concept-live (2, live)"
+    ],
     "not_captured": "concept with no questions and nothing pending: the live batch kept a question for each new concept this run",
     "gallery": "local run artifact simplify-20260924T035531Z (PNG kept outside Git)"
   },
@@ -66,5 +75,13 @@
   "known_quality_gaps": [
     "a fix can reword the answer or add accepted variants despite an instruction not to; the draft shows it in the form and nothing changes until the learner saves",
     "question batches still publish partially when some items fail validation"
-  ]
+  ],
+  "follow_up": {
+    "revision": "d2ad23954ec84686f91e3e67fb262044ba7c0d0e",
+    "finding": "review after this receipt: saving a reworded semantic fix draft silently dropped its rubric, because the edit form never carries grading; the PR claim that a fix could change only visible fields was false",
+    "fix": "EditQuiz adopts the current version's fix draft grading when the saved question, answer, and quotation match it; other changes still drop the rubric, and the edit form now says so for semantic questions",
+    "gate": "PASS d2ad239, binary sha256 914e28db8fd4bdbcad45a7e124aec67f0adf6254f882444fb968233b0a30f04c, isolated exe.dev VM (destroyed)",
+    "tests": "TestSavedFixDraftKeepsItsValidatedRubric (fails with the adoption reverted)",
+    "rendered": "edit page on the exact gate binary: note shown for the semantic fixture question and absent for the exact one, dark 390 and light 1280 (4/4)"
+  }
 }
