@@ -83,5 +83,11 @@
     "gate": "PASS d2ad239, binary sha256 914e28db8fd4bdbcad45a7e124aec67f0adf6254f882444fb968233b0a30f04c, isolated exe.dev VM (destroyed)",
     "tests": "TestSavedFixDraftKeepsItsValidatedRubric (fails with the adoption reverted)",
     "rendered": "edit page on the exact gate binary: note shown for the semantic fixture question and absent for the exact one, dark 390 and light 1280 (4/4)"
+  },
+  "follow_up_2": {
+    "finding": "review of d2ad239: the draft rubric was adopted by wording match alone, so saving the form that showed the current version could install a draft rubric the learner never saw",
+    "fix": "the form showing the draft posts from_draft; only Store.SaveDraft adopts the draft grading (still version-fenced and wording-checked), and EditQuiz settles grading by carryRubric alone",
+    "tests": "TestSavedFixDraftGradingFollowsTheShownForm (current shown vs draft shown with identical wording and different rubric, reworded draft, semantic draft over an exact question) and the from_draft form contract in TestFixDraftPrefillsTheEditForm; each fails with its behavior reverted",
+    "gate": "GitHub Actions ci on the pushed revision; no visible template change (a hidden field only)"
   }
 }

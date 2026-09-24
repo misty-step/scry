@@ -552,9 +552,10 @@ flexible short recall. Explain prose alone gets required-idea rubric.
 version. A completed `fix` changes nothing: its validated result pre-fills the
 question's ordinary edit form, labeled as Scry's draft with the current version
 one click away, and only Save writes it, through the same version fence as any
-edit. Saved as drafted, it keeps the key ideas it was validated with; changing
-its question, answer, or quotation removes them, as for any edit, and the form
-says so. A later edit or newer request makes an unsaved draft moot. A fix belongs
+edit. Saved from the form that showed it, with its question, answer, and
+quotation unchanged, it keeps the grading it was validated with; changing them
+removes its key ideas, as for any edit, and the form says so. Saving the form
+that showed the current version never takes the draft's grading. A later edit or newer request makes an unsaved draft moot. A fix belongs
 to its question: the capture's chain lists it, but it never becomes the
 capture's status, receipt, or Try again. A stopped fix is reported on the
 question with its accounted use; a failed request is moot after an edit, while

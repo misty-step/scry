@@ -229,7 +229,13 @@ func (s *server) saveQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 	// Attribution is inherited from the saved source, not a browser-selectable
 	// claim. A source-backed edit must still cite an exact saved quotation.
-	updated, err := s.store.EditQuiz(r.Context(), id, version, q)
+	save := s.store.EditQuiz
+	if r.PostForm.Get("from_draft") == "1" {
+		// The form showed Scry's draft; the store still checks the version and
+		// that the saved wording is the draft's before keeping its grading.
+		save = s.store.SaveDraft
+	}
+	updated, err := save(r.Context(), id, version, q)
 	if err != nil {
 		original.Kind, original.Prompt, original.Answer = q.Kind, q.Prompt, q.Answer
 		original.Explanation, original.Evidence = q.Explanation, q.Evidence

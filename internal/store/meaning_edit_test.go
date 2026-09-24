@@ -142,32 +142,56 @@ func containsAll(text string, parts ...string) bool {
 	return true
 }
 
-// Saving Scry's fix draft as drafted keeps the key ideas it was validated
-// with, even when the current version had none; rewording the draft before
-// saving drops them like any learner edit.
-func TestSavedFixDraftKeepsItsValidatedRubric(t *testing.T) {
+// A draft's grading is kept only when the learner saves the form that showed
+// the draft and its wording is unchanged. Saving the current version, even
+// with the same wording, keeps the current grading; rewording drops it.
+func TestSavedFixDraftGradingFollowsTheShownForm(t *testing.T) {
 	ctx := context.Background()
-	for _, reword := range []bool{false, true} {
-		s, _ := newTestStore(t)
-		src := publishFixture(t, s, learnerEdit(generatedMeaning()))
-		current := src.Quizzes[0]
-		if err := s.RequestFix(ctx, current.ID, "Make the prompt plainer", "fix-meaning"); err != nil {
-			t.Fatal(err)
-		}
-		draft := generatedMeaning()
-		draft.Prompt = "Why may a browser reuse its stored page after a conditional request?"
-		complete(t, s, claimKind(t, s, "fix"), GenerationResult{Quizzes: []GeneratedQuiz{draft}})
-		form := learnerEdit(draft)
-		if reword {
-			form.Prompt = "What lets a browser reuse its stored page after a conditional request?"
-		}
-		saved, err := s.EditQuiz(ctx, current.ID, current.Version, form)
-		if err != nil {
-			t.Fatal(err)
-		}
-		kept := saved.Grading == "semantic" && saved.Rubric != nil && len(saved.Rubric.Required) == 2
-		if kept == reword {
-			t.Fatalf("reword=%v: saved grading %q rubric %+v", reword, saved.Grading, saved.Rubric)
-		}
+	otherIdeas := &Rubric{Required: []RubricIdea{{Text: "The stored copy is confirmed current"}}}
+	cases := []struct {
+		name      string
+		current   GeneratedQuiz
+		draft     func(GeneratedQuiz) GeneratedQuiz
+		fromDraft bool
+		reword    bool
+		ideas     int // required ideas on the saved version; 0 means none
+	}{
+		{"current version shown, same wording", generatedMeaning(), func(q GeneratedQuiz) GeneratedQuiz { q.Rubric = otherIdeas; return q }, false, false, 2},
+		{"draft shown, same wording", generatedMeaning(), func(q GeneratedQuiz) GeneratedQuiz { q.Rubric = otherIdeas; return q }, true, false, 1},
+		{"draft shown and reworded", generatedMeaning(), func(q GeneratedQuiz) GeneratedQuiz { q.Rubric = otherIdeas; return q }, true, true, 0},
+		{"semantic draft over an exact question", learnerEdit(generatedMeaning()), func(q GeneratedQuiz) GeneratedQuiz {
+			q.Prompt = "Why may a browser reuse its stored page after a conditional request?"
+			return q
+		}, true, false, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newTestStore(t)
+			current := publishFixture(t, s, tc.current).Quizzes[0]
+			if err := s.RequestFix(ctx, current.ID, "Make the prompt plainer", "fix-meaning"); err != nil {
+				t.Fatal(err)
+			}
+			draft := tc.draft(generatedMeaning())
+			complete(t, s, claimKind(t, s, "fix"), GenerationResult{Quizzes: []GeneratedQuiz{draft}})
+			form := learnerEdit(draft)
+			if tc.reword {
+				form.Prompt = "What lets a browser reuse its stored page after a conditional request?"
+			}
+			save := s.EditQuiz
+			if tc.fromDraft {
+				save = s.SaveDraft
+			}
+			saved, err := save(ctx, current.ID, current.Version, form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ideas := 0
+			if saved.Grading == "semantic" && saved.Rubric != nil {
+				ideas = len(saved.Rubric.Required)
+			}
+			if ideas != tc.ideas {
+				t.Fatalf("saved grading %q with %d required ideas, want %d", saved.Grading, ideas, tc.ideas)
+			}
+		})
 	}
 }

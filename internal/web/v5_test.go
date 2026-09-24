@@ -488,14 +488,20 @@ func TestFixDraftPrefillsTheEditForm(t *testing.T) {
 			t.Fatalf("the draft does not fill the form (%q): %s", want, body)
 		}
 	}
-	if current := edit("?draft=off"); !strings.Contains(current, ">Which record maps a hostname to an IPv4 address?</textarea>") {
+	current := edit("?draft=off")
+	if !strings.Contains(current, ">Which record maps a hostname to an IPv4 address?</textarea>") {
 		t.Fatalf("the current version is not one click away: %s", current)
+	}
+	// Only the form that shows the draft saves it as the draft, so its grading
+	// is never installed from a form that showed the current version.
+	if !strings.Contains(body, `name="from_draft"`) || strings.Contains(current, `name="from_draft"`) {
+		t.Fatal("the edit form does not say which version it showed")
 	}
 	if current, err := s.Quiz(ctx, q.ID); err != nil || current.Version != q.Version || strings.HasPrefix(current.Prompt, "SUGGESTED") {
 		t.Fatalf("the draft replaced the question before it was saved: %+v %v", current, err)
 	}
 	form := url.Values{"csrf": {csrf}, "operation_id": {operation}, "version": {strconv.Itoa(q.Version)}, "kind": {"recall"},
-		"prompt": {"SUGGESTED which record holds an IPv4 address?"}, "answer": {"A"}, "variants": {"Address record"}, "explanation": {"SUGGESTED An A record stores one IPv4 address."}}
+		"prompt": {"SUGGESTED which record holds an IPv4 address?"}, "answer": {"A"}, "variants": {"Address record"}, "explanation": {"SUGGESTED An A record stores one IPv4 address."}, "from_draft": {"1"}}
 	r := ownerRequest(http.MethodPost, "/quizzes/"+q.ID+"/edit", form)
 	r.AddCookie(cookie)
 	r.Header.Set("Origin", "https://scry.example")

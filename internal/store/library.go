@@ -412,6 +412,18 @@ func carryRubric(current Quiz, edited GeneratedQuiz) GeneratedQuiz {
 // choices (then choice concepts are dropped) or the quotation (then citations
 // are re-derived from the stored documents).
 func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, content GeneratedQuiz) (Quiz, error) {
+	return s.edit(ctx, id, expectedVersion, content, false)
+}
+
+// SaveDraft saves the edit form the learner submitted while it showed Scry's
+// fix draft. When the saved question, answer, and quotation are the draft's,
+// the new version keeps the grading the draft was validated with; otherwise
+// grading is settled as for any edit.
+func (s *Store) SaveDraft(ctx context.Context, id string, expectedVersion int, content GeneratedQuiz) (Quiz, error) {
+	return s.edit(ctx, id, expectedVersion, content, true)
+}
+
+func (s *Store) edit(ctx context.Context, id string, expectedVersion int, content GeneratedQuiz, fromDraft bool) (Quiz, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Quiz{}, err
@@ -424,9 +436,7 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 	if q.Version != expectedVersion {
 		return Quiz{}, fmt.Errorf("%w: the quiz was already edited; reload before editing", ErrConflict)
 	}
-	// Saving Scry's draft for this version as drafted keeps the grading it was
-	// validated with; any other wording is settled by carryRubric.
-	if content.Grading == "" && content.Rubric == nil {
+	if fromDraft && content.Grading == "" && content.Rubric == nil {
 		draft, _, err := fixDraft(ctx, tx, id, q.Version)
 		if err != nil {
 			return Quiz{}, err
@@ -434,6 +444,10 @@ func (s *Store) EditQuiz(ctx context.Context, id string, expectedVersion int, co
 		if draft != nil && draft.Kind == content.Kind && strings.TrimSpace(draft.Prompt) == strings.TrimSpace(content.Prompt) &&
 			strings.TrimSpace(draft.Answer) == strings.TrimSpace(content.Answer) && strings.TrimSpace(draft.Evidence) == strings.TrimSpace(content.Evidence) {
 			content.Grading, content.Rubric = draft.Grading, draft.Rubric
+			if content.Grading == "" {
+				// Explicit, so the current version's rubric is not carried onto it.
+				content.Grading = "exact"
+			}
 		}
 	}
 	if q, err = writeEdit(ctx, tx, q, content, "", "manual-edit", s.now()); err != nil {
