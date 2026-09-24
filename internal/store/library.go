@@ -362,7 +362,7 @@ func (s *Store) Quiz(ctx context.Context, id string) (Quiz, error) {
 func applyContent(q *Quiz, generated GeneratedQuiz) {
 	q.Kind, q.Grading, q.Rubric, q.Prompt, q.Answer, q.Explanation, q.Evidence, q.Basis = generated.Kind, generated.Grading, generated.Rubric, generated.Prompt, generated.Answer, generated.Explanation, generated.Evidence, generated.Basis
 	q.Choices, q.Variants = generated.Choices, generated.Variants
-	q.Level, q.AnswerForm, q.Citations = generated.Level, generated.AnswerForm, generated.Citations
+	q.Level, q.Citations = generated.Level, generated.Citations
 }
 
 func quiz(ctx context.Context, tx *sql.Tx, id string) (Quiz, error) {
@@ -480,12 +480,6 @@ func writeEdit(ctx context.Context, tx *sql.Tx, q Quiz, content GeneratedQuiz, m
 	content.Concept = q.ConceptID
 	if content.Level == "" {
 		content.Level = q.Level
-	}
-	if content.Kind == "recall" && content.AnswerForm == "" && q.Kind == "recall" {
-		content.AnswerForm = q.AnswerForm
-	}
-	if content.Kind != "recall" {
-		content.AnswerForm = ""
 	}
 	if content.Citations == nil && content.Basis == "web" {
 		content.Citations = q.Citations

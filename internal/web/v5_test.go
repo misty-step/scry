@@ -365,8 +365,8 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 			t.Fatalf("questions context: %+v %v", jc, err)
 		}
 		return store.GenerationResult{Quizzes: []store.GeneratedQuiz{
-			{Kind: "recall", Level: "recall", AnswerForm: "exact", Concept: jc.Concepts[0].ID, Prompt: "Where does a chain of trust end?", Answer: "A root", Explanation: "At a trusted root.", Basis: "topic"},
-			{Kind: "recall", Level: "recall", AnswerForm: "exact", Concept: jc.Concepts[1].ID, Prompt: "What must a certificate name?", Answer: "The host", Explanation: "The host it serves.", Basis: "topic"},
+			{Kind: "recall", Level: "recall", Concept: jc.Concepts[0].ID, Prompt: "Where does a chain of trust end?", Answer: "A root", Explanation: "At a trusted root.", Basis: "topic"},
+			{Kind: "recall", Level: "recall", Concept: jc.Concepts[1].ID, Prompt: "What must a certificate name?", Answer: "The host", Explanation: "The host it serves.", Basis: "topic"},
 		}}
 	})
 	var cold *store.Presentation
@@ -466,7 +466,7 @@ func TestFixDraftPrefillsTheEditForm(t *testing.T) {
 		t.Fatalf("claim fix: %+v %v", job, err)
 	}
 	zero := int64(0)
-	if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5", Quizzes: []store.GeneratedQuiz{{Kind: "recall", Level: "recall", AnswerForm: "exact",
+	if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, store.GenerationResult{Model: "authored-test-fixture", PromptVersion: "fixture-v5", Quizzes: []store.GeneratedQuiz{{Kind: "recall", Level: "recall",
 		Concept: q.ConceptID, Prompt: "SUGGESTED which record holds an IPv4 address?", Answer: "A", Variants: []string{"Address record"}, Explanation: "SUGGESTED An A record stores one IPv4 address.", Basis: "topic"}}}, &zero); err != nil {
 		t.Fatal(err)
 	}

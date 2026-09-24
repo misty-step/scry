@@ -13,9 +13,9 @@ import (
 )
 
 func TestV5ModelJobsUseKindSpecificSingleTransmission(t *testing.T) {
-	question := map[string]any{"concept": "a", "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule supplies energy during many cellular processes?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []string{}, "required_ideas": []string{}, "covers": []string{}}
+	question := map[string]any{"concept": "a", "level": "recall", "kind": "recall", "prompt": "Which molecule supplies energy during many cellular processes?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []string{}, "required_ideas": []string{}, "covers": []string{}}
 	recognize := withPrompt(question, "Which molecule is commonly used to transfer cellular energy?")
-	recognize["kind"], recognize["level"], recognize["answer_form"] = "choice", "recognize", ""
+	recognize["kind"], recognize["level"] = "choice", "recognize"
 	recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
 	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
 	cases := []struct {

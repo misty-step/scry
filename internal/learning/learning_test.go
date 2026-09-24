@@ -6,58 +6,31 @@ import (
 	"time"
 )
 
-// US-003: the local grader only awards an exact or authored-variant match.
-// An authored exact form keeps local authority, so a spelling or case slip is
-// never handed to the meaning check; a legacy (unspecified) or flexible form
-// leaves every other answer ungraded for that check.
-func TestLocalGradeBoundaries(t *testing.T) {
+// US-003: one local rule. The exact key or an authored variant is correct and
+// a wrong choice is a miss; every other recall answer, however close or far,
+// is left for the assessor rather than decided by similarity here.
+func TestGradeHasOneLocalRule(t *testing.T) {
 	cases := []struct {
-		name, expected, answer string
-		variants               []string
-		reveal                 bool
-		exact                  string // outcome for answer form "exact"
-		other                  string // outcome for "" and "flexible"
+		name, kind, expected, answer string
+		variants                     []string
+		reveal                       bool
+		outcome                      string
+		rating                       int
 	}{
-		{"exact match", "Water", "  Water ", nil, false, "correct", "correct"},
-		{"explicit variant", "sodium chloride", "NaCl", []string{"NaCl"}, false, "correct", "correct"},
-		{"case difference", "Polish", "polish", nil, false, "selfcheck", "ungraded"},
-		{"spacing difference", "New  York", "new york", nil, false, "selfcheck", "ungraded"},
-		{"spelling slip in an exact form", "Tchaikovsky", "Tchaikovski", nil, false, "wrong", "ungraded"},
-		{"negation is not normalized away", "oxygen", "not oxygen", nil, false, "wrong", "ungraded"},
-		{"short mismatch", "Water", "H2O", nil, false, "wrong", "ungraded"},
-		{"punctuation is not discarded", "C++", "C", nil, false, "wrong", "ungraded"},
-		{"long unmatched answer", "A process that releases stored chemical energy for cellular work", "Cells convert the energy they have stored into usable work", nil, false, "selfcheck", "ungraded"},
-		{"help is never cold success", "oxygen", "oxygen", nil, true, "revealed", "revealed"},
+		{"exact key", "recall", "Water", "  Water ", nil, false, "correct", 3},
+		{"authored variant", "recall", "Water", "H2O", []string{"H2O"}, false, "correct", 3},
+		{"case difference goes to the check", "recall", "Water", "water", nil, false, "ungraded", 0},
+		{"spelling slip goes to the check", "recall", "Tchaikovsky", "Tchaikovski", nil, false, "ungraded", 0},
+		{"short mismatch goes to the check", "recall", "Paris", "Berlin", nil, false, "ungraded", 0},
+		{"negation is never normalized", "recall", "oxygen", "not oxygen", nil, false, "ungraded", 0},
+		{"right choice", "choice", "IPv4 address", "IPv4 address", nil, false, "correct", 3},
+		{"wrong choice", "choice", "IPv4 address", "IPv6 address", nil, false, "wrong", 1},
+		{"help is never cold success", "recall", "oxygen", "oxygen", nil, true, "revealed", 1},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, form := range []string{"exact", "", "flexible"} {
-				want := tc.other
-				if form == "exact" {
-					want = tc.exact
-				}
-				if outcome, _ := Grade("recall", "exact", form, tc.expected, tc.variants, tc.answer, tc.reveal); outcome != want {
-					t.Fatalf("form %q: got %s, want %s", form, outcome, want)
-				}
-			}
-		})
-	}
-}
-
-// US-008: a flexible short answer that does not match exactly is left for the
-// meaning check rather than marked wrong; exact matches stay local.
-func TestFlexibleAndSemanticGradeDeferUnmatchedAnswers(t *testing.T) {
-	if outcome, rating := Grade("recall", "", "flexible", "TLS", nil, "the TLS protocol", false); outcome != "ungraded" || rating != 0 {
-		t.Fatalf("flexible synonym got %s/%d, want ungraded/0", outcome, rating)
-	}
-	if outcome, rating := Grade("recall", "", "flexible", "TLS", nil, "TLS", false); outcome != "correct" || rating != 3 {
-		t.Fatalf("flexible exact match got %s/%d, want correct/3", outcome, rating)
-	}
-	if outcome, rating := Grade("recall", "semantic", "", "Paris", nil, "Berlin", false); outcome != "ungraded" || rating != 0 {
-		t.Fatalf("semantic got %s/%d, want ungraded/0", outcome, rating)
-	}
-	if outcome, rating := Grade("choice", "", "", "IPv4 address", nil, "IPv6 address", false); outcome != "wrong" || rating != 1 {
-		t.Fatalf("choice got %s/%d, want wrong/1", outcome, rating)
+		if outcome, rating := Grade(tc.kind, tc.expected, tc.variants, tc.answer, tc.reveal); outcome != tc.outcome || rating != tc.rating {
+			t.Errorf("%s: got %s/%d, want %s/%d", tc.name, outcome, rating, tc.outcome, tc.rating)
+		}
 	}
 }
 

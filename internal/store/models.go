@@ -41,7 +41,6 @@ type Quiz struct {
 	Choices     []string         `json:"choices"`
 	Variants    []string         `json:"variants"`
 	Level       string           `json:"level,omitempty"`
-	AnswerForm  string           `json:"answer_form,omitempty"`
 	Citations   []Citation       `json:"citations,omitempty"`
 	ConceptID   string           `json:"concept_id,omitempty"`
 	Version     int              `json:"version"`
@@ -213,7 +212,6 @@ type GeneratedQuiz struct {
 	Variants    []string         `json:"variants"`
 	Concept     string           `json:"concept,omitempty"`
 	Level       string           `json:"level,omitempty"`
-	AnswerForm  string           `json:"answer_form,omitempty"`
 	Citations   []Citation       `json:"citations,omitempty"`
 }
 

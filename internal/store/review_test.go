@@ -375,13 +375,13 @@ func TestCompetingConnectionsCommitOnlyOneRecall(t *testing.T) {
 	}
 }
 
-// US-003: an authored exact form never reaches the meaning check, which
-// tolerates spelling slips; a case-only difference asks the learner locally.
-func TestAuthoredExactFormStaysLocal(t *testing.T) {
+// US-003: a recall answer that is not the key is never graded locally, not
+// even a case-only difference: it is staged for the one meaning check.
+func TestUnmatchedRecallAlwaysStagesTheCheck(t *testing.T) {
 	s, _ := newTestStore(t)
-	publishFixture(t, s, GeneratedQuiz{Kind: "recall", AnswerForm: "exact", Prompt: "Which national language is spoken in Warsaw?", Answer: "Polish", Explanation: "Polish is the language of Poland.", Basis: "topic"})
-	p := answerCurrent(t, s, "exact-case", "polish")
-	if p.Pending || p.AssessmentID != "" || !p.SelfCheck || p.Graded {
-		t.Fatalf("an authored exact near miss was sent to the meaning check or graded: %+v", p)
+	publishFixture(t, s, GeneratedQuiz{Kind: "recall", Prompt: "Splitting which molecule releases oxygen in photosynthesis?", Answer: "Water", Explanation: "Photolysis splits water.", Basis: "topic"})
+	p := answerCurrent(t, s, "case-only", "water")
+	if !p.Pending || p.AssessmentID == "" || p.SelfCheck || p.Graded || p.Quiz.Answer != "" {
+		t.Fatalf("a case-only difference was decided locally instead of staged: %+v", p)
 	}
 }

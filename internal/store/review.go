@@ -731,9 +731,9 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 			return Presentation{}, fmt.Errorf("%w: select one of the exact presented choices", ErrInvalid)
 		}
 	}
-	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Grading, p.Quiz.AnswerForm, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
+	outcome, rating := learning.Grade(p.Quiz.Kind, p.Quiz.Answer, p.Quiz.Variants, answer, reveal)
 	now := s.now()
-	if outcome == "ungraded" && !reveal && (p.Quiz.Grading == "semantic" || p.Quiz.Kind == "recall") {
+	if outcome == "ungraded" {
 		policy := learning.ShortPolicyVersion
 		if p.Quiz.Grading == "semantic" {
 			policy = learning.SemanticPolicyVersion
@@ -768,11 +768,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	preAssisted := p.Assisted
 	p.Answer, p.Outcome, p.Rating = answer, outcome, rating
 	p.Assisted, p.Graded = p.Assisted || reveal, rating != 0
-	p.SelfCheck = outcome == "selfcheck"
-	p.SelfCheckReason = ""
-	if p.SelfCheck {
-		p.SelfCheckReason = "close"
-	}
+	p.SelfCheck, p.SelfCheckReason = false, ""
 	// Exposure makes this occurrence warm, but does not turn help into Again
 	// or manufacture an FSRS success. Explicit Reveal retains its old contract.
 	var exposed bool
@@ -780,7 +776,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 	 AND x.content_version=current.content_version AND x.created_at>=current.created_at-86400000)`, p.ID).Scan(&exposed); err != nil {
 		return Presentation{}, err
 	}
-	if exposed && !reveal && !p.SelfCheck {
+	if exposed && !reveal {
 		p.Assisted, p.Graded, p.Rating = true, true, 0
 		p.Outcome = "warm_" + outcome
 	} else if preAssisted && !reveal && outcome == "correct" {

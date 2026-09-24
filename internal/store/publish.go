@@ -207,9 +207,6 @@ func validateQuiz(q *GeneratedQuiz, m material) error {
 		if len(q.Choices) < 2 || len(q.Choices) > 6 || len(q.Variants) != 0 {
 			return fmt.Errorf("%w: a choice quiz needs 2–6 choices and no typed variants", ErrInvalid)
 		}
-		if q.AnswerForm != "" {
-			return fmt.Errorf("%w: choice questions have no typed answer form", ErrInvalid)
-		}
 		seen = map[string]bool{}
 		matches := 0
 		for _, choice := range q.Choices {
@@ -231,11 +228,6 @@ func validateQuiz(q *GeneratedQuiz, m material) error {
 	case "recall":
 		if len(q.Choices) != 0 {
 			return fmt.Errorf("%w: recall quizzes cannot contain choices", ErrInvalid)
-		}
-		switch q.AnswerForm {
-		case "", "exact", "flexible":
-		default:
-			return fmt.Errorf("%w: recall answer form must be exact or flexible", ErrInvalid)
 		}
 	default:
 		return fmt.Errorf("%w: quiz kind must be choice or recall", ErrInvalid)

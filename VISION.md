@@ -32,8 +32,8 @@ are not evidence of sustained use or learning gains.
    text is never sent to search. A source quote must match the source; a web
    quote must match a saved excerpt and cite it; otherwise label it “General
    knowledge.”
-4. Grade honestly both ways. Exact and authored variants resolve locally;
-   flexible short answers use a bounded Jev check; explain-level prose retains
+4. Grade honestly both ways. The exact key and authored variants resolve locally;
+   every other short answer uses one bounded Jev check; explain-level prose retains
    its authored rubric. Close/unsure/failed checks invite self-check, and an
    automatic grade can be corrected with one tap. Every grade names its
    authority. Never accept a different fact through broad text similarity.

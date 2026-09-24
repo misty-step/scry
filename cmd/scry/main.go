@@ -494,7 +494,7 @@ func seedFixture(args []string) error {
 				Explanation: "A DNS A record maps a hostname to an IPv4 address.", Basis: "topic",
 			},
 			{
-				Kind: "recall", Level: "recall", AnswerForm: "exact", Concept: tls, Prompt: "What protocol does HTTPS use to encrypt HTTP?",
+				Kind: "recall", Level: "recall", Concept: tls, Prompt: "What protocol does HTTPS use to encrypt HTTP?",
 				Answer: "TLS", Variants: []string{"Transport Layer Security"},
 				Explanation: "HTTPS wraps HTTP in TLS.", Basis: "topic",
 			},

@@ -42,9 +42,6 @@ func completeSyntheticQuiz(t *testing.T, s *store.Store, quiz store.GeneratedQui
 	}
 	quiz.Concept = context.Concepts[0].ID
 	quiz.Level = "recall"
-	if quiz.Kind == "recall" {
-		quiz.AnswerForm = "exact"
-	}
 	if err := s.CompleteJob(ctx, questions.ID, questions.LeaseToken, store.GenerationResult{Quizzes: []store.GeneratedQuiz{quiz}, Model: "authored-test-fixture", PromptVersion: "fixture-v5"}, &cost); err != nil {
 		t.Fatal(err)
 	}

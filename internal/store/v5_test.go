@@ -77,7 +77,7 @@ func textPack(t *testing.T, s *Store) (Source, string, string) {
 		{Kind: "choice", Level: "recognize", Concept: chain, Prompt: "When does a TLS client trust a server certificate's issuer?", Answer: "When it chains to a root the client already trusts",
 			Choices: []string{"When it chains to a root the client already trusts", "When the connection is encrypted", "When the certificate names the host"}, Explanation: "Trust comes from the chain to a known root, not from encryption or the name alone.",
 			Basis: "source", Evidence: "chains to a root authority the client already trusts"},
-		{Kind: "recall", Level: "recall", AnswerForm: "flexible", Concept: hostname, Prompt: "Besides the chain of trust, what must a TLS certificate match?", Answer: "The hostname",
+		{Kind: "recall", Level: "recall", Concept: hostname, Prompt: "Besides the chain of trust, what must a TLS certificate match?", Answer: "The hostname",
 			Explanation: "The certificate must name the host the client meant to reach.", Basis: "source", Evidence: "names the host it meant to reach"},
 	}})
 	src, err = s.Source(ctx, src.ID)
@@ -397,7 +397,7 @@ func TestShortAnswerStagingAndFinalizationUS008(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _ := newTestStore(t)
 			ctx := context.Background()
-			publishFixture(t, s, GeneratedQuiz{Kind: "recall", AnswerForm: "flexible", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
+			publishFixture(t, s, GeneratedQuiz{Kind: "recall", Prompt: "Which protocol secures HTTPS?", Answer: "TLS", Explanation: "HTTPS runs HTTP over TLS.", Basis: "topic"})
 			pending := answerCurrent(t, s, "short-"+tc.name, "the TLS protocol")
 			if !pending.Pending || pending.Quiz.Answer != "" {
 				t.Fatalf("flexible mismatch was not staged for a meaning check: %+v", pending)
@@ -541,7 +541,7 @@ func TestLateQuestionsForArchivedConceptAreRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	cost := int64(10)
-	late := GenerationResult{Model: "m", PromptVersion: "p", Quizzes: []GeneratedQuiz{{Kind: "recall", Level: "recall", AnswerForm: "exact", Concept: chain,
+	late := GenerationResult{Model: "m", PromptVersion: "p", Quizzes: []GeneratedQuiz{{Kind: "recall", Level: "recall", Concept: chain,
 		Prompt: "What must a certificate chain end at?", Answer: "A trusted root", Explanation: "Trust comes from a root the client already trusts.", Basis: "source", Evidence: "chains to a root authority the client already trusts"}}}
 	if err := s.CompleteJob(ctx, j.ID, j.LeaseToken, late, &cost); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("late questions were published for an archived concept: %v", err)
