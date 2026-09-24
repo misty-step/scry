@@ -14,7 +14,7 @@ import (
 // decorative; the concept list beside it carries the same facts in text.
 type chartStar struct {
 	X, Y, R, LabelX, LabelY float64
-	Label, Class, Anchor    string
+	Label, Class            string
 }
 type chartLine struct{ X1, Y1, X2, Y2 float64 }
 type chartView struct {
@@ -23,7 +23,8 @@ type chartView struct {
 	Lines         []chartLine
 }
 
-const chartWidth, chartRow = 340.0, 58.0
+// labelAdvance is the average advance of a 10px bold interface label.
+const chartWidth, chartRow, labelAdvance = 340.0, 58.0, 6.4
 
 func goalChart(view store.GoalView) *chartView {
 	n := len(view.Concepts)
@@ -57,12 +58,12 @@ func goalChart(view store.GoalView) *chartView {
 	single := rows == 1
 	chart := &chartView{Width: chartWidth, Height: 30 + float64(rows)*chartRow}
 	colWidth := chartWidth / float64(levels)
-	maxChars := max(7, int(colWidth/6.4))
+	maxChars := max(7, int(colWidth/labelAdvance))
 	if single {
 		// One row: labels alternate above and below, so each may use the
 		// width of two columns.
 		chart.Height = 104
-		maxChars = max(7, int(min(colWidth*2, chartWidth/2)/6.4))
+		maxChars = max(7, int(min(colWidth*2, chartWidth/2)/labelAdvance))
 	}
 	points := make([][2]float64, n)
 	for level := 0; level < levels; level++ {
@@ -83,28 +84,21 @@ func goalChart(view store.GoalView) *chartView {
 			chart.Lines = append(chart.Lines, chartLine{a[0], a[1], b[0], b[1]})
 		}
 	}
-	level := make([]int, n)
-	for d, col := range columns {
-		for _, i := range col {
-			level[i] = d
-		}
-	}
 	for i, c := range view.Concepts {
 		b := min(max(c.Brightness, 0), 5)
-		// Edge columns anchor their labels inward so text never leaves the sky.
-		anchor, labelX := "middle", points[i][0]
-		if levels > 1 && level[i] == 0 {
-			anchor, labelX = "start", points[i][0]-10
-		} else if levels > 1 && level[i] == levels-1 {
-			anchor, labelX = "end", points[i][0]+10
-		}
+		label := clip(c.Name, maxChars)
+		// A centered label is at most its column (two columns when a single
+		// row alternates sides). Near an edge it slides inward instead of
+		// leaving the sky, which keeps it clear of its neighbours' labels.
+		half := float64(len([]rune(label))) * labelAdvance / 2
+		labelX := min(max(points[i][0], half+2), chartWidth-half-2)
 		labelY := points[i][1] + 20
 		if single && depth[i]%2 == 1 || single && len(view.Edges) == 0 && i%2 == 1 {
 			labelY = points[i][1] - 13
 		}
 		chart.Stars = append(chart.Stars, chartStar{
-			X: points[i][0], Y: points[i][1], R: 3.5 + float64(b)*.8, LabelX: labelX, LabelY: labelY, Anchor: anchor,
-			Label: clip(c.Name, maxChars), Class: fmt.Sprintf("b%d", b),
+			X: points[i][0], Y: points[i][1], R: 3.5 + float64(b)*.8, LabelX: labelX, LabelY: labelY,
+			Label: label, Class: fmt.Sprintf("b%d", b),
 		})
 	}
 	return chart

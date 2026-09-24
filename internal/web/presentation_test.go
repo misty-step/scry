@@ -9,7 +9,7 @@ import (
 
 // The star chart reads left to right in introduction order: a prerequisite
 // must sit left of every idea that needs it, and every label must stay inside
-// the drawing whatever its anchor.
+// the drawing without overlapping another label on the same line.
 func TestGoalChartPlacesPrerequisitesFirst(t *testing.T) {
 	names := []string{"Antigen recognition", "Antibody response", "T-cell roles", "Memory cells", "Booster doses"}
 	view := store.GoalView{Edges: [][2]int{{1, 0}, {2, 0}, {3, 1}, {3, 2}, {4, 3}}}
@@ -22,18 +22,20 @@ func TestGoalChartPlacesPrerequisitesFirst(t *testing.T) {
 			t.Errorf("%s at x=%.1f is not right of its prerequisite %s at x=%.1f", names[e[0]], dependent.X, names[e[1]], prerequisite.X)
 		}
 	}
+	type span struct{ left, right, y float64 }
+	var spans []span
 	for i, star := range chart.Stars {
-		width := float64(len([]rune(star.Label))) * 6.4
-		left, right := star.LabelX-width/2, star.LabelX+width/2
-		switch star.Anchor {
-		case "start":
-			left, right = star.LabelX, star.LabelX+width
-		case "end":
-			left, right = star.LabelX-width, star.LabelX
+		half := float64(len([]rune(star.Label))) * labelAdvance / 2
+		s := span{star.LabelX - half, star.LabelX + half, star.LabelY}
+		if s.left < 0 || s.right > chart.Width || s.y < 0 || s.y > chart.Height {
+			t.Errorf("%s label %q leaves the chart: %.1f..%.1f at y=%.1f", names[i], star.Label, s.left, s.right, s.y)
 		}
-		if left < 0 || right > chart.Width || star.LabelY < 0 || star.LabelY > chart.Height {
-			t.Errorf("%s label %q leaves the chart: %.1f..%.1f at y=%.1f", names[i], star.Label, left, right, star.LabelY)
+		for j, other := range spans {
+			if other.y == s.y && s.left < other.right && other.left < s.right {
+				t.Errorf("labels %q and %q overlap at y=%.1f", chart.Stars[j].Label, star.Label, s.y)
+			}
 		}
+		spans = append(spans, s)
 	}
 	if goalChart(store.GoalView{}) != nil {
 		t.Error("a goal without concepts drew a chart")
