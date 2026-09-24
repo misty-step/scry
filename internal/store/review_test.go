@@ -374,3 +374,14 @@ func TestCompetingConnectionsCommitOnlyOneRecall(t *testing.T) {
 		t.Fatalf("competing writers manufactured recall evidence: saved=%d history=%+v err=%v", saved, history, err)
 	}
 }
+
+// US-003: an authored exact form never reaches the meaning check, which
+// tolerates spelling slips; a case-only difference asks the learner locally.
+func TestAuthoredExactFormStaysLocal(t *testing.T) {
+	s, _ := newTestStore(t)
+	publishFixture(t, s, GeneratedQuiz{Kind: "recall", AnswerForm: "exact", Prompt: "Which national language is spoken in Warsaw?", Answer: "Polish", Explanation: "Polish is the language of Poland.", Basis: "topic"})
+	p := answerCurrent(t, s, "exact-case", "polish")
+	if p.Pending || p.AssessmentID != "" || !p.SelfCheck || p.Graded {
+		t.Fatalf("an authored exact near miss was sent to the meaning check or graded: %+v", p)
+	}
+}

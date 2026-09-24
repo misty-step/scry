@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v4"
 )
@@ -62,12 +63,16 @@ func Schedule(card Card, rating int, now time.Time) (Card, error) {
 // must be explicitly authored; punctuation, accents, case, negation and word
 // order are never silently discarded here.
 //
-// Any other recall answer is left ungraded for the short-answer (or rubric)
-// assessor, whatever its answer form. The short-v1 battery judges meaning and,
-// separately, whether the prompt demands an exact value or form the answer
-// does not reproduce, so "water" for "Water" can pass while "polish" for
-// "Polish" or a changed number cannot. When no assessor is configured the
-// staged check fails closed to a learner self-check.
+// answerForm "exact" is authored only when identity matters (numbers, names,
+// symbols, spellings, verbatim text), so it keeps local authority: a case- or
+// spacing-only difference asks the learner (Polish is not polish), a short
+// clear mismatch is a miss, and a long unmatched answer asks the learner. It
+// is never sent to the meaning check, which tolerates spelling slips.
+//
+// Any other recall answer (flexible, or a legacy question with no authored
+// form) is left ungraded for the short-answer or rubric assessor, so "water"
+// for "Water", or "H2O", can pass on meaning. When no assessor is configured
+// the staged check fails closed to a learner self-check.
 func Grade(kind, grading, answerForm, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
 	if reveal {
 		return "revealed", int(fsrs.Again)
@@ -88,5 +93,23 @@ func Grade(kind, grading, answerForm, expected string, variants []string, answer
 			return "correct", int(fsrs.Good)
 		}
 	}
-	return "ungraded", 0
+	if grading == "semantic" || answerForm != "exact" {
+		return "ungraded", 0
+	}
+	if strings.EqualFold(collapseSpace(answer), collapseSpace(expected)) {
+		return "selfcheck", 0
+	}
+	if shortFact(answer) && shortFact(expected) {
+		return "wrong", int(fsrs.Again)
+	}
+	return "selfcheck", 0
+}
+
+func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func shortFact(s string) bool {
+	if s == "" || utf8.RuneCountInString(s) > 80 || strings.ContainsAny(s, "\n\r;?!") {
+		return false
+	}
+	return len(strings.Fields(s)) <= 8
 }

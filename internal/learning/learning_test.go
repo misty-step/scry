@@ -6,33 +6,38 @@ import (
 	"time"
 )
 
-// US-003: the local grader only ever awards an exact or authored-variant
-// match. Case, spacing, negation, and punctuation differences are never
-// resolved locally in either direction; they go to the short-answer check,
-// whose identity judgment decides whether the exact form mattered.
-func TestLocalGradeAwardsOnlyExactMatches(t *testing.T) {
+// US-003: the local grader only awards an exact or authored-variant match.
+// An authored exact form keeps local authority, so a spelling or case slip is
+// never handed to the meaning check; a legacy (unspecified) or flexible form
+// leaves every other answer ungraded for that check.
+func TestLocalGradeBoundaries(t *testing.T) {
 	cases := []struct {
 		name, expected, answer string
 		variants               []string
 		reveal                 bool
-		outcome                string
-		rating                 int
+		exact                  string // outcome for answer form "exact"
+		other                  string // outcome for "" and "flexible"
 	}{
-		{"exact match", "Water", "  Water ", nil, false, "correct", 3},
-		{"explicit variant", "sodium chloride", "NaCl", []string{"NaCl"}, false, "correct", 3},
-		{"case difference is checked, not assumed", "Polish", "polish", nil, false, "ungraded", 0},
-		{"spacing difference is checked", "New  York", "new york", nil, false, "ungraded", 0},
-		{"negation is not normalized away", "oxygen", "not oxygen", nil, false, "ungraded", 0},
-		{"short mismatch is checked, not marked wrong", "Water", "H2O", nil, false, "ungraded", 0},
-		{"punctuation is not discarded", "C++", "C", nil, false, "ungraded", 0},
-		{"help is never cold success", "oxygen", "oxygen", nil, true, "revealed", 1},
+		{"exact match", "Water", "  Water ", nil, false, "correct", "correct"},
+		{"explicit variant", "sodium chloride", "NaCl", []string{"NaCl"}, false, "correct", "correct"},
+		{"case difference", "Polish", "polish", nil, false, "selfcheck", "ungraded"},
+		{"spacing difference", "New  York", "new york", nil, false, "selfcheck", "ungraded"},
+		{"spelling slip in an exact form", "Tchaikovsky", "Tchaikovski", nil, false, "wrong", "ungraded"},
+		{"negation is not normalized away", "oxygen", "not oxygen", nil, false, "wrong", "ungraded"},
+		{"short mismatch", "Water", "H2O", nil, false, "wrong", "ungraded"},
+		{"punctuation is not discarded", "C++", "C", nil, false, "wrong", "ungraded"},
+		{"long unmatched answer", "A process that releases stored chemical energy for cellular work", "Cells convert the energy they have stored into usable work", nil, false, "selfcheck", "ungraded"},
+		{"help is never cold success", "oxygen", "oxygen", nil, true, "revealed", "revealed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, form := range []string{"", "exact", "flexible"} {
-				outcome, rating := Grade("recall", "exact", form, tc.expected, tc.variants, tc.answer, tc.reveal)
-				if outcome != tc.outcome || rating != tc.rating {
-					t.Fatalf("form %q: got %s/%d, want %s/%d", form, outcome, rating, tc.outcome, tc.rating)
+			for _, form := range []string{"exact", "", "flexible"} {
+				want := tc.other
+				if form == "exact" {
+					want = tc.exact
+				}
+				if outcome, _ := Grade("recall", "exact", form, tc.expected, tc.variants, tc.answer, tc.reveal); outcome != want {
+					t.Fatalf("form %q: got %s, want %s", form, outcome, want)
 				}
 			}
 		})
