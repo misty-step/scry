@@ -50,7 +50,7 @@ specification or shipped behavior.
 
 Read [VISION](VISION.md), [SPEC authority](SPEC.md#authority-and-open-decisions),
 the [concept-centered outcome](docs/design/concept-centered-study.md#outcome-2026-09-23)
-and [Direction A](DESIGN.md) before choosing an action. Operator authorization
+and [DESIGN](DESIGN.md) before choosing an action. Operator authorization
 to implement v5 is not authorization to migrate live schema 4 or deploy.
 
 For authorized work, select [changed-surface proof](docs/qa/system.md#choose-proof-before-running-checks).

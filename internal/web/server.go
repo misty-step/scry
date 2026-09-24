@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -135,8 +136,32 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			}
 			return fmt.Sprintf("b%d", v)
 		},
-		"percent":       func(v float64) int { return int(v*100 + .5) },
-		"constellation": constellation, "starX": starX, "starY": starY, "constellationHeight": constellationHeight,
+		"percent": func(v float64) int { return int(v*100 + .5) },
+		"inc":     func(i int) int { return i + 1 },
+		"chart":   goalChart,
+		// failed selects stopped preparations so the Stream can group them
+		// into one notice instead of stacking a card per capture.
+		"failed": func(items []store.Preparing) []store.Preparing {
+			var out []store.Preparing
+			for _, item := range items {
+				if item.Failed {
+					out = append(out, item)
+				}
+			}
+			return out
+		},
+		"jobSummary": jobSummary,
+		// stoppedGoals are captures whose preparation stopped before any idea
+		// was mapped; the Map lists them together rather than as empty goals.
+		"stoppedGoals": func(goals []store.GoalView) []store.GoalView {
+			var out []store.GoalView
+			for _, g := range goals {
+				if len(g.Concepts) == 0 && g.Preparing != nil && g.Preparing.Failed {
+					out = append(out, g)
+				}
+			}
+			return out
+		},
 		"tallyCount": func(tally []string, code string) int {
 			n := 0
 			for _, mark := range tally {
@@ -159,12 +184,6 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 				return "You asked to see it"
 			}
 			return ""
-		},
-		"starRadius": func(v int) int {
-			if v < 1 {
-				return 3
-			}
-			return 3 + v
 		},
 		"stageText": func(v string) string {
 			switch v {
@@ -270,7 +289,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			// Embedded public code only: no directory listing or private content.
 			name := strings.TrimPrefix(r.URL.Path, "/assets/")
 			switch name {
-			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "fonts/Fraunces.woff2", "fonts/Fraunces-Italic.woff2", "fonts/InstrumentSans.woff2", "fonts/OFL.txt":
+			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "fonts/Literata.woff2", "fonts/Literata-Italic.woff2", "fonts/AtkinsonHyperlegibleNext.woff2", "fonts/OFL.txt":
 				static.ServeHTTP(w, r)
 			default:
 				http.NotFound(w, r)
@@ -439,9 +458,9 @@ func excerpt(text string) string {
 
 func kindText(kind string) string {
 	if kind == "choice" {
-		return "Recognition"
+		return "Pick an answer"
 	}
-	return "Cued recall"
+	return "From memory"
 }
 
 func outcomeText(p string) string {
@@ -482,6 +501,25 @@ func jobLabel(status string) string {
 	default:
 		return "Saved; see the steps below"
 	}
+}
+
+var technicalAside = regexp.MustCompile(`\s*\([^()]*\)`)
+
+// jobSummary is a step's note in learner terms. Validation notes name
+// internal check identifiers, so a partial step says what happened instead;
+// a stopped step keeps its message without parenthesized internals. The
+// template still offers the recorded text under Details.
+func jobSummary(job store.Job) string {
+	switch job.Status {
+	case "partial":
+		if strings.Contains(job.Error, "concept") {
+			return "Some ideas didn't pass Scry's checks and were left out."
+		}
+		return "Some questions didn't pass Scry's checks and were left out."
+	case "failed":
+		return strings.TrimSpace(technicalAside.ReplaceAllString(job.Error, ""))
+	}
+	return job.Error
 }
 
 // publishedText shows a document's publication date in learner terms; an

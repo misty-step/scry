@@ -1,0 +1,34 @@
+{
+  "format": "scry-qa-receipt",
+  "issue": "MIS-162",
+  "date": "2026-09-24",
+  "change": "Ink notebook interface redesign (docs/design/redesign-2026-09-24.md, DESIGN.md)",
+  "operator_direction": "\"the ui/ux/design/aesthetic is pretty atrocious. review every single component, every single page, every single user flow. completely reimagine it all and polish it thoroughly\"",
+  "source_state": "working tree on branch phaedrus/mis-162-ink-notebook-redesign; the binary under test was built from that tree, not a committed release",
+  "environment": {
+    "host": "isolated exe.dev VM scry-design-mis162 (Playwright 1.55 Chromium headless shell, reducedMotion reduce during capture)",
+    "data": "synthetic only: seed-fixture plus five authored packs captured through the real /add chain",
+    "integrations": "loopback fake for OpenAI-style chat completions, Exa search/contents, and Jev decisions; no network provider, no credentials"
+  },
+  "exercised": [
+    "capture of Topic (web search results), My text, Photo (transcribed), Link (page contents), an unreadable Link, a failing Topic, and an in-flight Topic through the real preparation workers",
+    "Stream: intro with Got it and I know this already, choice correct, choice miss then I was right, reveal via More, recall correct, exact near miss, unsure and failed self-checks with self-grading, caught up, first run, gate, stopped and in-progress receipts, offline toast",
+    "Map with focus and pause, Concept (practiced, new, questions pending), Source for every mode and the preparing and stopped states, Edit (plain, fix drafting, fix draft shown), History (list, expanded, empty), Dispute, Settings (rich, empty), not found",
+    "keyboard focus ring on a choice; JavaScript disabled: Stream, a choice answer by plain form POST, Add, Map"
+  ],
+  "results": {
+    "captured": "53 named states in dark and light at 390 px and 1280 px, plus phone first-screen and scrolled views (348 images, kept outside Git)",
+    "axe": "axe-core with wcag2a, wcag2aa, wcag21aa, wcag22aa tags on all 53 states in both schemes: 0 violations",
+    "critic_discovery": "scripts/critics/lib/discover.mjs rules on the redesigned Stream: question confirmed, choice affordance confirmed, graded after a tap, empty state detected on a fresh database",
+    "design_check": "bun ~/.local/bin/design-check internal/web/templates: 0 findings across 5 files",
+    "go_test": "go test -count=1 ./... passed",
+    "icon": "new lens icon rendered at 16, 32, 192, 512 px; 16 px read on white, dark, and grey tab backgrounds"
+  },
+  "not_verified": [
+    "a physical phone, iOS Safari, or a real camera photo",
+    "production: this change is not deployed",
+    "the Checking state (pending semantic check) rendered live; the fake's delayed answer exceeded the web timeout and resolved to the failed self-check instead",
+    "Impeccable detector (skill not installed on this workstation)",
+    "operator taste acceptance of the chosen direction"
+  ]
+}

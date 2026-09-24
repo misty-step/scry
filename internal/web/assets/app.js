@@ -308,8 +308,18 @@
       let explicit = modes.some((mode) => mode.checked);
       // Only private modes may be chosen for the learner. Topic and Link send
       // material to web research, so they are selected by the learner alone.
-      const choose = (value) => { if (!explicit) modes.find((mode) => mode.value === value).checked = true; };
-      modes.forEach((mode) => mode.addEventListener('change', () => { explicit = true; }));
+      const choose = (value) => { if (!explicit) { modes.find((mode) => mode.value === value).checked = true; describe(); } };
+      const label = capture.querySelector('label[for="capture-text"]');
+      const generic = [label?.textContent, text.placeholder];
+      // The field's wording follows the chosen mode; the choice itself is
+      // never changed here.
+      const describe = () => {
+        const mode = modes.find((m) => m.checked);
+        if (label) label.textContent = mode?.dataset.label || generic[0];
+        text.placeholder = mode?.dataset.placeholder || generic[1];
+      };
+      modes.forEach((mode) => mode.addEventListener('change', () => { explicit = true; describe(); }));
+      describe();
       text.addEventListener('paste', (event) => {
         const pasted = event.clipboardData?.getData('text')?.trim() || '';
         if (pasted && !/^https?:\/\/\S+$/i.test(pasted)) choose('text');

@@ -1,157 +1,282 @@
-# Scry design system — Direction A, “Scrying glass”
+# Scry design system: Ink notebook
 
-Adopted for the concept-centered v5 experience (MIS-162, operator authorization
-2026-09-23). [Stories](USER_STORIES.md) define learner progress and
-[SPEC](SPEC.md#experience-contract) owns behavior. The retired Rust renderer's
-Ledger design is historical Git material, not the Go UI contract. This document
-specifies the new visual direction; it does not claim a production rollout.
+Adopted on 2026-09-24 after the operator judged the earlier "Scrying glass"
+interface atrocious (MIS-162). The audit, the six concepts, the three clickable
+finalists, and the decision are in
+[docs/design/redesign-2026-09-24.md](docs/design/redesign-2026-09-24.md).
+[Stories](USER_STORIES.md) define learner progress and
+[SPEC](SPEC.md#experience-contract) owns behavior. This document specifies how
+the interface looks and moves. It does not claim a production rollout.
 
-## Composition and visual hierarchy
+## Direction
 
-Dark-first, with an automatic Daylight scheme via `prefers-color-scheme: light`.
-Set `color-scheme: dark light` and matching theme-color values. A single centered
-40rem column has generous top space and left-aligned reading content. On Stream,
-the question dominates; answer controls sit low, full-width, within thumb reach.
-The masthead is an italic Fraunces “scry” wordmark, a small ember scrying mark,
-and exactly two destinations: `+` Add and Map. Do not turn review into a metric
-dashboard, card grid, or five-destination navigation bar.
+Scry is a study notebook. By day it is blue-black ink on cool paper, and by
+night paper-colored text on blue-black ink. The palette has fixed roles:
 
-| CSS role | Dark | Daylight |
-| --- | --- | --- |
-| `--ground` | `#0B0D10` | `#F4F1EA` |
-| `--ground-2` | `#12151A` | `#FBF9F4` |
-| `--ground-3` | `#191D24` | `#FFFFFF` |
-| `--line` | `#262C36` | `#DDD6C8` |
-| `--line-strong` | `#3B4351` | `#B7AE9C` |
-| `--ink` | `#EDE7DB` | `#17181C` |
-| `--ink-2` | `#B9B2A5` | `#4A4841` |
-| `--ink-3` | `#8C867B` | `#66625A` |
-| `--ember` | `#FF8A3D` | `#B8440F` |
-| `--on-ember` | `#160B04` | `#FFFFFF` |
-| `--ember-soft` | `rgba(255,138,61,.14)` | `rgba(184,68,15,.12)` |
-| `--correct` | `#86D7AE` | `#1E6B47` |
-| `--miss` | `#F3A6A0` | `#A33A32` |
-| `--helped` | `#B8B6F2` | `#4B479C` |
-| `--pending` | `#9FB7D9` | `#34557F` |
+- **Cobalt:** the learner's own action, such as Next, Check, and Add to Scry.
+- **Green tick:** recall.
+- **Red pencil:** a miss.
+- **Violet:** a shown answer.
+- **Gold:** concept strength.
 
-All text/control pairs must meet WCAG AA in each scheme. State is always written
-in words, never color alone. A semantic-colored label on a surface must still
-meet contrast; do not make incorrect options illegible by reducing opacity.
+Each goal's **star chart** on the Map is the one bold element. It is always a
+small window of night sky, in either scheme. Everything else stays quiet.
 
-## Type and assets
+The frame is a masthead with the wordmark and exactly two destinations, Add
+and Map. History and Settings sit in the footer. Reading content sits in a
+single column no wider than 40rem.
 
-Self-host variable **Fraunces** for questions, verdicts, note/concept titles,
-and reading text, with optical sizing and `"SOFT" 40, "WONK" 0` settings.
-Question: `clamp(1.75rem, 1.15rem + 2.6vw, 2.6rem)` / 1.16, weight about 430.
-Reading: 1.125rem / 1.62. Self-host variable **Instrument Sans** for UI,
-labels, and metadata at 1rem, with tabular numerals where they align. Use
-sentence case; no tracked uppercase labels. Preserve paragraph breaks and wrap
-long tokens. Use font fallbacks while assets load. Variable WOFF2 files live in
-[`internal/web/assets/fonts/`](internal/web/assets/fonts/) with the actual font
-copyright notices and SIL Open Font License in `OFL.txt`; no remote font fetch.
-The wordmark, SVG star, and icons are local embedded assets.
+On a phone, the Stream places the question at the top and the answer controls
+in the bottom third, within thumb reach. On a result, Next and "I was right"
+stick to the bottom edge. On screens 48rem and wider, controls follow the
+question directly and nothing is pinned. Never turn review into a dashboard,
+a card grid, or a tab bar.
+
+## Tokens
+
+Both schemes are defined in [`app.css`](internal/web/assets/app.css). Dark
+values apply under `prefers-color-scheme: dark`.
+
+| Role | Day | Night | Use |
+| --- | --- | --- | --- |
+| `--paper` | `#F5F6F8` | `#0E1220` | Page ground |
+| `--sheet` | `#FFFFFF` | `#161B2C` | Raised surface: choices, pairs, panels |
+| `--sunk` | `#ECEEF3` | `#1B2135` | Quiet fill: receipts, icon wells |
+| `--rule` / `--rule-2` | `#DDE1E9` / `#B9C0CE` | `#262D44` / `#3B4462` | Hairlines / control borders |
+| `--ink` / `--ink-2` / `--ink-3` | `#131A2C` / `#434C63` / `#5C657D` | `#E9EBF3` / `#B1B7CB` / `#8E95AC` | Text ranks |
+| `--accent` | `#2B44D6` | `#93A4FF` | Primary action fill, focus ring |
+| `--accent-ink` | `#2338B5` | `#A9B6FF` | Links, current destination |
+| `--correct` | `#13693F` | `#6DD39C` | Recall |
+| `--miss` | `#AE251D` | `#FF8F87` | Miss, destructive |
+| `--helped` | `#5A45AE` | `#C3B3FF` | Shown, helped practice |
+| `--star` | `#B8861B` | `#F2C45B` | Strength dots |
+| `--sky` | `#121A33` | `#0A0F1F` | Star-chart ground |
+
+Each color has a `*-soft` fill for seals and notices. Radii are 10, 14, and
+18 px: small, controls, and panels. Pills are fully round and are used only for
+chips, badges, and small actions. Text and control pairs meet WCAG AA in both
+schemes. State is always written in words; color only reinforces it.
+
+## Type
+
+- **Literata** (variable, with optical size and weight axes): questions,
+  headings, notes, explanations, and typed answers.
+- **Atkinson Hyperlegible Next** (variable weight): interface text, labels,
+  and controls. It was chosen for letterforms that stay distinct at small
+  sizes.
+
+Both are self-hosted Latin-subset WOFF2 files in
+[`internal/web/assets/fonts/`](internal/web/assets/fonts/). `OFL.txt` records
+their copyright and the SIL Open Font License. No remote font is fetched.
+
+| Style | Setting |
+| --- | --- |
+| Question | Literata 470, `clamp(1.625rem, 1.2rem + 2vw, 2.25rem)` / 1.2 on phones, up to 2.5rem on desktop |
+| Page title | Literata 520, 2rem / 1.15 |
+| Section title | Literata 560, 1.25rem |
+| Verdict | Literata italic 600, 1.75rem |
+| Reading | Literata, 1.0625rem / 1.65, at most 36rem |
+| Interface | Atkinson, 1.0625rem body; 0.9375rem hints; 0.8125rem pair labels |
+
+Use sentence case with no tracked capitals. Headings balance their lines, and
+long unbroken strings such as URLs wrap anywhere.
 
 ## Components and named states
 
-- **Stream:** concept chip above question, with star brightness class `b0..b5`.
-  Inert before grading; linked to its Concept page afterward. Render just the
-  answer-bearing control for that question. Choice buttons submit on tap; recall
-  offers one field and Check, changing to Show me when empty. More holds Show me,
-  Look it up (ungraded and safely gated), edit, archive, and correction actions.
-- **Question states:** choice; recall; checking; self-check (`close`, `unsure`,
-  `failed` with Retry check); result-correct; result-miss-automatic;
-  result-overridden; result-shown; result-self. Before grading/self-check do not
-  include expected answer, explanation, or evidence in visible or accessible
-  markup. Self-check shows answer/explanation and asks the learner to judge.
-- **Result:** Fraunces italic verdict (“Correct.”, “Not quite.”, “Shown.”), bold
-  answer, readable explanation, modest citation links, a full-width ember Next.
-  The automatic miss alone gets a quiet “I was right” beneath Next; automatic
-  correct offers “Count as a miss” in More. No automatic transition. Show the
-  authority of a grade in detail without making the verdict sound certain when
-  the learner chose it.
-- **Intro:** a standard note for an unseen concept before its questions; “Got
-  it” primary and “I know this already” quiet. The latter is an observation, not
-  a passing answer.
-- **Preparing receipts:** compact stage/status above the Stream or its empty
-  state. Error shows a usable remedy and preserves captured input. First-run
-  empty offers Add; caught-up shows a next-time hint and Add; conflict/unknown
-  result reconciles the same operation instead of asserting success.
-- **Capture:** one input and visible required Topic / My text / Link / Photo
-  choice. Suggest a mode on input; never hide or lock the chosen mode. URL and
-  share-target text/title prefill are editable. A photo is reduced to at most
-  1600px JPEG near quality .82 by browser JS where available; server limits
-  still govern. Mic controls appear only when native SpeechRecognition is
-  supported; never make them prerequisites for capture or recall.
-- **Map:** each goal section includes title, a decorative
-  aria-hidden SVG constellation (brightness stars, faint prerequisite lines),
-  and an accessible list of concept name, status word, and due hint. Focus/pause
-  are deliberate goal actions. Archived goals stay out of active browsing.
-- **Concept:** title and status, tally marks (filled unaided, hollow helped,
-  slash missed), estimate explicitly labeled “Estimated recall now 88%” rather
-  than truth, the current note with citations, related concepts, gated
-  question details, Practice this, and quiet archive. Source shows captured
-  input, documents, provenance, and recoverable preparation status.
+- **Masthead:** a lens wordmark (a magnifier with a gold star) and "scry" in
+  Literata italic. It links to Add and Map. The current destination gets an
+  accent-soft pill. The app icon uses the same lens: paper color and gold on
+  the sky tile. It was checked at 16 px on white, dark, and grey browser tabs.
+- **Stream receipts:**
+  - Each preparation in progress is one compact row showing its title, stage,
+    and ready counts, marked with a static accent dot.
+  - Stopped preparations collapse into a single red-pencil disclosure, such as
+    "2 things you added couldn't be prepared", which lists each one's link.
+  - A receipt never pushes the question below the fold.
+- **Question:**
+  - An optional concept chip sits above the question, showing strength dots
+    and the concept name. It is inert before grading and links to the Concept
+    page after.
+  - The question itself is the page's h1.
+  - Choices are full-width sheets with a quiet key label (1 to 4) that matches
+    the keyboard shortcut. A tap submits the choice. A pressed choice shows
+    cobalt.
+  - Recall is one serif textarea with an inset mic button (shown only when
+    speech recognition is available), a hint, and Check. Check reads "Show me"
+    while the field is empty.
+- **More:** a centered "More" disclosure opens a single list with rows in this
+  order: Show me, Look it up, Count as a miss (after an automatic correct),
+  Fix this question, Edit, and a red "Archive this question" last.
+- **Result:** a seal and verdict: a green tick with "Correct.", a red cross
+  with "Not quite.", or a violet eye with "Shown.". The authority line names
+  who decided (Scry matched, Scry checked the meaning, you checked it, or you
+  changed it). A two-row pair follows: "You answered" (struck through in red
+  pencil on a miss) above "Answer". Then the explanation in reading type,
+  citation chips, Next, and on an automatic miss only, a quiet "I was right"
+  beneath Next. Nothing advances on its own.
+- **Self-check** uses a neutral balance seal, the reason in plain words, the
+  same pair, and a split "I was right" / "Not quite". A failed check adds a
+  quiet "Retry check". **Checking** shows the saved answer and says it can be
+  refreshed.
+- **Intro:** a "A new idea" kicker with a gold star, the concept name, its
+  summary, and the note as a cobalt-ruled reading column with its provenance.
+  "Got it" is primary and sticky on phones; "I know this already" is quiet.
+- **Empty states:** a round mark, a heading, one sentence, and actions.
+  - First run: "What are you curious about?" with Add something.
+  - Caught up: "You're caught up." with when the next question is due, Add
+    something, Open your map, and Check again.
+  - Gate: "Look it up?" explains that opening the page counts the question as
+    shown.
+  - Errors and not-found use the same shape.
+- **Add:** the page asks "What do you want to learn?". There are four mode
+  cards, and each card names its privacy consequence:
+  - Topic: Scry searches the web.
+  - My text: private, never searched.
+  - Link: Scry reads that one page.
+  - Photo: Scry reads the words in it.
+
+  A serif textarea with an inset mic follows. The photo field appears only
+  while Photo is chosen (via `:has`; without it the field stays visible).
+  Add to Scry is last.
+- **Map:** each goal is a section with:
+  - its title,
+  - In focus and Paused badges and its counts,
+  - the star chart,
+  - the concept list: strength dots, name, and status word,
+  - pill actions (Focus on this or Remove focus, Pause or Resume) and
+    Original input.
+
+  Captures that stopped before any idea was mapped are listed together under
+  "Couldn't prepare". Earlier unplaced material has its own list.
+- **Star chart:** decorative (`aria-hidden`) and laid out on the server by
+  prerequisite depth, so prerequisites sit left of the ideas that need them.
+  Star brightness and radius follow concept strength, and the two strongest
+  levels get a soft halo. Labels are clipped to fit their column. With a
+  single row, labels alternate above and below the stars.
+- **Concept:**
+  - the strength and status kicker, the name, and the summary;
+  - a practice panel with the tally and the counts. Tally marks: filled green
+    for recalled, violet outline for with help, red slash for missed.
+  - "Estimated recall now: N%. This is an estimate, not a certainty.";
+  - Practice this;
+  - the note with its provenance, citations, and "What this draws on";
+  - connected ideas as strength chips;
+  - questions, each with a disclosed answer and Edit;
+  - More questions;
+  - a quiet archive.
+- **Source:**
+  - its mode kicker, excerpt title, and saved time;
+  - a preparation panel. Each step shows a check, alert, or dot, its status,
+    and a learner-language summary. Internal check identifiers are
+    parenthesized in stored errors; the summary removes those asides and keeps
+    the recorded text under Details.
+  - the photo, the original text, what Scry read, and questions.
+- **Edit:** fields grouped as Question, Answers, and Explanation. Draft,
+  drafting, and stopped-fix notices sit above the form. Fix and archive are
+  quiet disclosures.
+- **History:** the question leads each entry, followed by a meta line with a
+  verdict tag, the answer style ("Pick an answer" or "From memory"), the time,
+  and the authority. "See this attempt" reuses the result pair.
+- **Settings:** the pace as three radio cards with their daily counts, the
+  record as number tiles, the week's spend, backup attention when stale, and
+  the font and license notes.
+- **Request state:** an inverted toast pinned under the masthead, so it never
+  covers the bottom answer zone. It carries retry and recovery actions.
 
 ## Interaction and motion
 
-The browser controller in [`internal/web/assets/app.js`](internal/web/assets/app.js)
-may toggle recall button copy, submit Enter (Shift+Enter inserts a newline on
-non-touch), accept keys 1–6 for choices, and use Space/Enter for Next only when
-focus is not in a field. Code may preselect only private modes: pasting
-non-link text selects My text and choosing a file selects Photo, unless the
-learner has already chosen. Topic and Link send material to web research, so
-they are selected by the learner alone, never inferred from length or a URL
-shape, and a share-target prefill chooses no mode. With JavaScript disabled, a
-required unselected radio makes the learner choose.
-HTMX swaps may add/remove motion classes; browser JS owns presentation only,
-never durable learning state or offline mutation queues.
+[`app.js`](internal/web/assets/app.js) is presentation only. It does these
+things and nothing more:
 
-All motion must be under `prefers-reduced-motion: no-preference`; reduced-motion
-has none. On a user-triggered result, surface once over 200ms with
-`cubic-bezier(.2,.7,.2,1)`, opacity 0→1, blur 6px→0, translateY 8px→0.
-Choice press scales .985 for 80ms; outgoing card fades/lifts 140ms; concept chip
-may glow once for 600ms after a correct answer. No ambient animation, loading
-pulse, confetti, swipe grading, or timed advance.
+- toggles the recall button's copy;
+- submits on Enter (Shift+Enter inserts a newline on fine pointers);
+- maps keys 1 to 6 to choices, and Space or Enter to Next when focus is not in
+  a field;
+- reduces photos to at most 1600 px as JPEG at quality 0.82;
+- preselects only the private modes (My text when non-link text is pasted,
+  Photo when a file is chosen).
+
+Topic and Link are chosen by the learner alone. The browser never owns
+durable learning state or an offline queue.
+
+All motion sits under `prefers-reduced-motion: no-preference`, so reduced
+motion has none, and every motion answers a learner action:
+
+- A result or new stage surfaces over 220ms (opacity and an 8px rise,
+  `cubic-bezier(.2,.7,.2,1)`).
+- The outgoing stage lifts over 140ms.
+- A pressed button scales to 0.985.
+- The More menu surfaces over 160ms.
+- The chip's strength dots glow once after a correct answer.
+
+There is no ambient animation, loading pulse, confetti, swipe grading, or
+timed advance.
 
 ## Copy, access, and trust
 
-Use plain sentences in study. Provenance labels are “From your material”,
-“From the web”, and “General knowledge”; a topic word is never cited as evidence.
-No provider/money disclaimer in a question flow: spend belongs in Settings
-(this week) and failed receipts. No engineering words (job, lease, schema,
-token, micros, FSRS, model name) in learner-facing study copy. Distinguish
-uncertain checking, known failure, preparation in progress, and actually caught
-up; do not call missing work success. Preserve the typed answer after a 422 or
-network interruption. Never render untrusted material as HTML.
+- **Study copy:** plain sentences. Provenance reads "From your material", "From
+  the web", or "General knowledge". Interface copy says "idea"; stories and
+  code say "concept".
+- **No engineering words** in learner copy: job, lease, schema, token, micros,
+  FSRS, check identifiers, or model names.
+- **Spend** appears in Settings and in a stopped step's Details, never in the
+  question flow.
+- **No hidden answers:** answers, explanations, and evidence are absent from
+  visible and accessible markup before grading or self-check.
+- **Untrusted text** is never rendered as HTML.
 
-Use native buttons, links, radio labels, form actions, and focus order; 44px
-minimum touch targets (larger for answer/Next). Provide one page heading, a
-skip link, a visible focus ring in both schemes and forced colors, readable
-semantic labels, and polite atomic result announcements. Respect 320px, 390px,
-and desktop; long notes and disclosures flow vertically without clipped text.
-Focus must not jump on a pending result; a completed result can receive focus.
-CSP disallows inline styles; SVG uses attributes/classes, not `style=`.
-Keyboard, touch, and no-JS forms must preserve equivalent core behavior.
+Accessibility:
+
+- Use native buttons, links, radios, and disclosures. Touch targets are at
+  least 44 px; choices and Next are larger.
+- Each page has one h1 and a skip link (hidden until focused). The focus ring
+  is visible in both schemes and in forced colors.
+- The tally uses an ordered list with visually hidden words. Result
+  announcements are polite and atomic.
+- The CSP disallows inline styles, so SVG uses attributes and classes.
+- Layouts hold at 320, 390, and desktop widths. Keyboard, touch, and no-JS
+  forms keep equivalent core behavior.
 
 ## Implementation and validation
 
-[`internal/web/templates/`](internal/web/templates/) owns escaped markup for
-Stream, Capture, Map, Concept, Source, History and Settings;
-[`internal/web/assets/app.css`](internal/web/assets/app.css) owns both token
-sets, type and reduced-motion behavior; `app.js` adds progressive enhancements.
-The manifest/icons/fonts live in the same embedded assets tree. Server routes,
-CSRF, private caching, and answer-exposure gates are not client-only effects.
+- [`internal/web/templates/`](internal/web/templates/) owns escaped markup, and
+  `icons.html` owns the inline icon set.
+- `goalChart` in [`concepts.go`](internal/web/concepts.go) owns the chart
+  layout.
+- `app.css` owns tokens, type, layout, and motion.
 
-Inspect actual pages at 320px, 390px and desktop in both schemes, with actual
-choice/recall answers, self-check and correction, long notes, empty/preparing/
-error states, keyboard focus, reduced motion, and JS off. Exercise a real
-browser on an isolated exe.dev QA VM and inspect screens rather than equating
-source assertions with layout proof. Run `bun ~/.local/bin/design-check
-internal/web/templates` if that CLI exists; otherwise review template hierarchy,
-copy, accessibility, and link targets manually and record the limitation. QA is
-not a substitute for operator acceptance or release authorization.
+Several hooks are relied on by other code and must be kept:
 
-Document structure (direction, tokens, typography/license, surfaces/states,
-interaction, accessibility, implementation and verification) was reviewed
-manually on 2026-09-23; the `design-md` CLI was unavailable. This does not
-stand in for the browser or template design check above.
+- `form.answer-form`
+- `fieldset.choice-fieldset` with `.choice` buttons
+- `form[data-next]`
+- `details.overflow`
+- the `role=status` result
+- `section.empty-stage`
+- `data-state`
+- `class="feedback feedback-correct"`
+- `svg.constellation`
+
+The browser critic and the web tests read them.
+
+To verify, inspect real pages on an isolated exe.dev VM against the synthetic
+fixture:
+
+- **Widths and schemes:** 390 px and 1280 px in both schemes, as full pages
+  and phone first screens.
+- **Answer paths:** choice and recall answers, a miss followed by an override,
+  and a reveal.
+- **Self-check:** the unsure and failed cases.
+- **Other Stream states:** intro, receipts (in progress and stopped), caught
+  up, first run, and the gate.
+- **Pages:** Map with focus and pause, Concept, Source for each mode, Edit
+  with a fix draft, History, Dispute, Settings, and not-found.
+- **Transient states:** the offline toast.
+
+Then run:
+
+- `bun ~/.local/bin/design-check internal/web/templates`
+- axe-core on the captured states
+- `go test ./internal/web`
+
+A screenshot proves appearance only, not operator acceptance.
