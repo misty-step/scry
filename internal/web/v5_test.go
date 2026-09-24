@@ -133,7 +133,7 @@ func TestCaptureRequiresModeAndBoundsPhoto(t *testing.T) {
 
 func TestAssetAllowlistBytesAndHeaders(t *testing.T) {
 	_, app := privateApp(t)
-	for _, path := range []string{"app.css", "app.js", "icon.svg", "icon-192.png", "icon-512.png", "manifest.webmanifest", "fonts/Fraunces.woff2", "fonts/Fraunces-Italic.woff2", "fonts/InstrumentSans.woff2", "fonts/OFL.txt"} {
+	for _, path := range []string{"app.css", "app.js", "icon.svg", "icon-192.png", "icon-512.png", "manifest.webmanifest", "fonts/Literata.woff2", "fonts/Literata-Italic.woff2", "fonts/AtkinsonHyperlegibleNext.woff2", "fonts/OFL.txt"} {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, ownerRequest("GET", "/assets/"+path, nil))
 		expected, err := os.ReadFile(filepath.Join("assets", path))

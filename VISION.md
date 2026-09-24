@@ -47,10 +47,14 @@ are not evidence of sustained use or learning gains.
 ## Experience direction
 
 The operator's smoothness bar is immediacy and continuity, not a compulsive feed.
-The [Direction A design](DESIGN.md) is dark-first “Scrying glass”: a generous
-reading column, warm ember action, restrained status color, daylight alternative,
-and motion only in response to a learner action. It is a new design decision, not
-a claim that the earlier phone approval covered this experience.
+The [Ink notebook design](DESIGN.md) (2026-09-24, replacing the rejected
+“Scrying glass”) treats Scry as a study notebook. It has a reading serif for
+questions and notes, and a legibility sans for controls. On a phone the
+controls sit in the thumb zone, and each goal's star chart is the one
+ornament. Color marks the learner's action, recall, and misses. Day and night
+schemes both apply, and motion happens only in response to a learner action.
+It is a design decision, not a claim that the earlier phone approval covered
+this experience.
 
 Open into one useful question or a clear Add invitation. Before a new concept's
 first question, offer a short note and an honest “I know this already” observation.

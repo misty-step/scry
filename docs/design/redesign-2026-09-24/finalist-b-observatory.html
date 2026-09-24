@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finalist B: Observatory</title>
+<style>
+@font-face{font-family:Literata;src:url('../../../internal/web/assets/fonts/Literata.woff2') format('woff2');font-weight:200 900;font-style:normal}
+@font-face{font-family:Literata;src:url('../../../internal/web/assets/fonts/Literata-Italic.woff2') format('woff2');font-weight:200 900;font-style:italic}
+@font-face{font-family:Atkinson;src:url('../../../internal/web/assets/fonts/AtkinsonHyperlegibleNext.woff2') format('woff2');font-weight:200 800}
+:root{--paper:#0A1024;--sheet:#111A36;--rule:#1F2A4D;--rule-2:#34436E;--ink:#EEF0FA;--ink-2:#B3BBD6;--ink-3:#8791B3;--accent:#F2C45B;--on-accent:#1A1300;--accent-soft:#2A2A2A;--correct:#7BE0B0;--correct-soft:#12302A;--miss:#FF9A8F;--miss-soft:#3A1A22;--star:#F7D98A;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(120% 60% at 50% 0%,#1B2A5C 0%,var(--paper) 60%);color:var(--ink);font:1.0625rem/1.5 Atkinson,system-ui,sans-serif}
+.frames{display:flex;gap:24px;padding:24px;flex-wrap:wrap}.phone{width:390px;min-height:844px;background:radial-gradient(140% 50% at 50% 0%,#18244F 0%,var(--paper) 70%);outline:1px solid var(--rule);position:relative;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 16px}
+.mark{display:flex;align-items:center;gap:8px;font:italic 600 1.5rem/1 Literata,serif;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.mark svg{width:22px;height:22px}
+.nav{display:flex;gap:4px}.nav a{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-radius:999px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:.95rem}
+.nav a[aria-current]{background:var(--accent-soft);color:var(--accent)}.nav svg{width:18px;height:18px}
+main{flex:1;padding:12px 20px 0;display:flex;flex-direction:column}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:.9rem;color:var(--ink-2);font-weight:600}.dots{display:inline-flex;gap:3px}.dots i{width:6px;height:6px;border-radius:50%;background:var(--rule-2)}.dots i.on{background:var(--star)}
+h1.q{font:470 1.875rem/1.18 Literata,serif;letter-spacing:-.012em;margin:14px 0 0;font-optical-sizing:auto}
+.zone{margin-top:auto;padding:20px 0 calc(16px + env(safe-area-inset-bottom))}
+.choices{display:grid;gap:10px}.choice{backdrop-filter:blur(4px);display:flex;align-items:center;gap:14px;width:100%;min-height:58px;padding:12px 16px;border:1.5px solid var(--rule-2);border-radius:14px;background:rgba(17,26,54,.7);color:var(--ink);font:500 1.0625rem/1.35 Atkinson;text-align:left}
+.choice kbd{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--rule-2);font:600 .85rem Atkinson;color:var(--ink-3)}
+.more{display:flex;justify-content:center;margin-top:14px}.more span{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 14px;color:var(--ink-2);font-weight:600;font-size:.95rem}
+.verdict{display:flex;align-items:center;gap:12px;margin:26px 0 14px}.verdict .seal{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--miss-soft);color:var(--miss)}
+.verdict b{font:italic 600 1.75rem Literata,serif;color:var(--miss)}
+.pair{border:1px solid var(--rule);border-radius:14px;background:var(--sheet);overflow:hidden}.pair div{padding:12px 16px}.pair div+div{border-top:1px solid var(--rule)}
+.pair small{display:block;font-size:.8rem;font-weight:700;color:var(--ink-3);margin-bottom:2px}.pair .mine{color:var(--ink-2);text-decoration:line-through;text-decoration-color:var(--miss);text-decoration-thickness:1.5px}.pair .key{font-weight:700}
+.explain{font:1.0625rem/1.6 Literata,serif;color:var(--ink);margin:16px 0 4px}
+.cite{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0}.cite a{font-size:.85rem;color:var(--ink-2);border:1px solid var(--rule);border-radius:999px;padding:6px 10px;text-decoration:none}
+.bar{position:sticky;bottom:0;background:linear-gradient(to top,var(--paper) 70%,transparent);padding:18px 0 calc(12px + env(safe-area-inset-bottom));margin-top:auto}
+.primary{display:flex;align-items:center;justify-content:center;width:100%;height:56px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);font:700 1.0625rem Atkinson}
+.quiet{display:flex;justify-content:center;width:100%;height:44px;align-items:center;background:none;border:0;color:var(--ink-2);font:600 .95rem Atkinson;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--rule-2)}
+h1.page{font:500 2rem/1.15 Literata,serif;margin:10px 0 18px}
+.goal{padding:18px 0 20px;border-top:1px solid var(--rule)}.goal h2{font:560 1.25rem/1.25 Literata,serif;margin:0 0 4px}.goal .meta{font-size:.9rem;color:var(--ink-3)}
+.chart{display:block;width:100%;height:auto;margin:10px 0 6px;background:var(--sheet);border:1px solid var(--rule);border-radius:16px}
+.chart line{stroke:var(--rule-2);stroke-width:1.2}.chart .s{fill:var(--star)}.chart .dim{fill:var(--rule-2)}.chart text{font:600 10.5px Atkinson;fill:var(--ink-2)}
+.rows{list-style:none;padding:0;margin:6px 0 0}.rows li a{display:flex;align-items:center;gap:12px;min-height:48px;color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule)}.rows strong{flex:1;font-weight:600}.rows em{font-style:normal;font-size:.85rem;color:var(--ink-3)}
+.actions{display:flex;gap:8px;margin-top:12px}.pill{height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--rule-2);background:var(--sheet);color:var(--ink);font:600 .9rem Atkinson}
+.attention{margin:6px 0 14px;padding:12px 14px;border-radius:12px;background:var(--miss-soft);color:var(--ink);font-size:.95rem;display:flex;gap:10px;align-items:center}.attention b{color:var(--miss)}
+</style>
+</head>
+<body>
+<div class="frames">
+<section class="phone" aria-label="Question">
+  <header class="top"><a class="mark" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M16.2 16.2 21 21"/><path d="M11 7.6l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9z" fill="var(--star)" stroke="none"/></svg>scry</a>
+  <nav class="nav"><a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Add</a><a href="#">Map</a></nav></header>
+  <main>
+    <p class="chip"><span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>Limited attention</p>
+    <h1 class="q">According to the attention essay, what do alerts and interruptions demand from the mind?</h1>
+    <div class="zone">
+      <div class="choices">
+        <button class="choice"><kbd>1</kbd>Store every signal permanently</button>
+        <button class="choice"><kbd>2</kbd>Select what matters and suppress competing signals</button>
+        <button class="choice"><kbd>3</kbd>Ignore all incoming information</button>
+        <button class="choice"><kbd>4</kbd>Process every cue at once</button>
+      </div>
+      <div class="more"><span>More options ▾</span></div>
+    </div>
+  </main>
+</section>
+<section class="phone" aria-label="Result">
+  <header class="top"><a class="mark" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M16.2 16.2 21 21"/><path d="M11 7.6l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9z" fill="var(--star)" stroke="none"/></svg>scry</a>
+  <nav class="nav"><a href="#">Add</a><a href="#">Map</a></nav></header>
+  <main>
+    <p class="chip"><span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>Limited attention</p>
+    <h1 class="q">According to the attention essay, what do alerts and interruptions demand from the mind?</h1>
+    <div class="verdict"><span class="seal"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></span><b>Not quite.</b></div>
+    <div class="pair"><div><small>You answered</small><span class="mine">Store every signal permanently</span></div><div><small>Answer</small><span class="key">Select what matters and suppress competing signals</span></div></div>
+    <p class="explain">The essay describes each cue as requiring selection and suppression, drawing on limited attentional capacity.</p>
+    <div class="cite"><a href="#">Why attention is the scarce resource</a></div>
+    <div class="bar"><button class="primary">Next</button><button class="quiet">I was right</button></div>
+  </main>
+</section>
+<section class="phone" aria-label="Map">
+  <header class="top"><a class="mark" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M16.2 16.2 21 21"/><path d="M11 7.6l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9z" fill="var(--star)" stroke="none"/></svg>scry</a>
+  <nav class="nav"><a href="#">Add</a><a href="#" aria-current="page">Map</a></nav></header>
+  <main>
+    <h1 class="page">Map</h1>
+    <div class="attention"><b>!</b> 2 additions stopped. Your input is saved.</div>
+    <section class="goal"><h2>Understand how vaccines train immunity</h2><p class="meta">6 ideas · 4 ready now · in focus</p>
+      <svg class="chart" viewBox="0 0 350 150" aria-hidden="true">
+        <line x1="40" y1="75" x2="130" y2="40"/><line x1="40" y1="75" x2="130" y2="110"/><line x1="130" y1="40" x2="225" y2="55"/><line x1="130" y1="110" x2="225" y2="55"/><line x1="225" y1="55" x2="310" y2="40"/><line x1="225" y1="55" x2="310" y2="110"/>
+        <circle class="s" cx="40" cy="75" r="6.5"/><circle class="s" cx="130" cy="40" r="5.5"/><circle class="s" cx="130" cy="110" r="4.5"/><circle class="dim" cx="225" cy="55" r="4"/><circle class="dim" cx="310" cy="40" r="3.5"/><circle class="dim" cx="310" cy="110" r="3.5"/>
+        <text x="40" y="98" text-anchor="middle">Antigens</text><text x="130" y="26" text-anchor="middle">Antibodies</text><text x="130" y="132" text-anchor="middle">T cells</text><text x="225" y="78" text-anchor="middle">Memory</text><text x="310" y="26" text-anchor="middle">Boosters</text><text x="310" y="132" text-anchor="middle">Herd effect</text>
+      </svg>
+      <ul class="rows"><li><a href="#"><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></span><strong>Antigen recognition</strong><em>Solid</em></a></li><li><a href="#"><span class="dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span><strong>Antibody response</strong><em>Learning</em></a></li><li><a href="#"><span class="dots"><i></i><i></i><i></i><i></i><i></i></span><strong>Memory cells</strong><em>New</em></a></li></ul>
+      <div class="actions"><button class="pill">Remove focus</button><button class="pill">Pause</button></div>
+    </section>
+  </main>
+</section>
+</div>
+</body>
+</html>

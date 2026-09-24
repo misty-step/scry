@@ -8,17 +8,109 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
-// Constellation layout: up to four stars per row with odd rows staggered. A
-// short row is centered, and the drawing is only as tall as its rows, so a
-// goal with two concepts does not sit in an empty panel.
-func starX(i, n int) int {
-	row := i / 4
-	inRow := min(4, n-row*4)
-	return 47 + (4-inRow)*38 + (i%4)*76 + row%2*17
+// chartStar and chartLine are one goal's star chart: prerequisites sit to
+// the left of the ideas that need them, so reading left to right follows the
+// order Scry introduces them. Brightness is concept strength. The drawing is
+// decorative; the concept list beside it carries the same facts in text.
+type chartStar struct {
+	X, Y, R, LabelX, LabelY float64
+	Label, Class            string
 }
-func starY(i int) int                        { return 25 + (i/4)*49 + (i%3)*5 }
-func constellationHeight(n int) int          { return 60 + (max(n, 1)-1)/4*49 }
-func constellation(view store.GoalView) bool { return len(view.Concepts) > 0 }
+type chartLine struct{ X1, Y1, X2, Y2 float64 }
+type chartView struct {
+	Width, Height float64
+	Stars         []chartStar
+	Lines         []chartLine
+}
+
+// labelAdvance is the average advance of a 10px bold interface label.
+const chartWidth, chartRow, labelAdvance = 340.0, 58.0, 6.4
+
+func goalChart(view store.GoalView) *chartView {
+	n := len(view.Concepts)
+	if n == 0 {
+		return nil
+	}
+	// Depth is the longest prerequisite chain below a concept. Edges run from
+	// a concept to its prerequisite; n passes settle any acyclic order and
+	// bound a cyclic one.
+	depth := make([]int, n)
+	for pass := 0; pass < n; pass++ {
+		for _, e := range view.Edges {
+			if e[0] < n && e[1] < n && depth[e[0]] < depth[e[1]]+1 && depth[e[1]]+1 < n {
+				depth[e[0]] = depth[e[1]] + 1
+			}
+		}
+	}
+	columns := map[int][]int{}
+	levels := 0
+	for i, d := range depth {
+		if len(view.Edges) == 0 {
+			d = i % min(n, 4) // no relations: a loose row of up to four
+		}
+		columns[d] = append(columns[d], i)
+		levels = max(levels, d+1)
+	}
+	rows := 1
+	for _, col := range columns {
+		rows = max(rows, len(col))
+	}
+	single := rows == 1
+	chart := &chartView{Width: chartWidth, Height: 30 + float64(rows)*chartRow}
+	colWidth := chartWidth / float64(levels)
+	maxChars := max(7, int(colWidth/labelAdvance))
+	if single {
+		// One row: labels alternate above and below, so each may use the
+		// width of two columns.
+		chart.Height = 104
+		maxChars = max(7, int(min(colWidth*2, chartWidth/2)/labelAdvance))
+	}
+	points := make([][2]float64, n)
+	for level := 0; level < levels; level++ {
+		col := columns[level]
+		top := (chart.Height - float64(len(col))*chartRow) / 2
+		for k, i := range col {
+			x := colWidth * (float64(level) + .5)
+			y := top + float64(k)*chartRow + 18
+			if single {
+				y = chart.Height / 2
+			}
+			points[i] = [2]float64{x, y}
+		}
+	}
+	for _, e := range view.Edges {
+		if e[0] < n && e[1] < n {
+			a, b := points[e[1]], points[e[0]]
+			chart.Lines = append(chart.Lines, chartLine{a[0], a[1], b[0], b[1]})
+		}
+	}
+	for i, c := range view.Concepts {
+		b := min(max(c.Brightness, 0), 5)
+		label := clip(c.Name, maxChars)
+		// A centered label is at most its column (two columns when a single
+		// row alternates sides). Near an edge it slides inward instead of
+		// leaving the sky, which keeps it clear of its neighbours' labels.
+		half := float64(len([]rune(label))) * labelAdvance / 2
+		labelX := min(max(points[i][0], half+2), chartWidth-half-2)
+		labelY := points[i][1] + 20
+		if single && depth[i]%2 == 1 || single && len(view.Edges) == 0 && i%2 == 1 {
+			labelY = points[i][1] - 13
+		}
+		chart.Stars = append(chart.Stars, chartStar{
+			X: points[i][0], Y: points[i][1], R: 3.5 + float64(b)*.8, LabelX: labelX, LabelY: labelY,
+			Label: label, Class: fmt.Sprintf("b%d", b),
+		})
+	}
+	return chart
+}
+
+func clip(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return strings.TrimSpace(string(runes[:limit-1])) + "…"
+}
 
 func (s *server) mapPage(w http.ResponseWriter, r *http.Request) {
 	view, err := s.store.Map(r.Context())
