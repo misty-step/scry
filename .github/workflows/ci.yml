@@ -26,6 +26,15 @@ jobs:
           curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.21.6 BIN_DIR=$HOME/.local/bin sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # registry.dagger.io has had multi-hour 500 outages. Dagger publishes the
+      # same pinned engine to GHCR; use it only when the primary pull fails.
+      - name: Pull pinned Dagger engine
+        run: |
+          if ! docker pull -q registry.dagger.io/engine:v0.21.6; then
+            docker pull -q ghcr.io/dagger/engine:v0.21.6
+            echo "_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-image://ghcr.io/dagger/engine:v0.21.6" >> "$GITHUB_ENV"
+          fi
+
       - name: Check and export exact Go release
         run: bun run ci:full -- --out target/ci-release --require-committed
 
