@@ -54,7 +54,7 @@ and reason here; remove obsolete alternatives rather than retaining two designs.
 | Decision | Adopted choice | Basis / remaining evidence |
 | --- | --- | --- |
 | D1: personal material and failures | Build around what the operator wants to remember, not old QA datasets | The accepted candidate used photosynthesis, HTTP caching, and DNS examples. Specific future learning goals and sustained usefulness come from real use, not invented frustrations. |
-| D2: response grading | Choice and exact/variant recall resolve locally; flexible short recall uses bounded Jev `short-v1`; explain-level prose retains rubric `semantic-v1`. Close/unsure/failed checks offer self-check, and automatic grades allow one-tap correction. Every recorded grade names exact, Jev, learner, or reveal authority. | Operator authorized 2026-09-23; short-v1 accepts p≥0.85 with identity≤0.35 and injection≤0.20, rejects p≥0.90 with injection≤0.20, otherwise self-check. No liberal similarity or model call inside SQL; holdout quality remains to prove. |
+| D2: response grading | Choice and exact-key/variant recall resolve locally; every other short recall answer uses bounded Jev `short-v1`; explain-level prose retains rubric `semantic-v1`. Close/unsure/failed checks offer self-check, and automatic grades allow one-tap correction. Every recorded grade names exact, Jev, learner, or reveal authority. | Operator authorized 2026-09-23; short-v1 accepts p≥0.85 with identity≤0.35 and injection≤0.20, rejects p≥0.90 with injection≤0.20, otherwise self-check. No liberal similarity or model call inside SQL; holdout quality remains to prove. |
 | D3: assistance and correction | Reveal, answer-bearing cues and self-check exposure remain honest; immutable original grade plus separate override adjusts the current schedule without rewriting history. | Exact operation replay is durable; reading/intro is not cold success. |
 | D4: experience approval | One question and one answer action, retained feedback and deliberate Next; Add/Map masthead and the [DESIGN](DESIGN.md) visual system | v5 phone/usefulness requires new observation; earlier approved flow is not blanket acceptance. |
 | D5: recovery / spend | Daily/pre-release off-VM backups, 30-day retention, RPO 24h/RTO 60m targets; provider key $25/week, application $3.50/rolling day, $0.50 generation reservation | Limit raised on 2026-09-23 for Scry personal (exe.dev). Unknown cost retains reservation, not free retry; backup targets are not guarantees. |
@@ -122,8 +122,8 @@ I was right (quiet, automatic miss only)
   `empty-first-run`, `caught-up`, and `conflict/error` are distinct states.
   Feedback stays until deliberate Next; no auto-dismiss, swipe grade, or
   ungraded answer/explanation preloading.
-- Self-check is learner authority on authored exact-form near misses, Jev
-  unsure, or a failed or unavailable check. Failed check also offers Retry check using a new deliberate
+- Self-check is learner authority on Jev unsure or a failed or unavailable
+  check. Failed check also offers Retry check using a new deliberate
   operation, not a duplicate send. An automatic miss offers quiet “I was right”
   under Next; automatic correct offers “Count as a miss” in More. Immutable
   attempt and correction both remain in history.
@@ -194,11 +194,11 @@ interaction teaches me something without taking away control.
 - **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
   read-only requests do not fabricate answers. If no next item is ready, the
   learner sees an honest end/pending state.
-- **S02.5 (US-003/US-008):** Content versions distinguish exact, flexible
-  short recall, and explain-level prose. Choices/exact/variants resolve locally;
-  an authored exact form keeps local authority (case/whitespace near miss asks
-  for self-check, a short mismatch is a miss). Flexible and legacy recall with
-  no authored form stage one bounded Jev `short-v1` battery and accepts only with accept
+- **S02.5 (US-003/US-008):** Content versions distinguish short recall and
+  explain-level prose; there is no answer-form setting. Choices, the exact key,
+  and authored variants resolve locally. Every other short recall answer stages
+  one bounded Jev `short-v1` battery, whose identity judgment reads from the
+  prompt whether an exact value or form is required, and accepts only with accept
   probability ≥0.85, identity risk ≤0.35, injection risk ≤0.20, or rejects
   only with reject probability ≥0.90 and injection risk ≤0.20. Otherwise it
   stays ungraded for learner self-check. Explain-level authored required-idea
@@ -512,8 +512,7 @@ retention, or learning-efficacy claim is inherited.
 Schema v5 adds goals and goal-concept membership; generated/learner concepts
 with status and source origin; `requires`, `part_of`, and symmetric
 `confused_with` relations; immutable notes and source documents;
-private bounded capture images; question concept roles/level/answer form/
-citations; evidence observations; grade overrides; preferences and a concept
+private bounded capture images; question concept roles/level/citations; evidence observations; grade overrides; preferences and a concept
 index for reuse. One primary concept is required for each new question. Old foundation
 rows and links remain with historical origin but stay out of Map/Stream.
 Migration v4→v5 is additive and transactional, with `user_version=5`, full
@@ -548,8 +547,8 @@ dedupe. Ordinary goals should aim for 3–10 concepts, and exact/complete-set
 tasks retain their unit ordering contract.
 
 Questions ascend recognize → recall → explain/apply (2–3 per concept where
-appropriate). Exact answer form is for exact identity/wording; otherwise use
-flexible short recall. Explain prose alone gets required-idea rubric.
+appropriate). A prompt that needs an exact number, name, symbol, spelling, or wording
+asks for that form explicitly. Explain prose alone gets required-idea rubric.
 `questions` can be requested for one concept and `fix` for a specified quiz
 version. A completed `fix` changes nothing: its validated result pre-fills the
 question's ordinary edit form, labeled as Scry's draft with the current version
@@ -611,7 +610,7 @@ content. Source support applies only to source-basis candidates. Choice overlap
 and rubric alignment apply only to their corresponding quiz types. The leakage
 check also covers authored rubric cues. Required ideas remain exclusive to
 explain-level authored prose. The validator rejects rubrics on choice,
-exact-text, flexible short-recall, and complete-set output; source-basis
+exact-text, short-recall, and complete-set output; source-basis
 ideas must be supported by the candidate's evidence without strengthening
 qualifications. Generated rubrics never leak hints. Under `semantic-v1`,
 incomplete and incorrect remain ungraded; rubric alignment is judged in the

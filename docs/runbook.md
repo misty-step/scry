@@ -66,11 +66,16 @@ The rollout order followed the MIS-164 rule:
 1. Quiesced with the one-minute window.
 2. The final backup `scry-20260924T173455…` read back (SHA-256 `68d3d425…`) and
    passed `check`.
-3. Deployed `f5cfcb7` (#187). No instance started on it before #188 superseded
-   it.
-4. A probe woke that stale version before `124e8f2` propagated. The rollout
-   stopped it after a verified backup, `scry-20260924T174342…`, which
-   `124e8f2` restored at 17:46:16.
+3. Deployed `f5cfcb7` (#187), then built and deployed `124e8f2` (#188) while the
+   instance stayed inactive.
+4. A readiness probe at 17:43:27 cold-started an instance that restored
+   `scry-20260924T173455…` on the stale `f5cfcb7` revision, because `124e8f2`
+   had not yet propagated. The rollout began shutting that instance down at
+   17:43:41; its final backup `scry-20260924T174342…` (key named when the
+   snapshot started) was uploaded and verified at 17:43:47, and the Worker
+   logged the stop at 17:43:51. At 17:46:15 the next
+   instance restored that backup on revision `124e8f2`, and its listener was
+   ready at 17:46:16.
 
 Only probe traffic reached `f5cfcb7`. CI now falls back to the GHCR mirror of
 the pinned Dagger engine when `registry.dagger.io` fails.

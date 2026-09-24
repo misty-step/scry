@@ -34,9 +34,9 @@ func TestV5TopicChainResearchPlanQuestions(t *testing.T) {
 		case containsSchema(body, "scry_plan"):
 			content, err = json.Marshal(plan)
 		case containsSchema(body, "scry_questions"):
-			question := map[string]any{"concept": conceptID, "level": "recall", "answer_form": "exact", "kind": "recall", "prompt": "Which molecule transfers energy during cellular work?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
+			question := map[string]any{"concept": conceptID, "level": "recall", "kind": "recall", "prompt": "Which molecule transfers energy during cellular work?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
 			recognize := withPrompt(question, "Which molecule is commonly used to transfer cellular energy?")
-			recognize["kind"], recognize["level"], recognize["answer_form"] = "choice", "recognize", ""
+			recognize["kind"], recognize["level"] = "choice", "recognize"
 			recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
 			content, err = json.Marshal(map[string]any{"quizzes": []any{recognize, question}})
 		default:
@@ -119,7 +119,7 @@ func TestV5PlanDedupeReusesActiveConcept(t *testing.T) {
 		t.Fatalf("concept context: %+v %v", firstContext, err)
 	}
 	existingID := firstContext.Concepts[0].ID
-	quiz := store.GeneratedQuiz{Kind: "recall", Prompt: "Which molecule transfers cellular energy?", Answer: "ATP", Explanation: "ATP transfers chemical energy in reactions that help cells do work.", Basis: "topic", Concept: existingID, Level: "recall", AnswerForm: "exact"}
+	quiz := store.GeneratedQuiz{Kind: "recall", Prompt: "Which molecule transfers cellular energy?", Answer: "ATP", Explanation: "ATP transfers chemical energy in reactions that help cells do work.", Basis: "topic", Concept: existingID, Level: "recall"}
 	if err := s.CompleteJob(ctx, questions.ID, questions.LeaseToken, store.GenerationResult{Quizzes: []store.GeneratedQuiz{quiz}, Model: "fixture", PromptVersion: "scry-questions-v1"}, &zero); err != nil {
 		t.Fatal(err)
 	}

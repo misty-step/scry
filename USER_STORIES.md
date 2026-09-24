@@ -16,9 +16,11 @@ confusion-triggered contrast) and then confirmed "go for it": US-005 criterion 3
 criterion 2, US-009 criterion 3, and US-011 criterion 3 removed; US-012 retired
 with its id reserved) are accepted intent. Later on 2026-09-24 the operator
 rejected self-check for "water" against the key "Water" ("jev should absolutely
-be able to tell that this was correct"). US-003 criteria 1 and 2 now send unmatched
-legacy (no authored form) and flexible recall answers to the `short-v1`
-check; an authored exact form keeps local authority.
+be able to tell that this was correct"). The operator then directed one opinionated rule
+("we don't want flexibility ... one way we do things when it is the right
+way"): the exact/flexible answer form is removed. Only the exact key or an
+authored variant resolves locally; every other recall answer goes to the
+`short-v1` check, whose identity judgment reads exactness from the prompt.
 
 ## Capability: Concept-centered study
 
@@ -57,8 +59,8 @@ Evidence: `internal/web/review_test.go`
 Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
 
 Criteria:
-1. WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; an authored exact-form near miss SHALL go to self-check and a short clear exact-form mismatch SHALL be a miss, never sent to a meaning check; THE SYSTEM SHALL NOT award or mark wrong any other recall answer locally.
-2. WHEN a flexible or legacy (no authored form) recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
+1. WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; THE SYSTEM SHALL NOT award, mark wrong, or send to self-check any other recall answer locally, however close or far it is.
+2. WHEN a recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
 3. WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.
 4. WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.
 5. WHEN a result is recorded, THE SYSTEM SHALL name its authority as exact, Jev, learner, or reveal; it SHALL preserve original attempts and grade corrections across restart without silently rewriting history.
@@ -149,7 +151,7 @@ Evidence: `internal/store/v5_test.go`, `internal/web/review_test.go`
 Statement: When a short answer means the same thing in different words, I want it to count without accepting a different fact as correct.
 
 Criteria:
-1. WHEN a flexible short response does not match an authored variant locally, THE SYSTEM SHALL use the `short-v1` Jev battery with verdict, exact-identity, and injection judgments.
+1. WHEN a short response does not match the key or an authored variant locally, THE SYSTEM SHALL use the `short-v1` Jev battery with verdict, exact-identity, and injection judgments.
 2. WHEN accept probability is at least 0.85 and identity risk at most 0.35 and injection risk at most 0.20, THE SYSTEM SHALL accept; WHEN reject probability is at least 0.90 and injection risk at most 0.20, THE SYSTEM SHALL reject; otherwise it SHALL ask me to self-check.
 3. WHEN a check fails or its result cannot be trusted, THE SYSTEM SHALL keep my answer, name the learner's judgment as authority if I self-check, and SHALL NOT silently award success.
 

@@ -15,11 +15,11 @@ func validateV5Question(raw json.RawMessage, job *store.Job, input store.JobCont
 		RequiredIdeas []string `json:"required_ideas"`
 		Covers        []string `json:"covers"`
 	}
-	if strictObject(raw, &quiz, "concept", "level", "answer_form", "kind", "prompt", "answer", "explanation", "basis", "evidence", "choices", "variants", "citations", "required_ideas", "covers") != nil {
+	if strictObject(raw, &quiz, "concept", "level", "kind", "prompt", "answer", "explanation", "basis", "evidence", "choices", "variants", "citations", "required_ideas", "covers") != nil {
 		return store.GeneratedQuiz{}, errors.New("invalid question fields")
 	}
 	q := quiz.GeneratedQuiz
-	if !targets[q.Concept] || (q.Level != "recognize" && q.Level != "recall" && q.Level != "explain" && q.Level != "apply") || (q.Kind == "choice" && q.AnswerForm != "") || (q.Kind == "recall" && q.AnswerForm != "exact" && q.AnswerForm != "flexible") {
+	if !targets[q.Concept] || (q.Level != "recognize" && q.Level != "recall" && q.Level != "explain" && q.Level != "apply") {
 		return q, errors.New("invalid question target or level")
 	}
 	if len(quiz.RequiredIdeas) > 0 && (q.Level != "explain" || q.Kind != "recall") {
@@ -73,7 +73,7 @@ func validateV5Question(raw json.RawMessage, job *store.Job, input store.JobCont
 		if index >= len(contract.Units) || len(quiz.Covers) != 1 || quiz.Covers[0] != contract.Units[index].ID || !strings.Contains(q.Evidence, contract.Units[index].Text) || !unitIsTested(contract.Units[index].Text, draft, contract.Task) {
 			return q, errors.New("required units changed or reordered")
 		}
-		if contract.Task == "exact_text" && (q.Kind != "recall" || q.Answer != contract.Units[index].Text || q.AnswerForm != "exact" || len(q.Variants) != 0) {
+		if contract.Task == "exact_text" && (q.Kind != "recall" || q.Answer != contract.Units[index].Text || len(q.Variants) != 0) {
 			return q, errors.New("exact wording changed")
 		}
 	}

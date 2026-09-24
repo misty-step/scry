@@ -104,7 +104,7 @@ func TestV5WebQuestionNeedsQuotedCitedResult(t *testing.T) {
 		Documents: []store.SourceDocument{{ID: "web-1", Kind: "search_result", URL: "https://example.test/atp", Title: "ATP", Text: "ATP transfers energy during cellular reactions, while DNA stores genetic instructions."}},
 	}
 	q := map[string]any{
-		"concept": "a", "level": "recall", "answer_form": "exact",
+		"concept": "a", "level": "recall",
 		"kind": "recall", "prompt": "Which molecule transfers energy during cellular reactions rather than storing genetic instructions?",
 		"answer": "ATP", "explanation": "ATP transfers energy in reactions, whereas DNA stores genetic instructions for the cell.",
 		"basis": "web", "evidence": "ATP transfers energy during cellular reactions, while DNA stores genetic instructions.",
@@ -141,7 +141,7 @@ func TestV5ExactTextKeepsEveryUnitAndOriginalOrder(t *testing.T) {
 	input := store.JobContext{Concepts: []store.ConceptContext{{ID: "poem"}}}
 	makeQuestion := func(unit, answer, prompt, evidence string) map[string]any {
 		return map[string]any{
-			"concept": "poem", "level": "recall", "answer_form": "exact", "kind": "recall",
+			"concept": "poem", "level": "recall", "kind": "recall",
 			"prompt": prompt, "answer": answer, "explanation": "This line follows the saved poem wording rather than an invented paraphrase.",
 			"basis": "source", "evidence": evidence, "choices": []string{}, "variants": []string{},
 			"citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{unit},
