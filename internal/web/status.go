@@ -2,10 +2,12 @@ package web
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
+
+	"github.com/misty-step/scry/internal/store"
 )
 
 func (s *server) renderJob(w http.ResponseWriter, r *http.Request, p page) {
@@ -37,28 +39,30 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, page{})
 		return
 	}
-	sources, err := s.store.Sources(r.Context(), "")
+	preferences, err := s.store.Preferences(r.Context())
 	if err != nil {
 		s.fail(w, r, err, page{})
 		return
 	}
-	models := map[string]bool{}
-	for _, source := range sources {
-		if source.Job != nil && source.Job.Model != "" {
-			models[source.Job.Model] = true
-		}
-	}
-	var recordedModels []string
-	for model := range models {
-		recordedModels = append(recordedModels, model)
-	}
-	sort.Strings(recordedModels)
-	stale := summary.LastBackup != nil && summary.LastBackup.CreatedAt < time.Now().Add(-24*time.Hour).UnixMilli()
+	stale := summary.LastBackup == nil || !summary.LastBackup.Remote || summary.LastBackup.Error != "" || summary.LastBackup.CreatedAt < time.Now().Add(-24*time.Hour).UnixMilli()
 	if wantsJSON(r) {
-		jsonResponse(w, http.StatusOK, map[string]any{"summary": summary, "recorded_models": recordedModels, "backup_older_than_24h": stale})
+		jsonResponse(w, http.StatusOK, map[string]any{"summary": summary, "preferences": preferences, "backup_needs_attention": stale, "csrf": r.Context().Value(csrfKey{})})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "settings", Title: "Settings", Active: "settings", Summary: summary, RecordedModels: recordedModels, BackupStale: stale})
+	s.render(w, r, http.StatusOK, page{View: "settings", Title: "Settings", Active: "settings", Summary: summary, Preferences: preferences, BackupStale: stale})
+}
+
+func (s *server) setPace(w http.ResponseWriter, r *http.Request) {
+	pace := r.PostForm.Get("pace")
+	if pace != "light" && pace != "steady" && pace != "intense" {
+		s.fail(w, r, fmt.Errorf("%w: choose a pace", store.ErrInvalid), page{})
+		return
+	}
+	if err := s.store.SetPace(r.Context(), pace); err != nil {
+		s.fail(w, r, err, page{})
+		return
+	}
+	s.finish(w, r, "/settings", map[string]any{"pace": pace})
 }
 
 func (s *server) export(w http.ResponseWriter, r *http.Request) {

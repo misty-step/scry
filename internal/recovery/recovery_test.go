@@ -59,7 +59,7 @@ func TestCheckNeverCreatesMissingDatabase(t *testing.T) {
 func TestRestorePreservesCapturesAndPausesUncertainWork(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t)
-	first, err := s.Capture(ctx, "SQL terminology", "recovery-first-capture")
+	first, err := s.Capture(ctx, store.CaptureInput{Text: "SQL terminology", Mode: "topic"}, "recovery-first-capture")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestRestorePreservesCapturesAndPausesUncertainWork(t *testing.T) {
 	if err != nil || job == nil {
 		t.Fatalf("create an uncertain in-flight attempt: job=%v err=%v", job, err)
 	}
-	second, err := s.Capture(ctx, "Relational database normalization", "recovery-second-capture")
+	second, err := s.Capture(ctx, store.CaptureInput{Text: "Relational database normalization", Mode: "topic"}, "recovery-second-capture")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,18 +238,8 @@ func TestRemoteCompletionRequiresReadbackAndFailurePreservesReview(t *testing.T)
 		t.Run(scenario, func(t *testing.T) {
 			ctx := context.Background()
 			s := openTestStore(t)
-			if _, err := s.Capture(ctx, "SQL terminology", "backup-review-fixture"); err != nil {
-				t.Fatal(err)
-			}
-			job, err := s.ClaimJob(ctx, time.Minute, 1000, 1000000)
-			if err != nil || job == nil {
-				t.Fatalf("claim authored fixture: %+v %v", job, err)
-			}
-			zero := int64(0)
-			content := store.GenerationResult{Model: "authored-test-material", PromptVersion: "test", Quizzes: []store.GeneratedQuiz{{Kind: "recall", Prompt: "What does SQL stand for?", Answer: "Structured Query Language", Explanation: "SQL abbreviates Structured Query Language.", Basis: "topic"}}}
-			if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, content, &zero); err != nil {
-				t.Fatal(err)
-			}
+			const prompt = "What does SQL stand for?"
+			publishReviewable(t, s, prompt)
 			var mu sync.Mutex
 			var uploaded []byte
 			sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +289,7 @@ func TestRemoteCompletionRequiresReadbackAndFailurePreservesReview(t *testing.T)
 				t.Fatalf("backup outcome is not visible to the owner: %+v, %v", summary, err)
 			}
 			state, err := s.Review(ctx)
-			if err != nil || state.Current == nil || state.Current.Quiz.Prompt != content.Quizzes[0].Prompt {
+			if err != nil || state.Current == nil || state.Current.Quiz.Prompt != prompt {
 				t.Fatalf("backup outcome disabled the ordinary review surface: %+v, %v", state, err)
 			}
 			destination := filepath.Join(t.TempDir(), "restored.sqlite")
@@ -307,6 +297,48 @@ func TestRemoteCompletionRequiresReadbackAndFailurePreservesReview(t *testing.T)
 				t.Fatalf("local archive was not recoverable after remote outcome: %v", err)
 			}
 		})
+	}
+}
+
+// publishReviewable walks the capture chain with authored content and reads
+// the concept's note, so one question awaits an answer on the review surface.
+func publishReviewable(t *testing.T, s *store.Store, prompt string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := s.Capture(ctx, store.CaptureInput{Text: "SQL terminology", Mode: "topic"}, "backup-review-fixture"); err != nil {
+		t.Fatal(err)
+	}
+	zero := int64(0)
+	publish := func(kind string, result func(*store.Job) store.GenerationResult) {
+		t.Helper()
+		job, err := s.ClaimJob(ctx, time.Minute, 1000, 1000000)
+		if err != nil || job == nil || job.Kind != kind {
+			t.Fatalf("claim authored %s: %+v %v", kind, job, err)
+		}
+		content := result(job)
+		content.Model, content.PromptVersion = "authored-test-material", "test"
+		if err = s.CompleteJob(ctx, job.ID, job.LeaseToken, content, &zero); err != nil {
+			t.Fatal(err)
+		}
+	}
+	publish("research", func(*store.Job) store.GenerationResult { return store.GenerationResult{} })
+	publish("plan", func(*store.Job) store.GenerationResult {
+		return store.GenerationResult{Plan: &store.PlanContent{Goal: "SQL terminology", Concepts: []store.PlannedConcept{{Key: "sql", Name: "SQL", Summary: "SQL is the language relational databases use for queries.",
+			Note: &store.NoteContent{Title: "SQL", Basis: "topic", Body: "SQL, Structured Query Language, is how you ask a relational database to find, add, or change rows."}}}}}
+	})
+	publish("questions", func(job *store.Job) store.GenerationResult {
+		jc, err := s.JobContext(ctx, job.ID)
+		if err != nil || len(jc.Concepts) != 1 {
+			t.Fatalf("questions context: %+v %v", jc, err)
+		}
+		return store.GenerationResult{Quizzes: []store.GeneratedQuiz{{Kind: "recall", Level: "recall", Concept: jc.Concepts[0].ID, Prompt: prompt, Answer: "Structured Query Language", Explanation: "SQL abbreviates Structured Query Language.", Basis: "topic"}}}
+	})
+	state, err := s.Review(ctx)
+	if err != nil || state.Intro == nil {
+		t.Fatalf("new concept was not introduced: %+v %v", state, err)
+	}
+	if _, err = s.AcknowledgeIntro(ctx, state.Intro.Concept.ID, "backup-review-intro", false); err != nil {
+		t.Fatal(err)
 	}
 }
 

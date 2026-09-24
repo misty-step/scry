@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,12 +12,6 @@ import (
 
 	"github.com/misty-step/scry/internal/store"
 )
-
-type outputCoverage struct {
-	Kind     string   `json:"kind"`
-	Complete bool     `json:"complete"`
-	Missing  []string `json:"missing"`
-}
 
 type quizDraft struct {
 	Evidence    string   `json:"evidence"`
@@ -66,141 +59,6 @@ func strictObject(data []byte, target any, fields ...string) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)
-}
-
-func validateOutput(content string, job *store.Job, plan coveragePlan) (store.GenerationResult, []string, error) {
-	result := store.GenerationResult{}
-	data := []byte(content)
-	if len(data) > maxContentBytes || !utf8.Valid(data) || checkJSON(data, 12) != nil {
-		return result, nil, errors.New("invalid quiz JSON")
-	}
-	var raw struct {
-		Coverage json.RawMessage   `json:"coverage"`
-		Quizzes  []json.RawMessage `json:"quizzes"`
-	}
-	if err := strictObject(data, &raw, "coverage", "quizzes"); err != nil {
-		return result, nil, err
-	}
-	var coverage outputCoverage
-	if err := strictObject(raw.Coverage, &coverage, "kind", "complete", "missing"); err != nil {
-		return result, nil, err
-	}
-	switch coverage.Kind {
-	case "concepts", "vocabulary", "procedure", "complete_set", "exact_text":
-	default:
-		return result, nil, errors.New("unsupported task classification")
-	}
-	if len(raw.Quizzes) > maxQuizzes || len(coverage.Missing) > maxQuizzes {
-		return result, nil, errors.New("quiz or coverage count exceeds limit")
-	}
-	for _, missing := range coverage.Missing {
-		if len(missing) > 512 || hasUnsafeControl(missing) {
-			return result, nil, errors.New("invalid coverage detail")
-		}
-	}
-	drafts := make([]quizDraft, len(raw.Quizzes))
-	for index, rawQuiz := range raw.Quizzes {
-		if err := strictObject(rawQuiz, &drafts[index], "evidence", "basis", "kind", "prompt", "answer", "explanation", "choices", "variants", "covers", "required_ideas"); err != nil {
-			return result, nil, err
-		}
-	}
-	if plan.Task != "infer" && coverage.Kind != plan.Task {
-		return result, []string{"task_mismatch"}, nil
-	}
-	finite := coverage.Kind == "complete_set" || coverage.Kind == "exact_text"
-	unitIndex := make(map[string]int, len(plan.Units))
-	for index, unit := range plan.Units {
-		unitIndex[unit.ID] = index
-	}
-	covered := make(map[string]bool, len(plan.Units))
-	seenPrompts := make(map[string]bool, len(drafts))
-	issues := make([]string, 0)
-	lastUnit, lastExactOffset := -1, -1
-	for _, draft := range drafts {
-		// Choice, exact-text, and complete-set tasks stay deterministic: the
-		// grading contract comes from the task, not from the model's rubric.
-		if len(draft.RequiredIdeas) > 0 && (draft.Kind != "recall" || finite) {
-			issues = append(issues, "rubric_on_exact_task")
-			continue
-		}
-		if issue := validateQuiz(draft, job); issue != "" {
-			issues = append(issues, issue)
-			continue
-		}
-		promptKey := normalized(draft.Prompt)
-		if seenPrompts[promptKey] {
-			issues = append(issues, "duplicate_question")
-			continue
-		}
-		if len(draft.Covers) > 1 || (len(plan.Units) == 0 && len(draft.Covers) != 0) {
-			issues = append(issues, "invented_coverage")
-			continue
-		}
-		unit := -1
-		if len(plan.Units) > 0 {
-			if len(draft.Covers) != 1 {
-				issues = append(issues, "missing_coverage_unit")
-				continue
-			}
-			var found bool
-			unit, found = unitIndex[draft.Covers[0]]
-			if !found || covered[draft.Covers[0]] || (plan.Ordered && unit <= lastUnit) {
-				issues = append(issues, "repeated_or_reordered_unit")
-				continue
-			}
-			if !strings.Contains(draft.Evidence, plan.Units[unit].Text) || !unitIsTested(plan.Units[unit].Text, draft, coverage.Kind) {
-				issues = append(issues, "unit_not_actually_tested")
-				continue
-			}
-		}
-		if coverage.Kind == "exact_text" {
-			if draft.Kind != "recall" || len(draft.Variants) != 0 || job.SourceKind != "source" || !strings.Contains(job.SourceText, draft.Answer) {
-				issues = append(issues, "exact_text_changed")
-				continue
-			}
-			if unit < 0 {
-				offset := strings.Index(job.SourceText, draft.Answer)
-				if offset <= lastExactOffset {
-					issues = append(issues, "exact_text_reordered")
-					continue
-				}
-				lastExactOffset = offset
-			}
-		}
-		seenPrompts[promptKey] = true
-		if unit >= 0 {
-			covered[draft.Covers[0]], lastUnit = true, unit
-		}
-		quiz := store.GeneratedQuiz{
-			Kind: draft.Kind, Prompt: draft.Prompt, Answer: draft.Answer,
-			Explanation: draft.Explanation, Evidence: draft.Evidence, Basis: draft.Basis,
-			Choices: draft.Choices, Variants: draft.Variants,
-		}
-		if len(draft.RequiredIdeas) > 0 {
-			rubric := &store.Rubric{Required: make([]store.RubricIdea, len(draft.RequiredIdeas))}
-			for index, idea := range draft.RequiredIdeas {
-				rubric.Required[index] = store.RubricIdea{Text: idea}
-			}
-			quiz.Grading, quiz.Rubric = "semantic", rubric
-		}
-		result.Quizzes = append(result.Quizzes, quiz)
-	}
-	unverifiable := finite && (plan.Unverified || len(plan.Units) == 0)
-	missingUnits := len(plan.Units) - len(covered)
-	result.Partial = len(issues) > 0 || !coverage.Complete || len(coverage.Missing) > 0 || unverifiable || missingUnits > 0
-	result.Note = fmt.Sprintf("%d quiz(es) passed structural and provenance checks; this is not independent fact-checking.", len(result.Quizzes))
-	if len(issues) > 0 {
-		result.Note += fmt.Sprintf(" %d candidate(s) rejected; their paid usage is included. Checks: %s.", len(issues), strings.Join(issues[:min(4, len(issues))], ", "))
-	}
-	if len(plan.Units) > 0 {
-		result.Note += fmt.Sprintf(" Source-unit coverage: %d/%d, in the supplied order.", len(covered), len(plan.Units))
-	}
-	if unverifiable {
-		result.Note += " Partial: complete-set or exact-text coverage cannot be established without a complete authoritative input; no completeness claim is made."
-	} else if missingUnits > 0 || !coverage.Complete || len(coverage.Missing) > 0 {
-		result.Note += " Partial: some requested material is missing or uncertain. Inspect the source and clarify or split the task before retrying."
-	}
-	return result, issues, nil
 }
 
 func validateQuiz(q quizDraft, job *store.Job) string {
@@ -286,20 +144,20 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 		}
 		return ""
 	}
-	if q.Basis != "source" || strings.TrimSpace(q.Evidence) == "" || !strings.Contains(job.SourceText, q.Evidence) || len(strings.Fields(q.Evidence)) < 2 {
+	if (q.Basis != "source" && q.Basis != "web") || strings.TrimSpace(q.Evidence) == "" || !strings.Contains(job.SourceText, q.Evidence) || len(strings.Fields(q.Evidence)) < 2 {
 		return "unverified_source_quote"
 	}
 	evidence := normalized(q.Evidence)
-	if !answerSupported(answer, evidence) || !numbersSupported(q.Answer, q.Evidence) || !numbersSupported(q.Explanation, q.Evidence) {
+	if (q.Basis == "source" && !answerSupported(answer, evidence)) || !numbersSupported(q.Answer, q.Evidence) || !numbersSupported(q.Explanation, q.Evidence) {
 		return "unsupported_source_answer"
 	}
 	for _, variant := range q.Variants {
-		if !answerSupported(normalized(variant), evidence) || !numbersSupported(variant, q.Evidence) {
+		if (q.Basis == "source" && !answerSupported(normalized(variant), evidence)) || !numbersSupported(variant, q.Evidence) {
 			return "unsupported_source_variant"
 		}
 	}
 	for _, idea := range q.RequiredIdeas {
-		if !answerSupported(normalized(idea), evidence) || !numbersSupported(idea, q.Evidence) {
+		if (q.Basis == "source" && !answerSupported(normalized(idea), evidence)) || !numbersSupported(idea, q.Evidence) {
 			return "unsupported_source_idea"
 		}
 	}
@@ -323,8 +181,7 @@ func validateQuiz(q quizDraft, job *store.Job) string {
 
 // validateRequiredIdeas checks only the structure of a generated rubric: its
 // size, plain text, distinct ideas, and that no idea is printed in the prompt.
-// Whether a quiz should be meaning-checked is the generator's task decision,
-// bounded by validateOutput to prose recall outside deterministic tasks.
+// v5 restricts rubrics to explain-level prose recall, not deterministic tasks.
 func validateRequiredIdeas(ideas []string, prompt string) string {
 	if len(ideas) > maxRequiredIdeas {
 		return "quiz_bounds"

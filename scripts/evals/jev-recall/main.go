@@ -585,7 +585,7 @@ func evaluateOne(client *http.Client, apiKey string, job runJob) RawRecord {
 	// Baseline is the legacy exact grader on purpose: it is the behavior the
 	// evaluation measures Jev against, and it keeps new runs comparable with
 	// the committed raw records.
-	baselineOutcome, baselineRating := learning.Grade("recall", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
+	baselineOutcome, baselineRating := learning.Grade("recall", "exact", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
 	req := buildRecallRequest(item.Question, item.Response.Text)
 	result := callDecisionAPI(client, apiKey, req)
 	record := RawRecord{
@@ -1057,7 +1057,7 @@ func validateEvaluation(items []WorkItem, corpus Corpus) error {
 				// grader called these correct synonyms WRONG. The check pins
 				// legacy exact mode on purpose; shipped semantic mode leaves
 				// them ungraded (see verify) instead of manufacturing a miss.
-				outcome, _ := learning.Grade("recall", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
+				outcome, _ := learning.Grade("recall", "exact", "exact", item.Question.ExpectedAnswer, item.Question.Variants, item.Response.Text, false)
 				if outcome != "wrong" {
 					return fmt.Errorf("concise synonym %q must be wrong under the legacy exact baseline; got %q", item.Response.ID, outcome)
 				}

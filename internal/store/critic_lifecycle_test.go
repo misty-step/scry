@@ -29,7 +29,7 @@ func TestCriticOrphanLeasesAgeOutOfRollingAllowance(t *testing.T) {
 				}
 			}
 			*now = now.Add(25 * time.Hour)
-			if _, err := s.Capture(ctx, "Independent new source", "orphan-next"); err != nil {
+			if _, err := legacyCapture(ctx, s, "Independent new source", "orphan-next"); err != nil {
 				t.Fatal(err)
 			}
 			claim, err := s.ClaimJob(ctx, time.Minute, 100, 1000)

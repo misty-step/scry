@@ -25,9 +25,8 @@ largest available gate:
    of those edits; tests, models, VMs, and deployment are not needed by default.
 3. For authorized runtime changes, choose the [focused proof](#focused-checks)
    below; use the exact-binary gate for a release claim. Neither a green gate
-   nor another live request resolves the operator's
-   [September 12 foundations rejection](../design/concept-centered-study.md#operator-findings-and-direction).
-   Reuse functional evidence without calling the experience useful or approved.
+   nor another live request reverses the historical rejection of MIS-59.
+   Authorization on 2026-09-23 adopts v5 design, not production activation.
 
 ## Repository gate and release artifact
 
@@ -65,13 +64,21 @@ exclusive-create. A successful process launch is not release evidence: inspect
 | --- | --- | --- |
 | Design/prose only | Meaning, relative-link and authority review; native readback | Operator design agreement when sought; no runtime claim or default test/model/VM exercise |
 | Learning/SQLite review | `go test ./internal/learning ./internal/store` | Exact retry/restart and durable event/schedule agreement |
-| Semantic grading | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Synthetic authored semantic quiz: pending → correct, concurrent duplicate POST sends one request, crash-after-send reconciles to failed with reservation retained, allowance reserved before send and shared with generation, shadow classes recorded but never applied, enabled cue/feedback fenced with a durable exposure record across occurrences, failed check with saved answer/retry/reveal, exact-operation replay, and stale finalization; live Jev quality is separate bounded evidence |
-| Generation | `go test ./internal/generation` | One bounded, authorized live request on representative material; inspect provenance, coverage, rejections, and actual spend |
+| Semantic grading / short-v1 / overrides | `go test ./internal/learning ./internal/store ./internal/semantic ./internal/web` | Exact/variant local, Jev short accept/reject/unsure thresholds and injection/identity fences, rubric semantic-v1, saved answer → self-check or failed Retry, authority in history, one-tap correction with immutable original event and schedule, interruption/exact replay. Bounded Jev holdout quality is separate evidence. |
+| Generation, research, and notes | `go test ./internal/generation ./internal/store` | Topic Exa search vs pasted text no-search; Link chosen-page fetch, Photo transcription, absent Exa key, exact quotes/citations, zero-document fallback, sequential plan/questions, immutable notes, interruption and bounded spending. Live Exa/model quality requires separate authorization. |
 | Prepublication critic (US-004) | `go test ./internal/learning ./internal/semantic ./internal/store ./internal/generation` | Candidate persistence before HTTP, one send lease, shared allowance, interrupted unknown spend, critic-only automatic/manual retry, hard veto and skipped publication. Run the opt-in bounded live control test separately; report false accepts/rejects/abstentions, raw requests/responses, model and cost. No production activation or broad accuracy claim. |
 | HTTP/browser | `go test ./internal/web` | Actual browser interaction against the changed surface, not DOM-click substitution |
 | Recovery | `go test ./internal/recovery` | Completed remote checksum readback and independent restored-service proof |
 | Deployment | Current shell/config syntax and exact-binary gate | Actual Worker version, Access-owner/anonymous denial, Container readiness after restore, and remote backup readback after an approved rollout |
 | Historical recovery | `bun run test:recovery` | Use the corresponding historical store/tooling; never reinterpret old formats as Go snapshots |
+
+Release smoke compatibility: `seed-fixture` prints JSON with `source` and
+`model: "authored-test-fixture"`; first `GET /` contains an HTML form whose
+action is `/review/answer`. `Accept: application/json` on `GET /` and
+`POST /review/answer` returns `{"review":...,"csrf":...,"operation_id":...}`;
+every referenced `/assets/...` response is byte-identical to
+`internal/web/assets/...`. These are synthetic compatibility checks, not
+real-browser, private-ingress or provider proof.
 
 Do not add permanent tests for wiring or source text. Keep regressions for
 observable boundaries, races, precedence, and failure transitions. Mock only
@@ -100,7 +107,9 @@ then run those bytes in the foreground. Run the whole block in one shell; the
 `&&` chain stops if allocation, build, or seeding fails.
 
 ```sh
-qa_dir=$(mktemp -d /tmp/scry-qa.XXXXXXXX) &&
+qa_root="${XDG_CACHE_HOME:-$HOME/.cache}/tmp" &&
+mkdir -p "$qa_root" &&
+qa_dir=$(mktemp -d "$qa_root/scry-qa.XXXXXXXX") &&
 printf 'Disposable QA directory: %s\n' "$qa_dir" &&
 go build -mod=readonly -o "$qa_dir/scry" ./cmd/scry &&
 env -i PATH=/usr/bin:/bin HOME="$qa_dir" LANG=C.UTF-8 \
@@ -110,17 +119,19 @@ env -i PATH=/usr/bin:/bin HOME="$qa_dir" LANG=C.UTF-8 \
   "$qa_dir/scry" serve --dev --db "$qa_dir/synthetic.sqlite" --addr 127.0.0.1:8080
 ```
 
-`seed-fixture` publishes an authored DNS/TLS bundle without calling a model or
-fetching its reference link. Its JSON reports `synthetic: true`, model
-`authored-test-fixture`, and `provider_cost_micros: 0`; it includes authored
-content, so reading it is not a cold-recall observation. One TLS recall uses a
-two-idea semantic rubric, one missing-idea cue, and one contradiction/feedback
-pair for local UI smoke. With the isolated recipe's empty semantic endpoint, its
-non-exact answer safely shows the failed/ungraded recovery state without a live
-request. The command refuses an existing database or any SQLite sidecar (`-wal`,
-`-shm`, `-journal`), never replaces them, and does not import production data.
-the exact-binary smoke in `scripts/lib/scry_smoke.py`, reached through the
-repository gate above.
+`seed-fixture` walks the real preparation chain with authored content and no
+provider or web call: research finds nothing, the plan names two concepts
+(DNS address records, TLS certificate trust) with standard notes, and three
+questions link to them. A synthetic learner then reads each intro, so the
+Stream opens on a question awaiting an answer. Its JSON is
+`{"model":"authored-test-fixture","source":"<source id>"}`; the content is
+authored, so reading it is not a cold-recall observation. With no semantic
+endpoint, a non-exact answer safely reaches a failed/self-check recovery path
+without a live request. The command refuses an existing database or any SQLite
+sidecar (`-wal`, `-shm`, `-journal`); it never imports production data.
+
+For exact-binary synthetic smoke, use `scripts/lib/scry_smoke.py` through
+the repository gate above; this local recipe does not replace it.
 
 `--dev` supplies loopback development identity, **not** capability isolation:
 `serve` still reads inherited `SCRY_*` configuration and starts generation and
@@ -131,36 +142,37 @@ new generation jobs become saved, zero-cost configuration failures rather than
 producing questions. Recovery still creates local snapshots in the disposable
 `backups` directory at startup and on its interval; none are off-VM proof.
 
-Wait for `Scry ready`, then open **http://127.0.0.1:8080/** in a local browser.
-The fixture supplies real persisted materials and assessments for the embedded
-review UI. To select the same recall path used by smoke, open the fixture
-goal's `/goals/<goal.id>/plan` path using `goal.id` from the seed JSON. Set
-**Time for this goal plan** to `3600`, **New assessments per day** to `100`,
-**Learning focus** to **Deliberately choose more practice**, enter a synthetic
-QA reason, and save. Return to learning to exercise answer → held feedback →
-Next. These are disposable QA pacing values, not recommended learning settings.
-If port 8080 is occupied, choose another unused loopback port in `--addr` and
-the browser URL; do not stop an unrelated service.
+Do **not** open a local browser on the workstation. Run browser QA against the
+isolated service from an **exe.dev VM** using an actual browser there; keep
+synthetic fixture state and integration credentials isolated. After `Scry ready`,
+open the service's private QA URL and exercise question → held feedback → Next.
+The seed JSON supplies `source` and `model`, not a goal identifier or a
+planning route. Use `/map`, `/concepts/{id}`, and `/sources/{id}` only when
+those identifiers have been created in the isolated fixture. The recipe
+above remains a server-only loopback smoke; it is not browser acceptance. If
+port 8080 is occupied, choose another unused loopback port without stopping
+an unrelated service.
 
 Stop with **Ctrl-C** in the serving terminal and wait for the process to exit
 before manipulating files. To resume saved state, rerun only the final
-`env -i ... serve` command in that shell, then refresh the browser (the
-development session secret is regenerated). To reset, rerun the whole block
-for a fresh directory, not `seed-fixture` against the old database. Keep the
+`env -i ... serve` command in that shell, then refresh the VM browser
+(the development session secret is regenerated). To reset, rerun the whole
+block for a fresh directory, not `seed-fixture` against the old database. Keep the
 printed directory for evidence or remove only that verified disposable
 directory after stopping; never delete `data/` or an existing SQLite database
 to make seeding succeed.
 
-This exercises local authored-data UI and persistence, not live generation,
-provider quality/spend controls, private HTTPS ingress, owner authorization,
-physical-phone touch, or independent recovery. Use the separately authorized
-proof below for those claims.
+This loopback recipe exercises authored data, HTTP and persistence, not browser
+interaction, live generation, provider quality/spend controls, private HTTPS
+ingress, owner authorization, physical-phone touch, or independent recovery.
+Use separately authorized proof for those claims.
 
 ### Browser interaction and private ingress
 
-Use an actual browser. Check answer → held feedback → deliberate Next, capture
-and saved generation status, library/correction, and interrupted access. Exercise
-real pointer/keyboard events and inspect the screen. A DOM `.click()` bypass is
+Use an actual browser on an isolated exe.dev VM. Check answer → held feedback
+→ deliberate Next, capture and saved preparation status, Map/correction, and
+interrupted access. Exercise real pointer/keyboard events and inspect the
+screen. A DOM `.click()` bypass is
 not evidence of working touch. If a browser harness stalls, diagnose or replace
 that isolated browser rather than count a bypass as product proof.
 
@@ -189,100 +201,42 @@ and database readiness, not fresh off-VM recovery or question quality. Inspect
 Settings for the last completed backup and visible stale/error state. There is
 no current `/statusz` contract or public service-session API.
 
-## Foundation detour (MIS-59)
+## Concept-centered v5 journeys (MIS-162)
 
-Use a fresh isolated schema-2 app and clearly labeled synthetic authored content
-for local mechanics. The changed route family is `POST /review/foundation`,
-`GET /foundations`, and `GET/POST /foundations/{id}`. The Library links to saved
-foundations; requests do not invoke Reveal. Since MIS-157 the review interface
-does not surface a Too advanced control, so walk the detour by posting to
-`POST /review/foundation` directly and viewing saved foundations from the
-Library. No test posts `POST /review/foundation`; the commands below cover the
-store and generation methods, and the web Foundation tests cover the
-`/foundations/{id}` and `/foundations` routes, so the direct request and its
-queued job stay part of this manual walk. Relevant focused commands:
+The MIS-59 foundations walk is historical; its routes are retired in v5. Its
+[dated rollout receipt](foundation-rollout-20260911.json) does not validate the
+new experience. Exercise the following with synthetic inputs and real browser
+pointer/keyboard actions on an isolated exe.dev VM. Do not run a local browser
+or headless Chromium on the workstation.
 
-```sh
-go test ./internal/store -run 'Foundation|PopulatedV1' -count=1
-go test ./internal/generation -run Foundation -count=1
-go test ./internal/web -run Foundation -count=1
-go test ./internal/recovery
-```
+1. Capture each visible mode: Topic with configured Exa search, Topic without
+   an Exa key (general-knowledge fallback), My text with **no web request**,
+   Link fetching only the chosen page, and Photo with transcription. Inspect
+   Source input/documents, provenance, failed/retry states, and Map preparing
+   receipts; submit invalid and oversize input without creating a source.
+2. On Stream cover choice/recall, checking, self-check close/unsure/failed
+   (including Retry check), result correct/automatic miss/overridden/shown/
+   learner, intro, preparing, first-run/caught-up and conflict/error. Verify no
+   answer-bearing fields leak to ungraded HTML/JSON. Confirm held result and
+   deliberate Next after reload or response loss.
+3. Correct an automatic miss with “I was right”; correct an automatic success
+   with “Count as a miss”. Repeat the exact operation ID and check one override,
+   immutable prior event, authority, and consistent schedule. Check stale
+   operation rejection, assisted reveal, and rubric explain-level behavior.
+4. A new concept intro shows the standard note before its first question.
+   “I know this already” records an observation, not a cold review. Open Map,
+   focus/pause a goal, and inspect
+   prerequisite-first order, status words and estimates. Open a Concept page:
+   its note, citations,
+   related ideas, practice and gated question details.
+5. Open Add via `/add?text=&url=&title=` as a share target; the prefilled fields
+   remain editable and **mode choice remains explicit**. Exercise without JS,
+   with reduced motion, both color schemes, keyboard focus, 320px/390px and
+   desktop. Verify assets actually served match embedded bytes.
 
-Walk through a retained Calvin-cycle-style question, including a typed draft:
-submit the foundation request (the review UI no longer shows a Too advanced
-button, MIS-157) → pending/failed saved job → ordinary review still available →
-explicit bounded retry → saved explanation → ordered diagram/reference →
-warm foundation practice → held feedback/Next → deliberate identical-target
-return. Save the original presentation ID and exact prompt, not merely a similar
-question. Restart the app; revisit from Library and reuse without another job.
-Use native browser pointer/keyboard events. If a headless harness loses focus,
-restore browser focus rather than bypassing the DOM with `.click()`; record
-any focus emulation separately from real-device acceptance.
-
-Drop a POST response AFTER commit, observe unknown status, and retry the identical
-operation ID/payload. Expect one read/practice observation and current committed
-progress, not a replayed transition. Test a stale bridge revision and an old tab
-after newer review advancement. It must not overwrite the newer target. Check
-that request-only creates no negative event, read/practice changes no FSRS card,
-and the exposed target cannot report cold success. Complete warm A and B with
-cold C due: C must appear next, not an A/B loop. A sole warm target must remain
-unavailable after Next, reload and restart; selection, preview, counts, empty
-state, next availability and Library must agree on completion plus 24 hours.
-Compare all FSRS bytes before/after warm work. A deliberate reset or newer real
-review must override old consumption; explicit Reveal retains assisted/Again.
-A paused unknown foundation job retains allowance and never auto-retries.
-Do not confuse retrying a saved browser operation after response loss with
-resending paid provider work. For an unknown provider outcome, keep the job and
-reservation intact and hand off through the runbook's
-[generation/spending boundary](../runbook.md#generation-and-spending); no fresh
-request or manual charge release is authorized by a QA interruption.
-
-Repeat the foundation request on the same occurrence with an edited draft; reload/restart
-must retain the latest acknowledgment. Replay an older exact operation and send
-a stale new operation after bridge advancement: neither may revert draft or
-progress. Clear the draft and ask for help; required answer validation must not
-block help, while an empty Check answer still must not submit.
-Include an older ungraded answer: it must not hide a later saved draft or an
-acknowledged clearing. A newer ungraded submission must become the editable text
-again, while its immutable prior attempt remains visible separately.
-
-During a later cold occurrence of the same quiz version, GET an old graded
-bridge with Accept: application/json. Before acknowledgment, its target's answer,
-explanation, evidence, variants, submitted answer and saved draft, plus old warm
-feedback, must be withheld, not merely its materials. Compare immutable history
-and original snapshots before/after that GET. A synthetic future occurrence can
-exercise this boundary, but is not evidence of elapsed-time retention.
-
-Inspect exact material/unit versions and separate coverage roles/provenance.
-Rendered markup must stay inert; references must be safe URL-only pointers,
-never fetched/verified source claims. Exercise denied owner/peer/Host and CSRF
-on the new reads/mutations, with no-store/CSP and session-loss behavior.
-
-For migration, use a populated v1 DB containing old presentations, assistance,
-reviews, full FSRS cards, corrections, content versions, receipts, queued and
-unknown paid work. Read-only candidate `check` must leave v1 bytes unchanged;
-startup migration must preserve every old row and leave historical knowledge
-unmapped. Reject incomplete/forged/newer schemas before readiness or claims.
-Compare all foundation export sections after a complete backup/unused-path
-restore and exercise the restored service, not only its tables. Account separately
-for intentional restored-job pauses and new service-start backup receipts.
-Prove the retained v1 snapshot/compatible-binary recovery path described in the
-runbook; never overwrite a live DB to demonstrate rollback.
-
-Local provider-boundary fixtures prove serialization, publication, failure,
-reservation and retry mechanics ONLY. The
-[September 11 rollout receipt](foundation-rollout-20260911.json), particularly
-`authorized_live_followup`, records bounded selected-provider generation,
-native private-browser interaction, and off-VM restore of the new records
-through private UI on the exact deployed binary. Its earlier blockers and
-historical PASS/UNVERIFIED fields remain dated observations, not current status.
-The operator subsequently rejected the foundations experience; see
-[current product direction](../../VISION.md) and the
-[design assessment](../design/concept-centered-study.md#operator-findings-and-direction).
-Technical success does not reverse that assessment or authorize further work.
-This slice does not test or claim MIS-60–63's unimplemented planner/estimator
-behavior.
+These journeys prove changed mechanics only when actually observed. Model
+quality, Exa live retrieval, provider spend, protected origin, physical phone,
+and independently restored service require separate bounded, authorized proof.
 
 ## Independent recovery
 
@@ -302,6 +256,22 @@ SQLite integrity check alone is not a complete disaster-recovery proof.
 not establish production remote-backup success. Never use it for live cutover.
 
 ## Evidence and historical material
+
+[The MIS-162 v5 receipt](concept-study-20260923.json) binds the concept-centered
+build (`757acdf`) to its committed-source gate, a 146-shot synthetic state matrix
+on an isolated VM, and a bounded live run in which all four capture modes
+published through real generation, Exa and Jev. It lists what remains
+unverified, including the production-data migration rehearsal and activation.
+
+[The MIS-162 advisory receipt](concept-study-advisories-20260923.json) binds
+the follow-up (`bc35504`): fixes as learner-chosen suggestions that belong to
+their question, whole-capture withholding while a question waits for an
+unaided answer, and 17 named states on the exact gate binary with one live fix.
+
+[The MIS-162 simplification receipt](concept-study-simplify-20260924.json)
+binds `a644f3e`: Map search, comparison notes, and note levels removed, a fix
+as a drafted edit, the SPEC secrecy boundary, 20 named states and a live Topic
+chain on the exact gate binary.
 
 [The earlier Go acceptance receipt](personal-go-acceptance-20260909.json) records
 bounded live generation, trusted touch, interrupted-response/access recovery,

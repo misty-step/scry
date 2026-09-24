@@ -57,15 +57,27 @@ func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, e
 	if err != nil {
 		return store.Presentation{}, err
 	}
-	if assessment.Status != "pending" || assessment.Transmissions > 0 || assessment.Quiz.Rubric == nil {
-		// Judged, failed, superseded, already transmitted, or unjudgeable:
-		// reconcile durable state only; never build or send another request.
+	if assessment.Status != "pending" || assessment.Transmissions > 0 {
 		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
 	}
-	request := BuildRecallRequest(a.model, RecallState{
-		Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
-		LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
-	})
+	var request Request
+	switch assessment.PolicyVersion {
+	case learning.ShortPolicyVersion:
+		request = BuildShortAnswerRequest(a.model, ShortState{
+			Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
+			LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants,
+		})
+	case learning.SemanticPolicyVersion:
+		if assessment.Quiz.Rubric == nil {
+			return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
+		}
+		request = BuildRecallRequest(a.model, RecallState{
+			Prompt: assessment.Quiz.Prompt, ExpectedAnswer: assessment.Quiz.Answer,
+			LearnerAnswer: assessment.Answer, Variants: assessment.Quiz.Variants, Rubric: *assessment.Quiz.Rubric,
+		})
+	default:
+		return a.store.FinalizeAssessment(ctx, id, "", store.AssessmentResult{})
+	}
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return store.Presentation{}, err
@@ -90,6 +102,15 @@ func (a *Assessor) Assess(ctx context.Context, id string) (store.Presentation, e
 	defer cancel()
 	if decisionErr != nil {
 		return a.fail(settleCtx, id, lease.Token, response, decisionErr)
+	}
+	if assessment.PolicyVersion == learning.ShortPolicyVersion {
+		short, parseErr := shortJudgments(response)
+		if parseErr != nil {
+			return a.fail(settleCtx, id, lease.Token, response, ErrMalformed)
+		}
+		result := assessmentResult(response, learning.SemanticJudgments{}, "")
+		result.Short = short
+		return a.store.FinalizeAssessment(settleCtx, id, lease.Token, result)
 	}
 	judgments, err := judgments(response, len(assessment.Quiz.Rubric.Required), len(assessment.Quiz.Rubric.Contradictions))
 	if err != nil {
@@ -166,4 +187,31 @@ func judgments(response Response, ideas, contradictions int) (learning.SemanticJ
 	}
 	result.Relation, result.Injection = relation.Choice, *injection.Noul
 	return result, nil
+}
+
+func shortJudgments(response Response) (learning.ShortJudgments, error) {
+	result := learning.ShortJudgments{}
+	if len(response.Answers) != 3 {
+		return result, ErrMalformed
+	}
+	verdict, vok := response.Answers["verdict"]
+	identity, iok := response.Answers["identity"]
+	injection, jok := response.Answers["injection"]
+	if !vok || !iok || !jok || (verdict.Type != "" && verdict.Type != "choice") ||
+		(verdict.Choice != "accept" && verdict.Choice != "reject" && verdict.Choice != "unsure") ||
+		verdict.Noul != nil || verdict.Score != nil || len(verdict.Probabilities) != 3 ||
+		(identity.Type != "" && identity.Type != "noul") || identity.Noul == nil || identity.Choice != "" || identity.Score != nil || len(identity.Probabilities) != 0 ||
+		(injection.Type != "" && injection.Type != "noul") || injection.Noul == nil || injection.Choice != "" || injection.Score != nil || len(injection.Probabilities) != 0 {
+		return result, ErrMalformed
+	}
+	for _, label := range []string{"accept", "reject", "unsure"} {
+		probability, ok := verdict.Probabilities[label]
+		if !ok || probability < 0 || probability > 1 {
+			return result, ErrMalformed
+		}
+	}
+	if *identity.Noul < 0 || *identity.Noul > 1 || *injection.Noul < 0 || *injection.Noul > 1 {
+		return result, ErrMalformed
+	}
+	return learning.ShortJudgments{Verdict: verdict.Choice, Probabilities: verdict.Probabilities, Identity: *identity.Noul, Injection: *injection.Noul}, nil
 }

@@ -7,110 +7,63 @@ Authoritative chain: VISION.md (intent) -> this file (root stories) -> SPEC.md
 docs/qa/critics.md (verification). Linear owns work state. Journeys and receipts
 cite both US ids and S ids. -->
 
+Intent revision authority: on 2026-09-23 the operator authorized "Execute this
+reimagining in full" (MIS-162). US-001–003 are revised to the approved concept-
+centered experience, and US-005–012 are new, never recycled identifiers.
+On 2026-09-24 the operator simplified v5 (dropping Map search, note levels, and
+confusion-triggered contrast) and then confirmed "go for it": US-005 criterion 3
+(an unreadable Link fails recoverably) and the resulting story edits (US-001
+criterion 2, US-009 criterion 3, and US-011 criterion 3 removed; US-012 retired
+with its id reserved) are accepted intent.
+
 ## Capability: Concept-centered study
 
-## US-001 Map saved foundations onto concepts and references with search and reuse
+## US-001 Find and reuse saved understanding
 
-Statement: When I explore what I am learning, I want my saved foundations organized into concepts and reusable references that I can search and revisit, so that I can understand prerequisites across questions without losing my study history.
+Statement: When I explore what I am learning, I want saved concepts and notes revisitable, so that I can connect prerequisites across questions without losing earlier study.
 
 Criteria:
-1. WHEN the database upgrades from schema version 2, THE SYSTEM SHALL preserve all existing foundation rows and map units to concepts, materials to references, and foundation links to concept relations.
-2. WHEN I search concepts or references by text, THE SYSTEM SHALL return matching concepts and references with their linked counterparts.
-3. WHEN I inspect a concept, THE SYSTEM SHALL return its linked references, quizzes, and prerequisites.
-4. IF a search query matches no concepts or references, THE SYSTEM SHALL return an empty result without error.
+1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
+2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
 
-No-gos: no manual graph editor, no relationship-role vocabulary, no automatic replanner.
+No-gos: no manual graph editor, no automatic replanner.
 
-Evidence: `internal/store/concept_test.go`
+Evidence: `internal/store/migration_v5_test.go`, `internal/store/v5_test.go`,
+`internal/web/review_test.go`
 
 ## Capability: Study loop
 
-## US-002 Study with a focused review surface: question, answer, check, next
+## US-002 Stay with one question through its result
 
-Statement: When I am reviewing, I want the screen to be the question with exactly
-one way to answer it, and after I submit I want the result and Next, so that I
-can keep studying without scanning a page to decide what to do next.
+Statement: When I review, I want one question and one way to answer, followed by the result and Next, so I can keep studying without navigating a dashboard.
 
 Criteria:
-1. WHEN the current review is ungraded, THE review surface SHALL render the
-   question as the dominant heading, one answer control (choice buttons that
-   submit by tap, or a short recall field plus one submit), and no other answer
-   control or secondary row.
-2. WHEN a submitted answer is graded, THE review surface SHALL replace the
-   answer control with the result heading, the expected answer, and one Next
-   control, and a choice tap SHALL grade the answer without any separate
-   submit. WHEN a recall submission is unclear and stays ungraded, THE surface
-   SHALL keep the question and the answer form for another attempt.
-3. THE review surface MUST NOT show kind or due-count chrome, schedule lectures,
-   Flag-a-problem, or an inspect accordion in any state. WHILE the review is
-   ungraded, reveal, edit, and archive SHALL be reachable only from the one More
-   overflow; WHEN the review is graded, reveal SHALL be hidden while edit and
-   archive SHALL remain reachable from the More overflow.
-4. THE review document in every state, including the empty state, MUST NOT
-   contain "Too advanced", "Saved foundations", "Fix or inspect", or "Stop
-   reviewing this question". Reveal SHALL remain reachable while the review is
-   ungraded, and edit and archive SHALL remain reachable in every state that
-   presents a question.
-5. WHEN I am reviewing, THE review document MUST NOT show Review, Add,
-   Library, History, or Settings as always-visible links or bars; those five
-   destinations MUST be reachable from at most two punch-out controls (a Menu
-   control beside the wordmark) on the review surface.
+1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
+2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
+3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
+4. THE SYSTEM SHALL show exactly two masthead destinations, Add and Map, beside the wordmark; other maintenance actions SHALL remain in More, not an always-visible navigation bar or inspection dashboard.
+5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Add or an honest next-time indication, not an invented due question or foundation detour.
 
-No-gos: no MIS-59 foundations UX rebuild, no grading or scheduler behavior
-change, no removal of foundations data or routes, no restyle of pages outside
-the review surface.
+No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
 
 Evidence: `internal/web/review_test.go`
 
-## US-003 Answer meaning-sensitive recall without invented certainty
+## US-003 Get an honest answer judgment
 
-Statement: When a prose recall question can be answered correctly in different
-words, I want Scry to check the meaning rather than require one phrase, without
-asking me to pick a grading mode or write a rubric, while preserving my answer
-and learning history whenever that check is uncertain.
+Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
 
 Criteria:
-1. EACH quiz content version SHALL explicitly record exact or semantic grading.
-   Ordinary generation SHALL author required ideas in the same generation
-   request only for conceptual prose recall; choice, exact-text, and
-   complete-set output SHALL stay exact, and a rubric on them SHALL be rejected.
-   THE SYSTEM SHALL NOT infer or override the mode from digits, symbols,
-   keywords, or answer length, and SHALL NOT offer the learner a grading control
-   or rubric field. A learner edit that changes the prompt, expected answer,
-   quoted evidence, or response style SHALL publish an exact version rather than
-   keep a stale rubric; earlier versions and review history SHALL NOT be
-   rewritten.
-2. WHEN an exact answer, authored variant, or case-only uncertainty resolves
-   locally, THE SYSTEM SHALL NOT call the semantic assessor. OTHERWISE a semantic
-   prose answer SHALL be saved as a durable pending assessment before one bounded
-   external request is made outside SQL.
-3. THE semantic-v1 policy SHALL record Correct only when all authored required
-   ideas and the overall relation (frozen threshold 0.85) independently meet
-   their thresholds with no contradiction or injection signal. Under the frozen
-   policy incomplete and incorrect SHALL be recorded as shadow classes and
-   rendered as ungraded; unclear, malformed, unavailable, and timed-out checks
-   remain ungraded.
-4. WHEN a class that shows authored help is enabled and applies, THE surface
-   SHALL show the cue or feedback only after the occurrence is marked assisted
-   and an exposure record is written in the same transaction. A later correct
-   response on that content within 24 hours, on any occurrence, SHALL use the
-   helped warm contract, not an FSRS success.
-5. A failed check SHALL keep the answer, offer retry and reveal, and show no model
-   probabilities. EXACTLY one send lease SHALL exist per assessment: a concurrent
-   duplicate SHALL be refused, an exact replay SHALL reconcile the durable
-   assessment without resending, an interrupted send SHALL become a definite
-   failure that keeps its reservation as unknown spend, and the reservation
-   SHALL be enforced against the shared daily allowance before any request
-   leaves the process. Stale finalization SHALL be superseded without changing
-   learning state.
+1. WHEN a choice, exact-form recall, or authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; an exact-form near miss SHALL go to self-check rather than pass by similarity.
+2. WHEN a flexible short recall answer needs judgment, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
+3. WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.
+4. WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.
+5. WHEN a result is recorded, THE SYSTEM SHALL name its authority as exact, Jev, learner, or reveal; it SHALL preserve original attempts and grade corrections across restart without silently rewriting history.
 
-No-gos: no liberal similarity grading, no model call inside a SQL transaction,
-no change to the pinned FSRS algorithm/ratings, and no learning-efficacy claim.
+No-gos: no liberal string-similarity grading, model call inside a SQL transaction, learner rubric authoring, or change to pinned scheduler identity.
 
 Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
-`internal/semantic/client_test.go`, `internal/web/semantic_test.go`,
-`internal/generation/meaning_test.go`, `internal/store/meaning_edit_test.go`,
-`internal/web/meaning_test.go`
+`internal/store/review_test.go`, `internal/semantic/v5_request_test.go`,
+`internal/web/semantic_test.go`
 
 ## US-004 Check generated candidates before publication
 
@@ -119,7 +72,7 @@ enter review. A failed check must retain candidates and paid usage.
 
 Criteria:
 1. WHEN the critic is configured, THE SYSTEM SHALL save validated candidates
-   before any critic request. EACH batch SHALL contain at most twelve candidates.
+   before any critic request. EACH batch SHALL contain at most 60 candidates.
 2. THE critic-v1 policy SHALL reject any applicable hard defect at probability
    0.80 or higher. Missing or malformed judgments SHALL remain ungraded.
    Explanation teaching value SHALL rank only, never reject.
@@ -134,9 +87,117 @@ Criteria:
 6. Export and content history SHALL retain candidate attempts, defect reasons,
    model attribution, raw responses, and known or unknown usage.
 
-No-gos: no generator-v4 change, contrast candidates, pairwise duplicate checks,
+No-gos: no generator-v4 change, pairwise duplicate checks,
 practice-coverage UI, production activation, or general accuracy claim.
 
 Evidence: `internal/learning/critic_test.go`,
 `internal/semantic/critic_request_test.go`, `internal/store/critic_test.go`,
 `internal/store/critic_lifecycle_test.go`, `internal/generation/critic_test.go`.
+
+## Capability: Capture and understand
+
+## US-005 Capture a goal in one step
+
+Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
+
+Criteria:
+1. WHEN I add a Topic, My text, Link, or Photo, THE SYSTEM SHALL require that explicit mode and save exactly one source and goal for an identical operation ID.
+2. WHEN I choose Topic, THE SYSTEM SHALL search through Exa only if configured; WHEN I paste My text, THE SYSTEM SHALL NOT send it to web search. A Link SHALL fetch only the chosen URL, and a Photo SHALL transcribe before planning.
+3. IF Topic research has no documents, THEN THE SYSTEM SHALL proceed with labeled general knowledge; IF a Link page cannot be read, THEN THE SYSTEM SHALL fail that preparation recoverably instead of planning from the URL; IF a photo is unsupported or too large, THEN THE SYSTEM SHALL reject it without creating a source.
+4. WHEN generation fails, THE SYSTEM SHALL preserve captured material and show a recoverable failed preparation state rather than report ready.
+
+No-gos: no automatic search of pasted private text, account signup, or duplicate capture on replay.
+
+Evidence: `internal/store/v5_test.go`, `internal/generation/exa_test.go`,
+`internal/generation/worker_test.go`, `internal/web/review_test.go`
+
+## US-006 Understand a question's concept
+
+Statement: When a question assumes an idea I do not understand, I want a note for that concept one tap away, so studying can be more than repeating the answer.
+
+Criteria:
+1. WHEN a newly generated question publishes, THE SYSTEM SHALL link exactly one primary concept and an existing standard note.
+2. WHEN I open a concept from a graded question, THE SYSTEM SHALL show its note and linked questions without changing the current review occurrence.
+3. WHEN a note quotes my material or a web excerpt, THE SYSTEM SHALL keep exact evidence and inspectable provenance; general-knowledge notes SHALL be labeled and SHALL NOT claim quoted source support.
+
+No-gos: no untrusted markup execution, fabricated citations, or reading counted as unaided recall.
+
+Evidence: `internal/store/v5_test.go`, `internal/generation/v5_validation_test.go`,
+`internal/web/review_test.go`
+
+## Capability: Honest feedback and control
+
+## US-007 Correct a grade in one tap
+
+Statement: When a check gets my answer wrong, I want to correct it immediately, so my future practice does not inherit a false result.
+
+Criteria:
+1. WHEN an automatic miss is shown, THE SYSTEM SHALL offer "I was right" beneath Next; WHEN an automatic correct result is shown, THE SYSTEM SHALL offer "Count as a miss" in More.
+2. WHEN I correct a grade, THE SYSTEM SHALL record one immutable override, replace the current schedule consistently, and retain the original attempt and authority in history.
+3. WHEN the same override operation is retried, THE SYSTEM SHALL return the committed correction without a second schedule change; a stale correction SHALL conflict.
+
+No-gos: no rewriting the original attempt or pretending the correction was a new cold recall.
+
+Evidence: `internal/store/v5_test.go`, `internal/web/review_test.go`
+
+## US-008 Answer short questions in my own words
+
+Statement: When a short answer means the same thing in different words, I want it to count without accepting a different fact as correct.
+
+Criteria:
+1. WHEN a flexible short response does not match an authored variant locally, THE SYSTEM SHALL use the `short-v1` Jev battery with verdict, exact-identity, and injection judgments.
+2. WHEN accept probability is at least 0.85 and identity risk at most 0.35 and injection risk at most 0.20, THE SYSTEM SHALL accept; WHEN reject probability is at least 0.90 and injection risk at most 0.20, THE SYSTEM SHALL reject; otherwise it SHALL ask me to self-check.
+3. WHEN a check fails or its result cannot be trusted, THE SYSTEM SHALL keep my answer, name the learner's judgment as authority if I self-check, and SHALL NOT silently award success.
+
+No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed; policy adoption requires holdout evidence before live activation.
+
+Evidence: `internal/learning/short_test.go`, `internal/semantic/v5_request_test.go`,
+`internal/store/v5_test.go`, `internal/web/semantic_test.go`
+
+## Capability: See and shape learning
+
+## US-009 See what I know
+
+Statement: When I return to study, I want to see where my concepts stand, so I can choose what needs attention without mistaking an estimate for a fact.
+
+Criteria:
+1. WHEN I open Map, THE SYSTEM SHALL show active and paused goals with concept status, due indication, and an accessible list alongside any decorative constellation.
+2. WHEN I inspect a concept, THE SYSTEM SHALL distinguish new, learning, solid, and fading, show unaided/helped/missed observations separately, and label predicted recall explicitly as an estimate.
+
+No-gos: no guaranteed mastery score, color-only meaning, or synthetic review events from navigation.
+
+Evidence: `internal/learning/concept_test.go`, `internal/store/v5_test.go`,
+`internal/web/review_test.go`
+
+## US-010 Say what I want to know
+
+Statement: When my interests change, I want to pause or focus a learning goal, so the next material reflects what I choose.
+
+Criteria:
+1. WHEN capture succeeds, THE SYSTEM SHALL create one goal tied to the source; focus SHALL prioritize new concepts belonging to that goal.
+2. WHEN I pause a goal, THE SYSTEM SHALL exclude its new material from ordinary selection and retain its notes/history; WHEN I resume it, THE SYSTEM SHALL make eligible material selectable again.
+3. WHEN I change pace among light, steady, and intense, THE SYSTEM SHALL cap new concepts in a rolling day at 3, 6, and 12 respectively without fabricating due work.
+
+No-gos: no invisible goal deletion or goal settings as a gate before capture.
+
+Evidence: `internal/store/v5_test.go`, `internal/learning/selection_test.go`,
+`internal/web/review_test.go`
+
+## US-011 Meet prerequisites first
+
+Statement: When one idea depends on another, I want a useful introduction and simpler starting point before its questions, so I am not repeatedly tested on something I have not encountered.
+
+Criteria:
+1. WHEN a goal's concepts have prerequisites, THE SYSTEM SHALL order unseen introductions prerequisite-first and show the standard note before that concept's first question.
+2. WHEN I choose "I know this already" on the intro, THE SYSTEM SHALL record that observation without scoring a cold review or skipping later due questions.
+
+No-gos: no compulsory foundation detour or reading counted as a graded success.
+
+Evidence: `internal/learning/selection_test.go`, `internal/store/v5_test.go`,
+`internal/web/review_test.go`
+
+## US-012 Practice a real confusion (retired)
+
+Retired on 2026-09-23 by the operator's simplification decision (MIS-162): Scry
+no longer generates contrast questions from recorded confusions. The id stays
+reserved.

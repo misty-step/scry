@@ -181,11 +181,11 @@ func serve(args []string) error {
 			trustedPeers = append(trustedPeers, value)
 		}
 	}
-	budget, err := integerEnv("SCRY_GENERATION_DAILY_BUDGET_MICROS", 1_000_000)
+	budget, err := integerEnv("SCRY_GENERATION_DAILY_BUDGET_MICROS", 3_500_000)
 	if err != nil {
 		return err
 	}
-	reservation, err := integerEnv("SCRY_GENERATION_RESERVATION_MICROS", 200_000)
+	reservation, err := integerEnv("SCRY_GENERATION_RESERVATION_MICROS", 500_000)
 	if err != nil {
 		return err
 	}
@@ -214,6 +214,9 @@ func serve(args []string) error {
 	// refuse to start rather than send either over plaintext.
 	if err := semantic.ValidateEndpoint(os.Getenv("SCRY_SEMANTIC_ENDPOINT")); err != nil {
 		return fmt.Errorf("SCRY_SEMANTIC_ENDPOINT: %w", err)
+	}
+	if err := generation.ValidateExaEndpoint(env("SCRY_EXA_ENDPOINT", "https://api.exa.ai")); err != nil {
+		return fmt.Errorf("SCRY_EXA_ENDPOINT: %w", err)
 	}
 	semanticClient := semantic.NewClient(semantic.Config{
 		Endpoint: os.Getenv("SCRY_SEMANTIC_ENDPOINT"), APIKey: semanticKey, Model: semanticModel,
@@ -254,10 +257,12 @@ func serve(args []string) error {
 	worker := generation.New(db, generation.Config{
 		Endpoint: os.Getenv("SCRY_MODEL_ENDPOINT"), APIKey: os.Getenv("SCRY_MODEL_API_KEY"),
 		Model: os.Getenv("SCRY_MODEL"), Provider: os.Getenv("SCRY_MODEL_PROVIDER"),
+		ExaEndpoint:       env("SCRY_EXA_ENDPOINT", "https://api.exa.ai"),
+		ExaAPIKey:         os.Getenv("SCRY_EXA_API_KEY"),
 		DailyBudgetMicros: budget,
 		ReservationMicros: reservation, PollInterval: time.Second,
 		Critic: critic, CriticModel: semanticModel, CriticSpending: semanticSpending,
-		HTTPClient: &http.Client{Timeout: 60 * time.Second, CheckRedirect: noRedirect},
+		HTTPClient: &http.Client{Timeout: 180 * time.Second, CheckRedirect: noRedirect},
 	})
 	backups := recovery.New(db, backupConfig)
 	var background sync.WaitGroup
@@ -415,6 +420,15 @@ func seedFixture(args []string) error {
 		}
 		return err
 	}
+	// Synthetic content never enters an existing database: refuse the file
+	// and any SQLite sidecar before opening anything.
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if _, err := os.Lstat(*dbPath + suffix); err == nil {
+			return fmt.Errorf("seed-fixture only creates a new database; %s already exists", *dbPath+suffix)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
 	db, err := store.Open(*dbPath)
 	if err != nil {
 		return err
@@ -422,29 +436,70 @@ func seedFixture(args []string) error {
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	src, err := db.Capture(ctx, "Synthetic DNS and TLS review fixture "+time.Now().UTC().Format(time.RFC3339Nano), "seed-dns-source-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	stamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+	src, err := db.Capture(ctx, store.CaptureInput{Text: "Synthetic DNS and TLS review fixture " + time.Now().UTC().Format(time.RFC3339Nano), Mode: "topic"}, "seed-dns-source-"+stamp)
 	if err != nil {
 		return err
 	}
-	claim, err := db.ClaimJob(ctx, time.Minute, 100, 1_000_000)
-	if err != nil || claim == nil {
-		return fmt.Errorf("claim authored fixture: %v %w", claim, err)
+	// Walk the real chain with authored content: research finds nothing (no
+	// web call is made), the plan names two concepts, and the questions link
+	// to them. The fixture never contacts a provider.
+	claim := func(kind string) (*store.Job, error) {
+		j, err := db.ClaimJob(ctx, time.Minute, 100, 1_000_000)
+		if err != nil || j == nil || j.Kind != kind {
+			return nil, fmt.Errorf("claim authored fixture %s: %v %w", kind, j, err)
+		}
+		return j, nil
 	}
-	cost := int64(70)
-	err = db.CompleteJob(ctx, claim.ID, claim.LeaseToken, store.GenerationResult{
+	publish := func(j *store.Job, result store.GenerationResult, cost int64) error {
+		result.Model, result.PromptVersion = "authored-test-fixture", "fixture-v5"
+		return db.CompleteJob(ctx, j.ID, j.LeaseToken, result, &cost)
+	}
+	research, err := claim("research")
+	if err == nil {
+		err = publish(research, store.GenerationResult{Note: "Synthetic fixture: no web research."}, 0)
+	}
+	if err != nil {
+		return err
+	}
+	note := func(title, body string) *store.NoteContent {
+		return &store.NoteContent{Title: title, Body: body, Basis: "topic"}
+	}
+	plan, err := claim("plan")
+	if err == nil {
+		err = publish(plan, store.GenerationResult{Plan: &store.PlanContent{Goal: "Synthetic DNS and TLS review", Concepts: []store.PlannedConcept{
+			{Key: "dns", Name: "DNS address records", Summary: "An A record maps a hostname to an IPv4 address.",
+				Note: note("DNS address records", "A DNS A record answers one question: which IPv4 address serves this hostname. AAAA records do the same for IPv6.")},
+			{Key: "tls", Name: "TLS certificate trust", Summary: "HTTPS runs over TLS, which checks the server's certificate.",
+				Note: note("TLS certificate trust", "HTTPS wraps HTTP in TLS. The client trusts the server only when its certificate names the intended host and chains to a trusted issuer.")},
+		}}}, 40)
+	}
+	if err != nil {
+		return err
+	}
+	questions, err := claim("questions")
+	if err != nil {
+		return err
+	}
+	jc, err := db.JobContext(ctx, questions.ID)
+	if err != nil || len(jc.Concepts) != 2 {
+		return fmt.Errorf("authored fixture concepts: %+v %w", jc.Concepts, err)
+	}
+	dns, tls := jc.Concepts[0].ID, jc.Concepts[1].ID
+	err = publish(questions, store.GenerationResult{
 		Quizzes: []store.GeneratedQuiz{
 			{
-				Kind: "choice", Prompt: "What type of address does a DNS A record map a hostname to?",
+				Kind: "choice", Level: "recognize", Concept: dns, Prompt: "What type of address does a DNS A record map a hostname to?",
 				Answer: "IPv4 address", Choices: []string{"Text value", "IPv4 address", "IPv6 address", "Mail server address"},
 				Explanation: "A DNS A record maps a hostname to an IPv4 address.", Basis: "topic",
 			},
 			{
-				Kind: "recall", Prompt: "What protocol does HTTPS use to encrypt HTTP?",
+				Kind: "recall", Level: "recall", AnswerForm: "exact", Concept: tls, Prompt: "What protocol does HTTPS use to encrypt HTTP?",
 				Answer: "TLS", Variants: []string{"Transport Layer Security"},
 				Explanation: "HTTPS wraps HTTP in TLS.", Basis: "topic",
 			},
 			{
-				Kind: "recall", Grading: "semantic", Prompt: "What two checks let a TLS client trust a server certificate?",
+				Kind: "recall", Level: "explain", Grading: "semantic", Concept: tls, Prompt: "What two checks let a TLS client trust a server certificate?",
 				Answer:      "It identifies the intended host and chains to a trusted issuer.",
 				Explanation: "Certificate validation checks both hostname identity and a chain to a trusted issuer.", Basis: "topic",
 				Rubric: &store.Rubric{
@@ -456,10 +511,26 @@ func seedFixture(args []string) error {
 				},
 			},
 		},
-		Model: "authored-test-fixture", PromptVersion: "fixture-v1",
-	}, &cost)
+	}, 70)
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"source": src.ID, "model": "authored-test-fixture"})
+	// The synthetic learner reads each intro the stream offers, so the stream
+	// opens on a question awaiting an answer (the release smoke's contract).
+	for i := 0; i < 4; i++ {
+		state, err := db.Review(ctx)
+		if err != nil {
+			return err
+		}
+		if state.Current != nil {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"source": src.ID, "model": "authored-test-fixture"})
+		}
+		if state.Intro == nil {
+			break
+		}
+		if _, err = db.AcknowledgeIntro(ctx, state.Intro.Concept.ID, "seed-intro-"+strconv.Itoa(i)+"-"+stamp, false); err != nil {
+			return err
+		}
+	}
+	return errors.New("authored fixture did not reach a question")
 }

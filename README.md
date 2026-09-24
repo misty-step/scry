@@ -1,8 +1,10 @@
 # Scry
 
-Scry is a personal, quiz-first learning app. Add something to remember, answer
-useful questions, and return when review is worthwhile. One Go process owns
-SQLite, the phone-first HTML/HTMX interface, bounded AI generation, and recovery.
+Scry is a private, concept-centered, quiz-first learning app. Add a topic, your
+text, a link, or a photo; Scry prepares a goal with connected concepts, teachable
+notes, and questions. Study one question at a time, revisit notes on the Map,
+and keep answer history honest when a check is uncertain or mistaken. One Go
+process owns SQLite, server-rendered HTML/HTMX, bounded generation, and recovery.
 
 [Product direction](VISION.md) · [Behavior and architecture](SPEC.md) ·
 [Operations](docs/runbook.md) · [Verification](docs/qa/system.md)
@@ -15,9 +17,11 @@ Access team domain is `misty-step-pantry.cloudflareaccess.com`; it is the
 identity/login domain, not a Pantry application Worker URL. The
 [runbook](docs/runbook.md) owns deployed origins and state; see the
 [Cloudflare hosting notes](deploy/cloudflare-hosting/README.md) for the request path.
-The operator approved the earlier phone flow, not every later experience;
-[current product authority](VISION.md) records the foundations rejection and
-design reset. `www.scry.study` and `scry.mistystep.io` redirect reads to the
+The operator approved the earlier phone flow, rejected the later foundations
+detour, then authorized the concept-centered v5 implementation on 2026-09-23
+(MIS-162). This checkout does not imply v5 production activation; the
+[runbook](docs/runbook.md#current-authority) owns deployed state. `www.scry.study`
+and `scry.mistystep.io` redirect reads to the
 canonical origin; alternate-host mutations are rejected, not replayed. The
 former exe.dev app service is stopped and disabled; its database and the old
 Rust Worker/Postgres stores remain recovery material, not active writers.
@@ -45,10 +49,9 @@ Local design notes may carry newer direction than HEAD without being published
 specification or shipped behavior.
 
 Read [VISION](VISION.md), [SPEC authority](SPEC.md#authority-and-open-decisions),
-and the linked [concept-centered design note](docs/design/concept-centered-study.md)
-before choosing an action. Operator direction, accepted criteria, implemented
-behavior, and unaccepted proposals are distinct; a design pause is not permission
-to continue the old build plan.
+the [concept-centered outcome](docs/design/concept-centered-study.md#outcome-2026-09-23)
+and [Direction A](DESIGN.md) before choosing an action. Operator authorization
+to implement v5 is not authorization to migrate live schema 4 or deploy.
 
 For authorized work, select [changed-surface proof](docs/qa/system.md#choose-proof-before-running-checks).
 For deployed state, follow the [runbook's authority](docs/runbook.md#current-authority)
@@ -100,31 +103,37 @@ pre-push hook use the same current gate.
 
 ## Deployment and recovery
 
-`deploy/install.sh` stages an immutable binary. `deploy/activate.sh` drains the
-service, verifies an off-VM backup and schema compatibility, switches the active
-release, and checks the actual process and readiness. Incompatible rollback
-never overwrites the live database. `deploy/restore.sh` restores only into an
-unused path, leaving uncertain jobs paused and activation explicit.
+Production uses one Cloudflare Container behind Access and `scry-app-host`.
+Cloudflare release steps and v5's irreversible migration boundary live in the
+[runbook](docs/runbook.md#schema-v5-release-boundary) and
+[hosting notes](deploy/cloudflare-hosting/README.md). The retained exe.dev VM
+scripts (`deploy/install.sh`, `deploy/activate.sh`, `deploy/restore.sh`) are
+recovery tooling, not the active deployment path. Restore an older v4 snapshot
+only into an unused path with the previous compatible binary; never overwrite
+acknowledged live writes or start a second writer.
 
-Production configuration is a private systemd environment file, not a sourced
-shell script. See `deploy/scry.env.example` and the [runbook](docs/runbook.md).
-The Scry-only OpenRouter key is retained in ignored `.env` as
-`OPENROUTER_API_KEY` (mode `0600`). The app receives its model capability through
-the private `scry-model` exe integration, not a VM-held provider key. Limits are
-$1/day UTC at the provider and $1 rolling 24 hours in the app, with $0.20
-conservative per-attempt reservations.
+Private production configuration must not be sourced or committed.
+`deploy/scry.env.example` lists safe empty defaults and
+`deploy/cloudflare-hosting/wrangler.jsonc` carries public vars, not secrets.
+The dedicated provider key “Scry personal (exe.dev)” has a $25/week limit
+(raised 2026-09-23). The app allows $3.50 per rolling 24 hours and reserves
+$0.50 per generation attempt; unknown sent usage remains accounted.
+`SCRY_MODEL` is an explicit model choice. An optional Exa secret enables Topic
+web search and Link contents; pasted text is never searched. Jev short-answer,
+semantic prose and the content critic share the same bounded allowance.
 
-The approved recovery policy is daily and pre-release off-VM snapshots with
-30-day new-app retention, targeting RPO 24 hours and RTO 60 minutes. These are
-objectives, not an availability guarantee. Old Worker/native recovery material
-is preserved separately; do not reactivate or import a frozen store.
+The approved recovery policy remains daily and pre-release off-VM snapshots
+with 30-day retention, targeting RPO 24 hours and RTO 60 minutes. These are
+objectives, not guarantees. Old Worker/native recovery material is preserved
+separately; do not reactivate or import a frozen store.
+
 
 ## Source boundaries
 
-- `internal/learning`: pure grading and pinned FSRS policy.
-- `internal/store`: SQLite, atomic review/history, leases, and spend accounting.
-- `internal/generation`: bounded model calls and validated publication.
-- `internal/web`: private routes, CSRF, HTML, and embedded browser assets.
+- `internal/learning`: pure grading, concept state/selection, and pinned FSRS.
+- `internal/store`: SQLite schema v5, atomic history, relations, notes, jobs, and spend.
+- `internal/generation` / `internal/semantic`: bounded Exa/model/Jev calls outside SQL.
+- `internal/web`: private Stream/Map/Concept routes, CSRF, HTML, embedded assets.
 - `internal/recovery`: consistent archives, remote readback, and safe restore.
 - `deploy/backup-gateway`: narrow append/read-only Worker over private R2.
 - `scripts/scry-ci` and `.dagger/`: source-bound checks and release evidence.

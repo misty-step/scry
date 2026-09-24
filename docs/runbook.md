@@ -5,9 +5,13 @@
 This runbook owns deployment/recovery procedures, not product acceptance or
 permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
 current intent and acceptance; Linear owns current owner, status, and pause.
-The [September 12 operator assessment](design/concept-centered-study.md#operator-findings-and-direction)
-rejects the foundations experience and calls for design reset, not another
-technical gate. Earlier phone-flow approval does not cover that experience.
+The operator rejected the foundations UI on 2026-09-12; on 2026-09-23 they
+authorized the concept-centered v5 implementation (MIS-162), and on 2026-09-24
+approved its release ("go for it"): the [schema v5 activation checklist](#schema-v5-release-boundary),
+including an isolated rehearsal on the final production snapshot, governs it.
+The [design study](design/concept-centered-study.md#outcome-2026-09-23)
+records that change; current deployed receipts below remain v4 observations
+until the v5 release record replaces them.
 
 As of September 22, the canonical application is **https://scry.study** on
 Cloudflare Worker `scry-app-host` and singleton Container `scry-app-container`.
@@ -198,6 +202,56 @@ listened at `127.0.0.1:8080`. Do not open either publicly or trust an identity
 header from an arbitrary peer. `deploy/scry.env.example` documents the
 configuration; populated files and provider capabilities are private.
 
+## Schema v5 release boundary
+
+The v5 candidate transactionally migrates complete schema 4 to 5, preserving
+foundation-origin rows, old source/quiz/review/FSRS/spend history and pausing
+old foundation jobs; it adds concept relations, goals, immutable notes,
+documents, capture images, evidence, grade overrides, preferences and a concept
+index for reuse.
+The retired foundation routes/UI do not erase their data. Migration is
+irreversible: after `user_version=5` a v4 binary cannot read the upgraded
+database. There is no down-migration.
+
+**Activation checklist (separate explicit approval required):**
+
+1. Retain the compatible v4 binary and a complete independently checksummed
+   pre-release v4 R2 snapshot; verify old-binary compatibility on an unused
+   copy. Confirm only one production writer and account for all acknowledged
+   writes before replacement.
+2. Run the v5 candidate's read-only `check --db PATH` on another copy, then
+   rehearse migration on a separate isolated copy. Compare immutable
+   learning/history/schedules/content/spend, concept backfill and restored
+   service; leave uncertain paid work paused.
+3. Bind the exact committed smoke-tested v5 binary, source revision and
+   reviewed private config. Check `SCRY_MODEL`, Jev Decisions and optional
+   Exa key/HTTPS endpoint, $25/week provider cap, $3.50 rolling-day allowance,
+   $0.50 reservation, and app-only secret forwarding without logging values.
+4. Read back and checksum the newest off-VM pre-release archive before any
+   Container replacement. Obtain explicit operator approval for the
+   irreversible live schema migration and planned replacement.
+5. After activation, verify actual binary/schema/readiness, owner-only ingress
+   and CSRF, capture modes, held Stream result/self-check/override, intro,
+   Map/Concept notes, share target, backup status and independent remote
+   readback. Record what remains unverified; a local fixture cannot prove
+   live provider quality, production access, or recovered service.
+
+If v5 activation fails after migration, preserve the v5 database and its
+post-snapshot writes; stop rather than launch v4 against v5. A rollback to v4
+requires **restoring the preserved v4 snapshot into an unused path with the
+previous v4 binary**, separately verifying its service and data, quantifying
+any acknowledged writes absent from that snapshot, and obtaining explicit
+operator approval for the resulting loss before switching a single writer.
+Never overwrite a live database, clone a live writer, or call a code-only
+downgrade a rollback. A v5-compatible fix can instead be activated after
+independent proof. If the activation response is lost, inspect the actual
+process, schema, readiness, remote snapshot and artifact checksums before
+deciding; source HEAD and a missing response prove neither outcome.
+
+`check --db PATH` is the intended read-only compatibility probe. `export`
+opens a store and may migrate; do not run it on the untouched pre-upgrade DB
+as an inspection shortcut. `--allow-local-backup` is synthetic rehearsal only.
+
 ## Release provenance and retained VM procedure (not the current Cloudflare deploy)
 
 ```sh
@@ -241,57 +295,6 @@ executable and `/readyz`. Startup/rollback failure is not success. The previous
 binary is restored only if it independently accepts the current schema. Never
 restore an old database over acknowledged live writes as a release rollback.
 
-### Schema 2 foundation release boundary
-
-The active MIS-59 binary reads known complete schemas 1 and 2. Candidate
-`check --db PATH` is a read-only migratability preflight: it validates the full
-schema, integrity, and foreign keys, without creating a file, claiming jobs, or
-upgrading v1. Startup `store.Open` atomically adds the schema-2 foundation tables
-before traffic/claims. No historical v1 rows, snapshots, schedules, corrections,
-operation receipts, or accounting are rewritten.
-
-Keep the existing activation guard: old-binary check and verified remote
-pre-release backup, then candidate read-only check, then switch/start. Do not
-bypass it to migrate. After schema 2 commits, a schema-1 binary is deliberately
-incompatible; the failure trap must not restart it against the upgraded DB.
-There is no down-migration. A rollback is either a reviewed schema-2-compatible
-binary or an explicitly authorized snapshot-recovery operation into an UNUSED
-path with the snapshot's compatible binary. Preserve the upgraded database and
-post-snapshot writes; quantify and obtain acknowledgment of any loss before
-switching a restored instance into service. Never overwrite the live DB or allow
-two writers.
-
-If activation fails or its response is lost, do not infer the running release
-from source HEAD, the `current` link, or a missing response alone. The
-[failure trap](../deploy/activate.sh) leaves the service stopped when no verified
-compatible rollback is available; preserve that boundary rather than forcing
-the old binary to start. In the existing work record, hand off candidate/prior
-release IDs and checksums, the pre-release archive/readback reference, schema
-check result, and last observed process/readiness state, separating unknowns
-from observations. The current work owner retains the stopped-release decision.
-Resume compatible activation or the [isolated restore procedure](#independent-restore)
-only within existing explicit authority; obtain a new operator decision when
-recovery or potential data loss exceeds it. Procedures do not extend that grant.
-
-For an authorized compatibility inspection, use the intended binary's existing
-`check --db PATH`, not `export`. The CLI's
-[`export`](../cmd/scry/main.go) opens through
-[`store.Open`](../internal/store/store.go): it can create a database, migrate
-schema 1 to 2, and set WAL mode. It is not a read-only schema probe and must not
-be used to investigate an untouched pre-upgrade DB.
-
-For a rehearsal, preserve a populated v1 snapshot and its exact compatible
-binary, run candidate `check` and verify the v1 schema/data remain unchanged,
-start the candidate on an isolated copy, compare every historical export section,
-and verify the old binary now refuses schema 2. Separately restore the preserved
-snapshot into another unused path with its compatible binary and exercise its
-service. This proves a recovery path, not production activation or fresh off-VM
-backup.
-
-`--allow-local-backup` exists only for explicitly synthetic rehearsals. It is
-not a production bypass. Initial installation with no database has nothing to
-back up; existing SQLite sidecars without the main database fail closed.
-
 ## Retained exe.dev VM configuration (historical; do not run at cutover)
 
 On the retained VM, the service ran as `scry`, not root. Its configuration is
@@ -325,17 +328,16 @@ application plus Worker owner-subject guard, not an exe.dev session or QA token.
 
 ## Generation and spending
 
-The ignored workstation `.env` retains `OPENROUTER_API_KEY` with mode `0600`.
-The existing dedicated Scry key has a $7/week provider limit with a weekly
-reset (raised from $0.25/week on 2026-09-23 so it can carry both content
-generation and Jev checks). That limit is shared capacity for both paid paths;
-it is not evidence that either one works. The Cloudflare target is configured to use that same key directly; the
-stopped VM used `scry-model`. A redundant newly issued key is disabled with
-zero usage and is not the authorized additional allowance.
-No provider management key belongs in either application runtime. The
-application uses a $1 rolling 24-hour allowance with $0.20 conservative
-reservations per generation attempt. Provider and app windows differ; neither is
-an invented token price.
+The ignored workstation `.env` retains the dedicated Scry-only provider key
+privately (mode `0600`), never copied wholesale into production. On 2026-09-23,
+the existing key **“Scry personal (exe.dev)”** was raised to a **$25/week**
+provider limit; that cap covers content generation and Jev checks and is not
+proof either path is active. Keep provider management credentials out of the
+application. The app's separate allowance is **$3.50 per rolling 24 hours**
+(`SCRY_GENERATION_DAILY_BUDGET_MICROS=3500000`) with **$0.50 reserved per
+generation attempt** (`SCRY_GENERATION_RESERVATION_MICROS=500000`).
+Provider weekly and app rolling-day windows differ. Unknown sent costs retain
+the reservation; neither window is an invented per-token price.
 
 Generation uses `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, and `SCRY_MODEL`.
 Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
@@ -351,15 +353,32 @@ only for a loopback gateway, and the service refuses to start otherwise. Before
 production activation, prove that the configured private integration forwards
 `POST /api/alpha/decisions`; generation access alone does not prove that route.
 
+`SCRY_EXA_API_KEY` is an optional, bounded private Container secret. Without
+it, Topic research completes with zero documents at zero cost and plans from
+labeled general knowledge; a Link capture fails recoverably at zero cost,
+because its page cannot be read.
+`SCRY_EXA_ENDPOINT` is optional and defaults to `https://api.exa.ai`; configured
+production endpoint must be HTTPS with no embedded credentials, query or
+fragment. Only an explicit **Topic** capture issues Exa search. **Link** fetches
+its chosen URL through Exa contents. Pasted **My text** is never searched;
+**Photo** transcribes before planning. Exa documents, published date, provider,
+quotes, and citations remain inspectable on Source/Concept. Search/fetch costs
+share the app's bounded allowance and unknown outcomes are not assumed free.
+`SCRY_MODEL` remains one explicit model identifier, not automatic routing.
+Never put the Exa key in a plain Worker var, backup exec environment, image,
+flags, or logs. [Hosting configuration](../deploy/cloudflare-hosting/README.md#private-configuration)
+describes the app-only forwarding boundary.
+
 ### Semantic assessments on Cloudflare
 
 Production `wrangler.jsonc` sets three plain vars: `SCRY_SEMANTIC_ENDPOINT`
 (`https://openrouter.ai/api/alpha/decisions`), `SCRY_SEMANTIC_MODEL`
 (`typesafe/jev-1.13`), and `SCRY_SEMANTIC_RESERVATION_MICROS` (`2000`).
 `SCRY_SEMANTIC_API_KEY` is not set, so the application reuses
-`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $7/week
-provider cap, shared with generation. No new secret is involved. Staging and `mistystep-prod` set no
-semantic var, so they send nothing.
+`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $25/week
+provider cap, shared with generation. Staging and `mistystep-prod` set no
+semantic var and therefore send nothing; the v5 app's `short-v1` checks use
+the same Decisions endpoint only for flexible short recall.
 
 `appEnvVars` forwards all four names, always: empty strings when the endpoint
 is unset. It refuses to start the Container when the configuration is partial
@@ -423,9 +442,10 @@ corpus was agent-authored, not human-validated, and it once accepted an
 answer-leaking candidate that independent generation validation rejected.
 Treat critic acceptance as one check, not proof of quality.
 
-The worker saves up to twelve validated candidates before criticism. Larger
-configured batches publish only that bounded selection and report partial work.
-Each candidate gets an independent defect battery. The frozen `critic-v1`
+The worker saves at most 60 validated candidates per critic batch (ordinary
+concept questions at most 36); exact-text and complete-set tasks up to 60
+units are judged whole. Oversize batches fail rather than silently truncate.
+Each candidate receives an independent defect battery. The frozen `critic-v1`
 threshold is 0.80 for hard defects; explanation value never vetoes.
 Any missing or malformed judgment blocks publication of the batch until retry.
 Accepted candidates publish only after transactional revalidation. Rejected
@@ -449,37 +469,11 @@ The bounded live control test is opt-in and uses synthetic/public text only.
 Record its source revision, returned model, raw receipts, errors, and cost.
 Do not treat a small control set as broad accuracy or activation proof.
 
-Too advanced foundation requests share the existing serial worker and spending
-authority. Reuse is exact source revision plus quiz ID/version; saved material
-does not become a scheduled quiz. Inspect `/foundations` for saved progress,
-instruction, safe URL-only references, ordered diagrams and warm practice.
-Producer/prompt attribution is retained; nothing is fetched from reference URLs.
-Known-cost failed foundation work can retry within the SAME job's three attempts.
-Expired/unknown foundation outcomes and restored jobs stay paused; prior
-reservations remain accounted. There is no automated provider reconciliation or
-UI action to discard an unknown charge. Keep ordinary review available, inspect
-the provider outcome, and obtain separate operator authority before any manual
-reconciliation. Source/quiz revision changes or archive prevent stale publication.
-
-On interruption, hand off the saved foundation/job identity, last recorded
-status/error, known cost versus retained reservation, and any provider receipt
-reference through the existing work record (private content stays private).
-The current work owner needs a provider outcome and explicit operator authority
-before selecting any manual reconciliation; if either is missing, leave the
-job paused and reservation intact. The
-[current CLI](../cmd/scry/main.go) supplies no reconciliation command, and the
-[foundation retry control](../internal/store/foundation.go) rejects unknown-cost
-work. Do not turn “reconcile explicitly” into an invented command or database edit.
-
-Warm target completion consumes practice availability for 24 hours from its
-persisted rating-zero assisted completion, only while content and schedule
-versions still match. This is not an FSRS change. Library shows availability
-separately from scheduled due; queue counts and next availability use that same
-fence across restarts. A deliberate reset or newer real review supersedes it.
-Repeated help saves the latest acknowledged draft using the observed bridge
-revision; stale new requests reload rather than overwriting saved progress.
-Old bridge JSON withholds historical answer-bearing fields during a later cold
-occurrence until exposure is acknowledged; immutable past records remain intact.
+The MIS-59 foundation job/retry UI is retired in v5. Migrated foundation
+records and old paid outcomes remain historical; any uncertain work stays
+paused with its reservation. Do not use old `/foundations` routes or attempt
+to revive paid work under the new chain. Inspect the original record and
+obtain separate authority before any manual cost reconciliation.
 
 ## Recovery policy and observation
 

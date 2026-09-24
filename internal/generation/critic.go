@@ -16,10 +16,8 @@ func candidateState(q store.GeneratedQuiz) semantic.CandidateState {
 
 func (w *Worker) processCandidates(ctx context.Context, job *store.Job, result store.GenerationResult, cost *int64) error {
 	if job.Candidates == nil {
-		if w.cfg.Critic != nil && len(result.Quizzes) > store.MaxCriticCandidates {
-			result.Quizzes = result.Quizzes[:store.MaxCriticCandidates]
-			result.Partial = true
-			result.Note += " Partial: the critic batch limit retained only the first twelve validated candidates."
+		if len(result.Quizzes) > store.MaxCriticCandidates {
+			return w.finishCandidates(ctx, job, result, cost, "Too many questions were returned for one study batch. Nothing was published; usage was retained.", false)
 		}
 		settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
 		err := w.store.SaveCandidates(settleCtx, job.ID, job.LeaseToken, result, cost, w.cfg.Critic != nil)

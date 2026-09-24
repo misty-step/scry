@@ -229,7 +229,7 @@ func TestSemanticAllowanceIsReservedBeforeSendAndSharedWithGeneration(t *testing
 		t.Fatal(err)
 	}
 	// A pending generation job with an active reservation shares the allowance.
-	if _, err = s.Capture(ctx, "A second captured subject for generation", newID()); err != nil {
+	if _, err = legacyCapture(ctx, s, "A second captured subject for generation", newID()); err != nil {
 		t.Fatal(err)
 	}
 	job, err := s.ClaimJob(ctx, time.Minute, 999_000, 1_000_000)
@@ -262,7 +262,7 @@ func TestSemanticAllowanceIsReservedBeforeSendAndSharedWithGeneration(t *testing
 	if err != nil || !held.Send {
 		t.Fatalf("semantic reservation refused with headroom: %+v %v", held, err)
 	}
-	if _, err = s.Capture(ctx, "A third captured subject for generation", newID()); err != nil {
+	if _, err = legacyCapture(ctx, s, "A third captured subject for generation", newID()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.ClaimJob(ctx, time.Minute, 500_000, 1_000_000); !errors.Is(err, ErrBudget) {
@@ -280,8 +280,11 @@ func TestSemanticFailurePreservesAnswerAndAllowsNewOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed.Graded || failed.Pending || failed.AssessmentStatus != "failed" || failed.Answer != p.Answer || failed.Draft != p.Answer {
-		t.Fatalf("failure lost or graded the answer: %+v", failed)
+	if failed.Graded || failed.Pending || failed.AssessmentStatus != "failed" || failed.Answer != p.Answer || !failed.SelfCheck || failed.SelfCheckReason != "failed" || failed.Quiz.Answer == "" {
+		t.Fatalf("failure lost the answer or hid the self-check key: %+v", failed)
+	}
+	if _, err = s.Submit(ctx, p.ID, "semantic-changed-after-key", "A different answer written after seeing the key.", false); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a changed answer was accepted after the key was shown: %v", err)
 	}
 	var reserved int64
 	if err = s.db.QueryRowContext(ctx, "SELECT reserved_micros FROM semantic_assessments WHERE id=?", p.AssessmentID).Scan(&reserved); err != nil || reserved != testSpending.ReservationMicros {
@@ -303,13 +306,15 @@ func TestSemanticFailurePreservesAnswerAndAllowsNewOperation(t *testing.T) {
 	if err = s.db.QueryRowContext(ctx, "SELECT transmissions FROM semantic_assessments WHERE id=?", retry.AssessmentID).Scan(&retryTransmissions); err != nil || retryTransmissions != 0 {
 		t.Fatalf("old replay resumed the newer assessment: transmissions=%d err=%v", retryTransmissions, err)
 	}
-	// A provable no-send failure releases its reservation.
+	// A provable no-send failure releases its reservation and records a known
+	// zero cost, so it is never reported as usage still being checked.
 	retryLease := beginSemantic(t, s, retry.AssessmentID)
 	if _, err = s.FailAssessment(ctx, retry.AssessmentID, retryLease.Token, AssessmentResult{Error: "unconfigured", NoSend: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.db.QueryRowContext(ctx, "SELECT reserved_micros FROM semantic_assessments WHERE id=?", retry.AssessmentID).Scan(&reserved); err != nil || reserved != 0 {
-		t.Fatalf("no-send failure kept a reservation: %d %v", reserved, err)
+	var cost sql.NullInt64
+	if err = s.db.QueryRowContext(ctx, "SELECT reserved_micros,cost_micros FROM semantic_assessments WHERE id=?", retry.AssessmentID).Scan(&reserved, &cost); err != nil || reserved != 0 || !cost.Valid || cost.Int64 != 0 {
+		t.Fatalf("no-send failure kept a reservation or an unknown cost: reserved=%d cost=%+v %v", reserved, cost, err)
 	}
 }
 
@@ -360,8 +365,8 @@ func TestSemanticShadowClassesAreRecordedButNeverApplied(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if shadow.Graded || shadow.Assisted || shadow.Pending || shadow.Outcome != "ungraded" || shadow.AssessmentDecision != "" || shadow.AssessmentDetail != "" {
-				t.Fatalf("shadow class reached the learner: %+v", shadow)
+			if shadow.Graded || shadow.Assisted || shadow.Pending || shadow.Outcome != "ungraded" || shadow.AssessmentDecision != "" || shadow.AssessmentDetail != "" || !shadow.SelfCheck || shadow.SelfCheckReason != "unsure" {
+				t.Fatalf("shadow class reached the learner instead of a self-check: %+v", shadow)
 			}
 			var decision string
 			var applied bool
@@ -375,9 +380,9 @@ func TestSemanticShadowClassesAreRecordedButNeverApplied(t *testing.T) {
 			if err = s.db.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM assistance_exposures),(SELECT count(*) FROM review_events)").Scan(&exposures, &events); err != nil || exposures != 0 || events != 0 {
 				t.Fatalf("shadow class wrote exposure or event: exposures=%d events=%d %v", exposures, events, err)
 			}
-			// The occurrence remains ungraded; an exact reveal still works.
-			if _, err = s.Submit(ctx, p.ID, "shadow-reveal-"+tc.name, "", true); err != nil {
-				t.Fatal(err)
+			// The occurrence stays ungraded; the learner grades it from the key.
+			if graded, err := s.SelfGrade(ctx, p.ID, "shadow-self-"+tc.name, false); err != nil || graded.Authority != "learner" {
+				t.Fatalf("self-check after a shadow class failed: %+v %v", graded, err)
 			}
 			if _, err = s.Next(ctx, p.ID); err != nil {
 				t.Fatal(err)
@@ -647,7 +652,7 @@ func TestSchemaV3ToV4MigrationAndAssessmentExport(t *testing.T) {
 	if err == nil {
 		err = s.db.QueryRowContext(ctx, "SELECT count(*),min(grading) FROM review_events").Scan(&reviews, &migratedGrading)
 	}
-	if err != nil || version != 4 || sources != 1 || concepts != 1 || reviews != 1 || migratedGrading != "exact-v1" {
+	if err != nil || version != SchemaVersion || sources != 1 || concepts != 1 || reviews != 1 || migratedGrading != "exact-v1" {
 		t.Fatalf("migration did not preserve v3 rows: version=%d sources=%d concepts=%d reviews=%d grading=%q err=%v", version, sources, concepts, reviews, migratedGrading, err)
 	}
 

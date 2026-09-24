@@ -15,7 +15,7 @@ import (
 func stageCritic(t *testing.T, s *Store, configured bool, quizzes ...GeneratedQuiz) (*Job, GenerationResult) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := s.Capture(ctx, "Synthetic critic topic", newID()); err != nil {
+	if _, err := legacyCapture(ctx, s, "Synthetic critic topic", newID()); err != nil {
 		t.Fatal(err)
 	}
 	j, err := s.ClaimJob(ctx, time.Minute, 200_000, 1_000_000)
@@ -165,7 +165,7 @@ func TestCriticReservationSharedWithGenerationAndSemantic(t *testing.T) {
 	if err := s2.FailJob(context.Background(), j2.ID, j2.LeaseToken, "stop synthetic work", false, &cost); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s2.Capture(context.Background(), "next generation", "budget-next"); err != nil {
+	if _, err := legacyCapture(context.Background(), s2, "next generation", "budget-next"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s2.ClaimJob(context.Background(), time.Minute, 2000, 4000); !errors.Is(err, ErrBudget) {

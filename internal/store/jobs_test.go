@@ -11,15 +11,15 @@ import (
 func TestExpiredClaimsKeepSpendAndFenceLatePublication(t *testing.T) {
 	s, now := newTestStore(t)
 	ctx := context.Background()
-	src, err := s.Capture(ctx, "Synthetic topic", "capture-once")
+	src, err := legacyCapture(ctx, s, "Synthetic topic", "capture-once")
 	if err != nil {
 		t.Fatal(err)
 	}
-	duplicate, err := s.Capture(ctx, "Synthetic topic", "capture-once")
+	duplicate, err := legacyCapture(ctx, s, "Synthetic topic", "capture-once")
 	if err != nil || duplicate.ID != src.ID || duplicate.Job.ID != src.Job.ID {
 		t.Fatal("capture retry duplicated durable generation")
 	}
-	if _, err = s.Capture(ctx, "Different topic", "capture-once"); !errors.Is(err, ErrConflict) {
+	if _, err = legacyCapture(ctx, s, "Different topic", "capture-once"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("capture operation reused for different input: %v", err)
 	}
 	first, err := s.ClaimJob(ctx, time.Second, 100, 200)
@@ -79,7 +79,7 @@ func TestExpiredClaimsKeepSpendAndFenceLatePublication(t *testing.T) {
 func TestFailureAccountingRetryBoundAndInvalidOutput(t *testing.T) {
 	s, now := newTestStore(t)
 	ctx := context.Background()
-	src, err := s.Capture(ctx, "Synthetic bounded retry", "capture-retry")
+	src, err := legacyCapture(ctx, s, "Synthetic bounded retry", "capture-retry")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestSnapshotPreservesReviewAndPausesRestoredBilling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := s.Capture(ctx, "Uncertain synthetic pending job", "pending")
+	pending, err := legacyCapture(ctx, s, "Uncertain synthetic pending job", "pending")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,122 @@
+{
+  "format": "scry-mis162-v5-advisories-v1",
+  "date": "2026-09-23",
+  "issue": "MIS-162",
+  "status": "Branch verified; not deployed. Schema v5 activation on production data needs explicit operator approval.",
+  "compiled_source_revision": "bc355044788d2c6c8924958477175962d2cc61eb",
+  "source_state": "committed",
+  "binary_sha256": "2245b1ce987f44798f63f1c090de537c7c356f50d29713be6f3aa51949804588",
+  "source_sha256": "740841908dcd59687e729c4a2722fc6dbbae4c1e814860103ba3bd11888bff45",
+  "relation": "Follow-up to concept-study-20260923.json (757acdf) on the same branch. That receipt's full 146-shot matrix and four-mode live run stay bound to 757acdf; this one re-verifies only the surfaces the follow-up changed.",
+  "publication": "Evidence-only commit after the tested revision; every run below used the exact gate-built binary.",
+  "environment": {
+    "host": "isolated exe.dev VM scry-v5-qa2-mis162 (4 vCPU, 8 GiB), destroyed after this run",
+    "toolchain": "go1.27.1 linux/amd64, Node v22.22.0, Playwright 1.63.0, Chromium 153, Gitleaks 8.30.1 (checksum-verified downloads)",
+    "data": "synthetic only: authored seed-fixture databases; one live fix per run on a fixture question; no production data, integrations, or scheduler ownership"
+  },
+  "gate": {
+    "command": "python3 scripts/scry-ci local --require-committed",
+    "result": "PASS bc355044788d2c6c8924958477175962d2cc61eb",
+    "checks": [
+      "gofmt",
+      "go test",
+      "go vet",
+      "browser/hosting JavaScript syntax and regressions",
+      "critic suite with real Chromium (pinned Playwright)",
+      "deploy shell syntax",
+      "retained recovery contracts",
+      "redacted Gitleaks",
+      "exact-binary smoke"
+    ],
+    "ci": "GitHub Actions run 35932950818 succeeded on bc35504"
+  },
+  "advisories": [
+    {
+      "advisory": "search hits from the cold question's own capture exposed its material",
+      "outcome": "fixed in 224cd4a: each hit names the captures its text derives from, and every hit from the cold capture is withheld",
+      "tests": ["TestCurrentCaptureMaterialHiddenUntilAssisted", "TestConceptChainAndIntroUS006"]
+    },
+    {
+      "advisory": "intro acknowledgment accepted a concept that was not the offered intro",
+      "outcome": "fixed in 224cd4a: only the intro the Stream offers, with no question current, can be acknowledged",
+      "tests": ["TestOnlyTheOfferedIntroCanBeAcknowledgedUS011"]
+    },
+    {
+      "advisory": "a capture whose preparation stopped could drop off the Map after a day",
+      "outcome": "fixed in 224cd4a: a goal without concepts keeps its stopped receipt at any age",
+      "tests": ["TestStoppedCaptureStaysReachableOnMap"]
+    },
+    {
+      "advisory": "a requested fix replaced the question without the learner's decision",
+      "outcome": "fixed in 224cd4a: a fix is a suggestion the learner uses or keeps; 2e67ce0 compares every field on both sides",
+      "tests": ["TestFixIsASuggestionUntilAccepted", "TestSuggestedFixWaitsForTheLearner"]
+    },
+    {
+      "advisory": "late questions could publish into an archived concept",
+      "outcome": "already fixed before the advisory (active-concept fence on publication; archived concepts filtered from selection)",
+      "tests": ["TestLateQuestionsForArchivedConceptAreRefused"]
+    },
+    {
+      "advisory": "legacy question links lacked a role after migration",
+      "outcome": "already fixed before the advisory (the v5 migration marks them foundation)",
+      "tests": ["TestSchemaV4ToV5MigrationUS001"]
+    },
+    {
+      "advisory": "the design-studio loop was not run before the UI shipped",
+      "outcome": "disclosed, not performed after the fact: Direction A was chosen without divergent concepts or comparative critique"
+    },
+    {
+      "advisory": "restore must keep uncertain fix jobs paused (raised on this follow-up)",
+      "outcome": "adopted: a restored fix stays paused and reported on its question; asking again is its explicit retry"
+    },
+    {
+      "advisory": "the stopped-fix payload and sibling routes could serve the cold capture (raised on this follow-up)",
+      "outcome": "fixed in bc35504: a minimal FixStop replaces the job; sibling edit pages, sibling concept pages, and past answers in history are withheld until assistance",
+      "tests": ["TestStoppedFixStaysWithItsQuestion", "TestStoppedFixIsReportedOnItsQuestion", "TestCurrentCaptureMaterialHiddenUntilAssisted"]
+    }
+  ],
+  "defects_found_in_verification": [
+    "the compare panel hid response style, accepted variants, the quotation, and the current explanation; a live suggestion added two accepted variants the old panel would not have shown (fixed in 2e67ce0)",
+    "the Map receipt read 'Preparation stopped See source' as one phrase (fixed in cc95fea)",
+    "a failed fix became the capture's stopped preparation, with a Stream/Map receipt and a Try again that re-ran a paid fix doomed by its stale version (fixed in bc35504)"
+  ],
+  "mutation_checks": "Every new or changed regression test failed with its fix reverted and passed once restored (verified byte-identical): compare fields 1; capture status, legacy Map receipt, explicit re-ask, paused reporting, moot failure 5; stopped-fix rendering 1; sibling edit, sibling concept, history 3.",
+  "synthetic_visual_states": {
+    "renderer": "Playwright 1.63.0 with Chromium 153, full page, dark/light at 390 and 1280 where listed",
+    "states": 17,
+    "checks": 53,
+    "result": "53/53. The first stopped run expected the wrong no-model message (a driver bug); the corrected driver re-ran that scenario on the same binary with a fresh database.",
+    "groups": [
+      "map-stopped-goal (4)",
+      "edit-gated (2)",
+      "edit-fix-stopped (4)",
+      "edit-fix-writing (2, loopback model that never answers)",
+      "edit-fix-proposal (4, live)",
+      "edit-fix-accepted (1, live)"
+    ],
+    "gallery": "local run artifact advisory-20260923T231850Z (PNG kept outside Git)"
+  },
+  "live": {
+    "configuration": "OpenRouter google/gemini-3.7-flash, Jev typesafe/jev-1.13, Exa key present; generation allowance 1,000,000 micros/day, reservation 500,000",
+    "result": "each run: a real suggestion left the question unchanged until Use this version installed it as the next version",
+    "fix_attempt_spend_micros": {
+      "224cd4a": 4310,
+      "2e67ce0": 4437,
+      "cc95fea": 3837,
+      "bc35504": 4476
+    },
+    "spend_note": "job-attempt totals minus the fixture's 110 authored micros per run; the critic's content check is accounted separately",
+    "unknown_cost_outcomes": 0,
+    "provider_key": "weekly limit $25; $24.40 remaining after these runs"
+  },
+  "not_verified": [
+    "schema v5 migration of the real production database (needs an operator-authorized isolated restore rehearsal of the latest snapshot before activation)",
+    "production activation, private ingress through Cloudflare Access, and access loss on this build",
+    "physical-phone touch acceptance and iOS Safari rendering",
+    "the full 146-shot matrix on this revision (bound to 757acdf; unchanged surfaces were not re-captured)",
+    "design-studio exploration for Direction A"
+  ],
+  "known_quality_gaps": [
+    "a fix can reword the answer or add accepted variants despite an instruction not to; the comparison shows it, and nothing changes until the learner chooses"
+  ]
+}

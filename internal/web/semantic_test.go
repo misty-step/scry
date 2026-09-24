@@ -120,7 +120,7 @@ func float64ptr(value float64) *float64 { return &value }
 
 func seedSemanticReview(t *testing.T, s *store.Store) *store.Presentation {
 	t.Helper()
-	if _, err := s.Capture(context.Background(), "Synthetic semantic web topic", randomToken()); err != nil {
+	if _, err := s.Capture(context.Background(), store.CaptureInput{Text: "Synthetic semantic web topic", Mode: "topic"}, randomToken()); err != nil {
 		t.Fatal(err)
 	}
 	completeSyntheticQuiz(t, s, semanticQuiz())
@@ -149,8 +149,6 @@ func TestSemanticExactLocalMatchDoesNotCallClient(t *testing.T) {
 	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
 		"presentation_id": {current.ID}, "answer": {semanticQuiz().Answer}, "operation_id": {operation},
 	})
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic exact local", ">Correct</h2>", semanticQuiz().Answer, ">Next</button>")
 	if fake.callCount() != 0 {
 		t.Fatalf("exact semantic answer called model: %d", fake.callCount())
 	}
@@ -168,8 +166,6 @@ func TestSemanticSubmitFinalizesCorrectAndReplayDoesNotCallAgain(t *testing.T) {
 	answer := "A validator names cached content so the origin can verify whether it changed."
 	form := url.Values{"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}}
 	postReview(t, app, cookie, csrf, "/review/answer", form)
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic correct", ">Correct</h2>", answer, semanticQuiz().Answer, ">Next</button>")
 	if fake.callCount() != 1 {
 		t.Fatalf("model calls=%d want 1", fake.callCount())
 	}
@@ -232,42 +228,6 @@ func TestSemanticConcurrentDuplicatePostsSendOneModelRequest(t *testing.T) {
 	}
 }
 
-func TestSemanticShadowIncompleteRendersUngradedWithFrozenPolicy(t *testing.T) {
-	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.10, 0.95, "partial", 0.91, 0.02)}}}
-	s, app := privateSemanticApp(t, fake)
-	s.SetSemanticParams(learning.SemanticV1Params())
-	current := seedSemanticReview(t, s)
-	cookie, csrf, operation := bootstrapForm(t, app)
-	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
-		"presentation_id": {current.ID}, "answer": {"The server can confirm whether a cached response changed."}, "operation_id": {operation},
-	})
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic shadow", ">Not graded</h2>")
-	if strings.Contains(page, "Think about recognizing the stored representation.") || strings.Contains(page, ">Almost</h2>") {
-		t.Fatal("shadow incomplete leaked the cue to the learner")
-	}
-	persisted, err := s.Current(context.Background())
-	if err != nil || persisted == nil || persisted.Assisted || persisted.Graded || persisted.AssessmentStatus != "judged" {
-		t.Fatalf("shadow incomplete changed learner state: %+v %v", persisted, err)
-	}
-}
-
-func TestSemanticIncompleteShowsCueAfterDurableAssistanceFence(t *testing.T) {
-	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.10, 0.95, "partial", 0.91, 0.02)}}}
-	s, app := privateSemanticApp(t, fake)
-	current := seedSemanticReview(t, s)
-	cookie, csrf, operation := bootstrapForm(t, app)
-	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
-		"presentation_id": {current.ID}, "answer": {"The server can confirm whether a cached response changed."}, "operation_id": {operation},
-	})
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic incomplete", ">Almost</h2>", "Think about recognizing the stored representation.", "This counts as help.")
-	persisted, err := s.Current(context.Background())
-	if err != nil || persisted == nil || !persisted.Assisted || persisted.Graded {
-		t.Fatalf("cue rendered without durable assistance: %+v %v", persisted, err)
-	}
-}
-
 func TestSemanticJudgmentPersistsWhenLearnerDisconnectsMidRequest(t *testing.T) {
 	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.96, 0.94, "equivalent", 0.93, 0.02)}}}
 	s, app := privateSemanticApp(t, fake)
@@ -306,41 +266,23 @@ func TestSemanticJudgmentPersistsWhenLearnerDisconnectsMidRequest(t *testing.T) 
 	}
 }
 
-func TestSemanticFailureKeepsAnswerAndOffersRetryAndReveal(t *testing.T) {
+func TestSemanticFailureOffersHonestSelfCheck(t *testing.T) {
 	fake := &fakeSemanticClient{replies: []semanticReply{{err: semantic.ErrUnavailable}}}
 	s, app := privateSemanticApp(t, fake)
 	current := seedSemanticReview(t, s)
 	cookie, csrf, operation := bootstrapForm(t, app)
 	answer := "A validator helps a cache ask whether content changed."
-	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
-		"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation},
-	})
-	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic failed", ">Could not check meaning</h2>", "Your answer is saved.", answer, ">Retry meaning check</button>", ">Reveal answer</button>")
+	r := ownerRequest(http.MethodPost, "/review/answer", url.Values{"presentation_id": {current.ID}, "answer": {answer}, "operation_id": {operation}, "csrf": {csrf}})
+	r.AddCookie(cookie)
+	r.Header.Set("Origin", "https://scry.example")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, r)
 	persisted, err := s.Current(context.Background())
-	if err != nil || persisted == nil || persisted.Graded || persisted.Answer != answer || persisted.AssessmentStatus != "failed" {
-		t.Fatalf("failed assessment changed answer truth: %+v %v", persisted, err)
+	if err != nil || persisted == nil || persisted.Graded || persisted.Answer != answer || !persisted.SelfCheck || persisted.SelfCheckReason != "failed" {
+		t.Fatalf("failed check changed answer truth: %+v %v", persisted, err)
 	}
-}
-
-func TestSemanticRevealAfterCueRetainsAssistance(t *testing.T) {
-	fake := &fakeSemanticClient{replies: []semanticReply{{response: semanticResponse(0.10, 0.95, "partial", 0.90, 0.01)}}}
-	s, app := privateSemanticApp(t, fake)
-	current := seedSemanticReview(t, s)
-	cookie, csrf, operation := bootstrapForm(t, app)
-	postReview(t, app, cookie, csrf, "/review/answer", url.Values{
-		"presentation_id": {current.ID}, "answer": {"The origin checks whether it changed."}, "operation_id": {operation},
-	})
-	if persisted, err := s.Current(context.Background()); err != nil || persisted == nil || !persisted.Assisted {
-		t.Fatalf("cue assistance did not persist before reveal: %+v %v", persisted, err)
-	}
-	postReview(t, app, cookie, csrf, "/review/reveal", url.Values{
-		"presentation_id": {current.ID}, "operation_id": {randomToken()},
-	})
 	page := reviewPage(t, app, cookie)
-	requirePresent(t, page, "semantic reveal after cue", ">Answer revealed</h2>", semanticQuiz().Answer, ">Next</button>")
-	history, err := s.History(context.Background(), 10)
-	if err != nil || len(history) != 1 || !history[0].Assisted || history[0].Outcome != "revealed" {
-		t.Fatalf("reveal after cue lost assistance: %+v %v", history, err)
+	if !strings.Contains(page, semanticQuiz().Answer) || !strings.Contains(page, `action="/review/self"`) || !strings.Contains(page, `>Retry check</button>`) {
+		t.Fatal("failed check did not offer answer comparison, self-grade and retry")
 	}
 }

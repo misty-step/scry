@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,13 +32,48 @@ func authoredChoice(prompt string) GeneratedQuiz {
 	return GeneratedQuiz{Kind: "choice", Prompt: prompt, Answer: "second", Choices: []string{"first", "second", "third"}, Explanation: "The second option is the authored answer in this synthetic fixture.", Basis: "topic"}
 }
 
-func publishFixture(t *testing.T, s *Store, content ...GeneratedQuiz) Source {
+// captureLegacy saves a topic capture whose first job is the legacy
+// single-call "quizzes" kind, so fixtures publish unmapped questions exactly
+// as before v5. Concept-chain behavior has its own tests.
+func captureLegacy(t *testing.T, s *Store, text, operationID string) Source {
 	t.Helper()
 	ctx := context.Background()
-	src, err := s.Capture(ctx, "Synthetic fixture subject", newID())
+	src, err := s.Capture(ctx, CaptureInput{Text: text, Mode: "topic"}, operationID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = s.db.ExecContext(ctx, "UPDATE jobs SET kind='quizzes' WHERE source_id=? AND kind='research' AND status='queued'", src.ID); err != nil {
+		t.Fatal(err)
+	}
+	src, err = s.Source(ctx, src.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return src
+}
+
+// legacyCapture is captureLegacy with Capture's signature. Material with a
+// newline or at least 280 bytes is saved as the learner's text; shorter input
+// as a topic, matching the pre-v5 fixtures these tests were written against.
+func legacyCapture(ctx context.Context, s *Store, text, operationID string) (Source, error) {
+	mode := "topic"
+	if len(text) >= 280 || strings.Contains(text, "\n") {
+		mode = "text"
+	}
+	src, err := s.Capture(ctx, CaptureInput{Text: text, Mode: mode}, operationID)
+	if err != nil {
+		return src, err
+	}
+	if _, err = s.db.ExecContext(ctx, "UPDATE jobs SET kind='quizzes' WHERE source_id=? AND kind IN ('research','plan') AND status='queued'", src.ID); err != nil {
+		return src, err
+	}
+	return s.Source(ctx, src.ID)
+}
+
+func publishFixture(t *testing.T, s *Store, content ...GeneratedQuiz) Source {
+	t.Helper()
+	ctx := context.Background()
+	src := captureLegacy(t, s, "Synthetic fixture subject", newID())
 	claim, err := s.ClaimJob(ctx, time.Minute, 100, 10000)
 	if err != nil || claim == nil {
 		t.Fatalf("claim fixture: %v, %v", claim, err)
@@ -123,29 +159,21 @@ func TestLostResponseResumeAndStaleNext(t *testing.T) {
 	}
 }
 
-func TestRevealFenceAndUngradedRetry(t *testing.T) {
+func TestRevealFence(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
-	recall := GeneratedQuiz{Kind: "recall", Prompt: "Explain the synthetic process.", Answer: "A process that releases stored chemical energy for cellular work", Explanation: "This is an authored fixture, not a factual learning claim.", Basis: "topic"}
+	recall := GeneratedQuiz{Kind: "recall", Prompt: "Name the synthetic process.", Answer: "respiration", Explanation: "This is an authored fixture, not a factual learning claim.", Basis: "topic"}
 	publishFixture(t, s, recall)
 	state, err := s.Review(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := state.Current.ID
-	ambiguous, err := s.Submit(ctx, id, "ambiguous", "Cells convert the energy they have stored into usable work", false)
-	if err != nil || ambiguous.Graded || ambiguous.Outcome != "ungraded" || ambiguous.Quiz.Answer != "" {
-		t.Fatalf("semantic answer was overclaimed: %+v %v", ambiguous, err)
-	}
-	state, err = s.Next(ctx, id)
-	if err != nil || state.Current == nil || state.Current.ID != id || state.Current.DueAt != ambiguous.DueAt {
-		t.Fatal("ungraded attempt advanced the occurrence or schedule")
-	}
 	revealed, err := s.Submit(ctx, id, "reveal-once", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !revealed.Graded || !revealed.Assisted || revealed.Rating != 1 || revealed.Outcome != "revealed" || revealed.Quiz.Answer != recall.Answer {
+	if !revealed.Graded || !revealed.Assisted || revealed.Rating != 1 || revealed.Outcome != "revealed" || revealed.Quiz.Answer != recall.Answer || revealed.Authority != "reveal" {
 		t.Fatalf("reveal lacked durable assistance: %+v", revealed)
 	}
 	if _, err = s.Submit(ctx, id, "stale-correct", recall.Answer, false); !errors.Is(err, ErrConflict) {
@@ -155,9 +183,71 @@ func TestRevealFenceAndUngradedRetry(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(revealed, duplicate) {
 		t.Fatal("reveal retry changed result")
 	}
+	if _, err = s.OverrideGrade(ctx, id, "override-reveal", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a revealed answer was overridden into a success: %v", err)
+	}
+}
+
+// US-007/US-003: an exact-form answer that cannot be graded locally shows the
+// key and asks the learner; after the key is visible no new answer is taken,
+// and the learner's grade is recorded under learner authority.
+func TestSelfCheckAfterUnclearExactAnswerUS007(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	recall := GeneratedQuiz{Kind: "recall", Prompt: "Explain the synthetic process.", Answer: "A process that releases stored chemical energy for cellular work", Explanation: "This is an authored fixture, not a factual learning claim.", Basis: "topic"}
+	publishFixture(t, s, recall)
+	state, err := s.Review(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := state.Current.ID
+	unclear, err := s.Submit(ctx, id, "unclear", "Cells convert the energy they have stored into usable work", false)
+	if err != nil || unclear.Graded || !unclear.SelfCheck || unclear.SelfCheckReason != "close" || unclear.Quiz.Answer != recall.Answer {
+		t.Fatalf("unclear answer did not become a self-check with the key visible: %+v %v", unclear, err)
+	}
+	state, err = s.Next(ctx, id)
+	if err != nil || state.Current == nil || state.Current.ID != id || !state.Current.SelfCheck {
+		t.Fatal("an ungraded self-check advanced the occurrence")
+	}
+	if _, err = s.Submit(ctx, id, "after-key", recall.Answer, false); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a new answer was accepted after the key was shown: %v", err)
+	}
+	graded, err := s.SelfGrade(ctx, id, "self-miss", false)
+	if err != nil || !graded.Graded || graded.Outcome != "self_missed" || graded.Rating != 1 || graded.Authority != "learner" {
+		t.Fatalf("self-grade was not recorded as learner authority: %+v %v", graded, err)
+	}
+	replayed, err := s.SelfGrade(ctx, id, "self-miss", false)
+	if err != nil || !reflect.DeepEqual(graded, replayed) {
+		t.Fatal("self-grade retry changed its result")
+	}
+	if _, err = s.SelfGrade(ctx, id, "self-second", true); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a graded occurrence was self-graded twice: %v", err)
+	}
+	// The durable record keeps both immutable events; History shows the
+	// occurrence once, with its final grade and who decided it.
+	var outcomes []string
+	rows, err := s.db.QueryContext(ctx, "SELECT outcome||':'||rating||':'||grading FROM review_events ORDER BY rowid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var o string
+		if err = rows.Scan(&o); err != nil {
+			t.Fatal(err)
+		}
+		outcomes = append(outcomes, o)
+	}
+	rows.Close()
+	if !reflect.DeepEqual(outcomes, []string{"selfcheck:0:exact-v1", "self_missed:1:learner-v1"}) {
+		t.Fatalf("self-check did not keep its immutable pair: %v", outcomes)
+	}
 	history, err := s.History(ctx, 20)
-	if err != nil || len(history) != 2 || history[0].Rating != 1 || history[1].Rating != 0 {
-		t.Fatalf("ungraded/assisted history was rewritten: %+v %v", history, err)
+	if err != nil || len(history) != 1 || history[0].Rating != 1 || history[0].Authority != "learner" {
+		t.Fatalf("history listed the superseded held attempt: %+v %v", history, err)
+	}
+	summary, err := s.Summary(ctx)
+	if err != nil || summary.Reviews != 1 {
+		t.Fatalf("recorded reviews counted the held attempt: %+v %v", summary, err)
 	}
 }
 

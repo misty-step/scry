@@ -205,13 +205,15 @@ func (s *Store) FailAssessment(ctx context.Context, id, token string, result Ass
 		if err != nil {
 			return Presentation{}, err
 		}
-		reserved := a.ReservedMicros
+		reserved, cost := a.ReservedMicros, result.CostMicros
 		if result.NoSend {
-			reserved = 0
+			// Nothing left the process: the cost is known to be zero.
+			zero := int64(0)
+			reserved, cost = 0, &zero
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='failed',response_model=?,response_json=?,error=?,
 		 input_tokens=?,output_tokens=?,cost_micros=?,latency_ms=?,reserved_micros=?,lease_token='',lease_until=0,finished_at=? WHERE id=? AND status='pending' AND lease_token=?`,
-			result.ResponseModel, response, result.Error, nullableCount(result.InputTokens), nullableCount(result.OutputTokens), result.CostMicros,
+			result.ResponseModel, response, result.Error, nullableCount(result.InputTokens), nullableCount(result.OutputTokens), cost,
 			nullableLatency(result.LatencyMS), reserved, s.now(), id, token)
 		if err != nil {
 			return Presentation{}, err
@@ -279,7 +281,8 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id, token string, result
 		return Presentation{}, err
 	}
 	if !current.Valid || current.String != p.ID || p.Graded || archived || contentVersion != a.ContentVersion ||
-		scheduleVersion != a.ScheduleVersion || algorithm != learning.Algorithm || a.PolicyVersion != learning.SemanticPolicyVersion {
+		scheduleVersion != a.ScheduleVersion || algorithm != learning.Algorithm ||
+		(a.PolicyVersion != learning.SemanticPolicyVersion && a.PolicyVersion != learning.ShortPolicyVersion) {
 		_, err = tx.ExecContext(ctx, `UPDATE semantic_assessments SET status='superseded',response_model=?,response_json=?,error='',
 		 input_tokens=?,output_tokens=?,cost_micros=?,latency_ms=?,reserved_micros=?,lease_token='',lease_until=0,finished_at=? WHERE id=? AND status='pending' AND lease_token=?`,
 			result.ResponseModel, response, result.InputTokens, result.OutputTokens, result.CostMicros,
@@ -296,14 +299,19 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id, token string, result
 		return p, nil
 	}
 
-	decision := learning.GradeSemantic(result.Judgments, s.semanticParams())
-	if p.Quiz.Rubric == nil || len(result.Judgments.Ideas) != len(p.Quiz.Rubric.Required) || len(result.Judgments.Contradictions) != len(p.Quiz.Rubric.Contradictions) {
-		decision = learning.SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
+	var decision learning.SemanticDecision
+	if a.PolicyVersion == learning.ShortPolicyVersion {
+		decision = learning.GradeShort(result.Short, learning.ShortV1Params())
+	} else {
+		decision = learning.GradeSemantic(result.Judgments, s.semanticParams())
+		if p.Quiz.Rubric == nil || len(result.Judgments.Ideas) != len(p.Quiz.Rubric.Required) || len(result.Judgments.Contradictions) != len(p.Quiz.Rubric.Contradictions) {
+			decision = learning.SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
+		}
 	}
 	detail, exposure := "", ""
-	if decision.Decision == "incomplete" && decision.MissingIdea >= 0 && decision.MissingIdea < len(p.Quiz.Rubric.Required) {
+	if a.PolicyVersion == learning.SemanticPolicyVersion && decision.Decision == "incomplete" && decision.MissingIdea >= 0 && decision.MissingIdea < len(p.Quiz.Rubric.Required) {
 		detail, exposure = p.Quiz.Rubric.Required[decision.MissingIdea].Cue, "cue"
-	} else if decision.Decision == "incorrect" && decision.Contradiction >= 0 && decision.Contradiction < len(p.Quiz.Rubric.Contradictions) {
+	} else if a.PolicyVersion == learning.SemanticPolicyVersion && decision.Decision == "incorrect" && decision.Contradiction >= 0 && decision.Contradiction < len(p.Quiz.Rubric.Contradictions) {
 		detail, exposure = p.Quiz.Rubric.Contradictions[decision.Contradiction].Feedback, "feedback"
 	}
 	now := s.now()
@@ -352,8 +360,8 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id, token string, result
 		// card keeps the frozen scheduler identity it was fenced against.
 		_, err = tx.ExecContext(ctx, `INSERT INTO review_events(id,presentation_id,snapshot,answer,outcome,rating,assisted,reviewed_at,due_at,algorithm,
 		 schedule_before,schedule_after,schedule_version_before,schedule_version_after,grading) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			p.ReviewID, p.ID, snapshot, p.Answer, p.Outcome, p.Rating, p.Assisted, now, p.DueAt, learning.EventAlgorithm(learning.SemanticPolicyVersion),
-			cardJSON, afterJSON, scheduleVersion, afterVersion, learning.SemanticPolicyVersion)
+			p.ReviewID, p.ID, snapshot, p.Answer, p.Outcome, p.Rating, p.Assisted, now, p.DueAt, learning.EventAlgorithm(a.PolicyVersion),
+			cardJSON, afterJSON, scheduleVersion, afterVersion, a.PolicyVersion)
 		if err != nil {
 			return Presentation{}, err
 		}
@@ -371,8 +379,10 @@ func (s *Store) FinalizeAssessment(ctx context.Context, id, token string, result
 			return Presentation{}, err
 		}
 	case !decision.Applied:
-		// Shadow or ungraded: the learner sees plain ungraded; nothing is charged.
+		// Shadow or ungraded: nothing is charged and the learner compares their
+		// saved answer with the key instead of retrying blind.
 		p.Outcome, p.Rating, p.Graded = "ungraded", 0, false
+		p.SelfCheck, p.SelfCheckReason = true, "unsure"
 	default:
 		return Presentation{}, errors.New("unsupported semantic policy decision")
 	}

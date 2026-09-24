@@ -37,7 +37,7 @@ type Config struct {
 	Semantic        semantic.AssessmentService
 }
 
-//go:embed templates/*.html assets/*
+//go:embed templates/*.html assets/* assets/fonts/*
 var files embed.FS
 
 type server struct {
@@ -50,33 +50,21 @@ type server struct {
 }
 
 type page struct {
-	Title          string
-	View           string
-	Active         string
-	CSRF           string
-	Operation      string
-	Error          string
-	Notice         string
-	Query          string
-	Text           string
-	Review         store.ReviewState
-	Sources        []store.Source
-	Source         store.Source
-	Quiz           store.Quiz
-	History        []store.ReviewEvent
-	Summary        store.Summary
-	Gate           *store.Presentation
-	ReturnTo       string
-	ReviewID       string
-	Note           string
-	Reset          bool
-	JobPending     bool
-	BackupStale    bool
-	PollRemaining  int
-	RecordedModels []string
-	Status         int
-	Bridge         store.FoundationBridge
-	Bridges        []store.FoundationBridge
+	Title, View, Active, CSRF, Operation, Error, Notice, Text, CaptureMode string
+	Review                                                                 store.ReviewState
+	Map                                                                    store.MapView
+	Concept                                                                store.ConceptView
+	Source                                                                 store.Source
+	Quiz                                                                   store.Quiz
+	History                                                                []store.ReviewEvent
+	Summary                                                                store.Summary
+	Preferences                                                            store.Preferences
+	Gate                                                                   *store.Presentation
+	Fix                                                                    store.QuizFix
+	ReturnTo, ReviewID, Note                                               string
+	Reset, JobPending, BackupStale, FixOpen, DraftShown                    bool
+	PollRemaining, Status                                                  int
+	RecordedModels                                                         []string
 }
 
 // New validates the private boundary before exposing any application route.
@@ -134,16 +122,66 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		redirectHosts = append(redirectHosts, host)
 	}
 	funcs := template.FuncMap{
-		"timeText":   timeText,
-		"timeISO":    timeISO,
-		"money":      money,
-		"excerpt":    excerpt,
-		"joinLines":  func(v []string) string { return strings.Join(v, "\n") },
-		"outcome":    outcomeText,
-		"kind":       kindText,
-		"jobLabel":   jobLabel,
-		"jobPending": jobPending,
-		"retryable":  retryable,
+		"timeText": timeText, "timeISO": timeISO, "money": money, "excerpt": excerpt,
+		"joinLines": func(v []string) string { return strings.Join(v, "\n") },
+		"outcome":   outcomeText, "kind": kindText, "jobLabel": jobLabel, "publishedText": publishedText,
+		"jobPending": jobPending, "retryable": retryable,
+		"brightness": func(v int) string {
+			if v < 0 {
+				v = 0
+			}
+			if v > 5 {
+				v = 5
+			}
+			return fmt.Sprintf("b%d", v)
+		},
+		"percent":       func(v float64) int { return int(v*100 + .5) },
+		"constellation": constellation, "starX": starX, "starY": starY, "constellationHeight": constellationHeight,
+		"tallyCount": func(tally []string, code string) int {
+			n := 0
+			for _, mark := range tally {
+				if mark == code {
+					n++
+				}
+			}
+			return n
+		},
+		// Every recorded grade names who decided it, in learner terms.
+		"authorityText": func(v string) string {
+			switch v {
+			case "exact":
+				return "Scry matched your answer"
+			case "jev":
+				return "Scry checked the meaning"
+			case "learner":
+				return "You checked it"
+			case "reveal":
+				return "You asked to see it"
+			}
+			return ""
+		},
+		"starRadius": func(v int) int {
+			if v < 1 {
+				return 3
+			}
+			return 3 + v
+		},
+		"stageText": func(v string) string {
+			switch v {
+			case "research":
+				return "Reading sources"
+			case "transcribe":
+				return "Reading your photo"
+			case "plan":
+				return "Finding ideas"
+			case "questions":
+				return "Writing questions"
+			case "fix":
+				return "Fixing a question"
+			default:
+				return "Preparing"
+			}
+		},
 	}
 	t, err := template.New("scry").Funcs(funcs).ParseFS(files, "templates/*.html")
 	if err != nil {
@@ -159,29 +197,36 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 	mux.HandleFunc("POST /review/answer", app.answer)
 	mux.HandleFunc("POST /review/reveal", app.reveal)
 	mux.HandleFunc("POST /review/next", app.next)
+	mux.HandleFunc("POST /review/self", app.selfGrade)
+	mux.HandleFunc("POST /review/override", app.overrideGrade)
+	mux.HandleFunc("POST /review/intro", app.intro)
 	mux.HandleFunc("GET /add", app.add)
 	mux.HandleFunc("POST /add", app.capture)
-	mux.HandleFunc("GET /library", app.library)
+	mux.HandleFunc("GET /map", app.mapPage)
+	mux.HandleFunc("GET /concepts/{id}", app.conceptPage)
+	mux.HandleFunc("POST /concepts/{id}/practice", app.practiceConcept)
+	mux.HandleFunc("POST /concepts/{id}/questions", app.requestQuestions)
+	mux.HandleFunc("POST /concepts/{id}/archive", app.archiveConcept)
+	mux.HandleFunc("POST /goals/{id}", app.updateGoal)
 	mux.HandleFunc("GET /sources/{id}", app.source)
+	mux.HandleFunc("GET /sources/{id}/image", app.sourceImage)
 	mux.HandleFunc("POST /sources/{id}/retry", app.retrySource)
 	mux.HandleFunc("POST /sources/{id}/archive", app.archiveSource)
 	mux.HandleFunc("GET /quizzes/{id}/edit", app.editQuiz)
 	mux.HandleFunc("POST /quizzes/{id}/edit", app.saveQuiz)
 	mux.HandleFunc("POST /quizzes/{id}/archive", app.archiveQuiz)
+	mux.HandleFunc("POST /quizzes/{id}/fix", app.fixQuiz)
 	mux.HandleFunc("GET /history", app.history)
 	mux.HandleFunc("GET /reviews/{id}/dispute", app.disputePage)
 	mux.HandleFunc("POST /reviews/{id}/dispute", app.dispute)
 	mux.HandleFunc("GET /settings", app.settings)
+	mux.HandleFunc("POST /settings", app.setPace)
 	mux.HandleFunc("GET /export", app.export)
-	mux.HandleFunc("POST /review/foundation", app.requestFoundation)
-	mux.HandleFunc("GET /foundations", app.foundations)
-	mux.HandleFunc("GET /foundations/{id}", app.foundation)
-	mux.HandleFunc("POST /foundations/{id}", app.advanceFoundation)
 	mux.HandleFunc("GET /session", func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]bool{"authenticated": true})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		app.render(w, r, http.StatusNotFound, page{View: "error", Title: "Page not found", Error: "That page is not available. Return to review or find your material in the library."})
+		app.render(w, r, http.StatusNotFound, page{View: "error", Title: "Page not found", Error: "That page is not available. Return to the stream or open your map."})
 	})
 	private := app.authenticate(mux)
 	assets, err := fs.Sub(files, "assets")
@@ -225,7 +270,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			// Embedded public code only: no directory listing or private content.
 			name := strings.TrimPrefix(r.URL.Path, "/assets/")
 			switch name {
-			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE":
+			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "fonts/Fraunces.woff2", "fonts/Fraunces-Italic.woff2", "fonts/InstrumentSans.woff2", "fonts/OFL.txt":
 				static.ServeHTTP(w, r)
 			default:
 				http.NotFound(w, r)
@@ -302,9 +347,9 @@ func publicError(err error) (int, string) {
 	case errors.Is(err, store.ErrConflict):
 		return http.StatusConflict, "This action conflicts with the current saved state. Your recorded work is safe. Reload before making another change."
 	case errors.Is(err, store.ErrNotFound):
-		return http.StatusNotFound, "This material is no longer available. Return to review or the library."
+		return http.StatusNotFound, "This material is no longer available. Return to the stream or map."
 	case errors.Is(err, store.ErrBudget):
-		return http.StatusTooManyRequests, "Generation is paused at the spending limit. Your input is saved; review existing material or retry when the allowance is available."
+		return http.StatusTooManyRequests, "Preparation is paused at the spending limit. Your input is saved; you can continue with what is ready."
 	case errors.Is(err, store.ErrInvalid):
 		return http.StatusUnprocessableEntity, "Check your input: " + strings.TrimPrefix(err.Error(), store.ErrInvalid.Error()+": ")
 	default:
@@ -313,15 +358,24 @@ func publicError(err error) (int, string) {
 }
 
 func (s *server) parseForm(w http.ResponseWriter, r *http.Request) bool {
-	// URL encoding can triple the byte count of a valid 32 KiB source.
-	r.Body = http.MaxBytesReader(w, r.Body, 160<<10)
-	if err := r.ParseForm(); err != nil {
+	limit := int64(160 << 10)
+	if r.URL.Path == "/add" {
+		limit = 5 << 20
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	var err error
+	if r.URL.Path == "/add" && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		err = r.ParseMultipartForm(5 << 20)
+	} else {
+		err = r.ParseForm()
+	}
+	if err != nil {
 		status := http.StatusBadRequest
 		message := "This form could not be read. Nothing was changed by this request. Reload the form before trying again."
 		var large *http.MaxBytesError
 		if errors.As(err, &large) {
 			status = http.StatusRequestEntityTooLarge
-			message = "Use at most 32 KiB of input. Split a long passage into smaller self-contained sections; nothing has been truncated or saved."
+			message = "The input is too large. Nothing has been saved."
 		}
 		if wantsJSON(r) {
 			jsonResponse(w, status, map[string]string{"error": message})
@@ -392,48 +446,57 @@ func kindText(kind string) string {
 
 func outcomeText(p string) string {
 	switch p {
-	case "warm_correct":
-		return "Correct with foundations"
-	case "warm_wrong", "warm_close", "warm_ungraded":
-		return "Keep practicing with foundations"
-	case "correct":
-		return "Correct"
-	case "close":
-		return "Not quite matched"
-	case "wrong":
-		return "Not yet"
+	case "warm_correct", "correct", "self_correct":
+		return "Correct."
+	case "wrong", "self_missed", "warm_wrong", "warm_close", "warm_ungraded":
+		return "Not quite."
 	case "revealed":
-		return "Answer revealed"
-	case "ungraded":
-		return "Not graded"
+		return "Shown."
 	default:
-		return "Unanswered"
+		return "Waiting for your answer"
 	}
 }
 
+// jobLabel describes one preparation step; the stage name (stageText) says
+// which step, so the label never claims questions exist when they do not.
 func jobLabel(status string) string {
 	switch status {
 	case "queued":
-		return "Waiting to generate"
+		return "Waiting"
 	case "running":
-		return "Generating questions"
+		return "In progress"
 	case "retry":
 		return "Waiting to retry"
 	case "ready", "complete":
-		return "Questions ready"
+		return "Done"
 	case "partial":
-		return "Partially ready"
+		return "Partly done"
 	case "failed":
-		return "Generation stopped"
+		return "Stopped"
 	case "paused":
-		return "Generation paused"
+		return "Paused"
 	case "canceled":
-		return "Generation canceled"
+		return "Canceled"
 	case "archived":
 		return "Archived"
 	default:
-		return "Saved; inspect generation below"
+		return "Saved; see the steps below"
 	}
+}
+
+// publishedText shows a document's publication date in learner terms; an
+// unparseable provider value is shown as its date part, never as raw time.
+func publishedText(raw string) string {
+	raw = strings.TrimSpace(raw)
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return "Published " + t.UTC().Format("Jan 2, 2006")
+		}
+	}
+	if date, _, ok := strings.Cut(raw, "T"); ok && len(date) == 10 {
+		return "Published " + date
+	}
+	return ""
 }
 
 func jobPending(status string) bool {

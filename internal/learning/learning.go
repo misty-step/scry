@@ -60,10 +60,15 @@ func Schedule(card Card, rating int, now time.Time) (Card, error) {
 }
 
 // Grade is deliberately local. Variants must be explicitly authored; punctuation,
-// accents, case, negation and word order are never silently discarded. Short
-// unmatched factual answers can be misses only in exact mode; an unmatched
-// semantic answer remains ungraded for the semantic assessor.
-func Grade(kind, grading, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
+// accents, case, negation and word order are never silently discarded.
+//
+// answerForm "flexible" means the question accepts the same meaning in other
+// words: an unmatched answer is left ungraded for the short-answer assessor.
+// Exact form (the default, and every legacy question) keeps local authority: a
+// short clear mismatch is a miss, while a case/spacing-only difference or a long
+// unmatched answer asks the learner to compare it with the key ("selfcheck").
+// An unmatched semantic (rubric) answer remains ungraded for the rubric assessor.
+func Grade(kind, grading, answerForm, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
 	if reveal {
 		return "revealed", int(fsrs.Again)
 	}
@@ -83,16 +88,21 @@ func Grade(kind, grading, expected string, variants []string, answer string, rev
 			return "correct", int(fsrs.Good)
 		}
 	}
-	// A possible case-only spelling difference deserves review, not a false
-	// success (e.g. Polish/polish or a case-sensitive symbol).
-	if strings.EqualFold(answer, expected) {
-		return "close", 0
+	if grading == "semantic" || answerForm == "flexible" {
+		return "ungraded", 0
 	}
-	if grading != "semantic" && shortFact(answer) && shortFact(expected) {
+	// A possible case- or spacing-only difference deserves the learner's
+	// judgment, not a false success or a false miss (e.g. Polish/polish).
+	if strings.EqualFold(collapseSpace(answer), collapseSpace(expected)) {
+		return "selfcheck", 0
+	}
+	if shortFact(answer) && shortFact(expected) {
 		return "wrong", int(fsrs.Again)
 	}
-	return "ungraded", 0
+	return "selfcheck", 0
 }
+
+func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 func shortFact(s string) bool {
 	if s == "" || utf8.RuneCountInString(s) > 80 || strings.ContainsAny(s, "\n\r;?!") {
