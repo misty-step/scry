@@ -85,3 +85,50 @@ UNVERIFIED with exact source/artifact, environment, behavior exercised, observed
 results, and limitations. Tests, live AI, phone acceptance, delayed recall,
 provider mail delivery, and availability are separate claims. Do not turn old
 Rust fixtures or receipts into proof of the current Go product.
+
+## Launch
+
+On the project VM, use `ws init`, `ws up --task factory-foundations`, then
+`ws run --task factory-foundations -- bash .exe/setup.sh` if the workspace was
+not bootstrapped. Run browser/heavy checks with `ws run --task factory-foundations
+-- qa/walk --all`; use `ws browser --task factory-foundations` for an interactive
+headless browser over the VM's CDP tunnel. `qa/walk` builds `./cmd/scry`,
+creates a new run-owned `~/.cache/tmp/scry-walk.XXXXXXXX` directory, and invokes
+`seed-fixture --db` on its unused SQLite path.
+
+## Doctor
+
+Confirm `go version` is Go 1.27.1 linux/amd64, `node --version` is 22 or newer,
+and `.exe/setup.sh` has installed test-only Playwright 1.63.0 and Chromium.
+The walk waits for loopback `/readyz`; readiness is not a product or remote
+backup verdict. `--dev` alone does not isolate credentials. The walk runs the
+seed and server with `env -i`, an explicit PATH/HOME/LANG allowlist, and a
+disposable `SCRY_BACKUP_DIR`.
+
+## Drive
+
+Use `qa/walk --stories "US-002 US-003"` for selected stories or `qa/walk --all`
+for every live story. The runner uses real pointer/keyboard browser actions
+where observable and focused CLI/Go checks for non-browser policy. No browser
+or Playwright run belongs on the workstation. See
+[`features/`](../../../features/README.md) for routes and selectors; do not
+substitute DOM `.click()` for pointer evidence or fixture data for provider
+quality.
+
+## Evidence
+
+Inspect `target/walk/walk-receipt.json` and `target/walk/screens/`, including
+story/criterion status, checksums, source head/tree, and the run-bound base.
+Pull VM evidence with `ws pull --task factory-foundations` before teardown.
+`foundation-check receipt target/walk/walk-receipt.json --base <base>` checks
+the current source and affected stories; `unwalked` is not a pass. Report
+credential-free fixture limits separately from real-provider, production
+ingress, recovery and physical-phone acceptance.
+
+## Cleanup
+
+The walk stops its own server and browser and removes only its own run-scoped
+scratch directory after copying receipt and screenshots. Never delete an
+existing SQLite path to make a seed succeed. Pull evidence, then use
+`ws down --task factory-foundations` to remove the task worktree and lease,
+not the standing `scry-ws` VM.

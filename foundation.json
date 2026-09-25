@@ -1,0 +1,30 @@
+{
+  "schema": "foundation-adoption/1",
+  "standard": {
+    "id": "misty-step.foundation",
+    "version": "1.1.0",
+    "catalog_sha256": "483f8779e56c969f44316bb29ec5ec698b8b89140b3ca7510c4b30e049815e86",
+    "source": "https://github.com/misty-step/harness/blob/a4f7a6b54863afb259d13cb84619048e098c30bb/agent-config/skills/foundation/foundation-standard-v1.json",
+    "revision": "a4f7a6b54863afb259d13cb84619048e098c30bb"
+  },
+  "capabilities": [
+    "Private Go/SQLite concept-centered study with authored-fixture story walks",
+    "Cloudflare Access guarded singleton production ingress and private R2 recovery"
+  ],
+  "dispositions": {
+    "FND-CHG-001": {"status": "pending", "missing": "Retained exact-source browser and CLI story-walk receipt", "owner": "Scry maintainer", "next": "Run qa/walk --all on scry-ws and retain its receipt"},
+    "FND-CHG-002": {"status": "pending", "missing": "Retained negative-control and recovery exercise bound to candidate source", "owner": "Scry maintainer", "next": "Retain focused failure and recovery evidence alongside the exact-source walk"},
+    "FND-TRN-001": {"status": "pending", "missing": "New foundation gate has not been exercised against an exact committed candidate", "owner": "Scry maintainer", "next": "Retain the CI foundation, story-walk, and release-artifact checks"},
+    "FND-OBS-001": {"status": "pending", "missing": "No complete structured diagnostic/error contract or retained proof", "owner": "Scry operations", "next": "Define bounded event/error fields and demonstrate relevant failure transitions"},
+    "FND-ACT-001": {"status": "pending", "missing": "No versioned authoritative product-activity event contract and receipt", "owner": "Scry product owner", "next": "Specify and exercise server-owned journey events"},
+    "FND-DAT-001": {"status": "pending", "missing": "No independently verified bounded diagnostics/activity privacy and sink-loss control", "owner": "Scry security owner", "next": "Review field allowlists, retention and sink-failure behavior"},
+    "FND-PRF-001": {"status": "pending", "missing": "No retrieved runtime diagnostic or activity evidence", "owner": "Scry operations", "next": "Run controlled sanitized success/failure and sink outage canaries"},
+    "FND-USE-001": {"status": "pending", "missing": "No retained alert/query and failure-response proof for each material decision", "owner": "Scry operations", "next": "Document queries, owners, conditions and exercise recovery retrieval"},
+    "FND-DOC-001": {"status": "pending", "missing": "Documentation exists but no retained foundation-check result for this exact source", "owner": "Scry maintainer", "next": "Retain foundation-check check output after pinning the merged harness"},
+    "FND-MAP-001": {"status": "pending", "missing": "Feature map awaits exact-source checker receipt", "owner": "Scry maintainer", "next": "Run foundation-check check and affected on committed source"},
+    "FND-WLK-001": {"status": "pending", "missing": "Required CI story-walk receipt has not yet been retained for this pull request", "owner": "Scry maintainer", "next": "Run the PR story-walk job on committed source and retain its artifact"},
+    "FND-WS-001": {"status": "pending", "missing": "VM bootstrap and rerun passed but no durable committed-source bootstrap receipt is retained", "owner": "Scry maintainer", "next": "Retain the setup output and toolchain identity from the committed Scry source in CI evidence"},
+    "FND-DEF-SENTRY-001": {"status": "pending", "missing": "No reviewed Sentry or equivalent capture choice and retained runtime proof", "owner": "Scry operations", "next": "Select and validate remote error capture without private content"},
+    "FND-DEF-ACTIVITY-001": {"status": "pending", "missing": "Existing SQLite store has no reviewed versioned product-activity evidence schema", "owner": "Scry product owner", "next": "Define first-party events, deduplication and deletion policy before claiming coverage"}
+  }
+}

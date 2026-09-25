@@ -45,3 +45,79 @@ jobs:
           path: target/ci-release/
           if-no-files-found: error
           retention-days: 14
+
+  foundation:
+    runs-on: ubuntu-24.04
+    env:
+      HARNESS_SHA: "a4f7a6b54863afb259d13cb84619048e098c30bb"
+      BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
+      BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch pinned foundation checker and Bun
+        run: |
+          root="$RUNNER_TEMP/foundation"
+          mkdir -p "$root/checker" "$root/runtime"
+          git init --quiet --initial-branch=checker "$root/checker"
+          git -C "$root/checker" fetch --quiet --no-tags --depth=1 https://github.com/misty-step/harness.git "$HARNESS_SHA"
+          git -C "$root/checker" checkout --quiet --detach "$HARNESS_SHA"
+          test "$(git -C "$root/checker" rev-parse HEAD)" = "$HARNESS_SHA"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 3 --output "$root/runtime/bun.zip" "$BUN_URL"
+          printf '%s  %s\n' "$BUN_SHA256" "$root/runtime/bun.zip" | sha256sum --check --strict
+          unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
+      - name: Check repository foundations
+        run: |
+          "$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun" \
+            --no-env-file --no-install "$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts" \
+            check --repo .
+
+  story-walk:
+    needs: foundation
+    runs-on: ubuntu-24.04
+    env:
+      HARNESS_SHA: "a4f7a6b54863afb259d13cb84619048e098c30bb"
+      BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
+      BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch pinned foundation checker and Bun
+        run: |
+          root="$RUNNER_TEMP/foundation"
+          mkdir -p "$root/checker" "$root/runtime"
+          git init --quiet --initial-branch=checker "$root/checker"
+          git -C "$root/checker" fetch --quiet --no-tags --depth=1 https://github.com/misty-step/harness.git "$HARNESS_SHA"
+          git -C "$root/checker" checkout --quiet --detach "$HARNESS_SHA"
+          test "$(git -C "$root/checker" rev-parse HEAD)" = "$HARNESS_SHA"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 3 --output "$root/runtime/bun.zip" "$BUN_URL"
+          printf '%s  %s\n' "$BUN_SHA256" "$root/runtime/bun.zip" | sha256sum --check --strict
+          unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
+      - name: Provision browser and Scry toolchain
+        run: bash .exe/setup.sh
+      - name: Walk affected learner stories
+        run: |
+          export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
+          checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ || "$BASE_SHA" =~ ^0+$ ]]; then BASE_SHA=$(git rev-parse HEAD^); fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          "$bun" --no-env-file --no-install "$checker" check --repo .
+          affected=$("$bun" --no-env-file --no-install "$checker" affected --repo . --base "$BASE_SHA")
+          WALK_BASE="$BASE_SHA" qa/walk --stories "$affected"
+          "$bun" --no-env-file --no-install "$checker" receipt target/walk/walk-receipt.json --repo . --base "$BASE_SHA"
+      - name: Upload story-walk receipt and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scry-story-walk-${{ github.sha }}
+          path: target/walk/
+          if-no-files-found: warn
+          retention-days: 14
