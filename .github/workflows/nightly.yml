@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      HARNESS_SHA: "ec5209371d36e340d717aaa26209c9e9a4c993cb"
+      HARNESS_SHA: "c180febf51f257c4d0859ff825123f71fea61704"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:
@@ -57,9 +57,11 @@ jobs:
           export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
           bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
           checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
-          "$bun" --no-env-file --no-install "$checker" check --repo .
+          # Run the checker outside the checkout: Bun loads bunfig.toml from its working directory.
+          foundation() { (cd "$RUNNER_TEMP/foundation" && "$bun" --no-env-file --no-install "$checker" "$@" --repo "$GITHUB_WORKSPACE"); }
+          foundation check
           qa/walk --all
-          "$bun" --no-env-file --no-install "$checker" receipt target/walk/walk-receipt.json --repo .
+          foundation receipt target/walk/walk-receipt.json --all
       - name: Upload full-walk receipt and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
