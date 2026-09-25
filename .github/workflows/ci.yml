@@ -49,7 +49,7 @@ jobs:
   foundation:
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "ec5209371d36e340d717aaa26209c9e9a4c993cb"
+      HARNESS_SHA: "c180febf51f257c4d0859ff825123f71fea61704"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:
@@ -70,16 +70,18 @@ jobs:
           printf '%s  %s\n' "$BUN_SHA256" "$root/runtime/bun.zip" | sha256sum --check --strict
           unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
       - name: Check repository foundations
+        # Bun loads bunfig.toml from its working directory, so it never starts inside the checkout.
+        working-directory: ${{ runner.temp }}/foundation
         run: |
           "$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun" \
             --no-env-file --no-install "$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts" \
-            check --repo .
+            check --repo "$GITHUB_WORKSPACE"
 
   story-walk:
     needs: foundation
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "ec5209371d36e340d717aaa26209c9e9a4c993cb"
+      HARNESS_SHA: "c180febf51f257c4d0859ff825123f71fea61704"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -107,12 +109,14 @@ jobs:
           export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
           bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
           checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
+          # Run the checker outside the checkout: Bun loads bunfig.toml from its working directory.
+          foundation() { (cd "$RUNNER_TEMP/foundation" && "$bun" --no-env-file --no-install "$checker" "$@" --repo "$GITHUB_WORKSPACE"); }
           if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ || "$BASE_SHA" =~ ^0+$ ]]; then BASE_SHA=$(git rev-parse HEAD^); fi
           git cat-file -e "$BASE_SHA^{commit}"
-          "$bun" --no-env-file --no-install "$checker" check --repo .
-          affected=$("$bun" --no-env-file --no-install "$checker" affected --repo . --base "$BASE_SHA")
+          foundation check
+          affected=$(foundation affected --base "$BASE_SHA")
           WALK_BASE="$BASE_SHA" qa/walk --stories "$affected"
-          "$bun" --no-env-file --no-install "$checker" receipt target/walk/walk-receipt.json --repo . --base "$BASE_SHA"
+          foundation receipt target/walk/walk-receipt.json --base "$BASE_SHA"
       - name: Upload story-walk receipt and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
