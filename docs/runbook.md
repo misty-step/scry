@@ -80,17 +80,28 @@ The 00:00 UTC scheduled backup executed in the existing instance and reported
 `backed_up`: `scry-20260925T000041.039650444Z-e2e1671859ebaebae8a3df1d0bb36302.scry-backup.zip`,
 648,930 bytes, SHA-256
 `ff39cca4b04c907e4d51429fd0627b75f156aec70c3add4048cf11f53e119890`.
-An independent R2 GET matched that digest. The Worker lifecycle now joins the
-already-running process when the SDK says `stopped`; it passes the newest
-snapshot key in case the process exits before readiness, rather than risking
-an empty-key restart. The regression failed before and passed after the fix;
-all 54 Cloudflare-hosting tests passed. Worker-only deployment
+An independent R2 GET matched that digest. The exact production binary
+restored the archive into an unused private scratch path; `scry check` returned
+`compatible=true`, `integrity=ok`, and revision `f9667eb`. The scratch was
+removed. The Worker lifecycle now joins the already-running process when the
+SDK says `stopped`; it passes the newest snapshot key in case the process exits
+before readiness, rather than risking an empty-key restart. The regression
+failed before and passed after the fix; all 54 Cloudflare-hosting tests
+passed. Worker-only deployment
 `75f06840-55f8-4326-a1e2-509f496d433b` used
 `--containers-rollout=none`: singleton instance
 `7ecab3eee8035c56aeaba32584ba11eec1b85280f572a6daa85e51849d23f575`
 remained on image version 7. Anonymous ingress still redirects to Access.
-Owner-authenticated phone entry after this deployment remains to be observed;
-neither a successful backup nor an anonymous redirect proves it.
+Workers Logs recorded a Durable Object code reset at 00:05:49 UTC; subsequent
+instance readback still showed the same ID, 19:20:49 creation time, running
+state, and image version 7. Committed source `ca5e991` rebuilt a production
+Worker module with SHA-256
+`68ed7522205a256bc2610827f8d6c5f6435210ecbc5a15f76b8c10fe5be28fdc`,
+byte-for-byte equal to the deployed module fetched via Cloudflare content/v2.
+Owner-authenticated phone entry after this deployment remains to be observed:
+the workstation exposes no attached iPhone or phone-mirror window. Phaedrus
+must retry inside the PWA and report the page or error; neither a successful
+backup nor an anonymous redirect proves login.
 
 ### September 24 single grading rule release (current)
 
