@@ -76,7 +76,7 @@ jobs:
           DRILL: ${{ inputs.failure_drill || false }}
         run: |
           title="Nightly story walk failed"
-          body="The nightly full story walk failed on ${GITHUB_SHA} (${RUN_URL}). The run artifact holds the receipt, logs, and screenshots. Refs MIS-150."
+          body="The nightly full story walk failed on ${GITHUB_SHA}. Step logs: ${RUN_URL}. If the walk ran, the run's scry-nightly-walk artifact holds its receipt and screenshots; a failure before the walk leaves only the step logs. Refs MIS-150."
           if [ "$DRILL" = true ]; then body="Failure-response drill (not a product failure): ${body}"; fi
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
