@@ -82,6 +82,9 @@ fi
 chromium_binary=$(node -p "require('$walk_modules/node_modules/playwright').chromium.executablePath()")
 [[ -x "$chromium_binary" ]]
 ln -sfn "$chromium_binary" "$HOME/.local/bin/chromium"
+# The host gate (scripts/scry-ci) runs the critic browser cases against this install.
+critic_line='export SCRY_CRITICS_NODE_PATH="$HOME/.local/share/scry-walk/node_modules" SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"'
+if ! grep -Fxq "$critic_line" "$HOME/.profile"; then printf '%s\n' "$critic_line" >> "$HOME/.profile"; fi
 [[ "$(go version)" == 'go version go1.27.1 linux/amd64' ]]
 [[ "$(node --version)" == v22.* ]]
 [[ "$(bun --version)" == '1.4.2' ]]

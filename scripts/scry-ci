@@ -59,7 +59,9 @@ def run(command, *, cwd, env=None, data=None, log=None):
 
 def environment():
     # Do not forward application, cloud, model, proxy or Git credential variables.
-    allowed = ("PATH", "HOME", "TMPDIR", "GOCACHE", "GOMODCACHE")
+    # SCRY_CRITICS_* name local browser tool paths only; they carry no credentials.
+    allowed = ("PATH", "HOME", "TMPDIR", "GOCACHE", "GOMODCACHE",
+               "SCRY_CRITICS_NODE_PATH", "SCRY_CRITICS_CHROMIUM_PATH")
     result = {key: os.environ[key] for key in allowed if key in os.environ}
     result.update({
         "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
@@ -234,14 +236,15 @@ def gate(args):
         run(["node", "--check", path], cwd=source, env=env, log=log)
     critic_tests = [path for path in critic_files if ".test." in path]
     require(critic_tests, "no critic tests found")
-    # The critic browser cases run for real here: distribution Chromium plus
-    # the pinned Playwright module must both be present, and the suite fails
-    # (never passes vacuously) when the browser is unavailable.
+    # The critic browser cases run for real here: Chromium plus the pinned
+    # Playwright module must both be present, and the suite fails (never passes
+    # vacuously) when the browser is unavailable. The Dagger image provides the
+    # defaults; a workspace provisioned by .exe/setup.sh names its own install.
     critic_env = dict(env)
     critic_env.update({
         "HOME": env.get("HOME", "/root"),
-        "NODE_PATH": "/opt/scry-critics/node_modules",
-        "CHROMIUM_PATH": "/usr/bin/chromium",
+        "NODE_PATH": env.get("SCRY_CRITICS_NODE_PATH", "/opt/scry-critics/node_modules"),
+        "CHROMIUM_PATH": env.get("SCRY_CRITICS_CHROMIUM_PATH", "/usr/bin/chromium"),
         "SCRY_CRITICS_REQUIRE_BROWSER": "1",
         "SCRY_CRITICS_NO_SANDBOX": "1",
     })
