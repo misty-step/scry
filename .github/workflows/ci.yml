@@ -49,7 +49,7 @@ jobs:
   foundation:
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "c180febf51f257c4d0859ff825123f71fea61704"
+      HARNESS_SHA: "f3e581abb2264ae717c5bf55b695b78aca60e3e4"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:
@@ -81,7 +81,7 @@ jobs:
     needs: foundation
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "c180febf51f257c4d0859ff825123f71fea61704"
+      HARNESS_SHA: "f3e581abb2264ae717c5bf55b695b78aca60e3e4"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
