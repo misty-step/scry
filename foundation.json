@@ -4,8 +4,8 @@
     "id": "misty-step.foundation",
     "version": "1.1.0",
     "catalog_sha256": "483f8779e56c969f44316bb29ec5ec698b8b89140b3ca7510c4b30e049815e86",
-    "source": "https://github.com/misty-step/harness/blob/a4f7a6b54863afb259d13cb84619048e098c30bb/agent-config/skills/foundation/foundation-standard-v1.json",
-    "revision": "a4f7a6b54863afb259d13cb84619048e098c30bb"
+    "source": "https://github.com/misty-step/harness/blob/ec5209371d36e340d717aaa26209c9e9a4c993cb/agent-config/skills/foundation/foundation-standard-v1.json",
+    "revision": "ec5209371d36e340d717aaa26209c9e9a4c993cb"
   },
   "capabilities": [
     "Private Go/SQLite concept-centered study with authored-fixture story walks",
