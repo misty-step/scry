@@ -103,8 +103,13 @@ explicitly labeled; `--require-committed` rejects it. Artifact destinations must
 be unused. Deploy those tested bytes rather than rebuilding them.
 
 `bun run test` runs Go tests; `bun run test:recovery` checks the retained
-historical recovery tools. `.github/workflows/ci.yml`, Buildkite, and the
-pre-push hook use the same current gate.
+historical recovery tools. `.github/workflows/ci.yml` and Buildkite run the
+current gate; run it off the desktop with `ws run --task T -- bun run ci` on
+`scry-ws`. The pre-push hook (`git config core.hooksPath .githooks`) only runs
+the sub-second `foundation-check` structural check and lists the stories
+required CI will walk. `.github/workflows/nightly.yml` walks every live story
+on master daily, retains the receipt for 30 days, and opens or updates one
+"Nightly story walk failed" issue on failure.
 
 ## Deployment and recovery
 
