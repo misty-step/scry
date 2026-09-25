@@ -1,0 +1,74 @@
+name: nightly
+
+# Owned nightly coverage (check-cadence): PRs walk only affected stories; this
+# walks every live story on master, retains the receipt, and opens or updates
+# one issue when it fails so a regression cannot sit unseen.
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  full-walk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HARNESS_SHA: "ec5209371d36e340d717aaa26209c9e9a4c993cb"
+      BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
+      BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch pinned foundation checker and Bun
+        run: |
+          root="$RUNNER_TEMP/foundation"
+          mkdir -p "$root/checker" "$root/runtime"
+          git init --quiet --initial-branch=checker "$root/checker"
+          git -C "$root/checker" fetch --quiet --no-tags --depth=1 https://github.com/misty-step/harness.git "$HARNESS_SHA"
+          git -C "$root/checker" checkout --quiet --detach "$HARNESS_SHA"
+          test "$(git -C "$root/checker" rev-parse HEAD)" = "$HARNESS_SHA"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 3 --output "$root/runtime/bun.zip" "$BUN_URL"
+          printf '%s  %s\n' "$BUN_SHA256" "$root/runtime/bun.zip" | sha256sum --check --strict
+          unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
+      - name: Provision browser and Scry toolchain
+        run: bash .exe/setup.sh
+      - name: Walk every live story
+        run: |
+          export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
+          checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
+          "$bun" --no-env-file --no-install "$checker" check --repo .
+          qa/walk --all
+          "$bun" --no-env-file --no-install "$checker" receipt target/walk/walk-receipt.json --repo .
+      - name: Upload full-walk receipt and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scry-nightly-walk-${{ github.sha }}-${{ github.run_id }}
+          path: target/walk/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Open or update the nightly failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly story walk failed"
+          body="The nightly full story walk failed on ${GITHUB_SHA} (${RUN_URL}). The run artifact holds the receipt, logs, and screenshots. Refs MIS-150."
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

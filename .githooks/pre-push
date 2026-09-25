@@ -1,4 +1,19 @@
 #!/usr/bin/env sh
+# Cheap local foundation check (<1 s). The full gate and browser walks run in
+# required CI and on the scry-ws workspace (`ws run --task T -- bun run ci`),
+# never on the desktop.
 set -eu
 
-bun run ci
+if ! command -v foundation-check >/dev/null 2>&1; then
+  echo "pre-push: foundation-check is not installed; deploy the harness (agent-config) first" >&2
+  exit 1
+fi
+foundation-check check --repo .
+base=$(git merge-base HEAD origin/master 2>/dev/null || true)
+if [ -n "$base" ]; then
+  stories=$(foundation-check affected --repo . --base "$base")
+  if [ -n "$stories" ]; then
+    echo "pre-push: required CI will walk $stories; walk them first with:"
+    echo "  ws run --task <task> -- qa/walk --stories \"$stories\""
+  fi
+fi
