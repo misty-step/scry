@@ -50,11 +50,33 @@ if [[ ! -f "$walk_modules/node_modules/playwright/package.json" ]] ||
    [[ "$(node -p "require('$walk_modules/node_modules/playwright/package.json').version" 2>/dev/null || true)" != 1.63.0 ]]; then
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix "$walk_modules" --no-save --no-audit --no-fund --loglevel=error playwright@1.63.0
 fi
-# The Playwright package pins the Chromium revision and installs it under HOME.
-# Its install-deps command uses apt only when noninteractive sudo is available.
+# The Playwright package pins the Chromium revision; only apt, not npm code, runs as root.
 if ! node -e "const p=require('$walk_modules/node_modules/playwright');require('fs').accessSync(p.chromium.executablePath(),require('fs').constants.X_OK)" 2>/dev/null; then
+  . /etc/os-release
+  case "$ID/$VERSION_ID" in
+    ubuntu/24.04) chromium_deps=(
+      libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64
+      libcairo2 libcups2t64 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64
+      libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1
+      libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2
+    );;
+    ubuntu/22.04) chromium_deps=(
+      libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2
+      libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 libnss3
+      libpango-1.0-0 libwayland-client0 libx11-6 libxcb1 libxcomposite1
+      libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2
+    );;
+    *) echo "Unsupported Chromium host: $ID/$VERSION_ID" >&2; exit 1;;
+  esac
+  # From Playwright v1.63.0 packages/playwright-core/src/server/registry/nativeDeps.ts.
+  browser_tools=(
+    xvfb fonts-noto-color-emoji fonts-unifont libfontconfig1 libfreetype6
+    xfonts-cyrillic xfonts-scalable fonts-liberation fonts-ipafont-gothic
+    fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf
+  )
   if ! sudo -n true 2>/dev/null; then echo 'Chromium needs apt dependencies; noninteractive sudo unavailable' >&2; exit 1; fi
-  sudo -n env PATH="$PATH" node "$walk_modules/node_modules/playwright/cli.js" install-deps chromium
+  sudo -n apt-get update
+  sudo -n apt-get install -y --no-install-recommends "${browser_tools[@]}" "${chromium_deps[@]}"
   node "$walk_modules/node_modules/playwright/cli.js" install chromium
 fi
 chromium_binary=$(node -p "require('$walk_modules/node_modules/playwright').chromium.executablePath()")
