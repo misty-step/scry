@@ -6,8 +6,10 @@ notes, and questions. Study one question at a time, revisit notes on the Map,
 and keep answer history honest when a check is uncertain or mistaken. One Go
 process owns SQLite, server-rendered HTML/HTMX, bounded generation, and recovery.
 
-[Product direction](VISION.md) · [Behavior and architecture](SPEC.md) ·
-[Operations](docs/runbook.md) · [Verification](docs/qa/system.md)
+[Product direction](VISION.md) · [Stories](USER_STORIES.md) ·
+[Feature map](features/README.md) · [Behavior and architecture](SPEC.md) ·
+[Decisions](docs/adr/README.md) · [Operations](docs/runbook.md) ·
+[Verification](docs/qa/system.md)
 
 ## Access and scope
 
