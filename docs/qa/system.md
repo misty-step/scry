@@ -37,7 +37,9 @@ bun run ci:full -- --out target/ci-release --require-committed
 
 `ci` and `ci:local` run `scripts/scry-ci local` with host tools. `ci:full` uses
 pinned Dagger tooling and the same shared gate over a frozen source snapshot.
-The host requires Go 1.27.1 Linux/amd64, Node 22+, and Gitleaks 8.30.1. Use the
+The host requires Go 1.27.1 Linux/amd64, Node 22+, Gitleaks 8.30.1, and the critic
+browser install (`SCRY_CRITICS_NODE_PATH`/`SCRY_CRITICS_CHROMIUM_PATH`, exported by
+`.exe/setup.sh`; Dagger image paths otherwise). Use the
 full gate when those tools are not available locally. Both gates check:
 
 - Go formatting, tests, and vet with dependency updates forbidden.

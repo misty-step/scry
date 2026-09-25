@@ -89,7 +89,10 @@ bun run ci
 bun run ci:full -- --out target/ci-release --require-committed
 ```
 
-The host gate requires Go 1.27.1 on Linux amd64, Node 22+, and Gitleaks 8.30.1.
+The host gate requires Go 1.27.1 on Linux amd64, Node 22+, Gitleaks 8.30.1, and
+Playwright 1.63.0 with Chromium for the critic browser cases: the Dagger image's
+paths by default, or `SCRY_CRITICS_NODE_PATH`/`SCRY_CRITICS_CHROMIUM_PATH` as
+exported by `.exe/setup.sh` on the `scry-ws` workspace.
 The full gate supplies pinned tooling through Dagger. Both snapshot the actual
 non-ignored source, check Go and retained recovery contracts, scan for secrets,
 and exercise the exact built binary against isolated synthetic data.
