@@ -19,13 +19,14 @@ export function createStartupOnlyFetch({
       await startAndWaitForPorts();
       return;
     }
-    if (running || state.status === "stopping") {
+    if (state.status === "stopping" || (running && state.status !== "stopped")) {
       throw new Error(`container lifecycle is ${state.status}; refusing a competing start`);
     }
 
-    // Resolve the immutable snapshot only after the prior process has fully
-    // stopped. Keep the key in per-start options: the class defaults retain an
-    // empty key so an automatic restart in a forwarding race fails closed.
+    // After a lost platform connection the SDK can report "stopped" while
+    // the native process is still running. Its readiness join does not issue
+    // a second start while running; if the process exits meanwhile, supply
+    // the latest snapshot key rather than the empty class default.
     const key = bootMode === "synthetic-fresh" ? "" : await resolveSnapshotKey();
     await startAndWaitForPorts({
       startOptions: {
