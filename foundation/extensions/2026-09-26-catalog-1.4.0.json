@@ -1,0 +1,9 @@
+{
+  "schema": "foundation-baseline-extension/1",
+  "reason": "Catalog 1.4.0 adds ADR-005's application obligations. Scry has not established continuous deployment on green, approved-agent production alerting, or an incident-closure receipt; these remain pending, not satisfied. With no previous baseline, bootstrap mode covers only the three new operational gaps while Scry operations closes them by 2026-10-25. The designated reviewer must decide this extension on the PR head.",
+  "entries": [
+    { "gap": "ops:alert", "expires": "2026-10-25" },
+    { "gap": "ops:incident", "expires": "2026-10-25" },
+    { "gap": "ops:ship", "expires": "2026-10-25" }
+  ]
+}
