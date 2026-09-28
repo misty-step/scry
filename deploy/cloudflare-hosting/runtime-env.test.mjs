@@ -72,6 +72,7 @@ test("container runtime rejects unsafe identity and endpoint values", () => {
 
 const SEMANTIC = {
   SCRY_SEMANTIC_ENDPOINT: "https://openrouter.ai/api/alpha/decisions",
+  SCRY_SEMANTIC_API_KEY: "j".repeat(64),
   SCRY_SEMANTIC_MODEL: "typesafe/jev-1.13",
   SCRY_SEMANTIC_RESERVATION_MICROS: "2000",
 };
@@ -85,20 +86,17 @@ test("semantic mode is off and sends nothing unless an endpoint is configured", 
   }
 });
 
-test("semantic mode forwards a complete Decisions configuration and reuses the model key", () => {
+test("semantic mode forwards only a distinct dedicated key for Decisions", () => {
   const vars = appEnvVars({ ...complete, ...SEMANTIC });
   assert.equal(vars.SCRY_SEMANTIC_ENDPOINT, SEMANTIC.SCRY_SEMANTIC_ENDPOINT);
   assert.equal(vars.SCRY_SEMANTIC_MODEL, "typesafe/jev-1.13");
   assert.equal(vars.SCRY_SEMANTIC_RESERVATION_MICROS, "2000");
-  // Empty key: the application reuses SCRY_MODEL_API_KEY (same capped key).
-  assert.equal(vars.SCRY_SEMANTIC_API_KEY, "");
+  assert.equal(vars.SCRY_SEMANTIC_API_KEY, SEMANTIC.SCRY_SEMANTIC_API_KEY);
   assert.equal(vars.SCRY_MODEL_API_KEY, complete.SCRY_MODEL_API_KEY);
-  // Generation limits stay pinned; semantic checks share that allowance.
+  assert.notEqual(vars.SCRY_SEMANTIC_API_KEY, vars.SCRY_MODEL_API_KEY);
+  // Both paths still share the application allowance; provider keys are isolated.
   assert.equal(vars.SCRY_GENERATION_DAILY_BUDGET_MICROS, "3500000");
   assert.equal(vars.SCRY_GENERATION_RESERVATION_MICROS, "500000");
-
-  const dedicated = appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "j".repeat(64) });
-  assert.equal(dedicated.SCRY_SEMANTIC_API_KEY, "j".repeat(64));
 });
 
 test("semantic settings never enter the scheduled backup process", () => {
@@ -125,13 +123,24 @@ test("partial semantic configuration fails closed", () => {
   // An endpoint without an explicit model or reservation does not fall back to defaults.
   assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_MODEL: "" }), /SCRY_SEMANTIC_MODEL/);
   assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_RESERVATION_MICROS: "" }), /SCRY_SEMANTIC_RESERVATION_MICROS/);
-  // An endpoint with no key at all (model disabled, no dedicated key) cannot start.
+  // Neither a complete generation credential nor a generic OpenRouter key
+  // can substitute for the Jev-only binding.
+  assert.throws(
+    () => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "", OPENROUTER_API_KEY: "o".repeat(64) }),
+    /require SCRY_SEMANTIC_API_KEY/,
+  );
+  assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: complete.SCRY_MODEL_API_KEY }), /must differ from SCRY_MODEL_API_KEY/);
+  assert.throws(
+    () => appEnvVars({ ...complete, ...SEMANTIC, OPENROUTER_API_KEY: SEMANTIC.SCRY_SEMANTIC_API_KEY }),
+    /must differ from OPENROUTER_API_KEY/,
+  );
+  // A synthetic instance may enable Jev independently of generation.
   const synthetic = { ...complete, SCRY_DATA_CLASS: "synthetic", ...SEMANTIC };
   for (const name of ["SCRY_MODEL_ENDPOINT", "SCRY_MODEL_API_KEY", "SCRY_MODEL", "SCRY_MODEL_PROVIDER"]) {
     delete synthetic[name];
   }
-  assert.throws(() => appEnvVars(synthetic), /SCRY_SEMANTIC_API_KEY or the complete model configuration/);
-  assert.equal(appEnvVars({ ...synthetic, SCRY_SEMANTIC_API_KEY: "j".repeat(64) }).SCRY_SEMANTIC_API_KEY, "j".repeat(64));
+  assert.throws(() => appEnvVars({ ...synthetic, SCRY_SEMANTIC_API_KEY: "" }), /require SCRY_SEMANTIC_API_KEY/);
+  assert.equal(appEnvVars(synthetic).SCRY_SEMANTIC_API_KEY, SEMANTIC.SCRY_SEMANTIC_API_KEY);
 });
 
 test("semantic endpoint must be a confidential Decisions route", () => {
@@ -166,18 +175,17 @@ test("semantic model and reservation are explicit and bounded", () => {
   }
   assert.equal(appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_RESERVATION_MICROS: "3500000" }).SCRY_SEMANTIC_RESERVATION_MICROS, "3500000");
   assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "short" }), /SCRY_SEMANTIC_API_KEY/);
+  assert.throws(() => appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: " ".repeat(64) }), /SCRY_SEMANTIC_API_KEY/);
 });
 
-test("container start log names the semantic mode without any credential", () => {
+test("container start log names only the dedicated semantic key source", () => {
   assert.deepEqual(semanticStartSummary(appEnvVars(complete)), { semantic: "off" });
-  const shared = semanticStartSummary(appEnvVars({ ...complete, ...SEMANTIC }));
-  assert.deepEqual(shared, {
-    semantic: "on", host: "openrouter.ai", model: "typesafe/jev-1.13", reservation_micros: "2000", key: "model",
+  const dedicated = semanticStartSummary(appEnvVars({ ...complete, ...SEMANTIC }));
+  assert.deepEqual(dedicated, {
+    semantic: "on", host: "openrouter.ai", model: "typesafe/jev-1.13", reservation_micros: "2000", key: "semantic",
   });
-  const dedicated = semanticStartSummary(appEnvVars({ ...complete, ...SEMANTIC, SCRY_SEMANTIC_API_KEY: "j".repeat(64) }));
-  assert.equal(dedicated.key, "semantic");
-  const logged = JSON.stringify([shared, dedicated]);
-  for (const secret of ["j".repeat(64), complete.SCRY_MODEL_API_KEY, complete.SCRY_SECRET, complete.SCRY_BACKUP_REMOTE_TOKEN]) {
+  const logged = JSON.stringify(dedicated);
+  for (const secret of [SEMANTIC.SCRY_SEMANTIC_API_KEY, complete.SCRY_MODEL_API_KEY, complete.SCRY_SECRET, complete.SCRY_BACKUP_REMOTE_TOKEN]) {
     assert.equal(logged.includes(secret), false);
   }
 });
@@ -191,15 +199,17 @@ test("committed environments: only production configures Decisions, and it valid
     assert.deepEqual(SEMANTIC_NAMES.filter(key => key in vars), [], `${name} must not configure semantic assessments`);
   }
   const production = config.env.production.vars;
-  // The provider key is a secret binding, never a committed var.
+  // Secrets never appear as committed vars. Without the Jev binding, boot fails.
   assert.equal("SCRY_SEMANTIC_API_KEY" in production, false);
   assert.equal("SCRY_MODEL_API_KEY" in production, false);
   const secrets = Object.fromEntries(Object.entries(complete).filter(([key]) => !(key in production) && !key.startsWith("SCRY_SEMANTIC_")));
-  const vars = appEnvVars({ ...secrets, ...production });
+  assert.throws(() => appEnvVars({ ...secrets, ...production }), /require SCRY_SEMANTIC_API_KEY/);
+  const vars = appEnvVars({ ...secrets, ...production, SCRY_SEMANTIC_API_KEY: SEMANTIC.SCRY_SEMANTIC_API_KEY });
   assert.equal(vars.SCRY_SEMANTIC_ENDPOINT, "https://openrouter.ai/api/alpha/decisions");
   assert.equal(vars.SCRY_SEMANTIC_MODEL, "typesafe/jev-1.13");
   assert.equal(vars.SCRY_SEMANTIC_RESERVATION_MICROS, "2000");
-  assert.equal(vars.SCRY_SEMANTIC_API_KEY, "");
+  assert.equal(vars.SCRY_SEMANTIC_API_KEY, SEMANTIC.SCRY_SEMANTIC_API_KEY);
+  assert.equal(vars.SCRY_MODEL_API_KEY, complete.SCRY_MODEL_API_KEY);
 });
 
 test("optional Exa settings reach only the application, never the scheduled backup", () => {

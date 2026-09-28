@@ -18,14 +18,14 @@ The product decision for these items remains deterministic.
 
 ## Key source
 
-The runner reads `OPENROUTER_API_KEY` from:
-
-```text
-/home/phaedrus/development/misty-step/scry/.env
-```
-
-The key is not printed or written to an artifact.
-Use `--env PATH` to select another environment file.
+The frozen September 22 receipt used an `OPENROUTER_API_KEY` in Scry's ignored
+`.env`; that historical setup is no longer a live-run fallback. A new `run`
+requires a distinct `SCRY_SEMANTIC_API_KEY` in the process environment (for
+example, injected through a names-only pass-env mapping) or in the selected
+`--env PATH` file. The runner rejects a semantic key matching any
+`SCRY_MODEL_API_KEY` or `OPENROUTER_API_KEY` available to it and refuses to run
+when only those older keys are present. No key is printed or persisted. `verify`
+and `summarize` use committed receipts and do not send paid requests.
 
 ## Validation
 

@@ -200,37 +200,46 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	semanticEndpoint := os.Getenv("SCRY_SEMANTIC_ENDPOINT")
+	semanticKey := os.Getenv("SCRY_SEMANTIC_API_KEY")
+	// The semantic endpoint receives the bearer key and private learner text;
+	// refuse to start rather than send either over plaintext or use generation's key.
+	if err := semantic.ValidateEndpoint(semanticEndpoint); err != nil {
+		return fmt.Errorf("SCRY_SEMANTIC_ENDPOINT: %w", err)
+	}
+	if strings.TrimSpace(semanticEndpoint) != "" {
+		if strings.TrimSpace(semanticKey) == "" {
+			return errors.New("configured semantic assessments require SCRY_SEMANTIC_API_KEY; SCRY_MODEL_API_KEY is generation-only")
+		}
+		if semanticKey == os.Getenv("SCRY_MODEL_API_KEY") {
+			return errors.New("SCRY_SEMANTIC_API_KEY must differ from SCRY_MODEL_API_KEY")
+		}
+		if semanticKey == os.Getenv("OPENROUTER_API_KEY") {
+			return errors.New("SCRY_SEMANTIC_API_KEY must differ from OPENROUTER_API_KEY")
+		}
+		if semanticReservation == 0 {
+			return errors.New("configured semantic assessments require a positive SCRY_SEMANTIC_RESERVATION_MICROS")
+		}
+	}
+	if err := generation.ValidateExaEndpoint(env("SCRY_EXA_ENDPOINT", "https://api.exa.ai")); err != nil {
+		return fmt.Errorf("SCRY_EXA_ENDPOINT: %w", err)
+	}
 	db, err := store.Open(*dbPath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	semanticModel := env("SCRY_SEMANTIC_MODEL", semantic.DefaultModel)
-	semanticKey := os.Getenv("SCRY_SEMANTIC_API_KEY")
-	if semanticKey == "" {
-		semanticKey = os.Getenv("SCRY_MODEL_API_KEY")
-	}
-	// The semantic endpoint receives the bearer key and private learner text;
-	// refuse to start rather than send either over plaintext.
-	if err := semantic.ValidateEndpoint(os.Getenv("SCRY_SEMANTIC_ENDPOINT")); err != nil {
-		return fmt.Errorf("SCRY_SEMANTIC_ENDPOINT: %w", err)
-	}
-	if err := generation.ValidateExaEndpoint(env("SCRY_EXA_ENDPOINT", "https://api.exa.ai")); err != nil {
-		return fmt.Errorf("SCRY_EXA_ENDPOINT: %w", err)
-	}
 	semanticClient := semantic.NewClient(semantic.Config{
-		Endpoint: os.Getenv("SCRY_SEMANTIC_ENDPOINT"), APIKey: semanticKey, Model: semanticModel,
+		Endpoint: semanticEndpoint, APIKey: semanticKey, Model: semanticModel,
 		HTTPClient: &http.Client{Timeout: 8 * time.Second, CheckRedirect: noRedirect},
 	})
 	semanticSpending := semantic.Spending{ReservationMicros: semanticReservation, DailyBudgetMicros: budget}
 	var critic semantic.Client
-	if strings.TrimSpace(os.Getenv("SCRY_SEMANTIC_ENDPOINT")) != "" {
-		if semanticReservation == 0 {
-			return errors.New("configured semantic assessments require a positive SCRY_SEMANTIC_RESERVATION_MICROS")
-		}
+	if strings.TrimSpace(semanticEndpoint) != "" {
 		critic = semanticClient
 	}
-	if os.Getenv("SCRY_SEMANTIC_ENDPOINT") == "" {
+	if semanticEndpoint == "" {
 		// No endpoint means no request can leave the process: reserve nothing.
 		semanticSpending = semantic.Spending{}
 	}

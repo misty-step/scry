@@ -527,29 +527,34 @@ application plus Worker owner-subject guard, not an exe.dev session or QA token.
 
 ## Generation and spending
 
-The ignored workstation `.env` retains the dedicated Scry-only provider key
-privately (mode `0600`), never copied wholesale into production. On 2026-09-23,
-the existing key **“Scry personal (exe.dev)”** was raised to a **$25/week**
-provider limit; that cap covers content generation and Jev checks and is not
-proof either path is active. Keep provider management credentials out of the
-application. The app's separate allowance is **$3.50 per rolling 24 hours**
-(`SCRY_GENERATION_DAILY_BUDGET_MICROS=3500000`) with **$0.50 reserved per
-generation attempt** (`SCRY_GENERATION_RESERVATION_MICROS=500000`).
-Provider weekly and app rolling-day windows differ. Unknown sent costs retain
-the reservation; neither window is an invented per-token price.
+The ignored workstation `.env` retains the existing Scry generation provider
+key privately (mode `0600`), never copied wholesale into production. On
+2026-09-23, the existing key **“Scry personal (exe.dev)”** was raised to a
+**$25/week** provider limit. Before Jev key isolation it also paid for Jev;
+that historical cap and the production generation binding must not change in
+this release. Jev instead needs a new, dedicated OpenRouter credential with its
+own issuer daily cap. The app's shared allowance remains **$3.50 per rolling
+24 hours** (`SCRY_GENERATION_DAILY_BUDGET_MICROS=3500000`) with **$0.50
+reserved per generation attempt** (`SCRY_GENERATION_RESERVATION_MICROS=500000`).
+Provider and app windows differ. Unknown sent costs retain the reservation;
+neither window is an invented per-token price.
 
 Generation uses `SCRY_MODEL_ENDPOINT`, `SCRY_MODEL_API_KEY`, and `SCRY_MODEL`.
-Meaning-sensitive recall separately uses `SCRY_SEMANTIC_ENDPOINT`,
-`SCRY_SEMANTIC_API_KEY` (empty reuses `SCRY_MODEL_API_KEY`), and
+Meaning-sensitive recall and the prepublication critic use
+`SCRY_SEMANTIC_ENDPOINT`, `SCRY_SEMANTIC_API_KEY`,
 `SCRY_SEMANTIC_MODEL` (default `typesafe/jev-1.13`), and
-`SCRY_SEMANTIC_RESERVATION_MICROS` (default 2000, USD micros reserved per check
-from the same rolling 24-hour allowance as generation). An empty semantic
-endpoint means no Decisions request is sent, nothing is reserved, and the
-saved answer remains ungraded. A configured endpoint must be a complete HTTPS
-URL without embedded credentials, query, or fragment, because every request
-carries the bearer key and private learner text; plaintext HTTP is accepted
-only for a loopback gateway, and the service refuses to start otherwise. Before
-production activation, prove that the configured private integration forwards
+`SCRY_SEMANTIC_RESERVATION_MICROS` (default 2000, USD micros reserved per
+check from the same rolling 24-hour app allowance as generation). When the
+semantic endpoint is configured, the dedicated key is mandatory and must
+differ from both `SCRY_MODEL_API_KEY` and any generic `OPENROUTER_API_KEY`;
+neither is a fallback. The Worker rejects missing/equal secrets before
+starting a Container, and Go independently refuses to serve before opening
+SQLite. A disabled endpoint sends no Decisions request, reserves
+nothing, and leaves saved answers ungraded. A configured endpoint must be a
+complete HTTPS URL without embedded credentials, query, or fragment: every
+request carries the bearer key and private learner text. Go permits plaintext
+HTTP only for a loopback gateway; production Worker configuration requires
+HTTPS. Before production activation, prove the dedicated key authorizes
 `POST /api/alpha/decisions`; generation access alone does not prove that route.
 
 `SCRY_EXA_API_KEY` is an optional, bounded private Container secret. Without
@@ -573,29 +578,75 @@ describes the app-only forwarding boundary.
 Production `wrangler.jsonc` sets three plain vars: `SCRY_SEMANTIC_ENDPOINT`
 (`https://openrouter.ai/api/alpha/decisions`), `SCRY_SEMANTIC_MODEL`
 (`typesafe/jev-1.13`), and `SCRY_SEMANTIC_RESERVATION_MICROS` (`2000`).
-`SCRY_SEMANTIC_API_KEY` is not set, so the application reuses
-`SCRY_MODEL_API_KEY`, the dedicated Scry provider key with its $25/week
-provider cap, shared with generation. Staging and `mistystep-prod` set no
-semantic var and therefore send nothing; the v5 app's `short-v1` checks use
-the same Decisions endpoint only for flexible short recall.
+`SCRY_SEMANTIC_API_KEY` is a separate secret binding on Worker
+`scry-app-host` with `--env production`, sourced from pass entry
+`workstation/OPENROUTER_MISTY_STEP_SCRY_JEV_API_KEY`. It must be Jev-only
+at the issuer; keep the existing generation key and $25/week cap unchanged.
+Staging and `mistystep-prod` set no semantic var and send nothing. Source
+configuration is not evidence the binding exists or that a running instance
+has picked it up; until the approved replacement, the old running binary may
+still have the previous shared-key behavior.
 
-`appEnvVars` forwards all four names, always: empty strings when the endpoint
-is unset. It refuses to start the Container when the configuration is partial
-or unsafe: any semantic setting without an endpoint; a non-HTTPS, credentialed,
-query, or fragment URL; a path other than `/api/alpha/decisions` (so a chat
-completions URL cannot stand in); an empty, whitespace, or `openrouter/auto`
-model; a reservation that is not a positive integer no larger than the daily
-allowance; or no usable key. `backupExecEnv` stays limited to the five
-`SCRY_BACKUP_*` settings.
+`appEnvVars` forwards all four semantic names, always: empty strings when
+the endpoint is unset. It refuses to start a Container for a partial or unsafe
+configuration: a semantic setting without an endpoint; a non-HTTPS,
+credentialed, query, or fragment URL; a path other than
+`/api/alpha/decisions`; an empty, whitespace, or `openrouter/auto` model;
+a reservation that is not a positive integer no larger than the daily
+allowance; or a missing, invalid, or generation-equal semantic key. The backup
+exec environment remains limited to the five `SCRY_BACKUP_*` settings.
 
-A Container receives `envVars` only when it starts. A Worker-only deploy with
-`--containers-rollout=none` stores the new vars but the running instance keeps
-its old environment. Enabling, disabling, or changing semantic settings is
-therefore a planned instance replacement: confirm the newest R2 key and
-checksum with an independent readback, let the instance stop through the
-verified-backup idle path (not a force stop), read the new archive back, then
-cold-start the instance. To disable, remove the three vars and repeat the same
-replacement; the image and schema need no change.
+**Release is separately approved, not performed by editing this runbook.**
+Commit the source with no secret values. From a clean source revision run:
+
+```sh
+node --test deploy/cloudflare-hosting/runtime-env.test.mjs
+go test -mod=readonly ./cmd/scry ./internal/semantic ./scripts/evals/jev-recall
+bun run ci:full -- --out target/ci-release --require-committed
+```
+
+Inspect `proof.json`, `SHA256SUMS`, source revision, and
+`scry version`; stage the same tested binary at `deploy/cloudflare-hosting/scry`
+without rebuilding. Before activation, provision and issuer-verify the Jev-only
+daily-capped credential, stage the `SCRY_SEMANTIC_API_KEY` production secret
+binding using Wrangler's non-deploying `versions secret put` workflow, and
+confirm the candidate version contains both the reviewed source and dedicated
+secret by binding name without printing its value. `wrangler secret put`
+deploys immediately and is not the pre-approval staging step.
+
+From `deploy/cloudflare-hosting`, the staging command is
+`npx wrangler versions secret put SCRY_SEMANTIC_API_KEY --env production`
+with the dedicated value supplied through protected stdin. Retain the staged
+version ID; do not deploy that version before the release approval.
+
+Check the compatible rollback artifact and newest independent R2 checksum
+readback; obtain explicit operator approval **before** any live pause, Worker
+version activation, or Container replacement. In that approved release window,
+pause new paid work, account for outstanding writes and uncertain assessments,
+activate only the reviewed source-and-secret version, and let the singleton
+stop through its verified-backup idle path (never force-stop or start a second
+writer). Independently read back its final R2 archive and checksum, then
+cold-start the exact committed-source binary. A Worker-only deploy with
+`--containers-rollout=none` changes Worker configuration but leaves a running
+Container with its old environment. Missing secret or backup proof is a stop
+condition, not a reason to borrow `SCRY_MODEL_API_KEY` or
+`OPENROUTER_API_KEY`.
+
+Smoke the **new** instance: start log says `semantic: on`, `key: semantic`
+without values; `scry version`, schema, `/readyz` and `/healthz` match the
+artifact; anonymous and wrong-owner requests cannot reach learner data.
+With the authorized owner and a bounded, non-exact synthetic-safe recall
+answer, observe the saved assessment/held result or honest ungraded recovery
+and app spend, then independently check OpenRouter usage against the Jev-only
+key (and no generation-key charge during the isolated probe). Verify actual
+generation still uses its unchanged credential separately if authorized.
+Independently read back a new complete R2 backup, record Worker version/image
+digest, revision, binary and archive SHA-256, and preserve any unknown paid
+outcome as unknown. A readiness check alone does not prove Jev delivery,
+credential separation, restored data, or backup durability. Stop if the new
+instance fails; preserve the database and use only a schema-compatible,
+independently proven rollback with separate approval.
+
 Learner answers sent for semantic assessment are private provider-bound text:
 state contains only prompt, expected answer, variants, rubric, and learner answer,
 not identity or review history.

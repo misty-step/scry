@@ -20,13 +20,10 @@ func TestCriticLiveControls(t *testing.T) {
 	}
 	key := os.Getenv("SCRY_SEMANTIC_API_KEY")
 	if key == "" {
-		key = os.Getenv("SCRY_MODEL_API_KEY")
+		t.Fatal("SCRY_SEMANTIC_API_KEY is required for paid critic controls; no requests sent")
 	}
-	if key == "" {
-		key = os.Getenv("OPENROUTER_API_KEY")
-	}
-	if key == "" {
-		t.Fatal("no scoped critic credential configured; no requests sent")
+	if key == os.Getenv("SCRY_MODEL_API_KEY") || key == os.Getenv("OPENROUTER_API_KEY") {
+		t.Fatal("SCRY_SEMANTIC_API_KEY must differ from generation/inference keys; no requests sent")
 	}
 	base := CandidateState{Kind: "recall", Basis: "source", Prompt: "At standard atmospheric pressure, at what temperature does pure water freeze in degrees Celsius?", Answer: "0 degrees Celsius", Explanation: "Pure water freezes at zero degrees Celsius under standard atmospheric pressure; dissolved substances can lower its freezing point.", Evidence: "At standard atmospheric pressure, pure water freezes at 0 degrees Celsius."}
 	topic := CandidateState{Kind: "recall", Basis: "topic", Prompt: "Which organelle produces most ATP through oxidative phosphorylation in a typical animal cell?", Answer: "Mitochondrion", Explanation: "Mitochondria use an inner-membrane proton gradient to power ATP synthase during oxidative phosphorylation."}

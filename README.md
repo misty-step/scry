@@ -125,12 +125,14 @@ acknowledged live writes or start a second writer.
 Private production configuration must not be sourced or committed.
 `deploy/scry.env.example` lists safe empty defaults and
 `deploy/cloudflare-hosting/wrangler.jsonc` carries public vars, not secrets.
-The dedicated provider key “Scry personal (exe.dev)” has a $25/week limit
-(raised 2026-09-23). The app allows $3.50 per rolling 24 hours and reserves
-$0.50 per generation attempt; unknown sent usage remains accounted.
-`SCRY_MODEL` is an explicit model choice. An optional Exa secret enables Topic
-web search and Link contents; pasted text is never searched. Jev short-answer,
-semantic prose and the content critic share the same bounded allowance.
+The existing generation key “Scry personal (exe.dev)” retains its $25/week
+limit (raised 2026-09-23); Jev uses a separate daily-capped
+`SCRY_SEMANTIC_API_KEY` when enabled, never the generation key. The app allows
+$3.50 per rolling 24 hours and reserves $0.50 per generation attempt; unknown
+sent usage remains accounted. `SCRY_MODEL` is an explicit model choice.
+An optional Exa secret enables Topic web search and Link contents; pasted text
+is never searched. Jev short-answer, semantic prose and the content critic
+share the same bounded application allowance.
 
 The approved recovery policy remains daily and pre-release off-VM snapshots
 with 30-day retention, targeting RPO 24 hours and RTO 60 minutes. These are

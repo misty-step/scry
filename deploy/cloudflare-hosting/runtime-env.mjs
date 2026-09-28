@@ -16,8 +16,8 @@ const MODEL_FIELDS = [
   "SCRY_MODEL_PROVIDER",
 ];
 const EXA_FIELDS = ["SCRY_EXA_API_KEY", "SCRY_EXA_ENDPOINT"];
-// Jev Decisions for semantic recall and the prepublication critic. The key is
-// optional: empty means the application reuses SCRY_MODEL_API_KEY.
+// Jev Decisions for semantic recall and the prepublication critic. Its secret
+// must be distinct from the generation credential whenever the endpoint is on.
 const SEMANTIC_FIELDS = [
   "SCRY_SEMANTIC_ENDPOINT",
   "SCRY_SEMANTIC_API_KEY",
@@ -106,12 +106,17 @@ function semanticEnvVars(env, modelApiKey) {
   if (!/^[1-9][0-9]{0,15}$/.test(reservation) || Number(reservation) > Number(env.SCRY_GENERATION_DAILY_BUDGET_MICROS)) {
     throw new Error("SCRY_SEMANTIC_RESERVATION_MICROS must be a positive integer no larger than SCRY_GENERATION_DAILY_BUDGET_MICROS");
   }
-  if (semantic.SCRY_SEMANTIC_API_KEY.length > 0) {
-    if (!boundedSecret(semantic.SCRY_SEMANTIC_API_KEY)) {
-      throw new Error("SCRY_SEMANTIC_API_KEY must be a bounded non-control secret");
-    }
-  } else if (modelApiKey.length === 0) {
-    throw new Error("semantic assessments require SCRY_SEMANTIC_API_KEY or the complete model configuration's SCRY_MODEL_API_KEY");
+  if (semantic.SCRY_SEMANTIC_API_KEY.length === 0) {
+    throw new Error("configured semantic assessments require SCRY_SEMANTIC_API_KEY; SCRY_MODEL_API_KEY is generation-only");
+  }
+  if (!boundedSecret(semantic.SCRY_SEMANTIC_API_KEY) || semantic.SCRY_SEMANTIC_API_KEY.trim().length === 0) {
+    throw new Error("SCRY_SEMANTIC_API_KEY must be a bounded non-control secret");
+  }
+  if (semantic.SCRY_SEMANTIC_API_KEY === modelApiKey) {
+    throw new Error("SCRY_SEMANTIC_API_KEY must differ from SCRY_MODEL_API_KEY");
+  }
+  if (semantic.SCRY_SEMANTIC_API_KEY === env.OPENROUTER_API_KEY) {
+    throw new Error("SCRY_SEMANTIC_API_KEY must differ from OPENROUTER_API_KEY");
   }
   return semantic;
 }
@@ -145,7 +150,7 @@ function exaEnvVars(env) {
 
 
 // A non-secret summary of the semantic settings a Container starts with, for
-// the Worker log. It names the key source, never a key or learner text.
+// the Worker log. Never include either key or learner text.
 export function semanticStartSummary(vars) {
   if (!vars.SCRY_SEMANTIC_ENDPOINT) return { semantic: "off" };
   return {
@@ -153,7 +158,7 @@ export function semanticStartSummary(vars) {
     host: new URL(vars.SCRY_SEMANTIC_ENDPOINT).host,
     model: vars.SCRY_SEMANTIC_MODEL,
     reservation_micros: vars.SCRY_SEMANTIC_RESERVATION_MICROS,
-    key: vars.SCRY_SEMANTIC_API_KEY ? "semantic" : "model",
+    key: "semantic",
   };
 }
 

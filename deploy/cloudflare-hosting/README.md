@@ -45,9 +45,11 @@ than the last remotely verified snapshot.
 
 ## Private configuration
 
-Set secret values with `npx wrangler secret put ... --env <environment>` and
-provide values through stdin. Never place them in flags, source, logs, or the
-container image.
+Set secret values with the environment-specific Wrangler secret workflow and
+provide values through protected stdin. `wrangler secret put` immediately
+deploys a new Worker version; use `wrangler versions secret put` to stage a
+production binding before the separately approved activation. Never place
+values in flags, source, logs, or the container image.
 
 Worker-only secrets:
 
@@ -72,8 +74,13 @@ Container secrets:
 - `SCRY_BACKUP_REMOTE_TOKEN` — the isolated container's append/read capability;
   set the same value as `SCRY_CONTAINER_BACKUP_TOKEN` on the matching backup
   gateway Worker.
-- `SCRY_MODEL_API_KEY` — the Scry-only provider credential for recovered/live
-  environments, shared with Jev when its dedicated key is empty.
+- `SCRY_MODEL_API_KEY` — Scry's existing generation-only provider credential;
+  keep its issuer cap and binding unchanged.
+- `SCRY_SEMANTIC_API_KEY` — a separate Jev-only provider credential required
+  whenever `SCRY_SEMANTIC_ENDPOINT` is configured. Bind the pass entry named
+  `workstation/OPENROUTER_MISTY_STEP_SCRY_JEV_API_KEY` to this secret using
+  protected stdin; `.env.pass` holds names only, never values. Never put the
+  key value in `wrangler.jsonc`, a container image, or a backup exec environment.
 - `SCRY_EXA_API_KEY` — optional private Exa credential for explicit Topic web
   research and chosen Link contents. Never put it in a plain Wrangler var.
   Absent key means Topic research yields zero documents and planning continues
@@ -110,13 +117,16 @@ or implicit search fallback broadens the private-data boundary.
 Only `production` sets the Jev Decisions vars: `SCRY_SEMANTIC_ENDPOINT`
 (an HTTPS URL ending in `/api/alpha/decisions`), one explicit
 `SCRY_SEMANTIC_MODEL`, and a positive `SCRY_SEMANTIC_RESERVATION_MICROS` no
-larger than the daily allowance. An empty `SCRY_SEMANTIC_API_KEY` reuses
-`SCRY_MODEL_API_KEY`. With no endpoint, semantic/short checks do not send.
-Partial or unsafe settings fail closed. These settings serve short-v1 flexible
-recall, rubric semantic-v1 prose, dedupe, and the prepublication critic; no
-configuration switch licenses liberal similarity grading.
-New values reach the application only in a new Container instance; see
-[the runbook](../../docs/runbook.md#schema-v5-release-boundary).
+larger than the daily allowance. `SCRY_SEMANTIC_API_KEY` must be bound as a
+distinct production secret; if missing or equal to `SCRY_MODEL_API_KEY` or
+any generic `OPENROUTER_API_KEY`, the Worker refuses to start a Container
+and the Go process independently refuses to serve. Neither key is a fallback.
+With no endpoint, semantic/short checks do not send. Partial or unsafe
+settings fail closed. These settings serve short-v1 flexible recall, rubric
+semantic-v1 prose, dedupe, and the prepublication critic; no configuration
+switch licenses liberal similarity grading. New values reach the application
+only in a new Container instance; see
+[the runbook](../../docs/runbook.md#semantic-assessments-on-cloudflare).
 
 ## Exact-binary isolated staging
 
