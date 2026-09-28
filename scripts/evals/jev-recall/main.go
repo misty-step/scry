@@ -1127,7 +1127,7 @@ func loadAPIKey(path string) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("read env file: %w", err)
 	}
-	if key == "" {
+	if strings.TrimSpace(key) == "" {
 		return "", errors.New("SCRY_SEMANTIC_API_KEY not found or empty in environment and env file")
 	}
 	if key == modelKey || key == sharedKey || key == os.Getenv("SCRY_MODEL_API_KEY") || key == os.Getenv("OPENROUTER_API_KEY") {

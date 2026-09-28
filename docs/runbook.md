@@ -608,16 +608,21 @@ bun run ci:full -- --out target/ci-release --require-committed
 Inspect `proof.json`, `SHA256SUMS`, source revision, and
 `scry version`; stage the same tested binary at `deploy/cloudflare-hosting/scry`
 without rebuilding. Before activation, provision and issuer-verify the Jev-only
-daily-capped credential, stage the `SCRY_SEMANTIC_API_KEY` production secret
-binding using Wrangler's non-deploying `versions secret put` workflow, and
-confirm the candidate version contains both the reviewed source and dedicated
-secret by binding name without printing its value. `wrangler secret put`
-deploys immediately and is not the pre-approval staging step.
+daily-capped credential. From `deploy/cloudflare-hosting`, upload the reviewed
+Worker source and tested binary as a **non-deployed** version:
 
-From `deploy/cloudflare-hosting`, the staging command is
-`npx wrangler versions secret put SCRY_SEMANTIC_API_KEY --env production`
-with the dedicated value supplied through protected stdin. Retain the staged
-version ID; do not deploy that version before the release approval.
+```sh
+npx wrangler versions upload --env production
+```
+
+Then stage `SCRY_SEMANTIC_API_KEY` with
+`npx wrangler versions secret put SCRY_SEMANTIC_API_KEY --env production`,
+supplying its dedicated value through protected stdin. Inspect and retain the
+resulting version ID: it must contain both the reviewed Worker source and the
+secret binding by name, without printing its value. Confirm production traffic
+still serves the previous version. Never activate an intermediate code-only or
+secret-only version. `wrangler secret put` deploys immediately and is not the
+pre-approval staging step.
 
 Check the compatible rollback artifact and newest independent R2 checksum
 readback; obtain explicit operator approval **before** any live pause, Worker

@@ -298,10 +298,16 @@ func TestLiveEvaluationRequiresDistinctSemanticKey(t *testing.T) {
 	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "must differ") {
 		t.Fatalf("environment binding must not match a shared file key: %v", err)
 	}
+	t.Setenv("SCRY_SEMANTIC_API_KEY", "")
+	if err := os.WriteFile(path, []byte(shared+"SCRY_SEMANTIC_API_KEY='   '\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("quoted whitespace file binding must not authorize a Jev call: %v", err)
+	}
 	if err := os.WriteFile(path, []byte(shared + "SCRY_SEMANTIC_API_KEY=" + "dedicated-key\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("SCRY_SEMANTIC_API_KEY", "")
 	if key, err := loadAPIKey(path); err != nil || key != "dedicated-key" {
 		t.Fatalf("dedicated file binding should authorize paid Jev calls: %v", err)
 	}

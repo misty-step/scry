@@ -217,6 +217,9 @@ func serve(args []string) error {
 		if semanticKey == os.Getenv("OPENROUTER_API_KEY") {
 			return errors.New("SCRY_SEMANTIC_API_KEY must differ from OPENROUTER_API_KEY")
 		}
+		if len(semanticKey) < 32 || len(semanticKey) > 4096 || strings.ContainsAny(semanticKey, "\r\n\x00") {
+			return errors.New("SCRY_SEMANTIC_API_KEY must be a bounded non-control secret")
+		}
 		if semanticReservation == 0 {
 			return errors.New("configured semantic assessments require a positive SCRY_SEMANTIC_RESERVATION_MICROS")
 		}

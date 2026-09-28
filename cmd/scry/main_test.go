@@ -14,6 +14,8 @@ func TestServeRejectsSemanticKeyFallbackBeforeOpeningDatabase(t *testing.T) {
 	}{
 		{"missing dedicated key", "", "require SCRY_SEMANTIC_API_KEY"},
 		{"blank semantic key", "  ", "require SCRY_SEMANTIC_API_KEY"},
+		{"short semantic key", "short-key", "bounded non-control"},
+		{"control character in semantic key", strings.Repeat("x", 32)+"\n", "bounded non-control"},
 		{"generation key copied into semantic binding", "generation-key", "must differ from SCRY_MODEL_API_KEY"},
 		{"generic key copied into semantic binding", "mixed-key", "must differ from OPENROUTER_API_KEY"},
 	} {
