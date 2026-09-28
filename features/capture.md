@@ -1,6 +1,6 @@
 # Capture and preparation
 
-Stories: US-004, US-005 (historical explicit modes), US-013 (current Add screen)
+Stories: US-004, US-013
 Source: internal/web/library.go, internal/web/templates/library.html, internal/generation/*.go, internal/semantic/critic*.go, internal/store/critic*.go, cmd/scry/main.go
 
 ## Sub-features
