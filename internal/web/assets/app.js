@@ -18,8 +18,25 @@
   let pressed = null;
   let checkingSession = null;
 
+  function placeRequestState(root = document) {
+    const actions = root?.querySelector('form[data-add] > .actions');
+    if (actions) actions.after(banner);
+    else if (banner.parentElement !== body) body.insertBefore(banner, cover);
+  }
+  function addError(form, text) {
+    if (!form?.isConnected) { announce(text); return; }
+    const slot = form.querySelector('[data-msg]');
+    slot.textContent = text;
+    slot.hidden = false;
+    form.dataset.error = 'text';
+    const field = form.querySelector('[data-text]');
+    field.setAttribute('aria-invalid', 'true');
+    field.focus();
+  }
+
   function announce(text, recover = false, canRetry = false) {
     message.textContent = text;
+    placeRequestState();
     banner.hidden = false;
     recovery.hidden = !recover;
     retryButton.hidden = !canRetry;
@@ -45,13 +62,14 @@
   function freeze() {
     const controls = [];
     for (const element of document.querySelectorAll('#main input, #main textarea, #main select, #main button')) {
-      if (element.type === 'hidden') continue;
+      if (element.type === 'hidden' || banner.contains(element)) continue;
       controls.push([element, element.disabled, element.readOnly]);
       if (element.matches('textarea, input:not([type="checkbox"]):not([type="radio"])')) element.readOnly = true;
       else element.disabled = true;
       element.setAttribute('aria-disabled', 'true');
     }
-    document.getElementById('content')?.setAttribute('aria-busy', 'true');
+    const content = document.getElementById('content');
+    if (content && !content.contains(banner)) content.setAttribute('aria-busy', 'true');
     return controls;
   }
 
@@ -112,7 +130,7 @@
       for (const [name, value] of Object.entries(config.parameters)) values[name] = Array.isArray(value) ? value.slice() : value;
       const multipart = form?.enctype === 'multipart/form-data';
       const payload = multipart ? new FormData(form) : null;
-      pending = { path: config.path, verb: config.verb, values, payload, controls: freeze(), xhr: detail.xhr, unknown: false };
+      pending = { path: config.path, verb: config.verb, values, payload, form, controls: freeze(), xhr: detail.xhr, unknown: false };
       const outgoing = document.querySelector('.review-stage');
       if (outgoing && !form?.hasAttribute('data-next')) {
         outgoing.classList.add('is-outgoing');
@@ -174,10 +192,19 @@
       announce('The input is too large. Nothing was saved. Shorten the text or choose a smaller photo.');
       return;
     }
+    if ([400, 404, 409, 422, 429].includes(xhr.status) && pending?.form?.matches('form[data-add]')) {
+      const said = new DOMParser().parseFromString(xhr.responseText, 'text/html').querySelector('[data-error-message]')?.textContent?.trim();
+      const form = pending.form;
+      event.preventDefault();
+      release();
+      addError(form, said || 'Save status unknown. Your input is still here. Retry this exact request, or check what the server saved.');
+      return;
+    }
     if ([400, 404, 409, 422, 429].includes(xhr.status)) {
       event.detail.shouldSwap = true;
       event.detail.isError = false;
     }
+    if (event.detail.target?.id === 'main') placeRequestState(null);
   });
 
   document.addEventListener('htmx:afterRequest', (event) => {
@@ -201,13 +228,15 @@
       try {
         const response = await fetch(attempt.path, { method: attempt.verb, body: attempt.payload, credentials: 'same-origin', cache: 'no-store' });
         if (response.status >= 500) { unknown(); return; }
-        if (response.ok) {
-          if (new URL(response.url).origin !== location.origin) throw new Error('Unexpected destination');
-          location.assign(response.url);
+        const destination = new URL(response.url);
+        if (response.ok && destination.origin === location.origin && /^\/sources\/[a-f0-9]+$/.test(destination.pathname)) {
+          location.assign(destination.href);
           return;
         }
+        const said = new DOMParser().parseFromString(await response.text(), 'text/html').querySelector('[data-error-message]')?.textContent?.trim();
+        const form = attempt.form;
         release();
-        location.reload();
+        addError(form, said || 'Save status unknown. Your input is still here. Retry this exact request, or check what the server saved.');
       } catch { unknown(); }
       return;
     }
@@ -301,51 +330,107 @@
         }
       });
     }
-    const capture = root.querySelector('[data-capture]');
-    if (capture) {
-      const text = capture.querySelector('#capture-text');
-      const modes = [...capture.querySelectorAll('input[name="mode"]')];
-      let explicit = modes.some((mode) => mode.checked);
-      // Only private modes may be chosen for the learner. Topic and Link send
-      // material to web research, so they are selected by the learner alone.
-      const choose = (value) => { if (!explicit) { modes.find((mode) => mode.value === value).checked = true; describe(); } };
-      const label = capture.querySelector('label[for="capture-text"]');
-      const generic = [label?.textContent, text.placeholder];
-      // The field's wording follows the chosen mode; the choice itself is
-      // never changed here.
-      const describe = () => {
-        const mode = modes.find((m) => m.checked);
-        if (label) label.textContent = mode?.dataset.label || generic[0];
-        text.placeholder = mode?.dataset.placeholder || generic[1];
-      };
-      modes.forEach((mode) => mode.addEventListener('change', () => { explicit = true; describe(); }));
-      describe();
-      text.addEventListener('paste', (event) => {
-        const pasted = event.clipboardData?.getData('text')?.trim() || '';
-        if (pasted && !/^https?:\/\/\S+$/i.test(pasted)) choose('text');
+    const add = root.querySelector('form[data-add]');
+    if (add && !add.dataset.enhanced) {
+      add.dataset.enhanced = 'yes';
+      placeRequestState(root);
+      const text = add.querySelector('[data-text]');
+      const photo = add.querySelector('[data-photo-input]');
+      const pick = add.querySelector('[data-photo-pick]');
+      const chip = add.querySelector('[data-photo-chip]');
+      const remove = add.querySelector('[data-photo-remove]');
+      const status = add.querySelector('[data-status]');
+      const maxText = Number(add.dataset.maxText);
+      const maxCaption = Number(add.dataset.maxCaption);
+      const maxPhoto = Number(add.dataset.maxPhoto);
+      const originalPlaceholder = text.placeholder;
+      const encoder = new TextEncoder();
+      let preview = '';
+      const selected = () => photo.files?.[0];
+      const bytes = () => encoder.encode(text.value.replace(/\r?\n/g, '\r\n')).length;
+      function render() {
+        const count = bytes();
+        const max = selected() ? maxCaption : maxText;
+        const near = count >= max * .9;
+        add.dataset.limit = count > max ? 'over' : near ? 'near' : 'ok';
+        if (count > max) {
+          add.dataset.error = 'text';
+          text.setAttribute('aria-invalid', 'true');
+        } else if (add.querySelector('[data-msg]').hidden) {
+          delete add.dataset.error;
+          text.removeAttribute('aria-invalid');
+        }
+        const used = ((count > max ? Math.ceil : Math.floor)(count / 102.4) / 10).toFixed(1);
+        status.textContent = near ? selected()
+          ? (count > max ? 'Too long to add with a photo' : `${used} of 1 KB with a photo`)
+          : `${used} of 32 KB${count > max ? ', too long' : ''}` : '';
+        status.hidden = !near;
+        text.placeholder = selected() ? 'Optional: what to learn from the photo' : originalPlaceholder;
+      }
+      function clearPhoto() {
+        if (preview) URL.revokeObjectURL(preview);
+        preview = '';
+        photo.value = '';
+        photo.hidden = false;
+        pick.hidden = false;
+        chip.hidden = true;
+        add.querySelector('[data-photo-thumb]').removeAttribute('src');
+        render();
+      }
+      photo.addEventListener('change', () => {
+        const file = selected();
+        if (!file) { clearPhoto(); return; }
+        if (!file.size) {
+          clearPhoto();
+          addError(add, "That file is empty, so it wasn't attached.");
+          return;
+        }
+        if (file.size > maxPhoto) {
+          clearPhoto();
+          addError(add, `That photo is ${(Math.ceil(file.size / 104857.6) / 10).toFixed(1)} MB. Photos can be up to 4 MB, so it wasn't attached.`);
+          return;
+        }
+        if (preview) URL.revokeObjectURL(preview);
+        preview = URL.createObjectURL(file);
+        add.querySelector('[data-photo-thumb]').src = preview;
+        add.querySelector('[data-photo-name]').textContent = file.name;
+        photo.hidden = true;
+        pick.hidden = true;
+        chip.hidden = false;
+        add.querySelector('[data-msg]').hidden = true;
+        text.removeAttribute('aria-invalid');
+        delete add.dataset.error;
+        render();
+        remove.focus({ preventScroll: true });
       });
-      const photo = capture.querySelector('#capture-photo');
-      photo?.addEventListener('change', async () => {
-        if (photo.files.length !== 1) return;
-        if (!explicit) choose('photo');
-        const source = photo.files[0];
-        if (!source.type.startsWith('image/')) return;
-        try {
-          const image = await createImageBitmap(source);
-          const scale = Math.min(1, 1600 / Math.max(image.width, image.height));
-          if (scale === 1 && source.size <= 4 * 1024 * 1024) { image.close(); return; }
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.round(image.width * scale);
-          canvas.height = Math.round(image.height * scale);
-          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-          image.close();
-          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', .82));
-          if (!blob) return;
-          const transfer = new DataTransfer();
-          transfer.items.add(new File([blob], source.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }));
-          photo.files = transfer.files;
-        } catch { /* The original file remains selected for server validation. */ }
+      remove.addEventListener('click', () => { clearPhoto(); photo.focus(); });
+      add.addEventListener('htmx:beforeCleanupElement', () => { if (preview) URL.revokeObjectURL(preview); });
+      text.addEventListener('input', () => {
+        add.querySelector('[data-msg]').hidden = true;
+        text.removeAttribute('aria-invalid');
+        delete add.dataset.error;
+        render();
       });
+      text.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
+          event.preventDefault();
+          add.requestSubmit(add.querySelector('[type="submit"]'));
+        }
+      });
+      add.addEventListener('submit', (event) => {
+        const count = bytes();
+        const max = selected() ? maxCaption : maxText;
+        if (count <= max && (text.value.trim() || selected())) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const used = (Math.ceil(count / 102.4) / 10).toFixed(1);
+        addError(add, count > max ? selected()
+          ? `With a photo, the text can be up to 1 KB; this is ${used} KB. Shorten it, or remove the photo to add the text on its own.`
+          : `That's ${used} KB of text. Add takes up to 32 KB at once, so trim it or add it in parts.`
+          : 'Nothing to add yet. Type or paste something, or attach a photo.');
+        render();
+      }, true);
+      render();
     }
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (Recognition) for (const button of root.querySelectorAll('[data-voice-target]')) {

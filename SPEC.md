@@ -135,14 +135,12 @@ I was right (quiet, automatic miss only)
   until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
-- Add requires explicit Topic / My text / Link / Photo mode. Topic alone may
-  start Exa search; Link fetches its chosen page; Photo transcribes; pasted
-  text goes straight to planning, never web search. Only private modes may be
-  preselected (pasted text, a chosen photo); Topic and Link are never inferred
-  from length or URL shape, and research refuses any other mode before a
-  request leaves. Captures and preparing failures remain inspectable on Source
-  and Map. Share-target prefill via `/add?text=&url=&title=` remains editable
-  and chooses no mode.
+- Add has one field and an optional photo (US-013). Text, including a URL,
+  goes straight to private planning without web research; a selected photo
+  transcribes before planning. The old explicit Topic and Link mode branches
+  remain for retained callers only and cannot be inferred from pasted text.
+  Captures and preparing failures remain inspectable on Source and Map.
+  Share-target prefill via `/add?text=&url=&title=` remains editable.
 - Map shows goal sections and an accessible concept list
   alongside a decorative constellation. Concept pages show status, separate
   unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
@@ -216,6 +214,14 @@ interaction teaches me something without taking away control.
 Proof: actual browser interactions plus deterministic learning/SQLite boundary
 checks for ambiguous answers, semantic policy thresholds, pending/failure
 recovery, assistance cues, and reveal/submit races.
+
+First-screen cutover (US-013, 2026-09-28): `/add` now has one text field
+and an optional photo, with no mode chooser. Text, including a standalone
+URL or shared URL, is saved as private My text and never authorizes web
+research. A selected photo uses the existing photo path and caption limit.
+The mode-based flow below describes retained explicit-mode captures and
+legacy callers; this screen does not claim link reading, topic search, a
+new interpretation step, or a new spending contract.
 
 ### S03 — Add something without configuring it (US-005)
 

@@ -1,10 +1,12 @@
 # Scry
 
-Scry is a private, concept-centered, quiz-first learning app. Add a topic, your
-text, a link, or a photo; Scry prepares a goal with connected concepts, teachable
-notes, and questions. Study one question at a time, revisit notes on the Map,
-and keep answer history honest when a check is uncertain or mistaken. One Go
-process owns SQLite, server-rendered HTML/HTMX, bounded generation, and recovery.
+Scry is a private, concept-centered, quiz-first learning app. The Add screen
+takes private text or an optional photo without a mode chooser; a pasted URL
+stays private text rather than starting web research. Scry prepares a goal
+with connected concepts, notes and questions. Study one question at a time,
+revisit notes on the Map, and keep answer history honest when a check is
+uncertain or mistaken. One Go process owns SQLite, server-rendered HTML/HTMX,
+bounded generation, and recovery.
 
 [Product direction](VISION.md) · [Stories](USER_STORIES.md) ·
 [Feature map](features/README.md) · [Behavior and architecture](SPEC.md) ·

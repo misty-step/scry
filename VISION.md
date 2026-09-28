@@ -3,17 +3,24 @@
 Status: concept-centered v5 direction authorized by the operator on 2026-09-23:
 “Execute this reimagining in full” (MIS-162). This supersedes the rejected
 foundations experience, not its preserved data or the earlier phone-flow proof.
+
+The 2026-09-28 first-screen direction replaces Add's mode chooser with one
+private text field and an optional photo. A pasted URL remains private text;
+link reading and topic search do not occur by inference. US-013 owns this
+bounded first-screen cutover; other reimagining work is not implied.
 [Stories](USER_STORIES.md) own the learner contract; [SPEC](SPEC.md) owns behavior;
-[the runbook](docs/runbook.md) owns deployed state and release approval. This
-source change does **not** authorize production activation or claim that v5 is live.
+[the runbook](docs/runbook.md) owns deployed state and release approval.
+The deployed experience is established only by the runbook's live evidence,
+not by this source change.
 
 ## The product
 
-Scry is a private, quiz-first way to learn what matters to one person. Add a
-topic, your own text, a link, or a photo. Scry makes a goal, maps a few teachable
-concepts, writes notes that can be revisited, and asks questions worth returning
-to. Recall attempts and explicit learner judgments shape future practice; a
-note read or revealed answer never masquerades as independent recall.
+Scry is a private, quiz-first way to learn what matters to one person. Add
+private text or a photo without first classifying it. Scry makes a goal, maps
+a few teachable concepts, writes notes that can be revisited, and asks
+questions worth returning to. Recall attempts and explicit learner judgments
+shape future practice; a note read or revealed answer never masquerades as
+independent recall.
 
 The desired outcome is understanding and later recall, not collection size,
 engagement time, an accuracy badge, or a general learning platform. The operator
@@ -27,11 +34,11 @@ are not evidence of sustained use or learning gains.
 2. Concepts are the navigable unit. A goal is what I want to know; a note teaches
    one idea at a chosen depth; questions test it. Related ideas and prerequisites
    are explicit, but their generated links are claims, not proven mastery.
-3. My input keeps its provenance. Only an explicit Topic choice starts Exa web
-   search; a Link fetches its chosen page, a Photo is transcribed, and pasted
-   text is never sent to search. A source quote must match the source; a web
-   quote must match a saved excerpt and cite it; otherwise label it “General
-   knowledge.”
+3. My input keeps its provenance. Add's text is private and never sent to web
+   search or opened as a link by inference. A photo is transcribed. Retained
+   explicit Topic/Link callers have their old bounded research paths. A source
+   quote must match the source; a web quote must match a saved excerpt and cite
+   it; otherwise label it “General knowledge.”
 4. Grade honestly both ways. The exact key and authored variants resolve locally;
    every other short answer uses one bounded Jev check; explain-level prose retains
    its authored rubric. Close/unsure/failed checks invite self-check, and an
