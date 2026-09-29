@@ -211,11 +211,12 @@ new experience. Exercise the following with synthetic inputs and real browser
 pointer/keyboard actions on an isolated exe.dev VM. Do not run a local browser
 or headless Chromium on the workstation.
 
-1. Capture each visible mode: Topic with configured Exa search, Topic without
-   an Exa key (general-knowledge fallback), My text with **no web request**,
-   Link fetching only the chosen page, and Photo with transcription. Inspect
-   Source input/documents, provenance, failed/retry states, and Map preparing
-   receipts; submit invalid and oversize input without creating a source.
+1. On `/add`, type or paste text (including a standalone URL) without a mode
+   chooser, optionally attach a JPEG/PNG/WebP photo, and save it. Verify a
+   single source and goal, a private text plan rather than inferred web
+   research, the saved photo bytes, and stopped/retry status on Source and Map.
+   Reject invalid or oversize input without creating a source. Historical
+   explicit Topic/Link research is tested separately at the ingestion boundary.
 2. On Stream cover choice/recall, checking, self-check close/unsure/failed
    (including Retry check), result correct/automatic miss/overridden/shown/
    learner, intro, preparing, first-run/caught-up and conflict/error. Verify no
@@ -231,10 +232,10 @@ or headless Chromium on the workstation.
    prerequisite-first order, status words and estimates. Open a Concept page:
    its note, citations,
    related ideas, practice and gated question details.
-5. Open Add via `/add?text=&url=&title=` as a share target; the prefilled fields
-   remain editable and **mode choice remains explicit**. Exercise without JS,
-   with reduced motion, both color schemes, keyboard focus, 320px/390px and
-   desktop. Verify assets actually served match embedded bytes.
+5. Open Add via `/add?text=&url=&title=` as a share target; the prefilled text
+   stays private and editable. Exercise without JS, with reduced motion, both
+   color schemes, keyboard focus, 320px/390px and desktop. Verify served
+   assets match embedded bytes.
 
 These journeys prove changed mechanics only when actually observed. Model
 quality, Exa live retrieval, provider spend, protected origin, physical phone,

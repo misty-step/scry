@@ -16,6 +16,7 @@ function startupFixture({ status = "stopped", running = false, resolveSnapshotKe
   const baseEnvVars = { SCRY_MODE: "production", SCRY_CONTAINER_RESTORE_KEY: "" };
   const starts = [];
   const forwarded = [];
+  const nativeStarts = [];
   let state = { status, lastChange: 1 };
   let containerRunning = running;
   let snapshotLookups = 0;
@@ -29,6 +30,7 @@ function startupFixture({ status = "stopped", running = false, resolveSnapshotKe
       return resolveSnapshotKey ? resolveSnapshotKey(snapshotLookups) : older;
     },
     startAndWaitForPorts: async options => {
+      if (!containerRunning) nativeStarts.push(options);
       starts.push(options);
       containerRunning = true;
       state = { status: "healthy", lastChange: state.lastChange + 1 };
@@ -41,6 +43,7 @@ function startupFixture({ status = "stopped", running = false, resolveSnapshotKe
   return {
     baseEnvVars,
     fetch,
+    nativeStarts,
     forwarded,
     get snapshotLookups() { return snapshotLookups; },
     starts,
@@ -114,6 +117,36 @@ test("parallel cold requests share one snapshot lookup and one container start",
     "https://scry.example/first",
     "https://scry.example/second",
   ]);
+});
+
+test("a running container with stale stopped state rejoins before forwarding", async () => {
+  const fixture = startupFixture({ status: "stopped", running: true });
+
+  const response = await fixture.fetch(new Request("https://scry.example/review"));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.nativeStarts.length, 0, "never start a second writer");
+  assert.equal(fixture.snapshotLookups, 1);
+  assert.equal(fixture.starts[0].startOptions.envVars.SCRY_CONTAINER_RESTORE_KEY, older);
+  assert.deepEqual(fixture.forwarded, ["https://scry.example/review"]);
+});
+
+test("a process lost during stale-state recovery boots from the latest snapshot", async () => {
+  let fixture;
+  fixture = startupFixture({
+    status: "stopped",
+    running: true,
+    resolveSnapshotKey: () => {
+      fixture.stop();
+      return newer;
+    },
+  });
+
+  const response = await fixture.fetch(new Request("https://scry.example/review"));
+
+  assert.equal(response.status, 200);
+  assert.equal(fixture.nativeStarts.length, 1);
+  assert.equal(fixture.nativeStarts[0].startOptions.envVars.SCRY_CONTAINER_RESTORE_KEY, newer);
 });
 
 test("a stopped container refreshes the latest key without retaining the prior startup key", async () => {

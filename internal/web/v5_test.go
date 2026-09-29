@@ -46,13 +46,15 @@ func TestNewMutationsRequireOwnerAndCSRF(t *testing.T) {
 	}
 }
 
-func TestCaptureRequiresModeAndBoundsPhoto(t *testing.T) {
-	_, app := privateApp(t)
+func TestAddWithoutModeKeepsURLPrivateAndBoundsPhotoUS013(t *testing.T) {
+	s, app := privateApp(t)
 	cookie, csrf, op := bootstrapForm(t, app)
 	submit := func(values url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		values.Set("csrf", csrf)
-		values.Set("operation_id", op)
+		if values.Get("operation_id") == "" {
+			values.Set("operation_id", op)
+		}
 		r := ownerRequest("POST", "/add", values)
 		r.AddCookie(cookie)
 		r.Header.Set("Origin", "https://scry.example")
@@ -61,16 +63,16 @@ func TestCaptureRequiresModeAndBoundsPhoto(t *testing.T) {
 		app.ServeHTTP(w, r)
 		return w
 	}
-	for _, values := range []url.Values{{"text": {"some topic"}}, {"text": {"some topic"}, "mode": {"incorrect"}}, {"mode": {"photo"}}} {
+	for _, values := range []url.Values{{"text": {"some topic"}, "mode": {"incorrect"}}, {"mode": {"photo"}}} {
 		if w := submit(values); w.Code != 422 {
-			t.Errorf("capture accepted missing/invalid mode or photo: %d %s", w.Code, w.Body.String())
+			t.Errorf("capture accepted invalid mode or missing photo: %d %s", w.Code, w.Body.String())
 		}
 	}
 	upload := func(payload []byte) *httptest.ResponseRecorder {
 		t.Helper()
 		var body bytes.Buffer
 		form := multipart.NewWriter(&body)
-		for key, value := range map[string]string{"csrf": csrf, "operation_id": op, "mode": "photo"} {
+		for key, value := range map[string]string{"csrf": csrf, "operation_id": op} {
 			if err := form.WriteField(key, value); err != nil {
 				t.Fatal(err)
 			}
@@ -128,6 +130,24 @@ func TestCaptureRequiresModeAndBoundsPhoto(t *testing.T) {
 	app.ServeHTTP(unauthorized, r)
 	if unauthorized.Code != 403 || bytes.Contains(unauthorized.Body.Bytes(), photo) {
 		t.Fatal("photo escaped private boundary")
+	}
+	// A standalone URL pasted into the one-field screen remains private text,
+	// not the legacy explicit Link/Topic research operation.
+	input := url.Values{"text": {"https://example.org/article"}, "operation_id": {randomToken()}}
+	first := submit(input)
+	if first.Code != http.StatusOK {
+		t.Fatalf("private URL capture: %d %s", first.Code, first.Body.String())
+	}
+	var saved struct{ ID string }
+	if err := json.Unmarshal(first.Body.Bytes(), &saved); err != nil || saved.ID == "" {
+		t.Fatalf("private URL receipt: %v %s", err, first.Body.String())
+	}
+	src, err := s.Source(context.Background(), saved.ID)
+	if err != nil || src.Mode != "text" || src.Job == nil || src.Job.Kind != "plan" {
+		t.Fatalf("URL gained research authority: %+v %v", src, err)
+	}
+	if again := submit(input); again.Code != http.StatusOK || !bytes.Contains(again.Body.Bytes(), []byte(saved.ID)) {
+		t.Fatalf("exact operation did not return the saved capture: %d %s", again.Code, again.Body.String())
 	}
 }
 
@@ -299,9 +319,8 @@ func TestAutomaticMissCanBeCorrectedInPlace(t *testing.T) {
 	}
 }
 
-// US-005: shared material is prefilled, but no mode is chosen for the
-// learner; Topic and Link send material to web research only by explicit choice.
-func TestShareTargetNeverChoosesCaptureModeUS005(t *testing.T) {
+// US-013: a shared URL fills the private Add field rather than starting research.
+func TestShareTargetPrefillsAddUS013(t *testing.T) {
 	_, app := privateApp(t)
 	for _, tc := range []struct{ query, text string }{
 		{"text=shared+excerpt&url=https%3A%2F%2Fexample.org%2Farticle&title=Shared+title", "https://example.org/article"},
@@ -313,16 +332,8 @@ func TestShareTargetNeverChoosesCaptureModeUS005(t *testing.T) {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
 		body := w.Body.String()
-		if w.Code != 200 || strings.Contains(body, "checked") || !strings.Contains(body, ">"+html.EscapeString(tc.text)+"</textarea>") {
-			t.Fatalf("share %q: status %d, prefill or mode wrong: %s", tc.query, w.Code, body)
-		}
-		r = ownerRequest("GET", "/add?"+tc.query, nil)
-		r.Header.Set("Accept", "application/json")
-		w = httptest.NewRecorder()
-		app.ServeHTTP(w, r)
-		var prefill struct{ Text, Mode string }
-		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &prefill) != nil || prefill.Text != tc.text || prefill.Mode != "" {
-			t.Fatalf("share %q JSON prefill: %d %s", tc.query, w.Code, w.Body.String())
+		if w.Code != 200 || !strings.Contains(body, ">"+html.EscapeString(tc.text)+"</textarea>") {
+			t.Fatalf("share %q did not prefill Add: %d %s", tc.query, w.Code, body)
 		}
 	}
 }

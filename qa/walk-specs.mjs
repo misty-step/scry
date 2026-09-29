@@ -45,10 +45,14 @@ export const specs = {
     store('^TestCriticPublicationRevalidatesAndRecordsRejections$|^TestCriticSavedUsageCannotBeOverwrittenByCompletionOrFailure$'),
   ],
   'US-005': [
-    async c => { await c.page.goto(c.url('/add')); assert.equal(await c.page.locator('input[name=mode]').count(), 4); await c.page.locator('input[name=mode][value=text]').check(); await c.type('form.capture-form textarea[name=text]', 'Synthetic private note about DNS records'); await c.page.getByRole('button', {name: 'Add to Scry'}).click(); await c.page.locator('.source-stage').waitFor(); await text(c.page.locator('.source-stage'), /Synthetic private note/); await web('^TestShareTargetNeverChoosesCaptureModeUS005$')(c); },
-    async c => { await gen('^TestResearchWithoutKeyDistinguishesTopicAndUnreadableLink$')(c); await store('^TestCaptureModesUS005$')(c); },
-    async c => { await web('^TestCaptureRequiresModeAndBoundsPhoto$')(c); await gen('^TestV5TranscriptionPreservesSourceAndRejectsInventedFields$')(c); },
+    store('^TestCaptureModesUS005$'),
+    gen('^TestResearchWithoutKeyDistinguishesTopicAndUnreadableLink$'),
+    gen('^TestV5TranscriptionPreservesSourceAndRejectsInventedFields$'),
     async c => { await map(c); await store('^TestStoppedCaptureStaysReachableOnMap$')(c); },
+  ],
+  'US-013': [
+    async c => { await c.page.goto(c.url('/add')); assert.equal(await c.page.locator('input[name=mode]').count(), 0); await c.type('form.add textarea[name=text]', 'Synthetic private note about DNS records'); await c.page.getByRole('button', {name: 'Add', exact: true}).click(); await c.page.locator('.source-stage').waitFor(); await text(c.page.locator('.source-stage'), /Synthetic private note/); await web('^TestShareTargetPrefillsAddUS013$')(c); },
+    web('^TestAddWithoutModeKeepsURLPrivateAndBoundsPhotoUS013$'),
   ],
   'US-006': [
     store('^TestConceptChainAndIntroUS006$'),

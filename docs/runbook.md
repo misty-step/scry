@@ -41,11 +41,73 @@ the live learner store. `scry-dev.exe.xyz` remains an isolated recovery instance
 | DNS | Cloudflare authoritative for `scry.study`; three Worker custom domains, Cloudflare TLS and Access |
 | Old runtime | Production and staging Rust Workers paused, cron triggers removed; native Postgres service disabled, recovery backups retained |
 
+### September 24 phone sign-in lifetime
+
+The production Cloudflare Access application `Scry production owner` on
+`scry.study` and its sole `Allow Scry production owner` policy both had a
+one-hour session duration. On September 24, the operator chose 30 days; both
+were changed to `720h` through the Access API and read back. The policy still
+allows only the same owner email, the application still selects only the existing
+One-time PIN identity provider, its three domains and audience are unchanged,
+and the Worker still requires the exact owner subject. The account-wide
+Cloudflare Access session remains 24 hours; an unexpired application cookie
+allows access for its own lifetime without relying on that shared token.
+
+On a Safari home-screen installation, request the code and **type the PIN into
+that installation's Access page**. Opening the email's login link in Chrome
+does not transfer Chrome's cookies to the Safari home-screen app. Existing
+one-hour tokens are not lengthened in place: sign in once inside the installed
+app to obtain a new token. The app's separate signed form/CSRF cookie remains
+12 hours and is renewed on an authorized read; an old open form may need a
+reload before posting, but that should not require a new Access email.
+The policy and anonymous redirect were checked live; a new owner token and
+physical-phone persistence have not been verified without the owner's phone.
+
+### September 24–25 owner-login 1101 incident
+
+After the owner entered a PIN inside the phone PWA, the page returned 1101.
+Workers Logs for `scry-app-host` show `[scry-container] error: Error: Network
+connection lost.` at 23:44:47 UTC and repeated `container lifecycle is stopped;
+refusing a competing start` on fetches at 23:52–23:53 UTC. This is after the
+Worker's Access JWT and exact-subject check, not a PIN or session-duration
+rejection. The platform still reported the singleton as running while the
+Container SDK's stored lifecycle state said `stopped`; `wrangler containers
+info` reported one active but zero healthy instances, and SSH returned HTTP
+400. Rolling Access back to one hour would not address this exception, so
+the 30-day owner-only policy was left intact.
+
+The 00:00 UTC scheduled backup executed in the existing instance and reported
+`backed_up`: `scry-20260925T000041.039650444Z-e2e1671859ebaebae8a3df1d0bb36302.scry-backup.zip`,
+648,930 bytes, SHA-256
+`ff39cca4b04c907e4d51429fd0627b75f156aec70c3add4048cf11f53e119890`.
+An independent R2 GET matched that digest. The exact production binary
+restored the archive into an unused private scratch path; `scry check` returned
+`compatible=true`, `integrity=ok`, and revision `f9667eb`. The scratch was
+removed. The Worker lifecycle now joins the already-running process when the
+SDK says `stopped`; it passes the newest snapshot key in case the process exits
+before readiness, rather than risking an empty-key restart. The regression
+failed before and passed after the fix; all 54 Cloudflare-hosting tests
+passed. Worker-only deployment
+`75f06840-55f8-4326-a1e2-509f496d433b` used
+`--containers-rollout=none`: singleton instance
+`7ecab3eee8035c56aeaba32584ba11eec1b85280f572a6daa85e51849d23f575`
+remained on image version 7. Anonymous ingress still redirects to Access.
+Workers Logs recorded a Durable Object code reset at 00:05:49 UTC; subsequent
+instance readback still showed the same ID, 19:20:49 creation time, running
+state, and image version 7. Committed source `ca5e991` rebuilt a production
+Worker module with SHA-256
+`68ed7522205a256bc2610827f8d6c5f6435210ecbc5a15f76b8c10fe5be28fdc`,
+byte-for-byte equal to the deployed module fetched via Cloudflare content/v2.
+Owner-authenticated phone entry after this deployment remains to be observed:
+the workstation exposes no attached iPhone or phone-mirror window. Phaedrus
+must retry inside the PWA and report the page or error; neither a successful
+backup nor an anonymous redirect proves login.
+
 ### September 24 single grading rule release (current)
 
-The Worker serves `eaba737e-2b70-4b40-bbfd-b7199ce5fc89`: the 24-hour
-configuration plus a rotated probe token. The container application is at
-version 7 with image
+The Worker serves `75f06840-55f8-4326-a1e2-509f496d433b` with the
+stale-lifecycle recovery fix, the 24-hour idle configuration, and the rotated
+probe token. The container application remains at version 7 with image
 `sha256:ac4bba4d2ba0d7c6d010c5d1c4993ab4fe6d03fec3524c647eb2a6871d6d2168`. It
 carries committed-gate binary `scry f9667eb`
 ([PR 190](https://github.com/misty-step/scry/pull/190)), SHA-256

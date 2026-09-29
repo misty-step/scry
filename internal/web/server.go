@@ -289,7 +289,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 			// Embedded public code only: no directory listing or private content.
 			name := strings.TrimPrefix(r.URL.Path, "/assets/")
 			switch name {
-			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "fonts/Literata.woff2", "fonts/Literata-Italic.woff2", "fonts/AtkinsonHyperlegibleNext.woff2", "fonts/OFL.txt":
+			case "app.css", "app.js", "htmx-2.0.10.min.js", "htmx-LICENSE", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "fonts/Literata.woff2", "fonts/Literata-Italic.woff2", "fonts/AtkinsonHyperlegibleNext.woff2", "fonts/JetBrainsMono-Scry.woff2", "fonts/OFL.txt":
 				static.ServeHTTP(w, r)
 			default:
 				http.NotFound(w, r)

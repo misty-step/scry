@@ -460,3 +460,142 @@ body.private-hidden #main,body.private-hidden .request-state{visibility:hidden}
   .masthead,.footer,.request-state,.session-cover,form,.skip-link,.overflow{display:none!important}
   .content{max-width:none;padding:0}
 }
+
+/* Active first-screen brand, scoped to Add; other views keep Ink. */
+@font-face{font-family:"JetBrains Mono";src:url('/assets/fonts/JetBrainsMono-Scry.woff2') format('woff2');font-weight:100 800;font-style:normal;font-display:swap;unicode-range:U+0000-00FF,U+0100-017F,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2070-2079,U+207A-207E,U+2080-208E,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+2219,U+221A,U+221E,U+2248,U+2260,U+2264,U+2265,U+FEFF,U+FFFD}
+:root{
+  --brand-font:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --brand-size-input:1rem;--brand-leading-input:1.45;--brand-size-body:1rem;--brand-leading-body:1.45;
+  --brand-size-meta:.875rem;--brand-leading-meta:1.4;--brand-size-title:1.25rem;--brand-leading-title:1.25;
+  --brand-size-wordmark:1.125rem;--brand-leading-wordmark:1.3333;
+  --brand-weight-regular:400;--brand-weight-medium:500;--brand-weight-bold:700;--brand-weight-wordmark:800;
+  --brand-radius:0px;--brand-border-width:1px;--brand-border-width-active:2px;--brand-focus-width:2px;--brand-focus-offset:2px;
+  --brand-icon-size:1.25rem;--brand-icon-stroke:2px;--brand-icon-linecap:square;--brand-icon-linejoin:miter;
+  --brand-ease:cubic-bezier(0.23,1,0.32,1);--brand-duration:160ms;
+  --brand-background:#f5f8f8;--brand-field:#ebeeee;--brand-field-hover:#e3e6e6;--brand-pressed:#d0d4d5;
+  --brand-foreground:#0e191c;--brand-muted:#536266;--brand-rule:#d9ddde;--brand-border:#7d8486;
+  --brand-accent:#007d8a;--brand-on-accent:#ffffff;--brand-focus:#007d8a;--brand-caret:#007d8a;
+  --brand-selection:#c4dfe2;--brand-danger:#b1223a;
+}
+@media (prefers-color-scheme:dark){:root{
+  --brand-background:#10181a;--brand-field:#1a2224;--brand-field-hover:#222b2d;--brand-pressed:#333b3d;
+  --brand-foreground:#dbe6e8;--brand-muted:#8fa0a5;--brand-rule:#2a3335;--brand-border:#697375;
+  --brand-accent:#56c8d2;--brand-on-accent:#05262a;--brand-focus:#56c8d2;--brand-caret:#56c8d2;
+  --brand-selection:#254d51;--brand-danger:#ff8595;
+}}
+
+/* Scope and base */
+.brand-active{
+  --gutter:12px;--label-h:20px;--line-h:calc(var(--brand-size-input) * var(--brand-leading-input));
+  background:var(--brand-background);color:var(--brand-foreground);
+  font-family:var(--brand-font);font-size:var(--brand-size-body);line-height:var(--brand-leading-body);font-weight:var(--brand-weight-regular);
+  font-variant-ligatures:none;
+}
+.brand-active ::selection{background:var(--brand-selection);color:var(--brand-foreground)}
+.brand-active :is(h1,h2,h3){font-family:inherit;font-size:var(--brand-size-meta);font-weight:var(--brand-weight-bold);line-height:var(--brand-leading-meta);letter-spacing:0}
+.brand-active a,.brand-active a:hover{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px}
+.brand-active :focus-visible{outline:var(--brand-focus-width) solid var(--brand-focus);outline-offset:var(--brand-focus-offset);border-radius:0}
+.brand-active .meta{color:var(--brand-muted);font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta)}
+
+/* Frame: masthead (Add, Map), content column, Records footer */
+.brand-active .masthead{--edge:max(0px,(100% - 40rem) / 2);max-width:none;height:auto;min-height:44px;margin:0;gap:0;padding:env(safe-area-inset-top) calc(var(--edge) + 2px) 0 calc(var(--edge) + var(--gutter));border-bottom:var(--brand-border-width) solid var(--brand-rule)}
+.brand-active .wordmark{gap:0;min-width:44px;min-height:44px;color:var(--brand-foreground);font:var(--brand-weight-wordmark) var(--brand-size-wordmark)/var(--brand-leading-wordmark) var(--brand-font);letter-spacing:0}
+.brand-active .wordmark .icon,.brand-active .masthead-actions .icon{display:none}
+.brand-active .masthead-actions{gap:0}
+.brand-active .masthead-actions a{justify-content:center;gap:0;min-width:44px;min-height:44px;padding:0 10px;border-radius:0;background:none;color:var(--brand-muted);font-size:var(--brand-size-body);font-weight:var(--brand-weight-medium);text-decoration:none}
+.brand-active .masthead-actions a:hover{background:none;color:var(--brand-muted)}
+@media (hover:hover){.brand-active .masthead-actions a:hover{color:var(--brand-foreground)}}
+.brand-active .masthead-actions a[aria-current=page]{background:none;color:var(--brand-foreground);text-decoration:underline;text-decoration-thickness:var(--brand-border-width-active);text-underline-offset:7px}
+.brand-active .content{max-width:40rem;padding:22px var(--gutter) 0}
+.brand-active .footer{max-width:40rem;padding:24px var(--gutter) calc(8px + env(safe-area-inset-bottom));border-top:0}
+.brand-active .footer nav{gap:0;border-top:var(--brand-border-width) solid var(--brand-rule)}
+.brand-active .footer a{min-width:44px;min-height:44px;margin-inline-start:0;padding:0 10px;color:var(--brand-muted);font-size:var(--brand-size-meta);font-weight:var(--brand-weight-medium)}
+.brand-active .footer a:first-child{margin-inline-start:-10px}
+.brand-active .footer a:hover{color:var(--brand-muted)}
+@media (hover:hover){.brand-active .footer a:hover{color:var(--brand-foreground)}}
+.brand-active .footer a[aria-current=page]{color:var(--brand-foreground)}
+.brand-active .notice{display:block;margin:0 0 18px;padding:10px 12px;border:var(--brand-border-width) solid var(--brand-border);border-radius:0;background:none;color:var(--brand-foreground);font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta)}
+.brand-active .notice-error{border-color:var(--brand-danger)}
+.brand-active .notice>.icon{display:none}
+.brand-active .notice-title{font-weight:var(--brand-weight-bold)}
+.brand-active .notice a{display:inline-flex;align-items:center;min-height:44px}
+
+/* Controls: square, 1 px at rest; the primary action is a 2 px ink frame, never a fill */
+.brand-active :is(button,.button){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 14px;border:var(--brand-border-width) solid var(--brand-border);border-radius:var(--brand-radius);background:transparent;color:var(--brand-foreground);font-family:inherit;font-size:var(--brand-size-body);line-height:1;font-weight:var(--brand-weight-medium);white-space:nowrap;text-align:center;text-decoration:none;cursor:pointer;filter:none;-webkit-tap-highlight-color:transparent;transition:background-color var(--brand-duration) var(--brand-ease),border-color var(--brand-duration) var(--brand-ease)}
+.brand-active :is(button,.button).primary{border:var(--brand-border-width-active) solid var(--brand-foreground);background:transparent;color:var(--brand-foreground);font-weight:var(--brand-weight-bold)}
+@media (hover:hover){.brand-active :is(button,.button):hover{border-color:var(--brand-border);background:var(--brand-field-hover);filter:none}.brand-active :is(button,.button).primary:hover{border-color:var(--brand-foreground)}}
+.brand-active :is(button,.button):active{background:var(--brand-pressed)}
+.brand-active button.is-pressed{transform:none}
+.brand-active .actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px}
+.brand-active .actions>:first-child:not(:last-child){margin-right:auto}
+.brand-active .actions form{display:flex}
+.brand-active .msg{margin-top:18px;color:var(--brand-danger);font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta)}
+.brand-active .msg:not([hidden])+.actions{margin-top:10px}
+.brand-active .actions+.msg{margin-top:10px}
+
+/* Field: a pane with its label on the top border and a consequence on the
+   bottom border, so neither costs a row. Focus is the active window: 2 px
+   accent (1 px border + 1 px inset), and the text never moves. */
+.brand-active .field{position:relative;border:var(--brand-border-width) solid var(--brand-border);background:var(--brand-field);transition:border-color var(--brand-duration) var(--brand-ease),box-shadow var(--brand-duration) var(--brand-ease)}
+.brand-active .field:focus-within{border-color:var(--brand-focus);box-shadow:inset 0 0 0 1px var(--brand-focus)}
+.brand-active form[data-error=text] .field{border-color:var(--brand-danger);box-shadow:inset 0 0 0 1px var(--brand-danger)}
+.brand-active :is(.field-label,.field-status){position:absolute;z-index:1;display:block;max-width:calc(100% - 16px);margin:0;padding:0 6px;font-size:var(--brand-size-meta);line-height:var(--label-h);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-active .field-label{top:calc(var(--label-h) / -2 - 1px);left:8px;color:var(--brand-foreground);font-weight:var(--brand-weight-bold);background:linear-gradient(var(--brand-background) calc(var(--label-h) / 2),var(--brand-field) calc(var(--label-h) / 2))}
+.brand-active .field-label label{cursor:text}
+.brand-active .field-status{right:8px;bottom:calc(var(--label-h) / -2 - 1px);color:var(--brand-foreground);background:linear-gradient(var(--brand-field) calc(var(--label-h) / 2 - 1px),var(--brand-background) calc(var(--label-h) / 2 - 1px))}
+.brand-active form[data-limit=over] .field-status{color:var(--brand-danger)}
+.brand-active .field textarea{display:block;width:100%;min-width:0;min-height:0;margin:12px 0 10px;padding:4px var(--gutter);border:0;border-radius:var(--brand-radius);background:transparent;box-shadow:none;color:var(--brand-foreground);caret-color:var(--brand-caret);font-family:inherit;font-size:var(--brand-size-input);line-height:var(--line-h);font-weight:var(--brand-weight-regular);font-variant-ligatures:none}
+.brand-active .field textarea{min-height:calc(3 * var(--line-h) + 8px);resize:none;overflow-wrap:anywhere;scrollbar-width:thin;scrollbar-color:var(--brand-border) transparent}
+.brand-active .add .field textarea{min-height:calc(5 * var(--line-h) + 8px)}
+.brand-active .field textarea::placeholder{color:var(--brand-muted);opacity:1}
+.brand-active .field textarea:focus,.brand-active .field textarea:focus-visible{outline:none;border-color:transparent;box-shadow:none}
+
+/* Add: one field, one optional photo, one action */
+.brand-active .add{margin:0}
+.brand-active .add .actions{justify-content:space-between}
+.brand-active .add-button{min-width:104px}
+.brand-active .photo-input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip-path:inset(50%)}
+.brand-active .photo-input:focus-visible+.photo-pick{outline:var(--brand-focus-width) solid var(--brand-focus);outline-offset:var(--brand-focus-offset)}
+.brand-active .photo-chip{display:flex;flex:1;align-items:center;gap:8px;min-width:0;max-width:24rem;min-height:44px;padding-left:5px;border:var(--brand-border-width) solid var(--brand-border)}
+.brand-active .photo-thumb{flex:none;width:32px;height:32px;object-fit:cover;background:var(--brand-field)}
+.brand-active .photo-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta)}
+.brand-active .photo-remove{flex:none;width:44px;height:44px;min-height:0;margin:-1px -1px -1px 0;padding:0;border:0;border-left:var(--brand-border-width) solid var(--brand-rule);background:transparent}
+.brand-active .photo-remove:focus-visible{outline-offset:calc(var(--brand-focus-width) * -1)}
+
+/* Disclosures: the only home of detail */
+.brand-active .how{margin-top:6px;font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta)}
+.brand-active :is(.how,.disclosure)>summary{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:0;padding-right:8px;list-style:none;cursor:pointer;color:var(--brand-muted);font-size:var(--brand-size-meta);font-weight:var(--brand-weight-medium)}
+.brand-active :is(.how,.disclosure)>summary::-webkit-details-marker{display:none}
+.brand-active :is(.how,.disclosure)>summary::before{content:"+";content:"+" / "";display:inline-block;width:1ch}
+.brand-active :is(.how,.disclosure)>summary::after{content:none}
+.brand-active :is(.how,.disclosure)[open]>summary{color:var(--brand-foreground)}
+.brand-active :is(.how,.disclosure)[open]>summary::before{content:"\2212";content:"\2212" / ""}
+@media (hover:hover){.brand-active :is(.how,.disclosure)>summary:hover{color:var(--brand-foreground)}}
+.brand-active .how-body{margin:0 0 12px}
+.brand-active ul.how-body{max-width:62ch;padding:0 0 0 18px}
+.brand-active ul.how-body li{margin-bottom:8px}
+.brand-active .pointer-only{display:none}
+@media (hover:hover) and (pointer:fine){.brand-active .pointer-only{display:list-item}}
+
+/* Request state and the private cover, while an Active view is showing */
+body:has(#main.brand-active) .request-state{border:var(--brand-border-width-active) solid var(--brand-foreground);border-radius:0;box-shadow:none;background:var(--brand-background);color:var(--brand-foreground);font-family:var(--brand-font);font-size:var(--brand-size-meta);line-height:var(--brand-leading-meta);font-weight:var(--brand-weight-medium)}
+body:has(#main.brand-active) :is(.request-state,.session-cover) a{display:inline-flex;align-items:center;min-height:44px;color:var(--brand-foreground)}
+body:has(#main.brand-active) :is(.request-state,.session-cover) .small-button{min-height:44px;padding:0 14px;border:var(--brand-border-width) solid var(--brand-border);border-radius:0;background:transparent;color:var(--brand-foreground);font-family:inherit;font-size:var(--brand-size-body);font-weight:var(--brand-weight-medium)}
+body:has(#main.brand-active) .session-cover{background:var(--brand-background);color:var(--brand-foreground);font-family:var(--brand-font);font-size:var(--brand-size-body)}
+body:has(#main.brand-active) .session-cover>.lens{display:none}
+/* Add has no fixed bars: its request state is the request line, in the
+   form's flow under Photo and Add, so it never covers the text, Add or the
+   masthead, and the field is fitted around it with the keyboard up. */
+#main.brand-active .add>.request-state{position:static;z-index:auto;max-width:none;margin:10px 0 0;padding:0;border:0;background:none}
+
+/* Motion answers input only (border colour, 160 ms); no page transitions */
+.brand-active.is-outgoing{animation:none}
+@media (prefers-reduced-motion:reduce){.brand-active *,.brand-active *::before,.brand-active *::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+@media (forced-colors:active){
+  .brand-active .field:focus-within{outline:2px solid Highlight}
+  .brand-active :is(.field-label,.field-status){background:Canvas}
+}
+@media (min-width:60rem){
+  .brand-active .content{padding-top:12vh}
+  .brand-active .add .field textarea{min-height:calc(8 * var(--line-h) + 8px)}
+}

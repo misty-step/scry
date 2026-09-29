@@ -35,9 +35,17 @@ func (s *server) add(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) capture(w http.ResponseWriter, r *http.Request) {
 	text, mode, op := r.PostForm.Get("text"), r.PostForm.Get("mode"), r.PostForm.Get("operation_id")
+	// No chooser means omitted mode is private text. A selected photo alone
+	// opts into the existing photo path; pasting a URL never starts web research.
+	if mode == "" {
+		mode = "text"
+		if r.MultipartForm != nil && len(r.MultipartForm.File["photo"]) > 0 {
+			mode = "photo"
+		}
+	}
 	p := page{View: "add", Title: "Add", Active: "add", Text: text, CaptureMode: mode, Operation: op}
 	if op == "" || len(op) > 128 || !utf8.ValidString(text) || len(text) > store.MaxSourceBytes || (mode != "topic" && mode != "text" && mode != "link" && mode != "photo") || (mode != "photo" && strings.TrimSpace(text) == "") {
-		s.fail(w, r, fmt.Errorf("%w: choose a kind and add up to 32 KiB of text, a link, or a photo", store.ErrInvalid), p)
+		s.fail(w, r, fmt.Errorf("%w: add up to 32 KiB of text or a photo", store.ErrInvalid), p)
 		return
 	}
 	in := store.CaptureInput{Text: text, Mode: mode}

@@ -104,6 +104,9 @@ Evidence: `internal/learning/critic_test.go`,
 
 ## US-005 Capture a goal in one step
 
+Superseded by US-013 for the live Add screen on 2026-09-28. The explicit
+mode-based ingestion contract below remains for retained captures and callers.
+
 Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
 
 Criteria:
@@ -207,3 +210,23 @@ Evidence: `internal/learning/selection_test.go`, `internal/store/v5_test.go`,
 Retired on 2026-09-23 by the operator's simplification decision (MIS-162): Scry
 no longer generates contrast questions from recorded confusions. The id stays
 reserved.
+
+## US-013 Add private material in one place
+
+Statement: When I have words or a photo to study, I want to add them without
+classifying them first, so preparation can start in one step.
+
+Criteria:
+1. WHEN I submit text or one supported photo from Add, THE SYSTEM SHALL save
+   one source and goal without a mode chooser, enforce the existing 32 KiB
+   text, 4 MiB photo and 1 KiB caption limits, and return the saved source for
+   an identical operation.
+2. WHEN I paste or share text containing a URL, THE SYSTEM SHALL keep it
+   private text and SHALL NOT start web research by inference; invalid input
+   SHALL leave a usable Add field without creating a source.
+
+No-gos: inferred public search, a new interpretation pipeline, or release
+automation in this first-screen change.
+
+Evidence: `internal/web/v5_test.go`, `qa/walk --stories US-013`, and the
+real Add-to-receipt browser walk.
