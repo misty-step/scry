@@ -135,7 +135,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: scry-linux-amd64-${{ github.sha }}
           path: target/ci-release
@@ -146,13 +146,13 @@ jobs:
           chmod 0755 deploy/cloudflare-hosting/scry
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Deploy to Cloudflare
         working-directory: deploy/cloudflare-hosting
