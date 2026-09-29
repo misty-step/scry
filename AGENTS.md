@@ -110,3 +110,7 @@ Work from the current request, preserve overlapping work, and keep ownership
 and evidence in the session/PR. Linear owns operational state, not a duplicate
 product specification. Close a named issue only after its accepted scope and
 required proof are satisfied. Do not lower gates or claim unrun canaries.
+
+## Merging
+
+`master` requires `ci`, `foundation`, `story-walk` and `foundation-review`, up to date, with linear history. `foundation-review` wants the `kaylee-agent[bot]` App's `agent-review` approval on the PR head (`agent-review --repo misty-step/scry --pr N`, under `pass-env`); push again and it is stale, so review again. Merge with `gh pr merge --squash --match-head-commit <sha>` once every check is green. Never use `--admin`: a block means a check is red or missing, the head moved, or the branch is behind `master`.
