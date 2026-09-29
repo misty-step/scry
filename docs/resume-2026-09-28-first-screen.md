@@ -41,7 +41,7 @@ Follow the Ink notebook / JetBrains Mono typography and layout system establishe
    - Past reviews timeline.
    - Backup status and daily generation budget usage.
 
-## 5. Exact Next Step
-1. Confirm the first green-master `deploy` run succeeded (`gh run list -R misty-step/scry --branch master`) and that `https://scry.study/add` still redirects to Access. If it failed, read the failed step: a 401/403 means adjust the deploy token (Section 3), never widen it to the master token.
-2. Old deploy token `scry-github-deploy-20260928` (`d99708f4127a5683bf5eb184cbc17116`) stays active until that first green deploy, then revoke it: `DELETE /client/v4/accounts/b069014f6a46558ea9146fb6c4ff8f6c/tokens/d99708f4127a5683bf5eb184cbc17116` with the master token.
-3. Then start the next redesigned screen (Stream) with the Opus 5.5 max designer, per Section 4.
+## 5. Status and Exact Next Step
+- Done 2026-09-28: PR #209 (Add screen) and PR #210 (deploy job) merged. Master run 36502757181 passed `ci`, `foundation`, `story-walk`, then `deploy` with the scoped token; Worker version `15492eef-d833-43de-92fc-e42ddf7cfe28`, container application version 8, image digest `sha256:6b10c8e8dee0c47d4dd664ee5937dcb6995d660ad10d6933f3e2c8e26b91ce26`. The three custom domains deployed without DNS Write. Old token `scry-github-deploy-20260928` was revoked after that run.
+- Not yet walked: `https://scry.study/add` behind Access on a real phone with the keyboard open, on the CI-built binary. The container was inactive after the rollout and restores from R2 on the next owner visit; check that first visit and the R2 snapshot.
+- Next: start the Stream screen with the Opus 5.5 max designer, per Section 4. If a later deploy fails with 401/403, adjust the deploy token per Section 3; never put the master token in CI.
