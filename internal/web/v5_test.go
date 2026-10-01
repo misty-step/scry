@@ -621,7 +621,7 @@ func TestStoppedPreparationShowsCostAndAWayForward(t *testing.T) {
 		if err != nil || job == nil || job.Kind != "plan" {
 			t.Fatalf("claim plan: %+v %v", job, err)
 		}
-		if err = s.FailJob(ctx, job.ID, job.LeaseToken, "Synthetic preparation service unavailable; nothing was published.", false, &cost); err != nil {
+		if err = s.FailJob(ctx, job.ID, job.LeaseToken, "Synthetic preparation service unavailable (strengthened_source_claim); nothing was published.", false, &cost); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -637,6 +637,9 @@ func TestStoppedPreparationShowsCostAndAWayForward(t *testing.T) {
 	}
 	requirePresent(t, disclosures.ReplaceAllString(w.Body.String(), ""), "stopped step outside Details",
 		"Synthetic preparation service unavailable", "$0.005", retryForm, editLink)
+	if strings.Contains(disclosures.ReplaceAllString(w.Body.String(), ""), "strengthened_source_claim") || !strings.Contains(w.Body.String(), "strengthened_source_claim") {
+		t.Fatalf("a recorded check identifier escaped Details or its diagnostic was lost: %s", w.Body.String())
+	}
 	for i := range 2 {
 		if w := send(http.MethodPost, "/sources/"+src.ID+"/retry", url.Values{"csrf": {csrf}, "operation_id": {randomToken()}}, false); w.Code != http.StatusSeeOther {
 			t.Fatalf("retry %d: %d %s", i+1, w.Code, w.Body.String())
