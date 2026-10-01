@@ -82,8 +82,8 @@ func validateV5Output(job *store.Job, input store.JobContext, content string) (s
 				reason = validateV5Note(c.Note, job, input)
 			}
 			if reason == nil && exact {
-				if c.Note == nil {
-					reason = errors.New("exact task requires a concept note")
+				if c.Note == nil || c.Note.Basis != "source" {
+					reason = errors.New("exact task requires a source-grounded concept note")
 				} else {
 					for _, unit := range task.Units {
 						if !strings.Contains(c.Note.Body, unit.Text) {
@@ -282,7 +282,8 @@ func v5EvidenceText(basis string, job *store.Job, input store.JobContext) string
 }
 
 func validateV5Basis(basis string, evidence []string, citations []store.Citation, job *store.Job, input store.JobContext) error {
-	if basis == "topic" && job.SourceKind != "topic" || basis == "web" && job.SourceKind != "topic" || basis == "source" && job.SourceKind != "source" {
+	privateText := job.SourceKind == "source" && (job.SourceMode == "text" || job.SourceMode == "")
+	if basis == "topic" && job.SourceKind != "topic" && !privateText || basis == "web" && job.SourceKind != "topic" || basis == "source" && job.SourceKind != "source" {
 		return errors.New("basis does not match the saved material")
 	}
 	if basis == "topic" {

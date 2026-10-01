@@ -37,7 +37,37 @@ func TestV5PlanRejectsHostileEvidenceAndRelations(t *testing.T) {
 	if _, err := validateV5Output(job, input, encode()); err == nil || !strings.Contains(err.Error(), `concept "Cell energy transfer": source evidence is not an exact quotation`) {
 		t.Fatalf("invalid source quotation lacked a named reason: %v", err)
 	}
+	job.SourceKind, job.SourceMode = "topic", "topic"
+	if _, err := validateV5Output(job, input, encode()); err == nil {
+		t.Fatal("a claimed source quotation was demoted to general knowledge")
+	}
+	job.SourceKind, job.SourceMode = "source", "text"
 	plan.Concepts[0].Note.Evidence[0] = "ATP transfers energy during cellular work."
+	plan.Concepts[0].Note.Citations = []store.Citation{{DocumentID: "invented", Title: "Invented", URL: "https://example.test/invented"}}
+	if _, err := validateV5Output(job, input, encode()); err == nil {
+		t.Fatal("source evidence with a fabricated web citation was accepted")
+	}
+	plan.Concepts[0].Note.Citations = nil
+	plan.Concepts[0].Note.Basis = "topic"
+	if _, err := validateV5Output(job, input, encode()); err == nil {
+		t.Fatal("private-text general knowledge claimed a quotation")
+	}
+	plan.Concepts[0].Note.Evidence = nil
+	plan.Concepts[0].Note.Citations = []store.Citation{{DocumentID: "invented", Title: "Invented", URL: "https://example.test/invented"}}
+	if _, err := validateV5Output(job, input, encode()); err == nil {
+		t.Fatal("private-text general knowledge claimed a citation")
+	}
+	plan.Concepts[0].Note.Citations = nil
+	for _, mode := range []string{"link", "photo"} {
+		job.SourceMode = mode
+		if _, err := validateV5Output(job, input, encode()); err == nil {
+			t.Fatalf("%s capture was expanded as general knowledge", mode)
+		}
+	}
+	job.SourceMode = "text"
+	plan.Concepts[0].Note.Basis = "source"
+	plan.Concepts[0].Note.Evidence = []string{"ATP transfers energy during cellular work."}
+	plan.Concepts[0].Note.Citations = nil
 	plan.Concepts[0].Requires = []string{"invented-id"}
 	result, err := validateV5Output(job, input, encode())
 	if err != nil || len(result.Plan.Concepts[0].Requires) != 0 {
@@ -136,40 +166,73 @@ func TestV5WebQuestionNeedsQuotedCitedResult(t *testing.T) {
 	}
 }
 
-func TestV5ExactTextKeepsEveryUnitAndOriginalOrder(t *testing.T) {
-	job := &store.Job{Kind: "questions", SourceKind: "source", SourceMode: "text", SourceText: "Recite verbatim:\nSo much depends\nupon"}
-	input := store.JobContext{Concepts: []store.ConceptContext{{ID: "poem"}}}
-	makeQuestion := func(unit, answer, prompt, evidence string) map[string]any {
-		return map[string]any{
-			"concept": "poem", "level": "recall", "kind": "recall",
-			"prompt": prompt, "answer": answer, "explanation": "This line follows the saved poem wording rather than an invented paraphrase.",
-			"basis": "source", "evidence": evidence, "choices": []string{}, "variants": []string{},
-			"citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{unit},
-		}
-	}
-	first := makeQuestion("u1", "So much depends", "Recite the opening line of the poem you saved.", "So much depends\nupon")
-	second := makeQuestion("u2", "upon", "Recite the second line of the poem you saved.", "So much depends\nupon")
-	encode := func(quizzes ...any) string {
-		t.Helper()
-		data, err := json.Marshal(map[string]any{"quizzes": quizzes})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(data)
-	}
-	if result, err := validateV5Output(job, input, encode(first, second)); err != nil || len(result.Quizzes) != 2 {
-		t.Fatalf("complete exact text rejected: %+v %v", result, err)
-	}
-	if _, err := validateV5Output(job, input, encode(second, first)); err == nil {
-		t.Fatal("reordered units accepted")
-	}
-	second["answer"] = "upon."
-	if _, err := validateV5Output(job, input, encode(first, second)); err == nil {
-		t.Fatal("altered punctuation accepted")
-	}
-	second["answer"] = "upon"
-	second["variants"] = []string{"upon."}
-	if _, err := validateV5Output(job, input, encode(first, second)); err == nil {
-		t.Fatal("an exact-text variant was silently removed")
+func TestV5AuthoritativeTasksKeepSourceCoverageAndOriginalOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name, text   string
+		units        []string
+		exactWording bool
+	}{
+		{"exact text", "Recite verbatim:\nSo much depends\nupon", []string{"So much depends", "upon"}, true},
+		{"complete set", "Learn the complete set:\n- Hydrogen → H\n- Helium → He", []string{"Hydrogen → H", "Helium → He"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &store.Job{Kind: "plan", SourceKind: "source", SourceMode: "text", SourceText: tc.text}
+			note := &store.NoteContent{
+				Title: "Saved sequence", Body: "Preserve the supplied sequence in its original order: " + strings.Join(tc.units, "\n") + ". Each supplied unit belongs to this task, without sampling or replacing it.",
+				Basis: "source", Evidence: []string{tc.text},
+			}
+			plan := store.PlanContent{Goal: "Learn the saved sequence", Concepts: []store.PlannedConcept{{Key: "sequence", Name: "Saved sequence", Summary: "Learn every supplied unit in order.", Note: note}}}
+			if _, err := validateV5Output(job, store.JobContext{}, modelJSON(t, plan)); err != nil {
+				t.Fatalf("complete source-grounded plan rejected: %v", err)
+			}
+			note.Basis, note.Evidence = "topic", nil
+			if _, err := validateV5Output(job, store.JobContext{}, modelJSON(t, plan)); err == nil {
+				t.Fatal("general knowledge replaced authoritative supplied material")
+			}
+			note.Basis, note.Evidence = "source", []string{tc.text}
+			note.Body = "The sequence contains only " + tc.units[0] + "; the other supplied unit has been omitted."
+			if _, err := validateV5Output(job, store.JobContext{}, modelJSON(t, plan)); err == nil {
+				t.Fatal("a plan omitted a required unit")
+			}
+
+			job.Kind = "questions"
+			input := store.JobContext{Concepts: []store.ConceptContext{{ID: "sequence"}}}
+			makeQuestion := func(unit, answer, prompt string) map[string]any {
+				return map[string]any{
+					"concept": "sequence", "level": "recall", "kind": "recall",
+					"prompt": prompt, "answer": answer, "explanation": "This unit follows the saved sequence rather than an invented replacement.",
+					"basis": "source", "evidence": tc.text, "choices": []string{}, "variants": []string{},
+					"citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{unit},
+				}
+			}
+			first := makeQuestion("u1", tc.units[0], "Recite the opening unit of the sequence you saved.")
+			second := makeQuestion("u2", tc.units[1], "Recite the second unit of the sequence you saved.")
+			encode := func(quizzes ...any) string { return modelJSON(t, map[string]any{"quizzes": quizzes}) }
+			if result, err := validateV5Output(job, input, encode(first, second)); err != nil || len(result.Quizzes) != 2 {
+				t.Fatalf("complete source-grounded questions rejected: %+v %v", result, err)
+			}
+			if _, err := validateV5Output(job, input, encode(first)); err == nil {
+				t.Fatal("a question batch omitted a required unit")
+			}
+			if _, err := validateV5Output(job, input, encode(second, first)); err == nil {
+				t.Fatal("reordered units accepted")
+			}
+			first["basis"], first["evidence"] = "topic", ""
+			if _, err := validateV5Output(job, input, encode(first, second)); err == nil {
+				t.Fatal("topic knowledge claimed source coverage")
+			}
+			first["basis"], first["evidence"] = "source", tc.text
+			if tc.exactWording {
+				second["answer"] = tc.units[1] + "."
+				if _, err := validateV5Output(job, input, encode(first, second)); err == nil {
+					t.Fatal("altered punctuation accepted")
+				}
+				second["answer"] = tc.units[1]
+				second["variants"] = []string{tc.units[1] + "."}
+				if _, err := validateV5Output(job, input, encode(first, second)); err == nil {
+					t.Fatal("an exact-text variant was silently removed")
+				}
+			}
+		})
 	}
 }

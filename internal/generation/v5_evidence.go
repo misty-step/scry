@@ -59,10 +59,21 @@ func canonicalQuote(text string) quoteSpan {
 
 func snapV5Evidence(basis string, provided []string, citations []store.Citation, job *store.Job, input store.JobContext) (string, []string, []store.Citation, error) {
 	if basis == "topic" {
-		return basis, provided, citations, nil
+		if len(citations) != 0 {
+			return basis, nil, nil, errors.New("topic cannot cite documents")
+		}
+		for _, quote := range provided {
+			if quote != "" {
+				return basis, nil, nil, errors.New("topic cannot quote evidence")
+			}
+		}
+		return basis, nil, nil, nil
 	}
 	if basis != "source" && basis != "web" {
 		return basis, nil, nil, errors.New("unknown evidence basis")
+	}
+	if basis == "source" && len(citations) != 0 {
+		return basis, nil, nil, errors.New("source cannot cite web results")
 	}
 	type material struct {
 		text     string
@@ -129,7 +140,7 @@ func snapV5Evidence(basis string, provided []string, citations []store.Citation,
 		}
 	}
 	if len(quotes) == 0 {
-		if job.SourceKind == "topic" {
+		if basis == "web" && job.SourceKind == "topic" {
 			return "topic", nil, nil, nil
 		}
 		if basis == "source" {

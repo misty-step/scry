@@ -66,6 +66,7 @@ type Source struct {
 	Status    string           `json:"status"`
 	Revision  int              `json:"revision"`
 	Archived  bool             `json:"archived"`
+	CanRetry  bool             `json:"can_retry"`
 	CreatedAt int64            `json:"created_at"`
 	GoalID    string           `json:"goal_id,omitempty"`
 	HasImage  bool             `json:"has_image,omitempty"`

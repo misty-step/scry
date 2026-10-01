@@ -329,7 +329,7 @@ button.choice.is-selected .choice-key{border-color:var(--accent);background:var(
 /* Source */
 .job-status{padding:1rem 1.125rem;border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--sheet)}
 .job-status .section-title{font-size:1.125rem}
-.job-status>form,.job-status>.small-link{margin-top:.875rem}
+.job-status>form,.job-status>.small-link,.job-status>.hint{margin-top:.875rem}
 .job-status>form .primary{width:100%}
 .steps{display:grid;gap:.875rem;list-style:none}
 .step{display:flex;gap:.75rem}

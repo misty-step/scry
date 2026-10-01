@@ -1,7 +1,6 @@
 package web
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/misty-step/scry/internal/store"
@@ -39,19 +38,5 @@ func TestGoalChartPlacesPrerequisitesFirst(t *testing.T) {
 	}
 	if goalChart(store.GoalView{}) != nil {
 		t.Error("a goal without concepts drew a chart")
-	}
-}
-
-// Stored step errors name internal checks; the learner-facing summary keeps
-// the message and drops those identifiers, and a partial step never claims
-// the whole step failed.
-func TestJobSummaryKeepsInternalsOutOfLearnerCopy(t *testing.T) {
-	failed := jobSummary(store.Job{Status: "failed", Error: "Scry could not write material that passed its checks (concept \"Model assumptions\": source evidence is not an exact quotation). Nothing was published."})
-	if failed != "Scry could not write material that passed its checks. Nothing was published." {
-		t.Errorf("failed summary = %q", failed)
-	}
-	partial := jobSummary(store.Job{Status: "partial", Error: "2 questions were not published: question failed strengthened_source_claim (2)"})
-	if strings.Contains(partial, "strengthened_source_claim") || !strings.Contains(partial, "questions") {
-		t.Errorf("partial summary = %q", partial)
 	}
 }

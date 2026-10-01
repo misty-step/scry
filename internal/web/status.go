@@ -10,7 +10,16 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
+// renderJob answers a source page's status poll. While preparation continues
+// it replaces only the status section, for a bounded number of polls. Once
+// preparation finishes or stops it replaces the whole page, so newly
+// published questions and a stopped step's next actions appear in place.
 func (s *server) renderJob(w http.ResponseWriter, r *http.Request, p page) {
+	if !p.JobPending {
+		wholePage(w)
+		s.render(w, r, http.StatusOK, p)
+		return
+	}
 	remaining, err := strconv.Atoi(r.URL.Query().Get("remaining"))
 	if err != nil || remaining < 0 {
 		remaining = 0
@@ -31,6 +40,13 @@ func (s *server) renderJob(w http.ResponseWriter, r *http.Request, p page) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(buf.Bytes())
+}
+
+// wholePage makes an htmx status poll replace #main instead of its section.
+func wholePage(w http.ResponseWriter) {
+	w.Header().Set("HX-Retarget", "#main")
+	w.Header().Set("HX-Reselect", "#main")
+	w.Header().Set("HX-Reswap", "outerHTML")
 }
 
 func (s *server) settings(w http.ResponseWriter, r *http.Request) {

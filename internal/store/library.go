@@ -182,21 +182,14 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 		return Source{}, err
 	}
 	if !found {
+		if reason := retrySourceBlocker(&result, result.Jobs); reason != "" {
+			return Source{}, fmt.Errorf("%w: %s", ErrConflict, reason)
+		}
 		last := result.Job
-		if result.Archived || last == nil || (last.Status != "failed" && last.Status != "canceled" && last.Status != "paused") {
-			return Source{}, fmt.Errorf("%w: only stopped preparation can be retried", ErrConflict)
-		}
-		if quizKind(last.Kind) && last.Published != 0 {
-			return Source{}, fmt.Errorf("%w: these questions were already published; ask for more questions from a concept instead", ErrConflict)
-		}
 		now := s.now()
 		if last.Candidates != nil {
-			// Continue the same immutable batch. The first three attempts are
-			// automatic; at most two more require deliberate manual retries.
+			// Continue the same immutable batch within the durable attempt limit.
 			// Monotonic attempt numbers preserve every prior send/spend record.
-			if last.Attempts >= 5 || last.CriticStatus == "judged" {
-				return Source{}, fmt.Errorf("%w: saved candidate checks are exhausted or rejected; inspect and revise the input", ErrConflict)
-			}
 			if _, err = tx.ExecContext(ctx, `UPDATE jobs SET status='queued',error='Explicit retry of saved candidates',lease_token='',lease_until=0,available_at=?,updated_at=? WHERE id=?`, now, now, last.ID); err != nil {
 				return Source{}, err
 			}
@@ -204,13 +197,6 @@ func (s *Store) RetrySource(ctx context.Context, id, operationID string) (Source
 			kind := last.Kind
 			if kind == "quizzes" {
 				kind = "plan" // legacy single-call work retries through the v5 chain
-			}
-			var runs int
-			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM jobs WHERE source_id=? AND kind=? AND payload=? AND id NOT IN (SELECT job_id FROM foundation_requests)", id, kind, last.Payload).Scan(&runs); err != nil {
-				return Source{}, err
-			}
-			if runs >= 3 {
-				return Source{}, fmt.Errorf("%w: this step has been tried three times; inspect the failure before capturing a revised input", ErrConflict)
 			}
 			if last.Status == "paused" {
 				if _, err = tx.ExecContext(ctx, "UPDATE jobs SET status='canceled',lease_token='',lease_until=0,updated_at=? WHERE id=?", now, last.ID); err != nil {
@@ -287,6 +273,38 @@ func lastPreparation(jobs []Job) (Job, bool) {
 	return Job{}, false
 }
 
+// retrySourceBlocker is the shared eligibility contract for the displayed action
+// and the transaction that performs it. jobs includes all non-retired history.
+func retrySourceBlocker(src *Source, jobs []Job) string {
+	last := src.Job
+	if src.Archived || last == nil || (last.Status != "failed" && last.Status != "canceled" && last.Status != "paused") {
+		return "only stopped preparation can be retried"
+	}
+	if quizKind(last.Kind) && last.Published != 0 {
+		return "these questions were already published; ask for more questions from a concept instead"
+	}
+	if last.Candidates != nil {
+		if last.Attempts >= 3 || last.CriticStatus == "judged" {
+			return "saved candidate checks are exhausted or rejected; inspect and revise the input"
+		}
+		return ""
+	}
+	kind := last.Kind
+	if kind == "quizzes" {
+		kind = "plan"
+	}
+	runs := 0
+	for i := range jobs {
+		if jobs[i].Kind == kind && jobs[i].Payload == last.Payload {
+			runs++
+		}
+	}
+	if runs >= 3 {
+		return "this step has been tried three times; inspect the failure before capturing a revised input"
+	}
+	return ""
+}
+
 func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, error) {
 	var src Source
 	err := tx.QueryRowContext(ctx, `SELECT s.id,s.text,s.kind,s.mode,s.web,s.revision,s.archived,s.created_at,COALESCE(g.id,''),
@@ -308,6 +326,7 @@ func source(ctx context.Context, tx *sql.Tx, id string, details bool) (Source, e
 	if src.Archived {
 		src.Status = "archived"
 	}
+	src.CanRetry = retrySourceBlocker(&src, jobs) == ""
 	if details {
 		src.Jobs = jobs
 		if src.Documents, err = sourceDocuments(ctx, tx, id); err != nil {

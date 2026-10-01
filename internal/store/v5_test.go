@@ -272,6 +272,111 @@ func TestPublicationProvenanceFences(t *testing.T) {
 	if err = s.CompleteJob(ctx, j.ID, j.LeaseToken, GenerationResult{Plan: &webPlan, Model: "m", PromptVersion: "p"}, &cost); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("web basis without stored web results was published: %v", err)
 	}
+	for _, tc := range []struct {
+		name, mode, basis string
+		evidence          []string
+		citations         []Citation
+	}{
+		{"private source citation", "text", "source", []string{"chains to a root authority the client already trusts"}, []Citation{{DocumentID: "invented", Title: "Invented", URL: "https://example.test/invented"}}},
+		{"private topic quotation", "text", "topic", []string{"chains to a root authority the client already trusts"}, nil},
+		{"private topic citation", "text", "topic", nil, []Citation{{DocumentID: "invented", Title: "Invented", URL: "https://example.test/invented"}}},
+		{"private web claim", "text", "web", []string{"chains to a root authority the client already trusts"}, []Citation{{DocumentID: "invented", Title: "Invented", URL: "https://example.test/invented"}}},
+		{"link topic expansion", "link", "topic", nil, nil},
+		{"photo topic expansion", "photo", "topic", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newTestStore(t)
+			in := CaptureInput{Mode: tc.mode, Text: tlsMaterial}
+			switch tc.mode {
+			case "link":
+				in.Text = "https://example.test/tls"
+			case "photo":
+				in.Image = append([]byte{0xFF, 0xD8, 0xFF}, make([]byte, 64)...)
+			}
+			src, err := s.Capture(ctx, in, "provenance-fence")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.mode == "link" {
+				complete(t, s, claimKind(t, s, "research"), GenerationResult{Documents: []DocumentContent{{Kind: "page", URL: in.Text, Title: "TLS", Text: tlsMaterial, Provider: "exa"}}})
+			} else if tc.mode == "photo" {
+				complete(t, s, claimKind(t, s, "transcribe"), GenerationResult{Documents: []DocumentContent{{Kind: "transcript", Title: "TLS", Text: tlsMaterial, Provider: "model"}}})
+			}
+			plan := tlsPlan()
+			plan.Concepts[0].Note.Basis, plan.Concepts[0].Note.Evidence, plan.Concepts[0].Note.Citations = tc.basis, tc.evidence, tc.citations
+			j := claimKind(t, s, "plan")
+			if err := s.CompleteJob(ctx, j.ID, j.LeaseToken, GenerationResult{Plan: plan, Model: "m", PromptVersion: "p"}, &cost); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("invalid provenance reached transactional publication: %v", err)
+			}
+			saved, err := s.Source(ctx, src.ID)
+			if err != nil || saved.Job.Status != "failed" || len(saved.Quizzes) != 0 {
+				t.Fatalf("invalid provenance was not a durable failure: %+v %v", saved, err)
+			}
+			var concepts, notes, queued int
+			if err := s.db.QueryRow("SELECT (SELECT count(*) FROM concepts),(SELECT count(*) FROM notes),(SELECT count(*) FROM jobs WHERE status='queued')").Scan(&concepts, &notes, &queued); err != nil {
+				t.Fatal(err)
+			}
+			if concepts != 0 || notes != 0 || queued != 0 {
+				t.Fatalf("provenance failure left partial publication: concepts=%d notes=%d queued=%d", concepts, notes, queued)
+			}
+		})
+	}
+}
+
+func TestPrivateTextMixedGroundingKeepsHonestProvenance(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	material := "Montessori education uses observation to guide children's activity. Observation helps the teacher decide when to offer support."
+	src, err := s.Capture(ctx, CaptureInput{Mode: "text", Text: material + "\nExplain Montessori practice and prepared environments."}, "mixed-private-grounding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := &PlanContent{Goal: "Learn Montessori practice", Concepts: []PlannedConcept{
+		{Key: "montessori", Name: "Montessori education", Summary: "Observation guides children's activity.",
+			Note: &NoteContent{Title: "Montessori education", Body: material, Basis: "source", Evidence: []string{material}}},
+		{Key: "observation", Name: "Observation", Summary: "Observation informs when to offer support.", PartOf: []string{"montessori"},
+			Note: &NoteContent{Title: "Observation", Body: "Observation helps the teacher decide when to offer support during children's activity.", Basis: "source", Evidence: []string{material}}},
+		{Key: "environment", Name: "Prepared environment", Summary: "An accessible environment supports independent activity.", PartOf: []string{"montessori"},
+			Note: &NoteContent{Title: "Prepared environment", Body: "A Montessori prepared environment arranges accessible materials so children can choose and carry out meaningful activities independently.", Basis: "topic"}},
+	}}
+	complete(t, s, claimKind(t, s, "plan"), GenerationResult{Plan: plan})
+	questions := claimKind(t, s, "questions")
+	input, err := s.JobContext(ctx, questions.ID)
+	if err != nil || len(input.Concepts) != 3 {
+		t.Fatalf("mixed plan context: %+v %v", input, err)
+	}
+	ids := map[string]string{}
+	for _, concept := range input.Concepts {
+		ids[concept.Name] = concept.ID
+		page, err := s.ConceptPage(ctx, concept.ID)
+		if err != nil || page.Note == nil {
+			t.Fatalf("mixed plan note missing: %+v %v", page, err)
+		}
+		if concept.Name == "Prepared environment" {
+			if page.Note.Basis != "topic" || len(page.Note.Evidence) != 0 || len(page.Note.Citations) != 0 {
+				t.Fatalf("knowledge expansion claimed private evidence: %+v", page.Note)
+			}
+		} else if page.Note.Basis != "source" || !reflect.DeepEqual(page.Note.Evidence, []string{material}) || len(page.Note.Citations) != 0 {
+			t.Fatalf("supplied facts lost their exact grounding: %+v", page.Note)
+		}
+	}
+	origins := dumpRows(t, s.db, `SELECT c.name,r.origin FROM concept_relations r JOIN concepts c ON c.id=r.from_id ORDER BY c.name`)
+	if !reflect.DeepEqual(origins, []string{"Observation source", "Prepared environment model"}) {
+		t.Fatalf("relations inherited capture kind instead of content provenance: %v", origins)
+	}
+	complete(t, s, questions, GenerationResult{Quizzes: []GeneratedQuiz{
+		{Concept: ids["Observation"], Level: "recall", Kind: "recall", Prompt: "What helps a Montessori teacher decide when to offer support?", Answer: "Observation",
+			Explanation: "Observation informs the teacher's decision about offering support.", Basis: "source", Evidence: material},
+		{Concept: ids["Prepared environment"], Level: "recall", Kind: "recall", Prompt: "What is the Montessori classroom arrangement for independent activity called?", Answer: "Prepared environment",
+			Explanation: "A prepared environment makes suitable materials accessible for children's independent activity.", Basis: "topic"},
+	}})
+	saved, err := s.Source(ctx, src.ID)
+	if err != nil || saved.Status != "ready" || saved.Kind != "source" || saved.Mode != "text" || saved.Web || len(saved.Documents) != 0 || len(saved.Quizzes) != 2 {
+		t.Fatalf("mixed private text did not finish its original chain: %+v %v", saved, err)
+	}
+	if saved.Quizzes[0].Basis != "source" || saved.Quizzes[0].Evidence != material || saved.Quizzes[1].Basis != "topic" || saved.Quizzes[1].Evidence != "" || len(saved.Quizzes[1].Citations) != 0 {
+		t.Fatalf("mixed questions lost per-item provenance: %+v", saved.Quizzes)
+	}
 }
 
 // Web-grounded notes quote and cite a stored search result; citations are
@@ -604,6 +709,10 @@ func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
 	if err = s.FailJob(ctx, j.ID, j.LeaseToken, "Preparation is not set up on this server yet.", false, &zero); err != nil {
 		t.Fatal(err)
 	}
+	stopped, err := s.Source(ctx, src.ID)
+	if err != nil || !stopped.CanRetry {
+		t.Fatalf("the stopped capture did not offer its available retry: %+v %v", stopped, err)
+	}
 	*now = now.Add(25 * time.Hour)
 	state, err := s.Review(ctx)
 	if err != nil || len(state.Preparing) != 0 {
@@ -623,8 +732,26 @@ func TestStoppedCaptureStaysReachableOnMap(t *testing.T) {
 		t.Fatalf("a day-old stopped capture vanished from the Map: %+v", m.Goals)
 	}
 	retried, err := s.RetrySource(ctx, src.ID, "retry-stopped")
-	if err != nil || retried.Job == nil || retried.Job.Kind != "plan" || retried.Job.Status != "queued" {
+	if err != nil || retried.CanRetry || retried.Job == nil || retried.Job.Kind != "plan" || retried.Job.Status != "queued" {
 		t.Fatalf("the stopped capture could not be retried: %+v %v", retried.Job, err)
+	}
+	for run := 2; run <= 3; run++ {
+		j := claimKind(t, s, "plan")
+		if err := s.FailJob(ctx, j.ID, j.LeaseToken, "synthetic stopped preparation", false, &zero); err != nil {
+			t.Fatal(err)
+		}
+		stopped, err := s.Source(ctx, src.ID)
+		if err != nil || stopped.CanRetry != (run < 3) {
+			t.Fatalf("retry availability ignored step history at run %d: %+v %v", run, stopped, err)
+		}
+		if run < 3 {
+			if _, err := s.RetrySource(ctx, src.ID, "retry-stopped-again"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := s.RetrySource(ctx, src.ID, "retry-stopped-exhausted"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("the exhausted step was retried: %v", err)
 	}
 }
 
@@ -710,7 +837,7 @@ func TestStoppedFixStaysWithItsQuestion(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, err := s.Source(ctx, src.ID)
-	if err != nil || after.Status != before.Status || after.Job == nil || after.Job.ID != before.Job.ID {
+	if err != nil || before.CanRetry || after.CanRetry || after.Status != before.Status || after.Job == nil || after.Job.ID != before.Job.ID {
 		t.Fatalf("a stopped fix changed the capture's preparation: %+v -> %+v %v", before.Job, after.Job, err)
 	}
 	if _, err = s.RetrySource(ctx, src.ID, "retry-fix-as-capture"); !errors.Is(err, ErrConflict) {

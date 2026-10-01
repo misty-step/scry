@@ -259,10 +259,12 @@
   document.addEventListener('htmx:afterSwap', (event) => {
     const meta = requests.get(event.detail.xhr);
     localTimes(document);
-    if (meta?.poll) return;
     const main = document.getElementById('main');
     if (!main) return;
+    // A status poll can replace the whole page when preparation ends; it
+    // keeps the title current but never moves focus or scroll on its own.
     document.title = `${main.dataset.title} · Scry`;
+    if (meta?.poll) return;
     // Focus is a presentation change, not an advance. Keep long results in
     // natural scroll flow and never focus a speculative answer control.
     const focus = main.querySelector('[data-focus]');

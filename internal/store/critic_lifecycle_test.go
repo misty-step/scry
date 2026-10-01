@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -82,8 +83,12 @@ func TestCriticExplicitRetryKeepsBatchAndJudgedCandidates(t *testing.T) {
 	if err := s.PauseRestoredJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
+	stopped, err := s.Source(ctx, j.SourceID)
+	if err != nil || !stopped.CanRetry {
+		t.Fatalf("paused candidate checks did not offer their retry: %+v %v", stopped, err)
+	}
 	source, err := s.RetrySource(ctx, j.SourceID, "manual-critic-retry")
-	if err != nil || source.Job.ID != j.ID || source.Job.Candidates == nil || payloadHash(source.Job.Candidates.Result) != payloadHash(result) {
+	if err != nil || source.CanRetry || source.Job.ID != j.ID || source.Job.Candidates == nil || payloadHash(source.Job.Candidates.Result) != payloadHash(result) {
 		t.Fatalf("manual retry discarded batch: %+v %v", source, err)
 	}
 	retry, err := s.ClaimJob(ctx, time.Minute, 200_000, 5000)
@@ -93,5 +98,55 @@ func TestCriticExplicitRetryKeepsBatchAndJudgedCandidates(t *testing.T) {
 	again := prepareCritic(t, s, retry)
 	if again[0].ID != entries[0].ID || again[1].ID == entries[1].ID {
 		t.Fatal(again)
+	}
+}
+
+func TestCandidateRetryAvailabilityUsesDurableLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, critic string
+		attempts, published  int
+		archived, allowed    bool
+	}{
+		{"paused", "paused", "pending", 2, 0, false, true},
+		{"failed", "failed", "pending", 2, 0, false, true},
+		{"exhausted", "paused", "pending", 3, 0, false, false},
+		{"rejected", "paused", "judged", 2, 0, false, false},
+		{"published", "paused", "pending", 2, 1, false, false},
+		{"archived", "paused", "pending", 2, 0, true, false},
+		{"working", "running", "pending", 2, 0, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newTestStore(t)
+			ctx := context.Background()
+			j, _ := stageCritic(t, s, true, authoredChoice("Saved candidate?"))
+			if err := s.PauseRestoredJobs(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(`UPDATE jobs SET status=?,attempts=?,critic_status=?,published=? WHERE id=?`, tc.status, tc.attempts, tc.critic, tc.published, j.ID); err != nil {
+				t.Fatal(err)
+			}
+			if tc.archived {
+				if err := s.ArchiveSource(ctx, j.SourceID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			src, err := s.Source(ctx, j.SourceID)
+			if err != nil || src.CanRetry != tc.allowed {
+				t.Fatalf("candidate retry availability = %v, want %v: %+v %v", src.CanRetry, tc.allowed, src, err)
+			}
+			retried, err := s.RetrySource(ctx, j.SourceID, "candidate-explicit-retry")
+			if !tc.allowed {
+				if !errors.Is(err, ErrConflict) {
+					t.Fatalf("unavailable candidate retry passed the transaction: %v", err)
+				}
+			} else if err != nil || retried.CanRetry || retried.Job.ID != j.ID || retried.Job.Candidates == nil || retried.Job.Status != "queued" {
+				t.Fatalf("available candidate retry did not resume its saved batch: %+v %v", retried, err)
+			} else {
+				claim, claimErr := s.ClaimJob(ctx, time.Minute, 200_000, 5000)
+				if claimErr != nil || claim == nil || claim.ID != j.ID || claim.Attempts != 3 || claim.ReservedMicros != 0 {
+					t.Fatalf("displayed retry could not claim its saved candidates without another generation reservation: %+v %v", claim, claimErr)
+				}
+			}
+		})
 	}
 }

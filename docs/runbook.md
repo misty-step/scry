@@ -630,6 +630,17 @@ Never put the Exa key in a plain Worker var, backup exec environment, image,
 flags, or logs. [Hosting configuration](../deploy/cloudflare-hosting/README.md#private-configuration)
 describes the app-only forwarding boundary.
 
+Private **My text** may be a topic-learning request, factual material, or both.
+Capture mode controls privacy; each note/question retains its honest factual
+basis. Topic-grounded private-text teaching is labeled General knowledge, with
+no evidence or citations and no implicit Exa call. Attributed facts still need
+exact saved quotations. Link/photo and authoritative exact-text/complete-set
+tasks remain source-grounded; a bad source quotation is not relabeled as topic.
+The source page shows failure reason and accounted use before Details, offers
+Try again only when durable limits allow, and retains Edit as new input after
+exhaustion. The pre-filled Add page creates a new source without rewriting the
+failed source, its attempts, or spend.
+
 ### Semantic assessments on Cloudflare
 
 Production `wrangler.jsonc` sets three plain vars: `SCRY_SEMANTIC_ENDPOINT`
@@ -715,9 +726,10 @@ candidates retain their reasons; an entirely rejected batch publishes nothing.
 Unavailable criticism preserves candidates with `critic_status=pending`.
 The next automatic claim runs only criticism, not generation. A new critic
 assessment reserves the semantic amount, never another generation reservation.
-Three total job attempts bound automatic work. Explicit Retry resumes the same
-batch up to five total attempts and reuses judged candidates. Restores remain
-paused until explicit retry. Fully rejected batches require revised input.
+Three total job attempts bound both automatic and explicit work, matching the
+SQLite constraint. Eligible explicit Retry resumes the same saved batch and
+reuses judged candidates. Restores remain paused until explicit retry; exhausted
+or fully rejected batches require revised input.
 Each assessment row remains single-send forever. New attempts use new rows;
 unknown prior outcomes remain charged, rather than becoming free retries.
 Expired orphan leases become failed during allowance reconciliation.
