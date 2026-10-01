@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -272,6 +273,51 @@ func TestRunJobsRetainsUnknownSpendAndHalts(t *testing.T) {
 	}
 	if !last.CostUnknown {
 		t.Fatal("the unknown-spend record must be persisted with cost_unknown set")
+	}
+}
+
+func TestLiveEvaluationRequiresDistinctSemanticKey(t *testing.T) {
+	t.Setenv("SCRY_SEMANTIC_API_KEY", "")
+	t.Setenv("SCRY_MODEL_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	path := filepath.Join(t.TempDir(), "provider.env")
+	shared := "OPENROUTER_API_KEY=" + "mixed-key\n"
+	if err := os.WriteFile(path, []byte(shared), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "SCRY_SEMANTIC_API_KEY") {
+		t.Fatalf("mixed-use keys alone must not authorize paid Jev calls: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(shared + "SCRY_SEMANTIC_API_KEY=" + "mixed-key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("shared generation key in semantic binding must be refused: %v", err)
+	}
+	t.Setenv("SCRY_SEMANTIC_API_KEY", "mixed-key")
+	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("environment binding must not match a shared file key: %v", err)
+	}
+	t.Setenv("SCRY_SEMANTIC_API_KEY", "")
+	if err := os.WriteFile(path, []byte(shared+"SCRY_SEMANTIC_API_KEY='   '\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAPIKey(path); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("quoted whitespace file binding must not authorize a Jev call: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(shared + "SCRY_SEMANTIC_API_KEY=" + "dedicated-key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if key, err := loadAPIKey(path); err != nil || key != "dedicated-key" {
+		t.Fatalf("dedicated file binding should authorize paid Jev calls: %v", err)
+	}
+	t.Setenv("SCRY_SEMANTIC_API_KEY", "dedicated-key")
+	t.Setenv("SCRY_MODEL_API_KEY", "generation-key")
+	if key, err := loadAPIKey(path); err != nil || key != "dedicated-key" {
+		t.Fatalf("dedicated environment binding should take precedence: %v", err)
+	}
+	if key, err := loadAPIKey(path+".missing"); err != nil || key != "dedicated-key" {
+		t.Fatalf("direct environment binding should not require a local env file: %v", err)
 	}
 }
 

@@ -338,7 +338,7 @@ func validateCommand(args []string) error {
 func runCommand(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	evalDir := fs.String("eval-dir", defaultEvalDir, "evaluation artifact directory")
-	envPath := fs.String("env", defaultEnvPath, "environment file containing OPENROUTER_API_KEY")
+	envPath := fs.String("env", defaultEnvPath, "optional environment file containing SCRY_SEMANTIC_API_KEY (direct environment takes precedence)")
 	split := fs.String("split", "all", "all, tune, or holdout")
 	runID := fs.String("run-id", "full", "run identifier; repeats add a numeric suffix")
 	repeats := fs.Int("repeats", 1, "number of passes")
@@ -1083,34 +1083,57 @@ func readJSON(path string, dst any) error {
 }
 
 func loadAPIKey(path string) (string, error) {
+	key := os.Getenv("SCRY_SEMANTIC_API_KEY")
+	if key != "" && strings.TrimSpace(key) == "" {
+		return "", errors.New("SCRY_SEMANTIC_API_KEY is blank")
+	}
+	if key != "" && (key == os.Getenv("SCRY_MODEL_API_KEY") || key == os.Getenv("OPENROUTER_API_KEY")) {
+		return "", errors.New("SCRY_SEMANTIC_API_KEY must differ from generation/inference keys")
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("open env file: %w", err)
+		if key != "" && errors.Is(err, os.ErrNotExist) {
+			return key, nil
+		}
+		return "", fmt.Errorf("open env file with SCRY_SEMANTIC_API_KEY: %w", err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
+	var modelKey, sharedKey string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) != "OPENROUTER_API_KEY" {
+		name, value, ok := strings.Cut(line, "=")
+		if !ok {
 			continue
 		}
 		value = strings.TrimSpace(value)
 		if len(value) >= 2 && ((value[0] == '\'' && value[len(value)-1] == '\'') || (value[0] == '"' && value[len(value)-1] == '"')) {
 			value = value[1 : len(value)-1]
 		}
-		if value == "" {
-			return "", errors.New("OPENROUTER_API_KEY is empty")
+		switch strings.TrimSpace(name) {
+		case "SCRY_SEMANTIC_API_KEY":
+			if key == "" {
+				key = value
+			}
+		case "SCRY_MODEL_API_KEY":
+			modelKey = value
+		case "OPENROUTER_API_KEY":
+			sharedKey = value
 		}
-		return value, nil
 	}
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("read env file: %w", err)
 	}
-	return "", errors.New("OPENROUTER_API_KEY not found in env file")
+	if strings.TrimSpace(key) == "" {
+		return "", errors.New("SCRY_SEMANTIC_API_KEY not found or empty in environment and env file")
+	}
+	if key == modelKey || key == sharedKey || key == os.Getenv("SCRY_MODEL_API_KEY") || key == os.Getenv("OPENROUTER_API_KEY") {
+		return "", errors.New("SCRY_SEMANTIC_API_KEY must differ from generation/inference keys")
+	}
+	return key, nil
 }
 
 func fileSHA256(path string) (string, error) {

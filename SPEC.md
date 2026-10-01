@@ -29,11 +29,13 @@ US-001–003 change intent under this explicit authorization; US-005–012 add
 failable contracts. The old foundations data/history survive v5 migration but
 its UI and routes retire. Production activation is separately gated.
 
-**Spending decision:** the existing Scry personal (exe.dev) provider key limit
-was raised to $25/week on 2026-09-23; the application permits $3.50 per rolling
-24 hours with $0.50 conservative generation reservations. Jev assessments
-still reserve from that same allowance; an unknown sent request keeps its
-reservation. Topic capture may use Exa web search; pasted text never does.
+**Spending decision:** the existing Scry generation provider key limit
+was raised to $25/week on 2026-09-23 and remains unchanged. Jev requires a
+distinct, daily-capped credential when enabled; it cannot use that generation
+key. The application permits $3.50 per rolling 24 hours with $0.50
+conservative generation reservations. Jev assessments still reserve from the
+same application allowance; an unknown sent request keeps its reservation.
+Topic capture may use Exa web search; pasted text never does.
 The [private acceptance receipt](docs/qa/personal-go-acceptance-20260909.json)
 records native touch, live generation, and independent-VM data restoration at
 that earlier observation. Subsequent phone approval and full restored-service
@@ -57,7 +59,7 @@ and reason here; remove obsolete alternatives rather than retaining two designs.
 | D2: response grading | Choice and exact-key/variant recall resolve locally; every other short recall answer uses bounded Jev `short-v1`; explain-level prose retains rubric `semantic-v1`. Close/unsure/failed checks offer self-check, and automatic grades allow one-tap correction. Every recorded grade names exact, Jev, learner, or reveal authority. | Operator authorized 2026-09-23; short-v1 accepts p≥0.85 with identity≤0.35 and injection≤0.20, rejects p≥0.90 with injection≤0.20, otherwise self-check. No liberal similarity or model call inside SQL; holdout quality remains to prove. |
 | D3: assistance and correction | Reveal, answer-bearing cues and self-check exposure remain honest; immutable original grade plus separate override adjusts the current schedule without rewriting history. | Exact operation replay is durable; reading/intro is not cold success. |
 | D4: experience approval | One question and one answer action, retained feedback and deliberate Next; Add/Map masthead and the [DESIGN](DESIGN.md) visual system | v5 phone/usefulness requires new observation; earlier approved flow is not blanket acceptance. |
-| D5: recovery / spend | Daily/pre-release off-VM backups, 30-day retention, RPO 24h/RTO 60m targets; provider key $25/week, application $3.50/rolling day, $0.50 generation reservation | Limit raised on 2026-09-23 for Scry personal (exe.dev). Unknown cost retains reservation, not free retry; backup targets are not guarantees. |
+| D5: recovery / spend | Daily/pre-release off-VM backups, 30-day retention, RPO 24h/RTO 60m targets; generation key $25/week unchanged, separate daily-capped Jev-only key, application $3.50/rolling day, $0.50 generation reservation | Generation limit raised on 2026-09-23 for Scry personal (exe.dev). Unknown cost retains reservation, not free retry; backup targets are not guarantees. |
 | D6: replacement boundary | Fresh target data, no legacy API parity; preserve historical stores and backups separately | Operator explicitly directed preservation. Both old Workers are paused; native Postgres remains disabled with recovery backups active. No old data import or deletion. |
 
 Unresolved decisions block only work that depends on them. They do not require

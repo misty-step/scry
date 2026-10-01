@@ -113,9 +113,9 @@
         // SCRY_EXA_ENDPOINT is optional (default https://api.exa.ai); do not
         // configure it for ordinary pasted text or enable automatic text search.
         // Jev Decisions for semantic recall and the prepublication critic.
-        // SCRY_SEMANTIC_API_KEY stays unset: the app reuses SCRY_MODEL_API_KEY,
-        // the dedicated capped Scry provider key. Takes effect only when a
-        // Container starts (planned replacement), never on a running instance.
+        // SCRY_SEMANTIC_API_KEY must be a separate production secret binding,
+        // never a plain var or SCRY_MODEL_API_KEY. Without it a new Container
+        // fails closed; binding changes require a planned, approved replacement.
         "SCRY_SEMANTIC_ENDPOINT": "https://openrouter.ai/api/alpha/decisions",
         "SCRY_SEMANTIC_MODEL": "typesafe/jev-1.13",
         "SCRY_SEMANTIC_RESERVATION_MICROS": "2000"
