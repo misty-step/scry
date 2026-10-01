@@ -105,11 +105,11 @@ func TestFailureAccountingRetryBoundAndInvalidOutput(t *testing.T) {
 		t.Fatalf("automatic attempts exceeded bound: %+v %v", claim, err)
 	}
 	src, err = s.Source(ctx, src.ID)
-	if err != nil || src.Job.Status != "failed" || src.Job.Attempts != 3 || src.Job.CostMicros != 112 || !src.Job.CostUnknown {
+	if err != nil || !src.CanRetry || src.Job.Status != "failed" || src.Job.Attempts != 3 || src.Job.CostMicros != 112 || !src.Job.CostUnknown {
 		t.Fatalf("exhaustion lost known/unknown cost: %+v %v", src, err)
 	}
 	retried, err := s.RetrySource(ctx, src.ID, "explicit-retry")
-	if err != nil || retried.Job.ID == src.Job.ID {
+	if err != nil || retried.CanRetry || retried.Job.ID == src.Job.ID {
 		t.Fatalf("explicit retry was not durable new work: %+v %v", retried, err)
 	}
 	again, err := s.RetrySource(ctx, src.ID, "explicit-retry")

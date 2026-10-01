@@ -13,10 +13,12 @@ import (
 )
 
 // add prefills shared material but never chooses a mode: Topic and Link send
-// material to web research, so only the learner may select them.
+// material to web research, so only the learner may select them. Editing a
+// saved input as new material names that input by ID, so its private text
+// never enters a URL; the saved input itself stays unchanged.
 func (s *server) add(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	text := query.Get("url")
+	text, notice := query.Get("url"), ""
 	if text == "" {
 		text = query.Get("text")
 	}
@@ -26,11 +28,28 @@ func (s *server) add(w http.ResponseWriter, r *http.Request) {
 	if len(text) > store.MaxSourceBytes {
 		text = ""
 	}
+	if id := query.Get("from"); id != "" {
+		item, err := s.store.Source(r.Context(), id)
+		if err != nil {
+			s.fail(w, r, err, page{})
+			return
+		}
+		current, err := s.coldReview(r)
+		if err != nil {
+			s.fail(w, r, err, page{})
+			return
+		}
+		if current != nil && current.Quiz.SourceID == item.ID {
+			s.gate(w, r, current)
+			return
+		}
+		text, notice = item.Text, "This is your saved input. Change it or keep one part, then add it as new material. The saved input stays as it is."
+	}
 	if wantsJSON(r) {
 		jsonResponse(w, http.StatusOK, map[string]any{"csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken(), "max_bytes": store.MaxSourceBytes, "text": text, "mode": ""})
 		return
 	}
-	s.render(w, r, http.StatusOK, page{View: "add", Title: "Add", Active: "add", Text: text})
+	s.render(w, r, http.StatusOK, page{View: "add", Title: "Add", Active: "add", Text: text, Notice: notice})
 }
 
 func (s *server) capture(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +108,7 @@ func (s *server) capture(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) source(w http.ResponseWriter, r *http.Request) {
+	poll := r.URL.Query().Get("status") == "1" && isHTMX(r)
 	item, err := s.store.Source(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err, page{})
@@ -100,6 +120,10 @@ func (s *server) source(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if current != nil && current.Quiz.SourceID == item.ID {
+		if poll {
+			// Cover material already on screen, not only its status.
+			wholePage(w)
+		}
 		s.gate(w, r, current)
 		return
 	}
@@ -107,12 +131,18 @@ func (s *server) source(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusOK, map[string]any{"source": item, "csrf": r.Context().Value(csrfKey{}), "operation_id": randomToken()})
 		return
 	}
-	p := page{View: "source", Title: "Your material", Active: "map", Source: item, JobPending: item.Job != nil && jobPending(item.Job.Status), PollRemaining: 20}
-	if r.URL.Query().Get("status") == "1" && isHTMX(r) {
+	p := sourcePage(item)
+	if poll {
 		s.renderJob(w, r, p)
 		return
 	}
 	s.render(w, r, http.StatusOK, p)
+}
+
+// sourcePage shows one saved input with its preparation; a page whose
+// preparation is live polls its status for a bounded time.
+func sourcePage(item store.Source) page {
+	return page{View: "source", Title: "Your material", Active: "map", Source: item, JobPending: item.Job != nil && jobPending(item.Job.Status), PollRemaining: 20}
 }
 
 func (s *server) sourceImage(w http.ResponseWriter, r *http.Request) {
@@ -150,16 +180,25 @@ func (s *server) retrySource(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrInvalid, page{})
 		return
 	}
-	item, err := s.store.RetrySource(r.Context(), r.PathValue("id"), op)
-	if err != nil {
-		p := page{Operation: op}
-		if status, _ := publicError(err); status == http.StatusConflict {
-			p.Error = "This input is not eligible for another retry, or its bounded retry limit has been reached. Open the saved material to inspect existing questions or edit as new input. Nothing was duplicated."
-		}
-		s.fail(w, r, err, p)
+	id := r.PathValue("id")
+	item, err := s.store.RetrySource(r.Context(), id, op)
+	if err == nil {
+		s.finish(w, r, "/sources/"+item.ID, item)
 		return
 	}
-	s.finish(w, r, "/sources/"+item.ID, item)
+	p := page{Operation: op}
+	if status, _ := publicError(err); status == http.StatusConflict {
+		// Nothing changed. Show the saved input with its steps and next
+		// actions instead of a dead end; the current question's own
+		// material stays behind the look-it-up gate.
+		if saved, serr := s.store.Source(r.Context(), id); serr == nil && !wantsJSON(r) {
+			if current, cerr := s.coldReview(r); cerr == nil && (current == nil || current.Quiz.SourceID != saved.ID) {
+				p = sourcePage(saved)
+			}
+		}
+		p.Error = "Scry didn't start another try, and nothing was duplicated. Your saved input is unchanged."
+	}
+	s.fail(w, r, err, p)
 }
 
 func (s *server) archiveSource(w http.ResponseWriter, r *http.Request) {

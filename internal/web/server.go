@@ -126,7 +126,7 @@ func New(s *store.Store, cfg Config) (http.Handler, error) {
 		"timeText": timeText, "timeISO": timeISO, "money": money, "excerpt": excerpt,
 		"joinLines": func(v []string) string { return strings.Join(v, "\n") },
 		"outcome":   outcomeText, "kind": kindText, "jobLabel": jobLabel, "publishedText": publishedText,
-		"jobPending": jobPending, "retryable": retryable,
+		"jobPending": jobPending, "jobStopped": jobStopped,
 		"brightness": func(v int) string {
 			if v < 0 {
 				v = 0
@@ -546,7 +546,10 @@ func jobPending(status string) bool {
 	}
 }
 
-func retryable(status string) bool {
+// jobStopped is a step that ended without finishing: failed, paused by a
+// restore, or canceled. Whether it may be tried again is the store's
+// Source.CanRetry, never this status alone.
+func jobStopped(status string) bool {
 	switch status {
 	case "failed", "paused", "canceled":
 		return true

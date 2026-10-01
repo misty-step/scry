@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -332,7 +333,7 @@ func TestShareTargetPrefillsAddUS013(t *testing.T) {
 		w := httptest.NewRecorder()
 		app.ServeHTTP(w, r)
 		body := w.Body.String()
-		if w.Code != 200 || !strings.Contains(body, ">"+html.EscapeString(tc.text)+"</textarea>") {
+		if w.Code != 200 || !strings.Contains(body, ">\n"+html.EscapeString(tc.text)+"</textarea>") {
 			t.Fatalf("share %q did not prefill Add: %d %s", tc.query, w.Code, body)
 		}
 	}
@@ -344,7 +345,8 @@ func TestShareTargetPrefillsAddUS013(t *testing.T) {
 func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 	s, app := privateApp(t)
 	ctx := context.Background()
-	if _, err := s.Capture(ctx, store.CaptureInput{Text: "CAPTURE-TEXT certificate trust", Mode: "topic"}, randomToken()); err != nil {
+	src, err := s.Capture(ctx, store.CaptureInput{Text: "CAPTURE-TEXT certificate trust", Mode: "topic"}, randomToken())
+	if err != nil {
 		t.Fatal(err)
 	}
 	zero := int64(0)
@@ -445,6 +447,9 @@ func TestCurrentCaptureMaterialHiddenUntilAssisted(t *testing.T) {
 		t.Fatalf("stream receipt was not relabeled: %s", body)
 	}
 	get("/concepts/"+cold.Concept.ID, http.StatusConflict)
+	if body := get("/add?from="+src.ID, http.StatusConflict); strings.Contains(body, "CAPTURE-TEXT") {
+		t.Fatalf("editing the cold question's capture as new input exposed it: %s", body)
+	}
 	// Once assistance is recorded, the material is the learner's again.
 	if _, err = s.Submit(ctx, cold.ID, randomToken(), "", true); err != nil {
 		t.Fatal(err)
@@ -572,5 +577,88 @@ func TestStoppedFixIsReportedOnItsQuestion(t *testing.T) {
 	}
 	if body := get("/sources/" + src.ID); strings.Contains(body, "/sources/"+src.ID+"/retry") {
 		t.Fatalf("the capture offers to retry a question's fix: %s", body)
+	}
+}
+
+// A capture whose preparation keeps stopping says why and what it cost
+// without opening Details, offers Try again only while the store allows it,
+// and always keeps a way forward: a refused retry shows the saved input, and
+// editing it as new input carries its exact text by ID, never in a URL.
+func TestStoppedPreparationShowsCostAndAWayForward(t *testing.T) {
+	s, app := privateApp(t)
+	ctx := context.Background()
+	text := "\r\nMontessori: methodology, philosophy & key concepts\r\n<practical application>"
+	src, err := s.Capture(ctx, store.CaptureInput{Text: text, Mode: "text"}, randomToken())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie, csrf, _ := bootstrapForm(t, app)
+	send := func(method, path string, form url.Values, htmx bool) *httptest.ResponseRecorder {
+		t.Helper()
+		r := ownerRequest(method, path, form)
+		r.AddCookie(cookie)
+		r.Header.Set("Origin", "https://scry.example")
+		if htmx {
+			r.Header.Set("HX-Request", "true")
+		}
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		return w
+	}
+	poll := "/sources/" + src.ID + "?status=1&remaining="
+	// While preparation is live a poll swaps only its section, and the last
+	// bounded poll leaves a working way to check again.
+	if w := send(http.MethodGet, poll+"2", nil, true); w.Code != http.StatusOK || w.Header().Get("HX-Retarget") != "" || !strings.Contains(w.Body.String(), "remaining=1") {
+		t.Fatalf("live poll: %d %v %s", w.Code, w.Header(), w.Body.String())
+	}
+	if w := send(http.MethodGet, poll+"1", nil, true); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "hx-get") || !strings.Contains(w.Body.String(), `href="/sources/`+src.ID+`"`) {
+		t.Fatalf("last poll: %d %s", w.Code, w.Body.String())
+	}
+	cost := int64(4952)
+	stop := func() {
+		t.Helper()
+		job, err := s.ClaimJob(ctx, time.Minute, 1, 1000000)
+		if err != nil || job == nil || job.Kind != "plan" {
+			t.Fatalf("claim plan: %+v %v", job, err)
+		}
+		if err = s.FailJob(ctx, job.ID, job.LeaseToken, "Synthetic preparation service unavailable; nothing was published.", false, &cost); err != nil {
+			t.Fatal(err)
+		}
+	}
+	retryForm := `action="/sources/` + src.ID + `/retry"`
+	editLink := `href="/add?from=` + src.ID + `"`
+	disclosures := regexp.MustCompile(`(?s)<details.*?</details>`)
+	stop()
+	// The poll that sees the stop replaces the whole page with the reason,
+	// the accounted use, and both next steps.
+	w := send(http.MethodGet, poll+"5", nil, true)
+	if w.Header().Get("HX-Retarget") != "#main" || w.Header().Get("HX-Reselect") != "#main" || !strings.Contains(w.Body.String(), `id="main"`) {
+		t.Fatalf("a stopped preparation did not replace the page: %v %s", w.Header(), w.Body.String())
+	}
+	requirePresent(t, disclosures.ReplaceAllString(w.Body.String(), ""), "stopped step outside Details",
+		"Synthetic preparation service unavailable", "$0.005", retryForm, editLink)
+	for i := range 2 {
+		if w := send(http.MethodPost, "/sources/"+src.ID+"/retry", url.Values{"csrf": {csrf}, "operation_id": {randomToken()}}, false); w.Code != http.StatusSeeOther {
+			t.Fatalf("retry %d: %d %s", i+1, w.Code, w.Body.String())
+		}
+		stop()
+	}
+	// The store refuses a fourth try: the page offers none, and a stale form's
+	// retry shows the saved input and its way forward, changing nothing.
+	if body := send(http.MethodGet, "/sources/"+src.ID, nil, false).Body.String(); strings.Contains(body, retryForm) || !strings.Contains(body, editLink) {
+		t.Fatalf("an exhausted step still offers a retry or no way forward: %s", body)
+	}
+	w = send(http.MethodPost, "/sources/"+src.ID+"/retry", url.Values{"csrf": {csrf}, "operation_id": {randomToken()}}, false)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("refused retry: %d %s", w.Code, w.Body.String())
+	}
+	requirePresent(t, w.Body.String(), "refused retry", `data-view="source"`, "data-error-message", editLink)
+	if saved, err := s.Source(ctx, src.ID); err != nil || saved.Text != text || len(saved.Jobs) != 3 {
+		t.Fatalf("a refused retry changed the saved input: %+v %v", saved, err)
+	}
+	// HTML drops the newline that follows <textarea>, so the saved text keeps
+	// its own leading newline and CRLF line breaks.
+	if body := send(http.MethodGet, "/add?from="+src.ID, nil, false).Body.String(); !strings.Contains(body, ">\n"+html.EscapeString(text)+"</textarea>") {
+		t.Fatalf("editing as new input did not prefill the exact saved text: %s", body)
 	}
 }

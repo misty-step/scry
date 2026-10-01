@@ -533,6 +533,9 @@ Review writes use `/review/answer`, `/review/reveal`, `/review/next`,
 `/review/self`, `/review/override`, and `/review/intro`, each with CSRF and
 idempotent operation handling. Question fix/edit/archive and source export
 retain their authorized routes. Foundation routes and `/library` are removed.
+`/add?from={id}` pre-fills the authorized saved text for a new input without
+changing the original or placing its text in a URL. The current unassisted
+question's source remains protected by the same cold-review gate.
 
 ### Generation and learning policy
 
@@ -540,8 +543,11 @@ Capture creates one goal/source and a sequential chain per mode:
 `topic → research (Exa search) → plan → questions`,
 `link → research (Exa contents) → plan → questions`,
 `photo → transcribe → plan → questions`,
-`text → plan → questions`. Topic research with zero documents proceeds as
-general knowledge, with no invented citation. Link research needs the chosen
+`text → plan → questions`. Private text can be a learning request, factual
+material, or both: model knowledge is labeled General knowledge and carries
+no quotations or citations; claims grounded in supplied material quote it
+exactly. This content basis never opts text into web research. Topic research
+with zero documents likewise proceeds as general knowledge. Link research needs the chosen
 page; a missing Exa key or unreadable page fails the preparation with a
 recoverable message (paste the text as My text, or retry), never a plan about a
 URL nobody read. The content client sends a bounded search
@@ -551,6 +557,9 @@ concept only when it is the same idea, not merely adjacent. Dedupe judgments use
 Jev only for candidate matches, with p≥0.80 to reuse; absent endpoint skips
 dedupe. Ordinary goals should aim for 3–10 concepts, and exact/complete-set
 tasks retain their unit ordering contract.
+Generated relations are source-origin only when their concept has an explicit
+source-grounded note; otherwise they remain model-origin, including reused
+concepts without a new note.
 
 Questions ascend recognize → recall → explain/apply (2–3 per concept where
 appropriate). A prompt that needs an exact number, name, symbol, spelling, or wording
@@ -585,7 +594,10 @@ search excerpt: a model quote that matches only after whitespace, quote-mark,
 dash, or ellipsis normalization is replaced by the original text, and an
 unmatched quote is dropped. An item left without evidence is dropped for the
 learner's own material, or labeled General knowledge (no evidence, no citation)
-for a topic. Web quotes cite the saved result that contains them; topic notes
+for an explicit Topic. Private-text requests may directly produce honestly labeled
+General knowledge, but a failed claimed source quotation is never relabeled to
+evade validation. Link/photo material and exact-text/complete-set units remain
+source-grounded. Web quotes cite the saved result that contains them; topic notes
 carry no evidence. Untrusted input stays serialized data, not instructions or
 HTML. Candidate critic US-004 remains prepublication, with shared spend
 accounting. Known cost settles reservations; unknown sent outcomes stay charged
@@ -637,10 +649,10 @@ Candidate storage extends job ownership for the bounded serial critic battery.
 The provider call remains outside SQL and uses the existing eight-second limit.
 
 Unavailable criticism leaves candidates saved with `critic_status=pending`.
-Automatic retries stay within three total job attempts. Explicit retries may
-resume the same unpublished batch up to five total attempts. They never repeat
-generation or charge its reservation. Judged candidates are reused unchanged;
-unjudged candidates receive new assessment rows on a new job attempt.
+Automatic and explicit retries share the durable ceiling of three total job
+attempts. An eligible explicit retry resumes the same unpublished batch;
+it never repeats generation or charges its reservation. Judged candidates are
+reused unchanged; unjudged candidates receive new assessment rows on a new attempt.
 Restored work remains paused until explicit retry. Fully rejected batches need
 revised input, not repeated criticism to search for a passing judgment.
 
@@ -657,9 +669,15 @@ Live controls report false accepts, false rejects, abstentions, model, and cost.
 They do not establish broad publication quality or authorize activation.
 
 
-Use durable job status with bounded HTMX polling. SSE is optional only after
-proving useful incremental delivery through the Cloudflare Worker/Container
-path; streaming and proxy timeout behavior remain unverified by this research.
+Use durable job status with bounded HTMX polling: twenty checks three seconds
+apart. A terminal poll reconciles the whole page so eligible next actions appear.
+After the polling limit, say checking stopped—not that preparation failed—and
+retain Check again. Stopped preparation shows its reason and known or unknown
+accounted use without opening Details. Offer Try again only when the store's
+derived `can_retry` agrees with transactional eligibility; exhausted or rejected
+steps retain Edit as new input (or Add a new photo) without changing saved history.
+SSE is optional only after proving useful incremental delivery through the
+Cloudflare Worker/Container path; streaming remains unverified by this research.
 
 ### Cloudflare production hosting and recovery
 

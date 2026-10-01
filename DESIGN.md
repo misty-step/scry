@@ -219,8 +219,8 @@ timed advance.
   code say "concept".
 - **No engineering words** in learner copy: job, lease, schema, token, micros,
   FSRS, check identifiers, or model names.
-- **Spend** appears in Settings and in a stopped step's Details, never in the
-  question flow.
+- **Spend** appears in Settings and directly on a stopped preparation step,
+  alongside its reason and next actions; never in the question flow.
 - **No hidden answers:** answers, explanations, and evidence are absent from
   visible and accessible markup before grading or self-check.
 - **Untrusted text** is never rendered as HTML.

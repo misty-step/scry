@@ -13,70 +13,129 @@ import (
 	"github.com/misty-step/scry/internal/store"
 )
 
-func TestV5TopicChainResearchPlanQuestions(t *testing.T) {
-	ctx := context.Background()
-	s := generationStore(t)
-	source, err := s.Capture(ctx, store.CaptureInput{Text: "cell energy", Mode: "topic"}, "v5-topic-chain")
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan := store.PlanContent{Goal: "Understand cell energy", Concepts: []store.PlannedConcept{{Key: "c1", Name: "Cell energy transfer", Summary: "ATP transfers energy during cellular work.", Note: &store.NoteContent{Title: "Cell energy transfer", Body: standardNoteBody, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}}}}}
-	var conceptID string
-	var calls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Error(err)
-		}
-		var content []byte
-		switch {
-		case containsSchema(body, "scry_plan"):
-			content, err = json.Marshal(plan)
-		case containsSchema(body, "scry_questions"):
-			question := map[string]any{"concept": conceptID, "level": "recall", "kind": "recall", "prompt": "Which molecule transfers energy during cellular work?", "answer": "ATP", "explanation": "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.", "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
-			recognize := withPrompt(question, "Which molecule is commonly used to transfer cellular energy?")
-			recognize["kind"], recognize["level"] = "choice", "recognize"
-			recognize["choices"] = []string{"ATP", "DNA", "cellulose"}
-			content, err = json.Marshal(map[string]any{"quizzes": []any{recognize, question}})
-		default:
-			t.Errorf("unexpected generation schema: %s", body)
-		}
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		io.WriteString(w, envelopeJSON(t, string(content), "stop", json.RawMessage(`0.001`)))
-	}))
-	defer server.Close()
-	worker := New(s, localConfig(server.URL))
-	for _, kind := range []string{"research", "plan", "questions"} {
-		job, err := s.ClaimJob(ctx, jobLease, 100_000, 1_000_000)
-		if err != nil || job == nil || job.Kind != kind {
-			t.Fatalf("claim %s: %+v %v", kind, job, err)
-		}
-		if kind == "questions" {
-			input, err := s.JobContext(ctx, job.ID)
-			if err != nil || len(input.Concepts) != 1 {
-				t.Fatalf("question context: %+v %v", input, err)
+func TestV5KnowledgeChainKeepsCapturePrivacyAndDurableProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		mode, text, name, summary, body string
+		prompt, answer, explanation     string
+		choices                         []string
+	}{
+		{
+			mode: "topic", text: "cell energy", name: "Cell energy transfer",
+			summary: "ATP transfers energy during cellular work.", body: standardNoteBody,
+			prompt: "Which molecule transfers energy during cellular work?", answer: "ATP",
+			explanation: "ATP transfers chemical energy when its phosphate groups participate in cellular reactions.",
+			choices:     []string{"ATP", "DNA", "cellulose"},
+		},
+		{
+			mode: "text", text: "Montessori: methodology, philosophy, key concepts, practical application",
+			name: "Role of Montessori Guide", summary: "The guide observes children and supports their independent work.",
+			body:   "A Montessori guide observes children and connects them with suitable activities in a prepared environment. The guide demonstrates how to use materials, then gives a child room to work independently. Observation helps the guide decide when to offer support and when to step back. For example, a child repeating a practical activity may need time to practice rather than another demonstration. A common confusion is to equate independence with an absent teacher; the guide actively prepares the environment and responds to each child's needs.",
+			prompt: "What is the main role of a guide in Montessori education?", answer: "Observe and guide individual work",
+			explanation: "A Montessori guide observes children and supports independent activity rather than directing every action.",
+			choices:     []string{"Observe and guide individual work", "Lecture to the whole class", "Assign identical work to everyone"},
+		},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			ctx := context.Background()
+			s := generationStore(t)
+			source, err := s.Capture(ctx, store.CaptureInput{Text: tc.text, Mode: tc.mode}, "v5-knowledge-chain")
+			if err != nil {
+				t.Fatal(err)
 			}
-			conceptID = input.Concepts[0].ID
-		}
-		if err := worker.process(ctx, job); err != nil {
-			t.Fatalf("settle %s: %v", kind, err)
-		}
-	}
-	saved, err := s.Source(ctx, source.ID)
-	if err != nil || len(saved.Quizzes) != 2 || saved.Quizzes[0].ConceptID != conceptID || len(saved.Jobs) != 3 || calls != 2 {
-		t.Fatalf("incomplete concept chain: %+v %v calls=%d", saved, err, calls)
-	}
-	for _, job := range saved.Jobs {
-		if job.Status != "complete" || job.CostUnknown {
-			t.Errorf("unsettled job: %+v", job)
-		}
-	}
-	if saved.Jobs[0].CostMicros != 0 || saved.Jobs[1].CostMicros != 1000 || saved.Jobs[2].CostMicros != 1000 {
-		t.Fatalf("attempt costs not preserved: %+v", saved.Jobs)
+			plan := store.PlanContent{Goal: "Understand " + tc.name, Concepts: []store.PlannedConcept{{
+				Key: "c1", Name: tc.name, Summary: tc.summary,
+				Note: &store.NoteContent{Title: tc.name, Body: tc.body, Basis: "topic", Evidence: []string{}, Citations: []store.Citation{}},
+			}}}
+			var conceptID string
+			var calls int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				var content []byte
+				switch {
+				case containsSchema(body, "scry_plan"):
+					content, err = json.Marshal(plan)
+				case containsSchema(body, "scry_questions"):
+					question := map[string]any{"concept": conceptID, "level": "recall", "kind": "recall", "prompt": tc.prompt, "answer": tc.answer, "explanation": tc.explanation, "basis": "topic", "evidence": "", "choices": []string{}, "variants": []string{}, "citations": []store.Citation{}, "required_ideas": []string{}, "covers": []string{}}
+					recognize := withPrompt(question, "Which answer best describes "+tc.name+"?")
+					recognize["kind"], recognize["level"] = "choice", "recognize"
+					recognize["choices"] = tc.choices
+					content, err = json.Marshal(map[string]any{"quizzes": []any{recognize, question}})
+				default:
+					t.Errorf("unexpected generation request: %s", body)
+					return
+				}
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				io.WriteString(w, envelopeJSON(t, string(content), "stop", json.RawMessage(`0.001`)))
+			}))
+			defer server.Close()
+			worker := New(s, localConfig(server.URL))
+			kinds := []string{"plan", "questions"}
+			if tc.mode == "topic" {
+				kinds = []string{"research", "plan", "questions"}
+			}
+			for _, kind := range kinds {
+				job, err := s.ClaimJob(ctx, jobLease, 100_000, 1_000_000)
+				if err != nil || job == nil || job.Kind != kind {
+					t.Fatalf("claim %s: %+v %v", kind, job, err)
+				}
+				if kind == "questions" {
+					input, err := s.JobContext(ctx, job.ID)
+					if err != nil || len(input.Concepts) != 1 || input.Concepts[0].Note == nil {
+						t.Fatalf("question context: %+v %v", input, err)
+					}
+					note := input.Concepts[0].Note
+					if note.Basis != "topic" || len(note.Evidence) != 0 || len(note.Citations) != 0 {
+						t.Fatalf("plan lost its honest grounding: %+v", note)
+					}
+					conceptID = input.Concepts[0].ID
+				}
+				if err := worker.process(ctx, job); err != nil {
+					t.Fatalf("settle %s: %v", kind, err)
+				}
+			}
+			path := s.Path()
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			s, err = store.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { s.Close() })
+			saved, err := s.Source(ctx, source.ID)
+			if err != nil || saved.Status != "ready" || len(saved.Quizzes) != 2 || len(saved.Jobs) != len(kinds) || calls != 2 {
+				t.Fatalf("incomplete durable chain: %+v %v calls=%d", saved, err, calls)
+			}
+			if saved.Kind != source.Kind || saved.Mode != tc.mode || saved.Web != source.Web || saved.Text != tc.text || saved.Revision != 1 || len(saved.Documents) != 0 {
+				t.Fatalf("knowledge grounding changed capture identity or researched it: %+v", saved)
+			}
+			for _, q := range saved.Quizzes {
+				if q.ConceptID != conceptID || q.Basis != "topic" || q.Evidence != "" || len(q.Citations) != 0 {
+					t.Errorf("published question claimed source evidence: %+v", q)
+				}
+			}
+			for i, job := range saved.Jobs {
+				cost := int64(1000)
+				if kinds[i] == "research" {
+					cost = 0
+				}
+				if job.Status != "complete" || job.Attempts != 1 || job.CostUnknown || job.CostMicros != cost {
+					t.Errorf("unexpected retry or spend settlement: %+v", job)
+				}
+			}
+			state, err := s.Review(ctx)
+			if err != nil || state.Intro == nil || state.Intro.Note == nil || state.Intro.Note.Basis != "topic" || len(state.Intro.Note.Evidence) != 0 || len(state.Intro.Note.Citations) != 0 {
+				t.Fatalf("general-knowledge note was not durably reviewable: %+v %v", state, err)
+			}
+		})
 	}
 }
 

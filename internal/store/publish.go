@@ -142,8 +142,8 @@ func checkBasis(m material, basis string, evidence []string, citations []Citatio
 		}
 		return normalized, nil
 	case "topic":
-		if m.Kind != "topic" {
-			return nil, fmt.Errorf("%w: content from your material must quote it", ErrInvalid)
+		if m.Kind != "topic" && (m.Kind != "source" || (m.Mode != "text" && m.Mode != "")) {
+			return nil, fmt.Errorf("%w: page and photo content must quote the saved material", ErrInvalid)
 		}
 		if len(evidence) != 0 || len(citations) != 0 {
 			return nil, fmt.Errorf("%w: general knowledge must not claim evidence or citations", ErrInvalid)
@@ -657,10 +657,6 @@ func publishPlan(ctx context.Context, tx *sql.Tx, j Job, plan PlanContent, resul
 		return 0, err
 	}
 	ids := make(map[string]string, len(plan.Concepts))
-	origin := "model"
-	if j.SourceKind == "source" {
-		origin = "source"
-	}
 	for _, c := range plan.Concepts {
 		id := c.ExistingID
 		if id == "" {
@@ -698,6 +694,10 @@ func publishPlan(ctx context.Context, tx *sql.Tx, j Job, plan PlanContent, resul
 	}
 	for _, c := range plan.Concepts {
 		from := ids[c.Key]
+		origin := "model"
+		if c.Note != nil && c.Note.Basis == "source" {
+			origin = "source"
+		}
 		for _, ref := range c.Requires {
 			if err = addRelation(ctx, tx, from, resolve(ref), "requires", origin, j.ID, now); err != nil {
 				return 0, err

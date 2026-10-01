@@ -70,7 +70,7 @@ func validateV5Question(raw json.RawMessage, job *store.Job, input store.JobCont
 		return q, fmt.Errorf("question failed %s", issue)
 	}
 	if len(contract.Units) > 0 && job.Kind == "questions" {
-		if index >= len(contract.Units) || len(quiz.Covers) != 1 || quiz.Covers[0] != contract.Units[index].ID || !strings.Contains(q.Evidence, contract.Units[index].Text) || !unitIsTested(contract.Units[index].Text, draft, contract.Task) {
+		if q.Basis != "source" || index >= len(contract.Units) || len(quiz.Covers) != 1 || quiz.Covers[0] != contract.Units[index].ID || !strings.Contains(q.Evidence, contract.Units[index].Text) || !unitIsTested(contract.Units[index].Text, draft, contract.Task) {
 			return q, errors.New("required units changed or reordered")
 		}
 		if contract.Task == "exact_text" && (q.Kind != "recall" || q.Answer != contract.Units[index].Text || len(q.Variants) != 0) {

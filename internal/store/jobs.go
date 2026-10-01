@@ -107,7 +107,7 @@ func (s *Store) ClaimJob(ctx context.Context, lease time.Duration, reservationMi
 	var id string
 	var criticOnly bool
 	err = tx.QueryRowContext(ctx, `SELECT j.id,j.candidates_json IS NOT NULL FROM jobs j JOIN sources src ON src.id=j.source_id WHERE j.status IN ('queued','retry')
-	 AND j.available_at<=? AND (j.attempts<3 OR (j.candidates_json IS NOT NULL AND j.status='queued' AND j.attempts<5)) AND src.archived=0 AND src.revision=j.source_revision
+	 AND j.available_at<=? AND j.attempts<3 AND src.archived=0 AND src.revision=j.source_revision
 	 AND NOT `+retiredJob+` ORDER BY j.available_at,j.created_at,j.id LIMIT 1`, now).Scan(&id, &criticOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
