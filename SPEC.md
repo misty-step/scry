@@ -1,11 +1,11 @@
-# Scry concept-centered specification
+# Scry prompt-first, concept-centered specification
 
-Status: v5 direction authorized on 2026-09-23 by the operator: “Execute this
-reimagining in full” (MIS-162). This is an implementation contract, not a
-production activation receipt. Live schema migration needs separate release-time
-approval. The current deployed state and compatible artifacts remain owned by
-[the runbook](docs/runbook.md); previously approved phone-flow and recovery proof
-are not v5 acceptance.
+Status: prompt-first Create intent reaffirmed on 2026-10-02; its behavioral
+acceptance is [S11](#s11--create-useful-material-from-intent-us-013). Existing
+Go v5 contracts remain below, with their 2026-09-23 authority (MIS-162).
+Approved product intent is not implementation or activation proof. Current
+deployed state and compatible artifacts belong to [the runbook](docs/runbook.md);
+prior phone-flow and recovery receipts establish only what they exercised.
 
 [VISION](VISION.md) owns intent; [USER_STORIES](USER_STORIES.md) owns the learner
 stories; [DESIGN](DESIGN.md) owns visual decisions; the earlier Rust
@@ -13,11 +13,20 @@ extraction strategy remains historical in [its migration record](docs/rust-migra
 
 ## Authority and open decisions
 
-**Confirmed by the operator:** the rewrite began with no active users and an
-experience the operator wanted to replace. Go, SQLite, HTMX, and exe.dev are the
-accepted direction: smooth, simple, aesthetically intentional, and enhanced by
-AI content generation. Full execution was authorized. The initial real-phone
-flow was subsequently approved, followed by the daily recovery policy below.
+**Implemented direction, not the future target:** the earlier rewrite adopted
+Go, SQLite, and HTMX, initially on exe.dev and now hosted in a Cloudflare
+Container. That remains the current application and operating-command contract.
+The earlier phone flow and daily recovery policy were approved; they do not
+prove the complete current product intent.
+
+**Approved product and future direction (2026-10-02 reaffirmation):** Create
+accepts a word, phrase, or long dictated intent and produces useful tailored
+study/reference and practice material before any mandatory setup questionnaire.
+Actual practice and feedback refine it. S11 binds this outcome. The approved
+future implementation is a ground-up Rust-on-Cloudflare rewrite, not restoration
+of the retired Rust stack. This documentation selects no speech engine, storage
+replacement, migration, deployment, or new spending authority. Current Go
+artifacts and imported historical issues do not authorize that cutover.
 
 **2026-09-23 decision (MIS-162):** after rejecting the MIS-59 foundations
 experience on 2026-09-12, the operator explicitly authorized the complete
@@ -71,7 +80,7 @@ planning every future feature before testing the core experience.
 | Stories | USER_STORIES.md plus this file's criteria | What must the learner be able to do, including failure and interruption? |
 | Behavior / criteria | This file (binding ids: S##.##) | What exactly must be accepted for each story? |
 | Design | Architecture and decision sections below | What is the smallest system that can deliver those behaviors? |
-| Work | Linear, linked to story/criterion IDs and a source revision | What bounded change is someone doing now? |
+| Work | Glass in scope `misty-step/scry`, linked to story/criterion IDs and source revision; legacy MIS/Linear links are provenance | What bounded change is someone doing now? |
 | Verification | docs/qa/system.md plus docs/qa/critics.md critic receipts | What was actually exercised, observed, and not verified? |
 
 **Contract status.** Implemented behavior lives in code, tests, and dated
@@ -104,6 +113,12 @@ reference material, one current note per concept. The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
 from real observations, not a certified mastery score.
 
+Creation precedes the study loop when starting a new interest: prompt → saved
+preparation → useful reference and practice → refinement from real interaction
+([S11](#s11--create-useful-material-from-intent-us-013)). A returning learner can
+continue retrieval-led study directly. “Quiz-first” is not a compulsory pretest,
+material-import workflow, or mastery profile before generation.
+
 ```text
 scry                                  + Add   Map
 concept chip (inert before grading)
@@ -135,28 +150,28 @@ I was right (quiet, automatic miss only)
   until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
-- Add has one field and an optional photo (US-013). Text, including a URL,
-  goes straight to private planning without web research; a selected photo
-  transcribes before planning. The old explicit Topic and Link mode branches
-  remain for retained callers only and cannot be inferred from pasted text.
-  Captures and preparing failures remain inspectable on Source and Map.
-  Share-target prefill via `/add?text=&url=&title=` remains editable.
+- Current Go Add has one field and an optional photo (US-013's capture boundary).
+  Text, including a URL, goes to private planning without web research; a photo
+  transcribes before planning. Retained explicit Topic/Link callers are not
+  inferred from text. Source and Map expose captures and preparing failures;
+  `/add?text=&url=&title=` prefill stays editable. Approved Create acceptance
+  in S11 extends this implemented boundary, not its permission to search.
 - Map shows goal sections and an accessible concept list
   alongside a decorative constellation. Concept pages show status, separate
   unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
   questions, provenance, and Practice. Status words and focus/pause never
   depend on color alone.
 - Keep private browser controller presentation-only; without JS, forms and
-  required mode radios remain functional. Design tokens, responsive behavior,
+  capture controls remain functional. Design tokens, responsive behavior,
   reduced motion, and accessible targets live in [DESIGN](DESIGN.md).
 
 ## User stories and acceptance criteria
 
-These are the accepted implementation criteria. Their source/environment-bound
-**PASS**, **FAIL**, and **UNVERIFIED** observations belong to the
-[acceptance receipt](docs/qa/personal-go-cutover-20260910.json), not this prose.
-IDs are specification identifiers, not invented Linear issues. Quality contracts
-apply across stories; the owning issue links here rather than copying the spec.
+These are accepted behavioral criteria, not claims that each is implemented.
+Dated **PASS**, **FAIL**, and **UNVERIFIED** observations belong to their
+source/environment-bound receipts, including the [earlier Go acceptance
+receipt](docs/qa/personal-go-cutover-20260910.json), not this prose. IDs are
+specification identifiers, not tracker-generated issues; owning items link here.
 
 ### S01 — Open into useful learning
 
@@ -224,6 +239,9 @@ legacy callers; this screen does not claim link reading, topic search, a
 new interpretation step, or a new spending contract.
 
 ### S03 — Add something without configuring it (US-005)
+
+Retained explicit-mode callers only. This is not the Add/Create screen contract;
+US-013 and S11 govern that front door.
 
 As the learner, I want to add a topic, text, link, or photo with an explicit
 choice of what it is, so I do not have to create a deck or card template.
@@ -391,6 +409,65 @@ history or silently restart paid work.
 Proof: process interruption, concurrent review/backup, incomplete upload, and a
 real fresh-environment restore. Persistent disk or VM cloning is insufficient.
 
+### S11 — Create useful material from intent (US-013)
+
+Approved product acceptance, reaffirmed 2026-10-02; not an implementation receipt.
+As the learner, I want to express what I want to learn and receive useful
+tailored material first, then improve it through use rather than setup.
+
+- **S11.1:** From Create, a short topic word, a phrase, and a long rambling
+  dictated request are each valid learning intent. For example, “photosynthesis”,
+  “why HTTP caches go stale”, and a transcript mixing current knowledge,
+  questions, and a desired practical use do not require imported factual text,
+  a mode chooser, learner profile, or diagnostic quiz before preparation.
+  Dictated input means accepting its text; no speech engine, browser vendor,
+  automatic recording, or microphone integration is selected here. Unsupported
+  or oversize input is rejected honestly without silent truncation or loss of
+  the editable draft; current Go byte/photo bounds remain unchanged.
+- **S11.2:** The first completed result contains useful study/reference material
+  and practice attached to teachable concepts: an understandable explanation
+  with relevant examples or distinctions, and answerable questions with
+  explanatory feedback. It responds to the expressed intent, not merely its
+  keywords. A bare topic still receives a useful starting point with assumptions
+  made visible. Optional clarification can refine it afterward; no compulsory
+  questionnaire or draft-approval inbox stands between curiosity and useful work.
+- **S11.3:** Supplied material may support the prompt but is not mandatory.
+  Keep captured intent and optional evidence inspectable. A topic/request is
+  not a factual citation: generated general knowledge is labeled; source/web
+  claims obey S04.1's exact evidence rules. Private text, including dictated
+  text and pasted URLs, does not authorize inferred web search or link reading.
+- **S11.4:** Saved input and preparation state survive leaving or restarting.
+  Pending is visibly pending, not ready or an instantaneous-completion promise;
+  existing study stays usable while work runs. Partial usable output is labeled
+  partial. Failed/empty output preserves input and offers the existing bounded
+  recovery path, never a fabricated success. An unknown sent outcome retains
+  accounted usage and requires deliberate reconciliation, not an invisible
+  resend. Replayed capture/publication does not duplicate saved work.
+- **S11.5:** Subsequent material and practice respond to actual answers,
+  expressed confusion, content/grade corrections, and learner feedback. The
+  evidence for refinement remains inspectable; an initial guess, reading,
+  navigation, reveal, or “I know this already” is not a genuine unaided attempt
+  or certified mastery. Preserve immutable presentations/attempts and grading
+  authority. Refinement neither silently mutates the pinned scheduler policy
+  nor reinstates retired US-012's contrast-generation mechanism by implication.
+- **S11.6:** Durable concept notes remain reusable beyond one answer. Practice
+  uses useful variations, mechanisms, distinctions, and application where the
+  intent calls for them, rather than repeated wording masquerading as breadth.
+  Prerequisite introductions, assistance fences, honest estimates, held feedback,
+  and deliberate Next remain binding under S02/S08; this front door deletes none
+  of those contracts.
+- **S11.7:** Privacy, shared bounded spending, exact retry/history, and hosted
+  recovery under S06/S09/S10 and D5 remain binding through creation/refinement
+  and any future runtime replacement. No new cap, local-only production backup
+  exception, historical-store import, or deployment permission follows from S11.
+
+Proof required for product completion: human review of real word/phrase/dictated
+inputs through authorized generation, inspectable reference/practice output,
+and later interaction that demonstrably refines material without manufacturing
+learning history. Exercise slow, partial, failed, and uncertain work separately.
+Current Go Add walks prove capture/privacy only; source documentation, fixture
+success, and older phone receipts do not establish S11 acceptance.
+
 ## Cross-cutting quality contracts
 
 These are candidate budgets to approve through the experience slice, not
@@ -413,7 +490,7 @@ repeatable browser emulation is not evidence of the owner's physical-phone feel.
 The owner approves aesthetics and usefulness; QA agents can surface defects and
 measure contracts but cannot manufacture that approval.
 
-## V5 architecture and durable boundaries
+## Current Go v5 architecture and durable boundaries
 
 ### One application and one state authority
 
@@ -725,11 +802,18 @@ old usability trial succeeded. The v5 migration preserves historical
 foundation-origin data, hidden from current Map/Stream; an older binary cannot
 run after migration. It does not authorize production activation.
 
-## Delivery slices and Linear mapping
+## Delivery slices and work provenance
 
-MIS-48 owns the accepted rewrite and its execution evidence. The Scry project
-was empty at the initial September 9 assessment; no speculative backlog was
-generated. MIS-42 remains Estate's separate inventory repair, not this rewrite.
+[Glass](https://mirrodin.tail5f5eb4.ts.net) in scope `misty-step/scry` owns
+current work state; [README](README.md#start-or-resume-work) owns the work route.
+Migration reconciliation and writer repointing belong to the off-Linear work,
+not this specification. Imported descriptions require reconciliation with
+current intent before execution, not automatic permission to ship an old build.
+
+The table below records the earlier Go delivery sequence, not the approved
+future Rust rewrite's implementation plan. Legacy
+[MIS-48](https://linear.app/misty-step/issue/MIS-48/execute-the-personal-go-sqlite-htmx-scry-rewrite)
+and MIS-162 retain that provenance; MIS-42 was Estate's separate inventory repair.
 
 The first deliverable is an experience to judge, not a repository scaffold.
 Ticket only the next ready slice and its real dependencies. A primary story
@@ -857,6 +941,12 @@ Repository evidence is historical observation, not a rerun of the target app:
 
 - [Learning-science synthesis](docs/science/README.md): retrieval/spacing and the
   distinction between researched principles and product policy.
+- [Concept-centered round](docs/design/concept-centered-study.md) and
+  [September interface rounds](docs/design/redesign-2026-09-24.md): retained
+  decisions/proposals, not a competing prompt-first front door.
+- [Learning reference pack](docs/research/learning-science-references.md) and
+  [AI learning experiments](docs/research/ai-learning-design-brainstorm.md):
+  historical research and ticket sketches, not mandatory import/approval steps.
 - [Generation research](docs/research/prose-to-quiz-generation.md) and
   [generation receipt](docs/evals/frictionless-generation-20260908.json): task
   fit, grounding, finite sets, misleading aggregate quality and bounded costs.

@@ -1,11 +1,13 @@
 # Scry
 
-Scry is a personal, quiz-first learning app. `VISION.md` owns product direction;
-`SPEC.md` owns behavior, acceptance, and architecture. The production
-application is a Go/SQLite process with server-rendered HTML, HTMX, and a small
-browser controller in a singleton Cloudflare Container behind Worker
-`scry-app-host` and Cloudflare Access. The operator approved the phone flow and
-daily recovery policy.
+Scry is a private, prompt-first learning app. Before scoping work, read
+`VISION.md` → `USER_STORIES.md` → `SPEC.md`, especially US-013 / S11's Create
+acceptance: useful tailored material from learning intent before setup, then
+refinement through real practice/feedback. `README.md` is the work entrypoint.
+The implemented application remains Go/SQLite, server-rendered HTML/HTMX, and a
+small browser controller in a singleton Cloudflare Container behind
+`scry-app-host` and Cloudflare Access. Approved future ground-up
+Rust-on-Cloudflare direction is not shipped-runtime or deployment proof.
 
 ## Product and runtime
 
@@ -107,9 +109,11 @@ instructions in `docs/qa/critics.md`. Dated Rust/beta/dogfood/research receipts,
 `docs/history/exemplars.md` are history, not current deployment instructions.
 
 Work from the current request, preserve overlapping work, and keep ownership
-and evidence in the session/PR. Linear owns operational state, not a duplicate
-product specification. Close a named issue only after its accepted scope and
-required proof are satisfied. Do not lower gates or claim unrun canaries.
+and evidence in the session/PR. Glass in scope `misty-step/scry` owns current
+operational state via the README work route; MIS identities and Linear links
+remain provenance. Migration/writer reconciliation has its own owner.
+Close a named item only after its accepted scope and required proof are
+satisfied. Do not lower gates or claim unrun canaries.
 
 ## Merging
 

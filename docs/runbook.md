@@ -4,7 +4,7 @@
 
 This runbook owns deployment/recovery procedures, not product acceptance or
 permission to execute them. [VISION](../VISION.md) and [SPEC](../SPEC.md) own
-current intent and acceptance; Linear owns current owner, status, and pause.
+current intent and acceptance; the [README work route](../README.md#start-or-resume-work) identifies current Glass ownership/status/pause.
 The operator rejected the foundations UI on 2026-09-12; on 2026-09-23 they
 authorized the concept-centered v5 implementation (MIS-162), and on 2026-09-24
 approved its release ("go for it"). The release completed steps 1–4 of the
@@ -959,8 +959,8 @@ Global exe sign-out was exercised without an independent VM token. Private
 content stayed absent on history return, but that return encountered an upstream
 authentication redirect loop; a fresh canonical navigation reached sign-in.
 Switching to a different exe account remains unverified in that receipt.
-Do not broaden trust or assume logout covers S09.2; Linear owns current work
-status. [SPEC](../SPEC.md) owns current S04.2/AI1 acceptance, including the later
+Do not broaden trust or assume logout covers S09.2; the [README work route](../README.md#start-or-resume-work)
+owns tracker guidance. [SPEC](../SPEC.md) owns current S04.2/AI1 acceptance, including the later
 negative foundations assessment rather than merely pending usefulness review.
 The receipt records candidate performance/accessibility budgets separately;
 initial phone-flow approval is not a measured p95 or general AI-quality claim.

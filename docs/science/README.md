@@ -5,6 +5,11 @@ This bibliography distinguishes learning evidence from Scry's product policy.
 Current behavior belongs to `internal/learning`, `internal/store`, and `SPEC.md`.
 The retained Rust comparisons below describe the historical implementation;
 they are not parity or efficacy evidence for the Go application.
+The [product vision](../../VISION.md) and
+[Create acceptance](../../SPEC.md#s11--create-useful-material-from-intent-us-013)
+own the prompt-first journey and evidence-based refinement. Retrieval-led study
+is compatible with useful reference material before practice; historical
+source-import and draft-approval sketches are not mandatory entry steps.
 
 ## Current Go policy
 
