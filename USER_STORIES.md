@@ -4,8 +4,8 @@
 reused, criteria a check can fail on. skill://user-stories guides edits.
 Authoritative chain: VISION.md (intent) -> this file (root stories) -> SPEC.md
 (binding acceptance ids S##.##, behavior, architecture) -> docs/qa/system.md and
-docs/qa/critics.md (verification). Linear owns work state. Journeys and receipts
-cite both US ids and S ids. -->
+docs/qa/critics.md (verification). Glass owns current work state; legacy MIS
+ids/Linear links preserve provenance. Journeys and receipts cite US and S ids. -->
 
 Intent revision authority: on 2026-09-23 the operator authorized "Execute this
 reimagining in full" (MIS-162). US-001–003 are revised to the approved concept-
@@ -21,6 +21,13 @@ be able to tell that this was correct"). The operator then directed one opiniona
 way"): the exact/flexible answer form is removed. Only the exact key or an
 authored variant resolves locally; every other recall answer goes to the
 `short-v1` check, whose identity judgment reads exactness from the prompt.
+
+The 2026-10-02 reaffirmation makes prompt-first Create the governing entry
+journey: useful tailored material first, then refinement through practice and
+feedback. It reconciles, rather than discards, concept-centered and retrieval-led
+study. [VISION](VISION.md) owns that intent; [S11](SPEC.md#s11--create-useful-material-from-intent-us-013)
+owns the end-to-end acceptance extending US-013. Current Go capture checks are
+not proof of that complete product goal or of the approved future Rust rewrite.
 
 ## Capability: Concept-centered study
 
@@ -104,8 +111,8 @@ Evidence: `internal/learning/critic_test.go`,
 
 ## US-005 Capture a goal in one step
 
-Superseded by US-013 for the live Add screen on 2026-09-28. The explicit
-mode-based ingestion contract below remains for retained captures and callers.
+Superseded by US-013 for the implemented Go Add contract on 2026-09-28,
+not a deployment receipt. Explicit modes remain for retained captures/callers.
 
 Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
 
@@ -211,10 +218,19 @@ Retired on 2026-09-23 by the operator's simplification decision (MIS-162): Scry
 no longer generates contrast questions from recorded confusions. The id stays
 reserved.
 
-## US-013 Add private material in one place
+## US-013 Create from what I want to learn
 
-Statement: When I have words or a photo to study, I want to add them without
-classifying them first, so preparation can start in one step.
+Statement: When curiosity starts as a word, phrase, or long dictated ramble,
+I want Create to produce useful tailored study/reference and practice material
+without a setup questionnaire, so I can start learning and refine it through
+actual practice and feedback.
+
+Acceptance: [S11.1–S11.7](SPEC.md#s11--create-useful-material-from-intent-us-013)
+bind the approved Create journey, including useful first material, honest
+generation states, and refinement without fabricated mastery. The criteria and
+Evidence below retain the implemented Go Add capture boundary adopted on
+2026-09-28; they do not certify that broader journey. “Create” does not claim
+that the current Add control has been renamed or that speech capture is built.
 
 Criteria:
 1. WHEN I submit text or one supported photo from Add, THE SYSTEM SHALL save
@@ -225,8 +241,10 @@ Criteria:
    private text and SHALL NOT start web research by inference; invalid input
    SHALL leave a usable Add field without creating a source.
 
-No-gos: inferred public search, a new interpretation pipeline, or release
-automation in this first-screen change.
+No-gos: mandatory import, onboarding questionnaire or diagnostic quiz before
+useful material; inferred public search; assumed speech engine or recording
+integration; source-only docs treated as runtime or deployment acceptance.
 
 Evidence: `internal/web/v5_test.go`, `qa/walk --stories US-013`, and the
-real Add-to-receipt browser walk.
+real Add-to-receipt browser walk cover current capture only. S11 requires
+separate real-input generation and interaction evidence before completion.

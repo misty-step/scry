@@ -12,6 +12,11 @@ retains umbrella acceptance.
 This is a dated exploration. Its “not yet accepted” labels and pause describe
 the 2026-09-12 state, not the later authorization recorded in the outcome below.
 
+The later [prompt-first intent](../../VISION.md) and
+[Create acceptance](../../SPEC.md#s11--create-useful-material-from-intent-us-013)
+govern the front door. This round's quiz-first language describes ongoing study,
+not a compulsory pretest, material import, or setup questionnaire.
+
 ## Operator findings and direction
 
 The operator tried the foundations experience and rejected it as bad, awkward,

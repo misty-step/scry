@@ -1,12 +1,18 @@
 # Scry
 
-Scry is a private, concept-centered, quiz-first learning app. The Add screen
-takes private text or an optional photo without a mode chooser; a pasted URL
-stays private text rather than starting web research. Scry prepares a goal
-with connected concepts, notes and questions. Study one question at a time,
-revisit notes on the Map, and keep answer history honest when a check is
-uncertain or mistaken. One Go process owns SQLite, server-rendered HTML/HTMX,
-bounded generation, and recovery.
+Scry is a private, prompt-first learning app. The governing journey is
+**Create → express what I want to learn → useful tailored study/reference and
+practice material → refine through actual practice and feedback**, without a
+mandatory setup questionnaire. [VISION](VISION.md) owns the intent;
+[US-013](USER_STORIES.md#us-013-create-from-what-i-want-to-learn) leads to the
+concrete [Create acceptance](SPEC.md#s11--create-useful-material-from-intent-us-013).
+Concept-centered, retrieval-led study and honest learning history remain core.
+
+**Implemented today:** one Go/SQLite process owns HTML/HTMX, bounded generation,
+and recovery. Add accepts private text or an optional photo; URLs stay private
+text, not inferred web research. **Approved future target:** a ground-up
+Rust-on-Cloudflare rewrite, not shipped or activated by these docs. Existing
+capture checks do not prove the complete Create/refinement contract.
 
 [Product direction](VISION.md) · [Stories](USER_STORIES.md) ·
 [Feature map](features/README.md) · [Behavior and architecture](SPEC.md) ·
@@ -21,10 +27,10 @@ Access team domain is `misty-step-pantry.cloudflareaccess.com`; it is the
 identity/login domain, not a Pantry application Worker URL. The
 [runbook](docs/runbook.md) owns deployed origins and state; see the
 [Cloudflare hosting notes](deploy/cloudflare-hosting/README.md) for the request path.
-The operator approved the earlier phone flow, rejected the later foundations
-detour, then authorized the concept-centered v5 implementation on 2026-09-23
-(MIS-162). This checkout does not imply v5 production activation; the
-[runbook](docs/runbook.md#current-authority) owns deployed state. `www.scry.study`
+The earlier phone flow and concept-centered v5 decisions (MIS-162) remain
+dated provenance, not blanket acceptance of the prompt-first goal or authority
+to replace the live runtime. The [runbook](docs/runbook.md#current-authority)
+owns deployed state. `www.scry.study`
 and `scry.mistystep.io` redirect reads to the
 canonical origin; alternate-host mutations are rejected, not replayed. The
 former exe.dev app service is stopped and disabled; its database and the old
@@ -37,11 +43,14 @@ retired. Historical learning-science research and recovery tools remain.
 ## Start or resume work
 
 Begin with the current operator request as authority; a ticket is not a
-prerequisite. Reconcile any existing owning issue in the
-[Scry Linear project](https://linear.app/misty-step/project/scry-7d7eb0cc48bb),
-not the checkout's apparent age or a historical approval. Linear owns recorded
-work state: current owner, scope, pause/blocker, and next permitted action; use the
-[existing ticket contract](SPEC.md#ticket-contract), not a second status ledger.
+prerequisite. [Glass](https://mirrodin.tail5f5eb4.ts.net) in scope
+`misty-step/scry` owns current work state: owner, accepted scope, pause/blocker,
+and next permitted action. Reconcile the existing owning item using the
+[ticket contract](SPEC.md#ticket-contract), not a second status ledger.
+Imported MIS identities and [legacy Linear project links](https://linear.app/misty-step/project/scry-7d7eb0cc48bb)
+preserve provenance, not current execution authority. Off-Linear migration
+reconciliation and writer repointing have a separate owner; this repo neither
+changes their state nor claims every writer has been cut over.
 
 Locate the checkout for that work before developing: `git worktree list --porcelain`
 shows candidates; in the selected checkout, `git status --short --branch` and
@@ -52,10 +61,13 @@ work and isolated experiments; neither is automatically the release baseline.
 Local design notes may carry newer direction than HEAD without being published
 specification or shipped behavior.
 
-Read [VISION](VISION.md), [SPEC authority](SPEC.md#authority-and-open-decisions),
-the [concept-centered outcome](docs/design/concept-centered-study.md#outcome-2026-09-23)
-and [DESIGN](DESIGN.md) before choosing an action. Operator authorization
-to implement v5 is not authorization to migrate live schema 4 or deploy.
+Read [VISION](VISION.md), [USER_STORIES](USER_STORIES.md), and
+[SPEC authority](SPEC.md#authority-and-open-decisions), including
+[Create acceptance](SPEC.md#s11--create-useful-material-from-intent-us-013),
+before choosing an action. Earlier design rounds are linked there as provenance;
+read [DESIGN](DESIGN.md) only for interface work. Approved future Rust direction
+is not permission to ship an imported historical Go build, migrate live data,
+or deploy. Operating commands below still belong to the implemented Go app.
 
 For authorized work, select [changed-surface proof](docs/qa/system.md#choose-proof-before-running-checks).
 For deployed state, follow the [runbook's authority](docs/runbook.md#current-authority)

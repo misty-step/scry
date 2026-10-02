@@ -6,8 +6,8 @@ changed behavior; a build, fixture, browser observation, live provider result,
 and physical-phone acceptance establish different claims.
 [VISION](../../VISION.md) owns product intent, [SPEC](../../SPEC.md) owns
 acceptance, and [the runbook](../runbook.md) owns deployment/recovery procedures.
-Linear owns current work ownership, status, and pause; a procedure or old receipt
-does not grant permission to execute it.
+The [README work route](../../README.md#start-or-resume-work) identifies current
+Glass ownership/status/pause; a procedure or old receipt grants no permission.
 
 ## Choose proof before running checks
 
