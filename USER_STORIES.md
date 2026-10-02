@@ -117,7 +117,7 @@ not a deployment receipt. Explicit modes remain for retained captures/callers.
 Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
 
 Criteria:
-1. WHEN I add a Topic, My text, Link, or Photo, THE SYSTEM SHALL require that explicit mode and save exactly one source and goal for an identical operation ID.
+1. WHEN a retained explicit-mode caller adds a Topic, My text, Link, or Photo, THE SYSTEM SHALL require that caller's mode and save exactly one source and goal for an identical operation ID; this SHALL NOT require a mode chooser on Add/Create.
 2. WHEN I choose Topic, THE SYSTEM SHALL search through Exa only if configured; WHEN I paste My text, THE SYSTEM SHALL NOT send it to web search. A Link SHALL fetch only the chosen URL, and a Photo SHALL transcribe before planning.
 3. IF Topic research has no documents, THEN THE SYSTEM SHALL proceed with labeled general knowledge; IF a Link page cannot be read, THEN THE SYSTEM SHALL fail that preparation recoverably instead of planning from the URL; IF a photo is unsupported or too large, THEN THE SYSTEM SHALL reject it without creating a source.
 4. WHEN generation fails, THE SYSTEM SHALL preserve captured material and show a recoverable failed preparation state rather than report ready.

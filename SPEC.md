@@ -240,6 +240,9 @@ new interpretation step, or a new spending contract.
 
 ### S03 — Add something without configuring it (US-005)
 
+Retained explicit-mode callers only. This is not the Add/Create screen contract;
+US-013 and S11 govern that front door.
+
 As the learner, I want to add a topic, text, link, or photo with an explicit
 choice of what it is, so I do not have to create a deck or card template.
 
