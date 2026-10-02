@@ -13,7 +13,7 @@ runtime evidence.
 | Monitoring | Worker/container logs, settings backup state, health/readiness | No external availability/mail monitor is claimed. The current Go Worker's backup cron is active; retired Rust Worker schedules are paused. Native Postgres backup monitoring remains recovery, not current application monitoring. |
 | Model capability | Scry-only OpenRouter key | Direct HTTPS chat completions from the Cloudflare Container. Keep the provider key in the private runtime binding; build/recovery workspaces do not inherit it. |
 | Canary | Estate ADR 0003, amended 2026-08-30 | Retired, not a shipped Scry integration. No replacement telemetry-ingest endpoint exists. |
-| Work context | Current operator request, `AGENTS.md`, [README work route](../README.md#start-or-resume-work) | Glass scope `misty-step/scry` tracks current ownership/execution/evidence. Legacy MIS identities, Linear links and dated receipts retain provenance, not execution permission; migration reconciliation is separately owned. |
+| Work context | Current operator request, `AGENTS.md`, [README work route](../README.md#start-or-resume-work) | Glass scope `misty-step/scry` tracks current operational state; keep ownership and evidence in the session/PR. Legacy MIS identities, Linear links and dated receipts retain provenance, not execution permission; migration reconciliation is separately owned. |
 | Landmark | `.landmark.yml` plus Landmark CLI | Existing manifest/synthesis-only scope. No deployment-secret or release-mutating authority is added. |
 | Architecture | `SPEC.md` and current Go source | The old `docs/architecture` workbench/map is retained historical Rust context, not current fleet/runtime authority. |
 
