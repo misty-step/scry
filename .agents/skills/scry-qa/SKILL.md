@@ -125,6 +125,19 @@ the current source and affected stories; `unwalked` is not a pass. Report
 credential-free fixture limits separately from real-provider, production
 ingress, recovery and physical-phone acceptance.
 
+## Agent traps
+
+- Grading strings are persisted identities, not a policy knob.
+- Model calls stay outside SQL transactions; unknown spend stays reserved.
+- Sibling pages stay reachable during a cold review.
+- Do not edit the foundation workflows or the story list, and do not add a
+  second gate or story file. [ADR 004](../../../docs/adr/004-foundation-story-walk.md)
+  and the existing [`ci`](../../../.github/workflows/ci.yml),
+  [`foundation-review`](../../../.github/workflows/foundation-review.yml), and
+  [`nightly`](../../../.github/workflows/nightly.yml) jobs remain authoritative.
+- A capture walk is not Create acceptance: `qa/walk --stories US-013` covers
+  the current capture boundary, not the complete US-013 / S11 journey.
+
 ## Cleanup
 
 The walk stops its own server and browser and removes only its own run-scoped
