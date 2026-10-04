@@ -26,7 +26,7 @@ type RubricClaim struct {
 // evidence supports granting Jev authority over cues or misses: the decision is
 // recorded, but the learner sees plain ungraded and no assistance is charged.
 type Params struct {
-	PolicyVersion            string
+	PolicyVersion            GradingPolicy
 	IdeaThreshold            float64
 	IdeaLowThreshold         float64
 	ContradictionLow         float64
@@ -44,7 +44,7 @@ type Params struct {
 // ever lowered to widen acceptance.
 func SemanticV1Params() Params {
 	return Params{
-		PolicyVersion:            SemanticPolicyVersion,
+		PolicyVersion:            SemanticPolicy,
 		IdeaThreshold:            0.80,
 		IdeaLowThreshold:         0.35,
 		ContradictionLow:         0.20,
@@ -87,12 +87,14 @@ func shadow(d SemanticDecision) SemanticDecision {
 	return d
 }
 
-// GradeSemantic applies semantic-v1 without HTTP, storage, logging, or other
+// GradeSemantic takes SemanticJudgments and Params with a GradingPolicy in
+// PolicyVersion. Only SemanticPolicy is supported; other policies stay ungraded.
+// It applies semantic-v1 without HTTP, storage, logging, or other
 // side effects. Invalid, incomplete, or uncertain judgment sets remain
 // ungraded rather than manufacturing success or failure.
 func GradeSemantic(j SemanticJudgments, p Params) SemanticDecision {
 	ungraded := SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
-	if p.PolicyVersion != SemanticPolicyVersion || len(j.Ideas) == 0 || !validParams(p) || !validProbability(j.Injection) {
+	if p.PolicyVersion != SemanticPolicy || len(j.Ideas) == 0 || !validParams(p) || !validProbability(j.Injection) {
 		return ungraded
 	}
 	for _, probability := range j.Ideas {

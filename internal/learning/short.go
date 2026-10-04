@@ -21,7 +21,7 @@ type ShortJudgments struct {
 
 // ShortParams freezes the code-owned thresholds for short-v1.
 type ShortParams struct {
-	PolicyVersion   string
+	PolicyVersion   GradingPolicy
 	AcceptThreshold float64
 	RejectThreshold float64
 	IdentityMax     float64
@@ -32,15 +32,17 @@ type ShortParams struct {
 // needs more confidence than acceptance because a learner can contest either,
 // but a false miss also pulls the schedule forward.
 func ShortV1Params() ShortParams {
-	return ShortParams{PolicyVersion: ShortPolicyVersion, AcceptThreshold: 0.85, RejectThreshold: 0.90, IdentityMax: 0.35, InjectionMax: 0.20}
+	return ShortParams{PolicyVersion: ShortPolicy, AcceptThreshold: 0.85, RejectThreshold: 0.90, IdentityMax: 0.35, InjectionMax: 0.20}
 }
 
-// GradeShort applies short-v1 without side effects. Anything uncertain,
+// GradeShort takes ShortJudgments and ShortParams with a GradingPolicy in
+// PolicyVersion. Only ShortPolicy is supported; other policies remain ungraded.
+// It applies short-v1 without side effects. Anything uncertain,
 // malformed, or suspicious is ungraded; the store then asks the learner to
 // compare their saved answer with the key instead of inventing a result.
 func GradeShort(j ShortJudgments, p ShortParams) SemanticDecision {
 	ungraded := SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
-	if p.PolicyVersion != ShortPolicyVersion || !validShortParams(p) || !validProbability(j.Identity) || !validProbability(j.Injection) {
+	if p.PolicyVersion != ShortPolicy || !validShortParams(p) || !validProbability(j.Identity) || !validProbability(j.Injection) {
 		return ungraded
 	}
 	for _, probability := range j.Probabilities {

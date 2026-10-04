@@ -19,10 +19,42 @@ const Scheduler = "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,1
 // recall share scheduling, but remain distinct in quiz history.
 const Algorithm = Scheduler + ";grading=exact-v1"
 
+// QuizKind is the local grading input kind. GradeTyped accepts only ChoiceKind
+// and RecallKind; unknown values remain ungraded.
+type QuizKind string
+
+const (
+	ChoiceKind QuizKind = "choice"
+	RecallKind QuizKind = "recall"
+)
+
+// GradingPolicy names a supported review policy. Typed decision functions
+// reject unknown values, including explicit conversions from arbitrary strings.
+type GradingPolicy string
+
+const (
+	ExactPolicy    GradingPolicy = "exact-v1"
+	ShortPolicy    GradingPolicy = ShortPolicyVersion
+	SemanticPolicy GradingPolicy = SemanticPolicyVersion
+	LearnerPolicy  GradingPolicy = LearnerPolicyVersion
+)
+
 // EventAlgorithm names the effective policy behind one review event: the pinned
-// scheduler joined with the grading policy that produced the event. Exact events
-// keep the historical Algorithm value; semantic events name their own policy.
-func EventAlgorithm(grading string) string { return Scheduler + ";grading=" + grading }
+// scheduler joined with the grading policy that produced the event. This string
+// compatibility wrapper delegates validation to EventAlgorithmTyped.
+func EventAlgorithm(grading string) string { return EventAlgorithmTyped(GradingPolicy(grading)) }
+
+// EventAlgorithmTyped takes a GradingPolicy and returns the pinned scheduler
+// joined with a supported policy, or an empty string for an unsupported policy.
+// ExactPolicy keeps the historical Algorithm value.
+func EventAlgorithmTyped(policy GradingPolicy) string {
+	switch policy {
+	case ExactPolicy, ShortPolicy, SemanticPolicy, LearnerPolicy:
+		return Scheduler + ";grading=" + string(policy)
+	default:
+		return ""
+	}
+}
 
 // Card is the complete portable scheduler state, not a second scheduling model.
 type Card = fsrs.Card
@@ -58,17 +90,28 @@ func Schedule(card Card, rating int, now time.Time) (Card, error) {
 	return result.Card, nil
 }
 
-// Grade is the one local rule: a choice matches its option exactly, and a
-// recall answer that is the key or an authored variant (ignoring surrounding
+// Grade is the string compatibility wrapper for GradeTyped. It delegates all
+// local grading and kind validation to that typed function.
+func Grade(kind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
+	return GradeTyped(QuizKind(kind), expected, variants, answer, reveal)
+}
+
+// GradeTyped takes a QuizKind, key/variants, answer, and reveal flag, and returns
+// an outcome and FSRS rating. A choice matches its option exactly, and a recall
+// answer that is the key or an authored variant (ignoring surrounding
 // space) is correct. Nothing else is decided locally, in either direction:
 // every other recall answer is left ungraded for the assessor, which judges
 // meaning and, separately, whether the prompt demands an exact value or form.
 // Without an assessor the staged check fails closed to learner self-check.
-func Grade(kind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
+// An unsupported kind returns ungraded with rating zero, including on reveal.
+func GradeTyped(kind QuizKind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int) {
+	if kind != ChoiceKind && kind != RecallKind {
+		return "ungraded", 0
+	}
 	if reveal {
 		return "revealed", int(fsrs.Again)
 	}
-	if kind == "choice" {
+	if kind == ChoiceKind {
 		if answer == expected {
 			return "correct", int(fsrs.Good)
 		}

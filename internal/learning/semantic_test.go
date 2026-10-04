@@ -74,9 +74,25 @@ func TestGradeSemanticShadowClassesCanBeExplicitlyEnabled(t *testing.T) {
 	}
 }
 
+func TestGradeSemanticRejectsUnsupportedPolicies(t *testing.T) {
+	j := SemanticJudgments{
+		Ideas: []float64{0.99}, Contradictions: []float64{0.01}, Relation: "equivalent",
+		RelationProbabilities: map[string]float64{"equivalent": 0.99}, Injection: 0.01,
+	}
+	for _, policy := range []GradingPolicy{"", GradingPolicy("semantic-v0"), ExactPolicy, ShortPolicy, LearnerPolicy} {
+		p := SemanticV1Params()
+		p.PolicyVersion = policy
+		got := GradeSemantic(j, p)
+		want := SemanticDecision{Decision: "ungraded", Outcome: "ungraded", MissingIdea: -1, Contradiction: -1}
+		if got != want {
+			t.Fatalf("policy=%q: got %+v, want %+v", policy, got, want)
+		}
+	}
+}
+
 func TestSemanticV1ParamsAreFrozenAndNeverLowered(t *testing.T) {
 	p := SemanticV1Params()
-	if p.RelationThreshold != 0.85 || p.IdeaThreshold != 0.80 || p.ContradictionHigh != 0.90 || p.IncompleteEnabled || p.IncorrectEnabled {
+	if p.PolicyVersion != SemanticPolicy || p.RelationThreshold != 0.85 || p.IdeaThreshold != 0.80 || p.ContradictionHigh != 0.90 || p.IncompleteEnabled || p.IncorrectEnabled {
 		t.Fatalf("semantic-v1 parameters drifted: %+v", p)
 	}
 }
@@ -94,5 +110,25 @@ func TestEventAlgorithmSeparatesSchedulerFromGradingPolicy(t *testing.T) {
 	semantic := EventAlgorithm(SemanticPolicyVersion)
 	if !strings.HasPrefix(semantic, Scheduler+";grading=") || !strings.HasSuffix(semantic, ";grading=semantic-v1") || semantic == Algorithm {
 		t.Fatalf("semantic event identity is not accurate: %q", semantic)
+	}
+}
+
+func TestEventAlgorithmTypedHasClosedPolicies(t *testing.T) {
+	for _, policy := range []GradingPolicy{ExactPolicy, ShortPolicy, SemanticPolicy, LearnerPolicy} {
+		want := Scheduler + ";grading=" + string(policy)
+		if got := EventAlgorithmTyped(policy); got != want {
+			t.Fatalf("policy=%q identity=%q, want %q", policy, got, want)
+		}
+		if got := EventAlgorithm(string(policy)); got != want {
+			t.Fatalf("wrapper policy=%q identity=%q, want %q", policy, got, want)
+		}
+	}
+	for _, policy := range []GradingPolicy{"", GradingPolicy("unknown-v1"), GradingPolicy("short-v0"), GradingPolicy(" exact-v1")} {
+		if got := EventAlgorithmTyped(policy); got != "" {
+			t.Fatalf("unsupported policy=%q received identity=%q", policy, got)
+		}
+		if got := EventAlgorithm(string(policy)); got != "" {
+			t.Fatalf("wrapper unsupported policy=%q received identity=%q", policy, got)
+		}
 	}
 }

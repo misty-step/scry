@@ -11,25 +11,44 @@ import (
 // is left for the assessor rather than decided by similarity here.
 func TestGradeHasOneLocalRule(t *testing.T) {
 	cases := []struct {
-		name, kind, expected, answer string
-		variants                     []string
-		reveal                       bool
-		outcome                      string
-		rating                       int
+		name             string
+		kind             QuizKind
+		expected, answer string
+		variants         []string
+		reveal           bool
+		outcome          string
+		rating           int
 	}{
-		{"exact key", "recall", "Water", "  Water ", nil, false, "correct", 3},
-		{"authored variant", "recall", "Water", "H2O", []string{"H2O"}, false, "correct", 3},
-		{"case difference goes to the check", "recall", "Water", "water", nil, false, "ungraded", 0},
-		{"spelling slip goes to the check", "recall", "Tchaikovsky", "Tchaikovski", nil, false, "ungraded", 0},
-		{"short mismatch goes to the check", "recall", "Paris", "Berlin", nil, false, "ungraded", 0},
-		{"negation is never normalized", "recall", "oxygen", "not oxygen", nil, false, "ungraded", 0},
-		{"right choice", "choice", "IPv4 address", "IPv4 address", nil, false, "correct", 3},
-		{"wrong choice", "choice", "IPv4 address", "IPv6 address", nil, false, "wrong", 1},
-		{"help is never cold success", "recall", "oxygen", "oxygen", nil, true, "revealed", 1},
+		{"exact key", RecallKind, "Water", "  Water ", nil, false, "correct", 3},
+		{"authored variant", RecallKind, "Water", "H2O", []string{"H2O"}, false, "correct", 3},
+		{"case difference goes to the check", RecallKind, "Water", "water", nil, false, "ungraded", 0},
+		{"spelling slip goes to the check", RecallKind, "Tchaikovsky", "Tchaikovski", nil, false, "ungraded", 0},
+		{"short mismatch goes to the check", RecallKind, "Paris", "Berlin", nil, false, "ungraded", 0},
+		{"negation is never normalized", RecallKind, "oxygen", "not oxygen", nil, false, "ungraded", 0},
+		{"right choice", ChoiceKind, "IPv4 address", "IPv4 address", nil, false, "correct", 3},
+		{"wrong choice", ChoiceKind, "IPv4 address", "IPv6 address", nil, false, "wrong", 1},
+		{"choice does not trim space", ChoiceKind, "IPv4 address", " IPv4 address ", nil, false, "wrong", 1},
+		{"help is never cold success", RecallKind, "oxygen", "oxygen", nil, true, "revealed", 1},
 	}
 	for _, tc := range cases {
-		if outcome, rating := Grade(tc.kind, tc.expected, tc.variants, tc.answer, tc.reveal); outcome != tc.outcome || rating != tc.rating {
+		if outcome, rating := GradeTyped(tc.kind, tc.expected, tc.variants, tc.answer, tc.reveal); outcome != tc.outcome || rating != tc.rating {
 			t.Errorf("%s: got %s/%d, want %s/%d", tc.name, outcome, rating, tc.outcome, tc.rating)
+		}
+		if outcome, rating := Grade(string(tc.kind), tc.expected, tc.variants, tc.answer, tc.reveal); outcome != tc.outcome || rating != tc.rating {
+			t.Errorf("%s wrapper: got %s/%d, want %s/%d", tc.name, outcome, rating, tc.outcome, tc.rating)
+		}
+	}
+}
+
+func TestGradeTypedRejectsUnknownKinds(t *testing.T) {
+	for _, kind := range []QuizKind{"", QuizKind("unknown"), QuizKind("Recall")} {
+		for _, reveal := range []bool{false, true} {
+			if outcome, rating := GradeTyped(kind, "Water", []string{"water"}, "Water", reveal); outcome != "ungraded" || rating != 0 {
+				t.Fatalf("kind=%q reveal=%v: got %s/%d", kind, reveal, outcome, rating)
+			}
+			if outcome, rating := Grade(string(kind), "Water", []string{"water"}, "Water", reveal); outcome != "ungraded" || rating != 0 {
+				t.Fatalf("wrapper kind=%q reveal=%v: got %s/%d", kind, reveal, outcome, rating)
+			}
 		}
 	}
 }
