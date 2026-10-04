@@ -598,7 +598,12 @@ func submitFence(ctx context.Context, tx *sql.Tx, presentationID string) (Presen
 
 // applyGrade writes one graded (or held) attempt: schedule transition, the
 // immutable event naming its grading policy, and the occurrence state.
-func applyGrade(ctx context.Context, tx *sql.Tx, p *Presentation, cardJSON string, scheduleVersion int, grading string, now int64) error {
+func applyGrade(ctx context.Context, tx *sql.Tx, p *Presentation, cardJSON string, scheduleVersion int, operationID, grading string, now int64) error {
+	transition, err := learning.NewReviewTransition(operationID, p.Outcome, p.Rating, p.Assisted, grading)
+	if err != nil {
+		return err
+	}
+	p.Outcome, p.Rating = transition.Outcome(), transition.Rating()
 	p.ReviewedAt, p.ReviewID = now, newID()
 	afterJSON := cardJSON
 	afterVersion := scheduleVersion
@@ -633,13 +638,9 @@ func applyGrade(ctx context.Context, tx *sql.Tx, p *Presentation, cardJSON strin
 	if err != nil {
 		return err
 	}
-	algorithm := learning.Algorithm
-	if grading != "exact-v1" {
-		algorithm = learning.EventAlgorithm(grading)
-	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO review_events(id,presentation_id,snapshot,answer,outcome,rating,assisted,reviewed_at,due_at,algorithm,
 	 schedule_before,schedule_after,schedule_version_before,schedule_version_after,grading) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.ReviewID, p.ID, snapshot, p.Answer, p.Outcome, p.Rating, p.Assisted, now, p.DueAt, algorithm, cardJSON, afterJSON, scheduleVersion, afterVersion, grading)
+		p.ReviewID, p.ID, snapshot, p.Answer, p.Outcome, p.Rating, p.Assisted, now, p.DueAt, transition.Algorithm(), cardJSON, afterJSON, scheduleVersion, afterVersion, grading)
 	if err != nil {
 		return err
 	}
@@ -648,7 +649,7 @@ func applyGrade(ctx context.Context, tx *sql.Tx, p *Presentation, cardJSON strin
 	if err != nil {
 		return err
 	}
-	p.Authority = authorityOf(grading, p.Outcome, p.Graded)
+	p.Authority = transition.Authority()
 	return nil
 }
 
@@ -784,7 +785,7 @@ func (s *Store) Submit(ctx context.Context, presentationID, operationID, answer 
 		p.Outcome = "warm_correct"
 	}
 	p.Draft = ""
-	if err = applyGrade(ctx, tx, &p, cardJSON, scheduleVersion, "exact-v1", now); err != nil {
+	if err = applyGrade(ctx, tx, &p, cardJSON, scheduleVersion, operationID, "exact-v1", now); err != nil {
 		return Presentation{}, err
 	}
 	hideAnswer(&p)
@@ -840,7 +841,7 @@ func (s *Store) SelfGrade(ctx context.Context, presentationID, operationID strin
 	} else {
 		p.Outcome, p.Rating = "self_missed", 1
 	}
-	if err = applyGrade(ctx, tx, &p, cardJSON, scheduleVersion, learning.LearnerPolicyVersion, now); err != nil {
+	if err = applyGrade(ctx, tx, &p, cardJSON, scheduleVersion, operationID, learning.LearnerPolicyVersion, now); err != nil {
 		return Presentation{}, err
 	}
 	if err = saveOperation(ctx, tx, operationID, "self-grade", hash, p.ID, p, now); err != nil {
