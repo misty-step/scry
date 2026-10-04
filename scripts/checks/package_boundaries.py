@@ -222,7 +222,12 @@ def check():
                 and [item.value for item in tokens[index:index + 3]]
                 == [token.value, ".", "HTML"]
             )
-            if aliased or (dot_template and token.value == "HTML"):
+            bare_html = (
+                dot_template
+                and token.value == "HTML"
+                and (index == 0 or tokens[index - 1].value != ".")
+            )
+            if aliased or bare_html:
                 violations.append(
                     f"{relative(file)}:{token.line}: html/template.HTML is forbidden"
                 )
