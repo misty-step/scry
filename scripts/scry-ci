@@ -212,6 +212,7 @@ def gate(args):
     require(go_files, "no Go application source")
     unformatted = run(["gofmt", "-l", *go_files], cwd=source, env=env, log=log)
     require(not unformatted.strip(), "Go formatting differs; run gofmt on the listed files")
+    run([sys.executable, "scripts/checks/package_boundaries.py"], cwd=source, env=env, log=log)
     for command in (["go", "test", "-count=1", "-mod=readonly", "./..."],
                     ["go", "vet", "-mod=readonly", "./..."],
                     ["node", "--check", "internal/web/assets/app.js"],
