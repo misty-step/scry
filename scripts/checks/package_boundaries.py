@@ -60,8 +60,8 @@ def go_tokens(source):
                     end += 1
             if end >= length:
                 raise ValueError(f"unterminated Go literal at line {start_line}")
-            kind = "string" if quote != "'" else "rune"
-            tokens.append(Token(kind, source[index + 1:end], start_line))
+            if quote != "'":
+                tokens.append(Token("string", source[index + 1:end], start_line))
             index = end + 1
             continue
         match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", source[index:])
@@ -95,24 +95,44 @@ def imports(tokens):
         cursor = index + 1
         if tokens[cursor].value == "(":
             end = matching(tokens, cursor, "(", ")")
-            result.extend(item.value for item in tokens[cursor + 1:end] if item.kind == "string")
+            declaration = tokens[cursor + 1:end]
+            for offset, item in enumerate(declaration):
+                if item.kind == "string":
+                    previous = declaration[offset - 1] if offset else None
+                    alias = (
+                        previous.value
+                        if previous
+                        and previous.line == item.line
+                        and (previous.kind == "identifier" or previous.value in {".", "_"})
+                        else item.value.rsplit("/", 1)[-1]
+                    )
+                    result.append((alias, item.value))
             continue
         while cursor < len(tokens) and tokens[cursor].line == token.line:
             if tokens[cursor].kind == "string":
-                result.append(tokens[cursor].value)
+                previous = tokens[cursor - 1]
+                alias = (
+                    previous.value
+                    if cursor > index + 1
+                    and previous.line == tokens[cursor].line
+                    and (previous.kind == "identifier" or previous.value in {".", "_"})
+                    else tokens[cursor].value.rsplit("/", 1)[-1]
+                )
+                result.append((alias, tokens[cursor].value))
                 break
             cursor += 1
     return result
 
 
 def function_parameters(tokens):
-    """Yield function name, declaration line, and outer parameter tokens."""
+    """Yield function name, line, receiver presence, and outer parameters."""
     index = 0
     while index < len(tokens):
         if tokens[index].value != "func":
             index += 1
             continue
         cursor = index + 1
+        method = cursor < len(tokens) and tokens[cursor].value == "("
         if cursor < len(tokens) and tokens[cursor].value == "(":
             cursor = matching(tokens, cursor, "(", ")") + 1
         if cursor >= len(tokens) or tokens[cursor].kind != "identifier":
@@ -127,7 +147,7 @@ def function_parameters(tokens):
             index += 1
             continue
         end = matching(tokens, cursor, "(", ")")
-        yield name, line, tokens[cursor + 1:end]
+        yield name, line, method, tokens[cursor + 1:end]
         index = end + 1
 
 
@@ -140,8 +160,18 @@ def has_raw_grading_string(parameters):
         if token.value in ")]}":
             depth -= 1
             continue
-        if depth == 0 and token.value == "grading" and parameters[index + 1].value == "string":
-            return True
+        if depth == 0 and token.value == "grading":
+            cursor = index + 1
+            while (
+                cursor + 1 < len(parameters)
+                and parameters[cursor].value == ","
+                and parameters[cursor + 1].kind == "identifier"
+            ):
+                cursor += 2
+            if [item.value for item in parameters[cursor:cursor + 3]] == [".", ".", "."]:
+                cursor += 3
+            if cursor < len(parameters) and parameters[cursor].value == "string":
+                return True
     return False
 
 
@@ -170,7 +200,7 @@ def check():
     for package in BOUNDARY_PACKAGES:
         for file in go_files(package):
             tokens = go_tokens(file.read_text())
-            for imported in imports(tokens):
+            for _, imported in imports(tokens):
                 if imported in forbidden_imports or any(
                     imported.startswith(path + "/") for path in forbidden_imports
                 ):
@@ -178,14 +208,30 @@ def check():
 
     for file in go_files("internal/web"):
         tokens = go_tokens(file.read_text())
-        for index in range(len(tokens) - 2):
-            if [item.value for item in tokens[index:index + 3]] == ["template", ".", "HTML"]:
-                violations.append(f"{relative(file)}:{tokens[index].line}: template.HTML is forbidden")
+        file_imports = imports(tokens)
+        template_aliases = {
+            alias for alias, imported in file_imports
+            if imported == "html/template" and alias not in {".", "_"}
+        }
+        dot_template = any(
+            alias == "." and imported == "html/template" for alias, imported in file_imports
+        )
+        for index, token in enumerate(tokens):
+            aliased = (
+                token.value in template_aliases
+                and [item.value for item in tokens[index:index + 3]]
+                == [token.value, ".", "HTML"]
+            )
+            if aliased or (dot_template and token.value == "HTML"):
+                violations.append(
+                    f"{relative(file)}:{token.line}: html/template.HTML is forbidden"
+                )
 
     for file in go_files("internal/learning"):
         tokens = go_tokens(file.read_text())
-        for name, line, parameters in function_parameters(tokens):
-            if name not in RAW_GRADING_WRAPPERS and has_raw_grading_string(parameters):
+        for name, line, method, parameters in function_parameters(tokens):
+            package_wrapper = not method and name in RAW_GRADING_WRAPPERS
+            if not package_wrapper and has_raw_grading_string(parameters):
                 violations.append(
                     f"{relative(file)}:{line}: {name} takes raw grading string"
                 )
