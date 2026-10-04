@@ -129,7 +129,8 @@ ingress, recovery and physical-phone acceptance.
 
 - Grading strings are persisted identities, not a policy knob.
 - Model calls stay outside SQL transactions; unknown spend stays reserved.
-- Sibling pages stay reachable during a cold review.
+- During a cold review, the current question's own source stays hidden and
+  sibling concept pages stay reachable.
 - Do not edit the foundation workflows or the story list, and do not add a
   second gate or story file. [ADR 004](../../../docs/adr/004-foundation-story-walk.md)
   and the existing [`ci`](../../../.github/workflows/ci.yml),
