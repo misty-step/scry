@@ -477,24 +477,7 @@ func selectNext(ctx context.Context, tx *sql.Tx, now int64, exclude string) (nex
 }
 
 func authorityOf(grading, outcome string, graded bool) string {
-	if !graded {
-		return ""
-	}
-	if outcome == "revealed" {
-		return "reveal"
-	}
-	if strings.HasPrefix(outcome, "warm_") {
-		return ""
-	}
-	switch grading {
-	case "exact-v1":
-		return "exact"
-	case learning.SemanticPolicyVersion, learning.ShortPolicyVersion:
-		return "jev"
-	case learning.LearnerPolicyVersion:
-		return "learner"
-	}
-	return ""
+	return learning.ReviewAuthority(grading, outcome, graded)
 }
 
 func presentation(ctx context.Context, tx *sql.Tx, id string) (Presentation, error) {
@@ -599,11 +582,10 @@ func submitFence(ctx context.Context, tx *sql.Tx, presentationID string) (Presen
 // applyGrade writes one graded (or held) attempt: schedule transition, the
 // immutable event naming its grading policy, and the occurrence state.
 func applyGrade(ctx context.Context, tx *sql.Tx, p *Presentation, cardJSON string, scheduleVersion int, operationID, grading string, now int64) error {
-	transition, err := learning.NewReviewTransition(operationID, p.Outcome, p.Rating, p.Assisted, grading)
+	transition, err := learning.NewReviewTransition(operationID, p.Outcome, p.Rating, p.Assisted, p.Graded, grading)
 	if err != nil {
 		return err
 	}
-	p.Outcome, p.Rating = transition.Outcome(), transition.Rating()
 	p.ReviewedAt, p.ReviewID = now, newID()
 	afterJSON := cardJSON
 	afterVersion := scheduleVersion
