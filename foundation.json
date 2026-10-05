@@ -49,6 +49,10 @@
       "selector": "rule-a-v0"
     },
     "broaden": [
+      "SPEC.md",
+      "USER_STORIES.md",
+      "VISION.md",
+      "AGENTS.md",
       "go.mod",
       "go.sum",
       "package.json",

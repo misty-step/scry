@@ -82,7 +82,7 @@ jobs:
         working-directory: ${{ runner.temp }}/foundation
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          SHADOW_CHECKER_SHA: "ebaca1b997964fd1cfb668385a0ac1ce723b1b30"
+          SHADOW_CHECKER_SHA: "151b41b97e965800850e141dcc0ee7f0f52b75ea"
         run: |
           mkdir -p "$GITHUB_WORKSPACE/target/affected-tests"
           git init --quiet --initial-branch=shadow "$RUNNER_TEMP/foundation/shadow"
@@ -95,6 +95,7 @@ jobs:
             test-selection --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" --candidate HEAD \
             --current-main refs/remotes/origin/master --json > "$GITHUB_WORKSPACE/target/affected-tests/shadow.json"
       - name: Upload shadow selection
+        continue-on-error: true
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
