@@ -22,7 +22,7 @@ const candidate = manifest.candidate;
 await mkdir(output); // Never overwrite an earlier packet.
 await mkdir(join(output, 'screens')); await mkdir(join(output, 'logs')); await mkdir(join(output, 'video'));
 const receipt = {schema: 'scry-rule-b-qa/1', verdict: 'FAIL', candidate, tree: manifest.tree, artifact_sha256: null,
-  verifier: {id: verifier, role: 'independent-qa', builder: false}, started_at: stamp(), finished_at: null,
+  executor_revision: git('rev-parse', 'HEAD'), verifier: {id: verifier, role: 'independent-qa', builder: false}, started_at: stamp(), finished_at: null,
   frozen_spec_sha256: sha(specBytes), environment: 'isolated loopback deployed preview, authored synthetic fixtures',
   browser: {channel: 'chrome'}, release_eligible: false, exclusions: frozen.exclusions, required_stories: [], selection: [], rows: [], evidence: []};
 let browser, scratch;
@@ -60,14 +60,23 @@ async function ready(url, child) {
 async function preview(context, behavior = {}) {
   const home = await mkdtemp(join(scratch, 'preview-')), db = join(home, 'synthetic.sqlite');
   assert.equal(JSON.parse(command(join(artifact, 'scry'), ['seed-fixture', '--db', db], home)).model, 'authored-test-fixture');
-  const requests = [], logs = [];
+  const requests = [], logs = [], observations = [];
+  let lastAnswer;
   const provider = httpServer(async (req, res) => {
     let bytes = ''; for await (const chunk of req) bytes += chunk;
     const request = JSON.parse(bytes); requests.push(request);
     if (behavior.failure === 'unavailable') {res.writeHead(503); res.end('synthetic unavailable'); return;}
     if (behavior.failure === 'malformed') {res.end('{"model":"synthetic","answers":{}}'); return;}
     const j = behavior.short || {verdict: 'accept', probabilities: {accept: .99, reject: .005, unsure: .005}, identity: .01, injection: .01};
-    const answers = {verdict: {type: 'choice', choice: j.verdict, probabilities: j.probabilities}, identity: {type: 'noul', noul: j.identity}, injection: {type: 'noul', noul: j.injection}};
+    let answers = {verdict: {type: 'choice', choice: j.verdict, probabilities: j.probabilities}, identity: {type: 'noul', noul: j.identity}, injection: {type: 'noul', noul: j.injection}};
+    if (request.questions.relation) {
+      const judgment = behavior.semantic || {ideas: [.99, .99], contradiction: .01, relation: 'equivalent'};
+      answers = {relation: {type: 'choice', choice: judgment.relation, probabilities: {[judgment.relation]: .99}}, injection: {type: 'noul', noul: .01}};
+      for (const key of Object.keys(request.questions)) {
+        if (key.startsWith('idea_')) answers[key] = {type: 'noul', noul: judgment.ideas[Number(key.slice(5))]};
+        if (key.startsWith('contradiction_')) answers[key] = {type: 'noul', noul: judgment.contradiction};
+      }
+    }
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({id: `synthetic-${requests.length}`, model: 'synthetic-rule-b', answers, usage: {input_tokens: 1, output_tokens: 1, cost: 0}}));
   });
@@ -87,12 +96,23 @@ async function preview(context, behavior = {}) {
       assert.equal(response.status(), 200);
       const body = await response.json();
       const observed = body.review.current;
+      observations.push({action: 'GET current persisted review', expected, observed});
       for (const [key, value] of Object.entries(expected)) assert.deepEqual(observed[key], value, `${key}: ${JSON.stringify(observed)}`);
       return observed;
     };
-    return {page, address, requests, db, state, current,
+    return {page, address, requests, observations, db, state, current,
       recall: async () => {await page.getByRole('button', {name: /IPv4 address/}).click(); await state('result'); await page.locator('form[data-next] button').click(); await page.locator('#recall-answer').waitFor();},
-      answer: async answer => {await page.locator('#recall-answer').click(); await page.keyboard.type(answer); await page.locator('form.answer-form button[type=submit]').click();},
+      answer: async answer => {
+        lastAnswer = {answer};
+        for (const name of ['presentation_id','operation_id','csrf']) lastAnswer[name] = await page.locator(`form.answer-form input[name=${name}]`).inputValue();
+        await page.locator('#recall-answer').click(); await page.keyboard.type(answer); await page.locator('form.answer-form button[type=submit]').click();
+      },
+      replay: async () => {
+        const before = await current({}), sends = requests.length;
+        const response = await context.request.post(address + '/review/answer', {headers: {Origin: address, Accept: 'application/json'}, form: lastAnswer});
+        observations.push({action: 'replay identical answer operation', expected: {status: 200, requests: sends}, observed: {status: response.status(), requests: requests.length}});
+        assert.equal(response.status(), 200); assert.deepEqual((await response.json()).review.current, before); assert.equal(requests.length, sends);
+      },
       reload: async expected => {await page.reload(); await state(expected.graded ? 'result' : 'self-check'); return current(expected);},
       restart: async () => {await stop(child); await launch();},
       history: async policy => {
@@ -132,7 +152,7 @@ async function main() {
       const criteria = frozen.stories[id];
       assert.ok(criteria?.length, `missing frozen criteria for ${id}`);
       const checks = ruleBSpecs[id] || specs[id] || [];
-      if (!ruleBSpecs[id]) base = await preview(context, {failure: 'unconfigured'});
+      base = await preview(context, {failure: 'unconfigured'});
       for (let i = 0; i < criteria.length; i++) {
         const row = {story: id, criterion: i + 1, contract: criteria[i], action: [], expected: criteria[i], observed: [], status: 'FAIL', evidence: []};
         receipt.rows.push(row); const before = receipt.evidence.length;
@@ -160,7 +180,7 @@ async function main() {
           },
           scenario: async (name, behavior, check) => {
             row.action.push(name); const s = await preview(context, behavior);
-            try {await check(s); row.observed.push({scenario: name, current: await s.current({}), provider_requests: s.requests.length}); await screen(s.page, `${id}-${i + 1}-${name}`);}
+            try {await check(s); row.observed.push({scenario: name, current: await s.current({}), assertions: s.observations, provider_requests: s.requests.length}); await screen(s.page, `${id}-${i + 1}-${name}`);}
             catch (error) {await screen(s.page, `${id}-${i + 1}-${name}-failed`); throw error;}
             finally {await s.close();}
           },
@@ -171,9 +191,11 @@ async function main() {
               const form = {presentation_id: beforeState.id, answer: 'IPv4 address', operation_id: body.operation_id, csrf: body.csrf};
               for (const headers of [{Origin: s.address}, {Origin: 'https://forged.invalid'}, {Origin: s.address, Host: 'forged.invalid'}]) {
                 const denied = await context.request.post(s.address + '/review/answer', {headers: {...headers, Accept: 'application/json'}, form: {...form, ...(headers.Origin === s.address && !headers.Host ? {csrf: 'invalid-synthetic-csrf'} : {})}});
+                s.observations.push({action: 'deny invalid CSRF, cross-origin, or forged Host mutation', expected: 403, observed: denied.status()});
                 assert.equal(denied.status(), 403); assert.deepEqual(await s.current({}), beforeState);
               }
               const anonymous = await fetch(s.address + '/review/answer', {method: 'POST', headers: {Origin: s.address, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(form)});
+              s.observations.push({action: 'deny mutation without a session cookie', expected: 403, observed: anonymous.status});
               assert.equal(anonymous.status, 403); assert.deepEqual(await s.current({}), beforeState);
             });
           },
