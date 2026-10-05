@@ -1,0 +1,9 @@
+# Rule A shadow adoption
+
+Navi's 2026-10-04 verdict requires affected-test selection inside the existing foundation and checker. `foundation.json` now declares an explicit Go component map and reverse dependencies. The existing foundation CI job invokes `foundation-check test-selection` and uploads its suggestions as a separate shadow artifact. The shadow step is nonblocking. Full CI, the existing story walk, foundation and independent review remain release gates; the deploy job's dependencies are unchanged.
+
+The checker reads only the trusted base's map. The adoption PR itself therefore falls back to the full suite; it cannot approve its own selector. Map changes and test deletions invalidate selector eligibility even if reported tests pass. Changes in main invalidate an old candidate. Selection records base, candidate SHA/tree, changed/deleted paths, input/toolchain key, reasons and separate passed/failed/skipped/flaky/cached result sets. Without runner results it says ineligible. There is no new test cache.
+
+The actual checker change is [harness PR #248](https://github.com/misty-step/harness/pull/248). [Its evidence](https://github.com/misty-step/harness/blob/cursor/foundation-rule-a-shadow/evidence/rule-a.md) records nine CLI acceptance tests and the existing checker regression tests. The CI pin names that immutable checker commit. Merge/review the checker PR before adopting this pin in Scry.
+
+Acceptance covers unmapped fallback, deleted shared files selecting dependents, changed main invalidating eligibility, and a candidate deleting its tests failing to manufacture green. Injected shared, dependency and contract failure receipts remain red. These synthetic cases validate selection and receipt handling, not narrower-suite bug detection. Full CI must remain blocking until real failure-injection evidence justifies narrower gates.
