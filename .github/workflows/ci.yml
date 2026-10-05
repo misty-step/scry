@@ -49,7 +49,7 @@ jobs:
   foundation:
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "ebaca1b997964fd1cfb668385a0ac1ce723b1b30"
+      HARNESS_SHA: "f03aa4cebcf3b366f7d955e66db8be5c7177638d"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:
@@ -82,11 +82,16 @@ jobs:
         working-directory: ${{ runner.temp }}/foundation
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SHADOW_CHECKER_SHA: "ebaca1b997964fd1cfb668385a0ac1ce723b1b30"
         run: |
           mkdir -p "$GITHUB_WORKSPACE/target/affected-tests"
+          git init --quiet --initial-branch=shadow "$RUNNER_TEMP/foundation/shadow"
+          git -C "$RUNNER_TEMP/foundation/shadow" fetch --quiet --no-tags --depth=1 https://github.com/misty-step/harness.git "$SHADOW_CHECKER_SHA"
+          git -C "$RUNNER_TEMP/foundation/shadow" checkout --quiet --detach "$SHADOW_CHECKER_SHA"
+          test "$(git -C "$RUNNER_TEMP/foundation/shadow" rev-parse HEAD)" = "$SHADOW_CHECKER_SHA"
           if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ || "$BASE_SHA" =~ ^0+$ ]]; then BASE_SHA=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD^); fi
           "$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun" \
-            --no-env-file --no-install "$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts" \
+            --no-env-file --no-install "$RUNNER_TEMP/foundation/shadow/agent-config/bin/foundation-check.ts" \
             test-selection --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" --candidate HEAD \
             --current-main refs/remotes/origin/master --json > "$GITHUB_WORKSPACE/target/affected-tests/shadow.json"
       - name: Upload shadow selection
@@ -102,7 +107,7 @@ jobs:
     needs: foundation
     runs-on: ubuntu-24.04
     env:
-      HARNESS_SHA: "ebaca1b997964fd1cfb668385a0ac1ce723b1b30"
+      HARNESS_SHA: "f03aa4cebcf3b366f7d955e66db8be5c7177638d"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
