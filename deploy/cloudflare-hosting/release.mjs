@@ -31,20 +31,22 @@ export function parseArtifact(value) {
 
 export function parseCredentials(contents) {
   const values = {};
+  const aliases = { CLOUDFLARE_API_TOKEN: "SCRY_RELEASE_CF_TOKEN", CLOUDFLARE_ACCOUNT_ID: "SCRY_RELEASE_ACCOUNT_ID" };
   const allowed = new Set(["SCRY_RELEASE_CF_TOKEN", "SCRY_RELEASE_ACCOUNT_ID", "SCRY_PROBE_TOKEN",
     "SCRY_ACCESS_JWT", "SCRY_ACCESS_CLIENT_ID", "SCRY_ACCESS_CLIENT_SECRET"]);
   for (const raw of contents.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const match = /^([A-Z_]+)=(.*)$/.exec(line);
-    requireValue(match && allowed.has(match[1]) && !(match[1] in values), "invalid release credential entry");
+    const key = match && (aliases[match[1]] ?? match[1]);
+    requireValue(key && allowed.has(key) && !(key in values), "invalid release credential entry");
     let value = match[2];
     if (value.startsWith('"') || value.startsWith("'")) {
       requireValue(value.length >= 2 && value.at(-1) === value[0], "invalid credential quoting");
       value = value.slice(1, -1);
     }
     requireValue(value && !/[\s\x00-\x1f\x7f]/.test(value), "invalid credential value");
-    values[match[1]] = value;
+    values[key] = value;
   }
   for (const key of ["SCRY_RELEASE_CF_TOKEN", "SCRY_RELEASE_ACCOUNT_ID", "SCRY_PROBE_TOKEN", "SCRY_ACCESS_JWT"]) {
     requireValue(values[key], `missing ${key}`);

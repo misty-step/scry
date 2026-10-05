@@ -307,10 +307,17 @@ test("artifact rejects production, mutable images, incompatible rollback, and di
   }
 });
 
-test("credential parser never accepts account-wide tokens or shell execution", () => {
+test("credential parser requires a complete file and rejects shell execution", () => {
   for (const input of ["CLOUDFLARE_API_TOKEN=secret", "export SCRY_RELEASE_CF_TOKEN=secret", "SCRY_RELEASE_CF_TOKEN=$(cat secret)"]) {
     assert.throws(() => parseCredentials(input));
   }
+});
+
+test("Maren's file key names normalize to the dedicated release capability without ambient lookup", () => {
+  const contents = ["CLOUDFLARE_API_TOKEN=dedicated-test-token", `CLOUDFLARE_ACCOUNT_ID=${"e".repeat(32)}`,
+    "SCRY_PROBE_TOKEN=synthetic-probe-token", "SCRY_ACCESS_JWT=synthetic-owner-jwt"].join("\n");
+  assert.deepEqual(parseCredentials(contents), credentials);
+  assert.throws(() => parseCredentials(contents + "\nSCRY_RELEASE_CF_TOKEN=duplicate"));
 });
 
 test("failed checkpoint prevents deployment and still returns an unverified JSON outcome", async () => {

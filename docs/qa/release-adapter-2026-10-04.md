@@ -22,8 +22,8 @@ node --test deploy/cloudflare-hosting/*.test.mjs
 git diff --check
 ```
 
-The adapter suite passed 27 tests with no failures or skips. The hosting suite
-passed 81 tests with no failures or skips on Node v24.21.0. No Rust build,
+The adapter suite passed 28 tests with no failures or skips. The hosting suite
+passed 82 tests with no failures or skips on Node v24.21.0. No Rust build,
 application rebuild, Cloudflare deployment, or model call ran. The full Scry
 source-snapshot/Dagger gate has not run in this lane and remains required.
 
@@ -52,8 +52,12 @@ clock so it proves timing logic without making a live five-minute claim.
 
 ## Remaining live proof
 
-Maren must supply owner-only `~/.config/scry/release.env` with the dedicated
-release/probe capabilities and a staging owner Access JWT. A service token
+Maren's owner-only `~/.config/scry/release.env` appeared during this lane's work.
+Only its mode and key names were inspected. It contains the release/account
+aliases and probe key, but no staging owner Access JWT. The parser accepts
+those file aliases without reading ambient Cloudflare credentials.
+The release authority must add a staging owner Access JWT and ensure the file's
+token has staging release scope. No token was printed or used. A service token
 alone cannot satisfy Scry's immutable owner-subject guard. The release authority
 must supply the exact approved Worker version/image manifest, previous baseline,
 compatibility evidence, and controller-held shared release slot.

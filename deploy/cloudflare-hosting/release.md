@@ -52,7 +52,11 @@ The only credential source is the invoking operator's
 `~/.config/scry/release.env`. The file must belong to that operator and have no
 group or other permissions. Values are literal `KEY=value`, optionally quoted.
 The parser does not source a shell, expand variables, or read inherited token
-variables. It rejects unknown keys and never accepts `CLOUDFLARE_API_TOKEN`.
+variables. It rejects unknown keys. The file may name its dedicated token
+`CLOUDFLARE_API_TOKEN` and account `CLOUDFLARE_ACCOUNT_ID`, matching Maren's
+minted file. These aliases normalize to the keys below. This never reads the
+account-wide token from the process environment. The release authority must
+keep the file's capability scoped to staging release resources.
 
 The required keys are:
 
