@@ -19,10 +19,10 @@ const stamp = () => new Date().toISOString();
 const specBytes = await readFile(specFile), frozen = JSON.parse(specBytes);
 const manifest = JSON.parse(await readFile(join(artifact, 'artifact.json')));
 const candidate = manifest.candidate;
-await mkdir(output); // Never overwrite an earlier packet.
+await mkdir(output, {mode: 0o700}); // Never overwrite an earlier packet.
 await mkdir(join(output, 'screens')); await mkdir(join(output, 'logs')); await mkdir(join(output, 'video'));
 const receipt = {schema: 'scry-rule-b-qa/1', verdict: 'FAIL', candidate, tree: manifest.tree, artifact_sha256: null,
-  executor_revision: git('rev-parse', 'HEAD'), verifier: {id: verifier, role: 'independent-qa', builder: false}, started_at: stamp(), finished_at: null,
+  executor_revision: git('rev-parse', 'HEAD'), verifier: {id: verifier, github_account: process.env.QA_VERIFIER_ACCOUNT || null, role: 'independent-qa', builder: false}, started_at: stamp(), finished_at: null,
   frozen_spec_sha256: sha(specBytes), environment: 'isolated loopback deployed preview, authored synthetic fixtures',
   browser: {channel: 'chrome'}, release_eligible: false, exclusions: frozen.exclusions, required_stories: [], selection: [], rows: [], evidence: []};
 let browser, scratch;
