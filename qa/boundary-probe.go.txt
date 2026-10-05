@@ -1,0 +1,44 @@
+package main
+
+import (
+ "encoding/json"
+ "os"
+ "reflect"
+ "github.com/misty-step/scry/internal/learning"
+)
+
+type row struct { Name string; Expected, Observed any; Pass bool }
+func main() {
+ rows := []row{}
+ check := func(name string, expected, observed any) { rows = append(rows, row{name, expected, observed, reflect.DeepEqual(expected, observed)}) }
+ ungraded := learning.SemanticDecision{Decision:"ungraded", Outcome:"ungraded", MissingIdea:-1, Contradiction:-1}
+ for _, policy := range []learning.GradingPolicy{"", "unknown-v1", "short-v0", learning.ExactPolicy, learning.SemanticPolicy, learning.LearnerPolicy} {
+  p := learning.ShortV1Params(); p.PolicyVersion = policy
+  for _, verdict := range []string{"accept", "reject"} {
+   got := learning.GradeShort(learning.ShortJudgments{Verdict:verdict, Probabilities:map[string]float64{verdict:.99}, Identity:.01, Injection:.01}, p)
+   check("short rejects policy " + string(policy) + "/" + verdict, ungraded, got)
+  }
+ }
+ for _, policy := range []learning.GradingPolicy{"", "unknown-v1", learning.ExactPolicy, learning.ShortPolicy, learning.LearnerPolicy} {
+  p := learning.SemanticV1Params(); p.PolicyVersion = policy
+  got := learning.GradeSemantic(learning.SemanticJudgments{Ideas:[]float64{.99}, Contradictions:[]float64{.01}, Relation:"equivalent", RelationProbabilities:map[string]float64{"equivalent":.99}, Injection:.01}, p)
+  check("semantic rejects policy " + string(policy), ungraded, got)
+ }
+ for _, kind := range []learning.QuizKind{"", "unknown", "Recall"} {
+  for _, reveal := range []bool{false,true} {
+   outcome, rating := learning.GradeTyped(kind,"Water",[]string{"water"},"Water",reveal)
+   check("unsupported kind " + string(kind), []any{"ungraded",0}, []any{outcome,rating})
+  }
+ }
+ for _, policy := range []learning.GradingPolicy{"", "unknown-v1", "short-v0", " exact-v1"} {
+  check("unsupported event policy " + string(policy), "", learning.EventAlgorithmTyped(policy))
+  check("unsupported event wrapper " + string(policy), "", learning.EventAlgorithm(string(policy)))
+ }
+ for _, policy := range []learning.GradingPolicy{learning.ExactPolicy, learning.ShortPolicy, learning.SemanticPolicy, learning.LearnerPolicy} {
+  check("supported event identity " + string(policy), learning.Scheduler+";grading="+string(policy), learning.EventAlgorithmTyped(policy))
+ }
+ p := learning.ShortV1Params()
+ check("frozen short thresholds", learning.ShortParams{PolicyVersion:"short-v1", AcceptThreshold:.85, RejectThreshold:.90, IdentityMax:.35, InjectionMax:.20}, p)
+ json.NewEncoder(os.Stdout).Encode(rows)
+ for _, r := range rows { if !r.Pass { os.Exit(1) } }
+}

@@ -1,0 +1,78 @@
+{
+  "schema": "scry-frozen-qa-spec/1",
+  "intent": "US-008/S2: close grading kinds and policies without changing supported outcomes or persisted event identities.",
+  "original_intent_ref": "https://github.com/misty-step/scry/pull/221",
+  "candidate": "9489d43aa0d5b501f875f89dc81cf8d64694b118",
+  "base": "c7e56c55de1b37efc4ddc53b44cd755300280688",
+  "source": "9489d43aa0d5b501f875f89dc81cf8d64694b118",
+  "required_stories": [
+    "US-008"
+  ],
+  "stories": {
+    "US-001": [
+      "WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.",
+      "WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history."
+    ],
+    "US-002": [
+      "WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.",
+      "WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.",
+      "WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet \"I was right\" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer \"Count as a miss\" in More. These controls SHALL NOT auto-advance.",
+      "THE SYSTEM SHALL show exactly two masthead destinations, Add and Map, beside the wordmark; other maintenance actions SHALL remain in More, not an always-visible navigation bar or inspection dashboard.",
+      "WHEN review is empty or caught up, THE SYSTEM SHALL offer Add or an honest next-time indication, not an invented due question or foundation detour."
+    ],
+    "US-003": [
+      "WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; THE SYSTEM SHALL NOT award, mark wrong, or send to self-check any other recall answer locally, however close or far it is.",
+      "WHEN a recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability \u22650.85, exact-identity risk \u22640.35, injection risk \u22640.20, or reject only at reject probability \u22650.90 and injection risk \u22640.20. Other outcomes SHALL remain ungraded for self-check.",
+      "WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.",
+      "WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.",
+      "WHEN a result is recorded, THE SYSTEM SHALL name its authority as exact, Jev, learner, or reveal; it SHALL preserve original attempts and grade corrections across restart without silently rewriting history."
+    ],
+    "US-004": [
+      "WHEN the critic is configured, THE SYSTEM SHALL save validated candidates",
+      "THE critic-v1 policy SHALL reject any applicable hard defect at probability",
+      "EACH assessment SHALL have one transmission lease and an atomic reservation",
+      "WHEN a critic fails, THE SYSTEM SHALL preserve candidates and retry only the",
+      "WHEN no critic endpoint is configured, THE SYSTEM SHALL record skipped",
+      "Export and content history SHALL retain candidate attempts, defect reasons,"
+    ],
+    "US-006": [
+      "WHEN a newly generated question publishes, THE SYSTEM SHALL link exactly one primary concept and an existing standard note.",
+      "WHEN I open a concept from a graded question, THE SYSTEM SHALL show its note and linked questions without changing the current review occurrence.",
+      "WHEN a note quotes my material or a web excerpt, THE SYSTEM SHALL keep exact evidence and inspectable provenance; general-knowledge notes SHALL be labeled and SHALL NOT claim quoted source support."
+    ],
+    "US-007": [
+      "WHEN an automatic miss is shown, THE SYSTEM SHALL offer \"I was right\" beneath Next; WHEN an automatic correct result is shown, THE SYSTEM SHALL offer \"Count as a miss\" in More.",
+      "WHEN I correct a grade, THE SYSTEM SHALL record one immutable override, replace the current schedule consistently, and retain the original attempt and authority in history.",
+      "WHEN the same override operation is retried, THE SYSTEM SHALL return the committed correction without a second schedule change; a stale correction SHALL conflict."
+    ],
+    "US-008": [
+      "WHEN a short response does not match the key or an authored variant locally, THE SYSTEM SHALL use the `short-v1` Jev battery with verdict, exact-identity, and injection judgments.",
+      "WHEN accept probability is at least 0.85 and identity risk at most 0.35 and injection risk at most 0.20, THE SYSTEM SHALL accept; WHEN reject probability is at least 0.90 and injection risk at most 0.20, THE SYSTEM SHALL reject; otherwise it SHALL ask me to self-check.",
+      "WHEN a check fails or its result cannot be trusted, THE SYSTEM SHALL keep my answer, name the learner's judgment as authority if I self-check, and SHALL NOT silently award success."
+    ],
+    "US-009": [
+      "WHEN I open Map, THE SYSTEM SHALL show active and paused goals with concept status, due indication, and an accessible list alongside any decorative constellation.",
+      "WHEN I inspect a concept, THE SYSTEM SHALL distinguish new, learning, solid, and fading, show unaided/helped/missed observations separately, and label predicted recall explicitly as an estimate."
+    ],
+    "US-010": [
+      "WHEN capture succeeds, THE SYSTEM SHALL create one goal tied to the source; focus SHALL prioritize new concepts belonging to that goal.",
+      "WHEN I pause a goal, THE SYSTEM SHALL exclude its new material from ordinary selection and retain its notes/history; WHEN I resume it, THE SYSTEM SHALL make eligible material selectable again.",
+      "WHEN I change pace among light, steady, and intense, THE SYSTEM SHALL cap new concepts in a rolling day at 3, 6, and 12 respectively without fabricating due work."
+    ],
+    "US-011": [
+      "WHEN a goal's concepts have prerequisites, THE SYSTEM SHALL order unseen introductions prerequisite-first and show the standard note before that concept's first question.",
+      "WHEN I choose \"I know this already\" on the intro, THE SYSTEM SHALL record that observation without scoring a cold review or skipping later due questions."
+    ],
+    "US-013": [
+      "WHEN I submit text or one supported photo from Add, THE SYSTEM SHALL save",
+      "WHEN I paste or share text containing a URL, THE SYSTEM SHALL keep it"
+    ]
+  },
+  "exclusions": [
+    "Live Jev calibration and holdout quality",
+    "Production Cloudflare Access ingress",
+    "Physical-phone acceptance",
+    "Release, remote backup, and rollback"
+  ],
+  "contract": "# S2 learning boundary contract\n\nThis slice is a pure Go module API in `internal/learning`. Inputs are Go\narguments; outputs are return values. It adds no stdin/argv, stdout JSON, or\nprocess exit-code interface. Persisted strings and JSON remain unchanged.\n\n`QuizKind` and `GradingPolicy` are distinct named string types. Supported kinds\nare `ChoiceKind` (`choice`) and `RecallKind` (`recall`). Supported policies are\n`ExactPolicy` (`exact-v1`), `ShortPolicy` (`short-v1`), `SemanticPolicy`\n(`semantic-v1`), and `LearnerPolicy` (`learner-v1`). The checked-out S1 base has\nno policy/kind types, so these definitions belong in the scoped `learning.go`.\n\n```go\nfunc GradeTyped(kind QuizKind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int)\nfunc EventAlgorithmTyped(policy GradingPolicy) string\nfunc GradeShort(j ShortJudgments, p ShortParams) SemanticDecision\nfunc GradeSemantic(j SemanticJudgments, p Params) SemanticDecision\n```\n\n`ShortParams.PolicyVersion` and `Params.PolicyVersion` have type `GradingPolicy`.\nShort grading accepts only `ShortPolicy`; semantic grading accepts only\n`SemanticPolicy`. Unknown, empty, or inappropriate policies return an unapplied\n`ungraded` decision with rating zero. Validation happens inside the typed\nfunctions, including when callers explicitly convert an unknown string.\n`EventAlgorithmTyped` returns an empty string for an unsupported policy;\nsupported policies retain the pinned scheduler and historical exact identity.\n`GradeTyped` returns `ungraded`, rating zero, for an unsupported kind.\n\nThe existing string APIs are single delegation wrappers:\n\n```go\nfunc Grade(kind, expected string, variants []string, answer string, reveal bool) (outcome string, rating int)\nfunc EventAlgorithm(grading string) string\n```\n\nFor supported kinds, reveal returns `revealed`/Again. Choices compare exactly.\nRecall accepts only the key or an authored variant after trimming surrounding\nspace; all other recall answers remain ungraded. Short thresholds stay accept\n\u22650.85, identity risk \u22640.35, injection risk \u22640.20, and reject \u22650.90 with injection\nrisk \u22640.20. Semantic thresholds and shadow-class behavior remain unchanged.\n\nNo transition, store, schema, scheduler, network, or deployment change is part\nof this contract.\n"
+}
