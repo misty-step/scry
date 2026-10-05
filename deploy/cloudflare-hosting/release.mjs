@@ -111,7 +111,7 @@ export function cloudflare(credentials, fetcher = fetch) {
         description: operation, strategy: "rolling", kind: "full_auto", step_percentage: 100,
         target_configuration: configuration,
       });
-      requireValue(UUID.test(result.id), "rollout response unverified");
+      requireValue(typeof result.id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(result.id), "rollout response unverified");
       return result.id;
     },
     async rolloutStatus(id, rolloutId, image) {

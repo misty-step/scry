@@ -24,8 +24,10 @@ git diff --check
 
 The adapter suite passed 28 tests with no failures or skips. The hosting suite
 passed 82 tests with no failures or skips on Node v24.21.0. No Rust build,
-application rebuild, Cloudflare deployment, or model call ran. The full Scry
-source-snapshot/Dagger gate has not run in this lane and remains required.
+local application rebuild, Cloudflare deployment, or model call ran. GitHub's
+[full CI run](https://github.com/misty-step/scry/actions/runs/37246506082) passed
+on `2a83ca58f5ca14688da239fc4bc15bc57f0cec9b`, before the final rollout-ID
+compatibility fix. The final head still requires fresh CI and designated review.
 
 | Case | Observed result |
 | --- | --- |

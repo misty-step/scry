@@ -58,7 +58,7 @@ function fixture(options = {}) {
       if (init.method === "PATCH") image = body.configuration.image;
       result = { id: id(10), name: "scry-app-container-staging", scheduling_policy: "default", configuration: { image, instance_type: "lite" } };
     } else if (path.endsWith("/rollouts")) {
-      const rolloutId = id(200 + writes.length);
+      const rolloutId = `rollout-${200 + writes.length}`;
       result = { id: rolloutId, status: "completed", target_configuration: body.target_configuration };
       rollouts.set(rolloutId, result);
     } else if (path.includes("/rollouts/")) {
