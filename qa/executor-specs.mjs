@@ -38,7 +38,8 @@ export const ruleBSpecs = {
     if (index === 3) await c.scenario('failed check requires a deliberate retry', {failure: 'malformed'}, async s => {
       await s.recall(); await s.answer('synthetic saved retry answer'); await s.state('self-check');
       await s.replay(); assert.equal(s.requests.length, 1);
-      await s.page.getByRole('button', {name: 'Retry check', exact: true}).click(); await s.state('self-check');
+      const retry = s.page.waitForResponse(response => response.url() === s.address + '/review/answer' && response.request().method() === 'POST');
+      await s.page.getByRole('button', {name: 'Retry check', exact: true}).click(); await retry; await s.state('self-check');
       assert.equal(s.requests.length, 2); await s.current({graded: false, answer: 'synthetic saved retry answer'});
     });
     if (index === 4) await c.scenario('one paid assessment and event survive exact replay and restart', {short: short('accept', .99)}, async s => {
