@@ -38,3 +38,10 @@ Delivery is not a release gate. No Glass repo edits were made.
 The lane parent is read-only under this session's filesystem policy. This
 `final.md` therefore lives in the writable repo, with a copy in factory
 `audit/evidence/scry-qa-pr221/final.md` for handoff.
+
+A stable Glass retry input, including the failed control and passing QA
+observations, is retained at factory
+`audit/evidence/scry-qa-pr221/pending-glass-ingest.json`. Retry it with
+`node /workspace/lanes/glass-watch/repo/bin/glass-watch-push < <that-file>`.
+The last delivery receipt is `watch-push-receipt.json` beside it and reports
+`push_http_400`. No delivery was claimed.
