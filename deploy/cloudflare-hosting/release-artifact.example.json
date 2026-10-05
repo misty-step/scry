@@ -1,0 +1,19 @@
+{
+  "format": "scry-release-artifact-v1",
+  "environment": "staging",
+  "data_class": "synthetic",
+  "revision": "cccccccccccccccccccccccccccccccccccccccc",
+  "binary_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "version_id": "00000000-0000-4000-8000-000000000002",
+  "container_application_id": "00000000-0000-4000-8000-000000000010",
+  "image": "registry.cloudflare.com/test/scry@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "previous": {
+    "deployment_id": "00000000-0000-4000-8000-000000000100",
+    "version_id": "00000000-0000-4000-8000-000000000001",
+    "image": "registry.cloudflare.com/test/scry@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "evidence": "https://example.test/candidate",
+  "compatibility_evidence": "https://example.test/compatibility",
+  "rollback_compatible": true,
+  "database_rollback": false
+}

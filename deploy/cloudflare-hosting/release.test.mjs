@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { checker, cloudflare, parseArtifact, parseCredentials, release } from "./release.mjs";
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -47,12 +51,12 @@ function fixture(options = {}) {
         current = { id: id(100 + writes.length), versions: body.versions };
         result = current;
       } else {
-        if (options.newerBeforeRollback && checks === 3 && image === newImage) newer();
+        if (options.newerBeforeRollback && receipts.at(-1)?.rollback.status === "ATTEMPTED") newer();
         result = { deployments: [current] };
       }
     } else if (path.endsWith(`/applications/${id(10)}`)) {
       if (init.method === "PATCH") image = body.configuration.image;
-      result = { id: id(10), name: "scry-app-container-staging", scheduling_policy: "default", configuration: { image } };
+      result = { id: id(10), name: "scry-app-container-staging", scheduling_policy: "default", configuration: { image, instance_type: "lite" } };
     } else if (path.endsWith("/rollouts")) {
       const rolloutId = id(200 + writes.length);
       result = { id: rolloutId, status: "completed", target_configuration: body.target_configuration };
@@ -108,7 +112,7 @@ test("confirmed failure rolls back Worker and image exactly once, then proves re
     [{ version_id: id(2), percentage: 100 }], [{ version_id: id(1), percentage: 100 }],
   ]);
   assert.deepEqual(f.writes.filter((r) => r.method === "PATCH").map((r) => r.body), [
-    { configuration: { image: newImage } }, { configuration: { image: oldImage } },
+    { configuration: { image: newImage, instance_type: "lite" } }, { configuration: { image: oldImage, instance_type: "lite" } },
   ]);
   assert.deepEqual(f.writes.filter((r) => r.path.endsWith("/rollouts")).map((r) => r.body.step_percentage), [100, 100]);
   assert.ok(f.receipts.some((r) => r.rollback.status === "ATTEMPTED" && r.rollback.attempts === 1));
@@ -200,7 +204,7 @@ test("checker exercises health, readiness, and owner-authenticated Map using onl
     assert.equal(init.headers.Cookie, "CF_Authorization=synthetic-owner-jwt");
     if (url.endsWith("/map")) {
       assert.equal(init.headers.Authorization, undefined);
-      return new Response('<div data-view="map" data-http-status="200"><section class="map-stage"></section></div>', { headers: { "Content-Type": "text/html" } });
+      return new Response('<div id="main" data-view="map" data-http-status="200"><section class="map-stage"></section></div>', { headers: { "Content-Type": "text/html" } });
     }
     assert.equal(init.headers.Authorization, "Bearer synthetic-probe-token");
     return new Response(url.endsWith("/healthz") ? "ok\n" : "ready\n");
@@ -225,6 +229,77 @@ test("checker returns failure for an accessible broken journey", async () => {
   assert.deepEqual(result, { status: "FAIL", reason: "journey_assertion_failure", path: "/readyz", http_status: 200 });
 });
 
+test("HTTP 200 Access login pages are unverified, never a rollback trigger", async () => {
+  const result = await checker(credentials, async (url) => {
+    if (url.endsWith("/healthz")) return new Response("ok");
+    if (url.endsWith("/readyz")) return new Response("ready");
+    return new Response("<html><title>Sign in to Cloudflare Access</title></html>", { headers: { "Content-Type": "text/html" } });
+  })();
+  assert.deepEqual(result, { status: "UNVERIFIED", reason: "checker_response_not_application", path: "/map", http_status: 200 });
+});
+
+test("an application error page fails the critical journey", async () => {
+  const result = await checker(credentials, async (url) => {
+    if (url.endsWith("/healthz")) return new Response("ok");
+    if (url.endsWith("/readyz")) return new Response("ready");
+    return new Response('<div id="main" data-view="error" data-http-status="500"></div>', { headers: { "Content-Type": "text/html" } });
+  })();
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.path, "/map");
+});
+
+async function cliHome(run) {
+  const directory = await mkdtemp(join(tmpdir(), "scry-release-cli-"));
+  try {
+    await run(directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function cli(directory, artifactPath, outcomePath) {
+  return spawnSync(process.execPath, [new URL("./release.mjs", import.meta.url).pathname, artifactPath, outcomePath], {
+    env: { PATH: process.env.PATH, HOME: directory, CLOUDFLARE_API_TOKEN: "must-never-be-used" }, encoding: "utf8", timeout: 5000,
+  });
+}
+
+test("CLI without release.env emits JSON unverified and ignores inherited account-wide credentials", async () => {
+  await cliHome(async (directory) => {
+    const result = cli(directory, join(directory, "artifact.json"), join(directory, "outcome.json"));
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), {
+      format: "scry-release-outcome-v1", status: "UNVERIFIED", reason: "release_precondition_unverified", database_rollback: false,
+    });
+    assert.ok(!result.stdout.includes("must-never-be-used"));
+  });
+});
+
+test("CLI refuses an existing receipt without repeating effects or overwriting evidence", async () => {
+  await cliHome(async (directory) => {
+    await mkdir(join(directory, ".config/scry"), { recursive: true });
+    await writeFile(join(directory, ".config/scry/release.env"), Object.entries(credentials).map(([k, v]) => `${k}=${v}`).join("\n"), { mode: 0o600 });
+    const artifactPath = join(directory, "artifact.json");
+    const outcomePath = join(directory, "outcome.json");
+    await writeFile(artifactPath, JSON.stringify(artifact));
+    await writeFile(outcomePath, "original evidence");
+    const result = cli(directory, artifactPath, outcomePath);
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stdout).status, "UNVERIFIED");
+    assert.equal(await readFile(outcomePath, "utf8"), "original evidence");
+  });
+});
+
+test("CLI refuses credentials readable by other users", async () => {
+  await cliHome(async (directory) => {
+    await mkdir(join(directory, ".config/scry"), { recursive: true });
+    await writeFile(join(directory, ".config/scry/release.env"), Object.entries(credentials).map(([k, v]) => `${k}=${v}`).join("\n"), { mode: 0o644 });
+    const result = cli(directory, join(directory, "artifact.json"), join(directory, "outcome.json"));
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stdout).status, "UNVERIFIED");
+  });
+});
+
 test("artifact rejects production, mutable images, incompatible rollback, and dirty identity", () => {
   for (const changed of [{ environment: "production" }, { image: "registry.cloudflare.com/test/scry:latest" },
     { rollback_compatible: false }, { database_rollback: true }, { revision: "worktree-abc" }]) {
@@ -236,4 +311,15 @@ test("credential parser never accepts account-wide tokens or shell execution", (
   for (const input of ["CLOUDFLARE_API_TOKEN=secret", "export SCRY_RELEASE_CF_TOKEN=secret", "SCRY_RELEASE_CF_TOKEN=$(cat secret)"]) {
     assert.throws(() => parseCredentials(input));
   }
+});
+
+test("failed checkpoint prevents deployment and still returns an unverified JSON outcome", async () => {
+  const result = await release(artifact, {
+    api: { current: async () => { assert.fail("must not contact Cloudflare without a checkpoint"); } },
+    check: async () => { assert.fail("must not contact checker without a checkpoint"); },
+    save: async () => { throw new Error("disk unavailable"); },
+  });
+  assert.equal(result.status, "UNVERIFIED");
+  assert.equal(result.reason, "receipt_write_unverified");
+  assert.equal(result.deployment.status, "NOT_ATTEMPTED");
 });

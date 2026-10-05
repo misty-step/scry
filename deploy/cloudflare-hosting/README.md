@@ -120,6 +120,11 @@ New values reach the application only in a new Container instance; see
 
 ## Exact-binary isolated staging
 
+The tested release/observation adapter is documented in [release.md](release.md).
+It promotes a preuploaded Worker and immutable image to synthetic staging, emits
+a JSON outcome, and guards one compatible rollback. It requires the dedicated
+`~/.config/scry/release.env` credentials and a controller-held release slot.
+
 No production data or live model credential belongs in this flow.
 
 1. Commit the candidate and run the committed-source gate:

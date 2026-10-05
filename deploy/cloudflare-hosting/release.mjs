@@ -94,16 +94,20 @@ export function cloudflare(credentials, fetcher = fetch) {
     },
     async application(id) {
       const result = await call(`/containers/applications/${id}`);
-      requireValue(result.name === "scry-app-container-staging" && IMAGE.test(result.configuration?.image)
+      requireValue(result.id === id && result.name === "scry-app-container-staging" && IMAGE.test(result.configuration?.image)
         && result.scheduling_policy !== "durable_object", "staging container configuration unverified");
       return { image: result.configuration.image };
     },
     async rollout(id, image, operation) {
       // Match Wrangler's configuration update followed by a single 100% rollout.
-      await call(`/containers/applications/${id}`, "PATCH", { configuration: { image } });
+      const application = await call(`/containers/applications/${id}`);
+      requireValue(application.id === id && application.name === "scry-app-container-staging"
+        && application.scheduling_policy !== "durable_object", "staging container configuration unverified");
+      const configuration = { ...application.configuration, image };
+      await call(`/containers/applications/${id}`, "PATCH", { configuration });
       const result = await call(`/containers/applications/${id}/rollouts`, "POST", {
         description: operation, strategy: "rolling", kind: "full_auto", step_percentage: 100,
-        target_configuration: { image },
+        target_configuration: configuration,
       });
       requireValue(UUID.test(result.id), "rollout response unverified");
       return result.id;
@@ -138,6 +142,9 @@ export function checker(credentials, fetcher = fetch) {
         }
         const body = await response.text();
         if (response.status !== 200) return { status: "FAIL", reason: "journey_http_failure", path, http_status: response.status };
+        if (path === "/map" && !body.includes('id="main"')) {
+          return { status: "UNVERIFIED", reason: "checker_response_not_application", path, http_status: 200 };
+        }
         if (expected ? body.trim() !== expected : !response.headers.get("content-type")?.includes("text/html")
           || !body.includes('data-view="map"') || !body.includes('data-http-status="200"') || !body.includes('class="map-stage"')) {
           return { status: "FAIL", reason: "journey_assertion_failure", path, http_status: 200 };
@@ -165,7 +172,11 @@ export async function release(artifact, { api, check, wait = sleep, now = Date.n
   };
   async function finish(status, reason) {
     Object.assign(outcome, { status, reason });
-    await save(outcome);
+    try {
+      await save(outcome);
+    } catch {
+      Object.assign(outcome, { status: "UNVERIFIED", reason: "receipt_write_unverified" });
+    }
     return outcome;
   }
   async function sample(expected, image, rolloutId, phase, offset) {
@@ -215,10 +226,13 @@ export async function release(artifact, { api, check, wait = sleep, now = Date.n
       if (confirm.status !== "FAIL") continue;
       outcome.observation.status = "FAIL";
       // Caller holds the shared release slot through this final read and recovery.
-      if (!same(await api.current(), deployed)) return finish("SUPERSEDED", "newer_deployment_present");
       if ((await api.application(artifact.container_application_id)).image !== artifact.image) return finish("SUPERSEDED", "container_changed");
       outcome.rollback = { status: "ATTEMPTED", attempts: 1 };
       await save(outcome);
+      if (!same(await api.current(), deployed)) {
+        outcome.rollback = { status: "SKIPPED", attempts: 0 };
+        return finish("SUPERSEDED", "newer_deployment_present");
+      }
       const restored = await api.deploy(artifact.previous.version_id, `scry-rollback:${artifact.revision}`);
       Object.assign(outcome.rollback, restored);
       await save(outcome);
