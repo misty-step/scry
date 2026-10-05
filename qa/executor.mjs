@@ -8,6 +8,7 @@ import {mkdir, mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {specs} from './walk-specs.mjs';
 import {ruleBSpecs} from './executor-specs.mjs';
+import {deriveStories} from './executor-contract.mjs';
 
 const [specFile, artifactDir, outputDir, verifier] = process.argv.slice(2);
 if (!specFile || !artifactDir || !outputDir || !verifier) throw Error('usage: node qa/executor.mjs <frozen-spec.json> <artifact-dir> <new-packet-dir> <fresh-verifier-id>');
@@ -111,21 +112,7 @@ async function main() {
   receipt.artifact_sha256 = manifest.files.find(f => f.path === 'scry').sha256;
   assert.equal(command(join(artifact, 'scry'), ['version'], artifact).trim(), `scry ${candidate}`);
   const changes = git('diff', '--name-status', frozen.base, candidate).split('\n').filter(Boolean);
-  const required = new Set(frozen.required_stories);
-  for (const change of changes) {
-    const [status, ...paths] = change.split('\t');
-    for (const path of paths) {
-      let stories;
-      // This map is verifier-owned, never loaded from the candidate.
-      if (/^internal\/learning\/(learning|short|semantic)(_test)?\.go$/.test(path)) stories = ['US-003', 'US-008'];
-      else if (path === 'CONTRACT.md') stories = ['US-008'];
-      else stories = Object.keys(frozen.stories);
-      if (status === 'D') stories = Object.keys(frozen.stories);
-      receipt.selection.push({path, status, stories, reason: stories.length > 2 ? 'unknown or deleted path: full story set' : 'grading boundary and reverse consumers'});
-      for (const id of stories) required.add(id);
-    }
-  }
-  receipt.required_stories = [...required].sort();
+  Object.assign(receipt, deriveStories(frozen, changes));
   await record('frozen-spec.json', specBytes);
   await record('artifact.json', await readFile(join(artifact, 'artifact.json')));
   await record('candidate.diff', Buffer.from(git('diff', frozen.base, candidate)));
@@ -135,7 +122,9 @@ async function main() {
   receipt.browser.playwright = require(resolve(process.env.QA_PLAYWRIGHT || 'target/qa-tools/node_modules/playwright', 'package.json')).version;
   browser = await playwright.chromium.launch({channel: 'chrome', headless: true, env: env(scratch)});
   receipt.browser.version = browser.version();
+  const {readdir} = await import('node:fs/promises');
   for (const id of receipt.required_stories) {
+    const videosBefore = new Set(await readdir(join(output, 'video')));
     const context = await browser.newContext({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true, recordVideo: {dir: join(output, 'video'), size: {width: 390, height: 844}}});
     context.setDefaultTimeout(12000);
     let base;
@@ -154,7 +143,9 @@ async function main() {
             for (const pkg of packages) {
               const executable = join(artifact, `${pkg.split('/').at(-1)}.test`);
               row.action.push(`execute source-bound compiled test ${pkg} ${pattern}`);
-              const text = command(executable, ['-test.v', '-test.count=1', '-test.run', pattern]);
+              let text;
+              try {text = command(executable, ['-test.v', '-test.count=1', '-test.run', pattern]);}
+              catch (error) {text = error.stdout.toString(); row.observed.push(text); await record(`logs/${id}-${i + 1}-${receipt.evidence.length}-failed.txt`, Buffer.from(text)); throw Error(`compiled candidate tests failed: ${pattern}`);}
               assert.match(text, /--- PASS: Test/, `no tests executed: ${pattern}`);
               row.observed.push(text);
               await record(`logs/${id}-${i + 1}-${receipt.evidence.length}.txt`, Buffer.from(text));
@@ -198,15 +189,15 @@ async function main() {
     } catch (error) {receipt.rows.push({story: id, criterion: null, action: 'start required walkthrough', expected: 'all criteria exercised', observed: error.message, status: 'FAIL', evidence: []});}
     finally {
       if (base) await base.close(); await context.close();
+      const videos = (await readdir(join(output, 'video'))).filter(path => !videosBefore.has(path));
+      for (const filename of videos) {
+        const path = `video/${filename}`;
+        receipt.evidence.push({path, sha256: sha(await readFile(join(output, path)))});
+        for (const row of receipt.rows.filter(r => r.story === id)) row.evidence.push(path);
+      }
     }
   }
-  const {readdir} = await import('node:fs/promises');
-  for (const filename of await readdir(join(output, 'video'))) {
-    const path = `video/${filename}`;
-    receipt.evidence.push({path, sha256: sha(await readFile(join(output, path)))});
-  }
-  const videos = receipt.evidence.filter(e => e.path.startsWith('video/')).map(e => e.path);
-  for (const row of receipt.rows) row.evidence.push(...videos);
+  const videos = receipt.evidence.filter(e => e.path.startsWith('video/'));
   receipt.verdict = receipt.rows.length > 0 && receipt.required_stories.every(id => frozen.stories[id]?.every((_, i) => receipt.rows.some(r => r.story === id && r.criterion === i + 1 && r.status === 'PASS'))) && receipt.rows.every(r => r.status === 'PASS') && videos.length > 0 ? 'PASS' : 'FAIL';
 }
 try {await main();} catch (error) {receipt.error = error.message; console.error(error.message);}
