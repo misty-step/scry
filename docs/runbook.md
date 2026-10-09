@@ -7,6 +7,47 @@ Go build/recovery procedures; the current `scripts/scry-ci` exports Rust/WASM.
 The new target and its separate approval procedure are documented in
 [the replacement release guide](rust-cloudflare.md).
 
+## Private Rust preview — 2026-10-09
+
+`https://preview.scry.study` is a separate owner-only Rust preview, served by
+Worker `scry-rust-preview-20261009`. Its singleton SQLite Durable Object and
+private R2 buckets (`scry-rust-preview-assets-20261009` and
+`scry-rust-preview-backups-20261009`) are separate from production and historical
+stores. Workers.dev and preview URLs are disabled; no scheduled cron is attached.
+Normal Cloudflare Access owner authentication remains required.
+
+The October 9 update uploaded the three frozen modules tested at
+`d05c341dff23337097572e993ab2fea497921b13`, merged in
+[PR #225](https://github.com/misty-step/scry/pull/225) as `c11a2e5`.
+The committed-source gate, all four protected checks, and exact-head App review
+passed. Runtime WASM SHA-256:
+`67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60`.
+All three uploaded modules matched complete remote readback. The existing
+namespace, bindings, and domain assignments were preserved; production
+`scry-app-host` deployments were unchanged. No rebuild or learning-data import
+occurred during the update.
+
+Before updating, an owner-requested complete snapshot at
+`2026-10-09T15:49:10.285Z` was independently retrieved from private R2: 107,911
+bytes, SHA-256
+`bcafa5426cc5a85caa1df260b90f01ef49d66347966fa67b83039e7dbfb133bd`.
+Its R2 ETag matched the retrieved bytes. The exact tested WASM validated and
+restored the archive in unused local SQLite/R2 with external calls denied;
+content, the recorded attempt, operation receipts, and schedules were preserved,
+and recovered work remained paused. There were no referenced photos. This is
+compatible archive/readback evidence, not independently hosted recovery or an
+RPO/RTO measurement.
+
+Anonymous and forged owner/JWT requests still redirect to Access without private
+content. Updated owner-browser/phone acceptance, normal refinement of existing
+material, broader live-provider acceptance, and independently hosted recovery
+remain pending. Existing saved lessons were not silently regenerated. The
+preview's provider key has a separate $2 lifetime limit and expires October 16;
+production keys were not changed. Source merge and this preview update do not
+authorize production activation, redirecting production origins, migration, or
+retirement of another writer. Follow [the replacement release guide](rust-cloudflare.md)
+for those separate requirements.
+
 ## Current authority
 
 This runbook owns deployment/recovery procedures, not product acceptance or
