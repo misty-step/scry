@@ -47,7 +47,16 @@ def main():
                     not any(member.name == p or member.name.startswith(p + "/") or
                             member.isdir() and p.startswith(member.name.rstrip("/") + "/") for p in PATHS)):
                     raise RuntimeError("unexpected retained Go archive entry")
-            tar.extractall(source, filter="data")
+            # Extract only validated regular bytes; works on the gate's Python
+            # without delegating symlink/device/permission handling to tarfile.
+            for member in tar.getmembers():
+                destination = source / member.name
+                if member.isdir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                else:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with tar.extractfile(member) as incoming, destination.open("xb") as outgoing:
+                        shutil.copyfileobj(incoming, outgoing)
         home = work / "home"
         home.mkdir()
         env = {"PATH": os.environ["PATH"], "HOME": str(home), "GOENV": "off",
