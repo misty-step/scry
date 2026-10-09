@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createServer as createNetServer } from 'node:net';
 import { resolveBrowser } from '../../lib/browser.mjs';
+import { sourceProvenance } from '../../lib/source-provenance.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,8 +37,7 @@ function freePort() {
 }
 
 function headRevision() {
-  const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : null;
+  return sourceProvenance(REPO_ROOT).revision;
 }
 
 function sha256File(path) {

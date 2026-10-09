@@ -1,20 +1,52 @@
-# Stream and honest judgment
+# One question and honest judgment
 
 Stories: US-002, US-003, US-007, US-008, US-011
-Source: internal/web/review.go, internal/web/templates/review.html, internal/web/assets/app.js, internal/learning/*.go, internal/semantic/*.go, internal/store/*.go
+
+Source: src/learning.rs, src/engine.rs, src/generation.rs, src/web.rs, src/runtime.rs, assets/app.js
 
 ## Sub-features
 
-One question or prerequisite introduction at a time; exact/variant local grading, bounded `short-v1` and authored-rubric `semantic-v1`, self-check on uncertainty, assistance/reveal, grade override, and immutable history. Choice keys and variant matches do not need a provider.
-
+One question or prerequisite intro, exact/meaning checks, assistance/self-check,
+held feedback, deliberate Next, immutable correction, and exact response replay.
 ## How to get to it (user POV)
 
-Open `/` for the Stream. Answer with a `.choice` in `fieldset.choice-fieldset` or type in `#recall-answer` in `form.answer-form`. Use `/review/intro`'s Got it or I know this already for an introduction. Read the held `role=status` result, then explicitly choose `form[data-next]`'s Next. Open `details.overflow` for Show me or Count as a miss; automatic misses offer I was right below Next. `/history` retains the original result and correction.
+Open `/` directly into a question, prerequisite introduction, or honest empty
+state. Choose one `.choice` inside `fieldset.choice-fieldset`, or type into
+`#answer` in `form.answer-form`. Choice taps submit directly. Introductions have
+Start practicing and I know this already, both observations rather than cold
+review. The current question survives navigation and refresh.
+
+Choice/exact-key/authored-variant grading is local. Other recall answers stage
+one bounded independent Jev `short-v1` check; authored explain prose uses
+`semantic-v1`. Close, unsure, malformed, or failed checks preserve the answer
+and offer self-check; failed checks offer an explicit new check attempt. The
+held `role=status` result names authority and keeps expected answer/explanation
+until `form[data-next]`. Nothing auto-advances.
+
+`details.overflow` has Show me, Look it up, repair, and archive. Automatic misses
+offer I was right below Next; automatic correct grades offer Count as a miss.
+Corrections preserve original attempts and assistance. `/history` keeps the
+wording/result as presented and identifies later correction. Reference and edit
+pages cannot preload protected answers while an attempt remains unaided.
 
 ## Driving it
 
-On `scry-ws`, `qa/walk --stories "US-002 US-003 US-007 US-008 US-011"` seeds authored DNS/TLS questions with `seed-fixture`, serves with `serve --dev`, and records real pointer/keyboard interaction. For non-browser-observable scheduler, semantic thresholds, lease, and correction contracts, use the focused Go boundaries from `docs/qa/system.md`; do not equate a fixture with live Jev acceptance.
+`cargo test --locked --test learning_policy --test fsrs_golden --test application --test web_render`
+covers policy, 260 pinned scheduler trajectories, exact-operation replay,
+immutable corrections, and HTML fences. A real local Worker browser exercises
+answer → held result → Next, refresh, response loss/reconcile, offline drafts,
+keyboard, pointer, self-check, and access loss. No-JS forms use the same durable
+POST contract. The controller keeps only one unresolved frozen payload and does
+not store private history or queue mutations offline.
+
+The authored fixture is HTTP caching material in a fresh synthetic namespace;
+no provider endpoint yields honest failed/self-check handling. Neither fixture
+answers nor scheduler compatibility establish real Jev holdout quality, useful
+learning, private ingress, or physical-phone acceptance.
 
 ## Gotchas
 
-`--dev` supplies identity only on loopback; isolate inherited `SCRY_*` credentials with `env -i`. Answer/explanation must be absent before self-check or grading. A missing semantic endpoint deliberately yields self-check, not an automatic judgment. Reading an intro or revealing an answer is not cold success. HTMX reconciles uncertain responses by the same operation ID; navigation must not consume the occurrence. The authored fixture pre-acknowledges intros, so prerequisite order requires an independent store-boundary check.
+Synthetic data proves mechanics only. Follow the current QA recipe, retain
+source-bound real observations, and keep protected reference/answer material
+behind durable assistance. Never attach live integrations or import historical
+stores to make a preview appear complete.

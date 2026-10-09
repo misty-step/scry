@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One host/Dagger Go gate; export only the binary that passed isolated smoke."""
+"""One source-bound Rust/WASM gate; export only the Worker that passed isolated workerd/browser smoke."""
 import argparse
 from datetime import datetime, timezone
 import gzip
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import stat
 import subprocess
@@ -17,8 +18,6 @@ import tarfile
 import tempfile
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from scry_smoke import smoke  # noqa: E402
 
 RECOVERY_CONTRACTS = (
     "scripts/scry-ops.test.py",
@@ -58,33 +57,27 @@ def run(command, *, cwd, env=None, data=None, log=None):
 
 
 def environment():
-    # Do not forward application, cloud, model, proxy or Git credential variables.
-    # SCRY_CRITICS_* name local browser tool paths only; they carry no credentials.
-    allowed = ("PATH", "HOME", "TMPDIR", "GOCACHE", "GOMODCACHE",
-               "SCRY_CRITICS_NODE_PATH", "SCRY_CRITICS_CHROMIUM_PATH")
+    # Tool caches are not runtime capabilities. No cloud/model/private app vars enter checks.
+    allowed = ("PATH", "HOME", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME", "SCRY_CRITICS_NODE_PATH", "SCRY_CRITICS_CHROMIUM_PATH", "SCRY_CRITICS_PLAYWRIGHT_PATH")
     result = {key: os.environ[key] for key in allowed if key in os.environ}
-    result.update({
-        "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
-        "GOENV": "off", "GOWORK": "off", "GOFLAGS": "", "GOTOOLCHAIN": "local",
-        "GOOS": "linux", "GOARCH": "amd64", "GOAMD64": "v1", "CGO_ENABLED": "0",
-        "GOPROXY": "https://proxy.golang.org,direct", "GOSUMDB": "sum.golang.org",
-    })
+    result.update({"LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "WRANGLER_SEND_METRICS": "false", "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV": "false"})
     return result
 
 
 def excluded(path):
     parts = Path(path).parts
-    if parts[0] in {".git", ".tmp", "target", "dist", "node_modules", ".wrangler", "data", "scry"}:
+    if parts[0] in {".git", ".tmp", "target", "dist", "node_modules", ".wrangler", "data", "scry", "build"}:
         return True
     if path.startswith(".dagger/sdk/"):
         return True
     return any(part == ".env" or (part.startswith(".env.") and part != ".env.example")
-               or part == ".dev.vars" or part.startswith(".dev.vars.") for part in parts)
+               or part == ".dev.vars" or (part.startswith(".dev.vars.") and part != ".dev.vars.example") for part in parts)
 
 
 def inventory(root, object_format):
     result = []
     for parent, directories, names in os.walk(root, followlinks=False):
+        directories[:] = [name for name in directories if not excluded((Path(parent) / name).relative_to(root).as_posix())]
         for name in directories[:]:
             if (Path(parent) / name).is_symlink():
                 directories.remove(name)
@@ -161,11 +154,15 @@ def snapshot(root, destination):
     expected = {path: value for path, value in committed.items() if path in admitted}
     clean = not git("status", "--porcelain=v1", "-z", "--untracked-files=all") and actual == expected
     metadata = {
-        "format": "scry-release-source-v1", "git_revision": head,
+        "format": "scry-release-source-v1", "git_revision": head, "git_tree": git("rev-parse", "HEAD^{tree}").decode().strip(),
         "git_object_format": object_format, "source_state": "committed" if clean else "worktree",
         "source_sha256": digest(encoded(files)), "files": files,
     }
     metadata["revision"] = revision(metadata)
+    retained = runpy.run_path(str(source / "qa/retained-go-migration.py"))
+    retained_source = retained["archive"](root)
+    require(digest(retained_source) == retained["ARCHIVE_SHA256"], "retained Go source checksum mismatch")
+    (destination / "retained-go.tar").write_bytes(retained_source)
     (destination / "source.json").write_bytes(encoded(metadata))
     return metadata
 
@@ -199,88 +196,55 @@ def gate(args):
     source, output = args.source.resolve(), args.out.resolve()
     metadata = json.loads(args.metadata.read_bytes())
     verify_source(source, metadata)
-    require(platform.system() == "Linux" and platform.machine() in {"x86_64", "amd64"},
-            "exact Linux amd64 smoke requires Linux amd64; use ci:full on other hosts")
     output.mkdir(parents=True, exist_ok=False)
     env, log = environment(), output / "gate.log"
-    go_version = run(["go", "version"], cwd=source, env=env, log=log).decode().strip()
-    require(go_version == "go version go1.27.1 linux/amd64", "Go 1.27.1 is required; use ci:full for the pinned toolchain")
-    node_version = run(["node", "--version"], cwd=source, env=env, log=log).decode().strip()
-    require(int(node_version.lstrip("v").split(".")[0]) >= 22, "Node >=22 is required for syntax checks")
-    go_files = [item["path"] for item in metadata["files"]
-                if item["path"].startswith(("cmd/", "internal/")) and item["path"].endswith(".go")]
-    require(go_files, "no Go application source")
-    unformatted = run(["gofmt", "-l", *go_files], cwd=source, env=env, log=log)
-    require(not unformatted.strip(), "Go formatting differs; run gofmt on the listed files")
-    for command in (["go", "test", "-count=1", "-mod=readonly", "./..."],
-                    ["go", "vet", "-mod=readonly", "./..."],
-                    ["node", "--check", "internal/web/assets/app.js"],
-                    ["node", "--check", "internal/web/assets/htmx-2.0.10.min.js"]):
+    toolchain = run(["rustc", "--version"], cwd=source, env=env, log=log).decode().strip()
+    require(toolchain.startswith("rustc 1.98.1 "), "Rust 1.98.1 is required")
+    node = run(["node", "--version"], cwd=source, env=env, log=log).decode().strip()
+    require(node == "v22.22.0", "Node 22.22.0 is required; use the isolated VM or ci:full")
+    for command in (
+        ["cargo", "fmt", "--all", "--", "--check"],
+        ["cargo", "test", "--locked", "--all-targets"],
+        ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
+        ["cargo", "clippy", "--locked", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
+        ["node", "--check", "assets/app.js"],
+        ["bash", "-n", "scripts/rust-dev"],
+    ):
         run(command, cwd=source, env=env, log=log)
-    deployment_js = sorted(
-        str(path.relative_to(source))
-        for pattern in ("deploy/backup-gateway/*.mjs", "deploy/cloudflare-hosting/*.mjs")
-        for path in source.glob(pattern))
-    require(deployment_js, "no hosting JavaScript found")
-    for path in deployment_js:
-        run(["node", "--check", path], cwd=source, env=env, log=log)
-    deployment_tests = [path for path in deployment_js if ".test." in path]
-    require(deployment_tests, "no hosting regression tests found")
-    run(["node", "--test", "--test-timeout=180000", *deployment_tests], cwd=source, env=env, log=log)
-    critic_files = sorted(
-        str(path.relative_to(source))
-        for pattern in ("scripts/critics/run.mjs", "scripts/critics/lib/*.mjs", "scripts/critics/tests/**/*.mjs")
-        for path in source.glob(pattern))
-    require(critic_files, "no critic tooling found")
-    for path in critic_files:
-        run(["node", "--check", path], cwd=source, env=env, log=log)
-    critic_tests = [path for path in critic_files if ".test." in path]
-    require(critic_tests, "no critic tests found")
-    # The critic browser cases run for real here: Chromium plus the pinned
-    # Playwright module must both be present, and the suite fails (never passes
-    # vacuously) when the browser is unavailable. The Dagger image provides the
-    # defaults; a workspace provisioned by .exe/setup.sh names its own install.
-    critic_env = dict(env)
-    critic_env.update({
-        "HOME": env.get("HOME", "/root"),
-        "NODE_PATH": env.get("SCRY_CRITICS_NODE_PATH", "/opt/scry-critics/node_modules"),
-        "CHROMIUM_PATH": env.get("SCRY_CRITICS_CHROMIUM_PATH", "/usr/bin/chromium"),
-        "SCRY_CRITICS_REQUIRE_BROWSER": "1",
-        "SCRY_CRITICS_NO_SANDBOX": "1",
-    })
-    run(["node", "--test", "--test-timeout=180000", *critic_tests], cwd=source, env=critic_env, log=log)
-    for script in sorted(source.glob("deploy/*.sh")):
-        run(["bash", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
-    for script in sorted(source.glob("deploy/cloudflare-hosting/*.sh")):
-        run(["sh", "-n", script.relative_to(source)], cwd=source, env=env, log=log)
     recovery(source, env, log)
-    binary = output / "scry"
-    build = ["go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false",
-             "-ldflags", f"-X main.revision={metadata['revision']}", "-o", str(binary), "./cmd/scry"]
-    run(build, cwd=source, env=env, log=log)
-    build_info = run(["go", "version", "-m", binary], cwd=source, env=env, log=log)
-    for setting in (b"CGO_ENABLED=0", b"GOOS=linux", b"GOARCH=amd64"):
-        require(b"\t" + setting + b"\n" in build_info, f"binary is missing build setting {setting.decode()}")
-    binary_sha256 = digest(binary.read_bytes())
-    proof = smoke(binary, source, output, metadata["revision"])
-    require(digest(binary.read_bytes()) == binary_sha256, "smoke changed the release binary")
+    run(["worker-build", "--release", "--locked"], cwd=source, env=env, log=log)
+    worker = source / "build"
+    require((worker / "worker/shim.mjs").is_file() and (worker / "index.js").is_file() and (worker / "index_bg.wasm").is_file(), "the compiled Worker is incomplete")
+    artifact = {str(p.relative_to(worker)): digest(p.read_bytes()) for p in sorted(worker.rglob("*")) if p.is_file()}
+    qa_env = dict(env, SCRY_SKIP_BUILD="1", SCRY_SOURCE_META=str(args.metadata.resolve()), SCRY_CRITICS_REQUIRE_BROWSER="1")
+    critic_tests = sorted(source.glob("scripts/critics/tests/*.test.mjs"))
+    critic_browser = sorted(source.glob("scripts/critics/tests/e2e/*.test.mjs"))
+    require(critic_tests and critic_browser, "critic verification entrypoints are missing")
+    run(["node", "--test", *critic_tests], cwd=source, env=qa_env, log=log)
+    run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
+    # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
+    run(["node", "--test", "qa/runtime.test.mjs"], cwd=source, env=env, log=log)
+    walk_env = qa_env
+    run(["node", "qa/walk.mjs", "--all"], cwd=source, env=walk_env, log=log)
+    require(artifact == {str(p.relative_to(worker)): digest(p.read_bytes()) for p in sorted(worker.rglob("*")) if p.is_file()}, "smoke changed the release Worker")
     verify_source(source, metadata)
+    shutil.copytree(worker, output / "worker")
+    shutil.copytree(source / "target/walk", output / "walk")
     archive_source(source, metadata, output / "source.tar.gz")
+    shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
     (output / "source.json").write_bytes(encoded(metadata))
-    (output / "build-info.txt").write_bytes(build_info)
     shutil.copyfile(args.secrets_proof, output / "gitleaks.txt")
-    proof.update({
-        "format": "scry-release-proof-v1", "revision": metadata["revision"],
+    proof = {
+        "format": "scry-rust-worker-release-proof-v1", "revision": metadata["revision"],
         "source_state": metadata["source_state"], "source_sha256": metadata["source_sha256"],
-        "binary_sha256": binary_sha256, "build_command": build,
-        "build_environment": {key: env[key] for key in ("GOOS", "GOARCH", "GOAMD64", "CGO_ENABLED", "GOTOOLCHAIN")},
-        "go_version": go_version, "node_version": node_version,
-        "checks": ["gofmt", "go test", "go vet", "browser/hosting JavaScript syntax and regressions", "critic suite with real Chromium (pinned Playwright)", "deploy shell syntax", "retained recovery contracts", "redacted Gitleaks", "exact-binary smoke"],
-    })
+        "worker": artifact, "rustc": toolchain,
+        "checks": ["rustfmt", "Rust native tests", "native and WASM Clippy", "browser JS syntax", "retained historical recovery contracts", "redacted Gitleaks", "critic provenance/negative-controls/current-Worker browser", "exact-WASM private-ingress/SQLite/R2 smoke", "real Chromium story walk"],
+        "limits": ["synthetic data", "mocked public Access certs/providers", "local R2 binding", "no live generation, physical phone, production activation, or off-account restore claim"],
+    }
     (output / "proof.json").write_bytes(encoded(proof))
-    files = sorted(path for path in output.iterdir() if path.is_file())
-    (output / "SHA256SUMS").write_text("".join(f"{digest(path.read_bytes())}  {path.name}\n" for path in files))
-    print(f"PASS {metadata['revision']} sha256:{binary_sha256}")
+    files = sorted(path for path in output.rglob("*") if path.is_file())
+    (output / "SHA256SUMS").write_text("".join(f"{digest(path.read_bytes())}  {path.relative_to(output)}\n" for path in files))
+    print(f"PASS {metadata['revision']} (exact Rust/WASM Worker)")
 
 
 def delivery(args):
@@ -330,7 +294,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("local", "full"):
-        command = commands.add_parser(name, help="check and export the exact binary (destination must be unused)")
+        command = commands.add_parser(name, help="check and export the exact Worker (destination must be unused)")
         command.add_argument("--out", type=Path)
         command.add_argument("--require-committed", action="store_true")
     commands.add_parser("recovery", help="run only the retained historical recovery contracts")

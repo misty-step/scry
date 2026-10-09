@@ -196,7 +196,9 @@ describe('negative e2e failure scenarios', () => {
     chmodSync(fakeChromium, 0o755);
 
     const port = await freePort();
-    const result = runWalk(['--candidate', 'http://127.0.0.1:' + port + '/', '--out', outDir], { CHROMIUM_PATH: fakeChromium });
+    const result = runWalk(['--candidate', 'http://127.0.0.1:' + port + '/', '--out', outDir], {
+      SCRY_CRITICS_CHROMIUM_PATH: fakeChromium, CHROMIUM_PATH: fakeChromium
+    });
 
     strictEqual(result.status, 2, 'expected exit 2 for a blocked launch, got ' + result.status);
     ok(existsSync(join(outDir, 'receipt.json')), 'launch failure must preserve a receipt');

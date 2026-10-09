@@ -33,12 +33,12 @@ export function tryRequirePlaywright() {
     }
   }
 
-  const pwEnv = process.env.SCRY_CRITICS_PLAYWRIGHT;
+  const pwEnv = process.env.SCRY_CRITICS_PLAYWRIGHT_PATH || process.env.SCRY_CRITICS_PLAYWRIGHT;
   if (pwEnv) {
     try {
       const require = createRequire(import.meta.url);
       const mod = require(pwEnv);
-      return { mod, source: 'SCRY_CRITICS_PLAYWRIGHT' };
+      return { mod, source: 'SCRY_CRITICS_PLAYWRIGHT_PATH/SCRY_CRITICS_PLAYWRIGHT' };
     } catch (_) {}
     try {
       const require = createRequire(import.meta.url);
@@ -75,6 +75,7 @@ export function tryRequirePlaywright() {
 // === chromium resolution ===
 export async function tryFindChromium() {
   const candidates = [
+    process.env.SCRY_CRITICS_CHROMIUM_PATH,
     process.env.CHROMIUM_PATH,
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
@@ -116,7 +117,14 @@ export async function resolveBrowser() {
   if (!playwright) {
     return { ok: false, reason: 'playwright module unavailable', playwright: null, chromium: null, launchArgs: [] };
   }
-  const chromium = await tryFindChromium();
+  let chromium = await tryFindChromium();
+  if (!chromium) {
+    try {
+      const bundled = playwright.mod.chromium.executablePath();
+      await access(bundled, constants.X_OK);
+      chromium = bundled;
+    } catch (_) {}
+  }
   if (!chromium) {
     return { ok: false, reason: 'chromium executable unavailable', playwright, chromium: null, launchArgs: [] };
   }

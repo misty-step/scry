@@ -1,11 +1,12 @@
 # Scry prompt-first, concept-centered specification
 
-Status: prompt-first Create intent reaffirmed on 2026-10-02; its behavioral
-acceptance is [S11](#s11--create-useful-material-from-intent-us-013). Existing
-Go v5 contracts remain below, with their 2026-09-23 authority (MIS-162).
-Approved product intent is not implementation or activation proof. Current
-deployed state and compatible artifacts belong to [the runbook](docs/runbook.md);
-prior phone-flow and recovery receipts establish only what they exercised.
+Status: prompt-first Create intent reaffirmed on 2026-10-02; full redesign and
+Rust-on-Cloudflare rewrite instructed on 2026-10-07. Its behavioral acceptance
+remains [S11](#s11--create-useful-material-from-intent-us-013), together with the
+accepted learning/history/privacy/recovery contracts below. Active replacement
+code is Rust/WASM Worker + singleton SQLite Durable Object + private R2.
+[The operational runbook](docs/runbook.md) still owns the deployed Go Container;
+source, fixtures, and green gates do not activate its replacement.
 
 [VISION](VISION.md) owns intent; [USER_STORIES](USER_STORIES.md) owns the learner
 stories; [DESIGN](DESIGN.md) owns visual decisions; the earlier Rust
@@ -13,24 +14,25 @@ extraction strategy remains historical in [its migration record](docs/rust-migra
 
 ## Authority and open decisions
 
-**Implemented direction, not the future target:** the earlier rewrite adopted
-Go, SQLite, and HTMX, initially on exe.dev and now hosted in a Cloudflare
-Container. That remains the current application and operating-command contract.
-The earlier phone flow and daily recovery policy were approved; they do not
-prove the complete current product intent.
+**Current implementation authority (2026-10-07):** the operator asked to fully
+redesign and rewrite the app as Rust and Cloudflare. The active replacement is a
+ground-up Rust/WASM Worker, one SQLite-backed Durable Object, private R2 complete
+archives, and escaped server-rendered HTML with a vanilla controller. It starts
+in a fresh namespace and does not restore the retired Rust architecture or import
+historical data. Create produces useful tailored reference/practice first, then
+refines through actual attempts and feedback. No speech engine is selected.
 
-**Approved product and future direction (2026-10-02 reaffirmation):** Create
-accepts a word, phrase, or long dictated intent and produces useful tailored
-study/reference and practice material before any mandatory setup questionnaire.
-Actual practice and feedback refine it. S11 binds this outcome. The approved
-future implementation is a ground-up Rust-on-Cloudflare rewrite, not restoration
-of the retired Rust stack. This documentation selects no speech engine, storage
-replacement, migration, deployment, or new spending authority. Current Go
-artifacts and imported historical issues do not authorize that cutover.
+**Production remains separately governed:** the Go/SQLite Container behind
+`scry-app-host` remains the documented live runtime. Its exact source is retained
+in Git at `c6ba395`; historical artifacts/stores remain recovery material. The
+rewrite instruction authorizes implementation, not live migration, replacement
+activation, reactivation of frozen writers, or new paid integration capability.
+Concrete committed-source/target, private ingress, remote recovery, provider,
+and phone evidence precede an explicitly approved release.
 
 **2026-09-23 decision (MIS-162):** after rejecting the MIS-59 foundations
 experience on 2026-09-12, the operator explicitly authorized the complete
-concept-centered redesign. The accepted design is one question, Add and Map,
+concept-centered redesign. The accepted design is one question, historically Add and Map,
 concepts with durable notes, selected capture modes, honest short-answer
 checking/self-check/grade override, and a visual system (the 2026-09-24
 “Ink notebook” redesign replaced the first “Scrying glass” direction).
@@ -52,8 +54,8 @@ through private HTTPS on an existing recovery VM; provisioning and DNS recovery
 were not timed, and the synthetic rehearsal received no production integrations.
 
 **Open acceptance:** useful material, short-v1 holdout quality, real browser
-interaction, independent recovery and live provider outcomes need evidence for
-v5. A passing fixture or prior phone report does not establish them. The
+interaction, independent recovery and live provider outcomes need fresh evidence
+for the Rust replacement. A passing fixture or prior phone report does not establish them. The
 earlier S09.2 different-account history-return observation remains unverified.
 Old stores remain preserved separately; import or deletion needs a new decision.
 
@@ -65,7 +67,7 @@ and reason here; remove obsolete alternatives rather than retaining two designs.
 | D1: personal material and failures | Build around what the operator wants to remember, not old QA datasets | The accepted candidate used photosynthesis, HTTP caching, and DNS examples. Specific future learning goals and sustained usefulness come from real use, not invented frustrations. |
 | D2: response grading | Choice and exact-key/variant recall resolve locally; every other short recall answer uses bounded Jev `short-v1`; explain-level prose retains rubric `semantic-v1`. Close/unsure/failed checks offer self-check, and automatic grades allow one-tap correction. Every recorded grade names exact, Jev, learner, or reveal authority. | Operator authorized 2026-09-23; short-v1 accepts p≥0.85 with identity≤0.35 and injection≤0.20, rejects p≥0.90 with injection≤0.20, otherwise self-check. No liberal similarity or model call inside SQL; holdout quality remains to prove. |
 | D3: assistance and correction | Reveal, answer-bearing cues and self-check exposure remain honest; immutable original grade plus separate override adjusts the current schedule without rewriting history. | Exact operation replay is durable; reading/intro is not cold success. |
-| D4: experience approval | One question and one answer action, retained feedback and deliberate Next; Add/Map masthead and the [DESIGN](DESIGN.md) visual system | v5 phone/usefulness requires new observation; earlier approved flow is not blanket acceptance. |
+| D4: experience approval | One question and one answer action, retained feedback and deliberate Next; Create/Map masthead and the [DESIGN](DESIGN.md) visual system | v5 phone/usefulness requires new observation; earlier approved flow is not blanket acceptance. |
 | D5: recovery / spend | Daily/pre-release off-VM backups, 30-day retention, RPO 24h/RTO 60m targets; provider key $25/week, application $3.50/rolling day, $0.50 generation reservation | Limit raised on 2026-09-23 for Scry personal (exe.dev). Unknown cost retains reservation, not free retry; backup targets are not guarantees. |
 | D6: replacement boundary | Fresh target data, no legacy API parity; preserve historical stores and backups separately | Operator explicitly directed preservation. Both old Workers are paused; native Postgres remains disabled with recovery backups active. No old data import or deletion. |
 
@@ -120,10 +122,10 @@ continue retrieval-led study directly. “Quiz-first” is not a compulsory pret
 material-import workflow, or mastery profile before generation.
 
 ```text
-scry                                  + Add   Map
+scry                                    Create   Map
 concept chip (inert before grading)
 One question or first-time concept introduction
-One answer control OR Got it / I know this already
+One answer control OR Start practicing / I know this already
 
 checking → self-check (if unsure/close/failed) → held result
 Correct. / Not quite. / Shown.
@@ -132,7 +134,7 @@ Next
 I was right (quiet, automatic miss only)
 ```
 
-- One choice tap submits, or a recall field uses Check (empty → Show me).
+- One choice tap submits, or a recall field uses Check my answer; More offers Show me.
   `question`, `checking`, `self-check`, `result`, `intro`, `preparing`,
   `empty-first-run`, `caught-up`, and `conflict/error` are distinct states.
   Feedback stays until deliberate Next; no auto-dismiss, swipe grade, or
@@ -150,12 +152,13 @@ I was right (quiet, automatic miss only)
   until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
-- Current Go Add has one field and an optional photo (US-013's capture boundary).
-  Text, including a URL, goes to private planning without web research; a photo
-  transcribes before planning. Retained explicit Topic/Link callers are not
-  inferred from text. Source and Map expose captures and preparing failures;
-  `/add?text=&url=&title=` prefill stays editable. Approved Create acceptance
-  in S11 extends this implemented boundary, not its permission to search.
+- Create has one private intent field and optional photo (US-013/S11). Text,
+  including URLs, never infers public search or link reading; photos transcribe
+  before preparation. Saved goals expose captured intent, useful reference,
+  practice, refinement, and honest failure. `/add` is an alias; text/URL prefill
+  remains editable and private. Historical explicit Topic/Link callers belong
+  to the archived Go revision, not a replacement public API.
+
 - Map shows goal sections and an accessible concept list
   alongside a decorative constellation. Concept pages show status, separate
   unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
@@ -183,7 +186,7 @@ that I can start without organizing the app first.
 - **S01.2:** With no material, the screen offers capture. With material but none
   currently due/eligible, it explains that state and offers a deliberate next
   action; it does not invent due work or silently reset schedules.
-- **S01.3:** Returning from Add/Map/Concept preserves an unfinished occurrence
+- **S01.3:** Returning from Create/Map/Concept preserves an unfinished occurrence
   or held result. Navigation and status reads do not consume it.
 
 Proof: browser journeys through empty, due, exhausted, and returning states.
@@ -230,7 +233,7 @@ Proof: actual browser interactions plus deterministic learning/SQLite boundary
 checks for ambiguous answers, semantic policy thresholds, pending/failure
 recovery, assistance cues, and reveal/submit races.
 
-First-screen cutover (US-013, 2026-09-28): `/add` now has one text field
+Historical Go first-screen cutover (US-013, 2026-09-28): `/add` now has one text field
 and an optional photo, with no mode chooser. Text, including a standalone
 URL or shared URL, is saved as private My text and never authorizes web
 research. A selected photo uses the existing photo path and caption limit.
@@ -240,8 +243,9 @@ new interpretation step, or a new spending contract.
 
 ### S03 — Add something without configuring it (US-005)
 
-Retained explicit-mode callers only. This is not the Add/Create screen contract;
-US-013 and S11 govern that front door.
+Historical Go explicit-mode callers only, retained at Git `c6ba395`. This is
+not a replacement compatibility API or the Create screen contract; US-013 and
+S11 govern the Rust front door. The exact historical criteria remain recorded.
 
 As the learner, I want to add a topic, text, link, or photo with an explicit
 choice of what it is, so I do not have to create a deck or card template.
@@ -398,7 +402,7 @@ history or silently restart paid work.
 - **S10.1:** Restart preserves acknowledged captures/reviews and exposes durable
   jobs as recoverable or failed, not forgotten. Incompatible migration fails
   before serving ordinary traffic or claiming jobs.
-- **S10.2:** Backup produces a completed, integrity-checked SQLite snapshot and
+- **S10.2:** Backup produces a completed, integrity-checked complete application snapshot and
   required assets/configuration metadata outside the live VM. Interrupted copy
   or upload is not advertised as a usable backup; stale backup status is visible.
 - **S10.3:** A fresh isolated environment can restore using off-VM recovery
@@ -423,7 +427,7 @@ tailored material first, then improve it through use rather than setup.
   Dictated input means accepting its text; no speech engine, browser vendor,
   automatic recording, or microphone integration is selected here. Unsupported
   or oversize input is rejected honestly without silent truncation or loss of
-  the editable draft; current Go byte/photo bounds remain unchanged.
+  the editable draft; established 32 KiB text / 4 MiB photo / 1 KiB caption bounds remain unchanged.
 - **S11.2:** The first completed result contains useful study/reference material
   and practice attached to teachable concepts: an understandable explanation
   with relevant examples or distinctions, and answerable questions with
@@ -465,7 +469,7 @@ Proof required for product completion: human review of real word/phrase/dictated
 inputs through authorized generation, inspectable reference/practice output,
 and later interaction that demonstrably refines material without manufacturing
 learning history. Exercise slow, partial, failed, and uncertain work separately.
-Current Go Add walks prove capture/privacy only; source documentation, fixture
+Historical Go Add walks prove their capture/privacy boundary only; source documentation, fixture
 success, and older phone receipts do not establish S11 acceptance.
 
 ## Cross-cutting quality contracts
@@ -482,7 +486,7 @@ reliability, usability, and learning outcomes separate.
 | UX4 | Usable at 320 CSS px, with keyboard and 200% text zoom | No horizontal clipping; visible focus, labeled controls, accessible result announcements, >=44 CSS px primary targets, adequate contrast, reduced motion; test long questions and explanations, not only short fixtures |
 | UX5 | Smooth but honest continuity | At most one speculative next prompt, no speculative success/mastery; canceled gestures and stale responses do not submit; loss/conflict recovers without an invisible offline queue |
 | AI1 | Useful material rather than parser success | Operator-approved real-input set includes topics, qualified passages, complete sets, and ambiguous/adversarial inputs; record keep/revise/reject with reasons, coverage, factual/provenance defects, latency and spend; hold out examples from prompt tuning |
-| OPS1 | Privacy and recovery are release requirements | S09/S10 proof against the actual exe application and off-VM recovery path; D5 recovery/spend choices approved before relying on real personal data |
+| OPS1 | Privacy and recovery are release requirements | S09/S10 proof against the actual private Cloudflare application and remote recovery path; D5 recovery/spend choices approved before relying on real personal data |
 
 A small smoke sample can establish a functioning path, not a production p95 or
 population retention claim. Record the sampling plan before a performance run;
@@ -490,305 +494,242 @@ repeatable browser emulation is not evidence of the owner's physical-phone feel.
 The owner approves aesthetics and usefulness; QA agents can surface defects and
 measure contracts but cannot manufacture that approval.
 
-## Current Go v5 architecture and durable boundaries
+## Rust replacement architecture and durable boundaries
+
+The operator's 2026-10-07 instruction selects the active ground-up replacement.
+This section describes current replacement source, with acceptance limits stated
+separately. The deployed Go Container is still governed by the operational
+runbook; it has not been replaced by this source revision.
 
 ### One application and one state authority
 
 ```text
-Phone browser — HTML/HTMX, embedded assets, small presentation controller
+Private phone/browser — escaped HTML, self-hosted assets, vanilla controller
        |
-Cloudflare Access → Worker scry-app-host (exact subject) → singleton Container
+Cloudflare Access → Rust/WASM Worker (JWT signature + exact issuer/aud/subject)
        |
-nginx (strip client authority; inject owner) → Go/SQLite (one writer)
-       |                       |                   |
-SQLite WAL           Model / Jev HTTPS      Exa HTTPS (selected captures)
+internal capability → singleton LearningSpace Durable Object
+       |                          |
+SQLite durable transactions    bounded Model / Jev HTTPS
        |
-consistent snapshot → append/read gateway → private R2
+complete JSON + photo archive → private R2 → exact remote readback
 ```
 
-The Go module uses net/http, html/template, embedded assets/migrations,
-`internal/learning` pure policy, `internal/store` short SQLite transactions,
-`internal/generation` and `internal/semantic` bounded external calls, and
-`internal/web` private routes. No React/frontend build, second writer, vector
-database, event bus, or generic AI orchestration layer. Use existing
-Cloudflare Worker/Container ingress, not an app Worker database.
+The replacement is a plain Rust Cloudflare Worker, not a Container, restored
+retired Worker stack, or multi-application engine. One named SQLite Durable
+Object owns all learning writes and background transmission ownership. R2 owns
+private photo assets and complete recovery archives, not a second learning
+writer. Active source has no Go application dependency, frontend framework,
+HTMX requirement, frontend build, vector database, event bus, or generic agent
+orchestration layer. Worker-build compiles Rust/WASM and its Worker loader.
 
-HTMX handles HTML forms, fragments, ordinary navigation and bounded job polling.
-Initial rich content is escaped text/controlled formatting, not model-generated
-HTML. Treat user/source/model text as untrusted data, never template source or
-unchecked template.HTML. Pin and embed browser dependencies; do not require a
-third-party CDN to open the app.
+`src/learning.rs` is pure scheduling, grading, and concept evidence.
+`src/model.rs` / `src/engine.rs` own typed records and domain transitions.
+`src/persistence.rs` owns validated row and archive encoding.
+`src/generation.rs` owns bounded serialized model requests and validated material.
+`src/runtime.rs` owns Access ingress, canonical origin, CSRF, SQLite durability,
+external effects, alarms, private assets, and recovery. `src/web.rs` / `assets/`
+own escaped HTML, self-hosted fonts, and presentation. The public product
+surface remains private; no legacy API/CLI/MCP compatibility is inherited.
 
 ### The browser/server boundary
 
-Pure fragment roundtrips cannot beat real network latency. A small review-only
-browser controller owns immediate visual feedback, focus, gesture cancellation,
-transitions, and a bounded in-memory prefetch. Go owns grading, scheduling,
-publication, presentation identity, and durable progress.
+The browser does not own a grade, schedule, durable draft, or publication.
+Ordinary same-origin POST forms preserve core behavior without JavaScript.
+Every form has CSRF and an operation identity derived from a cryptographically
+fresh server render nonce plus occurrence/revision/action/form identity.
+The external vanilla controller enhances those forms and reads server-rendered
+HTML. All untrusted model/user text is escaped; no inline executable source,
+remote font, localStorage history, or offline mutation queue is required.
 
-A candidate next fragment may arrive with a committed result or a read-only
-prefetch. It carries a version/occurrence token, not authority to advance a
-schedule. Fetching it does not count as exposure, an answer, or a paid job.
-Do not preload an answer/explanation into the visible or accessibility tree
-before the learner answers or asks for help. Revealing answer-bearing content
-must be fenced durably before it can coexist with a cold-recall success; do not
-make local reveal instantaneous by removing that guarantee.
+The first response can be visibly pending, but only one browser mutation can
+remain unresolved. A lost response may follow a committed write: freeze its
+exact payload and reconcile with the same operation. Changed payload with that
+identity conflicts. A definite validation rejection retains editable input;
+offline study pauses. Reconnect never automatically sends an answer.
 
-A transition may be provisional, visibly pending, with one unresolved mutation.
-A stale/failed transition reconciles to server truth. A lost response is an
-unknown outcome, not proof the server rolled back; retry the same operation ID.
-Do not let a second answer disappear into an offline queue. This bound may feel
-slow on a poor connection: the real-phone spike decides whether the tradeoff is
-acceptable, not an assertion that optimistic HTML is automatically smooth.
+Read-only preparation polling pauses for active/dirty forms, unknown answers,
+or hidden/offline pages. A late response cannot replace a newer stage. Polling
+neither retries paid work nor advances a question. Results remain until Next.
+An unanswered occurrence and expected answer are not prefetched into hidden
+markup. A note, goal title/intent, leaking concept name, old attempt, edit,
+photo, or export cannot bypass the current assistance fence. The assistance
+POST must commit before answer-bearing reference is served.
 
-Ordinary forms retain core functionality without the enhancement. Disable HTMX
-localStorage history snapshots on private review screens, use appropriate
-private/no-store response policies, and explicitly handle 409/422/error swaps.
-Aborting an HTMX request does not undo a committed server transaction.
+Private responses use no-store and a strict external-script/style policy.
+Access denial removes the private DOM; pagehide removes retained private pages,
+and back/forward restoration revalidates. Native keyboard and pointer paths,
+320/390/1280 px, both color schemes, no-JS forms, and actual phone acceptance
+need real observation independently of render tests.
 
 ### Domain state and transactions
 
-The essential records are sources and revisions; quizzes and content versions;
-presentations/assistance state; immutable review events and operation receipts;
-current schedules; durable generation jobs/attempt accounting; owner settings.
-This is a conceptual model, not a mandate for one table or package per noun.
+Saved goals contain learning intent and optional photo/transcript. Concepts
+contain prerequisite links and append-only notes. Questions retain immutable
+content versions and full current FSRS cards. An occurrence snapshots exactly
+the presented content, schedule version, answer, assistance, and held result.
+Immutable events, separate overrides, operation receipts, jobs, assessment
+leases, allowance reservations, explicit feedback, preferences, and backup
+status complete the durable state.
 
-Review transaction:
+A short SQLite transaction commits the complete domain transition:
 
 ```text
-authorize owner and validate operation/presentation
-begin short write transaction
-  identical prior operation -> return its result
-  same ID / different payload or stale occurrence -> conflict
-  validate content version and assistance state
-  grade and compute next schedule with explicit algorithm version/time
-  save event + schedule + resumable result/receipt atomically
-commit
-return committed result, optionally with next prompt preview
+validate owner/origin/CSRF and operation identity
+  identical committed operation -> return its saved result
+  changed payload or stale occurrence/content/schedule -> conflict
+  resolve exact/choice grade or stage one saved bounded assessment
+  save immutable event + full card + held result + operation receipt atomically
+commit before returning success
 ```
 
-Use sql.Tx consistently; do not mix pooled DB calls into a transaction. WAL
-stays on local persistent disk, not R2 or a network filesystem. Configure foreign
-keys, bounded busy handling and deliberate connection limits on every relevant
-connection. Begin with serialized short writes and FULL synchronous durability;
-weaken acknowledged-write durability only through an explicit decision. Close
-read cursors promptly. No model HTTP or streaming inside a SQL transaction.
+The singleton persists typed rows in its SQLite Durable Object using a
+revision-fenced synchronous transaction. No external call happens inside it.
+The runtime saves transmission ownership and allowance before an await, then
+loads fresh state and checks lease, source/content revision, occurrence,
+schedule version, and lifecycle before accepting an external completion.
+A stale completion cannot publish or rewrite an event.
 
-`modernc.org/sqlite` v1.58.0 is the selected pure-Go driver; the release gate
-exercises a CGO-disabled Linux amd64 binary. Preserve transaction, cancellation,
-backup, engine-fix, and target-build requirements on upgrades. The embedded
-SQLite engine must include the official WAL-reset corruption fix (3.51.3 or a
-documented fixed backport); a Go module version alone is not that evidence.
+The Rust scheduler ports the pinned Go FSRS adapter and its complete state:
+due time, stability, difficulty, scheduled days, repetition/lapse counters,
+state, last-review time, and remaining steps. `learning::SCHEDULER` and
+`learning::ALGORITHM` preserve the original Go identity strings. Events append
+`exact-v1`, `short-v1`, `semantic-v1`, or `learner-v1` authority as appropriate.
+`tests/fsrs_golden.rs` compares 260 full-state trajectories against the exact
+Go reference, including miss/relearning and equivalent-time replay. That proof
+is bounded scheduler compatibility, not retired-engine parity, personalized
+retention, certified understanding, or learning gains.
 
-`go-fsrs/v4` v4.0.0 is pinned behind the pure adapter in `internal/learning`.
-The constructor can silently fall back for invalid parameters, so the adapter
-validates pinned configuration first. Versioned reference trajectories, including
-misses/relearning and equivalent-time replay, are exercised by the Go gate.
-`internal/learning.Scheduler` identifies the unchanged scheduler policy on
-every schedule card; `internal/learning.Algorithm` is that identity plus the
-default `exact-v1` grading and remains byte-identical to pre-Jev history.
-Each event names `exact-v1`, `short-v1`, `semantic-v1`, or `learner-v1` as
-appropriate; a `grade_overrides` row retains a separate correction and before/
-after schedule. Old events remain immutable. No old-engine parity, personalized
-retention, or learning-efficacy claim is inherited.
+The target uses a fresh schema/namespace. US-001 criterion 1 continues to require
+Go v4→v5 foundation-row preservation in the retained Go runtime. That migration
+and its tests remain intact; the fresh Rust namespace never performs the upgrade
+or imports the live database. The old Go source remains
+in Git at `c6ba395` with its operational artifacts, and frozen Rust/Postgres/
+Worker stores remain separate recovery material. Foundation routes stay retired.
 
-Schema v5 adds goals and goal-concept membership; generated/learner concepts
-with status and source origin; `requires`, `part_of`, and symmetric
-`confused_with` relations; immutable notes and source documents;
-private bounded capture images; question concept roles/level/citations; evidence observations; grade overrides; preferences and a concept
-index for reuse. One primary concept is required for each new question. Old foundation
-rows and links remain with historical origin but stay out of Map/Stream.
-Migration v4→v5 is additive and transactional, with `user_version=5`, full
-schema/reference validation and FTS rebuild. Once migrated a v4 binary cannot
-open the live DB; see [release boundary](docs/runbook.md#schema-v5-release-boundary).
-
-The private HTTP surface is Stream `/`, Capture `/add`, Map `/map`, Concept
-`/concepts/{id}` (note, questions, practice and
-archive actions), Goal `/goals/{id}` (pause/resume/focus), Source
-`/sources/{id}` (input/documents/image/retry/archive), and History/Settings.
-Review writes use `/review/answer`, `/review/reveal`, `/review/next`,
-`/review/self`, `/review/override`, and `/review/intro`, each with CSRF and
-idempotent operation handling. Question fix/edit/archive and source export
-retain their authorized routes. Foundation routes and `/library` are removed.
-`/add?from={id}` pre-fills the authorized saved text for a new input without
-changing the original or placing its text in a URL. The current unassisted
-question's source remains protected by the same cold-review gate.
+Private routes are `/` (study), `/create` (`/add` alias), `/map`,
+`/goals/{id}` (reference/input/preparation/refinement), `/concepts/{id}`,
+`/questions/{id}/edit`, `/history`, `/settings`, `/gate`, `/photos/{goal_id}`,
+and complete `/export`. Review POST routes are intro, answer, reveal, help,
+self, retry, override, and next. Goal routes pause, focus, archive, retry, and
+refine; concepts practice, archive, and feedback; questions edit, archive,
+dispute, and fix. Preparation, practice, and maintenance retain version and
+operation fences. Operator backup/isolated restore capabilities are separate
+from browser-owner authorization.
 
 ### Generation and learning policy
 
-Capture creates one goal/source and a sequential chain per mode:
-`topic → research (Exa search) → plan → questions`,
-`link → research (Exa contents) → plan → questions`,
-`photo → transcribe → plan → questions`,
-`text → plan → questions`. Private text can be a learning request, factual
-material, or both: model knowledge is labeled General knowledge and carries
-no quotations or citations; claims grounded in supplied material quote it
-exactly. This content basis never opts text into web research. Topic research
-with zero documents likewise proceeds as general knowledge. Link research needs the chosen
-page; a missing Exa key or unreadable page fails the preparation with a
-recoverable message (paste the text as My text, or retry), never a plan about a
-URL nobody read. The content client sends a bounded search
-or chosen-link fetch only for those explicit modes. A plan produces 1–12 atomic
-concepts with a standard note and justified relations; reuse an existing active
-concept only when it is the same idea, not merely adjacent. Dedupe judgments use
-Jev only for candidate matches, with p≥0.80 to reuse; absent endpoint skips
-dedupe. Ordinary goals should aim for 3–10 concepts, and exact/complete-set
-tasks retain their unit ordering contract.
-Generated relations are source-origin only when their concept has an explicit
-source-grounded note; otherwise they remain model-origin, including reused
-concepts without a new note.
+Create saves private intent before bounded preparation. A word, phrase, or long
+ramble can produce a useful general-knowledge starting point; no required
+profile, assessment, source import, or approval inbox intervenes. An optional
+photo is validated and transcribed before its explanation and practice are
+prepared. Text/photo/caption byte bounds remain 32 KiB / 4 MiB / 1 KiB.
+Pasted URLs remain private intent: the replacement does not infer research,
+open them, or restore a legacy public Topic/Link API.
 
-Questions ascend recognize → recall → explain/apply (2–3 per concept where
-appropriate). A prompt that needs an exact number, name, symbol, spelling, or wording
-asks for that form explicitly. Explain prose alone gets required-idea rubric.
-`questions` can be requested for one concept and `fix` for a specified quiz
-version. A completed `fix` changes nothing: its validated result pre-fills the
-question's ordinary edit form, labeled as Scry's draft with the current version
-one click away, and only Save writes it, through the same version fence as any
-edit. Saved from the form that showed it, with its question, answer, and
-quotation unchanged, it keeps the grading it was validated with; changing them
-removes its key ideas, as for any edit, and the form says so. Saving the form
-that showed the current version never takes the draft's grading. A later edit or newer request makes an unsaved draft moot. A fix belongs
-to its question: the capture's chain lists it, but it never becomes the
-capture's status, receipt, or Try again. A stopped fix is reported on the
-question with its accounted use; a failed request is moot after an edit, while
-one paused by a restore stays paused and reported until the learner asks again,
-which is its explicit retry.
-Only one live job per source; busy requests return conflict. Completing
-each stage atomically publishes validated content and enqueues its successor.
-Validation is per item: an invalid concept or question is dropped (with any
-relation naming it) and the valid remainder publishes as a partial stage whose
-note names each failed check; a stage fails only when nothing valid remains.
-Exact-text and complete-set tasks stay all-or-nothing. Model output is
-normalized where no honesty is lost (goal cut to 120 characters, levels sorted,
-unsupported or prompt-copied recall variants removed, fill-in coverage cleared).
-When search excerpts are supplied, notes and questions ground in them.
+Generation produces a bounded batch of teachable concepts, clear notes,
+prerequisites, and useful practice variation. Claims attributed to supplied
+material quote that saved text exactly; general knowledge is labeled and carries
+no fabricated evidence. A learning request is not factual support. Model/user
+text is serialized data and rendered inert. Validation rejects oversize or
+unsupported content without silent truncation, retains failure/candidates and
+usage, and labels partial useful output honestly.
 
-Jobs claim durable attempt/lease ownership before Exa, model, or Jev HTTP
-outside SQL; publication rechecks owner, source revision, and source lifecycle.
-Published quotes are byte-exact substrings of the learner's material or a saved
-search excerpt: a model quote that matches only after whitespace, quote-mark,
-dash, or ellipsis normalization is replaced by the original text, and an
-unmatched quote is dropped. An item left without evidence is dropped for the
-learner's own material, or labeled General knowledge (no evidence, no citation)
-for an explicit Topic. Private-text requests may directly produce honestly labeled
-General knowledge, but a failed claimed source quotation is never relabeled to
-evade validation. Link/photo material and exact-text/complete-set units remain
-source-grounded. Web quotes cite the saved result that contains them; topic notes
-carry no evidence. Untrusted input stays serialized data, not instructions or
-HTML. Candidate critic US-004 remains prepublication, with shared spend
-accounting. Known cost settles reservations; unknown sent outcomes stay charged
-and paused, never silently retried.
+Refinement explicitly uses saved feedback, actual attempts, confusion,
+corrections, and existing concepts. Existing notes append versions; published
+questions retain attribution and history. A prepared fix is a saved draft for
+its exact question/version. It does not overwrite content upon completion.
+The learner's versioned Save chooses it; an edit or newer source/content
+revision invalidates stale work. Changing answer/rubric-bearing wording removes
+an invalidated semantic rubric rather than pretending it still applies.
 
-Selection v2 uses prerequisite-first unseen intros, due reviews, focused goals,
-light/steady/intense rolling-day new-concept caps (3/6/12), and concept state
-`new|learning|solid|fading` from graded and non-graded observations. Recall
-probability/brightness are estimates, never mastery. Reveal/reading stays
-assisted or observational, and `internal/learning.Algorithm` remains pinned.
+Choice, exact key, and authored recall variants resolve locally. All other short
+answers stage `short-v1`: independently bounded verdict, exact-identity, and
+injection judgments. Accept requires p≥0.85, identity≤0.35, injection≤0.20;
+reject requires p≥0.90 and injection≤0.20. Missing/malformed/close judgments
+stay ungraded. Explain prose retains independently authored required ideas and
+`semantic-v1`; incomplete/incorrect shadow classes do not become automatic
+misses. Saved uncertain answers offer learner self-check; failed checks offer
+an explicit new assessment with no identical-row resend.
+
+Each recorded result names exact, Jev, learner, or reveal authority. Automatic
+unaided grades allow one immutable correction and a consistent current card;
+original attempts remain unchanged. Assistance/intro exposure and deliberate
+extra practice do not fabricate unaided success or move the FSRS schedule as
+cold recall. Self-check retains the submitted attempt’s assistance snapshot and
+records answer exposure for subsequent practice before applying learner authority. Question feedback/dispute and a deliberate schedule reset remain
+separate from a grade override.
+
+Selection introduces unseen ideas prerequisite-first, interleaves eligible due
+practice, prioritizes focused new concepts, excludes paused goals' new material,
+and keeps their due practice. Light/steady/intense cap new concepts at 3/6/12
+per rolling day. Concept new/learning/solid/fading and recall/brightness derive
+from actual evidence under the pinned pure policy. Read/know observations,
+helped attempts, unaided successes, and misses remain distinct. An estimate is
+never a guarantee or mastery score.
 
 ### Prepublication content critic: US-004
 
-The configured semantic endpoint checks validated generation candidates.
-The absolute batch bound is 60 for exact-text and complete-set tasks; ordinary
-concept question jobs produce at most 36 (12 concepts × 3). No silent
-truncation: a larger batch fails validation rather than claiming complete
-coverage. Candidates, generator attribution, and usage persist before
-criticism. With no endpoint, `critic_status=skipped` preserves existing
-publication behavior. Historical foundation rows are not candidates.
+Validated candidates and attribution are saved before any critic request.
+A batch contains at most 60 candidates; larger output fails rather than claiming
+complete coverage. When configured, the critic independently judges each
+applicable hard defect: unsupported source claim, contradicting evidence,
+changed qualification, missing context, ambiguous/indefensible answer, leaked
+answer, overlapping choice, misaligned rubric, or adversarial content.
+Source, choice, and rubric-specific defects apply only to those types.
 
-`BuildCriticRequest` sends only candidate prompt, answer, explanation, choices,
-rubric, basis, and evidence. Each applicable defect receives an independent
-Noul judgment. Hard defects cover unsupported source answers, contradictory
-evidence, changed qualifications, missing context, ambiguous answers, indefensible
-answers, leaked answers, overlapping choices, misaligned rubrics, and adversarial
-content. Source support applies only to source-basis candidates. Choice overlap
-and rubric alignment apply only to their corresponding quiz types. The leakage
-check also covers authored rubric cues. Required ideas remain exclusive to
-explain-level authored prose. The validator rejects rubrics on choice,
-exact-text, short-recall, and complete-set output; source-basis
-ideas must be supported by the candidate's evidence without strengthening
-qualifications. Generated rubrics never leak hints. Under `semantic-v1`,
-incomplete and incorrect remain ungraded; rubric alignment is judged in the
-same bounded critic call.
+`critic-v1` freezes the hard threshold at 0.80. Any applicable hard judgment at
+or above it rejects that candidate. Teaching-value score can rank only, never
+veto. Missing/mixed-type/malformed judgments stay ungraded and cannot publish.
+These thresholds are product policy, not demonstrated calibration or efficacy.
+Without a configured critic, skipped criticism is durably recorded without
+reserving extra allowance or pretending independent checking happened.
 
-The code-owned `critic-v1` policy freezes the hard threshold at 0.80.
-Any hard judgment at or above that threshold rejects the candidate.
-Explanation restatement supplies a teaching-value score only; it never rejects.
-The worker preserves source order rather than sorting ordered learning material.
-Missing, mixed-type, or invalid judgments remain ungraded and cannot publish.
-These initial thresholds do not establish calibrated accuracy or learning gains.
+Each assessment has one transmission ownership and an atomic reservation in the
+shared generation/meaning allowance. Calls happen outside SQLite. Known usage
+settles reservation; an interrupted or unknown sent outcome retains it and
+requires deliberate resolution. Candidates, raw responses, model attribution,
+rejection reasons, and known/unknown usage remain in export/history.
 
-Each `content_assessments` row permits exactly one transmission under a 30-second
-lease. The store reserves the semantic amount against the shared daily allowance
-before sending. Known costs replace reservations; unknown outcomes retain them.
-Expired leases become failed, including rows abandoned by terminal jobs.
-Candidate storage extends job ownership for the bounded serial critic battery.
-The provider call remains outside SQL and uses the existing eight-second limit.
+Critic failure retains candidates and judgments. A retry checks only unresolved
+criticism with new send ownership, reuses already judged candidates, and never
+regenerates the saved batch or silently resends an assessment. Publication
+recomputes decisions from saved judgments and rechecks source revision,
+candidate identity, lifecycle, and job ownership atomically. Mixed accepted/
+rejected output is partial; no valid accepted output cannot be called ready.
+Restored uncertain work stays paused. Live critic controls and representative
+human review remain distinct from deterministic boundary tests.
 
-Unavailable criticism leaves candidates saved with `critic_status=pending`.
-Automatic and explicit retries share the durable ceiling of three total job
-attempts. An eligible explicit retry resumes the same unpublished batch;
-it never repeats generation or charges its reservation. Judged candidates are
-reused unchanged; unjudged candidates receive new assessment rows on a new attempt.
-Restored work remains paused until explicit retry. Fully rejected batches need
-revised input, not repeated criticism to search for a passing judgment.
+### Private Cloudflare target and recovery
 
-`Store.CompleteJob` recomputes decisions from stored response judgments and
-rechecks candidate identity, source revision, validation, and ownership.
-It publishes accepted candidates only. Mixed batches become partial; fully
-rejected batches fail without publishing. Export includes candidates, attempts,
-policy identity, raw requests/responses, reasons, and usage. `ContentHistory`
-returns content attempts separately from immutable learner review history.
+The replacement Worker verifies the Access JWT RS256 signature against issuer
+keys, issuer, configured audience, time claims, and exact immutable owner
+subject. Cloudflare's email policy alone is insufficient. It accepts the
+canonical origin; alternate hosts redirect reads only and reject mutations.
+An internal capability authenticates forwarding to the singleton. CSRF,
+operation identity, and same-origin checks protect browser writes. Development
+identity is loopback-only and refuses live provider/operator capabilities.
 
-Proof: pure-policy boundaries; durable lease, spend, crash, retry, and publication
-tests; real HTTP worker integration; and bounded live public/synthetic controls.
-Live controls report false accepts, false rejects, abstentions, model, and cost.
-They do not establish broad publication quality or authorize activation.
+`src/runtime.rs` persists complete snapshot metadata and referenced photo bytes
+as a versioned JSON archive in private R2. A backup is verified only after exact
+remote size/checksum/full-byte readback and archive validation. Daily alarms and
+pre-release/operator backup preserve the approved 30-day retention policy.
+A failed upload/readback stays visibly failed in Settings while ordinary review
+remains available. R2 durable storage alone is not independent recovery proof.
 
+Restore requires an unused isolated Durable Object namespace, compatible
+Worker/assets/configuration retained independently, an integrity-checked complete
+archive, and a separate scoped restore capability. It verifies all content and
+photo bytes, clears live backup receipts, and keeps uncertain jobs/assessments
+paused with no inherited paid integrations. Never overwrite acknowledged live
+writes or reactivate a historical writer during rehearsal. Daily/pre-release
+snapshots target RPO 24 hours and RTO 60 minutes; measure actual private-service
+recovery and name untested provisioning/DNS/configuration steps.
 
-Use durable job status with bounded HTMX polling: twenty checks three seconds
-apart. A terminal poll reconciles the whole page so eligible next actions appear.
-After the polling limit, say checking stopped—not that preparation failed—and
-retain Check again. Stopped preparation shows its reason and known or unknown
-accounted use without opening Details. Offer Try again only when the store's
-derived `can_retry` agrees with transactional eligibility; exhausted or rejected
-steps retain Edit as new input (or Add a new photo) without changing saved history.
-SSE is optional only after proving useful incremental delivery through the
-Cloudflare Worker/Container path; streaming remains unverified by this research.
-
-### Cloudflare production hosting and recovery
-
-Production requests to `scry.study` pass through Cloudflare Access and Worker
-`scry-app-host`. Access's owner-email policy is not sufficient by itself: the
-Worker verifies the JWT issuer, audience, and exact immutable owner subject
-before forwarding to one `ScryContainer` Durable Object instance. nginx strips
-client-provided identity/authority headers, injects the fixed application
-owner ID, and proxies to Go on loopback. Go still checks canonical Host, the
-trusted ingress peer, exact owner ID, its signed app session, and CSRF on
-writes. Keep the backend private; a caller-supplied identity header is never
-authentication.
-
-Build and preview in isolated environments with synthetic data. exe.dev may
-host development or recovery work, but it is not the production app origin.
-Keep one production Container writer; no HA or automatic failover claim. Never
-clone live jobs, model credentials, or recovery authority into previews.
-
-Container storage is ephemeral. A cold start restores the newest complete
-SQLite snapshot from private R2 through the append/read-only `scry-go-backups`
-Worker. The production Worker runs `backup --require-remote` at 00:00 and
-12:00 UTC and validates the remote receipt; graceful stop attempts an
-additional remote backup. A crash, forced stop, or failed egress can lose writes
-newer than the last verified snapshot. R2 is recovery, not the live database;
-the application cannot delete snapshots or alter bucket policy. Archives use
-SQLite-consistent backup, integrity/checksum and schema/binary metadata, unique
-keys, and exact remote readback. Never copy only the live `.db` while WAL
-writes continue; include separately stored assets in recovery.
-
-Restore into an unused isolated path and reconcile uncertain jobs before
-enabling external effects. A recent snapshot alone is not proof of successful
-service recovery. Backup failures should be visible without disabling ordinary
-review. D5 owns data-loss tolerance, retention and recovery time; no provider
-SLA is asserted here.
+The deployed Go Container's origins, retained SQLite backup gateway, shutdown,
+restore, and activation procedures remain in `docs/runbook.md` and
+`deploy/cloudflare-hosting/README.md`. They are historical/current-production
+operational authority, not the replacement build or acceptance surface.
 
 ## Foundation detour: MIS-59 (historical)
 
@@ -811,7 +752,7 @@ not this specification. Imported descriptions require reconciliation with
 current intent before execution, not automatic permission to ship an old build.
 
 The table below records the earlier Go delivery sequence, not the approved
-future Rust rewrite's implementation plan. Legacy
+Rust replacement's implementation plan. Legacy
 [MIS-48](https://linear.app/misty-step/issue/MIS-48/execute-the-personal-go-sqlite-htmx-scry-rewrite)
 and MIS-162 retain that provenance; MIS-42 was Estate's separate inventory repair.
 
@@ -835,8 +776,10 @@ The named research prototype may use clearly identified authored/synthetic
 material. It is not a fake provider or a production feature completion claim.
 Privacy and restore precede trusting personal data, not a hardening task postponed
 until after launch. At replacement time, update repository instructions, runtime
-commands, docs and dependencies in one coherent cutover; do not bypass the old
-Rust gates or leave both runtimes as permanent supported products accidentally.
+commands, docs and dependencies coherently. Preserve historical source/artifacts
+and current-production recovery, without keeping two supported application
+writers or relabeling historical proof as replacement acceptance. Activation
+remains a separate approved operational action.
 
 ### Ticket contract
 
@@ -900,12 +843,15 @@ passing a half-specified task sequentially between many agents.
   not efficacy; a seven-day personal-use observation is a useful proposed review
   point, not a statistically valid retention study or a required daily streak.
 
-Executable Go verification uses formatting, Go tests/vet, affected real
-browser/runtime scenarios, and the source-bound exact-binary release smoke.
-`bun run ci` is the host gate; `bun run ci:full` supplies pinned Dagger tooling.
-The retired Rust application no longer owns current build or release commands.
-Specification-only changes need semantic/link/traceability review, not model
-runs, provisioned VMs, or simulated product acceptance.
+Executable replacement verification uses `cargo test --locked`,
+`cargo clippy --all-targets -- -D warnings`,
+`cargo check --locked --target wasm32-unknown-unknown`,
+`worker-build --release --locked`, affected real Worker/browser scenarios, and
+the source-bound exact-artifact smoke. `bun run ci` is the source-snapshot gate;
+worktree evidence is development-only and release output requires committed
+source. Old Go and retired Rust receipts do not transfer. Specification-only
+changes need semantic/link/traceability review, not default model runs or a
+simulated product acceptance.
 
 ### Evidence receipt and completion
 
@@ -955,7 +901,8 @@ Repository evidence is historical observation, not a rerun of the target app:
 - [Feedback research](docs/research/feedback-flywheel.md): attribute corrections
   to the actual content/generation rather than an unexplained negative signal.
 
-Primary technical references, consulted for feasibility rather than runtime proof:
+Historical Go technical references, retained for provenance rather than
+replacement-runtime proof:
 
 - [Go SQL transactions](https://go.dev/doc/database/execute-transactions),
   [connection management](https://go.dev/doc/database/manage-connections), and

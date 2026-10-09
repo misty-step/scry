@@ -1,6 +1,7 @@
 # Scry Product Vision
 
-Status: prompt-first product intent reaffirmed on 2026-10-02. Create starts
+Status: prompt-first product intent reaffirmed on 2026-10-02; full redesign and
+Rust-on-Cloudflare rewrite authorized on 2026-10-07. Create starts
 with what the learner wants to understand, not a required import or setup
 questionnaire. This is the governing goal, not a newly invented product.
 
@@ -34,15 +35,17 @@ are not evidence of sustained use or learning gains.
 ## Principles
 
 1. Curiosity to useful material with no compulsory setup; then one question,
-   one answer action, held result, deliberate Next. The current Go masthead
-   uses Add and Map; Create is the approved journey, not a shipped label change.
+   one answer action, held result, deliberate Next. The replacement masthead
+   uses Create and Map; the production Go label remains a historical deployment
+   detail until approved activation.
 2. Concepts are the navigable unit. A goal is what I want to know; a note teaches
    one idea at a chosen depth; questions test it. Related ideas and prerequisites
    are explicit, but their generated links are claims, not proven mastery.
 3. My input keeps its provenance and privacy. A topic or request is intent,
-   not factual evidence. Current Add text is private and never sent to web
-   search or opened as a link by inference. A photo is transcribed. Retained
-   explicit Topic/Link callers have their bounded research paths. A source
+   not factual evidence. Create text is private and never sent to web
+   search or opened as a link by inference. A photo is transcribed. Historical
+   explicit Topic/Link callers keep their bounded research contract at the
+   archived Go revision; those paths are not a new replacement API. A source
    quote must match the source; a web quote must match a saved excerpt and cite
    it; otherwise label it “General knowledge.”
 4. Grade honestly both ways. The exact key and authored variants resolve locally;
@@ -61,8 +64,8 @@ are not evidence of sustained use or learning gains.
 ## Experience direction
 
 The operator's smoothness bar is immediacy and continuity, not a compulsive feed.
-The [Ink notebook design](DESIGN.md) (2026-09-24, replacing the rejected
-“Scrying glass”) treats Scry as a study notebook. It has a reading serif for
+The [curiosity notebook design](DESIGN.md) (ground-up Rust redesign on
+2026-10-07, retaining the accepted notebook and concept-centered principles) treats Scry as a study notebook. It has a reading serif for
 questions and notes, and a legibility sans for controls. On a phone the
 controls sit in the thumb zone, and each goal's star chart is the one
 ornament. Color marks the learner's action, recall, and misses. Day and night
@@ -99,27 +102,33 @@ caught up, show what is next rather than inventing work.
 
 ## Scope and runtime
 
-**Implemented runtime:** Go/SQLite renders private HTML/HTMX with a small
-presentation controller in one writer behind Cloudflare Access and
-`scry-app-host`. The Go Add screen accepts private text or an optional photo;
-that capture path is not end-to-end proof of the approved Create/refinement
-contract. The audience remains the operator, primarily on a phone.
+**Replacement implementation:** following the operator's 2026-10-07 instruction,
+active application source is a ground-up Rust/WASM Worker with one SQLite-backed
+Durable Object and private R2. Escaped server-rendered HTML, self-hosted reading
+fonts, and a small vanilla controller implement Create, reusable references,
+practice, feedback/refinement, and the redesigned notebook. The Rust scheduler
+preserves the pinned Go FSRS identities and compares 260 full-state trajectories;
+that does not inherit broader old-engine parity or learning-gain claims.
 
-**Approved future direction:** a ground-up Rust-on-Cloudflare rewrite. It is
-not shipped, not the retired Rust stack restored, and not permission to deploy
-an obsolete imported Go build. Storage, speech integration, and replacement
-activation are not selected by this documentation.
+**Deployed runtime:** the documented private Go/SQLite Container behind
+Cloudflare Access and `scry-app-host` remains operational authority in the
+[runbook](docs/runbook.md). A rewritten checkout, fixture, or green gate is not
+replacement activation, private-provider acceptance, or physical-phone approval.
+The old Go source is retained in Git at `c6ba395`. No live migration or writer
+replacement follows automatically from the implementation request.
 
-**Recovery remains binding:** Container storage restores from private R2;
-daily/pre-release backups and 30-day retention target RPO 24 hours and RTO
-60 minutes without guaranteeing either. Hosted Scry has no local-only backup
-exception. Old Rust stores and the retained exe.dev VM remain recovery material,
-never simultaneous writers.
+**Recovery remains binding:** the replacement stores complete JSON+photo
+snapshots in private R2, with exact checksum/full-byte readback. Daily/pre-release
+backups and 30-day retention target RPO 24 hours and RTO 60 minutes without
+guaranteeing either. Restore into an unused isolated namespace with uncertain
+work paused and no cloned integrations. Historical Go SQLite archives, old Rust
+stores, and the retained VM remain separate recovery material, never simultaneous
+writers or an inferred import into the new target.
 
 No public signup, billing, collaboration, universal import, course generation,
 chat product, manual graph editor, or offline mutation queue is required. The
-foundation detour was rejected on 2026-09-12 and its routes are retired in v5;
-old rows survive the additive migration but do not appear as newly generated
-concepts. No live schema migration or activation is authorized by this document.
+foundation detour was rejected on 2026-09-12 and its routes remain retired.
+Historical Go v4→v5 row preservation belongs to that archived migration; the
+rewrite starts fresh and keeps those historical stores separately. No live schema migration or activation is authorized by this document.
 [QA](docs/qa/system.md) separates synthetic, private-browser, provider, and
 independent-restore evidence.

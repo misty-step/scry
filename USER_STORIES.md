@@ -26,8 +26,13 @@ The 2026-10-02 reaffirmation makes prompt-first Create the governing entry
 journey: useful tailored material first, then refinement through practice and
 feedback. It reconciles, rather than discards, concept-centered and retrieval-led
 study. [VISION](VISION.md) owns that intent; [S11](SPEC.md#s11--create-useful-material-from-intent-us-013)
-owns the end-to-end acceptance extending US-013. Current Go capture checks are
-not proof of that complete product goal or of the approved future Rust rewrite.
+owns the end-to-end acceptance extending US-013. On 2026-10-07 the operator
+instructed a full redesign/rewrite as Rust and Cloudflare. The active replacement
+implements Create as its front door and preserves these learning contracts;
+current production remains the Go Container until separately approved activation.
+Historical Go/retired-Worker capture receipts do not transfer to the rewrite.
+The target starts in a fresh namespace, preserving historical stores separately.
+Evidence paths below identify current tests, not completed real-world acceptance.
 
 ## Capability: Concept-centered study
 
@@ -39,10 +44,18 @@ Criteria:
 1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
 2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
 
+Criterion 1 remains binding on the retained Go/SQLite runtime, which still owns
+production and its schema 4→5 migration. The exact implementation and migration
+tests remain in Git at `c6ba395`, with compatible operational artifacts governed
+by `docs/runbook.md`. The October 7 Rust replacement starts in a fresh namespace
+and never performs that upgrade. It does not import or delete the Go store;
+the existing migration, historical records, source, and recovery artifacts remain
+preserved independently.
+
 No-gos: no manual graph editor, no automatic replanner.
 
-Evidence: `internal/store/migration_v5_test.go`, `internal/store/v5_test.go`,
-`internal/web/review_test.go`
+Evidence: `tests/application.rs`, `tests/web_render.rs`; historical v4→v5 migration
+checks remain at Git `c6ba395` and do not certify the fresh namespace.
 
 ## Capability: Study loop
 
@@ -54,12 +67,12 @@ Criteria:
 1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
 2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
 3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
-4. THE SYSTEM SHALL show exactly two masthead destinations, Add and Map, beside the wordmark; other maintenance actions SHALL remain in More, not an always-visible navigation bar or inspection dashboard.
-5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Add or an honest next-time indication, not an invented due question or foundation detour.
+4. THE SYSTEM SHALL show exactly two masthead destinations, Create and Map, beside the wordmark; other maintenance actions SHALL remain in More, not an always-visible navigation bar or inspection dashboard.
+5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Create or an honest next-time indication, not an invented due question or foundation detour.
 
 No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
 
-Evidence: `internal/web/review_test.go`
+Evidence: `tests/application.rs`, `tests/web_render.rs`; actual Worker browser walk required.
 
 ## US-003 Get an honest answer judgment
 
@@ -74,9 +87,7 @@ Criteria:
 
 No-gos: no liberal string-similarity grading, model call inside a SQL transaction, learner rubric authoring, or change to pinned scheduler identity.
 
-Evidence: `internal/learning/semantic_test.go`, `internal/store/semantic_test.go`,
-`internal/store/review_test.go`, `internal/semantic/v5_request_test.go`,
-`internal/web/semantic_test.go`
+Evidence: `tests/learning_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
 
 ## US-004 Check generated candidates before publication
 
@@ -103,16 +114,17 @@ Criteria:
 No-gos: no generator-v4 change, pairwise duplicate checks,
 practice-coverage UI, production activation, or general accuracy claim.
 
-Evidence: `internal/learning/critic_test.go`,
-`internal/semantic/critic_request_test.go`, `internal/store/critic_test.go`,
-`internal/store/critic_lifecycle_test.go`, `internal/generation/critic_test.go`.
+Evidence: `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs`.
+Independent live critic quality and interrupted transmission need separate receipts.
 
 ## Capability: Capture and understand
 
 ## US-005 Capture a goal in one step
 
-Superseded by US-013 for the implemented Go Add contract on 2026-09-28,
-not a deployment receipt. Explicit modes remain for retained captures/callers.
+Superseded by US-013 for the Go Add contract on 2026-09-28. The Rust replacement
+uses prompt-first Create. Explicit-mode criteria remain historical compatibility
+for the archived Go revision and captures; no replacement Topic/Link API or
+inferred browsing follows from them.
 
 Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
 
@@ -124,8 +136,9 @@ Criteria:
 
 No-gos: no automatic search of pasted private text, account signup, or duplicate capture on replay.
 
-Evidence: `internal/store/v5_test.go`, `internal/generation/exa_test.go`,
-`internal/generation/worker_test.go`, `internal/web/review_test.go`
+Evidence: Historical explicit-mode tests at Git `c6ba395`; current private Create
+and photo boundaries: `tests/generation_policy.rs`, `tests/application.rs`,
+`tests/web_render.rs`.
 
 ## US-006 Understand a question's concept
 
@@ -138,8 +151,7 @@ Criteria:
 
 No-gos: no untrusted markup execution, fabricated citations, or reading counted as unaided recall.
 
-Evidence: `internal/store/v5_test.go`, `internal/generation/v5_validation_test.go`,
-`internal/web/review_test.go`
+Evidence: `tests/generation_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
 
 ## Capability: Honest feedback and control
 
@@ -154,7 +166,7 @@ Criteria:
 
 No-gos: no rewriting the original attempt or pretending the correction was a new cold recall.
 
-Evidence: `internal/store/v5_test.go`, `internal/web/review_test.go`
+Evidence: `tests/application.rs`, `tests/web_render.rs`.
 
 ## US-008 Answer short questions in my own words
 
@@ -167,8 +179,8 @@ Criteria:
 
 No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed; policy adoption requires holdout evidence before live activation.
 
-Evidence: `internal/learning/short_test.go`, `internal/semantic/v5_request_test.go`,
-`internal/store/v5_test.go`, `internal/web/semantic_test.go`
+Evidence: `tests/learning_policy.rs`, `tests/application.rs`, `tests/web_render.rs`;
+real Jev holdout quality remains separate acceptance.
 
 ## Capability: See and shape learning
 
@@ -182,8 +194,7 @@ Criteria:
 
 No-gos: no guaranteed mastery score, color-only meaning, or synthetic review events from navigation.
 
-Evidence: `internal/learning/concept_test.go`, `internal/store/v5_test.go`,
-`internal/web/review_test.go`
+Evidence: `tests/concept_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
 
 ## US-010 Say what I want to know
 
@@ -196,8 +207,8 @@ Criteria:
 
 No-gos: no invisible goal deletion or goal settings as a gate before capture.
 
-Evidence: `internal/store/v5_test.go`, `internal/learning/selection_test.go`,
-`internal/web/review_test.go`
+Evidence: `tests/concept_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
+Pause affects new material; due practice is retained. Focus prioritizes new ideas.
 
 ## US-011 Meet prerequisites first
 
@@ -209,8 +220,7 @@ Criteria:
 
 No-gos: no compulsory foundation detour or reading counted as a graded success.
 
-Evidence: `internal/learning/selection_test.go`, `internal/store/v5_test.go`,
-`internal/web/review_test.go`
+Evidence: `tests/concept_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
 
 ## US-012 Practice a real confusion (retired)
 
@@ -227,24 +237,25 @@ actual practice and feedback.
 
 Acceptance: [S11.1–S11.7](SPEC.md#s11--create-useful-material-from-intent-us-013)
 bind the approved Create journey, including useful first material, honest
-generation states, and refinement without fabricated mastery. The criteria and
-Evidence below retain the implemented Go Add capture boundary adopted on
-2026-09-28; they do not certify that broader journey. “Create” does not claim
-that the current Add control has been renamed or that speech capture is built.
+generation states, and refinement without fabricated mastery. The criteria below
+preserve the capture/privacy boundary adopted on 2026-09-28 in the redesigned
+Create flow. The implementation accepts dictated text; it does not select a
+speech engine or add automatic recording. Current tests and synthetic browser
+walks establish only the cases they actually exercise.
 
 Criteria:
-1. WHEN I submit text or one supported photo from Add, THE SYSTEM SHALL save
+1. WHEN I submit text or one supported photo from Create, THE SYSTEM SHALL save
    one source and goal without a mode chooser, enforce the existing 32 KiB
    text, 4 MiB photo and 1 KiB caption limits, and return the saved source for
    an identical operation.
 2. WHEN I paste or share text containing a URL, THE SYSTEM SHALL keep it
    private text and SHALL NOT start web research by inference; invalid input
-   SHALL leave a usable Add field without creating a source.
+   SHALL leave a usable Create field without creating a source.
 
 No-gos: mandatory import, onboarding questionnaire or diagnostic quiz before
 useful material; inferred public search; assumed speech engine or recording
 integration; source-only docs treated as runtime or deployment acceptance.
 
-Evidence: `internal/web/v5_test.go`, `qa/walk --stories US-013`, and the
-real Add-to-receipt browser walk cover current capture only. S11 requires
-separate real-input generation and interaction evidence before completion.
+Evidence: `tests/generation_policy.rs`, `tests/application.rs`, `tests/web_render.rs`.
+Actual Worker Create-to-reference/practice, useful real-input generation, and
+later refinement from genuine interaction remain separately required by S11.

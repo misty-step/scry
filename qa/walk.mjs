@@ -1,178 +1,73 @@
 #!/usr/bin/env node
-import {spawn, execFileSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createServer} from 'node:net';
-import {existsSync, readFileSync} from 'node:fs';
-import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
-import {join, resolve} from 'node:path';
+import {existsSync,readFileSync} from 'node:fs';
+import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import {resolve,join} from 'node:path';
 import {specs} from './walk-specs.mjs';
-
-const repo = resolve(import.meta.dirname, '..');
-process.chdir(repo);
-const source = readFileSync('USER_STORIES.md', 'utf8');
-const live = [...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)]
-  .filter(m => !/retired|superseded by/i.test(source.slice(m.index, source.indexOf('\n## ', m.index + 4) < 0 ? undefined : source.indexOf('\n## ', m.index + 4))))
-  .map(m => m[1]);
-function args() {
-  if (process.argv.length === 3 && process.argv[2] === '--all') return live;
-  if (process.argv.length === 4 && process.argv[2] === '--stories') {
-    const ids = [...new Set(process.argv[3].trim().split(/\s+/).filter(Boolean))];
-    for (const id of ids) if (!live.includes(id)) throw Error(`not a live story: ${id}`);
-    return ids;
-  }
-  throw Error('usage: qa/walk --all | --stories "US-002 US-003"');
+import {createSyntheticRuntime} from './runtime-helper.mjs';
+import {recoveryWalk} from './browser-recovery.mjs';
+import {createWalk} from './browser-create.mjs';
+const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
+if(process.env.SCRY_SKIP_BUILD!=='1')execFileSync('worker-build',['--release','--locked'],{stdio:'inherit',env:process.env});
+const source=readFileSync('USER_STORIES.md','utf8');
+const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
+const live=sections.filter((m,i)=>!/^Superseded|^Retired|\(retired\)/m.test(source.slice(m.index,sections[i+1]?.index))).map(m=>m[1]);
+const argv=process.argv.slice(2);
+const selected=argv[0]==='--all'&&argv.length===1?live:argv[0]==='--stories'&&argv.length===2?[...new Set(argv[1].split(/\s+/).filter(Boolean))]:null;
+if(!selected||selected.some(id=>!live.includes(id)))throw Error('usage: qa/walk --all | --stories "US-002 US-003"');
+for(const id of live){const i=sections.findIndex(m=>m[1]===id);const block=source.slice(sections[i].index,sections[i+1]?.index);const count=[...block.matchAll(/^\d+\. (?:WHEN|WHILE|WHERE|IF|THE\b|EACH|Export)/gm)].length;if(count!==specs[id]?.length)throw Error(`${id}: ${specs[id]?.length} walks for ${count} active criteria`);}
+const require=createRequire(import.meta.url);
+let playwright;
+try{playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');}catch{throw Error('Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.');}
+const output=join(repo,'target/walk'),marker=join(output,'.scry-walk-owned');
+if(existsSync(output)&&!existsSync(marker))throw Error('Refusing non-owned story-walk output.');
+if(existsSync(marker))await rm(output,{recursive:true});
+await mkdir(join(output,'screens'),{recursive:true});await mkdir(join(output,'logs'),{recursive:true});await writeFile(marker,'Run-owned synthetic proof only.\n');
+const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const metadata=process.env.SCRY_SOURCE_META?JSON.parse(readFileSync(process.env.SCRY_SOURCE_META)):null;
+const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
+const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2 and authored HTTP-caching material; actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
+const register=async path=>{receipt.artifacts.push({path,sha256:sha(await readFile(join(output,path)))});};
+const native=execFileSync('cargo',['test','--locked','--all-targets'],{encoding:'utf8',env:process.env});await writeFile(join(output,'logs/rust-tests.txt'),native);await register('logs/rust-tests.txt');
+const policy=(...names)=>{for(const name of names)assert.ok(native.includes(`test ${name} ... ok`),`Native test did not pass: ${name}`);};
+let retainedGo;
+if(selected.includes('US-001')){
+ execFileSync('python3',['qa/retained-go-migration.py',join(output,'logs')],{stdio:'inherit',env:process.env});
+ retainedGo=JSON.parse(await readFile(join(output,'logs/retained-go-migration.json'),'utf8'));
+ await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
-const git = (...argv) => execFileSync('git', argv, {cwd: repo, encoding: 'utf8'}).trim();
-const stamp = () => new Date().toISOString();
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-const output = join(repo, 'target/walk');
-const marker = join(output, '.scry-walk-owned');
-const scratchParent = join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'tmp');
-const safeEnv = (home, more = {}) => ({PATH: process.env.PATH || '/usr/bin:/bin', HOME: home, LANG: 'C.UTF-8', ...more});
-async function command(bin, argv, opts = {}) {
-  const child = spawn(bin, argv, {cwd: repo, env: opts.env || safeEnv(opts.home || homedir()), stdio: ['ignore', 'pipe', 'pipe']});
-  const chunks = [];
-  for (const stream of [child.stdout, child.stderr]) stream.on('data', b => chunks.push(b));
-  const code = await new Promise((ok, bad) => { child.on('error', bad); child.on('close', ok); });
-  const result = Buffer.concat(chunks).toString();
-  if (code !== 0) throw Error(`${bin} ${argv.join(' ')} exited ${code}: ${result.slice(-1200)}`);
-  return result;
-}
-async function port() {
-  const server = createServer();
-  await new Promise((ok, bad) => { server.once('error', bad); server.listen(0, '127.0.0.1', ok); });
-  const number = server.address().port;
-  await new Promise(ok => server.close(ok));
-  return number;
-}
-async function stop(child) {
-  if (!child || child.exitCode !== null) return;
-  child.kill('SIGTERM');
-  await Promise.race([new Promise(ok => child.once('close', ok)), new Promise(ok => setTimeout(ok, 5000))]);
-  if (child.exitCode === null) child.kill('SIGKILL');
-}
-async function ready(url, child) {
-  for (let i = 0; i < 120; i++) {
-    if (child.exitCode !== null) throw Error(`serve exited ${child.exitCode}`);
-    try { if ((await fetch(url + '/readyz')).status === 200) return; } catch {}
-    await new Promise(ok => setTimeout(ok, 250));
-  }
-  throw Error('loopback serve did not become ready');
-}
-async function main() {
-  const selected = args();
-  const sections = [...source.matchAll(/^## (US-\d{3})\b([^\n]*)/gm)];
-  for (const id of live) {
-    const start = sections.find(m => m[1] === id);
-    const end = sections.find(m => m.index > start.index);
-    const count = [...source.slice(start.index, end?.index).matchAll(/^\d+\. (?:WHEN|WHILE|WHERE|IF|THE\b|EACH|Export)/gm)].length;
-    if (specs[id]?.length && count !== specs[id].length) throw Error(`${id}: ${specs[id].length} walk criteria for ${count} story criteria`);
-  }
-  if (existsSync(output) && !existsSync(marker)) throw Error(`refusing non-owned output directory ${output}`);
-  if (existsSync(marker)) await rm(output, {recursive: true});
-  await mkdir(join(output, 'screens'), {recursive: true});
-  await mkdir(join(output, 'logs'), {recursive: true});
-  await writeFile(marker, 'Generated only by qa/walk; never production evidence.\n');
-  await mkdir(scratchParent, {recursive: true});
-  const scratch = await mkdtemp(join(scratchParent, 'scry-walk.'));
-  const receipt = {schema: 'foundation-walk-receipt/1', check: 'scry-story-walk', run: process.env.GITHUB_RUN_ID || `local-${Date.now()}`, head: git('rev-parse', 'HEAD'), tree: git('rev-parse', 'HEAD^{tree}'), base: process.env.WALK_BASE || null, started_at: stamp(), finished_at: '', exit: 1, stories: [], artifacts: []};
-  let browser;
-  try {
-    const install = join(homedir(), '.local/share/scry-walk/node_modules/playwright');
-    if (!existsSync(join(install, 'package.json'))) throw Error(`Playwright 1.63.0 missing at ${install}; run bash .exe/setup.sh`);
-    const {createRequire} = await import('node:module');
-    const require = createRequire(import.meta.url);
-    const playwright = require(install);
-    if (require(join(install, 'package.json')).version !== '1.63.0') throw Error('Playwright version does not match 1.63.0');
-    browser = await playwright.chromium.launch({headless: true, env: safeEnv(homedir())});
-    const binary = join(scratch, 'scry');
-    await command('go', ['build', '-mod=readonly', '-o', binary, './cmd/scry']);
-    for (const id of selected) {
-      if (!specs[id]?.length) {
-        receipt.stories.push({id, status: 'unwalked', criteria: []});
-        console.error(`${id}: no story walk is defined`);
-        continue;
-      }
-      const dir = join(scratch, id);
-      await mkdir(dir);
-      const db = join(dir, 'synthetic.sqlite');
-      const env = safeEnv(dir);
-      const seeded = JSON.parse(await command(binary, ['seed-fixture', '--db', db], {env}));
-      if (seeded.model !== 'authored-test-fixture' || !seeded.source) throw Error(`${id}: seed-fixture returned unexpected provenance`);
-      const address = `http://127.0.0.1:${await port()}`;
-      const serve = spawn(binary, ['serve', '--dev', '--db', db, '--addr', address.slice('http://'.length)], {
-        cwd: repo, env: safeEnv(dir, {SCRY_BACKUP_DIR: join(dir, 'backups')}), stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      const serverLog = [];
-      for (const stream of [serve.stdout, serve.stderr]) stream.on('data', b => serverLog.push(b));
-      let context;
-      const result = {id, status: 'pass', criteria: []};
-      receipt.stories.push(result);
-      try {
-        await ready(address, serve);
-        context = await browser.newContext({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true});
-        const page = await context.newPage();
-        await page.goto(address + '/');
-        const c = {
-          page, url: path => address + path,
-          type: async (selector, value) => { await page.locator(selector).click(); await page.keyboard.type(value); },
-          goTest: async (pattern, packages) => {
-            const argv = ['test', '-p', '1', '-count=1', '-mod=readonly', ...packages, '-run', pattern, '-v'];
-            const text = await command('go', argv);
-            if (!/--- PASS: Test/.test(text)) throw Error(`no test ran for ${pattern}`);
-            const path = `logs/${id}-${result.criteria.length + 1}-${receipt.artifacts.length}.txt`;
-            await record(path, Buffer.from(`$ go ${argv.join(' ')}\n${text}`), receipt);
-            return path;
-          },
-        };
-        for (let i = 0; i < specs[id].length; i++) {
-          const criterion = {n: i + 1, status: 'pass', evidence: []};
-          result.criteria.push(criterion);
-          const before = receipt.artifacts.length;
-          try {
-            await specs[id][i](c);
-            criterion.evidence.push(...receipt.artifacts.slice(before).map(a => a.path));
-            const path = `screens/${id}-${i + 1}.png`;
-            await page.screenshot({path: join(output, path), fullPage: true});
-            await register(path, receipt);
-            criterion.evidence.push(path);
-          } catch (error) {
-            criterion.status = 'fail'; result.status = 'fail';
-            console.error(`${id} criterion ${i + 1}: ${error.message}`);
-            try { const path = `screens/${id}-${i + 1}-failure.png`; await page.screenshot({path: join(output, path), fullPage: true}); await register(path, receipt); criterion.evidence.push(path); } catch {}
-          }
-        }
-      } catch (error) {
-        result.status = 'fail';
-        result.criteria.push({n: result.criteria.length + 1, status: 'fail', evidence: []});
-        console.error(`${id}: ${error.message}`);
-      } finally {
-        if (context) await context.close();
-        await stop(serve);
-        const serverOutput = Buffer.concat(serverLog).toString();
-        await record(`logs/${id}-serve.txt`, Buffer.from(serverOutput), receipt);
-      }
-    }
-    receipt.exit = receipt.stories.every(s => s.status === 'pass') ? 0 : 1;
-  } catch (error) {
-    console.error(`walk infrastructure: ${error.message}`);
-    for (const id of selected) if (!receipt.stories.some(s => s.id === id)) receipt.stories.push({id, status: 'unwalked', criteria: []});
-  } finally {
-    if (browser) await browser.close();
-    await rm(scratch, {recursive: true});
-    receipt.finished_at = stamp();
-    await writeFile(join(output, 'walk-receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
-    if (process.env.WS_EVIDENCE) await cp(output, join(process.env.WS_EVIDENCE, 'target/walk'), {recursive: true, force: true});
-    console.log(`Scry story walk: ${receipt.stories.filter(s => s.status === 'pass').length}/${selected.length} pass; receipt ${join(output, 'walk-receipt.json')}`);
-  }
-  if (receipt.exit) process.exitCode = 1;
-}
-async function register(path, receipt) {
-  receipt.artifacts.push({path, sha256: sha(await readFile(join(output, path)))});
-}
-async function record(path, bytes, receipt) {
-  await writeFile(join(output, path), bytes);
-  await register(path, receipt);
-}
-main().catch(error => {console.error(error); process.exitCode = 2;});
+const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
+const freePort=async()=>{const s=createServer();await new Promise((ok,bad)=>{s.once('error',bad);s.listen(0,'127.0.0.1',ok);});const p=s.address().port;await new Promise(ok=>s.close(ok));return p;};
+let browser;
+try{
+ browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
+ for(const id of selected){
+  const runtime=await createSyntheticRuntime({port:await freePort(),name:`walk-${id.toLowerCase()}`});
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
+  try{
+   await page.goto(runtime.url+'/');
+   if(id!=='US-013'){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
+   const c={page,url:path=>runtime.url+path,policy,retainedGoMigration};
+   for(let i=0;i<specs[id].length;i++){
+    const legacy=id==='US-001'&&i===0;
+    const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);
+    try{await specs[id][i](c);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow on390px');}
+    catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+    if(!legacy){const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);criterion.evidence.push(path);}
+   }
+   assert.deepEqual(errors,[],'Browser console/page errors');
+  }catch(error){result.status='fail';result.error=error.message;console.error(`${id}: ${error.message}`);}
+  finally{await context.close();await runtime.mf.dispose();}
+ }
+ receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
+ receipt.create_journey=await createWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
+ receipt.exit=receipt.stories.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'?0:1;
+}catch(error){receipt.infrastructure_error=error.message;console.error(error);}
+finally{await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
+process.exitCode=receipt.exit;

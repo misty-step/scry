@@ -1,5 +1,12 @@
 # Scry production runbook
 
+The 2026-10-07 Rust/Cloudflare rewrite is a source candidate, not an activation.
+The deployed Go runtime and the operational evidence below remain unchanged.
+Use retained Go artifacts or exact Git revision `c6ba395` for these historical
+Go build/recovery procedures; the current `scripts/scry-ci` exports Rust/WASM.
+The new target and its separate approval procedure are documented in
+[the replacement release guide](rust-cloudflare.md).
+
 ## Current authority
 
 This runbook owns deployment/recovery procedures, not product acceptance or

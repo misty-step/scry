@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master, phaedrus/mis-48-personal-go-rewrite]
+    branches: [master]
 
 permissions:
   contents: read
@@ -15,11 +15,17 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0 # Include the pinned retained Go migration source.
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
 
       - name: Install pinned Dagger
         run: |
@@ -35,13 +41,13 @@ jobs:
             echo "_EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-image://ghcr.io/dagger/engine:v0.21.6" >> "$GITHUB_ENV"
           fi
 
-      - name: Check and export exact Go release
+      - name: Check and export exact Rust Worker candidate
         run: bun run ci:full -- --out target/ci-release --require-committed
 
-      - name: Upload tested binary, source and proof
+      - name: Upload tested Worker assets, source and proof
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: scry-linux-amd64-${{ github.sha }}
+          name: scry-worker-${{ github.sha }}
           path: target/ci-release/
           if-no-files-found: error
           retention-days: 14
@@ -104,9 +110,12 @@ jobs:
           unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
       - name: Provision browser and Scry toolchain
         run: bash .exe/setup.sh
-      - name: Walk affected learner stories
+      - name: Walk affected Rust Worker learner stories
         run: |
-          export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          export SCRY_CRITICS_PLAYWRIGHT_PATH="$HOME/.local/share/scry-walk/node_modules/playwright"
+          export SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"
+          npm ci --ignore-scripts --no-audit --no-fund
           bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
           checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
           # Run the checker outside the checkout: Bun loads bunfig.toml from its working directory.
@@ -126,37 +135,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  deploy:
-    needs: [ci, foundation, story-walk]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: scry-linux-amd64-${{ github.sha }}
-          path: target/ci-release
-
-      - name: Copy tested release binary to deployment context
-        run: |
-          cp target/ci-release/scry deploy/cloudflare-hosting/scry
-          chmod 0755 deploy/cloudflare-hosting/scry
-
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Deploy to Cloudflare
-        working-directory: deploy/cloudflare-hosting
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: b069014f6a46558ea9146fb6c4ff8f6c
-        run: npx wrangler deploy --env production
+# No deployment job: a merged rewrite candidate does not authorize replacing
+# the current Go Container writer. Activation requires separate operator
+# approval and exact-artifact private-ingress/remote-recovery evidence.

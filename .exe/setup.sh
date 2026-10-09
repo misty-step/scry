@@ -21,12 +21,36 @@ install_tar() {
     mv "$tmp/$name/$top" "$destination"
   fi
 }
+# Retained Go migration proof only; no Go application is built or started.
 install_tar go https://go.dev/dl/go1.27.1.linux-amd64.tar.gz \
   63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 go "$HOME/.local/share/go-1.27.1"
 install_tar node https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.gz \
   c33c39ed9c80deddde77c960d00119918b9e352426fd604ba41638d6526a4744 \
   node-v22.22.0-linux-x64 "$HOME/.local/share/node-22.22.0"
-export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+# Official rustup pins the repository toolchain; no private configuration is read.
+if ! command -v rustup >/dev/null 2>&1; then
+  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    --retry 3 --output "$tmp/rustup-init.sh" https://sh.rustup.rs
+  sh "$tmp/rustup-init.sh" -y --no-modify-path --profile minimal --default-toolchain none
+fi
+rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+# worker-build links OpenSSL; native HTTPS browser proof needs its CLI too.
+# Provision only in this explicit VM/CI setup.
+if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists openssl ||
+   ! command -v openssl >/dev/null 2>&1; then
+  if ! sudo -n true 2>/dev/null; then
+    echo 'Scry VM needs pkg-config, libssl-dev and openssl; noninteractive sudo unavailable' >&2
+    exit 1
+  fi
+  sudo -n apt-get update
+  sudo -n apt-get install -y --no-install-recommends pkg-config libssl-dev openssl
+fi
+worker_root="$HOME/.local/share/scry-worker-build-0.8.7"
+if [[ ! -x "$worker_root/bin/worker-build" ]]; then
+  cargo +1.98.1 install worker-build --version 0.8.7 --locked --root "$worker_root"
+fi
+ln -sfn "$worker_root/bin/worker-build" "$HOME/.local/bin/worker-build"
 if [[ ! -x "$HOME/.local/bin/bun-1.4.2" ]]; then
   fetch https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip \
     c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f "$tmp/bun.zip"
@@ -41,7 +65,7 @@ if [[ ! -x "$HOME/.local/bin/gitleaks-8.30.1" ]]; then
   install -m 755 "$tmp/gitleaks" "$HOME/.local/bin/gitleaks-8.30.1"
 fi
 ln -sfn gitleaks-8.30.1 "$HOME/.local/bin/gitleaks"
-profile_line='export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"'
+profile_line='export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"'
 touch "$HOME/.profile"
 if ! grep -Fxq "$profile_line" "$HOME/.profile"; then printf '\n%s\n' "$profile_line" >> "$HOME/.profile"; fi
 
@@ -83,11 +107,14 @@ chromium_binary=$(node -p "require('$walk_modules/node_modules/playwright').chro
 [[ -x "$chromium_binary" ]]
 ln -sfn "$chromium_binary" "$HOME/.local/bin/chromium"
 # The host gate (scripts/scry-ci) runs the critic browser cases against this install.
-critic_line='export SCRY_CRITICS_NODE_PATH="$HOME/.local/share/scry-walk/node_modules" SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"'
+critic_line='export SCRY_CRITICS_PLAYWRIGHT_PATH="$HOME/.local/share/scry-walk/node_modules/playwright" SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"'
 if ! grep -Fxq "$critic_line" "$HOME/.profile"; then printf '%s\n' "$critic_line" >> "$HOME/.profile"; fi
+[[ "$(rustc +1.98.1 --version)" == rustc\ 1.98.1\ * ]]
+[[ "$(rustup target list --installed --toolchain 1.98.1)" == *wasm32-unknown-unknown* ]]
+[[ -x "$worker_root/bin/worker-build" ]]
+[[ "$(node --version)" == v22.22.0 ]]
 [[ "$(go version)" == 'go version go1.27.1 linux/amd64' ]]
-[[ "$(node --version)" == v22.* ]]
 [[ "$(bun --version)" == '1.4.2' ]]
 [[ "$(gitleaks version)" == '8.30.1' ]]
 [[ -x "$HOME/.local/bin/chromium" ]]
-echo 'Scry VM toolchain ready (Go 1.27.1, Node 22.22.0, Bun 1.4.2, Gitleaks 8.30.1, Playwright 1.63.0 Chromium).'
+echo 'Scry VM toolchain ready (Rust 1.98.1 + WASM, worker-build 0.8.7, Node 22.22.0, Bun 1.4.2, Gitleaks 8.30.1, Playwright 1.63.0 Chromium).'

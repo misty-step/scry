@@ -52,9 +52,12 @@ jobs:
           unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
       - name: Provision browser and Scry toolchain
         run: bash .exe/setup.sh
-      - name: Walk every live story
+      - name: Walk every live Rust Worker story
         run: |
-          export PATH="$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.cargo/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          export SCRY_CRITICS_PLAYWRIGHT_PATH="$HOME/.local/share/scry-walk/node_modules/playwright"
+          export SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"
+          npm ci --ignore-scripts --no-audit --no-fund
           bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
           checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
           # Run the checker outside the checkout: Bun loads bunfig.toml from its working directory.
