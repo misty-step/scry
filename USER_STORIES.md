@@ -41,14 +41,16 @@ Evidence paths below identify current tests, not completed real-world acceptance
 Statement: When I explore what I am learning, I want saved concepts and notes revisitable, so that I can connect prerequisites across questions without losing earlier study.
 
 Criteria:
-1. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
+1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
+2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
 
-Historical Go compatibility remains binding on that archived runtime: its
-schema 4→5 upgrade preserves foundation rows and relations as historical data
-and excludes foundation-origin concepts from the new Map/Stream. The October 7
-fresh Rust namespace supersedes that migration as an active rewrite criterion;
-it does not authorize importing or deleting old stores. Their exact source and
-recovery artifacts stay retained.
+Criterion 1 remains binding on the retained Go/SQLite runtime, which still owns
+production and its schema 4→5 migration. The exact implementation and migration
+tests remain in Git at `c6ba395`, with compatible operational artifacts governed
+by `docs/runbook.md`. The October 7 Rust replacement starts in a fresh namespace
+and never performs that upgrade. It does not import or delete the Go store;
+the existing migration, historical records, source, and recovery artifacts remain
+preserved independently.
 
 No-gos: no manual graph editor, no automatic replanner.
 

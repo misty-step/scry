@@ -600,9 +600,10 @@ Go reference, including miss/relearning and equivalent-time replay. That proof
 is bounded scheduler compatibility, not retired-engine parity, personalized
 retention, certified understanding, or learning gains.
 
-The target uses a fresh schema/namespace. Go v4→v5 foundation-row preservation
-is a historical compatibility requirement at the archived source; it is not a
-rewrite import or a migration of the live database. The old Go source remains
+The target uses a fresh schema/namespace. US-001 criterion 1 continues to require
+Go v4→v5 foundation-row preservation in the retained Go runtime. That migration
+and its tests remain intact; the fresh Rust namespace never performs the upgrade
+or imports the live database. The old Go source remains
 in Git at `c6ba395` with its operational artifacts, and frozen Rust/Postgres/
 Worker stores remain separate recovery material. Foundation routes stay retired.
 
