@@ -34,6 +34,9 @@ export async function snapshotSource(root,directory) {
     }
   }
   await descend('src');await descend('assets');
+  // Rust embeds the inherited licensed fonts at their original source paths.
+  // Copy only that directory, never the historical Go tree or operator state.
+  await descend('internal/web/assets/fonts');
   const entries=[];
   await mkdir(directory,{recursive:true});
   for(const name of names.sort()) {

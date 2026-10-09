@@ -31,10 +31,16 @@ describe('Rust source and Worker artifact provenance',()=>{
     for(const name of ['Cargo.toml','Cargo.lock','rust-toolchain.toml'])await writeFile(join(source,name),name+'\n');
     await writeFile(join(source,'src/lib.rs'),'pub fn original() {}');
     await writeFile(join(source,'assets/app.css'),'body {color:ink}');
+    await mkdir(join(source,'internal/web/assets/fonts'),{recursive:true});
+    const font=Buffer.from([119,79,70,50,0,1,0,0]);
+    await writeFile(join(source,'internal/web/assets/fonts/Literata.woff2'),font);
+    await writeFile(join(source,'internal/web/server.go'),'historical Go source');
     await writeFile(join(source,'.dev.vars'),'PRIVATE_DO_NOT_COPY=secret');
     const copy=join(temporary,'snapshot');
     const identity=await snapshotSource(source,copy);
-    assert.equal(identity.files.length,5);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.equal(identity.files.length,6);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.deepEqual(await readFile(join(copy,'internal/web/assets/fonts/Literata.woff2')),font);
+    await assert.rejects(readFile(join(copy,'internal/web/server.go')));
     await writeFile(join(source,'src/lib.rs'),'pub fn changed() {}');
     assert.equal(await readFile(join(copy,'src/lib.rs'),'utf8'),'pub fn original() {}');
     assert.notEqual((await snapshotSource(source,join(temporary,'changed'))).sha256,identity.sha256);
