@@ -412,6 +412,113 @@ fn refinement_uses_real_feedback_and_never_rewrites_attempts() {
 }
 
 #[test]
+fn full_text_refinement_keeps_existing_material_when_generation_or_critic_is_partial() {
+    for critic_veto in [false, true] {
+        let mut a = fixture();
+        let goal = a.goals.keys().next().unwrap().clone();
+        let original_questions = serde_json::to_value(&a.questions).unwrap();
+        let original_concepts = serde_json::to_value(&a.concepts).unwrap();
+        let mut batch: generation::Batch = serde_json::from_str(
+            a.jobs
+                .values()
+                .next()
+                .unwrap()
+                .candidate_json
+                .as_ref()
+                .unwrap(),
+        )
+        .unwrap();
+        batch.complete = critic_veto;
+        apply(
+            &mut a,
+            &format!("/goals/{goal}/refine"),
+            "full-text-refine-0001",
+            &[(
+                "feedback",
+                "I need to memorize the full text line by line, not just a few examples.",
+            )],
+        );
+        let mut cfg = config();
+        cfg.critic = true;
+        let work = engine::claim_work(&mut a, NOW, "full-text-generator-lease", &cfg)
+            .unwrap()
+            .unwrap();
+        let raw =
+            json!({"choices":[{"message":{"content":serde_json::to_string(&batch).unwrap()}}]})
+                .to_string();
+        engine::finish_work(
+            &mut a,
+            &work,
+            raw,
+            "test-generator".into(),
+            Some(1),
+            NOW + 1,
+        )
+        .unwrap();
+        if critic_veto {
+            let mut vetoed = false;
+            for i in 0..100 {
+                let Some(check) = engine::claim_work(
+                    &mut a,
+                    NOW + 2 + i,
+                    &format!("full-text-critic-lease-{i}"),
+                    &cfg,
+                )
+                .unwrap() else {
+                    break;
+                };
+                assert_eq!(check.kind, "critic");
+                let answers: serde_json::Map<String, serde_json::Value> =
+                    check.request["questions"]
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .map(|key| {
+                            let probability = if !vetoed && key.ends_with("prompt_leaks_answer") {
+                                vetoed = true;
+                                0.90
+                            } else {
+                                0.01
+                            };
+                            (key.clone(), json!({"type":"noul","noul":probability}))
+                        })
+                        .collect();
+                engine::finish_work(
+                    &mut a,
+                    &check,
+                    json!({"answers":answers}).to_string(),
+                    "test-critic".into(),
+                    Some(1),
+                    NOW + 3 + i,
+                )
+                .unwrap();
+            }
+            assert!(vetoed);
+        }
+        assert_eq!(a.jobs[&work.id].status, "failed");
+        assert!(a.jobs[&work.id].raw_response.is_some());
+        assert_eq!(
+            serde_json::to_value(&a.questions).unwrap(),
+            original_questions
+        );
+        assert_eq!(
+            serde_json::to_value(&a.concepts).unwrap(),
+            original_concepts
+        );
+        assert!(a.events.is_empty());
+        assert!(a.spend.iter().all(|s| s.status == "known"));
+        let saved = persistence::Archive::new(a, vec![], NOW).encode().unwrap();
+        assert_eq!(
+            persistence::Archive::decode(&saved, &persistence::sha256(&saved))
+                .unwrap()
+                .encode()
+                .unwrap(),
+            saved
+        );
+    }
+}
+
+#[test]
 fn restored_state_keeps_paid_work_paused_and_held_feedback() {
     let mut a = fixture();
     apply(

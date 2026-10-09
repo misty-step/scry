@@ -1731,8 +1731,6 @@ fn finish_work_inner(
                 }
             }
             "generation" => {
-                let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
-                let existing = goal_graph(&next, &j.goal_id);
                 let outcome = generation::openrouter_content(&raw)
                     .and_then(|text| {
                         serde_json::from_str::<Batch>(&text).map_err(|_| {
@@ -1742,7 +1740,7 @@ fn finish_work_inner(
                             )
                         })
                     })
-                    .and_then(|b| generation::validate_batch_with_existing(b, source, &existing));
+                    .and_then(|b| validate_job_batch(&next, &j, b));
                 next.jobs.get_mut(&j.id).unwrap().raw_response = Some(raw);
                 match outcome {
                     Ok((batch, rejected)) => {
@@ -1827,17 +1825,34 @@ fn publish(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64) -> Ap
     Ok(())
 }
 
+fn job_requires_complete(app: &App, job: &Job) -> bool {
+    generation::requires_complete(&app.goals[&job.goal_id].intent)
+        || app
+            .feedback
+            .iter()
+            .any(|f| job.feedback_ids.contains(&f.id) && generation::requires_complete(&f.text))
+}
+
+fn validate_job_batch(app: &App, job: &Job, batch: Batch) -> AppResult<(Batch, Vec<String>)> {
+    let goal = &app.goals[&job.goal_id];
+    let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
+    let (batch, rejected) =
+        generation::validate_batch_with_existing(batch, source, &goal_graph(app, &job.goal_id))?;
+    if job_requires_complete(app, job) && (!batch.complete || !rejected.is_empty()) {
+        return Err(AppError::new(
+            422,
+            "Preparation did not produce the requested complete material. Your input and feedback are saved.",
+        ));
+    }
+    Ok((batch, rejected))
+}
+
 fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64) -> AppResult<()> {
     let goal = &app.goals[&job.goal_id];
     if goal.archived || goal.revision != job.source_revision {
         return Err(AppError::conflict());
     }
-    let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
-    let (batch, rejected) = generation::validate_batch_with_existing(
-        batch.clone(),
-        source,
-        &goal_graph(app, &job.goal_id),
-    )?;
+    let (batch, rejected) = validate_job_batch(app, job, batch.clone())?;
     if !rejected.is_empty() {
         return Err(AppError::new(
             422,
@@ -2017,30 +2032,13 @@ fn finish_critic_candidates(
         }
     }
     let outcome = generation::apply_critic_cache(batch, cache).and_then(|(batch, mut rejected)| {
-        let goal = &app.goals[&job.goal_id];
-        let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
-        let (batch, validation) = generation::validate_batch_with_existing(
-            batch,
-            source,
-            &goal_graph(app, &job.goal_id),
-        )?;
+        let (batch, validation) = validate_job_batch(app, job, batch)?;
         rejected.extend(validation);
         Ok((batch, rejected))
     });
     match outcome {
         Ok((batch, rejected)) => {
-            let intent = &app.goals[&job.goal_id].intent;
-            let exact = [
-                "verbatim",
-                "exact wording",
-                "complete set",
-                "every item",
-                "all items",
-                "word for word",
-            ]
-            .iter()
-            .any(|word| intent.to_lowercase().contains(word));
-            if exact && !rejected.is_empty() {
+            if job_requires_complete(app, job) && !rejected.is_empty() {
                 job_failed(
                     app,
                     &job.id,

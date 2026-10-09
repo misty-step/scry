@@ -250,10 +250,6 @@ pub fn validate_batch_with_existing(
         "every item",
         "all items",
         "word for word",
-        "line by line",
-        "line-by-line",
-        "memorize in full",
-        "memorise in full",
     ]
     .iter()
     .any(|w| source.to_lowercase().contains(w));
@@ -283,6 +279,25 @@ pub fn content(q: &GeneratedQuestion, model: &str, now: i64, version: u64) -> Co
         model: model.into(),
         created_ms: now,
     }
+}
+
+/// Learning intent is separate from the bytes admitted as quoted evidence.
+pub fn requires_complete(intent: &str) -> bool {
+    let intent = intent.to_lowercase();
+    [
+        "verbatim",
+        "exact wording",
+        "complete set",
+        "every item",
+        "all items",
+        "word for word",
+        "line by line",
+        "line-by-line",
+        "memorize in full",
+        "memorise in full",
+    ]
+    .iter()
+    .any(|word| intent.contains(word))
 }
 
 pub fn batch_request(app: &App, job: &Job, model: &str) -> Value {
