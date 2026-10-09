@@ -51,8 +51,9 @@ practice. The night scheme follows the system preference.
 
 Literata sets titles, questions, notes, explanations, and written answers.
 Atkinson Hyperlegible Next sets navigation, controls, provenance, and practical
-copy. Both are self-hosted variable WOFF2 fonts, copied with their SIL Open Font
-License to [assets/fonts](assets/fonts/). No third-party font request occurs.
+copy. Both are self-hosted variable WOFF2 fonts, retained with their SIL Open Font
+License at [their original source paths](internal/web/assets/fonts/). No
+third-party font request occurs.
 Literata italic supplies the held result's quiet verdict. Desktop page titles
 reach 64 px, mobile titles 44 px, and questions scale between 30 and 52 px.
 Reading prose uses 16–19 px and generous line height. Long text wraps instead

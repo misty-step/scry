@@ -1516,19 +1516,19 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/assets/icon.svg" => Some(("image/svg+xml", include_bytes!("../assets/icon.svg"))),
         "/assets/fonts/Literata.woff2" => Some((
             "font/woff2",
-            include_bytes!("../assets/fonts/Literata.woff2"),
+            include_bytes!("../internal/web/assets/fonts/Literata.woff2"),
         )),
         "/assets/fonts/Literata-Italic.woff2" => Some((
             "font/woff2",
-            include_bytes!("../assets/fonts/Literata-Italic.woff2"),
+            include_bytes!("../internal/web/assets/fonts/Literata-Italic.woff2"),
         )),
         "/assets/fonts/AtkinsonHyperlegibleNext.woff2" => Some((
             "font/woff2",
-            include_bytes!("../assets/fonts/AtkinsonHyperlegibleNext.woff2"),
+            include_bytes!("../internal/web/assets/fonts/AtkinsonHyperlegibleNext.woff2"),
         )),
         "/assets/fonts/OFL.txt" => Some((
             "text/plain; charset=utf-8",
-            include_bytes!("../assets/fonts/OFL.txt"),
+            include_bytes!("../internal/web/assets/fonts/OFL.txt"),
         )),
         _ => None,
     }
