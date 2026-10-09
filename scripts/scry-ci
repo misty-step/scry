@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import stat
 import subprocess
@@ -158,6 +159,10 @@ def snapshot(root, destination):
         "source_sha256": digest(encoded(files)), "files": files,
     }
     metadata["revision"] = revision(metadata)
+    retained = runpy.run_path(str(source / "qa/retained-go-migration.py"))
+    retained_source = retained["archive"](root)
+    require(digest(retained_source) == retained["ARCHIVE_SHA256"], "retained Go source checksum mismatch")
+    (destination / "retained-go.tar").write_bytes(retained_source)
     (destination / "source.json").write_bytes(encoded(metadata))
     return metadata
 
@@ -226,6 +231,7 @@ def gate(args):
     shutil.copytree(worker, output / "worker")
     shutil.copytree(source / "target/walk", output / "walk")
     archive_source(source, metadata, output / "source.tar.gz")
+    shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
     (output / "source.json").write_bytes(encoded(metadata))
     shutil.copyfile(args.secrets_proof, output / "gitleaks.txt")
     proof = {

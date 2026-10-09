@@ -99,6 +99,14 @@ harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
 Go walks and their selectors are not rewrite proof.
 
+US-001.1 remains the retained Go schema 4→5 preservation contract. The gate
+archives only `go.mod`, `go.sum`, `internal/store`, and `internal/learning` at
+`c6ba395a63814c1f973d8cda5057d54fbb587e9b`, verifies its pinned checksum, and
+runs `TestSchemaV4ToV5MigrationUS001` with Go 1.27.1 against disposable fixtures.
+Its separate `retained-go-compatibility` receipt and exported archive do not
+certify a Rust import or migration. US-001.2 uses the current Rust Worker browser.
+No retained application or historical database is started by this check.
+
 Stop the run-owned process before cleanup. Preserve evidence and remove only
 its verified temporary directory. To reset, start a new run/namespace; never
 erase existing SQLite state, R2 buckets, or historical stores to make a fixture

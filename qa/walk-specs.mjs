@@ -9,7 +9,7 @@ const map=async c=>{await c.page.goto(c.url('/map'));await c.page.getByRole('hea
 const recall=async c=>{await choice(c);await c.page.getByRole('button',{name:'Next question'}).click();await c.page.locator('#answer').waitFor();};
 const concept=async c=>{await choice(c);await c.page.locator('.reference-link').click();await c.page.locator('.concept-page').waitFor();};
 export const specs={
- 'US-001':[async c=>{await concept(c);await c.page.locator('.reading').first().waitFor();c.policy('content_edits_leave_historical_presentations_immutable');}],
+ 'US-001':[c=>c.retainedGoMigration(),async c=>{await concept(c);await c.page.locator('.reading').first().waitFor();c.policy('content_edits_leave_historical_presentations_immutable');}],
  'US-002':[
   async c=>{assert.equal(await c.page.locator('.choice').count(),3);assert.equal(await c.page.locator('.explanation,.answer-pair').count(),0);await c.page.getByRole('heading',{level:1}).waitFor();},
   async c=>{await choice(c);await c.page.reload();await c.page.locator('[data-state="result"]').waitFor();await c.page.locator('.answer-pair').waitFor();assert.equal(await c.page.getByRole('button',{name:'Next question'}).count(),1);},

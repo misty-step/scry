@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0 # Include the pinned retained Go migration source.
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
@@ -111,7 +112,7 @@ jobs:
         run: bash .exe/setup.sh
       - name: Walk affected Rust Worker learner stories
         run: |
-          export PATH="$HOME/.cargo/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+          export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
           export SCRY_CRITICS_PLAYWRIGHT_PATH="$HOME/.local/share/scry-walk/node_modules/playwright"
           export SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"
           npm ci --ignore-scripts --no-audit --no-fund

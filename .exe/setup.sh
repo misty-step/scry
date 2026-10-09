@@ -21,10 +21,13 @@ install_tar() {
     mv "$tmp/$name/$top" "$destination"
   fi
 }
+# Retained Go migration proof only; no Go application is built or started.
+install_tar go https://go.dev/dl/go1.27.1.linux-amd64.tar.gz \
+  63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 go "$HOME/.local/share/go-1.27.1"
 install_tar node https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-x64.tar.gz \
   c33c39ed9c80deddde77c960d00119918b9e352426fd604ba41638d6526a4744 \
   node-v22.22.0-linux-x64 "$HOME/.local/share/node-22.22.0"
-export PATH="$HOME/.cargo/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
 # Official rustup pins the repository toolchain; no private configuration is read.
 if ! command -v rustup >/dev/null 2>&1; then
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
@@ -62,7 +65,7 @@ if [[ ! -x "$HOME/.local/bin/gitleaks-8.30.1" ]]; then
   install -m 755 "$tmp/gitleaks" "$HOME/.local/bin/gitleaks-8.30.1"
 fi
 ln -sfn gitleaks-8.30.1 "$HOME/.local/bin/gitleaks"
-profile_line='export PATH="$HOME/.cargo/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"'
+profile_line='export PATH="$HOME/.cargo/bin:$HOME/.local/share/go-1.27.1/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"'
 touch "$HOME/.profile"
 if ! grep -Fxq "$profile_line" "$HOME/.profile"; then printf '\n%s\n' "$profile_line" >> "$HOME/.profile"; fi
 
@@ -110,6 +113,7 @@ if ! grep -Fxq "$critic_line" "$HOME/.profile"; then printf '%s\n' "$critic_line
 [[ "$(rustup target list --installed --toolchain 1.98.1)" == *wasm32-unknown-unknown* ]]
 [[ -x "$worker_root/bin/worker-build" ]]
 [[ "$(node --version)" == v22.22.0 ]]
+[[ "$(go version)" == 'go version go1.27.1 linux/amd64' ]]
 [[ "$(bun --version)" == '1.4.2' ]]
 [[ "$(gitleaks version)" == '8.30.1' ]]
 [[ -x "$HOME/.local/bin/chromium" ]]

@@ -30,10 +30,17 @@ await mkdir(join(output,'screens'),{recursive:true});await mkdir(join(output,'lo
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const metadata=process.env.SCRY_SOURCE_META?JSON.parse(readFileSync(process.env.SCRY_SOURCE_META)):null;
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2 and authored HTTP-caching material; actual browser events.','Historical Go migration compatibility and superseded US-005 remain historical, not Rust migration acceptance.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
+const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2 and authored HTTP-caching material; actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
 const register=async path=>{receipt.artifacts.push({path,sha256:sha(await readFile(join(output,path)))});};
 const native=execFileSync('cargo',['test','--locked','--all-targets'],{encoding:'utf8',env:process.env});await writeFile(join(output,'logs/rust-tests.txt'),native);await register('logs/rust-tests.txt');
 const policy=(...names)=>{for(const name of names)assert.ok(native.includes(`test ${name} ... ok`),`Native test did not pass: ${name}`);};
+let retainedGo;
+if(selected.includes('US-001')){
+ execFileSync('python3',['qa/retained-go-migration.py',join(output,'logs')],{stdio:'inherit',env:process.env});
+ retainedGo=JSON.parse(await readFile(join(output,'logs/retained-go-migration.json'),'utf8'));
+ await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
+}
+const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
 const freePort=async()=>{const s=createServer();await new Promise((ok,bad)=>{s.once('error',bad);s.listen(0,'127.0.0.1',ok);});const p=s.address().port;await new Promise(ok=>s.close(ok));return p;};
 let browser;
 try{
@@ -46,12 +53,13 @@ try{
   try{
    await page.goto(runtime.url+'/');
    if(id!=='US-013'){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
-   const c={page,url:path=>runtime.url+path,policy};
+   const c={page,url:path=>runtime.url+path,policy,retainedGoMigration};
    for(let i=0;i<specs[id].length;i++){
-    const criterion={n:i+1,status:'pass',evidence:['logs/rust-tests.txt']};result.criteria.push(criterion);
+    const legacy=id==='US-001'&&i===0;
+    const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);
     try{await specs[id][i](c);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow on390px');}
     catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
-    const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);criterion.evidence.push(path);
+    if(!legacy){const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);criterion.evidence.push(path);}
    }
    assert.deepEqual(errors,[],'Browser console/page errors');
   }catch(error){result.status='fail';result.error=error.message;console.error(`${id}: ${error.message}`);}
