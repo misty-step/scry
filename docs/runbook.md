@@ -38,10 +38,41 @@ and recovered work remained paused. There were no referenced photos. This is
 compatible archive/readback evidence, not independently hosted recovery or an
 RPO/RTO measurement.
 
+The replacement continuation independently retrieved that same acknowledged
+archive again and restored it into hosted Worker
+`scry-rust-recovery-20261009-46c72f`, fresh SQLite namespace
+`e4a645cb710541d7a0bb97b1ef724d2b`. The exact three frozen modules matched remote
+readback. Ordinary and unauthenticated restore requests were denied; the scoped
+restore succeeded, and a second restore returned 409 rather than overwriting
+state. Its separately provisioned private R2 buckets and namespace do not bind
+preview, production, or historical storage. No provider/operator integrations
+or cron are attached. The restore capability was removed before configuring
+normal exact-owner Access at
+`https://recovery-20261009-46c72f.scry.study`; workers.dev and preview URLs are
+again disabled, and restored external work remains paused.
+
+Provisioning through acknowledged hosted restore took 164.521 seconds, including
+client/readback diagnosis. The snapshot was 52 minutes 48.660 seconds old at
+restore. These are partial drill measurements: owner login, hosted export
+comparison, UI, fresh writes/new backup, configuration-loss and DNS recovery
+remain unverified. The control-plane object listing returned no objects after
+restore; the successful restore and used-space 409 establish the observed
+storage boundary, not export equality. Do not claim complete hosted recovery,
+RPO or RTO acceptance from these observations.
+
+Three further real-provider observations used the same exact WASM in disposable
+local notebooks: a topic word and phrase reached ready; an authored dictated
+request retained useful notes and 15 questions with partial status after an
+answer-revealing question was rejected. Total known cost was $0.008632. Agent
+review found useful mechanisms/examples with two practice/context caveats; owner
+usefulness, broad holdouts and refinement from genuine owner interaction remain
+separate. [The continuation receipt](qa/rust-preview-continuation-20261009.json)
+records scope, observations, review reasons, exact timings and pending checks.
+
 Anonymous and forged owner/JWT requests still redirect to Access without private
 content. Updated owner-browser/phone acceptance, normal refinement of existing
-material, broader live-provider acceptance, and independently hosted recovery
-remain pending. Existing saved lessons were not silently regenerated. The
+material, broader live-provider acceptance, and complete independently hosted recovery
+acceptance remain pending. Existing saved lessons were not silently regenerated. The
 preview's provider key has a separate $2 lifetime limit and expires October 16;
 production keys were not changed. Source merge and this preview update do not
 authorize production activation, redirecting production origins, migration, or
