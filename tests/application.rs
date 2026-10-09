@@ -519,6 +519,86 @@ fn full_text_refinement_keeps_existing_material_when_generation_or_critic_is_par
 }
 
 #[test]
+fn new_practice_follows_authored_order_without_overriding_due_time() {
+    let mut a = fresh();
+    apply(
+        &mut a,
+        "/create",
+        "ordered-capture-0001",
+        &[("intent", "HTTP caching")],
+    );
+    let mut batch: generation::Batch = serde_json::from_str(
+        fixture()
+            .jobs
+            .values()
+            .next()
+            .unwrap()
+            .candidate_json
+            .as_ref()
+            .unwrap(),
+    )
+    .unwrap();
+    batch.concepts.truncate(1);
+    batch.concepts[0].prerequisites.clear();
+    let prompts: Vec<_> = batch.concepts[0]
+        .questions
+        .iter()
+        .map(|q| q.prompt.clone())
+        .collect();
+    assert!(prompts.len() >= 2);
+    let work = engine::claim_work(&mut a, NOW, "ordered-generator-lease", &config())
+        .unwrap()
+        .unwrap();
+    let raw = json!({"choices":[{"message":{"content":serde_json::to_string(&batch).unwrap()}}]})
+        .to_string();
+    engine::finish_work(&mut a, &work, raw, "test-generator".into(), Some(1), NOW).unwrap();
+    assert!(
+        engine::claim_work(&mut a, NOW, "ordered-skipped-critic", &config())
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        a.jobs[&work.id].status, "ready",
+        "{:?}",
+        a.jobs[&work.id].error
+    );
+    let mut deferred = a.clone();
+    deferred
+        .questions
+        .values_mut()
+        .find(|q| q.position == 0)
+        .unwrap()
+        .card
+        .due_ms = NOW + DAY_MS;
+    engine::ensure_occurrence(&mut deferred, NOW, "ordered-deferred-check").unwrap();
+    assert_eq!(
+        deferred.occurrence.as_ref().unwrap().presentation.prompt,
+        prompts[1]
+    );
+    engine::ensure_occurrence(&mut a, NOW, "ordered-first-question").unwrap();
+    apply(
+        &mut a,
+        "/review/intro",
+        "ordered-intro-0001",
+        &[("known", "false")],
+    );
+    for (i, prompt) in prompts.iter().enumerate() {
+        assert_eq!(&a.occurrence.as_ref().unwrap().presentation.prompt, prompt);
+        apply(
+            &mut a,
+            "/review/reveal",
+            &format!("ordered-reveal-{i:04}"),
+            &[],
+        );
+        apply(&mut a, "/review/next", &format!("ordered-next-{i:04}"), &[]);
+    }
+    assert!(a.occurrence.is_none());
+    let encoded = persistence::Archive::new(a, vec![], NOW).encode().unwrap();
+    let restored = persistence::Archive::decode(&encoded, &persistence::sha256(&encoded)).unwrap();
+    assert!(restored.app.questions.values().any(|q| q.position == 1));
+}
+
+#[test]
 fn restored_state_keeps_paid_work_paused_and_held_feedback() {
     let mut a = fixture();
     apply(

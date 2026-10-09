@@ -1089,10 +1089,24 @@ pub fn ensure_occurrence(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
         {
             continue;
         }
-        candidates.push((new, q.card.due_ms, c.prerequisites.len(), q.id.clone()));
+        // Due time and prerequisites retain priority. Equally due new material
+        // follows the notebook's authored sections and question order.
+        candidates.push((
+            new,
+            q.card.due_ms,
+            c.prerequisites.len(),
+            g.created_ms,
+            g.id.clone(),
+            g.concept_ids
+                .iter()
+                .position(|id| id == &c.id)
+                .unwrap_or(usize::MAX),
+            q.position,
+            q.id.clone(),
+        ));
     }
     candidates.sort();
-    if let Some((new, _, _, qid)) = candidates.first() {
+    if let Some((new, _, _, _, _, _, _, qid)) = candidates.first() {
         let q = app.questions[qid].clone();
         let assisted = app.concepts[&q.concept_id]
             .exposure_ms
@@ -1982,10 +1996,10 @@ fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64)
                 }) {
                     continue;
                 }
-                app.questions.insert(
-                    qid.clone(),
-                    Question::new(qid, job.goal_id.clone(), cid.clone(), content, now),
-                );
+                let mut question =
+                    Question::new(qid.clone(), job.goal_id.clone(), cid.clone(), content, now);
+                question.position = i;
+                app.questions.insert(qid, question);
             }
         }
         let g = app.goals.get_mut(&job.goal_id).unwrap();
@@ -2072,7 +2086,7 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
     let gid = "fixture-http".to_string();
     let jid = "fixture-job".to_string();
     app.goals.insert(gid.clone(),Goal{id:gid.clone(),title:"Understand HTTP caching".into(),intent:"Understand why a browser can show an old version of a page, and how caches validate it.".into(),created_ms:now,revision:1,status:"ready".into(),paused:false,focused:false,archived:false,concept_ids:Vec::new(),job_id:jid.clone(),photo:None,transcript:None});
-    let batch:Batch=serde_json::from_value(json!({"title":"Understand HTTP caching","complete":true,"concepts":[{"key":"freshness","name":"Cache freshness","summary":"A fresh response can be reused without asking the origin.","note":"A cache stores a response and its freshness lifetime. During that lifetime, the browser can reuse it without contacting the origin. For example, Cache-Control: max-age=60 allows reuse for sixty seconds. When it becomes stale, the browser may need to validate it; stale does not mean the underlying content changed.","basis":"general","quotes":[],"prerequisites":[],"questions":[{"prompt":"Which response directive sets how long a cached response may be reused without validation?","kind":"recall","answer":"max-age","variants":["Cache-Control: max-age"],"choices":[],"explanation":"The max-age directive specifies the freshness lifetime in seconds. Once that time passes, validation may be required.","basis":"general","quotes":[]},{"prompt":"A stored response has passed its freshness lifetime. What does that tell you?","kind":"choice","answer":"It may need validation before reuse","choices":["It may need validation before reuse","The origin content definitely changed","The browser must delete it forever"],"explanation":"Staleness is about permission to reuse the stored response without checking. The origin content may be unchanged.","basis":"general","quotes":[]}]},{"key":"validation","name":"Conditional validation","summary":"A validator lets the origin confirm that a stored response is still current.","note":"An ETag is an opaque identifier for a representation. A browser can send If-None-Match with the saved ETag. If the representation has not changed, the server can answer 304 Not Modified; the browser reuses the stored body. Freshness decides when a check is needed, while validation decides whether the saved content is still suitable.","basis":"general","quotes":[],"prerequisites":["freshness"],"questions":[{"prompt":"What HTTP status tells a browser its cached representation can be reused after a conditional request?","kind":"recall","answer":"304","variants":["304 Not Modified"],"choices":[],"explanation":"304 Not Modified confirms the conditional request's validator still matches. The browser reuses the cached body rather than receiving another full representation.","basis":"general","quotes":[]}]}]})).unwrap();
+    let batch:Batch=serde_json::from_value(json!({"title":"Understand HTTP caching","complete":true,"concepts":[{"key":"freshness","name":"Cache freshness","summary":"A fresh response can be reused without asking the origin.","note":"A cache stores a response and its freshness lifetime. During that lifetime, the browser can reuse it without contacting the origin. For example, Cache-Control: max-age=60 allows reuse for sixty seconds. When it becomes stale, the browser may need to validate it; stale does not mean the underlying content changed.","basis":"general","quotes":[],"prerequisites":[],"questions":[{"prompt":"A stored response has passed its freshness lifetime. What does that tell you?","kind":"choice","answer":"It may need validation before reuse","choices":["It may need validation before reuse","The origin content definitely changed","The browser must delete it forever"],"explanation":"Staleness is about permission to reuse the stored response without checking. The origin content may be unchanged.","basis":"general","quotes":[]},{"prompt":"Which response directive sets how long a cached response may be reused without validation?","kind":"recall","answer":"max-age","variants":["Cache-Control: max-age"],"choices":[],"explanation":"The max-age directive specifies the freshness lifetime in seconds. Once that time passes, validation may be required.","basis":"general","quotes":[]}]},{"key":"validation","name":"Conditional validation","summary":"A validator lets the origin confirm that a stored response is still current.","note":"An ETag is an opaque identifier for a representation. A browser can send If-None-Match with the saved ETag. If the representation has not changed, the server can answer 304 Not Modified; the browser reuses the stored body. Freshness decides when a check is needed, while validation decides whether the saved content is still suitable.","basis":"general","quotes":[],"prerequisites":["freshness"],"questions":[{"prompt":"What HTTP status tells a browser its cached representation can be reused after a conditional request?","kind":"recall","answer":"304","variants":["304 Not Modified"],"choices":[],"explanation":"304 Not Modified confirms the conditional request's validator still matches. The browser reuses the cached body rather than receiving another full representation.","basis":"general","quotes":[]}]}]})).unwrap();
     let job = Job {
         id: jid.clone(),
         goal_id: gid,

@@ -154,6 +154,9 @@ pub struct Question {
     pub archived: bool,
     pub draft: Option<Content>,
     pub draft_for_version: Option<u64>,
+    /// Authored order within an idea; old records retain their original tie-break.
+    #[serde(default)]
+    pub position: usize,
 }
 impl Question {
     pub fn content(&self) -> &Content {
@@ -178,6 +181,7 @@ impl Question {
             archived: false,
             draft: None,
             draft_for_version: None,
+            position: 0,
         }
     }
 }

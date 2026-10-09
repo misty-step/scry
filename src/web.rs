@@ -1278,7 +1278,7 @@ fn notes(c: &Concept) -> String {
         .map(|p| format!("<p>{}</p>", escape(p)))
         .collect::<String>();
     format!(
-        "<section class=\"concept-note\" aria-label=\"Saved explanation\"><div class=\"reading\">{paragraphs}</div>{}</section>",
+        "<section class=\"concept-note\" aria-label=\"Saved explanation\"><div class=\"reading preserve\">{paragraphs}</div>{}</section>",
         provenance(&note.basis, &note.quotes)
     )
 }
