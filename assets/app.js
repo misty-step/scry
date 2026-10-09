@@ -3,6 +3,7 @@
   'use strict';
   let pending = null;
   let pollTimer = null;
+  let pollRequest = null;
   let pageSequence = 0;
   const dirtyForms = new WeakSet();
   document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); });
@@ -23,6 +24,7 @@
   };
   const conceal = () => {
     clearTimeout(pollTimer);
+    pollRequest?.abort();
     pending = null;
     document.querySelector('.page-frame')?.replaceChildren();
     document.body.classList.add('private-hidden');
@@ -37,11 +39,25 @@
     if (!doc.querySelector('#main') || !doc.querySelector('.masthead')) throw new Error('The saved page could not be read.');
     return doc;
   };
-  const install = (doc, response, navigation = true) => {
+  const install = (doc, response, navigation = true, preserveDrafts = false) => {
     const main = doc.querySelector('#main');
     const previousMain = document.getElementById('main');
     if (!main || !previousMain) return;
+    const focused = document.activeElement;
+    const selection = focused?.selectionStart == null ? null : [focused.selectionStart, focused.selectionEnd];
+    if (preserveDrafts) {
+      // Keep the actual draft form, including its operation identity. Only a
+      // goal's read-only preparation/reference changes while the learner types.
+      [...previousMain.querySelectorAll('form')].filter(form => dirtyForms.has(form)).forEach(form => {
+        const replacement = [...main.querySelectorAll('form')].find(next => next.getAttribute('action') === form.getAttribute('action'));
+        replacement?.replaceWith(form);
+      });
+    }
     previousMain.replaceWith(main);
+    if (preserveDrafts && focused?.isConnected) {
+      focused.focus({ preventScroll: true });
+      if (selection) focused.setSelectionRange(...selection);
+    }
     const header = doc.querySelector('.masthead');
     if (header) document.querySelector('.masthead')?.replaceWith(header);
     document.title = doc.title;
@@ -173,24 +189,33 @@
       if (next) { event.preventDefault(); next.requestSubmit(); }
     }
   });
-  const schedulePoll = () => {
+  const schedulePoll = (delay = 4000) => {
     clearTimeout(pollTimer);
     if (!document.querySelector('#main[data-poll], [data-poll]')) return;
     pollTimer = setTimeout(async () => {
-      if (pending || !navigator.onLine || document.hidden || document.activeElement?.matches('textarea,input,select') || document.querySelector('form[aria-busy]') || [...document.forms].some(form => dirtyForms.has(form))) { schedulePoll(); return; }
+      const currentState = document.querySelector('[data-state]')?.getAttribute('data-state');
+      const preserveDrafts = currentState === 'goal';
+      if (pending || !navigator.onLine || document.hidden || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
       const sequence = pageSequence;
+      const controller = new AbortController();
+      pollRequest = controller;
+      const timeout = setTimeout(() => controller.abort(), 8000);
       try {
-        const response = await fetch(location.href, { credentials: 'same-origin', headers: { Accept: 'text/html', 'X-Scry-Request': 'poll' }, cache: 'no-store' });
+        const response = await fetch(location.href, { credentials: 'same-origin', headers: { Accept: 'text/html', 'X-Scry-Request': 'poll' }, cache: 'no-store', signal: controller.signal });
         const doc = await safePage(response);
         if (doc && response.ok && !pending && sequence === pageSequence) {
           // Never replace an editable page or an unanswered question just to poll.
-          const currentState = document.querySelector('[data-state]')?.getAttribute('data-state');
-          if (['checking', 'pending', 'preparing', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false);
+          if (['checking', 'checking-reference', 'pending', 'preparing', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
         }
       } catch { /* Poll reads never retry paid work or imply success. */ }
+      finally { clearTimeout(timeout); if (pollRequest === controller) pollRequest = null; }
       schedulePoll();
-    }, 4000);
+    }, delay);
   };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearTimeout(pollTimer); pollRequest?.abort(); }
+    else schedulePoll(0);
+  });
   window.addEventListener('offline', () => announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'));
   window.addEventListener('online', () => {
     if (pending) announce('You are connected again. Reconcile your saved attempt.', [['Reconcile this attempt', () => send(pending)], ['Open saved progress', () => location.reload()]]);

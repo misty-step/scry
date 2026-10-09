@@ -114,6 +114,8 @@ fn complete_and_verbatim_requests_never_publish_partial_material() {
         "Prepare the complete set",
         "Give every item",
         "Teach exact wording verbatim",
+        "Teach the entire text line by line",
+        "Memorize the poem line-by-line",
     ] {
         let mut incomplete = batch();
         incomplete.complete = false;

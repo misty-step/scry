@@ -713,6 +713,9 @@ impl View<'_> {
         );
         let pending = matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
         let title = match status {
+            "queued" => "Preparing your reference.",
+            "sent" => "Writing your reference and practice.",
+            "candidates" | "critic-sent" => "Checking your new material.",
             "unknown" => "The outcome needs checking.",
             "failed" | "blocked" => "Preparation stopped.",
             "paused" => "Preparation is paused after recovery.",
@@ -722,7 +725,7 @@ impl View<'_> {
             _ => "Your material is taking shape.",
         };
         let mut out = format!(
-            "<section class=\"preparation-panel {}\" {}><p class=\"eyebrow\">{} saved</p><h2>{title}</h2><p>{}</p>",
+            "<section class=\"preparation-panel {}\" {} aria-live=\"polite\"><p class=\"eyebrow\">{} saved</p><h2>{title}</h2><p>{}</p>",
             if stopped { "stopped" } else { "" },
             if pending { "data-poll" } else { "" },
             if g.photo.is_some() {
