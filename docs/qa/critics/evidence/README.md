@@ -1,5 +1,10 @@
 # Critic evidence — 2026-09-20 (stage 1, increment 1)
 
+Historical Go candidate evidence. These observations and the reproduction
+commands below belong to the original source retained at Git `c6ba395`.
+They do not validate the Rust Worker. Use [current critic instructions](../../critics.md)
+for a fresh source/artifact-bound Worker observation.
+
 First proven vertical: the `practice-review` walk against a fresh isolated
 synthetic candidate (`candidate up` → `human --goal practice-review`).
 

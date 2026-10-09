@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# An isolated real workerd + SQLite/R2 session. No provider calls or imports.
+set -euo pipefail
+scry_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+scry_port=${SCRY_DEV_PORT:-8787}
+case "$scry_port" in *[!0-9]*|'') printf 'SCRY_DEV_PORT must be a numeric loopback port.\n' >&2; exit 2;; esac
+if ((scry_port < 1024 || scry_port > 65535)); then printf 'Use an unprivileged loopback port.\n' >&2; exit 2; fi
+cd "$scry_root"
+worker-build --release --locked
+scry_run=$(mktemp -d "${TMPDIR:-/tmp}/scry-rust-dev.XXXXXXXX")
+chmod 700 "$scry_run"
+cat > "$scry_run/wrangler.toml" <<CONFIG
+name = "scry-rust-local"
+main = "$scry_root/build/worker/shim.mjs"
+compatibility_date = "2026-09-10"
+workers_dev = false
+preview_urls = false
+[vars]
+SCRY_ENV = "development"
+CANONICAL_ORIGIN = "http://127.0.0.1:$scry_port"
+SPACE_NAME = "synthetic-development"
+[[durable_objects.bindings]]
+name = "LEARNING_SPACE"
+class_name = "LearningSpace"
+[[migrations]]
+tag = "scry-rust-sqlite-v1"
+new_sqlite_classes = ["LearningSpace"]
+[[r2_buckets]]
+binding = "SCRY_ASSETS"
+bucket_name = "synthetic-assets"
+[[r2_buckets]]
+binding = "SCRY_BACKUPS"
+bucket_name = "synthetic-backups"
+CONFIG
+printf 'INTERNAL_KEY=synthetic-local-key-at-least-32-characters\n' > "$scry_run/.dev.vars"
+chmod 600 "$scry_run/.dev.vars"
+printf 'Disposable synthetic state: %s\nOpen http://127.0.0.1:%s\n' "$scry_run" "$scry_port"
+# A config in the private run directory prevents implicit .dev.vars/.env reads
+# from the checkout. Fresh HOME and env -i remove credentials as well.
+exec env -i PATH="$PATH" HOME="$scry_run" LANG=C.UTF-8 \
+  CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_SEND_METRICS=false \
+  wrangler dev --config "$scry_run/wrangler.toml" --local --ip 127.0.0.1 \
+  --port "$scry_port" --persist-to "$scry_run/state"

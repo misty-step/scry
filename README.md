@@ -1,170 +1,148 @@
 # Scry
 
-Scry is a private, prompt-first learning app. The governing journey is
-**Create → express what I want to learn → useful tailored study/reference and
-practice material → refine through actual practice and feedback**, without a
-mandatory setup questionnaire. [VISION](VISION.md) owns the intent;
-[US-013](USER_STORIES.md#us-013-create-from-what-i-want-to-learn) leads to the
-concrete [Create acceptance](SPEC.md#s11--create-useful-material-from-intent-us-013).
-Concept-centered, retrieval-led study and honest learning history remain core.
+Scry is a private, prompt-first learning notebook: **Create → express what you
+want to understand → useful reference and practice → refine through real
+answers and feedback**. A word, phrase, or dictated ramble is enough. There is
+no setup questionnaire, compulsory import, or diagnostic quiz before material.
 
-**Implemented today:** one Go/SQLite process owns HTML/HTMX, bounded generation,
-and recovery. Add accepts private text or an optional photo; URLs stay private
-text, not inferred web research. **Approved future target:** a ground-up
-Rust-on-Cloudflare rewrite, not shipped or activated by these docs. Existing
-capture checks do not prove the complete Create/refinement contract.
+The application in this checkout is a ground-up **Rust + Cloudflare Workers**
+rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
+Access ingress and forwards to one SQLite-backed Durable Object. Rust owns
+learning, immutable history, generation, and recovery; server-rendered HTML,
+self-hosted fonts, and a small vanilla controller deliver the notebook. There
+is no Container or frontend framework in the replacement architecture.
 
-[Product direction](VISION.md) · [Stories](USER_STORIES.md) ·
-[Feature map](features/README.md) · [Behavior and architecture](SPEC.md) ·
-[Decisions](docs/adr/README.md) · [Operations](docs/runbook.md) ·
-[Verification](docs/qa/system.md)
+**Production has not been replaced by source changes.** The documented live
+application remains the Go/SQLite Container behind `scry-app-host` at
+https://scry.study. [The operational runbook](docs/runbook.md) alone owns its
+activation, origins, recovery, and retirement evidence. The old Go source is
+retained exactly in Git at `c6ba395`; historical Rust/Postgres/Worker stores and
+backups remain separate recovery material. This rewrite does not import,
+reactivate, rename, or erase those stores.
 
-## Access and scope
-
-The private production app is at **https://scry.study**, behind Cloudflare
-Access and the exact owner-subject check in Worker `scry-app-host`. The shared
-Access team domain is `misty-step-pantry.cloudflareaccess.com`; it is the
-identity/login domain, not a Pantry application Worker URL. The
-[runbook](docs/runbook.md) owns deployed origins and state; see the
-[Cloudflare hosting notes](deploy/cloudflare-hosting/README.md) for the request path.
-The earlier phone flow and concept-centered v5 decisions (MIS-162) remain
-dated provenance, not blanket acceptance of the prompt-first goal or authority
-to replace the live runtime. The [runbook](docs/runbook.md#current-authority)
-owns deployed state. `www.scry.study`
-and `scry.mistystep.io` redirect reads to the
-canonical origin; alternate-host mutations are rejected, not replayed. The
-former exe.dev app service is stopped and disabled; its database and the old
-Rust Worker/Postgres stores remain recovery material, not active writers.
-
-There is no public signup, billing, separate frontend service, or public
-CLI/MCP/API compatibility requirement. The old Rust workspace and clients are
-retired. Historical learning-science research and recovery tools remain.
+[Product](VISION.md) · [Stories](USER_STORIES.md) · [Specification](SPEC.md) ·
+[Design](DESIGN.md) · [Features](features/README.md) ·
+[Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
 
 ## Start or resume work
 
-Begin with the current operator request as authority; a ticket is not a
-prerequisite. [Glass](https://mirrodin.tail5f5eb4.ts.net) in scope
-`misty-step/scry` owns current work state: owner, accepted scope, pause/blocker,
-and next permitted action. Reconcile the existing owning item using the
-[ticket contract](SPEC.md#ticket-contract), not a second status ledger.
-Imported MIS identities and [legacy Linear project links](https://linear.app/misty-step/project/scry-7d7eb0cc48bb)
-preserve provenance, not current execution authority. Off-Linear migration
-reconciliation and writer repointing have a separate owner; this repo neither
-changes their state nor claims every writer has been cut over.
+Read VISION → USER_STORIES → SPEC, especially US-013/S11, before scoping work.
+Use the current operator request as authority; preserve overlapping work and
+inspect `git status --short --branch` and `git rev-parse HEAD` in the selected
+checkout. [Glass](https://mirrodin.tail5f5eb4.ts.net) in scope `misty-step/scry`
+owns work state; legacy MIS and Linear identities are provenance. Link accepted
+scope, exact source, tests, and remaining evidence from the session/PR.
 
-Locate the checkout for that work before developing: `git worktree list --porcelain`
-shows candidates; in the selected checkout, `git status --short --branch` and
-`git rev-parse HEAD` identify local changes and the committed base. Reconcile
-these with the work record and inspect relevant changed/untracked docs. A cwd,
-branch name, or latest commit does not establish authorization. Preserve dirty
-work and isolated experiments; neither is automatically the release baseline.
-Local design notes may carry newer direction than HEAD without being published
-specification or shipped behavior.
-
-Read [VISION](VISION.md), [USER_STORIES](USER_STORIES.md), and
-[SPEC authority](SPEC.md#authority-and-open-decisions), including
-[Create acceptance](SPEC.md#s11--create-useful-material-from-intent-us-013),
-before choosing an action. Earlier design rounds are linked there as provenance;
-read [DESIGN](DESIGN.md) only for interface work. Approved future Rust direction
-is not permission to ship an imported historical Go build, migrate live data,
-or deploy. Operating commands below still belong to the implemented Go app.
-
-For authorized work, select [changed-surface proof](docs/qa/system.md#choose-proof-before-running-checks).
-For deployed state, follow the [runbook's authority](docs/runbook.md#current-authority)
-and [release evidence](docs/runbook.md#evidence), not HEAD or a green gate.
-Keep exact source/artifact and remaining evidence linked from the owning issue/PR
-so another agent can resume without reconstructing the session.
+[DESIGN](DESIGN.md) governs the redesigned curiosity notebook. Learning effort
+is intentional; navigating an administration dashboard is not part of study.
+Create and Map are the two masthead destinations. Results stay until Next;
+notes remain reusable; help and reading never become unaided success.
 
 ## Develop
 
-For an empty-state development start, use a shell without production Scry
-configuration (an existing database at this path is reused):
+Use the pinned Rust 1.98.1 toolchain and `wasm32-unknown-unknown` target,
+`worker-build` 0.8.7, Node 22.22.0, Bun, and lockfile-pinned dev dependencies.
 
 ```sh
-go test ./...
-go run ./cmd/scry serve --dev --db data/scry.sqlite --addr 127.0.0.1:8080
+rustup target add wasm32-unknown-unknown
+cargo install worker-build --version 0.8.7 --locked
+npm ci --ignore-scripts --no-audit --no-fund
+cargo test --locked
+bun run dev
 ```
 
-Development identity is explicitly loopback-only; `--dev` does **not** clear
-inherited model or backup configuration. For reviewable authored data without
-provider spend or production recovery authority, follow the
-[isolated synthetic QA recipe](docs/qa/system.md#local-authored-fixture).
-`data/`, build outputs, and private `.env` files are ignored; do not attach
-production capabilities to a development workspace.
+`bun run dev` / `bun run rust-dev` run [scripts/rust-dev](scripts/rust-dev),
+which builds WASM and launches real local workerd with fresh run-owned SQLite
+and R2 state. Its private temporary configuration and `env -i` keep inherited
+operator/model/deployment capabilities out. It listens only on loopback; set
+`SCRY_DEV_PORT` to an unused unprivileged port if necessary. It never loads
+repository `.env` or `.dev.vars` files. The printed directory owns that run's
+state; stop the process before removing only that directory.
 
-The UI is embedded in the binary. There is no frontend build step. Vendored
-HTMX and its license live in `internal/web/assets/`; browser JavaScript handles
-presentation and interrupted-request reconciliation, not durable storage.
+The empty notebook offers an explicitly authored demo only in isolated
+development. The demo uses no provider and is never advertised in production.
+Without configured providers, new requests remain saved with an honest stopped
+preparation state. Local fixture mechanics do not prove live model usefulness,
+private HTTPS, remote R2 recovery, or phone acceptance.
+
+[.dev.vars.example](.dev.vars.example) documents synthetic local values only.
+Production secrets belong in Worker bindings: `OWNER_SUBJECT`, `INTERNAL_KEY`,
+`OPENROUTER_API_KEY`, `JEV_API_KEY`, and independently scoped `OPERATOR_KEY` /
+`RESTORE_TOKEN` where required. Public configuration includes the canonical
+origin, exact Access issuer/audience, singleton namespace, and explicit model
+choices. Never put secrets in source, flags, logs, screenshots, or artifacts.
 
 ## Check and build
 
 ```sh
+cargo test --locked
+cargo clippy --all-targets -- -D warnings
+cargo check --locked --target wasm32-unknown-unknown
+worker-build --release --locked
 bun run ci
-bun run ci:full -- --out target/ci-release --require-committed
 ```
 
-The host gate requires Go 1.27.1 on Linux amd64, Node 22+, Gitleaks 8.30.1, and
-Playwright 1.63.0 with Chromium for the critic browser cases: the Dagger image's
-paths by default, or `SCRY_CRITICS_NODE_PATH`/`SCRY_CRITICS_CHROMIUM_PATH` as
-exported by `.exe/setup.sh` on the `scry-ws` workspace.
-The full gate supplies pinned tooling through Dagger. Both snapshot the actual
-non-ignored source, check Go and retained recovery contracts, scan for secrets,
-and exercise the exact built binary against isolated synthetic data.
+The native suite covers application transitions, generation/critic policy,
+immutable content, response replay, recovery archives, web secrecy, and pure
+learning. The scheduler port compares 260 full-state trajectories against the
+exact pinned Go FSRS adapter. That is scheduler compatibility evidence, not
+proof of model calibration or learning efficacy.
 
-The exported artifact contains `scry`, `SHA256SUMS`, `source.json`,
-`source.tar.gz`, `proof.json`, and command/smoke evidence. Worktree output is
-explicitly labeled; `--require-committed` rejects it. Artifact destinations must
-be unused. Deploy those tested bytes rather than rebuilding them.
+`bun run ci` / `bun run ci:local` use the source-snapshot gate in
+[scripts/scry-ci](scripts/scry-ci). Release evidence must bind committed source,
+the exact WASM Worker assets exercised, lockfiles, and smoke results. Use
+`--require-committed` when producing release artifacts; worktree-labeled output
+is development evidence. Never rebuild between proof and activation. Retained
+historical recovery tools have their own `bun run test:recovery` contract.
 
-`bun run test` runs Go tests; `bun run test:recovery` checks the retained
-historical recovery tools. `.github/workflows/ci.yml` and Buildkite run the
-current gate; run it off the desktop with `ws run --task T -- bun run ci` on
-`scry-ws`. The pre-push hook (`git config core.hooksPath .githooks`) only runs
-the sub-second `foundation-check` structural check and lists the stories
-required CI will walk. `.github/workflows/nightly.yml` walks every live story
-on master daily, retains the receipt for 30 days, and opens or updates one
-"Nightly story walk failed" issue on failure.
+Browser QA uses the product-native collaborative preview when available and
+isolated VM browser/story walks for release receipts. Exercise real pointer and
+keyboard events, held results, no-JavaScript forms, both color schemes, narrow
+screens, offline drafts, access loss, and identical-operation reconciliation.
+Read [Scry QA](.agents/skills/scry-qa/SKILL.md) before verification. Unrun cases
+remain UNVERIFIED; old Go/Worker receipts do not transfer to this rewrite.
 
-## Deployment and recovery
+The replacement's [operator procedure](docs/rust-cloudflare.md#independent-fresh-space-restore)
+documents isolated restore and separately authorized future-work resumption.
+These candidate endpoints do not replace the deployed Go recovery runbook.
 
-Production uses one Cloudflare Container behind Access and `scry-app-host`.
-Cloudflare release steps and v5's irreversible migration boundary live in the
-[runbook](docs/runbook.md#schema-v5-release-boundary) and
-[hosting notes](deploy/cloudflare-hosting/README.md). The retained exe.dev VM
-scripts (`deploy/install.sh`, `deploy/activate.sh`, `deploy/restore.sh`) are
-recovery tooling, not the active deployment path. Restore an older v4 snapshot
-only into an unused path with the previous compatible binary; never overwrite
-acknowledged live writes or start a second writer.
+## Durable boundaries
 
-Private production configuration must not be sourced or committed.
-`deploy/scry.env.example` lists safe empty defaults and
-`deploy/cloudflare-hosting/wrangler.jsonc` carries public vars, not secrets.
-The dedicated provider key “Scry personal (exe.dev)” has a $25/week limit
-(raised 2026-09-23). The app allows $3.50 per rolling 24 hours and reserves
-$0.50 per generation attempt; unknown sent usage remains accounted.
-`SCRY_MODEL` is an explicit model choice. An optional Exa secret enables Topic
-web search and Link contents; pasted text is never searched. Jev short-answer,
-semantic prose and the content critic share the same bounded allowance.
+- [src/learning.rs](src/learning.rs): pure pinned FSRS scheduling, grading,
+  recall estimates, and concept evidence. No persistence, HTTP, or models.
+- [src/model.rs](src/model.rs) / [src/engine.rs](src/engine.rs): typed records,
+  atomic transitions, occurrence identity, immutable presentations and
+  corrections, exact operation receipts, ownership, and bounded spend.
+- [src/generation.rs](src/generation.rs): bounded intent-to-reference/practice,
+  exact provenance, saved candidates, independent critic and meaning policies.
+- [src/runtime.rs](src/runtime.rs): private Worker ingress, singleton SQLite
+  Durable Object, external effects outside transactions, alarms, and R2.
+- [src/persistence.rs](src/persistence.rs): complete versioned JSON archives
+  with photo bytes and checksums, validation, and paused fresh-space restore.
+- [src/web.rs](src/web.rs) / [assets](assets/): escaped HTML and presentation;
+  no frontend build, browser storage, or offline mutation queue.
 
-The approved recovery policy remains daily and pre-release off-VM snapshots
-with 30-day retention, targeting RPO 24 hours and RTO 60 minutes. These are
-objectives, not guarantees. Old Worker/native recovery material is preserved
-separately; do not reactivate or import a frozen store.
+The provider allowance remains $3.50 per rolling day, with $0.50 reserved per
+preparation and unknown sent outcomes accounted. The existing provider key's
+$25/week cap is a separate control. Private text and pasted URLs never authorize
+web search or link reading by inference.
 
+## Release and recovery
 
-## Source boundaries
+[The Rust target release procedure](docs/rust-cloudflare.md) describes the new
+namespace, frozen artifacts, private-ingress and recovery proof, and explicit
+activation approval.
 
-- `internal/learning`: pure grading, concept state/selection, and pinned FSRS.
-- `internal/store`: SQLite schema v5, atomic history, relations, notes, jobs, and spend.
-- `internal/generation` / `internal/semantic`: bounded Exa/model/Jev calls outside SQL.
-- `internal/web`: private Stream/Map/Concept routes, CSRF, HTML, embedded assets.
-- `internal/recovery`: consistent archives, remote readback, and safe restore.
-- `deploy/backup-gateway`: narrow append/read-only Worker over private R2.
-- `scripts/scry-ci` and `.dagger/`: source-bound checks and release evidence.
-- `bin/`, `scripts/scry-cloudflare-data`, and `etc/`: retained historical
-  Postgres/Worker recovery tools, not current application deployment paths.
+The new target starts in a fresh namespace, with private R2 asset/backup buckets
+and a singleton SQLite Durable Object. It requires independent proof of exact
+owner JWT validation, alternate-host read-only redirects, CSRF, complete remote
+readback, restore into an unused space, paused uncertain work, and the actual
+private browser before activation. Daily and pre-release snapshots with 30-day
+retention target RPO 24 hours and RTO 60 minutes; those targets are not guarantees.
+Retain the compatible Worker build and private configuration independently.
 
-[The private acceptance receipt](docs/qa/personal-go-acceptance-20260909.json)
-records the earlier live generation, touch/interruption, and data-restore
-observations. Passing checks and an approved phone flow do not establish
-longitudinal learning gains.
+Activation, live migration, and retirement of the current Go writer require
+explicit operator approval and concrete source-bound release/recovery evidence.
+The existing [runbook](docs/runbook.md) and
+[Container hosting notes](deploy/cloudflare-hosting/README.md) remain the
+operational authority for production until that approved replacement occurs.

@@ -1,18 +1,13 @@
-/** Scry's source-bound Go gate. No deployment or private runtime authority. */
+/** Scry's frozen-source Rust/WASM gate. No deployment or production authority. */
 import { argument, dag, type Directory, func, object, type Platform } from '@dagger.io/dagger';
 
-const GO_IMAGE = 'golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b';
+const RUST_IMAGE = 'rust:1.98.1-bookworm@sha256:c49256cbe5ea0188bc658a689500d70c41eb51f009a7a7be209caf60a944f3ec';
 const NODE_IMAGE = 'node:22.22.0-bookworm-slim';
-const PLAYWRIGHT_VERSION = '1.63.0';
 const GITLEAKS_IMAGE = 'zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f';
 
 @object()
 export class Scry {
-  /**
-   * Check and export one binary, never rebuild after smoke. Source is the frozen
-   * source/ + source.json package made by `python3 scripts/scry-ci full`, not an
-   * arbitrary working tree with a separately supplied Git label.
-   */
+  /** Export the exact smoke-tested Worker/WASM bundle and source proof. */
   @func()
   async check(
     @argument({ ignore: ['.git', '**/.git'] }) source: Directory,
@@ -23,33 +18,26 @@ export class Scry {
       .withWorkdir('/src')
       .withExec(['gitleaks', 'dir', '/src', '--redact', '--no-banner']);
     const secretsProof = (await scan.stdout()) + (await scan.stderr());
-    // Browser runtime for the critic suite: pinned Playwright module (no
-    // bundled browser download) copied into the gate, plus the distribution's
-    // Chromium. The critic tests require a real browser in this gate.
-    const criticRuntime = dag.container({ platform: 'linux/amd64' as Platform })
-      .from(NODE_IMAGE)
-      .withEnvVariable('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1')
-      .withExec(['mkdir', '-p', '/opt/scry-critics'])
-      .withWorkdir('/opt/scry-critics')
-      .withExec(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', `playwright@${PLAYWRIGHT_VERSION}`]);
-    // Resolve Worker/runtime imports from the committed lockfile. Keep this
-    // outside /input/source so the frozen source inventory remains unchanged.
-    const workerDependencies = dag.container({ platform: 'linux/amd64' as Platform })
+    const dependencies = dag.container({ platform: 'linux/amd64' as Platform })
       .from(NODE_IMAGE)
       .withDirectory('/input', source)
+      .withEnvVariable('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1')
       .withWorkdir('/input/source')
       .withExec(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund', '--loglevel=error']);
     const node = dag.container({ platform: 'linux/amd64' as Platform }).from(NODE_IMAGE);
     return dag.container({ platform: 'linux/amd64' as Platform })
-      .from(GO_IMAGE)
+      .from(RUST_IMAGE)
       .withExec(['apt-get', 'update'])
-      .withExec(['apt-get', 'install', '-y', '--no-install-recommends', 'python3', 'chromium'])
+      .withExec(['apt-get', 'install', '-y', '--no-install-recommends', 'python3', 'chromium', 'openssl', 'libssl-dev', 'pkg-config'])
+      .withExec(['rustup', 'component', 'add', 'rustfmt', 'clippy'])
+      .withExec(['rustup', 'target', 'add', 'wasm32-unknown-unknown'])
+      .withExec(['cargo', 'install', 'worker-build', '--version', '0.8.7', '--locked'])
       .withFile('/usr/local/bin/node', node.file('/usr/local/bin/node'))
-      .withDirectory('/opt/scry-critics', criticRuntime.directory('/opt/scry-critics'))
-      .withMountedCache('/go/pkg/mod', dag.cacheVolume('scry-go-mod-1.27'))
-      .withMountedCache('/root/.cache/go-build', dag.cacheVolume('scry-go-build-1.27'))
+      .withMountedCache('/usr/local/cargo/registry', dag.cacheVolume('scry-rust-registry-1.98'))
       .withDirectory('/input', source)
-      .withDirectory('/input/node_modules', workerDependencies.directory('/input/source/node_modules'))
+      .withDirectory('/input/node_modules', dependencies.directory('/input/source/node_modules'))
+      .withEnvVariable('SCRY_CRITICS_CHROMIUM_PATH', '/usr/bin/chromium')
+      .withEnvVariable('WRANGLER_SEND_METRICS', 'false')
       .withNewFile('/input/gitleaks.txt', secretsProof)
       .withWorkdir('/input/source')
       .withExec([

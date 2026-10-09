@@ -1,282 +1,189 @@
-# Scry design system: Ink notebook
+# Scry: the curiosity notebook
 
-Adopted on 2026-09-24 after the operator judged the earlier "Scrying glass"
-interface atrocious (MIS-162). The audit, the six concepts, the three clickable
-finalists, and the decision are in
-[docs/design/redesign-2026-09-24.md](docs/design/redesign-2026-09-24.md).
-[Stories](USER_STORIES.md) define learner progress and
-[SPEC](SPEC.md#experience-contract) owns behavior. This document specifies how
-the interface looks and moves. It does not claim a production rollout.
+The Rust rewrite treats Scry as a private notebook that grows through use.
+Create begins with curiosity, not an import workflow or an assessment. A useful
+explanation and practice come first; answers and explicit feedback shape what
+comes next. [VISION](VISION.md), [USER_STORIES](USER_STORIES.md), and
+[S11 in SPEC](SPEC.md#s11--create-useful-material-from-intent-us-013) govern the
+experience. This design is implementation direction, not deployment or
+physical-phone acceptance evidence.
 
-## Direction
+## A quiet page with a clear next action
 
-Scry is a study notebook. By day it is blue-black ink on cool paper, and by
-night paper-colored text on blue-black ink. The palette has fixed roles:
+Warm paper, dark botanical ink, and cobalt replace the previous cool card
+surfaces. The page has generous margins, editorial reading typography, simple
+hairlines, and small square radii. It should feel like a place to think, rather
+than a dashboard to operate. There is no progress ring, streak, accuracy badge,
+notification feed, or always-visible due count.
 
-- **Cobalt:** the learner's own action, such as Next, Check, and Add to Scry.
-- **Green tick:** recall.
-- **Red pencil:** a miss.
-- **Violet:** a shown answer.
-- **Gold:** concept strength.
+The masthead contains the Scry wordmark and exactly two destinations: Create
+and Map. The wordmark returns to the held question or result. History and
+Settings live in the quiet footer. The reading column is at most 680 px;
+question practice narrows to 650 px. The outer page frame is 1080 px.
 
-Each goal's **star chart** on the Map is the one bold element. It is always a
-small window of night sky, in either scheme. Everything else stays quiet.
+Scry's mark is four connected points inside a fine circle. One point opens into
+a small star. It suggests curiosity becoming connected understanding. The Map
+repeats the language as one night-sky constellation per goal. The constellation
+is decorative; the ordinary linked concept list carries all useful information.
+Prerequisites determine horizontal depth. Actual observed practice determines
+brightness. Generated connections remain proposed relationships, not mastery.
 
-The frame is a masthead with the wordmark and exactly two destinations, Add
-and Map. History and Settings sit in the footer. Reading content sits in a
-single column no wider than 40rem.
+## Color and typography
 
-On a phone, the Stream places the question at the top and the answer controls
-in the bottom third, within thumb reach. On a result, Next and "I was right"
-stick to the bottom edge. On screens 48rem and wider, controls follow the
-question directly and nothing is pinned. Never turn review into a dashboard,
-a card grid, or a tab bar.
+| Role | Day | Night |
+| --- | --- | --- |
+| Paper | `#f5f2ea` | `#191e1d` |
+| Writing surface | `#fcfaf5` | `#212725` |
+| Primary ink | `#242721` | `#e9e8dd` |
+| Secondary ink | `#565b51` | `#c0c4b8` |
+| Quiet ink | `#687063` | `#a0a89a` |
+| Hairline | `#deddd2` | `#363d36` |
+| Control boundary | `#b7bcae` | `#596453` |
+| Cobalt action | `#344cc4` | `#a5b3ff` |
+| Recall | `#286749` | `#98c9a6` |
+| Miss | `#a64031` | `#efac97` |
+| Helped practice | `#74538a` | `#cdb3e0` |
+| Constellation | `#232c2b` | `#111916` |
 
-## Tokens
+State is always stated in words. Color reinforces its meaning. Cobalt means an
+action the learner can take; green, red pencil, and violet describe observed
+practice. The night scheme follows the system preference.
 
-Both schemes are defined in [`app.css`](internal/web/assets/app.css). Dark
-values apply under `prefers-color-scheme: dark`.
+Literata sets titles, questions, notes, explanations, and written answers.
+Atkinson Hyperlegible Next sets navigation, controls, provenance, and practical
+copy. Both are self-hosted variable WOFF2 fonts, copied with their SIL Open Font
+License to [assets/fonts](assets/fonts/). No third-party font request occurs.
+Literata italic supplies the held result's quiet verdict. Desktop page titles
+reach 64 px, mobile titles 44 px, and questions scale between 30 and 52 px.
+Reading prose uses 16–19 px and generous line height. Long text wraps instead
+of breaking the viewport.
 
-| Role | Day | Night | Use |
-| --- | --- | --- | --- |
-| `--paper` | `#F5F6F8` | `#0E1220` | Page ground |
-| `--sheet` | `#FFFFFF` | `#161B2C` | Raised surface: choices, pairs, panels |
-| `--sunk` | `#ECEEF3` | `#1B2135` | Quiet fill: receipts, icon wells |
-| `--rule` / `--rule-2` | `#DDE1E9` / `#B9C0CE` | `#262D44` / `#3B4462` | Hairlines / control borders |
-| `--ink` / `--ink-2` / `--ink-3` | `#131A2C` / `#434C63` / `#5C657D` | `#E9EBF3` / `#B1B7CB` / `#8E95AC` | Text ranks |
-| `--accent` | `#2B44D6` | `#93A4FF` | Primary action fill, focus ring |
-| `--accent-ink` | `#2338B5` | `#A9B6FF` | Links, current destination |
-| `--correct` | `#13693F` | `#6DD39C` | Recall |
-| `--miss` | `#AE251D` | `#FF8F87` | Miss, destructive |
-| `--helped` | `#5A45AE` | `#C3B3FF` | Shown, helped practice |
-| `--star` | `#B8861B` | `#F2C45B` | Strength dots |
-| `--sky` | `#121A33` | `#0A0F1F` | Star-chart ground |
+## Create and the useful first result
 
-Each color has a `*-soft` fill for seals and notices. Radii are 10, 14, and
-18 px: small, controls, and panels. Pills are fully round and are used only for
-chips, badges, and small actions. Text and control pairs meet WCAG AA in both
-schemes. State is always written in words; color only reinforces it.
+Create asks, “What do you want to learn?” One large writing surface accepts a
+word, phrase, ramble, pasted material, or dictated text. There is no mode picker,
+profile questionnaire, or quiz before preparation. An optional disclosure
+accepts a photo. The privacy note states that private words prepare material and
+pasted links do not trigger browsing. Text and photo limits are explained;
+validation retains the editable draft.
 
-## Type
+The first result is a saved reference: a plain explanation for each teachable
+idea, relevant examples and distinctions, provenance, and linked practice.
+Captured intent remains inspectable under “Your original request.” General
+knowledge says so; a request is never presented as a factual citation.
 
-- **Literata** (variable, with optical size and weight axes): questions,
-  headings, notes, explanations, and typed answers.
-- **Atkinson Hyperlegible Next** (variable weight): interface text, labels,
-  and controls. It was chosen for letterforms that stay distinct at small
-  sizes.
+Preparation gets a saved receipt. A pending result never claims to be ready.
+Existing practice remains available while preparation runs. Partial material is
+labeled partial. A failed or uncertain outcome preserves the request, explains
+what is known, and offers a deliberate bounded new attempt. Paid work is never
+silently resent because a browser poll or refresh occurs.
 
-Both are self-hosted Latin-subset WOFF2 files in
-[`internal/web/assets/fonts/`](internal/web/assets/fonts/). `OFL.txt` records
-their copyright and the SIL Open Font License. No remote font is fetched.
+A goal's refinement section asks what would make the material more useful. A
+concept asks what is still unclear. Saved feedback is inspectable alongside its
+reference. Refinement uses attempts and feedback while preserving existing
+notes, wording, and learning history.
 
-| Style | Setting |
-| --- | --- |
-| Question | Literata 470, `clamp(1.625rem, 1.2rem + 2vw, 2.25rem)` / 1.2 on phones, up to 2.5rem on desktop |
-| Page title | Literata 520, 2rem / 1.15 |
-| Section title | Literata 560, 1.25rem |
-| Verdict | Literata italic 600, 1.75rem |
-| Reading | Literata, 1.0625rem / 1.65, at most 36rem |
-| Interface | Atkinson, 1.0625rem body; 0.9375rem hints; 0.8125rem pair labels |
+## One question, one action, a held result
 
-Use sentence case with no tracked capitals. Headings balance their lines, and
-long unbroken strings such as URLs wrap anywhere.
+Returning study goes straight to the current question or a short prerequisite
+introduction. The question is the page's single h1. A choice tap submits that
+choice directly. Recall has one serif field and Check my answer. More contains
+Show me, Look it up, content repair, and archive. Keyboard numbers select
+choices; Enter submits written recall on fine pointers, Shift+Enter keeps a
+newline, and Enter or Space chooses Next outside a focused control.
 
-## Components and named states
+A new idea has a saved note and two deliberate observations: Start practicing
+and I know this already. Reading and either observation are exposure, not
+unaided recall. Assisted practice says so.
 
-- **Masthead:** a lens wordmark (a magnifier with a gold star) and "scry" in
-  Literata italic. It links to Add and Map. The current destination gets an
-  accent-soft pill. The app icon uses the same lens: paper color and gold on
-  the sky tile. It was checked at 16 px on white, dark, and grey browser tabs.
-- **Stream receipts:**
-  - Each preparation in progress is one compact row showing its title, stage,
-    and ready counts, marked with a static accent dot.
-  - Stopped preparations collapse into a single red-pencil disclosure, such as
-    "2 things you added couldn't be prepared", which lists each one's link.
-  - A receipt never pushes the question below the fold.
-- **Question:**
-  - An optional concept chip sits above the question, showing strength dots
-    and the concept name. It is inert before grading and links to the Concept
-    page after.
-  - The question itself is the page's h1.
-  - Choices are full-width sheets with a quiet key label (1 to 4) that matches
-    the keyboard shortcut. A tap submits the choice. A pressed choice shows
-    cobalt.
-  - Recall is one serif textarea with an inset mic button (shown only when
-    speech recognition is available), a hint, and Check. Check reads "Show me"
-    while the field is empty.
-- **More:** a centered "More" disclosure opens a single list with rows in this
-  order: Show me, Look it up, Count as a miss (after an automatic correct),
-  Fix this question, Edit, and a red "Archive this question" last.
-- **Result:** a seal and verdict: a green tick with "Correct.", a red cross
-  with "Not quite.", or a violet eye with "Shown.". The authority line names
-  who decided (Scry matched, Scry checked the meaning, you checked it, or you
-  changed it). A two-row pair follows: "You answered" (struck through in red
-  pencil on a miss) above "Answer". Then the explanation in reading type,
-  citation chips, Next, and on an automatic miss only, a quiet "I was right"
-  beneath Next. Nothing advances on its own.
-- **Self-check** uses a neutral balance seal, the reason in plain words, the
-  same pair, and a split "I was right" / "Not quite". A failed check adds a
-  quiet "Retry check". **Checking** shows the saved answer and says it can be
-  refreshed.
-- **Intro:** a "A new idea" kicker with a gold star, the concept name, its
-  summary, and the note as a cobalt-ruled reading column with its provenance.
-  "Got it" is primary and sticky on phones; "I know this already" is quiet.
-- **Empty states:** a round mark, a heading, one sentence, and actions.
-  - First run: "What are you curious about?" with Add something.
-  - Caught up: "You're caught up." with when the next question is due, Add
-    something, Open your map, and Check again.
-  - Gate: "Look it up?" explains that opening the page counts the question as
-    shown.
-  - Errors and not-found use the same shape.
-- **Add:** the page asks "What do you want to learn?". There are four mode
-  cards, and each card names its privacy consequence:
-  - Topic: Scry searches the web.
-  - My text: private, never searched.
-  - Link: Scry reads that one page.
-  - Photo: Scry reads the words in it.
+The answer and explanation are absent from HTML before grading, self-check,
+or recorded assistance. That fence covers the current concept's name and
+notes, the goal's title and original intent, edit fields, and earlier attempts
+that could reveal the answer. Opening a reference first presents an assistance
+gate; its POST durably records help before returning answer-bearing material.
 
-  A serif textarea with an inset mic follows. The photo field appears only
-  while Photo is chosen (via `:has`; without it the field stays visible).
-  Add to Scry is last.
-- **Map:** each goal is a section with:
-  - its title,
-  - In focus and Paused badges and its counts,
-  - the star chart,
-  - the concept list: strength dots, name, and status word,
-  - pill actions (Focus on this or Remove focus, Pause or Resume) and
-    Original input.
+A held result keeps the prompt, submitted answer, expected answer, explanation,
+and decision authority. It advances only on Next. Automatic misses offer I was
+right; automatic correct results offer Count as a miss in More. Corrections
+remain separate records and keep assistance attached to the original attempt.
+Uncertain checks present a self-check without inventing a grade. Failed checks
+also offer an explicit retry. The learner check retains whether the submitted
+attempt had help; reading the exposed answer makes the next practice helped.
 
-  Captures that stopped before any idea was mapped are listed together under
-  "Couldn't prepare". Earlier unplaced material has its own list.
-- **Star chart:** decorative (`aria-hidden`) and laid out on the server by
-  prerequisite depth, so prerequisites sit left of the ideas that need them.
-  Star brightness and radius follow concept strength, and the two strongest
-  levels get a soft halo. Labels are clipped to fit their column. With a
-  single row, labels alternate above and below the stars.
-- **Concept:**
-  - the strength and status kicker, the name, and the summary;
-  - a practice panel with the tally and the counts. Tally marks: filled green
-    for recalled, violet outline for with help, red slash for missed.
-  - "Estimated recall now: N%. This is an estimate, not a certainty.";
-  - Practice this;
-  - the note with its provenance, citations, and "What this draws on";
-  - connected ideas as strength chips;
-  - questions, each with a disclosed answer and Edit;
-  - More questions;
-  - a quiet archive.
-- **Source:**
-  - its mode kicker, excerpt title, and saved time;
-  - a preparation panel. Each step shows a check, alert, or dot, its status,
-    and a learner-language summary. Internal check identifiers are
-    parenthesized in stored errors; the summary removes those asides and keeps
-    the recorded text under Details.
-  - the photo, the original text, what Scry read, and questions.
-- **Edit:** fields grouped as Question, Answers, and Explanation. Draft,
-  drafting, and stopped-fix notices sit above the form. Fix and archive are
-  quiet disclosures.
-- **History:** the question leads each entry, followed by a meta line with a
-  verdict tag, the answer style ("Pick an answer" or "From memory"), the time,
-  and the authority. "See this attempt" reuses the result pair.
-- **Settings:** the pace as three radio cards with their daily counts, the
-  record as number tiles, the week's spend, backup attention when stale, and
-  the font and license notes.
-- **Request state:** an inverted toast pinned under the masthead, so it never
-  covers the bottom answer zone. It carries retry and recovery actions.
+On a phone, unanswered study stretches enough to put answer controls in the
+thumb zone. The result's Next and grade correction, self-check decisions, and
+introduction action stay at the bottom as the learner reads. Desktop controls
+follow the prose naturally. All core touch targets are at least 44 px, and
+primary/choice controls are larger. Narrow 320 px layouts retain ordinary
+flow without horizontal scrolling.
 
-## Interaction and motion
+## References, repair, and honest records
 
-[`app.js`](internal/web/assets/app.js) is presentation only. It does these
-things and nothing more:
+Map groups goals as readable sections, active before paused, focused first.
+Each has its constellation, concept states, Focus and Pause, and a reference
+link. Concepts expose current notes, prerequisites, practice, and authored
+questions. Recall is explicitly a scheduling estimate, never a certainty or a
+measure of understanding. Unaided, helped, and missed attempts have separate
+lifetime counts and an accessible recent tally. The estimate comes from the
+same pinned learning policy used by the durable scheduler.
 
-- toggles the recall button's copy;
-- submits on Enter (Shift+Enter inserts a newline on fine pointers);
-- maps keys 1 to 6 to choices, and Space or Enter to Next when focus is not in
-  a field;
-- reduces photos to at most 1600 px as JPEG at quality 0.82;
-- preselects only the private modes (My text when non-link text is pasted,
-  Photo when a file is chosen).
+Edits carry the current content version and preserve historical presentations.
+A prepared fix is a saved draft the learner can inspect, alter, and deliberately
+accept. It does not replace a question merely because model preparation
+finished. Faulty-material feedback can request a deliberate schedule reset;
+it remains distinct from changing an answer's grade. Archive stops future
+selection and retains history.
 
-Topic and Link are chosen by the learner alone. The browser never owns
-durable learning state or an offline queue.
+History preserves the question as presented, original answer, authority,
+assistance, and later correction. Settings offers the 3/6/12 new-idea rhythm,
+rolling preparation allowance and uncertain reservations, verified backup
+status, deliberate backup, portable export, and the font colophon. Recovery
+attention is stated plainly. An isolated synthetic preview carries a clear
+badge and alone offers an authored fixture; production never offers fixture
+seeding or presents authored material as model-quality proof.
 
-All motion sits under `prefers-reduced-motion: no-preference`, so reduced
-motion has none, and every motion answers a learner action:
+## Browser, privacy, and access
 
-- A result or new stage surfaces over 220ms (opacity and an 8px rise,
-  `cubic-bezier(.2,.7,.2,1)`).
-- The outgoing stage lifts over 140ms.
-- A pressed button scales to 0.985.
-- The More menu surfaces over 160ms.
-- The chip's strength dots glow once after a correct answer.
+Every mutation is an ordinary same-origin POST with CSRF and a unique
+cryptographic-render-nonce-bound operation ID. Core study, creation, reference,
+and repair work without JavaScript. The external vanilla controller enhances
+those forms; it owns no durable learning state and stores no private content in
+browser storage.
 
-There is no ambient animation, loading pulse, confetti, swipe grading, or
-timed advance.
+A successful response reconciles the rendered page. A definite validation
+rejection retains the learner's draft. If a response is lost, one frozen payload
+and operation stay unresolved, with explicit Reconcile this attempt and Open
+saved progress actions. Reconciliation sends the identical operation; it cannot
+invent a second answer. Offline study pauses. Reconnecting does not send a
+queued mutation. Only one unresolved mutation is permitted.
 
-## Copy, access, and trust
+Preparation polling is read-only and pauses while a field is being edited or
+an answer is unresolved. It never replaces an unanswered question or initiates
+paid work. A late response cannot revert a newer rendered stage.
 
-- **Study copy:** plain sentences. Provenance reads "From your material", "From
-  the web", or "General knowledge". Interface copy says "idea"; stories and
-  code say "concept".
-- **No engineering words** in learner copy: job, lease, schema, token, micros,
-  FSRS, check identifiers, or model names.
-- **Spend** appears in Settings and directly on a stopped preparation step,
-  alongside its reason and next actions; never in the question flow.
-- **No hidden answers:** answers, explanations, and evidence are absent from
-  visible and accessible markup before grading or self-check.
-- **Untrusted text** is never rendered as HTML.
+Access denial removes the private page. Pagehide removes private content from
+the retained browser page; restoration from back/forward cache reloads through
+the access boundary. The server must also enforce private, no-store responses.
+All user and model text is escaped. The policy uses external scripts/styles,
+self-hosted fonts, and no inline executable markup.
 
-Accessibility:
+## Accessibility, motion, and evidence
 
-- Use native buttons, links, radios, and disclosures. Touch targets are at
-  least 44 px; choices and Next are larger.
-- Each page has one h1 and a skip link (hidden until focused). The focus ring
-  is visible in both schemes and in forced colors.
-- The tally uses an ordered list with visually hidden words. Result
-  announcements are polite and atomic.
-- The CSP disallows inline styles, so SVG uses attributes and classes.
-- Layouts hold at 320, 390, and desktop widths. Keyboard, touch, and no-JS
-  forms keep equivalent core behavior.
+Each page has one h1, semantic landmarks, a focused skip link, native forms,
+visible focus, text labels, and honest polite status announcements. Decorative
+SVG is hidden from assistive technology. Ordinary links and disclosures expose
+all reference and maintenance controls. Forced colors retain control borders
+and focus. Reduced motion gets no transitions or animations. Other motion is
+limited to a pressed control and a short arrival after a learner action;
+there is no ambient animation or automatic advance.
 
-## Implementation and validation
-
-- [`internal/web/templates/`](internal/web/templates/) owns escaped markup, and
-  `icons.html` owns the inline icon set.
-- `goalChart` in [`concepts.go`](internal/web/concepts.go) owns the chart
-  layout.
-- `app.css` owns tokens, type, layout, and motion.
-
-Several hooks are relied on by other code and must be kept:
-
-- `form.answer-form`
-- `fieldset.choice-fieldset` with `.choice` buttons
-- `form[data-next]`
-- `details.overflow`
-- the `role=status` result
-- `section.empty-stage`
-- `data-state`
-- `class="feedback feedback-correct"`
-- `svg.constellation`
-
-The browser critic and the web tests read them.
-
-To verify, inspect real pages on an isolated exe.dev VM against the synthetic
-fixture:
-
-- **Widths and schemes:** 390 px and 1280 px in both schemes, as full pages
-  and phone first screens.
-- **Answer paths:** choice and recall answers, a miss followed by an override,
-  and a reveal.
-- **Self-check:** the unsure and failed cases.
-- **Other Stream states:** intro, receipts (in progress and stopped), caught
-  up, first run, and the gate.
-- **Pages:** Map with focus and pause, Concept, Source for each mode, Edit
-  with a fix draft, History, Dispute, Settings, and not-found.
-- **Transient states:** the offline toast.
-
-Then run:
-
-- `bun ~/.local/bin/design-check internal/web/templates`
-- axe-core on the captured states
-- `go test ./internal/web`
-
-A screenshot proves appearance only, not operator acceptance.
+[The Rust renderer](src/web.rs), [styles](assets/app.css), and
+[presentation controller](assets/app.js) implement this system.
+[Web rendering tests](tests/web_render.rs) verify the protection fence,
+escaping, operation identity, native form contract, synthetic boundaries,
+held results, and versioned repair. Browser acceptance must separately exercise
+320/390/1280 px layouts in both schemes, keyboard and actual pointer actions,
+o-JavaScript forms, held feedback, assistance, competing tabs, offline pauses,
+response loss, preparation recovery, and access loss. A rendered screenshot or
+synthetic pass establishes appearance or mechanics, not usefulness, physical
+phone acceptance, production activation, or learning gains.

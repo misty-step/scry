@@ -5,7 +5,7 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { writeFile, readFile, mkdir, open, access, constants, lstat, readdir } from 'node:fs/promises';
+import { writeFile, readFile, mkdir, open, lstat, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { connect } from 'node:net';
 import os from 'node:os';
+import {randomBytes} from 'node:crypto';
+import {artifactIdentity,snapshotSource,verifyWorkerIdentity} from './lib/worker-artifact.mjs';
+import {sourceProvenance} from './lib/source-provenance.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,9 +38,8 @@ function sha256File(path) {
 }
 
 function getGitRevision() {
-  const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
-  if (r.status !== 0) return null;
-  return r.stdout.trim();
+  try { return sourceProvenance(REPO_ROOT).revision; }
+  catch (_) { return null; }
 }
 
 function sleep(ms) {
@@ -76,215 +78,104 @@ function isPortBusy(port) {
 }
 
 async function candidateUp(args) {
-  const { parseArgs } = await import('node:util');
+  const {parseArgs}=await import('node:util');
   let values;
   try {
-    ({ values } = parseArgs({
-      args,
-      options: {
-        dir: { type: 'string' },
-        port: { type: 'string' },
-        out: { type: 'string' },
-        binary: { type: 'string' },
-        json: { type: 'boolean' },
-      }
-    }));
-  } catch (err) {
-    fail('usage: candidate up: ' + err.message);
-  }
-
-  const dir = values.dir || join(REPO_ROOT, 'target/critics/candidate');
-  const port = values.port ? parseInt(values.port, 10) : 18080;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) fail('usage: --port must be a port number 1-65535');
-  const outPath = values.out || join(dir, 'candidate.json');
-  const dbPath = join(dir, 'synthetic.sqlite');
-  const binaryPath = values.binary ? values.binary : join(dir, 'scry');
-  const backupsDir = join(dir, 'backups');
-
-  const homeDir = os.homedir();
-  const goBin = join(homeDir, '.local/share/mise/installs/go/1.27.1/bin');
-  const goModCache = process.env.GOMODCACHE || join(homeDir, '.go-modcache');
-
-  const env = {
-    GOPATH: "",
-    PATH: goBin + ':/usr/bin:/bin',
-    HOME: homeDir,
-    LANG: 'C.UTF-8',
-    SCRY_BACKUP_DIR: backupsDir,
-    GOMODCACHE: goModCache
-  };
-  await mkdir(goModCache, { recursive: true });
-
+    ({values}=parseArgs({args,options:{
+      dir:{type:'string'},port:{type:'string'},out:{type:'string'},
+      binary:{type:'string'},json:{type:'boolean'}
+    }}));
+  } catch(error) {fail('usage: candidate up: '+error.message);}
+  const {resolve}=await import('node:path');
+  const dir=resolve(values.dir||join(REPO_ROOT,'target/critics/candidate'));
+  const port=values.port===undefined?18080:Number(values.port);
+  if(!Number.isInteger(port)||port<1||port>65535)fail('usage: --port must be a port number 1-65535');
+  const outPath=resolve(values.out||join(dir,'candidate.json'));
+  if(existsSync(outPath))fail('Candidate handle exists. Use fresh dir: '+dir);
+  let state='missing';
   try {
-    await readFile(outPath);
-    process.stderr.write('Candidate handle exists. Use fresh dir: ' + dir + '\n');
-    process.exit(2);
-  } catch (_) {}
-
-  // Freshness guard (data safety): the tool never recursively deletes a
-  // directory. A pre-existing non-empty --dir is refused (exit 2) with its
-  // content untouched; a missing dir is created; an existing empty dir is
-  // treated as fresh. The handle-exists refusal above stays first so a dir
-  // holding a written handle keeps its dedicated message.
-  let dirState = 'missing';
-  try {
-    const dirStat = await lstat(dir);
-    if (!dirStat.isDirectory()) dirState = 'not-a-directory';
-    else dirState = (await readdir(dir)).length === 0 ? 'empty' : 'non-empty';
-  } catch (err) {
-    if (err.code !== 'ENOENT') {
-      process.stderr.write('Candidate dir is not fresh: cannot inspect ' + dir + ' (' + err.message + '); refusing to proceed. Use a fresh dir\n');
-      process.exit(2);
-    }
-  }
-  if (dirState === 'non-empty') {
-    process.stderr.write('Candidate dir is not fresh: ' + dir + ' already contains files; refusing to delete existing content. Use a fresh dir\n');
-    process.exit(2);
-  }
-  if (dirState === 'not-a-directory') {
-    process.stderr.write('Candidate dir is not fresh: ' + dir + ' is not a directory; refusing to replace it. Use a fresh dir\n');
-    process.exit(2);
-  }
-
-  // Fail fast on an occupied port: the ready poll must never be satisfied by
-  // another process, and the handle must never record a PID that does not serve.
-  if (await isPortBusy(port)) {
-    process.stderr.write(`Port ${port} is already in use; refusing to start a candidate that cannot bind\n`);
-    process.exit(2);
-  }
-
-  await mkdir(dir, { recursive: true });
-  await mkdir(backupsDir, { recursive: true });
-
-  if (values.binary) {
-    try {
-      await access(binaryPath, constants.X_OK);
-    } catch (_) {
-      process.stderr.write('--binary is not an executable file: ' + binaryPath + '\n');
-      process.exit(2);
-    }
-  } else {
-    const buildR = spawnSync('go', ['build', '-mod=readonly', '-o', binaryPath, './cmd/scry'], {
-      cwd: REPO_ROOT,
-      env, encoding: 'utf8'
-    });
-    if (buildR.status !== 0) {
-      process.stderr.write('Build failed: ' + (buildR.stderr || 'unknown error') + '\n');
-      process.exit(2);
-    }
-  }
-
-  // Build provenance. The handle records the revision the served binary was
-  // built from (`binary_revision`) and the state of the tree it was built
-  // from (`source_state`), next to the walking checkout revision. For the
-  // default build both describe the checkout by construction (checkout ==
-  // build source). For --binary the binary's own evidence decides: a
-  // determinable revision that differs from the checkout (or cannot be
-  // compared to one) refuses here, before any handle exists; an
-  // undeterminable revision is recorded as null and the walk binding later
-  // fails closed on it. The source state likewise comes from the binary's
-  // own evidence (buildinfo vcs.modified); when the binary cannot determine
-  // it, the state is `unknown` -- the walking checkout's revision or state
-  // is never asserted as the supplied binary's provenance.
-  const revision = getGitRevision();
-  let binaryRevision = revision;
-  let binaryRevisionSource = revision ? 'source-build' : null;
-  let sourceState = 'unknown';
-  let sourceStateSource = null;
-  if (values.binary) {
-    const { readBinaryProvenance, sourceStateFromProvenance } = await import('./lib/provenance.mjs');
-    const provenance = readBinaryProvenance(binaryPath, { env });
-    binaryRevision = provenance.revision;
-    binaryRevisionSource = provenance.source;
-    const state = sourceStateFromProvenance(provenance);
-    sourceState = state.state;
-    sourceStateSource = state.source;
-    if (binaryRevision && binaryRevision !== revision) {
-      process.stderr.write(revision
-        ? `--binary was built from revision ${binaryRevision}, but the checkout HEAD is ${revision}; refusing to record a handle that would mislabel the served artifact\n`
-        : `--binary was built from revision ${binaryRevision}, but the checkout revision is unavailable; refusing to record a handle whose provenance cannot be verified against a checkout\n`);
-      process.exit(2);
-    }
-  } else {
-    // Source build: the checkout is the build source by construction, so its
-    // working-tree state is the built artifact's state.
-    const st = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
-    if (st.status === 0) {
-      sourceState = st.stdout.trim() ? 'dirty' : 'clean';
-      sourceStateSource = 'source-checkout';
-    }
-  }
-
-  const seedR = spawnSync(binaryPath, ['seed-fixture', '--db', dbPath], { env, encoding: 'utf8' });
-  if (seedR.status !== 0) {
-    process.stderr.write('Seed failed: ' + seedR.stderr + '\n');
-    process.exit(2);
-  }
-  let seed;
-  try {
-    seed = JSON.parse(seedR.stdout);
-  } catch (_) {
-    process.stderr.write('Seed output was not JSON\n');
-    process.exit(2);
-  }
-
-  const logPath = join(dir, 'serve.log');
-  const logFd = await open(logPath, 'w');
-  const serveCmd = spawn(binaryPath, ['serve', '--dev', '--db', dbPath, '--addr', `127.0.0.1:${port}`], {
-    env,
-    detached: true,
-    stdio: ['ignore', logFd.fd, logFd.fd]
+    const info=await lstat(dir);
+    state=info.isDirectory()&&!info.isSymbolicLink()?(await readdir(dir)).length?'non-empty':'empty':'not-a-directory';
+  } catch(error) {if(error.code!=='ENOENT')fail('Candidate dir is not fresh: '+error.message);}
+  if(state!=='missing'&&state!=='empty')fail('Candidate dir is not fresh: '+dir+'; refusing to delete existing content. Use a fresh dir');
+  if(await isPortBusy(port))fail('Port '+port+' is already in use; refusing to start a candidate that cannot bind');
+  if(values.binary)fail('--binary is a historical Go option and is unsupported for the Rust Worker. Build a fresh source-bound candidate.');
+  const provenance=sourceProvenance(REPO_ROOT);
+  const revision=provenance.revision;
+  if(!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(revision||''))fail('Git revision unavailable; refusing unverifiable candidate provenance');
+  const sourceState=provenance.source_state;
+  await mkdir(dir,{recursive:true});
+  const sourceDirectory=join(dir,'source');
+  const source=await snapshotSource(REPO_ROOT,sourceDirectory);
+  // Only tool-cache capabilities enter this build. The compiled source is a
+  // frozen copy, so another collaborator's changes cannot relabel this build.
+  const buildEnv={PATH:process.env.PATH,HOME:os.homedir(),LANG:'C.UTF-8'};
+  for(const key of ['CARGO_HOME','RUSTUP_HOME'])if(process.env[key])buildEnv[key]=process.env[key];
+  buildEnv.CARGO_TARGET_DIR=join(REPO_ROOT,'target/critic-rust-build');
+  const built=spawnSync('worker-build',['--release','--locked'],{
+    cwd:sourceDirectory,env:buildEnv,encoding:'utf8',timeout:600000,maxBuffer:16*1024*1024
   });
-  serveCmd.unref();
-
-  let ready = false;
-  let earlyExit = false;
-  const url = `http://127.0.0.1:${port}`;
-  const { readyAttempt } = await import('./lib/ready.mjs');
-  for (let i = 0; i < 30; i++) {
-    if (serveCmd.exitCode !== null) { earlyExit = true; break; }
-    try {
-      // Each attempt is bounded: a server that accepts but never answers must
-      // not leave the attempt pending forever (the 30-attempt bound could
-      // never advance).
-      await readyAttempt(url, { timeoutMs: 2000 });
-      ready = true;
-      break;
-    } catch (_) {
-      await sleep(500);
-    }
-  }
-  if (!ready) {
-    process.stderr.write(earlyExit
-      ? `Server exited before becoming ready (see ${logPath})\n`
-      : 'Server did not become ready\n');
-    try { serveCmd.kill(); } catch (_) {}
-    process.exit(2);
-  }
-  // Settle: a bind failure kills the child within milliseconds of the ready answer.
-  await sleep(250);
-  if (serveCmd.exitCode !== null) {
-    process.stderr.write(`Server exited during startup (see ${logPath})\n`);
-    process.exit(2);
-  }
-
-  const binarySha = sha256File(binaryPath);
-  const pid = serveCmd.pid;
-  const started_at = new Date().toISOString();
-
-  const id = 'cand-' + createHash('sha256').update(`${revision}|${url}|${binarySha}`).digest('hex').slice(0, 12);
-
-  const handle = {
-    format: 'scry-critic-candidate-v1',
-    id, pid, url, dir, port, db: dbPath, binary: binaryPath, binary_sha256: binarySha,
-    seed, revision, binary_revision: binaryRevision, binary_revision_source: binaryRevisionSource,
-    source_state: sourceState, source_state_source: sourceStateSource, kind: 'isolated-synthetic', started_at
+  await writeFile(join(dir,'build.log'),(built.stdout||'')+(built.stderr||''));
+  if(built.status!==0)fail('Rust Worker build failed (see '+join(dir,'build.log')+'): '+(built.error?.message||built.stderr||'unknown error'));
+  const artifact={directory:join(sourceDirectory,'build'),...await artifactIdentity(join(sourceDirectory,'build'))};
+  const url='http://127.0.0.1:'+port;
+  const id='cand-'+createHash('sha256').update(revision+'|'+source.sha256+'|'+url+'|'+artifact.sha256).digest('hex').slice(0,12);
+  const attestation=randomBytes(24).toString('hex');
+  const runner=join(__dirname,'worker-server.mjs');
+  await writeFile(join(dir,'launch.json'),JSON.stringify({id,attestation,artifact,source_sha256:source.sha256})+'\n');
+  const log=await open(join(dir,'serve.log'),'w');
+  // No inherited app/provider/cloud env and no dotenv loading. The helper
+  // supplies only synthetic bindings and denies every outbound service call.
+  const runtimeEnv={PATH:process.env.PATH,HOME:dir,LANG:'C.UTF-8',WRANGLER_SEND_METRICS:'false',CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV:'false'};
+  for(const key of ['SCRY_WRANGLER_PACKAGE'])if(process.env[key])runtimeEnv[key]=process.env[key];
+  const child=spawn(process.execPath,[runner,'--directory',dir,'--port',String(port)],{
+    cwd:artifact.directory,env:runtimeEnv,detached:true,stdio:['ignore',log.fd,log.fd]
+  });
+  child.unref();await log.close();
+  const handle={
+    format:'scry-critic-worker-candidate-v2',id,pid:child.pid,url,dir,port,
+    binary:runner,binary_sha256:artifact.sha256,runner_sha256:sha256File(runner),
+    revision,binary_revision:revision,binary_revision_source:'rust-source-snapshot',
+    source_state:sourceState,source_state_source:provenance.state_source,
+    gate_source_sha256:provenance.gate_source_sha256,
+    source_sha256:source.sha256,source_inventory:join(sourceDirectory,'critic-source.json'),
+    artifact,attestation,kind:'isolated-synthetic',
+    seed:{model:'authored-test-fixture',source:'src/engine.rs::seed_fixture'},
+    storage:'disposable workerd SQLite/R2; no restart or hosted recovery claim',
+    started_at:new Date().toISOString()
   };
+  const {readyAttempt}=await import('./lib/ready.mjs');
+  let ready=false;
+  for(let attempt=0;attempt<30;attempt++) {
+    if(child.exitCode!==null)break;
+    try {
+      const marker=JSON.parse(await readFile(join(dir,'ready.json'),'utf8'));
+      if(marker.pid!==child.pid||marker.token!==attestation||marker.artifact_sha256!==artifact.sha256)throw Error('Ready marker does not identify this child');
+      await readyAttempt(url,{timeoutMs:2000});
+      await verifyWorkerAttestation(handle);
+      ready=true;break;
+    } catch {await sleep(500);}
+  }
+  if(!ready) {
+    try{process.kill(-child.pid,'SIGTERM');}catch{}
+    await sleep(300);
+    try{process.kill(-child.pid,'SIGKILL');}catch{}
+    const detail=(await readFile(join(dir,'serve.log'),'utf8').catch(()=>'' )).slice(-4000);
+    fail('Worker exited or did not become ready (see '+join(dir,'serve.log')+')'+(detail?'\n'+detail:''));
+  }
+  await mkdir(dirname(outPath),{recursive:true});
+  await writeFile(outPath,JSON.stringify(handle,null,2)+'\n',{flag:'wx'});
+  if(values.json)jsonOutput(handle);else process.stdout.write('Synthetic Rust Worker ready: '+url+'\n');
+}
 
-  await writeFile(outPath, JSON.stringify(handle, null, 2));
-
-  if (values.json) jsonOutput(handle);
-  else process.stdout.write('Candidate ready: ' + url + '\n');
+async function verifyWorkerAttestation(handle) {
+  const nonce=randomBytes(16).toString('hex');
+  const response=await fetch(handle.url+'/__critic/identity?nonce='+nonce,{signal:AbortSignal.timeout(2000),redirect:'error'});
+  if(!response.ok)throw Error('Serving Worker attestation unavailable');
+  const actual=await response.json();
+  if(actual.id!==handle.id||actual.pid!==handle.pid||actual.token!==handle.attestation||
+     actual.artifact_sha256!==handle.binary_sha256||actual.source_sha256!==handle.source_sha256||actual.nonce!==nonce)
+    throw Error('Serving Worker does not match the source/artifact handle');
 }
 
 async function candidateDown(args) {
@@ -307,16 +198,17 @@ async function candidateDown(args) {
   catch (_) { process.stderr.write('Handle not found: ' + outPath + '\n'); process.exit(2); }
 
   const ps = spawnSync('ps', ['-o', 'args=', '-p', handle.pid], { encoding: 'utf8' });
-  if (ps.status !== 0 || !ps.stdout.includes(handle.binary)) {
+  if (ps.status !== 0 || !ps.stdout.includes(handle.binary) ||
+      (handle.format === 'scry-critic-worker-candidate-v2' && !ps.stdout.includes(handle.dir))) {
     process.stderr.write('PID does not match our binary; refusing to kill\n');
     process.exit(2);
   }
 
   try {
-    process.kill(handle.pid, 'SIGTERM');
+    process.kill(handle.format === 'scry-critic-worker-candidate-v2' ? -handle.pid : handle.pid, 'SIGTERM');
     await sleep(2000);
     if (spawnSync('ps', ['-p', handle.pid], { encoding: 'utf8' }).status === 0) {
-      process.kill(handle.pid, 'SIGKILL');
+      process.kill(handle.format === 'scry-critic-worker-candidate-v2' ? -handle.pid : handle.pid, 'SIGKILL');
     }
   } catch (err) {
     process.stderr.write('Failed to kill process ' + handle.pid + ': ' + err.message + '\n');
@@ -341,7 +233,9 @@ async function candidateDown(args) {
 async function verifyServedArtifact(handle) {
   const { classifyOrigin } = await import('./lib/guards.mjs');
   const classified = classifyOrigin(String(handle.url ?? ''));
-  if (!classified.ok || classified.kind !== 'loopback') return { ok: true, checked: false };
+  if (!classified.ok || classified.kind !== 'loopback') return handle.format === 'scry-critic-worker-candidate-v2'
+    ? {ok:false,checked:false,reason:'Worker v2 handles require their run-owned loopback origin'}
+    : {ok:true,checked:false};
 
   const pid = Number(handle.pid);
   if (!Number.isInteger(pid) || pid < 1) {
@@ -362,6 +256,17 @@ async function verifyServedArtifact(handle) {
     return { ok: false, checked: true, reason: `process ${pid} does not run the handle binary ${binaryPath}; refusing to bind to another artifact` };
   }
 
+  if (handle.format === 'scry-critic-worker-candidate-v2') {
+    try {
+      if (!ps.stdout.includes(handle.dir)) throw Error('Serving process is not the run-owned Worker');
+      if (sha256File(binaryPath) !== handle.runner_sha256) throw Error('Synthetic transport runner changed since startup');
+      await verifyWorkerIdentity(handle);
+      await verifyWorkerAttestation(handle);
+      if (handle.binary_revision !== handle.revision) throw Error('Worker source revision does not match its claimed revision');
+      return {ok:true,checked:true};
+    } catch(error) {return {ok:false,checked:true,reason:error.message};}
+  }
+  // v1 is retained only for isolated historical binding/negative batteries.
   let actual;
   try { actual = sha256File(binaryPath); }
   catch (err) { return { ok: false, checked: true, reason: `handle binary ${binaryPath} is unreadable: ${err.message}` }; }
@@ -416,9 +321,14 @@ async function loadCandidateHandle(handlePath, targetUrl) {
   }
   if (typeof raw.binary_sha256 === 'string') block.binary_sha256 = raw.binary_sha256;
   if (typeof raw.source_state === 'string') block.source_state = raw.source_state;
+  if (raw.format === 'scry-critic-worker-candidate-v2') {
+    block.runtime = 'Rust Worker/workerd'; block.source_sha256 = raw.source_sha256;
+    block.artifact = raw.artifact; block.identity_format = raw.format;
+    block.gate_source_sha256 = raw.gate_source_sha256 || null;
+  }
   if (raw.seed && typeof raw.seed === 'object' && typeof raw.seed.model === 'string') block.seed = raw.seed.model;
 
-  if (raw.format !== 'scry-critic-candidate-v1') return { ok: false, reason: 'handle format mismatch: ' + raw.format, identityBlock: block };
+  if (!['scry-critic-candidate-v1','scry-critic-worker-candidate-v2'].includes(raw.format)) return { ok: false, reason: 'handle format mismatch: ' + raw.format, identityBlock: block };
   if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(raw.revision ?? ''))) return { ok: false, reason: 'handle revision missing or invalid', identityBlock: block };
   if (!/^[0-9a-f]{64}$/i.test(String(raw.binary_sha256 ?? ''))) return { ok: false, reason: 'handle binary_sha256 missing or invalid', identityBlock: block };
 
@@ -528,11 +438,14 @@ async function humanWalk(args) {
   const findings = [];
   const coverage = { exercised: [], skipped: [] };
 
-  // Authored fixture answers (cmd/scry/main.go seed-fixture). The critic knows
-  // its own fixture; unknown prompts fall back to placeholder behavior.
+  // Authored fixture answers (src/engine.rs seed_fixture), plus historical
+  // DNS/TLS prompts used by negative batteries. These are fixture-only oracles.
   const FIXTURE_ANSWERS = {
     'what type of address does a dns a record map a hostname to?': 'IPv4 address',
     'what protocol does https use to encrypt http?': 'TLS',
+    'which response directive sets how long a cached response may be reused without validation?': 'max-age',
+    'a stored response has passed its freshness lifetime. what does that tell you?': 'It may need validation before reuse',
+    'what http status tells a browser its cached representation can be reused after a conditional request?': '304',
   };
 
   function getNetworkType(inputUrl) {
@@ -559,7 +472,8 @@ async function humanWalk(args) {
       kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
       seed: binding.seed,
       binary_sha256: binding.binary_sha256,
-      source_state: binding.source_state
+      source_state: binding.source_state,
+      ...(binding.artifact ? {runtime:binding.runtime,artifact:binding.artifact,source_sha256:binding.source_sha256,gate_source_sha256:binding.gate_source_sha256,identity_format:binding.identity_format} : {})
     };
   }
 
@@ -624,7 +538,8 @@ async function humanWalk(args) {
           kind: url ? 'external-isolated-synthetic' : 'isolated-synthetic',
           seed: bindingOverride.seed,
           binary_sha256: bindingOverride.binary_sha256,
-          source_state: bindingOverride.source_state
+          source_state: bindingOverride.source_state,
+          ...(bindingOverride.artifact ? {runtime:bindingOverride.runtime,artifact:bindingOverride.artifact,source_sha256:bindingOverride.source_sha256,gate_source_sha256:bindingOverride.gate_source_sha256,identity_format:bindingOverride.identity_format} : {})
         };
       })(),
       environment: { viewport: '390x844', user_agent: useragent, network: networkType, data: 'synthetic-authored' },
@@ -657,11 +572,11 @@ async function humanWalk(args) {
     if (!browser.playwright) {
       process.stderr.write('Playwright unavailable. Use one of:\n');
       process.stderr.write('  NODE_PATH=/path/to/playwright\n');
-      process.stderr.write('  SCRY_CRITICS_PLAYWRIGHT=/path/to/playwright\n');
+      process.stderr.write('  SCRY_CRITICS_PLAYWRIGHT_PATH=/path/to/playwright\n');
       process.stderr.write('  or add playwright to project package.json\n');
       await writeBlockedReceipt('playwright unavailable');
     } else {
-      process.stderr.write('No Chromium found. Set CHROMIUM_PATH or install:\n');
+      process.stderr.write('No Chromium found. Set SCRY_CRITICS_CHROMIUM_PATH or install:\n');
       process.stderr.write('  /usr/bin/chromium\n');
       process.stderr.write('  /usr/bin/google-chrome\n');
       await writeBlockedReceipt('chromium unavailable');
@@ -707,10 +622,18 @@ async function humanWalk(args) {
     };
 
     let { obs: observation, discovery } = await readState();
+    if (await p.$('[data-state="intro"]')) {
+      checkBudget('acknowledge authored introduction');
+      const intro = await p.$('form[action="/review/intro"] button');
+      if (!intro) throw Error('Authored concept introduction has no locatable acknowledgment');
+      await intro.click();
+      await p.waitForTimeout(1200);
+      ({obs:observation,discovery}=await readState());
+    }
     let normalizeSteps = 0;
     while (discovery.state === 'graded' && normalizeSteps < 5) {
       checkBudget('normalize ' + (normalizeSteps + 1));
-      const nb = await p.$('form[data-next] button[type="submit"]');
+      const nb = await p.$('form[data-next] button');
       if (!nb) break;
       await nb.click();
       await p.waitForTimeout(1200);
@@ -810,8 +733,9 @@ async function humanWalk(args) {
     } else if (affordanceType === 'recall') {
       const ta = await p.$('form.answer-form textarea[name="answer"]');
       if (ta) {
-        await ta.fill(fixtureAnswer || 'test answer');
-        await p.click('form.answer-form button[type="submit"]');
+        if (!fixtureAnswer) throw Error('Unsupported authored recall prompt; no answer oracle for this journey');
+        await ta.fill(fixtureAnswer);
+        await p.click('form.answer-form button:not([type="button"])');
         answerAction = 'recall';
       }
     }
@@ -915,8 +839,8 @@ async function humanWalk(args) {
     });
     coverage.exercised.push('US-002.2');
 
-    // Press Next using correct locator: form[data-next] button[type=submit]
-    const nextBtn = await p.$('form[data-next] button[type="submit"]');
+    // Press Next using correct locator: form[data-next] button
+    const nextBtn = await p.$('form[data-next] button');
     if (!nextBtn) {
       checks.push({ 
         id: 'US-002.2-next', 
@@ -1027,17 +951,17 @@ async function humanWalk(args) {
   }
 }
 
-function main() {
+async function main() {
   const [,, cmd, ...args] = process.argv;
 
   if (cmd === 'candidate') {
     const [op, ...rest] = args;
-    if (op === 'up') candidateUp(rest);
-    else if (op === 'down') candidateDown(rest);
+    if (op === 'up') await candidateUp(rest);
+    else if (op === 'down') await candidateDown(rest);
     else { process.stderr.write('unknown candidate op: ' + op + '\n'); process.exit(2); }
   }
-  else if (cmd === 'human') humanWalk(args);
+  else if (cmd === 'human') await humanWalk(args);
   else { process.stderr.write('unknown command: ' + cmd + '\n'); process.exit(2); }
 }
 
-main();
+main().catch(error => fail('Blocked: '+error.message));

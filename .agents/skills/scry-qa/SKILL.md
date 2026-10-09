@@ -1,134 +1,87 @@
 ---
 name: scry-qa
 description: >
-  Exercise the changed Scry surface against reality: Go learning/storage,
-  private HTTP/browser interaction, generation, recovery, or release smoke.
-  Use for QA, verification, smoke tests, or checking the app.
+  Exercise the changed Scry replacement against reality: Rust learning and
+  SQLite state, Worker/private browser, generation, recovery, or release smoke.
 argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 ---
 
 # Scry QA
 
-Scry is a private Go/SQLite/HTMX app on Cloudflare: Cloudflare Access gates
-Worker `scry-app-host`, which forwards to one singleton Container. An
-append/read-only backup Worker exposes the private R2 recovery store. Read
-`docs/qa/system.md` and the relevant `docs/runbook.md` section. The former
-exe.dev app service is disabled; its retained database, the old Rust Workers,
-and native Postgres are recovery material, not active application writers or
-current production deployment targets.
+The active rewrite is Rust/WASM on a plain Cloudflare Worker, one SQLite Durable
+Object, and private R2. The documented deployed app remains the Go Container
+behind Access and `scry-app-host`; source changes do not activate a replacement.
+Read [QA](../../../docs/qa/system.md) and the relevant
+[operational runbook](../../../docs/runbook.md) before selecting proof.
 
-## Choose meaningful proof
+## Doctor — choose meaningful proof
 
-| Changed surface | Existing checks | Real-world proof |
+| Surface | Existing check | Separate real observation |
 | --- | --- | --- |
-| Learning/storage | `go test ./internal/learning ./internal/store` | Durable event/schedule agreement, exact retry, restart |
-| Web/auth | `go test ./internal/web` | Real browser events, rendered state, actual private ingress and access loss |
-| Generation | `go test ./internal/generation` | One bounded authorized live exercise; inspect content/provenance/coverage and provider spend |
-| Recovery | `go test ./internal/recovery` | Remote checksum readback, independent restore, restored service/UI when claimed |
-| Release | `bun run ci` or `bun run ci:full` | Inspect and deploy the exact source-bound smoke-tested binary |
-| Historical recovery | `bun run test:recovery` | Corresponding old format/store only; no Go parity claim |
+| Pure learning | `cargo test --locked --test learning_policy --test fsrs_golden --test concept_policy` | 260 scheduler golden trajectories protect compatibility, not efficacy |
+| Durable application | `cargo test --locked --test application` | Real workerd/SQLite restart, exact replay, one event/schedule/held result |
+| Web | `cargo test --locked --test web_render` | Native pointer/keyboard, no-JS forms, private DOM on access loss |
+| Generation/critic | `cargo test --locked --test generation_policy --test application` | Bounded authorized real inputs, human-reviewed material, independent critic and recorded provider usage |
+| Recovery | `cargo test --locked --lib` | Complete remote archive readback, independently retrieved fresh-space restore and private UI |
+| Target/gate | `cargo check --locked --target wasm32-unknown-unknown`, `worker-build --release --locked`, `bun run ci` | Exact source/artifact-bound local Worker smoke; activation separately |
+| Historical recovery | `bun run test:recovery` | Corresponding historical format/source only |
 
-The full release command is:
+Native lint is `cargo clippy --all-targets -- -D warnings`. The source-snapshot
+gate is `scripts/scry-ci`; committed release output requires
+`--require-committed`. Worktree output is development evidence. Never rebuild
+between proof and activation or lower protected release/recovery gates.
 
-```sh
-bun run ci:full -- --out target/ci-release --require-committed
-```
+## Launch — isolated browser and Worker
 
-It uses pinned Dagger tooling, freezes actual source, runs shared checks and
-redacted Gitleaks, and exports the same binary exercised by the synthetic smoke.
-Worktree-labeled artifacts are not committed release proof. Never rebuild
-between smoke and deployment or bypass Cloudflare's protected release gates or
-remote-backup verification.
-Scheduled or exploratory critic passes use `scripts/critics/` with run
-instructions in [docs/qa/critics.md](../../../docs/qa/critics.md); treat their
-output as advisory.
+`bun run dev` / `bun run rust-dev` run `scripts/rust-dev`: unused private run
+directory, synthetic loopback identity, local workerd SQLite/R2, and `env -i`
+with no inherited provider, remote backup, deployment, or operator authority.
+The script never loads repository private env files. The explicit authored-demo
+action works only in an empty synthetic notebook. Fixtures never prove real
+provider quality, unaided recall, production ingress, or remote recovery.
 
-## UI and private production
-
-For mutation experiments, follow the authoritative
-[local authored-fixture recipe](../../../docs/qa/system.md#local-authored-fixture).
-It seeds a fresh isolated database and strips inherited model/remote-backup
-capabilities before serving; `--dev` alone does not provide that isolation.
-
-Open a real browser. Exercise answer → held feedback → deliberate Next, Add and
-saved generation state, Library/correction, refresh/background/reconnect, and
-loss of a response after commit. Check persisted state as well as the screen.
-Use native pointer/keyboard input. A DOM `.click()` bypass is not touch proof.
-Diagnose a stalled harness or start a fresh isolated browser; do not erase the
-acceptance gap. Physical-phone acceptance belongs to the operator.
-
-Use only the operator-approved Cloudflare Access owner login on production.
-VM-scoped credentials belong only to explicitly authorized recovery work, never
-as a substitute for Access. Keep credentials out of URLs, argv, screenshots,
-logs, and committed receipts.
-Verify anonymous/forged Access denial, wrong Host/peer, cross-site or stale
-mutations, and private content after access loss. Alternate hosts redirect reads,
-never replay writes. Do not assume Access sign-out, the Go session cookie, or
-independent provider/recovery credentials revoke one another; verify each at its
-own authority.
-
-Health/readiness are plaintext `ok`/`ready`; they do not prove a fresh remote R2
-backup, model usefulness, or learning. Settings exposes backup status. There is
-no Go `/statusz`, public `/v1`, or maintained Rust CLI/MCP contract.
-
-## Recovery and report
-
-Restore a completed independently retrieved archive and compatible binary into
-an unused isolated environment. Never overwrite the live database, attach live
-integrations to a preview, or restart uncertain paid work automatically. A data
-restore is not full service recovery: measure activation, private HTTPS and UI
-when claiming those; name omitted provisioning or DNS steps. Stop the rehearsal
-when finished. Local-only backup allowance is synthetic-only, never production.
-
-Reuse valid evidence and keep dated receipts truthful. Return PASS, FAIL, or
-UNVERIFIED with exact source/artifact, environment, behavior exercised, observed
-results, and limitations. Tests, live AI, phone acceptance, delayed recall,
-provider mail delivery, and availability are separate claims. Do not turn old
-Rust fixtures or receipts into proof of the current Go product.
-
-## Launch
-
-On the project VM, use `ws init`, `ws up --task factory-foundations`, then
-`ws run --task factory-foundations -- bash .exe/setup.sh` if the workspace was
-not bootstrapped. Run browser/heavy checks with `ws run --task factory-foundations
--- qa/walk --all`; use `ws browser --task factory-foundations` for an interactive
-headless browser over the VM's CDP tunnel. `qa/walk` builds `./cmd/scry`,
-creates a new run-owned `~/.cache/tmp/scry-walk.XXXXXXXX` directory, and invokes
-`seed-fixture --db` on its unused SQLite path.
-
-## Doctor
-
-Confirm `go version` is Go 1.27.1 linux/amd64, `node --version` is 22 or newer,
-and `.exe/setup.sh` has installed test-only Playwright 1.63.0 and Chromium.
-The walk waits for loopback `/readyz`; readiness is not a product or remote
-backup verdict. `--dev` alone does not isolate credentials. The walk runs the
-seed and server with `env -i`, an explicit PATH/HOME/LANG allowlist, and a
-disposable `SCRY_BACKUP_DIR`.
+Prefer the T3 collaborative browser: inspect preview status, open it if needed,
+and use snapshot locators with actual pointer/keyboard actions. If unavailable,
+use the isolated VM browser/story walk described in docs/qa/system. Do not start
+workstation headless Chromium or substitute DOM `.click()` for touch evidence.
+A stalled harness is a diagnosis or acceptance gap, never a passing walk.
 
 ## Drive
 
-Use `qa/walk --stories "US-002 US-003"` for selected stories or `qa/walk --all`
-for every live story. The runner uses real pointer/keyboard browser actions
-where observable and focused CLI/Go checks for non-browser policy. No browser
-or Playwright run belongs on the workstation. See
-[`features/`](../../../features/README.md) for routes and selectors; do not
-substitute DOM `.click()` for pointer evidence or fixture data for provider
-quality.
+Exercise Create → saved material → reference/practice and actual refinement;
+question → held feedback → deliberate Next; assistance; edit/fix draft;
+refresh/background/reconnect; response loss after commit; competing tabs; and
+loss of private access. Inspect persisted records as well as the screen.
+Answers, explanations, current notes/names, and goal title/intent remain absent
+before durable assistance/self-check/result. Offline work pauses and the same
+frozen operation reconciles an unknown response; no mutation queue.
 
-## Evidence
+For private production use only the approved Cloudflare Access owner login.
+Verify signature/issuer/audience/exact owner, anonymous/forged denial,
+Host/origin/CSRF, alternate-host write rejection, and history after access loss.
+Never copy tokens into URLs/argv/logs/captures or substitute a VM credential.
+Upstream logout, provider keys, and restore/operator capabilities are separate.
 
-Inspect `target/walk/walk-receipt.json` and `target/walk/screens/`, including
-story/criterion status, checksums, source head/tree, and the run-bound base.
-Pull VM evidence with `ws pull --task factory-foundations` before teardown.
-`foundation-check receipt target/walk/walk-receipt.json --base <base>` checks
-the current source and affected stories; `unwalked` is not a pass. Report
-credential-free fixture limits separately from real-provider, production
-ingress, recovery and physical-phone acceptance.
+## Evidence — recovery and receipts
+
+Remote success requires complete JSON+photo archive validation and exact R2
+readback. Restore an independently retrieved archive with compatible Worker
+assets/configuration into an unused isolated namespace. No live integrations;
+uncertain jobs/assessments stay paused. A checksum or local R2 emulator does not
+prove independent hosted recovery. Measure actual private service/UI recovery
+when claiming the RPO 24h/RTO 60m objectives, and name omitted steps.
+
+Return PASS, FAIL, or UNVERIFIED with exact source/artifact, environment,
+story/criterion, data provenance, actions, observed result, and limits. Keep
+live AI, real phone, private ingress, and remote recovery distinct. The Go and
+retired Rust receipts do not transfer to this fresh rewrite. Critics under
+`scripts/critics/` remain advisory and need a current Worker observation;
+`qa/walk` must produce current target receipts rather than relabel Go passes.
 
 ## Cleanup
 
-The walk stops its own server and browser and removes only its own run-scoped
-scratch directory after copying receipt and screenshots. Never delete an
-existing SQLite path to make a seed succeed. Pull evidence, then use
-`ws down --task factory-foundations` to remove the task worktree and lease,
-not the standing `scry-ws` VM.
+Stop only the run-owned server/browser before cleanup. Preserve receipts and
+screenshots, then remove only its verified temporary state/worktree/lease.
+Never delete an existing SQLite namespace, R2 bucket, historical store, or
+standing workspace to make a synthetic seed succeed. Do not activate or restart
+any production/historical writer during a QA run.

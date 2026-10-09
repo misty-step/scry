@@ -1,26 +1,33 @@
 {
   "name": "scry",
   "version": "0.0.0",
-  "description": "Scry's private Go, SQLite and HTMX learning application.",
+  "description": "Private prompt-first learning: Rust Cloudflare Worker, SQLite Durable Object, and R2 recovery.",
   "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
-    "@cloudflare/containers": "^0.3.7",
-    "jose": "^6.2.12",
-    "wrangler": "4.129.0"
+    "wrangler": "4.129.0",
+    "miniflare": "5.20260903.0-alpha",
+    "playwright": "1.63.0",
+    "jose": "6.2.12",
+    "@cloudflare/containers": "0.3.7"
   },
   "scripts": {
-    "test": "go test -count=1 -mod=readonly ./...",
+    "test": "cargo test --locked --all-targets",
     "test:recovery": "python3 scripts/scry-ci recovery",
-    "dev": "go run -mod=readonly ./cmd/scry serve --dev",
+    "dev": "bash scripts/rust-dev",
     "ops:legacy-data": "python3 scripts/scry-cloudflare-data",
     "ops:legacy-restore": "python3 bin/scry-restore",
     "ops:legacy-backup-freshness": "python3 bin/scry-backup-freshness",
     "ci:local": "python3 scripts/scry-ci local",
     "ci:full": "python3 scripts/scry-ci full",
-    "ci": "python3 scripts/scry-ci local"
+    "ci": "python3 scripts/scry-ci local",
+    "build": "worker-build --release --locked",
+    "check": "cargo fmt --all -- --check && cargo clippy --locked --all-targets -- -D warnings && cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings",
+    "test:runtime": "node --test qa/runtime.test.mjs",
+    "walk": "qa/walk --all",
+    "rust-dev": "bash scripts/rust-dev"
   }
 }

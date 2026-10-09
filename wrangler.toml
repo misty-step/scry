@@ -1,0 +1,77 @@
+# New Rust target only. No existing account, production route, old namespace,
+# Container, or historical recovery bucket is bound by this template.
+name = "scry-rust"
+main = "build/worker/shim.mjs"
+compatibility_date = "2026-09-10"
+workers_dev = false
+preview_urls = false
+
+[build]
+command = "worker-build --release --locked"
+
+[vars]
+# Deployment stays closed until private ingress and secrets are configured.
+SCRY_ENV = "unconfigured"
+CANONICAL_ORIGIN = "https://unconfigured.invalid"
+SPACE_NAME = "scry-rust-v1"
+ACCESS_TEAM = ""
+ACCESS_AUDIENCE = ""
+ALTERNATE_HOSTS = ""
+OPENROUTER_MODEL = ""
+JEV_MODEL = ""
+JEV_URL = "https://openrouter.ai/api/alpha/decisions"
+
+[[durable_objects.bindings]]
+name = "LEARNING_SPACE"
+class_name = "LearningSpace"
+
+[[migrations]]
+tag = "scry-rust-sqlite-v1"
+new_sqlite_classes = ["LearningSpace"]
+
+# These names deliberately do not identify existing recovery resources.
+# Provision new private buckets only as part of an approved release.
+[[r2_buckets]]
+binding = "SCRY_ASSETS"
+bucket_name = "scry-rust-assets-unprovisioned"
+
+[[r2_buckets]]
+binding = "SCRY_BACKUPS"
+bucket_name = "scry-rust-backups-unprovisioned"
+
+[triggers]
+crons = ["17 3 * * *"]
+
+# A preview requires its own new Durable Object namespace, private Access app,
+# exact owner secret, capped provider keys, and private buckets. No bindings
+# or production secret values are inherited into this block.
+[env.preview]
+name = "scry-rust-preview"
+workers_dev = false
+preview_urls = false
+
+[env.preview.vars]
+SCRY_ENV = "preview"
+CANONICAL_ORIGIN = "https://preview-unconfigured.invalid"
+SPACE_NAME = "preview-scry-rust-v1"
+ACCESS_TEAM = ""
+ACCESS_AUDIENCE = ""
+ALTERNATE_HOSTS = ""
+OPENROUTER_MODEL = ""
+JEV_MODEL = ""
+JEV_URL = "https://openrouter.ai/api/alpha/decisions"
+
+[[env.preview.durable_objects.bindings]]
+name = "LEARNING_SPACE"
+class_name = "LearningSpace"
+
+[[env.preview.r2_buckets]]
+binding = "SCRY_ASSETS"
+bucket_name = "scry-rust-preview-assets-unprovisioned"
+
+[[env.preview.r2_buckets]]
+binding = "SCRY_BACKUPS"
+bucket_name = "scry-rust-preview-backups-unprovisioned"
+
+[env.preview.triggers]
+crons = ["17 3 * * *"]

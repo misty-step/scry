@@ -1,20 +1,47 @@
-# Concepts, notes and goals
+# Concepts, references, and goals
 
 Stories: US-001, US-006, US-009, US-010
-Source: internal/web/concepts.go, internal/web/templates/library.html, internal/store/*.go, internal/learning/concept*.go, internal/learning/selection*.go
+
+Source: src/learning.rs, src/model.rs, src/engine.rs, src/web.rs, assets/*
 
 ## Sub-features
 
-Additive schema-v5 history, saved notes and provenance, goal focus/pause, accessible concept list and decorative constellation, separate observations and labeled recall estimate, and prerequisite-first introductions.
-
+Durable notes and provenance, prerequisite links, Map and goal focus/pause,
+separate practice evidence, labeled recall estimates, and 3/6/12 new-idea pace.
 ## How to get to it (user POV)
 
-Choose Map (`/map`), follow `/concepts/{id}` to a note and related questions, and follow Original input to `/sources/{id}`. Use `/goals/{id}`'s Focus on this, Pause, or Resume. Settings (`/settings`) offers Light, Steady, and Intense pace. A graded Stream concept chip links to the same concept page; an ungraded question's Look it up route shows an assistance gate first.
+Map (`/map`) offers readable goal sections, ordinary concept links, and one
+decorative prerequisite constellation. Goal reference (`/goals/{id}`) retains
+intent and preparation. Concept reference (`/concepts/{id}`) retains current
+notes, questions, provenance, prerequisites, and practice. It does not consume a
+held occurrence. An unaided current concept/goal opens behind an assistance
+POST before answer-bearing reference is served.
+
+Focus prioritizes a goal's new concepts. Pause excludes its new material while
+retaining notes/history and ordinary due work. Resume restores eligible new
+material. Settings offers light/steady/intense caps of 3/6/12 new concepts per
+rolling day. Status, due indications, separate unaided/helped/missed evidence,
+and weighted recall are stated honestly; percentages are estimates, not mastery.
+Reading, navigation, or “I know this already” never manufactures cold recall.
+
+Archive stops future selection, retains old content/history, and invalidates
+stale work. The target starts in a fresh namespace: historical Go v4→v5
+foundation preservation remains a contract of that historical migration, not an
+import step or foundation route in this rewrite. Old stores remain separate.
 
 ## Driving it
 
-`qa/walk --stories "US-001 US-006 US-009 US-010"` inspects authored Map, Concept, notes, status words, pace, and focus/pause. Existing store/learning migration and selection checks provide non-browser-observable foundation-row preservation, prerequisite order, rolling-day caps, and one-source/one-goal identity. Use `go test -p 1 ./internal/store ./internal/learning` for those boundaries; fixture activity is not an unaided memory measurement.
+`cargo test --locked --test concept_policy --test application --test web_render`
+checks pure evidence, prerequisite/pace selection, goal controls, and reference
+secrecy. Use a real synthetic Worker browser to exercise Map/focus/pause,
+reference/assistance, accessible states, archive, and refresh. `svg.constellation`
+is decorative; `ol.concept-list` carries the usable navigation/state. The authored
+demo is not an unaided memory observation. Live source-backed references and
+independent recovery need their own proof.
 
 ## Gotchas
 
-The authored fixture pre-acknowledges intros and has topic-basis notes only. A live source-backed note needs exact quoted evidence and provenance; a general-knowledge note cannot invent a citation. Decorative `svg.constellation` is `aria-hidden`; `ul.concept-list` carries the accessible state. Opening a note must not advance an occurrence. Old foundation rows remain historical after migration, not fresh Map concepts. Status and recall percentage are estimates, not mastery guarantees.
+Synthetic data proves mechanics only. Follow the current QA recipe, retain
+source-bound real observations, and keep protected reference/answer material
+behind durable assistance. Never attach live integrations or import historical
+stores to make a preview appear complete.

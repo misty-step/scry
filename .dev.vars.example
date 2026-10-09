@@ -1,0 +1,8 @@
+# Synthetic loopback configuration only; scripts/rust-dev creates its own
+# unused directory and does not load this file or operator .env material.
+SCRY_ENV=development
+CANONICAL_ORIGIN=http://127.0.0.1:8787
+SPACE_NAME=synthetic-development-only
+INTERNAL_KEY=synthetic-local-key-at-least-32-characters
+# No OPENROUTER_API_KEY, JEV_API_KEY, OWNER_SUBJECT, OPERATOR_KEY,
+# RESTORE_TOKEN, production origin, or existing remote bucket belongs here.

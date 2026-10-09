@@ -2,7 +2,7 @@ agents:
   queue: linux-small
 
 steps:
-  - label: "Go delivery gate"
+  - label: "Rust Worker candidate gate"
     key: ci
     command: |
       set -euo pipefail

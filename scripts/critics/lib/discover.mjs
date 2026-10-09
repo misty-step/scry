@@ -54,11 +54,11 @@ export function parseAriaSnapshot(yaml) {
     if (content.startsWith('/')) continue;
 
     // match role with optional name and attributes
-    const m = content.match(/^([a-z-]+)(?:\s+"((?:[^"\\]|\\.)*)")?(?:\s+\[([^\]]*)\])?:?$/);
+    const m = content.match(/^([a-z-]+)(?:\s+"((?:[^"\\]|\\.)*)")?(?:\s+\[([^\]]*)\])?(?::(?:\s+(.*))?)?$/);
     if (!m) continue;
 
     const role = m[1];
-    const name = m[2] || '';
+    const name = m[2] || m[4] || '';
 
     let level = null;
     if (m[3]) {
@@ -106,23 +106,33 @@ export function discoverControls(observation) {
   const recallTextarea = (domList ?? [])
     .filter(n => n.tag === 'textarea' && n.visible && !n.inDetails && (n.fieldName === 'answer' || n.name === 'answer'));
   const answerForm = (domList ?? []).some(n => n.tag === 'form' && n.visible && !n.inDetails && n.class?.includes('answer-form'));
+  const ariaAvailable = (ariaList ?? []).length > 0;
+  const ariaButtons = (ariaList ?? []).filter(n => n.role === 'button');
+  const ariaTextboxes = (ariaList ?? []).filter(n => n.role === 'textbox');
+  const ariaChoicesAgree = choiceButtons.filter(button => ariaButtons.some(node =>
+    normalizeName(node.name) && normalizeName(button.name).includes(normalizeName(node.name))
+  )).length === choiceButtons.length;
+  const ariaAnswerGroup = (ariaList ?? []).some(n =>
+    n.role === 'group' && /choose.*answer/i.test(n.name)
+  );
 
   const answerAffordance = { type: null, controls: [], status: 'unverified' };
 
   // Two-method agreement for choice
-  if (choiceFieldset && choiceButtons.length >= 2 && choiceButtons.length <= 8) {
+  if (choiceFieldset && choiceButtons.length >= 2 && choiceButtons.length <= 8 && ariaChoicesAgree) {
     answerAffordance.type = 'choice';
     answerAffordance.controls = choiceButtons.map(b => ({ name: normalizeName(b.name) }));
     answerAffordance.status = 'confirmed';
   }
   // Two-method agreement for recall
-  else if (recallTextarea.length >= 1 && answerForm) {
+  else if (recallTextarea.length >= 1 && answerForm && ariaTextboxes.length >= 1) {
     answerAffordance.type = 'recall';
     answerAffordance.controls = [{ type: 'textbox' }, { type: 'submit' }];
     answerAffordance.status = 'confirmed';
   }
   // Both methods agree no affordance exists -> missing
-  else if (!choiceFieldset && choiceButtons.length === 0 && !recallTextarea.length && !answerForm) {
+  else if (ariaAvailable && !ariaAnswerGroup && ariaTextboxes.length === 0 &&
+           !choiceFieldset && choiceButtons.length === 0 && !recallTextarea.length && !answerForm) {
     answerAffordance.status = 'missing';
   }
 
@@ -133,8 +143,8 @@ export function discoverControls(observation) {
   const nextForm = (domList ?? [])
     .some(n => n.tag === 'form' && n.visible && !n.inDetails && n.dataset && Object.prototype.hasOwnProperty.call(n.dataset, 'next'));
 
-  const hasStatus = statusRegion.length > 0;
-  const hasNext = nextForm;
+  const hasStatus = statusRegion.length > 0 && (ariaList ?? []).some(n => n.role === 'status');
+  const hasNext = nextForm && ariaButtons.some(n => /^next\b/i.test(n.name));
   const hasAnswerAffordance = answerAffordance.status === 'confirmed';
 
   // State determination

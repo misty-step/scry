@@ -1,22 +1,54 @@
-# Capture and preparation
+# Create, preparation, and refinement
 
 Stories: US-004, US-013
-Source: internal/web/library.go, internal/web/templates/library.html, internal/generation/*.go, internal/semantic/critic*.go, internal/store/critic*.go, cmd/scry/main.go
+
+S11 extends the Create acceptance for US-013.
+
+Source: src/web.rs, assets/app.js, src/engine.rs, src/generation.rs, src/runtime.rs, src/persistence.rs
 
 ## Sub-features
 
-One private text field and optional photo on Add; one goal/source per operation. Legacy explicit Topic/Link callers retain their mode-specific research paths, but the screen never infers or authorizes web research.
-
+Prompt-first private intent, optional photo, saved useful reference and practice,
+honest preparation/refinement, independent criticism, and bounded known/unknown use.
 ## How to get to it (user POV)
 
-Choose Add in the masthead (`/add`), type or paste into `form.add`, optionally attach a photo, then choose Add. The saved material and preparation status appear at `/sources/{id}` and on `/map`. A stopped source shows its reason and accounted use, with Try again at `/sources/{id}/retry` only while its durable retry limit permits. Edit as new input opens `/add?from={id}` with the saved text; adding it creates a new source and leaves the original unchanged. Photos offer Add a new photo. Bounded polling ends with Check again, not a fabricated failure. Share-target `/add?text=&url=&title=` pre-fills private text.
+Choose Create (`/create`, with `/add` as an alias). One large intent field accepts
+a word, phrase, private material, or long dictated text. An optional photo gives
+context. There is no mode picker, setup questionnaire, imported-source
+requirement, or diagnostic quiz before useful explanation and practice.
+
+The saved result at `/goals/{id}` keeps original intent and preparation status,
+then gives an explanation for each teachable idea with linked practice. General
+knowledge is labeled; supplied-source claims keep exact quotes. A pasted URL
+remains private intent and does not authorize search or link reading. Historical
+Go explicit Topic/Link paths remain at their historical revision, not a new
+public compatibility API.
+
+Slow work is pending, partial work says partial, and a failure preserves input.
+An unknown sent outcome keeps its allowance and needs deliberate resolution.
+Retry is bounded. Refinement records explicit feedback and uses actual attempts;
+existing notes/versions/attempts stay inspectable. Concept feedback is separate
+from grading, and a prepared question fix remains a draft until versioned Save.
 
 ## Driving it
 
-`qa/walk --stories US-013` exercises the one-field Add, saved Source, and privacy boundary on a fresh isolated database. `qa/walk --stories US-005` retains independent tests for historical mode-specific ingestion. `seed-fixture` publishes authored questions without a provider call. Live generation quality requires separate authorized evidence.
+Run `cargo test --locked --test generation_policy --test application --test web_render`
+for deterministic boundaries. `bun run dev` starts a fresh synthetic Worker and
+local SQLite/R2; its explicit authored demo uses no provider. Real browser proof
+checks input, byte limits, failure draft retention, navigation/polling, saved
+reference, retries, and later refinement. S11 quality needs human-reviewed real
+word/phrase/dictated inputs and genuine feedback, separately from fixture JSON.
+
+The content critic saves candidates before independent checks, shares bounded
+allowance, retains unknown usage, and retries the critic without regenerating
+saved candidates. Hard defects veto at 0.80; absent/malformed judgments cannot
+publish. A skipped critic is recorded when unconfigured. Export retains the
+attempts, reasons, raw responses, and known/unknown usage. Live critic calibration
+and private production remain separate evidence.
 
 ## Gotchas
 
-Anything typed or pasted, even a standalone URL, stays My text and is never searched or opened. A selected JPEG/PNG/WebP photo transcribes before planning; unsupported or oversize input creates no source. The existing explicit Topic and Link APIs remain for historical callers. Without a model endpoint, newly captured work stops with a configuration failure, not ready questions. Do not mistake fixture publication for a model-quality pass.
-
-Private text can be a learning request rather than factual material. Its generated items may use labeled General knowledge without quotations or citations; saved capture mode, privacy, and history do not change. Claims attributed to supplied material still require exact evidence. Link/photo and authoritative exact-text/complete-set tasks remain source-grounded.
+Synthetic data proves mechanics only. Follow the current QA recipe, retain
+source-bound real observations, and keep protected reference/answer material
+behind durable assistance. Never attach live integrations or import historical
+stores to make a preview appear complete.
