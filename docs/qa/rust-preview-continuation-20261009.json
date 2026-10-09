@@ -1,0 +1,410 @@
+{
+  "format": "scry-preview-continuation-observation-v1",
+  "observed_date": "2026-10-09",
+  "artifact_revision": "d05c341dff23337097572e993ab2fea497921b13",
+  "merged_rewrite_revision": "c11a2e591eba7937cb72eb1986eb84ee69adf155",
+  "documentation_baseline": "792c5134bacb52a365f9678cc8506e8d3e11c8ce",
+  "preview_audit": {
+    "status": "PASS",
+    "preview_modules_match": {
+      "index.js": "f43d22d0ad7635a0ca9029bcd8c791f374bd3a2456eb5538f2029ed56f019d9f",
+      "index_bg.wasm": "67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60",
+      "worker/shim.mjs": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    "frozen_artifact_checksums_match": true,
+    "source_revision": "d05c341dff23337097572e993ab2fea497921b13",
+    "production_and_preview_domains_separate": true,
+    "preview_namespace_unchanged": true,
+    "preview_schedules": {
+      "schedules": []
+    },
+    "preview_subdomain": {
+      "enabled": false,
+      "previews_enabled": false
+    },
+    "backup_lifecycle": {
+      "rules": [
+        {
+          "id": "scry-rust-preview-retention-30d",
+          "enabled": true,
+          "conditions": {
+            "prefix": "snapshots/"
+          },
+          "deleteObjectsTransition": {
+            "condition": {
+              "type": "Age",
+              "maxAge": 2592000
+            }
+          }
+        }
+      ]
+    }
+  },
+  "hosted_restore": {
+    "format": "scry-hosted-recovery-observation-v1",
+    "status": "PASS",
+    "claims": [
+      "Independently re-retrieved complete R2 archive and exact compatible hosted WASM restore into unused SQLite Durable Object namespace",
+      "Authenticated restore succeeded; unauthenticated/ordinary routes denied; identical second restore refused overwrite with 409",
+      "No provider/operator/live writer capability bound; uncertain work remains paused by tested restore contract"
+    ],
+    "worker": "scry-rust-recovery-20261009-46c72f",
+    "namespace_id": "e4a645cb710541d7a0bb97b1ef724d2b",
+    "space_name": "recovery-scry-rust-20261009-46c72f",
+    "source_revision": "d05c341dff23337097572e993ab2fea497921b13",
+    "module_sha256": {
+      "index.js": "f43d22d0ad7635a0ca9029bcd8c791f374bd3a2456eb5538f2029ed56f019d9f",
+      "index_bg.wasm": "67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60",
+      "worker/shim.mjs": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    "archive_sha256": "bcafa5426cc5a85caa1df260b90f01ef49d66347966fa67b83039e7dbfb133bd",
+    "archive_bytes": 107911,
+    "snapshot_created_ms": 1791560950285,
+    "restore_finished_ms": 1791564118945,
+    "restore_request_elapsed_ms": null,
+    "provisioning_to_restore_ms": 164521,
+    "snapshot_age_at_restore_ms": 3168660,
+    "photo_count": 0,
+    "production_preview_unchanged": true,
+    "workers_dev_disabled_after_restore": true,
+    "object_listing_count": 0,
+    "limits": [
+      "Hosted export equality, owner login/UI, fresh writes and new recovery snapshot remain unverified until normal exact-owner private ingress is exercised.",
+      "RPO/RTO targets are not established by endpoint timing; login/UI and configuration-loss/DNS recovery are not timed.",
+      "Restore request timing was not retained after post-restore object-listing assertion; provisioning-to-restore wall time is retained."
+    ],
+    "private_origin": "https://recovery-20261009-46c72f.scry.study",
+    "owner_only_access_configured": true,
+    "restore_capability_removed": true,
+    "no_external_integrations": true,
+    "private_ingress": [
+      {
+        "case": "anonymous",
+        "status": 302,
+        "redirects_to_access": true,
+        "private_app_absent": true
+      },
+      {
+        "case": "forged-owner",
+        "status": 302,
+        "redirects_to_access": true,
+        "private_app_absent": true
+      }
+    ],
+    "private_ready_ms": 1791564282823,
+    "verified_no_provider_operator_restore_bindings": true,
+    "verified_no_crons": true,
+    "verified_30day_retention": true,
+    "owner_browser_status": "UNVERIFIED: shared profile is at Cloudflare Access login"
+  },
+  "hosted_recovery_acceptance": "UNVERIFIED",
+  "owner_browser_acceptance": "UNVERIFIED",
+  "physical_phone_acceptance": "UNVERIFIED",
+  "normal_existing_lesson_refinement": "UNVERIFIED: shared default profile is signed out at Cloudflare Access; no owner mutation submitted",
+  "provider_observations": [
+    {
+      "format": "scry-live-provider-observation-v1",
+      "source_revision": "d05c341dff23337097572e993ab2fea497921b13",
+      "source_sha256": "278926ccd92ca53d24bdce2fa1b5a17dbc22205e3e19a3c8eedd6c01dfcc7ab4",
+      "wasm_sha256": "67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60",
+      "input": "photosynthesis",
+      "goal_status": "ready",
+      "job_status": "ready",
+      "error": null,
+      "elapsed_ms": 26184,
+      "concepts": 4,
+      "questions": 12,
+      "calls": [
+        {
+          "endpoint": "generation",
+          "status": 200,
+          "elapsed_ms": 22579,
+          "model": "openai/gpt-6-luna",
+          "usage": {
+            "prompt_tokens": 1083,
+            "completion_tokens": 3093,
+            "total_tokens": 4176,
+            "cost": 0.0016818,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 1080,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.0016818,
+              "upstream_inference_prompt_cost": 0.0001353,
+              "upstream_inference_completions_cost": 0.0015465
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 201,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        },
+        {
+          "endpoint": "judgment",
+          "status": 200,
+          "elapsed_ms": 365,
+          "model": "typesafe/jev-1.13-20260917",
+          "usage": {
+            "input_tokens": 13248,
+            "output_tokens": 2620,
+            "cost": 0.000556416
+          }
+        }
+      ],
+      "spend": [
+        {
+          "status": "known",
+          "cost_micros": 1682,
+          "reserved_micros": 500000
+        },
+        {
+          "status": "known",
+          "cost_micros": 557,
+          "reserved_micros": 500000
+        }
+      ],
+      "limits": [
+        "Real providers against exact frozen WASM in disposable local SQLite/R2.",
+        "Synthetic local Access certificates/owner; not deployed ingress, phone acceptance, or the existing private notebook.",
+        "Human usefulness and factual/complete-text review required; no learning efficacy claim."
+      ],
+      "case": "word",
+      "review": {
+        "decision": "keep with scope caveat",
+        "reasons": [
+          "Explains the overall equation, light-dependent reactions, Calvin cycle and limiting factors; includes mechanism and application practice.",
+          "Plant context is explicit; generated facts are labeled general knowledge, with no invented source quotes."
+        ],
+        "caveats": [
+          "Plant-focused introduction does not cover all bacterial photosynthesis; owner usefulness has not been judged."
+        ]
+      },
+      "provenance_checks": {
+        "general_knowledge_labeled": true,
+        "no_fabricated_source_quotes": true
+      },
+      "rejected": []
+    },
+    {
+      "format": "scry-live-provider-observation-v1",
+      "source_revision": "d05c341dff23337097572e993ab2fea497921b13",
+      "source_sha256": "278926ccd92ca53d24bdce2fa1b5a17dbc22205e3e19a3c8eedd6c01dfcc7ab4",
+      "wasm_sha256": "67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60",
+      "input": "why HTTP caches go stale",
+      "goal_status": "ready",
+      "job_status": "ready",
+      "error": null,
+      "elapsed_ms": 36179,
+      "concepts": 4,
+      "questions": 12,
+      "calls": [
+        {
+          "endpoint": "generation",
+          "status": 200,
+          "elapsed_ms": 33125,
+          "model": "openai/gpt-6-luna",
+          "usage": {
+            "prompt_tokens": 1086,
+            "completion_tokens": 3967,
+            "total_tokens": 5053,
+            "cost": 0.00199923,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 1043,
+              "cache_write_tokens": 40,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.00199923,
+              "upstream_inference_prompt_cost": 1.573e-05,
+              "upstream_inference_completions_cost": 0.0019835
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 288,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        },
+        {
+          "endpoint": "judgment",
+          "status": 200,
+          "elapsed_ms": 355,
+          "model": "typesafe/jev-1.13-20260917",
+          "usage": {
+            "input_tokens": 14043,
+            "output_tokens": 2622,
+            "cost": 0.000589806
+          }
+        }
+      ],
+      "spend": [
+        {
+          "status": "known",
+          "cost_micros": 2000,
+          "reserved_micros": 500000
+        },
+        {
+          "status": "known",
+          "cost_micros": 590,
+          "reserved_micros": 500000
+        }
+      ],
+      "limits": [
+        "Real providers against exact frozen WASM in disposable local SQLite/R2.",
+        "Synthetic local Access certificates/owner; not deployed ingress, phone acceptance, or the existing private notebook.",
+        "Human usefulness and factual/complete-text review required; no learning efficacy claim."
+      ],
+      "case": "phrase",
+      "review": {
+        "decision": "revise one practice item; keep reference",
+        "reasons": [
+          "Separates freshness from validation, explains no-cache/no-store, layered caches, Vary and versioned assets.",
+          "Questions include concrete age, validation and configuration scenarios."
+        ],
+        "caveats": [
+          "The recall item asking for two distinct causes of old content accepts overlapping freshness/invalidation descriptions; clearer independence would improve it."
+        ]
+      },
+      "provenance_checks": {
+        "general_knowledge_labeled": true,
+        "no_fabricated_source_quotes": true
+      },
+      "rejected": []
+    },
+    {
+      "format": "scry-live-provider-observation-v1",
+      "source_revision": "d05c341dff23337097572e993ab2fea497921b13",
+      "source_sha256": "278926ccd92ca53d24bdce2fa1b5a17dbc22205e3e19a3c8eedd6c01dfcc7ab4",
+      "wasm_sha256": "67c06f3047cccb835910d644a8d6b065aa87f332129126398854d9672db97a60",
+      "input": "I sort of understand that cache means saving something so it is faster, but my browser keeps showing the old version of a page even after our server has changed it. I am trying to debug that at work. I get confused about no-cache versus no-store and whether ETag is the same as a last modified time. Teach me how to reason through an actual request and response, include a small worked example, and help me practice choosing headers. Assume I know basic HTTP requests but not cache validation.",
+      "goal_status": "partial",
+      "job_status": "partial",
+      "error": null,
+      "elapsed_ms": 52214,
+      "concepts": 5,
+      "questions": 15,
+      "calls": [
+        {
+          "endpoint": "generation",
+          "status": 200,
+          "elapsed_ms": 48677,
+          "model": "openai/gpt-6-luna",
+          "usage": {
+            "prompt_tokens": 1180,
+            "completion_tokens": 6057,
+            "total_tokens": 7237,
+            "cost": 0.00305598,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 1043,
+              "cache_write_tokens": 134,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.00305598,
+              "upstream_inference_prompt_cost": 2.748e-05,
+              "upstream_inference_completions_cost": 0.0030285
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 786,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        },
+        {
+          "endpoint": "judgment",
+          "status": 200,
+          "elapsed_ms": 337,
+          "model": "typesafe/jev-1.13-20260917",
+          "usage": {
+            "input_tokens": 17779,
+            "output_tokens": 3203,
+            "cost": 0.000746718
+          }
+        }
+      ],
+      "spend": [
+        {
+          "status": "known",
+          "cost_micros": 3056,
+          "reserved_micros": 500000
+        },
+        {
+          "status": "known",
+          "cost_micros": 747,
+          "reserved_micros": 500000
+        }
+      ],
+      "limits": [
+        "Real providers against exact frozen WASM in disposable local SQLite/R2.",
+        "Synthetic local Access certificates/owner; not deployed ingress, phone acceptance, or the existing private notebook.",
+        "Human usefulness and factual/complete-text review required; no learning efficacy claim."
+      ],
+      "case": "dictated",
+      "review": {
+        "decision": "keep useful partial result; revise account example before operational use",
+        "reasons": [
+          "Responds to stated prior knowledge and confusion: explicit request/response exchange, validators, header selection and diagnostic sequence.",
+          "One prompt leaked its expected answer and was discarded; 15 other questions remain and partial status is honest."
+        ],
+        "caveats": [
+          "The account-HTML example should explicitly distinguish private from shared caches before presenting a policy for potentially personalized content.",
+          "This authored dictated example is an agent QA input, not the owner's real dictated text or acceptance."
+        ]
+      },
+      "provenance_checks": {
+        "general_knowledge_labeled": true,
+        "no_fabricated_source_quotes": true
+      },
+      "rejected": [
+        "A question gave away its own answer."
+      ]
+    }
+  ],
+  "new_observation_cost_micros": 8632,
+  "provider_acceptance_limits": [
+    "Three authored QA inputs establish observed breadth, not owner approval, broad AI1 holdout quality, delayed recall or a production p95.",
+    "No adversarial/ambiguous holdout or real owner-attempt refinement was added by these runs.",
+    "Photosynthesis and phrase were ready; dictated input was partial after validation rejected an answer-revealing question."
+  ],
+  "review_sources": [
+    {
+      "url": "https://www.rfc-editor.org/rfc/rfc9111.html",
+      "scope": "Independent review of basic HTTP cache freshness, validation, no-cache/no-store, Vary and shared-cache distinctions; no source attribution added to generated material."
+    },
+    {
+      "url": "https://openstax.org/books/biology-2e/pages/8-1-overview-of-photosynthesis",
+      "scope": "Independent review of introductory photosynthesis; not generated source evidence."
+    },
+    {
+      "url": "https://openstax.org/books/biology-2e/pages/8-2-the-light-dependent-reactions-of-photosynthesis",
+      "scope": "Independent review of the light-dependent mechanism."
+    },
+    {
+      "url": "https://openstax.org/books/biology-2e/pages/8-3-using-light-energy-to-make-organic-molecules",
+      "scope": "Independent review of carbon fixation."
+    }
+  ],
+  "remaining_owner_steps": [
+    "Sign in with the approved owner in the shared browser at preview.scry.study; inspect and refine the existing Nicene Creed lesson through its normal form, preserving original attempts and content versions.",
+    "Sign in at the isolated recovery origin; verify restored content/history/cards/held result against the acknowledged archive, perform an isolated fresh write, and create/read back its complete R2 snapshot. Do not resume paid work.",
+    "On the physical phone, reload the updated preview once, observe generation completing without refresh while preserving a draft, and judge reference and short/cumulative practice usefulness."
+  ],
+  "protected_scope": {
+    "production_go_unchanged": true,
+    "preview_learning_state_not_mutated": true,
+    "no_historical_import_or_retirement": true,
+    "no_production_activation": true,
+    "recovery_no_integrations": true,
+    "recovery_uncertain_work_paused": true
+  }
+}
