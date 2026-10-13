@@ -11,7 +11,6 @@ agent will otherwise re-propose. Do not write one per PR. Start from
 - [001](001-go-sqlite-authority.md): retain one production Go/SQLite authority until approved replacement activation.
 - [002](002-access-ingress.md): retain exact private ingress, read-only alternate-host redirects, and paused historical writers.
 - [003](003-dev-identity.md): keep loopback-only identity, fresh authored fixtures, and isolated capabilities.
-
 - [004](004-foundation-story-walk.md): keep the pinned Foundation contract and required story-walk gate; synthetic proof does not certify real-world acceptance.
 
 ## Historical

@@ -11,6 +11,7 @@ groups:
   - { id: platform, name: Platform & ops }
   - { id: design, name: UI components & tokens }
 primitives:
+# Decisions 001-003 bind the deployed Go authority, not the Rust candidate code listed under these roots.
   - id: learning
     group: data
     name: Pure learning policy
