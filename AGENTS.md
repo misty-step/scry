@@ -119,6 +119,8 @@ and evidence in the session/PR. Glass in scope `misty-step/scry` owns current
 operational work state via README; MIS/Linear links remain provenance. Close a
 named item only after accepted scope and required proof are satisfied.
 
-## Merging
+## Shipping
 
-`master` requires `ci`, `foundation`, `story-walk` and `foundation-review`, up to date, with linear history. `foundation-review` wants the `kaylee-agent[bot]` App's `agent-review` approval on the PR head (`agent-review --repo misty-step/scry --pr N`, under `pass-env`); push again and it is stale, so review again. Merge with `gh pr merge --squash --match-head-commit <sha>` once every check is green. Never use `--admin`: a block means a check is red or missing, the head moved, or the branch is behind `master`.
+Use one independent code review for shipping code; documents and measurements
+do not need review. Run the functional checks, merge the tested source, and walk
+the changed user path. Foundation bot approval and adoption checks are retired.
