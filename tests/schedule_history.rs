@@ -414,3 +414,194 @@ fn pausing_excludes_unseen_questions_even_after_the_concept_intro() {
     assert!(app.occurrence.is_none());
     engine::validate_app(&app).unwrap();
 }
+
+#[test]
+fn leaving_held_feedback_refreshes_exposure_without_changing_the_saved_attempt() {
+    for elapsed in [DAY_MS, DAY_MS - 1, DAY_MS + 1, 2 * DAY_MS] {
+        let mut app = reviewed();
+        let question_id = app.events[0].question_id.clone();
+        let concept_id = app.events[0].concept_id.clone();
+        let other_questions: Vec<_> = app
+            .questions
+            .keys()
+            .filter(|id| **id != question_id)
+            .cloned()
+            .collect();
+        for (index, id) in other_questions.iter().enumerate() {
+            mutate(
+                &mut app,
+                &format!("/questions/{id}/archive"),
+                &format!("held-archive-other-{index}"),
+                NOW + 1,
+                &[],
+            );
+        }
+        let original = app.events[0].clone();
+        let card = app.questions[&question_id].card.clone();
+        let held_id = app.occurrence.as_ref().unwrap().id.clone();
+        let resumed_at = NOW + elapsed;
+        // Resume the persisted held result through the same selection and HTML
+        // paths used by GET /. The answer is visible immediately before Next.
+        let rows = persistence::rows(&app).unwrap();
+        app = persistence::app_from_rows(&rows).unwrap();
+        engine::ensure_occurrence(&mut app, resumed_at, "held-result-resume").unwrap();
+        assert_eq!(app.occurrence.as_ref().unwrap().id, held_id);
+        let html = scry::web::render(&app, "/", &BTreeMap::new(), resumed_at, None);
+        assert!(html.contains("data-state=\"result\""));
+        assert!(html.contains("<dt>The answer</dt><dd>max-age</dd>"));
+        let next_fields = fields(&app, "held-feedback-next01", &[]);
+        let receipt = engine::mutate(
+            &mut app,
+            "/review/next",
+            &next_fields,
+            resumed_at,
+            "held-feedback-next01",
+        )
+        .unwrap();
+        let next = app.occurrence.as_ref().unwrap();
+        assert_ne!(next.id, held_id);
+        assert_eq!(next.question_id, question_id);
+        assert!(
+            next.assisted,
+            "visible feedback must still count as help after {elapsed} ms"
+        );
+        assert_eq!(app.concepts[&concept_id].exposure_ms, Some(resumed_at));
+        assert_eq!(app.events, vec![original.clone()]);
+        assert_eq!(app.questions[&question_id].card, card);
+        assert_eq!(
+            app.questions[&question_id].schedule_version,
+            original.schedule_version
+        );
+        // A lost Next response is reconciled exactly, even after another day;
+        // it must not refresh exposure again or create a third occurrence.
+        let rows = persistence::rows(&app).unwrap();
+        app = persistence::app_from_rows(&rows).unwrap();
+        let saved = app.clone();
+        assert_eq!(
+            engine::mutate(
+                &mut app,
+                "/review/next",
+                &next_fields,
+                resumed_at + DAY_MS,
+                "held-next-retry"
+            )
+            .unwrap(),
+            receipt
+        );
+        assert_eq!(app, saved);
+        let mut stale_fields = next_fields.clone();
+        stale_fields.insert("operation_id".into(), "held-stale-next-0001".into());
+        assert_eq!(
+            engine::mutate(
+                &mut app,
+                "/review/next",
+                &stale_fields,
+                resumed_at + DAY_MS,
+                "held-stale-next"
+            )
+            .unwrap_err()
+            .status,
+            409
+        );
+        assert_eq!(app, saved);
+        let answer = app.occurrence.as_ref().unwrap().presentation.answer.clone();
+        mutate(
+            &mut app,
+            "/review/answer",
+            "held-feedback-answer1",
+            resumed_at + DAY_MS + 1,
+            &[("answer", &answer)],
+        );
+        assert_eq!(app.events[0], original);
+        assert_eq!(app.events[1].result.outcome, "warm_correct");
+        assert_eq!(app.events[1].result.rating, 0);
+        assert_eq!(app.events[1].after_card, card);
+        engine::validate_app(&app).unwrap();
+    }
+}
+
+#[test]
+fn leaving_held_feedback_does_not_help_an_unrelated_concept() {
+    let mut app = reviewed();
+    let original = app.events[0].clone();
+    let same_concept: Vec<_> = app
+        .questions
+        .values()
+        .filter(|q| q.concept_id == original.concept_id)
+        .map(|q| q.id.clone())
+        .collect();
+    for (index, id) in same_concept.iter().enumerate() {
+        mutate(
+            &mut app,
+            &format!("/questions/{id}/archive"),
+            &format!("held-archive-same-{index}"),
+            NOW + 1,
+            &[],
+        );
+    }
+    let resumed_at = NOW + 2 * DAY_MS;
+    mutate(
+        &mut app,
+        "/review/next",
+        "held-unrelated-next1",
+        resumed_at,
+        &[],
+    );
+    let next = app.occurrence.as_ref().unwrap().clone();
+    assert_ne!(next.concept_id, original.concept_id);
+    assert!(!next.assisted);
+    assert_eq!(app.concepts[&next.concept_id].exposure_ms, None);
+    mutate(
+        &mut app,
+        "/review/answer",
+        "held-unrelated-answer",
+        resumed_at + 1,
+        &[("answer", &next.presentation.answer)],
+    );
+    assert_eq!(app.events[0], original);
+    assert_eq!(app.events[1].result.outcome, "correct");
+    assert_eq!(app.events[1].result.rating, 3);
+    engine::validate_app(&app).unwrap();
+}
+
+#[test]
+fn dismissed_feedback_keeps_the_existing_one_day_exposure_window() {
+    let mut app = reviewed();
+    let question_id = app.events[0].question_id.clone();
+    let other_questions: Vec<_> = app
+        .questions
+        .keys()
+        .filter(|id| **id != question_id)
+        .cloned()
+        .collect();
+    for (index, id) in other_questions.iter().enumerate() {
+        mutate(
+            &mut app,
+            &format!("/questions/{id}/archive"),
+            &format!("dismissed-archive-{index}"),
+            NOW + 1,
+            &[],
+        );
+    }
+    let dismissed_at = NOW + 2;
+    mutate(
+        &mut app,
+        "/review/next",
+        "dismissed-next-00001",
+        dismissed_at,
+        &[],
+    );
+    assert!(app.occurrence.is_none());
+    let rows = persistence::rows(&app).unwrap();
+    for elapsed in [DAY_MS - 1, DAY_MS, DAY_MS + 1] {
+        let mut resumed = persistence::app_from_rows(&rows).unwrap();
+        engine::ensure_occurrence(&mut resumed, dismissed_at + elapsed, "dismissed-resume")
+            .unwrap();
+        let next = resumed.occurrence.as_ref().unwrap();
+        assert_eq!(next.question_id, question_id);
+        assert_eq!(next.assisted, elapsed < DAY_MS);
+        assert_eq!(resumed.events, app.events);
+        assert_eq!(resumed.questions, app.questions);
+        engine::validate_app(&resumed).unwrap();
+    }
+}

@@ -448,7 +448,10 @@ fn apply(
             Ok(result("/", None))
         }
         "/review/next" => {
-            active_occurrence(app, fields, &["result"])?;
+            let o = active_occurrence(app, fields, &["result"])?;
+            // The held answer remains visible until Next, including after a
+            // long absence. Dismissing it is fresh exposure, not cold recall.
+            app.concepts.get_mut(&o.concept_id).unwrap().exposure_ms = Some(now);
             app.occurrence = None;
             ensure_occurrence(app, now, seed)?;
             Ok(result("/", None))
