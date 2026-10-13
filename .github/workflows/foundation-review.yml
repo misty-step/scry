@@ -1,6 +1,5 @@
 # Foundation review gate (harness historical decision 003 Review authority, US-027).
-# Copy to .github/workflows/foundation-review.yml and set HARNESS_SHA to the
-# harness revision the repository's foundation job pins.
+# HARNESS_SHA matches the repository foundation job pin.
 #
 # pull_request_target runs this file as it is on the base branch, so a PR cannot
 # replace the gate that judges it. The job checks out the base branch only; the

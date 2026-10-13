@@ -1,6 +1,6 @@
-# NNNN: Short decision title (usually the "no")
+# NNN: Short decision title (usually the "no")
 
-- **Status:** accepted <!-- accepted | superseded by NNNN, linked to that record -->
+- **Status:** accepted <!-- accepted | superseded by NNN, linked to that record -->
 - **Date:** YYYY-MM-DD
 - **Primitives:** `<ids from [primitives.yaml](../architecture/primitives.yaml)>`
 - **Powder:** `<item id, optional>`
@@ -17,6 +17,8 @@ existing primitive that covers the need instead.
 What stays simple, what gets harder, what is rejected at parse/lint time if anything,
 and the **revisit-if**: the concrete condition that reopens this.
 
-<!-- Do not use for UI tweaks, library picks the code already encodes, or "a PR shipped".
+<!-- Record numbers use three digits (NNN). The reserved template filename is
+     0000-template.md because Foundation 1.9.0 requires that exact name.
+     Do not use for UI tweaks, library picks the code already encodes, or "a PR shipped".
      Half a page. Superseded records are marked, never edited or deleted.
      Numbers are unique in this directory, historical/ included. -->

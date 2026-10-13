@@ -8,15 +8,18 @@ agent will otherwise re-propose. Do not write one per PR. Start from
 
 ## Steering
 
+- [001](001-go-sqlite-authority.md): retain one production Go/SQLite authority until approved replacement activation.
+- [002](002-access-ingress.md): retain exact private ingress, read-only alternate-host redirects, and paused historical writers.
+- [003](003-dev-identity.md): keep loopback-only identity, fresh authored fixtures, and isolated capabilities.
+
 - [004](004-foundation-story-walk.md): keep the pinned Foundation contract and required story-walk gate; synthetic proof does not certify real-world acceptance.
 
 ## Historical
 
-Former ADRs, unchanged; their numbers stay reserved. These describe historical
-architectures or proposals, not authority to activate or extend the replacement.
+Former superseded/proposed ADRs; their numbers stay reserved. They do not
+authorize activation or new replacement features. Records 001–003 retain live
+vetoes in Steering, with their original Go-specific constraints preserved.
+Historical source paths are provenance, not instructions to recreate retired code.
 
-- [001](historical/001-go-sqlite-authority.md): retained Go and SQLite state authority.
-- [002](historical/002-access-ingress.md): retained Go Container private ingress.
-- [003](historical/003-dev-identity.md): retained Go loopback development identity and authored fixture.
 - [005](historical/005-production-shell-boundary.md): superseded Fly/Postgres production shell (formerly architecture ADR-001; renumbered to avoid 001).
 - [006](historical/006-volatile-knowledge-two-clocks.md): proposed volatile-knowledge model (formerly architecture ADR-002; renumbered to avoid 002).
