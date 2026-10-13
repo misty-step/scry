@@ -81,7 +81,7 @@ checksums, source inventory/archive, and proof. Release output must use committe
 source with `--require-committed`; worktree output is development evidence. Use
 the bytes exercised by the smoke and browser, without rebuilding at deployment.
 Automatic deployment from master is intentionally absent: CI prepares a candidate
-and preserves `ci`, `foundation`, `story-walk`, and review requirements.
+with functional Rust/WASM checks and browser story walks.
 
 ## Fresh namespace and private configuration
 
