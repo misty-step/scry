@@ -1,0 +1,50 @@
+# Scry primitives: taxonomy, not behavior or deployment proof.
+# Risk: composes -> low; extends -> medium; adds -> high (edit this map).
+# Code roots use longest-prefix ownership; files refine the shared src/ directory.
+version: 1
+owner: Chips
+groups:
+  - { id: surfaces, name: Entry points }
+  - { id: auth, name: Identity & trust }
+  - { id: data, name: Data entities & storage }
+  - { id: runtime, name: 'Jobs, workflows & execution' }
+  - { id: platform, name: Platform & ops }
+  - { id: design, name: UI components & tokens }
+primitives:
+  - id: learning
+    group: data
+    name: Pure learning policy
+    summary: Pinned FSRS scheduling, grading, and concept evidence without boundary effects.
+    code: [src/learning.rs]
+    docs: [SPEC.md]
+  - id: durable-learning-state
+    group: data
+    name: Durable learning state and recovery archives
+    summary: Typed immutable history, atomic transitions, ownership, spend, and complete recovery archives.
+    code: [src/model.rs, src/engine.rs, src/persistence.rs]
+    docs: [SPEC.md]
+  - id: generation
+    group: runtime
+    name: Bounded generation and criticism
+    summary: Validate material, provenance, and independent critic judgments within bounded requests.
+    code: [src/generation.rs]
+    docs: [SPEC.md]
+  - id: private-worker
+    group: auth
+    name: Private Worker and singleton boundary
+    summary: Access validation, singleton SQLite execution, external effects, alarms, and private R2.
+    code: [src/runtime.rs]
+    docs: [docs/rust-cloudflare.md, docs/runbook.md]
+  - id: notebook
+    group: surfaces
+    name: Server-rendered learning notebook
+    summary: Escaped HTML and vanilla browser reconciliation for private Create and study flows.
+    code: [src/web.rs, assets/]
+    docs: [DESIGN.md]
+  - id: foundation-gate
+    group: platform
+    name: Source-bound verification gates
+    summary: Source-snapshot CI, isolated story walks, and repository verification guidance.
+    code: [.dagger/, .github/workflows/, qa/, .agents/skills/scry-qa/]
+    docs: [docs/qa/system.md]
+    decisions: ['004']

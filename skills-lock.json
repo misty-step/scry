@@ -1,0 +1,8 @@
+{
+  "skills": {
+    "scry-qa": {
+      "source": "./.agents/skills/scry-qa",
+      "computedHash": "850b2b3c80fbef8cd3861da0435b160682c82c8c870ec9bfd9fef67b6ea3aae9"
+    }
+  }
+}

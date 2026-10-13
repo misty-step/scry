@@ -18,7 +18,8 @@ Date: 2026-06-06
   - sha256: `bd60ab2d623c56fcb9122dab27ad590ee5bb243aa629f22999b4c9be8b1fa92d`
 - `docs/architecture/production-mobile-study-app.md`
   - sha256: `c691896c9319ecaca8e6aba840c119501d78bb8d050481224c7cc816ada70909`
-- `docs/architecture/adr-001-production-shell-boundary.md`
+- [Historical production shell decision](../../../docs/decisions/historical/005-production-shell-boundary.md)
+  (original receipt path: `docs/architecture/adr-001-production-shell-boundary.md`)
   - sha256: `8439b0c8c51af7e4b049f264b074addd1c2cdd12bf1cd79822eefa49c07da807`
 - `docs/qa/fly-staging.md`
   - sha256: `5b74e2270fe463a0dd280290d7af8828d850be38b50a6d0f4fd70f481105ca89`

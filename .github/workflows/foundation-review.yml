@@ -1,4 +1,4 @@
-# Foundation review gate (ADR-003 Review authority, US-027).
+# Foundation review gate (harness historical decision 003 Review authority, US-027).
 # Copy to .github/workflows/foundation-review.yml and set HARNESS_SHA to the
 # harness revision the repository's foundation job pins.
 #
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      HARNESS_SHA: "d57543b157c7e301a6f2f0a36fa628633c05ad0f"
+      HARNESS_SHA: "afbaf33b3f940108ccaf06c74841c9fbfa812bd0"
       BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
       BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:

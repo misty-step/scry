@@ -107,6 +107,8 @@ explicitly approved activation replaces it.
 - `bin/`, `scripts/scry-cloudflare-data`, and `scripts/lib/scry_ops.py` preserve
   old formats intentionally. Their checks remain separate from the rewrite.
 
+Open docs/decisions/index.md before proposing a new primitive, surface, or storage home.
+
 ## Sources of truth and work
 
 VISION owns intent, USER_STORIES owns root stories, SPEC owns criteria and

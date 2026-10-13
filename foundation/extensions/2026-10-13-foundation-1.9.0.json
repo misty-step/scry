@@ -1,0 +1,114 @@
+{
+  "schema": "foundation-baseline-extension/1",
+  "reason": "Explicit Foundation 1.9.0 re-pin records existing unverified obligations and structural gaps without claiming satisfaction. Historical records remain byte-for-byte unchanged, so their obsolete relative links are a doc:refs gap. New baseline entries require designated agent review; this record does not assert approval. Chips owns same-day expiry, the shortest checker allowance.",
+  "entries": [
+    {
+      "gap": "doc:AGENTS.md",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "doc:DOMAIN.md",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "doc:refs",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "doc:runbook",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "entry:check",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-ACT-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-BRD-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-CHG-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-CHG-002",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-CIT-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-DAT-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-DEF-ACTIVITY-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-DEF-SENTRY-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-DOC-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-FBK-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-MAP-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-OBS-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-PRF-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-REV-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-SEC-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-TRN-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-USE-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-WLK-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "obl:FND-WS-001",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "ops:alert",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "ops:incident",
+      "expires": "2026-11-12"
+    },
+    {
+      "gap": "ops:ship",
+      "expires": "2026-11-12"
+    }
+  ]
+}
