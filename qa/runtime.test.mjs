@@ -93,6 +93,24 @@ try {
     const saved=await submit(photoBytes);assert.equal(saved.status,303);const replay=await submit(photoBytes);assert.equal(replay.status,303);assert.equal(replay.headers.get('Location'),saved.headers.get('Location'));
     const exported=await(await request('/export')).json();assert.equal(Object.keys(exported.app.goals).length,2);assert.equal(exported.photos.length,1);assert.deepEqual(Buffer.from(exported.photos[0].bytes,'base64'),photoBytes);
   });
+  await check('failed scheduled photo archive reaches the scheduler without hiding retained work', async () => {
+    const assets = await preview.getR2Bucket('SCRY_ASSETS');
+    const objects = await assets.list();
+    assert.equal(objects.objects.length, 1);
+    const key = objects.objects[0].key;
+    const photo = await assets.get(key);
+    const bytes = await photo.arrayBuffer();
+    await assets.delete(key);
+    try {
+      const result = await worker.scheduled({ cron: '17 3 * * *' });
+      assert.notEqual(result.outcome, 'ok');
+    } finally { await assets.put(key, bytes); }
+    const state = await (await request('/export')).json();
+    assert.equal(Object.keys(state.app.goals).length, 2);
+    assert.ok(state.app.backup.error);
+    const settings = await (await request('/settings')).text();
+    assert.match(settings, /complete snapshot could not be verified/);
+  });
   let archiveBytes,hash;
   await check('complete R2 backup acknowledged only after exact checksum readback',async()=>{
     const result=await request('/operator/backup',jwt(),{method:'POST',headers:{Origin:origin,'x-scry-operator-key':operatorKey}});assert.equal(result.status,200);
@@ -205,5 +223,27 @@ try {
       mode='over-allowance';const expensive=await capture('Controlled measured expense beyond the daily allowance');const over=await wait(app=>app.goals[expensive].status==='failed');const expensiveJob=over.app.jobs[over.app.goals[expensive].job_id];const measured=over.app.spend.find(s=>s.work_id===expensiveJob.id);assert.equal(measured.status,'known');assert.equal(measured.cost_micros,2_000_000_000);assert.ok(expensiveJob.raw_response);assert.ok(expensiveJob.candidate_json);const stopped=transmissions;const blocked=await capture('Save this intent after the measured allowance is exhausted');await wait(app=>app.goals[blocked].status==='failed');assert.equal(transmissions,stopped,'Measured over-budget expense must stop further reservations and sends.');
     } finally {releaseBlocked?.();await instance.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===18?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  for (const [label, changes, succeeds, snapshot] of [
+    ['verified snapshot', {}, true, true],
+    ['missing internal authorization', { INTERNAL_KEY: '' }, false, false],
+    ['invalid namespace', { SPACE_NAME: 'invalid/name' }, false, false],
+    ['paused restore', { SCRY_ENV: 'restore', INTERNAL_KEY: '' }, true, false],
+  ]) {
+    await check(`scheduled snapshots: ${label}`, async () => {
+      const instance = await createRuntime({ bindings: { ...baseBindings, ...changes }, name: 'scry-scheduled-smoke', artifact });
+      try {
+        const result = await instance.worker.scheduled({ cron: '17 3 * * *' });
+        assert.equal(result.outcome === 'ok', succeeds, `Scheduler outcome: ${result.outcome}`);
+        const bucket = await instance.mf.getR2Bucket('SCRY_BACKUPS');
+        const objects = await bucket.list();
+        assert.equal(objects.objects.length > 0, snapshot);
+        if (snapshot) {
+          const object = await bucket.get(objects.objects[0].key);
+          const archive = JSON.parse(await object.text());
+          assert.equal(archive.app.schema, 1);
+        }
+      } finally { await instance.mf.dispose(); }
+    });
+  }
+  console.log(JSON.stringify({status:checks===23?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
