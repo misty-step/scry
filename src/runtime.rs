@@ -1538,12 +1538,19 @@ async fn set_alarm(storage: &Storage, millis: i64) -> Result<()> {
         .await
 }
 
-#[event(scheduled)]
-pub async fn scheduled(_event: ScheduledEvent, env: Env, ctx: ScheduleContext) {
-    if variable(&env, "SCRY_ENV") == "restore" {
-        return;
-    }
-    ctx.wait_until(async move {
+// worker 0.8.7's scheduled macro and ScheduleContext::wait_until accept only
+// unit futures and always resolve them successfully. Export the same native
+// handler directly so a failed snapshot rejects the platform's scheduled event.
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub async fn scheduled(
+    _event: worker::worker_sys::ScheduledEvent,
+    env: Env,
+    _ctx: worker::worker_sys::ScheduleContext,
+) -> std::result::Result<(), JsValue> {
+    std::panic::AssertUnwindSafe(async move {
+        if variable(&env, "SCRY_ENV") == "restore" {
+            return Ok(());
+        }
         let result = async {
             let key = internal_key(&env);
             if key.len() < 32 {
@@ -1557,15 +1564,24 @@ pub async fn scheduled(_event: ScheduledEvent, env: Env, ctx: ScheduleContext) {
             let mut init = RequestInit::new();
             init.with_method(Method::Post).with_headers(headers);
             let req = Request::new_with_init("https://internal.invalid/__internal/daily", &init)?;
-            env.durable_object("LEARNING_SPACE")?
+            let response = env
+                .durable_object("LEARNING_SPACE")?
                 .get_by_name(&space_name(&env)?)?
                 .fetch_with_request(req)
                 .await?;
+            if response.status_code() != 200 {
+                return Err(Error::RustError(
+                    "Scheduled snapshot was not acknowledged.".into(),
+                ));
+            }
             Ok::<(), Error>(())
         }
         .await;
-        if result.is_err() {
-            console_error!("The scheduled complete snapshot could not be verified.");
-        }
-    });
+        // Binding errors and response bodies may contain private context. The
+        // operation is enough to identify this failure without exposing it.
+        result.map_err(|_| {
+            js_sys::Error::new("The scheduled complete snapshot could not be verified.").into()
+        })
+    })
+    .await
 }
