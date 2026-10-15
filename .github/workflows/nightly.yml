@@ -49,6 +49,7 @@ jobs:
         with:
           name: scry-nightly-walk-${{ github.sha }}-${{ github.run_id }}
           path: target/walk/
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
       - name: Open or update the nightly failure issue
