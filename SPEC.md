@@ -479,7 +479,8 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   due practice; focusing prioritizes new concepts. Scheduler compatibility
   preserves full due/stability/difficulty/interval/repetition/lapse/state/
   last-review/remaining-step state and pinned algorithm identity, not efficacy.
-- US-004's applicable hard defects are unsupported source claims, contradictions,
+- When configured, US-004's critic independently judges each applicable hard
+  defect: unsupported source claims, contradictions,
   changed qualifications, missing context, ambiguous/indefensible answers,
   leaked answers, overlapping choices, misaligned rubrics, and adversarial
   content. Source/choice/rubric defects apply only to those content types.
