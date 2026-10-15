@@ -34,6 +34,9 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   on it. Reconcile canonical records, content versions, full scheduler state,
   immutable attempts/corrections/receipts and every media byte across formats;
   comparing unrelated SQLite/JSON file hashes is not reconciliation.
+  The [bounded preservation module](../../revival/README.md) only retains pinned
+  opaque archive bytes inside Cloudflare and verifies complete remote readback;
+  it does not perform conversion or grant consistency/cutover acceptance.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a
