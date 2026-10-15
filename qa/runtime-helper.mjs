@@ -17,7 +17,12 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
   artifact=resolve(artifact);
   // Miniflare replaces Host with its own listener. This transport-only adapter
   // restores the simulated external Host before Rust enforces its real checks.
-  const adapter=`import App,{LearningSpace} from './index.js';export {LearningSpace};export default class extends App{fetch(request){const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}return super.fetch(new Request(request,{headers}));}}`;
+  // worker-rs exports a non-RPC class. Only inspection fixtures wrap it in the
+  // native base required by Miniflare's SQL inspection; fetch/alarm stay Rust.
+  const space=inspect
+    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}fetch(request){return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
+    : `export {RustLearningSpace as LearningSpace};`;
+  const adapter=`import App,{LearningSpace as RustLearningSpace} from './index.js';${space}export default class extends App{fetch(request){const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}return super.fetch(new Request(request,{headers}));}}`;
   const modules=[
     {type:'ESModule',path:resolve(artifact,'smoke-adapter.js'),contents:adapter},
     {type:'ESModule',path:resolve(artifact,'index.js'),contents:readFileSync(resolve(artifact,'index.js'),'utf8')},

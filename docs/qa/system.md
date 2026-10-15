@@ -171,10 +171,11 @@ on logout/account/history return. Keep credentials out of URLs, argv, logs,
 screenshots, and committed receipts. Access logout, app mutation state, provider
 keys, and restore/operator capabilities are separate authorities.
 
-`/healthz` and `/readyz` establish liveness/readiness, not model quality,
-remote-backup freshness, or private-browser acceptance. Settings exposes the
-last verified backup and errors. No public signup/API/status compatibility is
-inherited from the retired applications.
+The Rust candidate's `/healthz` includes SPEC's persisted remote-backup freshness
+verdict; `/readyz` checks private storage readiness. Neither proves model quality
+or private-browser acceptance. Settings exposes the last verified backup and
+errors. The retained Go liveness contract is unchanged. No public signup/API/status
+compatibility is inherited from the retired applications.
 
 ## Independent recovery
 

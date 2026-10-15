@@ -16,6 +16,7 @@ const owner = 'synthetic-owner-only';
 const audience = 'synthetic-audience-only';
 const operatorKey = 'synthetic-operator-only-key-at-least-32chars';
 const restoreToken = 'synthetic-restore-only-key-at-least-32chars';
+const backupKey = 'synthetic-backup-trigger-only-key-at-least-32chars';
 const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const publicJwk = { ...publicKey.export({format:'jwk'}), kid:'synthetic-key', alg:'RS256', use:'sig' };
 const epoch = Math.floor(Date.now()/1000);
@@ -31,13 +32,21 @@ const egress = async request => {
   certRequests++;
   return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
 };
-const baseBindings = {SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'synthetic-only',ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner,INTERNAL_KEY:internalKey,OPERATOR_KEY:operatorKey,ALTERNATE_HOSTS:'alternate-synthetic.invalid'};
+const baseBindings = {SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'synthetic-only',ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner,INTERNAL_KEY:internalKey,OPERATOR_KEY:operatorKey,BACKUP_TRIGGER_KEY:backupKey,ALTERNATE_HOSTS:'alternate-synthetic.invalid'};
 let checks=0;
 const check = (label,fn)=>test(label,async()=>{await fn();checks++;});
-let {mf:preview,worker}=await createRuntime({bindings:baseBindings,name:'scry-auth-smoke',artifact,egress});
+let {mf:preview,worker}=await createRuntime({bindings:baseBindings,name:'scry-auth-smoke',artifact,egress,inspect:true});
 let restored;
 try {
   const request = (path='/', token=jwt(), init={}) => {const headers={'Cf-Access-Jwt-Assertion':token,...init.headers};if(headers.Origin){headers['X-Scry-Test-Origin']=headers.Origin;delete headers.Origin;}return worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers});};
+  await check('health fails closed before the first snapshot without initializing learner state',async()=>{
+    const response=await request('/healthz','');
+    assert.equal(response.status,503);
+    assert.equal(await response.text(),'backup_stale');
+    assert.match(response.headers.get('Cache-Control'),/no-store/);
+    const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
+    assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
+  });
   await check('real RS256 owner signature and private response headers',async()=>{
     const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/Create/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
@@ -118,6 +127,40 @@ try {
     const object=await bucket.get(list.objects.at(-1).key);archiveBytes=Buffer.from(await object.arrayBuffer());hash=createHash('sha256').update(archiveBytes).digest('hex');const archive=JSON.parse(archiveBytes);assert.equal(Object.keys(archive.app.goals).length,2);assert.equal(archive.algorithm.startsWith('go-fsrs/v4.0.0'),true);
   });
   let recoverySends=0;
+  await check('chief backup capability is route-scoped, fails safely and recovers stale health only after full readback',async()=>{
+    const trigger=(key=backupKey,init={})=>request('/internal/backup','',{method:'POST',...init,headers:{'x-scry-backup-key':key,...init.headers}});
+    assert.equal((await request('/healthz','')).status,200);
+    for(const key of ['', 'wrong',internalKey,operatorKey])assert.equal((await trigger(key)).status,403);
+    assert.equal((await trigger(backupKey,{method:'GET'})).status,405);
+    assert.equal((await trigger(backupKey,{headers:{'X-Scry-Test-Host':'wrong.invalid'}})).status,421);
+    assert.equal((await worker.fetch('https://alternate-synthetic.invalid/internal/backup',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,421);
+    assert.equal((await request('/','',{headers:{'x-scry-backup-key':backupKey}})).status,401);
+    assert.equal((await request('/__internal/daily','',{method:'POST',headers:{'x-scry-backup-key':backupKey,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,404);
+    const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
+    const meta=JSON.parse((await storage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+    meta.backup.completed_ms=Date.now()-27*60*60*1000;
+    await storage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+    const stale=await request('/healthz','');assert.equal(stale.status,503);assert.equal(await stale.text(),'backup_stale');
+    const before=await(await request('/export')).json();
+    const assets=await preview.getR2Bucket('SCRY_ASSETS');const key=(await assets.list()).objects[0].key;
+    const photo=Buffer.from(await(await assets.get(key)).arrayBuffer());await assets.delete(key);
+    try {
+      const failed=await trigger();assert.equal(failed.status,503);assert.equal(await failed.text(),'backup_failed');
+      assert.equal((await request('/healthz','')).status,503);
+    } finally {await assets.put(key,photo);}
+    const recovered=await trigger();assert.equal(recovered.status,200);assert.equal(await recovered.text(),'Snapshot verified.');
+    assert.equal((await request('/healthz','')).status,200);
+    const after=await(await request('/export')).json();
+    assert.deepEqual(after.app.goals,before.app.goals);assert.deepEqual(after.app.events,before.app.events);assert.deepEqual(after.photos,before.photos);
+    const bucket=await preview.getR2Bucket('SCRY_BACKUPS');const bytes=Buffer.from(await(await bucket.get(after.app.backup.key)).arrayBuffer());
+    assert.equal(createHash('sha256').update(bytes).digest('hex'),after.app.backup.sha256);
+    const snapshot=JSON.parse(bytes);assert.deepEqual(snapshot.app.goals,before.app.goals);assert.deepEqual(snapshot.photos,before.photos);
+    for(const changes of [{BACKUP_TRIGGER_KEY:''},{BACKUP_TRIGGER_KEY:'short'},{INTERNAL_KEY:''},{SPACE_NAME:'invalid/name'},{SCRY_ENV:'restore'},{SCRY_ENV:'unconfigured'}]){
+      const fixture=await createRuntime({bindings:{...baseBindings,...changes},name:'scry-trigger-closed',artifact});
+      try {assert.notEqual((await fixture.worker.fetch(`${origin}/internal/backup`,{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);assert.equal((await(await fixture.mf.getR2Bucket('SCRY_BACKUPS')).list()).objects.length,0);}
+      finally {await fixture.mf.dispose();}
+    }
+  });
   const recoveryEgress=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');recoverySends++;return new Response('Controlled malformed recovery response',{status:200});};
   const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress});
   restored=restoreRuntime.mf;
@@ -283,5 +326,5 @@ try {
       }
     } finally {await fixture.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===24?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  console.log(JSON.stringify({status:checks===26?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}

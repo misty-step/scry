@@ -49,6 +49,12 @@ belong in ADRs, not this table.
 | D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. |
 | D6 | Fresh replacement data, no legacy API parity. Preserve historical stores, source and recovery artifacts separately; no import, deletion or simultaneous historical writer is implied. |
 
+Health must report non-200 with reason `backup_stale` if no verified remote
+snapshot exists or the last one is older than 26 hours. A separately authorized
+machine trigger may request a backup, but cannot read learner data or act as
+the owner. Trigger success acknowledges complete remote verification, not just
+an attempted upload. Failed backups never advance the last verified time.
+
 ## Experience contract
 
 The first screen is the learning moment, not a dashboard. Learning effort is
