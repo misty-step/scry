@@ -1,7 +1,7 @@
 # Rust Cloudflare replacement candidate
 
 The operator instructed a full redesign/rewrite on 2026-10-07. This document
-owns the replacement's architecture, build, and proposed release procedure.
+owns the replacement's build and proposed release procedure.
 [The operational runbook](runbook.md) still owns deployed state: the documented
 Go/SQLite Container at `scry.study` has not been replaced by source changes.
 Its exact source remains in Git at `c6ba395`; compatible artifacts and private
@@ -15,43 +15,12 @@ acceptance, or physical-phone approval.
 
 ## Architecture and ownership
 
-A plain Rust/WASM Cloudflare Worker validates the Access JWT signature, exact
-issuer/audience/owner subject, expiration, and canonical Host/origin. It forwards
-through a separate internal capability to one named `LearningSpace` Durable
-Object. The object's SQLite transactions atomically own application records,
-immutable presentations/events, full pinned FSRS cards, exact operation receipts,
-leases, allowance reservations, and held review results. External model/Jev calls
-happen after ownership and allowance commit; fresh state is checked before
-publication. Only this singleton can write learning or claim paid work.
-
-R2 stores private input photos and complete versioned recovery archives. Each
-archive includes a committed application snapshot plus every referenced photo's
-bytes, metadata, and checksum. Success requires exact size/checksum/full-byte
-remote readback and archive validation. Daily and pre-release snapshots with
-30-day retention target RPO 24 hours and RTO 60 minutes; those objectives are
-not guarantees. Durable Object storage and local R2 alone are not independent
-remote-recovery proof.
-
-The candidate bounds a complete archive to 16 MiB, including base64 photo
-bytes, and each SQLite record to 1 MiB. Photos are at most 4 MiB individually.
-Create and content edits reject excess archive growth before committing and
-retain the draft; archive sizing happens before reading photo bodies. Paid
-completion receipts remain durable even at a capacity boundary. A later capacity
-condition can prevent a complete backup and must be resolved by the operator;
-it never becomes a successful backup or silent data deletion.
-
-Rust renders escaped HTML and serves self-hosted fonts/styles and a small vanilla
-controller. Core POST forms work without JavaScript. The controller only presents
-and reconciles, preserves one frozen unresolved answer, pauses offline, avoids
-browser storage, and hides private pages on denied access or pagehide. Protected
-notes, names, goal intent/title, historical answers, edit, export, and photos
-require assistance before they can coexist with an unaided current attempt.
-
-The scheduler port retains the Go adapter's original algorithm identity and full
-state. The 260 reference trajectories verify that bounded compatibility. They do
-not establish personalized retention, model calibration, mastery, or efficacy.
-The accepted product and evidence contracts remain in [SPEC](../SPEC.md),
-[stories](../USER_STORIES.md), [design](../DESIGN.md), and [QA](qa/system.md).
+[ADR 004](adr/004-rust-cloudflare-candidate.md) owns candidate architecture,
+module boundaries, transaction/ingress mechanisms and scheduler compatibility.
+[SPEC](../SPEC.md) alone owns stories, behavior and policy, including capacity
+and recovery. [DESIGN](../DESIGN.md) owns visuals; [QA](qa/system.md) owns proof.
+The archive implementation sizes before reading photo bodies; this procedure
+does not independently redefine SPEC's limits.
 
 ## Build and isolated development
 

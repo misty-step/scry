@@ -4,7 +4,7 @@ The active replacement source is Rust/WASM on a plain Cloudflare Worker with a
 singleton SQLite Durable Object and private R2. The production Go/SQLite
 Container remains the deployed runtime until an approved replacement;
 [the operational runbook](../runbook.md) owns that state. [VISION](../../VISION.md)
-owns intent, [SPEC](../../SPEC.md) owns acceptance, and
+explains intent, [SPEC](../../SPEC.md) alone owns stories and acceptance, and
 [README](../../README.md#start-or-resume-work) identifies work ownership.
 
 A native test, a workerd fixture, a browser interaction, live-provider material,
@@ -96,7 +96,12 @@ tools are unavailable, run browser QA on the isolated exe.dev VM as the
 repository browser/story runner instructs. Do not silently replace a stalled
 harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
-Go walks and their selectors are not rewrite proof.
+Go walks and their selectors are not rewrite proof. `qa/walk --all` discovers
+active US stories and their numbered criteria directly from SPEC; `--stories`
+selects a subset. It excludes superseded US-005 and retired US-012 without
+discarding their canonical definitions. Existing walk implementations and policy
+checks remain in `qa/walk-specs.mjs`; selection does not make them proof of all
+S criteria, real-provider quality, phone experience, or hosted recovery.
 
 US-001.1 remains the retained Go schema 4→5 preservation contract. The gate
 archives only `go.mod`, `go.sum`, `internal/store`, and `internal/learning` at

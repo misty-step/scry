@@ -1,8 +1,8 @@
 # Architecture Workbench
 
-This folder preserves the historical Rust architecture workbench. It is not
-the current Go application's architecture or fleet authority; use `SPEC.md`
-and current source for those. The historical artifact is static and diffable:
+This folder preserves the retired Rust architecture workbench, not current
+candidate or fleet authority. Use [ADRs](../adr/README.md) for implementation
+decisions and [SPEC](../../SPEC.md) for behavior. The historical artifact is static and diffable:
 
 - `memory-engine.map.json` is the retained Rust graph model.
 - `workbench.html` is a dependency-free local viewer for that model.
