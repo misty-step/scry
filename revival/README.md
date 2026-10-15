@@ -118,3 +118,30 @@ Any inspection failure returns a fixed error, never SQLite or archive diagnostic
 
 This slice does not implement Go-to-Rust mapping, semantic content reconciliation,
 legacy writer quiescence, final import, private owner acceptance or live cutover.
+
+## Retaining original Go records in Rust recovery
+
+`App.revival_go` carries one original recovery ZIP through existing Rust durable
+rows, owner export, complete backup and isolated restore. It is empty for an
+ordinary fresh space. A temporary converter supplies 48 KiB binary chunks,
+standard padded base64 values, and keys `<original-sha256>/<index:08>` starting
+at zero. The final chunk alone may be shorter. Archive validation rejects gaps,
+mixed hashes, changed bytes, invalid/noncanonical base64 and excessive size.
+Each chunk uses an existing bounded record; there is no second storage service.
+
+Nonempty custody selects archive identity
+`scry-rust-durable-sqlite-go-custody-v1`. Do not relabel it with the ordinary
+`scry-rust-durable-sqlite-v1` identity: older code would silently discard an
+unknown application field. Old code rejects the new archive identity and durable
+row prefix; only custody-aware tested builds are compatible rollback targets.
+The normal schema, scheduler identity, authorization and 16 MiB complete-archive
+bound remain unchanged. Retained bytes are never jobs or recall evidence.
+
+The original can be recovered by ordered base64 decoding and concatenation,
+then verifying its SHA-256 before the read-only inspector's ZIP/SQLite checks.
+For learner data all of this still runs inside the authorized Cloudflare account;
+never download it to perform that extraction. The separately retained no-expiry
+R2 original remains untouched. Synthetic mechanics are exercised by
+`cargo test --locked --test revival_custody` and the existing runtime suite.
+These checks do not implement or certify the active Go-to-Rust projection,
+canonical learner reconciliation, final consistent archive or production cutover.

@@ -15,6 +15,7 @@ use std::{
 pub const MAX_RECORD_BYTES: usize = 1024 * 1024;
 pub const MAX_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
 pub const ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-v1";
+const REVIVAL_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-custody-v1";
 const MAPS: &[&str] = &[
     "goals",
     "concepts",
@@ -22,6 +23,7 @@ const MAPS: &[&str] = &[
     "operations",
     "jobs",
     "assessments",
+    "revival_go",
 ];
 const LISTS: &[&str] = &["events", "overrides", "spend", "feedback", "resets"];
 const JOB_PAYLOADS: &[&str] = &[
@@ -230,6 +232,54 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+fn archive_format(app: &App) -> &'static str {
+    if app.revival_go.is_empty() {
+        ARCHIVE_FORMAT
+    } else {
+        REVIVAL_ARCHIVE_FORMAT
+    }
+}
+
+/// Keep otherwise unrepresentable Go history verbatim in complete recovery.
+/// This checks opaque byte custody, not ZIP/SQLite semantics or conversion.
+fn validate_go_custody(app: &App) -> AppResult<()> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let invalid = || AppError::new(422, "The retained Go recovery bytes are invalid.");
+    let mut checksum = Sha256::new();
+    let mut expected_hash = None;
+    let mut size = 0usize;
+    for (index, (key, value)) in app.revival_go.iter().enumerate() {
+        let (hash, position) = key.split_once('/').ok_or_else(invalid)?;
+        if hash.len() != 64
+            || !hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || position != format!("{index:08}")
+            || expected_hash.is_some_and(|expected| expected != hash)
+            || value.is_empty()
+            || value.len() > 64 * 1024
+        {
+            return Err(invalid());
+        }
+        expected_hash = Some(hash);
+        let bytes = STANDARD.decode(value).map_err(|_| invalid())?;
+        if STANDARD.encode(&bytes) != *value
+            || (index + 1 < app.revival_go.len() && bytes.len() != 48 * 1024)
+        {
+            return Err(invalid());
+        }
+        size = size
+            .checked_add(bytes.len())
+            .filter(|n| *n <= MAX_ARCHIVE_BYTES)
+            .ok_or_else(invalid)?;
+        checksum.update(bytes);
+    }
+    if expected_hash.is_some_and(|expected| hex::encode(checksum.finalize()) != expected) {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArchivedPhoto {
     pub photo: Photo,
@@ -334,7 +384,7 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
     serde_json::to_writer(
         &mut size,
         &ArchiveSize {
-            format: ARCHIVE_FORMAT,
+            format: archive_format(app),
             schema: SCHEMA,
             algorithm: ALGORITHM,
             created_ms: i64::MIN,
@@ -348,7 +398,7 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
 impl Archive {
     pub fn new(app: App, photos: Vec<ArchivedPhoto>, now: i64) -> Self {
         Self {
-            format: ARCHIVE_FORMAT.into(),
+            format: archive_format(&app).into(),
             schema: SCHEMA,
             algorithm: ALGORITHM.into(),
             created_ms: now,
@@ -391,7 +441,7 @@ impl Archive {
         Ok(archive)
     }
     pub fn validate(&self) -> AppResult<()> {
-        if self.format != ARCHIVE_FORMAT
+        if self.format != archive_format(&self.app)
             || self.schema != SCHEMA
             || self.app.schema != SCHEMA
             || self.algorithm != ALGORITHM
@@ -401,6 +451,7 @@ impl Archive {
                 "This archive requires its compatible schema and scheduler build.",
             ));
         }
+        validate_go_custody(&self.app)?;
         crate::engine::validate_app(&self.app)?;
         let required = required_photos(&self.app)?;
         let mut seen = BTreeSet::new();
