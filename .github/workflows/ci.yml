@@ -49,6 +49,9 @@ jobs:
         with:
           name: scry-worker-${{ github.sha }}
           path: target/ci-release/
+          # SHA256SUMS lists hidden members (worker/.gitignore, walk marker);
+          # transport all of them so the downloaded artifact verifies 64/64.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
@@ -74,6 +77,7 @@ jobs:
         with:
           name: scry-story-walk-${{ github.sha }}
           path: target/walk/
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
