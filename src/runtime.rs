@@ -54,7 +54,10 @@ fn development(env: &Env) -> bool {
     variable(env, "SCRY_ENV") == "development"
 }
 fn isolated(env: &Env) -> bool {
-    development(env) || variable(env, "SCRY_ENV") == "restore"
+    matches!(
+        variable(env, "SCRY_ENV").as_str(),
+        "development" | "restore" | "synthetic-preview"
+    )
 }
 fn internal_key(env: &Env) -> String {
     secret(env, "INTERNAL_KEY")
@@ -88,7 +91,7 @@ fn view_query(env: &Env, fields: &BTreeMap<String, String>) -> Result<BTreeMap<S
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     query.insert("__nonce".into(), random_id()?);
-    if development(env) {
+    if development(env) || variable(env, "SCRY_ENV") == "synthetic-preview" {
         query.insert("__synthetic".into(), "true".into());
     }
     Ok(query)
@@ -283,8 +286,20 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             return private(Response::error("Restore authorization required.", 403)?);
         }
     } else {
-        if mode != "production" && mode != "preview" {
+        if mode != "production" && mode != "preview" && mode != "synthetic-preview" {
             return private(Response::error("Private ingress is not configured.", 503)?);
+        }
+        if mode == "synthetic-preview"
+            && (secret(&env, "OWNER_SUBJECT") != "synthetic-preview-owner"
+                || secret(&env, "SYNTHETIC_ACCESS_CLIENT_ID").is_empty()
+                || !space_name(&env)?.starts_with("synthetic-")
+                || provider_secrets_present(&env)
+                || !secret(&env, "RESTORE_TOKEN").is_empty())
+        {
+            return private(Response::error(
+                "Synthetic preview requires isolated capabilities.",
+                503,
+            )?);
         }
         if validate_access(&req, &env).await.is_err() {
             return private(Response::error("Owner authorization required.", 401)?);
@@ -406,6 +421,15 @@ async fn validate_access(req: &Request, env: &Env) -> Result<()> {
             || v.as_array()
                 .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(aud.as_str())))
     });
+    // Access service tokens have an empty subject; never map one to the owner.
+    // Only the explicit synthetic-only mode admits its exact signed principal.
+    let valid_identity = if variable(env, "SCRY_ENV") == "synthetic-preview" {
+        claims.get("sub").and_then(Value::as_str) == Some("")
+            && claims.get("common_name").and_then(Value::as_str)
+                == Some(secret(env, "SYNTHETIC_ACCESS_CLIENT_ID").as_str())
+    } else {
+        claims.get("sub").and_then(Value::as_str) == Some(owner.as_str())
+    };
     if header.get("alg").and_then(Value::as_str) != Some("RS256")
         || header
             .get("crit")
@@ -413,7 +437,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<()> {
         || kid.is_empty()
         || kid.len() > 256
         || claims.get("iss").and_then(Value::as_str) != Some(issuer.as_str())
-        || claims.get("sub").and_then(Value::as_str) != Some(owner.as_str())
+        || !valid_identity
         || !valid_aud
         || !claims
             .get("exp")
