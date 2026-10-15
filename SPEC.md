@@ -32,7 +32,8 @@ writer reactivation, new paid capability, or deployment permission follows here.
 No public signup, billing, collaboration, universal import, course/chat product,
 manual graph editor, CLI/MCP parity, compulsory foundation detour, or invisible
 offline mutation queue is required. Dictated input is text, not an assumed
-speech engine or automatic recording integration.
+speech engine or automatic recording integration. A mandatory activity ladder
+is excluded from scope.
 
 ## Adopted behavioral policies
 
@@ -488,6 +489,8 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   not demonstrated calibration. Critic retries check only unresolved criticism,
   retain prior judgments, and never regenerate the saved batch or fish for scores.
   Mixed accepted/rejected output is partial; no accepted output is not ready.
+  Generated output above US-004's 60-candidate bound fails with the input kept;
+  it is never sampled, truncated, or presented as complete.
 
 ### Capacity and recovery
 
