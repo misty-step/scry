@@ -37,6 +37,10 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   The [bounded preservation module](../../revival/README.md) only retains pinned
   opaque archive bytes inside Cloudflare and verifies complete remote readback;
   it does not perform conversion or grant consistency/cutover acceptance.
+  The same procedure's read-only inventory verifies the retained archive with
+  official SQLite WASM and returns per-table canonical counts/digests only.
+  Its reference schema is derived from the exact retained Go source. It remains
+  outside learner routes and is not itself the one-way conversion or live proof.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a

@@ -69,3 +69,52 @@ This procedure is source-ready, not a claim that a learner archive has been
 copied. A reviewed converter must still inspect the retained ZIP/SQLite inside
 Cloudflare, preserve/reconcile every record and media byte, restore into unused
 isolated bindings and retain post-cutover writes during rollback.
+
+## Read-only conversion inventory
+
+`inspect.mjs` is the next temporary operator tool, not a converter. It only reads
+one pinned preserved archive and returns safe counts/digests. It never exports
+records/media, writes R2/SQLite, claims a job, calls a provider or binds a learner
+app. `POST /inspect` requires an empty body, a separate `INSPECT_KEY` (at least
+32 characters), and absolute `INSPECT_UNTIL_MS` checked before storage access.
+Pin `SOURCE_KEY`, `SOURCE_BYTES` and `SOURCE_SHA256` at deployment; bind only
+`SOURCE` to the private custody bucket. No caller chooses SQL, a key or a record.
+
+On the authorized build host, with the pinned lockfile dependencies:
+
+    python3 scripts/build-revival-inspect.py
+    node --test qa/revival-inspect.test.mjs
+
+The build derives the five schema definitions from the checksum-verified retained
+Go source, rather than maintaining a second schema. It uses the pinned official
+SQLite WASM (including FTS5) and fflate ZIP reader; neither is added to the normal
+Rust app. An earlier sql.js feasibility probe lacked FTS5 and is not used.
+No custom SQLite reader, shell/database server or provider integration is needed.
+The existing source gate builds once, tests in workerd/R2 against independent
+native SQLite fixtures, and includes the exact `revival-inspect/` modules in its
+normal artifact manifest and `proof.json`. Deploy those tested modules unchanged;
+do not rebuild them operator-side. The unconfigured Wrangler template has no
+storage bindings or public/preview URLs and is only used for the offline build.
+
+Validation requires exactly the two uncompressed Go format-1 ZIP entries, exact
+archive/database hashes and sizes, SCRY application identity/schema 5, full exact
+reference schema, SQLite integrity and foreign-key checks. No migration or repair
+is attempted. Every table (including historical/operation/media and FTS tables)
+contributes every SQL value to a versioned, type-tagged canonical digest. Integer
+values use exact int64 decimal, real values IEEE754 big-endian bytes, text exact
+UTF-8 bytes including embedded NUL, blobs every byte, and NULL its own tag. Hash
+each encoded row, sort those hashes (retaining duplicates), and hash the resulting
+list. The native fixture oracle independently checks the same receipts. These
+are inventory fingerprints, not evidence of Rust conversion or a final writer.
+
+Use the preservation procedure's private remote-preview path, refusal checks,
+memory-only keys and at-most-15-minute immutable capability lifetime. Verify the
+same preview token refuses after its actual deadline while the source remains;
+never treat replacement upload as revocation. There is no published domain or
+synthetic learner principal. Before learner binding, independently review this
+tool and its exact CI artifact, and prove the hosted path with synthetic Go-format
+fixtures. Retain only its safe summary, hashes and source identity in evidence.
+Any inspection failure returns a fixed error, never SQLite or archive diagnostics.
+
+This slice does not implement Go-to-Rust mapping, semantic content reconciliation,
+legacy writer quiescence, final import, private owner acceptance or live cutover.
