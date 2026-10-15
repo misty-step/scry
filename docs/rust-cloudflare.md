@@ -11,9 +11,9 @@ Worker/R2 data, frozen Postgres, and the retained VM stay separate and paused.
 The candidate is a ground-up implementation, not a resurrection of the retired
 Rust stack. [ADR 006](adr/006-one-way-revival-custody.md) owns the subsequently
 authorized one-way Go revival and Cloudflare-only custody exception; it does
-not provide an implemented converter or learner-data acceptance. A green gate, local workerd,
-authored fixture, screenshot, or merge is not activation approval, model-quality
-acceptance, or physical-phone approval.
+not provide an implemented converter or learner-data acceptance. A green gate,
+local workerd, authored fixture, screenshot, or merge alone does not prove
+production readiness, model quality, or physical-phone acceptance.
 
 ## Architecture and ownership
 
@@ -108,15 +108,19 @@ bounded exercise; do not clone integrations into a recovery preview.
    Go Container's exact artifact/private configuration and a fresh pre-release
    remote snapshot. No live-data import or destructive historical-store action
    is implied; any such requirement needs separate scope and migration proof.
-6. Present the concrete artifact, configuration, ingress/recovery receipts,
-   remaining acceptance limits, and writer plan for **explicit operator activation
-   approval**. Source approval or a merge is not that approval. Do not publish,
-   redirect production, restart a predecessor, or retire a live writer first.
-7. Once activation is actually authorized, use the reviewed frozen configuration
-   and tested modules, identify the resulting Worker version, and exercise actual
-   owner/anonymous ingress, persistence, live UI, and remote readback. Record
-   those observations in the operational runbook. Retire only the agreed writer;
-   keep historical stores/artifacts independently recoverable.
+6. Verify the concrete artifact, configuration, ingress/recovery receipts and
+   one-writer plan. For the one-way revival, complete ADR 006's canonical
+   learner/media reconciliation and independently reviewed cutover proof;
+   rehearse compatible rollback without losing accepted writes. Missing or
+   failed proof stops promotion. Routine rollout needs no separate operator
+   approval once these conditions pass. Changed private-data, credential, spend
+   or irreversible-action scope still needs its own authorization.
+7. Promote the same tested modules with the reviewed frozen configuration,
+   identify the resulting Worker version, and exercise actual owner/anonymous
+   ingress, persistence, live UI, and remote readback. Record those observations
+   and post-promotion checks in the operational runbook; roll back compatibly if
+   verification fails. Keep one writer and retain historical stores/artifacts
+   independently recoverable; deleting a predecessor is a separate action.
 
 No automatic deployment credential enters the build/test workflow. The former
 Go Container deploy job is removed rather than pointed at replacement source.

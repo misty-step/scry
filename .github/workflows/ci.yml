@@ -81,6 +81,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-# No deployment job: a merged rewrite candidate does not authorize replacing
-# the current Go Container writer. Activation requires separate operator
-# approval and exact-artifact private-ingress/remote-recovery evidence.
+# No deployment job yet: the Go Container remains the learner writer until
+# docs/rust-cloudflare.md's verifiable cutover conditions pass. Routine
+# activation requires that evidence, not a separate operator approval.

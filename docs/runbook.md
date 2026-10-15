@@ -4,8 +4,15 @@ The 2026-10-07 Rust/Cloudflare rewrite is a source candidate, not an activation.
 The deployed Go runtime and the operational evidence below remain unchanged.
 Use retained Go artifacts or exact Git revision `c6ba395` for these historical
 Go build/recovery procedures; the current `scripts/scry-ci` exports Rust/WASM.
-The new target and its separate approval procedure are documented in
+The new target and its verifiable cutover conditions are documented in
 [the replacement release guide](rust-cloudflare.md).
+
+Current deployment rule (2026-10-15): the replacement guide and
+[ADR 006](adr/006-one-way-revival-custody.md) supersede earlier routine
+activation-approval requirements below. Once their objective proof passes,
+routine rollout needs no further approval. Private-data, credential, spend,
+irreversible-action and data-loss decisions retain their scoped authority.
+The dated receipts below remain historical evidence, not new rollout gates.
 
 ## Private Rust preview — 2026-10-09
 
