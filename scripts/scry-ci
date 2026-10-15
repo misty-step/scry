@@ -225,11 +225,18 @@ def gate(args):
     run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
     # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
     run(["node", "--test", "qa/runtime.test.mjs", "qa/revival-preserve.test.mjs"], cwd=source, env=env, log=log)
+    inspect_env = dict(env, SCRY_SOURCE_META=str(args.metadata.resolve()))
+    run([sys.executable, "scripts/build-revival-inspect.py"], cwd=source, env=inspect_env, log=log)
+    inspector = source / "target/revival-inspect"
+    inspect_artifact = {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}
+    run(["node", "--test", "qa/revival-inspect.test.mjs"], cwd=source, env=inspect_env, log=log)
+    require(inspect_artifact == {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}, "smoke changed the revival inspector")
     walk_env = qa_env
     run(["node", "qa/walk.mjs", "--all"], cwd=source, env=walk_env, log=log)
     require(artifact == {str(p.relative_to(worker)): digest(p.read_bytes()) for p in sorted(worker.rglob("*")) if p.is_file()}, "smoke changed the release Worker")
     verify_source(source, metadata)
     shutil.copytree(worker, output / "worker")
+    shutil.copytree(inspector, output / "revival-inspect")
     shutil.copytree(source / "target/walk", output / "walk")
     archive_source(source, metadata, output / "source.tar.gz")
     shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
@@ -238,7 +245,7 @@ def gate(args):
     proof = {
         "format": "scry-rust-worker-release-proof-v1", "revision": metadata["revision"],
         "source_state": metadata["source_state"], "source_sha256": metadata["source_sha256"],
-        "worker": artifact, "rustc": toolchain,
+        "worker": artifact, "revival_inspect": inspect_artifact, "rustc": toolchain,
         "checks": ["rustfmt", "Rust native tests", "native and WASM Clippy", "browser JS syntax", "retained historical recovery contracts", "redacted Gitleaks", "critic provenance/negative-controls/current-Worker browser", "exact-WASM private-ingress/SQLite/R2 smoke", "real Chromium story walk"],
         "limits": ["synthetic data", "mocked public Access certs/providers", "local R2 binding", "no live generation, physical phone, production activation, or off-account restore claim"],
     }

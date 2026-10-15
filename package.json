@@ -8,6 +8,8 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
+    "fflate": "0.8.3",
     "wrangler": "4.129.0",
     "miniflare": "5.20260903.0-alpha",
     "playwright": "1.63.0",
