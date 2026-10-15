@@ -370,6 +370,13 @@ pub struct BackupStatus {
     pub sha256: Option<String>,
     pub error: Option<String>,
 }
+impl BackupStatus {
+    pub fn fresh(&self, timestamp: i64) -> bool {
+        self.completed_ms
+            .and_then(|last| timestamp.checked_sub(last))
+            .is_some_and(|age| (0..=26 * 60 * 60_000).contains(&age))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppError {

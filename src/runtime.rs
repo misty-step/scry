@@ -218,9 +218,12 @@ fn configured_origin(env: &Env) -> Result<Url> {
 
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    // Liveness carries no data, authentication, provider, or recovery claims.
+    // Only a safe persisted freshness verdict is exposed, never archive metadata.
     if req.path() == "/healthz" && req.method() == Method::Get {
-        return private(Response::ok("ok")?);
+        return match internal_request(&env, "/__internal/health", Method::Get).await {
+            Ok(response) => private(response),
+            Err(_) => private(Response::error("backup_unavailable", 503)?),
+        };
     }
     let url = req.url()?;
     let canonical = match configured_origin(&env) {
@@ -301,6 +304,25 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 503,
             )?);
         }
+        // A separately scoped machine capability cannot read learner routes or
+        // impersonate the owner. The outer Access policy remains required.
+        if req.path() == "/internal/backup" {
+            if method != Method::Post {
+                return private(Response::error("Method not allowed.", 405)?);
+            }
+            let token = secret(&env, "BACKUP_TRIGGER_KEY");
+            if token.len() < 32
+                || req.headers().get("x-scry-backup-key")?.as_deref() != Some(token.as_str())
+            {
+                return private(Response::error("Backup authorization required.", 403)?);
+            }
+            return match internal_request(&env, "/__internal/daily", Method::Post).await {
+                Ok(response) if response.status_code() == 200 => {
+                    private(Response::ok("Snapshot verified.")?)
+                }
+                _ => private(Response::error("backup_failed", 503)?),
+            };
+        }
         if validate_access(&req, &env).await.is_err() {
             return private(Response::error("Owner authorization required.", 401)?);
         }
@@ -376,6 +398,27 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .durable_object("LEARNING_SPACE")?
         .get_by_name(&space_name(&env)?)?;
     private(stub.fetch_with_request(trusted).await?)
+}
+
+async fn internal_request(env: &Env, path: &str, method: Method) -> Result<Response> {
+    let key = internal_key(env);
+    if key.len() < 32 {
+        return Err(Error::RustError(
+            "Private storage is not configured.".into(),
+        ));
+    }
+    let headers = Headers::new();
+    headers.set(INTERNAL_HEADER, &key)?;
+    headers.set("x-scry-owner", "private-owner")?;
+    let mut init = RequestInit::new();
+    init.with_method(method).with_headers(headers);
+    env.durable_object("LEARNING_SPACE")?
+        .get_by_name(&space_name(env)?)?
+        .fetch_with_request(Request::new_with_init(
+            &format!("https://internal.invalid{path}"),
+            &init,
+        )?)
+        .await
 }
 
 async fn validate_access(req: &Request, env: &Env) -> Result<()> {
@@ -606,6 +649,19 @@ impl DurableObject for LearningSpace {
             return private(Response::error("Internal authorization required.", 403)?);
         }
         let path = req.path();
+        if path == "/__internal/health" {
+            let rows = self.stored_rows()?;
+            let fresh = !rows.is_empty()
+                && persistence::app_from_rows(&rows)
+                    .map_err(to_worker_error)?
+                    .backup
+                    .fresh(now());
+            return private(if fresh {
+                Response::ok("ok")?
+            } else {
+                Response::error("backup_stale", 503)?
+            });
+        }
         if path == "/operator/restore" {
             return self.restore(req).await;
         }
@@ -1579,23 +1635,7 @@ pub async fn scheduled(
             return Ok(());
         }
         let result = async {
-            let key = internal_key(&env);
-            if key.len() < 32 {
-                return Err(Error::RustError(
-                    "Backup authorization is not configured.".into(),
-                ));
-            }
-            let headers = Headers::new();
-            headers.set(INTERNAL_HEADER, &key)?;
-            headers.set("x-scry-owner", "private-owner")?;
-            let mut init = RequestInit::new();
-            init.with_method(Method::Post).with_headers(headers);
-            let req = Request::new_with_init("https://internal.invalid/__internal/daily", &init)?;
-            let response = env
-                .durable_object("LEARNING_SPACE")?
-                .get_by_name(&space_name(&env)?)?
-                .fetch_with_request(req)
-                .await?;
+            let response = internal_request(&env, "/__internal/daily", Method::Post).await?;
             if response.status_code() != 200 {
                 return Err(Error::RustError(
                     "Scheduled snapshot was not acknowledged.".into(),

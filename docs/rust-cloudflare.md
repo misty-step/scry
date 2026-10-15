@@ -124,6 +124,30 @@ historical/live-Go environment.
 
 ## Independent fresh-space restore
 
+### Chief-triggered daily snapshot
+
+Configure the existing chief no-agent minute job to call canonical
+`POST /internal/backup` once daily; do not create a second cron or rely on
+Cloudflare Cron Triggers. This source prerequisite does not connect the chief
+job: daily delivery remains UNVERIFIED until that integration is observed.
+Generate a dedicated `BACKUP_TRIGGER_KEY` of at least 32 bytes into the existing
+encrypted pass store, bind it as a Worker secret, and retain the chief's private
+request configuration outside the checkout. Send it in `x-scry-backup-key`,
+alongside the existing approved Access service credentials for that environment.
+Never put capabilities in argv, URLs, source or receipts. Production does not
+admit a service principal to learner routes; this capability can only make a
+snapshot and cannot act as the owner. Keep synthetic and production keys separate.
+
+Missing or wrong keys return 403; non-POST returns 405. Success returns 200 only
+after the same complete R2 verification used by the operator backup. Failure
+returns 503 `backup_failed` without private diagnostics. Record an actual natural
+chief-job execution plus independent remote archive readback before calling daily
+delivery proven. `/healthz` returns 503 `backup_stale` before a verified backup or
+after SPEC's freshness limit; storage/configuration failure returns 503
+`backup_unavailable`. Health does not create a learning record or start work.
+
+### Restore procedure
+
 These are source contracts for the replacement candidate. Local emulator tests
 exercise them with controlled capabilities. Actual independently retrieved remote
 recovery and an approved writer transition still need their own evidence.

@@ -40,7 +40,8 @@ binding = "SCRY_BACKUPS"
 bucket_name = "scry-rust-backups-unprovisioned"
 
 [triggers]
-crons = ["17 3 * * *"]
+# Daily snapshots are driven by the existing chief no-agent minute job.
+crons = []
 
 # A preview requires its own new Durable Object namespace, private Access app,
 # exact owner secret, capped provider keys, and private buckets. No bindings
@@ -74,4 +75,4 @@ binding = "SCRY_BACKUPS"
 bucket_name = "scry-rust-preview-backups-unprovisioned"
 
 [env.preview.triggers]
-crons = ["17 3 * * *"]
+crons = []

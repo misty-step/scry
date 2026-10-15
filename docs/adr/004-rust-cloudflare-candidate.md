@@ -72,8 +72,16 @@ and strict external-script/style policy. Loopback development identity refuses
 live provider/operator capabilities.
 
 Complete versioned JSON archives include referenced photo bytes and metadata in
-private R2. Daily alarms and pre-release/operator backup use exact remote
-size/checksum/full-byte readback and archive validation. Restore uses an unused
+private R2. After two account-level Cron Trigger drills went unobserved on
+2026-10-15, the existing chief no-agent minute job is the daily trigger instead;
+no new job or scheduler is added. A separately scoped secret admits only the
+canonical `POST /internal/backup`, behind the existing Access perimeter, without
+granting browser-owner identity. Cron Triggers are disabled in the template;
+Durable Object alarms remain a backup/work recovery path, not daily delivery
+proof. All triggers and pre-release/operator backup share exact remote
+size/checksum/full-byte readback and archive validation. Health reads the last
+verified completion without starting work; SPEC owns its freshness threshold.
+Restore uses an unused
 isolated Durable Object namespace and separate scoped restore capability, with
 compatible Worker/assets/configuration retained independently. Behavioral
 capacity, retention, pause, spend and recovery objectives are specified in SPEC,
