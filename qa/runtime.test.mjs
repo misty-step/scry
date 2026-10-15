@@ -245,5 +245,43 @@ try {
       } finally { await instance.mf.dispose(); }
     });
   }
-  console.log(JSON.stringify({status:checks===23?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  await check('named Access service principal is synthetic-only and retains cryptographic and CSRF fences',async()=>{
+    const client='synthetic-qa-client.access';
+    const service=jwt({sub:'',common_name:client});
+    const bindings={...baseBindings,SCRY_ENV:'synthetic-preview',SPACE_NAME:'synthetic-service-qa',OWNER_SUBJECT:'synthetic-preview-owner',SYNTHETIC_ACCESS_CLIENT_ID:client,OPERATOR_KEY:''};
+    const fixture=await createRuntime({bindings,name:'scry-synthetic-access-smoke',artifact,egress});
+    let active=fixture;
+    const req=(path='/',token=service,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers}});
+    try {
+      for(const path of ['/','/create','/export'])assert.equal((await req(path)).status,200);
+      for(const token of ['',jwt(),jwt({sub:'',common_name:'other.access'}),jwt({sub:owner,common_name:client}),jwt({sub:'',common_name:client,aud:['wrong']}),jwt({sub:'',common_name:client,iss:'https://wrong.invalid'}),jwt({sub:'',common_name:client,exp:epoch-1}),jwt({sub:'',common_name:client},{},generateKeyPairSync('rsa',{modulusLength:2048}).privateKey)])assert.equal((await req('/',token)).status,401);
+      assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-owner','Cf-Access-Authenticated-User-Email':'owner@example.invalid'}})).status,401);
+      const empty=await(await req('/')).text();
+      assert.match(empty,/Explore an authored demo/);
+      const fixtureCsrf=/name="csrf" value="([^"]+)"/.exec(empty)[1];
+      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,303);
+      const html=await(await req('/create')).text();
+      const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+      const submit=(originHeader,csrf=fields.csrf)=>req('/create',service,{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,csrf,intent:'Synthetic service-token capture'})});
+      assert.equal((await submit('https://attacker.invalid')).status,403);
+      assert.equal((await submit(origin,'forged')).status,403);
+      assert.equal((await submit(origin)).status,303);
+      assert.equal((await submit(origin)).status,303);
+      assert.equal((await fixture.worker.scheduled({cron:'17 3 * * *'})).outcome,'ok');
+      const snapshots=await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const listed=await snapshots.list();
+      const snapshot=await snapshots.get(listed.objects.at(-1).key);
+      assert.equal(Object.keys((await snapshot.json()).app.goals).length,2,'Synthetic capture/replay persists once and scheduled complete backup remains available.');
+      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,409,'The authored demo never overwrites acknowledged synthetic work.');
+      for(const changes of [{SCRY_ENV:'production'},{SCRY_ENV:'preview'}]){
+        active=await fixture.rebind({...bindings,...changes});
+        assert.equal((await req()).status,401,'Service identity must not authorize ordinary preview or production.');
+      }
+      for(const changes of [{SPACE_NAME:'real-learner'},{OWNER_SUBJECT:owner},{SYNTHETIC_ACCESS_CLIENT_ID:''},{OPENROUTER_API_KEY:'forbidden'},{JEV_API_KEY:'forbidden'},{OPERATOR_KEY:operatorKey},{RESTORE_TOKEN:restoreToken}]){
+        active=await fixture.rebind({...bindings,...changes});
+        assert.equal((await req()).status,503,'Mixed real/operator capabilities must fail closed.');
+      }
+    } finally {await fixture.mf.dispose();}
+  });
+  console.log(JSON.stringify({status:checks===24?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
