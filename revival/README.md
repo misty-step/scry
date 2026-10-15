@@ -8,7 +8,8 @@ scheduler, learner endpoint or production release engine.
 ## Exact contract and checks
 
 Only authenticated `POST /preserve` with an empty body is accepted. Deployment
-pins one `SOURCE_KEY`, `SOURCE_ETAG` and `SOURCE_BYTES` (positive, at most 16 MiB).
+pins one `SOURCE_KEY`, `SOURCE_ETAG` and `SOURCE_BYTES` (positive, at most 16 MiB),
+plus an absolute `PRESERVE_UNTIL_MS` capability expiry checked before bucket access.
 The Worker reads that exact R2 object conditionally, hashes it, conditionally
 creates `preserved-go/<sha256>/<source-key>` in a separate private bucket, then
 reads and compares every destination byte before acknowledging success. Replay
@@ -39,7 +40,8 @@ CI identity and source metadata receipt, never private object bodies.
    Read back that it differs from the source bucket, public access is disabled,
    and no object-deletion lifecycle applies. Do not change source retention.
 3. Bind only `SOURCE` and `DESTINATION` to those two buckets and the three
-   metadata pins above. Set a dedicated `PRESERVE_KEY` secret. No owner,
+   source metadata pins above. Set a dedicated `PRESERVE_KEY` secret and
+   `PRESERVE_UNTIL_MS` no more than 15 minutes ahead on the operator's clock. No owner,
    synthetic-QA, model, production-writer or general Cloudflare API credentials
    belong in this Worker. Keep API/operator credentials on the approved chief
    path; do not send them or learner bytes to build hosts or CI.
@@ -53,10 +55,15 @@ CI identity and source metadata receipt, never private object bodies.
    verify the same digest/key, plus destination object metadata and no-expiry
    lifecycle. Archive bytes and readback stay inside Cloudflare. Do not download
    them to inspect, attach them, or put them in logs/screenshots.
-6. Revoke the ephemeral session/capability and read back absence of published
-   routes and retained secrets; record resource IDs and exact cleanup commands.
-   Preserve the custody bucket/object. An ambiguous invocation is safe to retry;
-   an existing corrupt destination must never be overwritten or deleted as a fix.
+6. Observe an invocation of that same immutable preview token fail with
+   `CAPABILITY_EXPIRED` after its actual deadline, and verify no published Worker
+   or routes exist. Do not claim that replacing a preview upload revokes old
+   tokens: a real synthetic drill proved the old token still runs its old module.
+   Never log or retain these ephemeral keys/tokens; record only expiry and safe
+   receipts. Preserve the custody bucket/object. An ambiguous invocation before
+   expiry is safe to retry; an existing corrupt destination must never be
+   overwritten or deleted as a fix. Stop if expiry/anonymous refusal cannot be
+   demonstrated with synthetic bindings before learner binding.
 
 This procedure is source-ready, not a claim that a learner archive has been
 copied. A reviewed converter must still inspect the retained ZIP/SQLite inside

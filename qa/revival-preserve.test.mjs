@@ -21,7 +21,8 @@ const sha256 = value => createHash('sha256').update(value).digest('hex');
 const destinationKey = bytes => 'preserved-go/' + sha256(bytes) + '/' + sourceKey;
 async function fixture(fn) {
   let egress = 0;
-  let bindings = {PRESERVE_KEY: credential, SOURCE_KEY: sourceKey, SOURCE_ETAG: '0'.repeat(32), SOURCE_BYTES: String(privateBytes.length)};
+  let bindings = {PRESERVE_KEY: credential, PRESERVE_UNTIL_MS: String(Date.now() + 300_000),
+    SOURCE_KEY: sourceKey, SOURCE_ETAG: '0'.repeat(32), SOURCE_BYTES: String(privateBytes.length)};
   const options = () => {
     const v4 = {name: 'scry-preserve-synthetic', modulesRoot: resolve('revival'),
       modules: [{type: 'ESModule', path: sourcePath, contents: script}],
@@ -134,4 +135,16 @@ test('source metadata larger than the exact bounded pin is refused before copy',
   await rebind({SOURCE_ETAG: large.etag});
   assert.equal((await request()).status, 409);
   assert.equal((await destination.list()).objects.length, 0);
+}));
+
+test('immutable capability expires on the actual clock without changing or overwriting either bucket', () => fixture(async ({request, rebind, source, destination, original}) => {
+  await rebind({PRESERVE_UNTIL_MS: String(Date.now() + 2000)});
+  assert.equal((await request()).status, 200);
+  const version = (await destination.head(destinationKey(privateBytes))).version;
+  await new Promise(resolve => setTimeout(resolve, 2100));
+  assert.deepEqual(await request(), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await destination.head(destinationKey(privateBytes))).version, version);
+  assert.equal((await source.head(sourceKey)).version, original.version);
+  await rebind({PRESERVE_UNTIL_MS: 'not-a-time'});
+  assert.deepEqual(await request(), {status: 503, body: {error: 'INVALID_SOURCE_PIN'}});
 }));

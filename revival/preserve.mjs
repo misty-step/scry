@@ -16,9 +16,11 @@ export default {
     if (request.headers.get('Authorization') !== 'Bearer ' + env.PRESERVE_KEY) return error('UNAUTHORIZED', 403);
     const key = env.SOURCE_KEY;
     const size = Number(env.SOURCE_BYTES);
+    const until = Number(env.PRESERVE_UNTIL_MS);
     if (typeof key !== 'string' || !/^scry-[A-Za-z0-9.-]{1,180}\.scry-backup\.zip$/.test(key) ||
         !/^[a-f0-9]{32}(?:-\d+)?$/.test(env.SOURCE_ETAG || '') ||
-        !Number.isSafeInteger(size) || size <= 0 || size > LIMIT) return error('INVALID_SOURCE_PIN', 503);
+        !Number.isSafeInteger(size) || size <= 0 || size > LIMIT ||
+        !Number.isSafeInteger(until) || until <= 0) return error('INVALID_SOURCE_PIN', 503);
     try {
       // Inputs are deployment-pinned metadata, never caller-selected records.
       if (request.body) {
@@ -27,6 +29,9 @@ export default {
         await reader.cancel();
         if (!first.done) return error('BODY_NOT_ALLOWED', 400);
       }
+      // Edge-preview tokens survive a replacement upload. Expire this specific
+      // capability in its immutable module before touching either bucket.
+      if (Date.now() >= until) return error('CAPABILITY_EXPIRED', 403);
       const source = await env.SOURCE.get(key, {onlyIf: {etagMatches: env.SOURCE_ETAG}});
       if (!source) return error('SOURCE_MISSING', 404);
       if (!source.body || source.etag !== env.SOURCE_ETAG || source.size !== size) return error('SOURCE_CHANGED', 409);
