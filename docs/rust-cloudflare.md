@@ -126,8 +126,10 @@ historical/live-Go environment.
 
 ### Chief-triggered daily snapshot
 
-The existing chief no-agent minute job calls canonical `POST /internal/backup`
-once daily; do not create a second cron or rely on Cloudflare Cron Triggers.
+Configure the existing chief no-agent minute job to call canonical
+`POST /internal/backup` once daily; do not create a second cron or rely on
+Cloudflare Cron Triggers. This source prerequisite does not connect the chief
+job: daily delivery remains UNVERIFIED until that integration is observed.
 Generate a dedicated `BACKUP_TRIGGER_KEY` of at least 32 bytes into the existing
 encrypted pass store, bind it as a Worker secret, and retain the chief's private
 request configuration outside the checkout. Send it in `x-scry-backup-key`,
