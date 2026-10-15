@@ -26,6 +26,8 @@ no model, operator or restore secret is bound. External work is disabled in
 this mode, including alarm paths; daily complete snapshots remain enabled.
 Pages are labeled synthetic. An operator must provision a physically separate
 Worker/Durable Object namespace and private R2 buckets, containing only fixtures.
+The existing deliberate authored-demo action also works here, but still refuses
+any space with saved goals or events; ordinary preview/production cannot seed it.
 The prefix is an extra mistake fence, not proof of physical isolation or data
 provenance. This mode must never be applied to an imported learner namespace.
 

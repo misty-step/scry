@@ -851,7 +851,10 @@ impl DurableObject for LearningSpace {
             return private(Response::error("Reload before submitting.", 403)?);
         }
         if path == "/__fixture" {
-            if !development(&self.env) || !app.goals.is_empty() || !app.events.is_empty() {
+            if (!development(&self.env) && variable(&self.env, "SCRY_ENV") != "synthetic-preview")
+                || !app.goals.is_empty()
+                || !app.events.is_empty()
+            {
                 return private(Response::error(
                     "Authored fixtures require an unused isolated development space.",
                     409,
