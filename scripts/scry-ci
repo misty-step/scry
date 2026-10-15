@@ -208,6 +208,7 @@ def gate(args):
         ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
         ["cargo", "clippy", "--locked", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
         ["node", "--check", "assets/app.js"],
+        ["node", "--test", "qa/walk-cli.test.mjs"],
         ["bash", "-n", "scripts/rust-dev"],
     ):
         run(command, cwd=source, env=env, log=log)
