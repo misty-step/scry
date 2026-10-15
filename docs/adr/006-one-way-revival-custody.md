@@ -65,8 +65,8 @@ All 64 manifest members (including hidden files), 371 source entries and 51
 story-artifact hashes verified. The exact downloaded WASM passed 24 fresh
 workerd tests and all three deployed runtime module hashes matched readback.
 
-The isolated `scry-synth-20261015.mistystep.io` preview proved actual service
-access, anonymous/forged denial, CSRF rejection, exact capture replay/conflict,
+The isolated `scry-synth-20261015.mistystep.io` preview admitted the QA service
+principal and refused anonymous or forged requests, with CSRF rejection, exact capture replay/conflict,
 draft preservation, optional private photos, held/assisted feedback, navigation,
 light/dark/320px screenshots and native no-JavaScript capture. Six browser
 journeys and 23 HTTP observations passed; these do not constitute every SPEC
