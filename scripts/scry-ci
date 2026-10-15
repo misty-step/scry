@@ -224,7 +224,7 @@ def gate(args):
     run(["node", "--test", *critic_tests], cwd=source, env=qa_env, log=log)
     run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
     # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
-    run(["node", "--test", "qa/runtime.test.mjs"], cwd=source, env=env, log=log)
+    run(["node", "--test", "qa/runtime.test.mjs", "qa/revival-preserve.test.mjs"], cwd=source, env=env, log=log)
     walk_env = qa_env
     run(["node", "qa/walk.mjs", "--all"], cwd=source, env=walk_env, log=log)
     require(artifact == {str(p.relative_to(worker)): digest(p.read_bytes()) for p in sorted(worker.rglob("*")) if p.is_file()}, "smoke changed the release Worker")
