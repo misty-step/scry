@@ -77,12 +77,21 @@ function deadPid() {
 
 // A live process whose command line references its own script path — the
 // smallest honest stand-in for the serving candidate at the walk's checks.
-function startKeepalive(dir, name = 'keepalive.sh') {
+// Like `candidate up`, it resolves only once the stand-in is up: /bin/sh
+// opens its script by path after exec, so until it reports in, bytes renamed
+// over that path are what it would run.
+async function startKeepalive(dir, name = 'keepalive.sh') {
   const script = join(dir, name);
-  writeFileSync(script, '#!/bin/sh\nwhile true; do sleep 60; done\n');
+  writeFileSync(script, '#!/bin/sh\necho up\nwhile true; do sleep 60; done\n');
   chmodSync(script, 0o755);
-  const child = spawn(script, [], { stdio: 'ignore' });
+  const child = spawn(script, [], { stdio: ['ignore', 'pipe', 'ignore'] });
   children.push(child);
+  await new Promise((resolve, reject) => {
+    child.stdout.once('data', resolve);
+    child.once('error', reject);
+    child.once('exit', () => reject(new Error('keepalive exited before it was up')));
+  });
+  child.stdout.destroy();
   return {
     pid: child.pid,
     binary: script,
@@ -137,7 +146,7 @@ describe('candidate handle binding (D1)', () => {
     mkdirSync(dir, { recursive: true });
     // A live, matching process: only the revision differs (or, in a bare tree
     // without .git, cannot be compared).
-    const keep = startKeepalive(dir);
+    const keep = await startKeepalive(dir);
     const handlePath = writeHandle(dir, {
       revision: 'f'.repeat(40), sha: keep.sha, url: 'http://127.0.0.1:1',
       pid: keep.pid, binary: keep.binary,
@@ -221,7 +230,7 @@ describe('candidate handle binding (D1)', () => {
     const dir = join(TMP_ROOT, 'e2e-bind-valid');
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
-    const keep = startKeepalive(dir);
+    const keep = await startKeepalive(dir);
     const port = await freePort();
     const handlePath = writeHandle(dir, { revision, sha: keep.sha, url: 'http://127.0.0.1:' + port, pid: keep.pid, binary: keep.binary });
     const outDir = join(dir, 'out');
@@ -302,7 +311,7 @@ describe('candidate handle binding (D1)', () => {
     const outDir = join(dir, 'out');
     mkdirSync(outDir);
 
-    const keep = startKeepalive(dir, 'candidate-script.sh');
+    const keep = await startKeepalive(dir, 'candidate-script.sh');
     let result;
     try {
       const port = await freePort();
@@ -372,7 +381,7 @@ describe('candidate handle binding (D1)', () => {
     const outDir = join(dir, 'out');
     mkdirSync(outDir);
 
-    const keep = startKeepalive(dir);
+    const keep = await startKeepalive(dir);
     let result;
     try {
       const port = await freePort();
@@ -410,7 +419,7 @@ describe('candidate handle binding (D1)', () => {
     const outDir = join(dir, 'out');
     mkdirSync(outDir);
 
-    const keep = startKeepalive(dir);
+    const keep = await startKeepalive(dir);
     let result;
     try {
       const port = await freePort();
@@ -443,7 +452,7 @@ describe('candidate handle binding (D1)', () => {
     const outDir = join(dir, 'out');
     mkdirSync(outDir);
 
-    const keep = startKeepalive(dir);
+    const keep = await startKeepalive(dir);
     let result;
     try {
       const port = await freePort();
