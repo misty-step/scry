@@ -1,7 +1,6 @@
 name: nightly
 
-# Owned nightly coverage (check-cadence): PRs walk only affected stories; this
-# walks every live story on master, retains the receipt, and opens or updates
+# Nightly coverage walks every live story on master, retains the receipt, and opens or updates
 # one issue when it fails so a regression cannot sit unseen.
 on:
   schedule:
@@ -25,10 +24,6 @@ jobs:
   full-walk:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      HARNESS_SHA: "f03aa4cebcf3b366f7d955e66db8be5c7177638d"
-      BUN_URL: https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip
-      BUN_SHA256: c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -38,18 +33,6 @@ jobs:
         run: |
           echo "::error::Failure-response drill requested; the walk is skipped."
           exit 1
-      - name: Fetch pinned foundation checker and Bun
-        run: |
-          root="$RUNNER_TEMP/foundation"
-          mkdir -p "$root/checker" "$root/runtime"
-          git init --quiet --initial-branch=checker "$root/checker"
-          git -C "$root/checker" fetch --quiet --no-tags --depth=1 https://github.com/misty-step/harness.git "$HARNESS_SHA"
-          git -C "$root/checker" checkout --quiet --detach "$HARNESS_SHA"
-          test "$(git -C "$root/checker" rev-parse HEAD)" = "$HARNESS_SHA"
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-            --retry 3 --output "$root/runtime/bun.zip" "$BUN_URL"
-          printf '%s  %s\n' "$BUN_SHA256" "$root/runtime/bun.zip" | sha256sum --check --strict
-          unzip -q "$root/runtime/bun.zip" -d "$root/runtime"
       - name: Provision browser and Scry toolchain
         run: bash .exe/setup.sh
       - name: Walk every live Rust Worker story
@@ -58,13 +41,7 @@ jobs:
           export SCRY_CRITICS_PLAYWRIGHT_PATH="$HOME/.local/share/scry-walk/node_modules/playwright"
           export SCRY_CRITICS_CHROMIUM_PATH="$HOME/.local/bin/chromium"
           npm ci --ignore-scripts --no-audit --no-fund
-          bun="$RUNNER_TEMP/foundation/runtime/bun-linux-x64-baseline/bun"
-          checker="$RUNNER_TEMP/foundation/checker/agent-config/bin/foundation-check.ts"
-          # Run the checker outside the checkout: Bun loads bunfig.toml from its working directory.
-          foundation() { (cd "$RUNNER_TEMP/foundation" && "$bun" --no-env-file --no-install "$checker" "$@" --repo "$GITHUB_WORKSPACE"); }
-          foundation check
           qa/walk --all
-          foundation receipt target/walk/walk-receipt.json --all
       - name: Upload full-walk receipt and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

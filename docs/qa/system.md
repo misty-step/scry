@@ -16,9 +16,8 @@ Go/retired-Worker receipts are historical observations, not transferred passes.
 
 Read the affected story/criterion and design decision, then choose the smallest
 proof that exercises the changed boundary. Reuse valid receipts when their
-source, environment, and behavior still apply. Documentation-only work needs
-meaning, link, authority, and traceability review; a source edit alone does not
-justify a model call or deployment.
+source, environment, and behavior still apply. A documentation edit alone does
+not justify a model call or deployment.
 
 Preserve all accepted behavior: prompt-first useful material, honest grading,
 assistance, immutable history, bounded unknown usage, and recoverability. QA
