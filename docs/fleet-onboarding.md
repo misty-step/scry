@@ -15,7 +15,7 @@ runtime evidence.
 | Canary | Estate ADR 0003, amended 2026-08-30 | Retired, not a shipped Scry integration. No replacement telemetry-ingest endpoint exists. |
 | Work context | Current operator request, `AGENTS.md`, [README work route](../README.md#start-or-resume-work) | Glass scope `misty-step/scry` tracks current operational state; keep ownership and evidence in the session/PR. Legacy MIS identities, Linear links and dated receipts retain provenance, not execution permission; migration reconciliation is separately owned. |
 | Landmark | `.landmark.yml` plus Landmark CLI | Existing manifest/synthesis-only scope. No deployment-secret or release-mutating authority is added. |
-| Architecture | `SPEC.md` and current Go source | The old `docs/architecture` workbench/map is retained historical Rust context, not current fleet/runtime authority. |
+| Architecture | [ADRs](adr/README.md) and corresponding source | SPEC owns behavior, not architecture. ADRs distinguish retained Go from the current Rust candidate; the old `docs/architecture` workbench/map is retired Rust context, not fleet/runtime authority. |
 
 ## Boundaries
 

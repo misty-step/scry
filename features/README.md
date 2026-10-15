@@ -1,7 +1,7 @@
 # Scry feature map
 
-[VISION](../VISION.md) owns intent, [stories](../USER_STORIES.md) own learner
-contracts, [SPEC](../SPEC.md) owns acceptance, and [DESIGN](../DESIGN.md) owns the
+[VISION](../VISION.md) explains intent, [SPEC](../SPEC.md) alone owns stories and
+acceptance, and [DESIGN](../DESIGN.md) owns the
 curiosity notebook. These source mappings describe the Rust replacement, not
 production activation. US-012 is retired and its identifier remains reserved.
 

@@ -3,9 +3,9 @@
 The Rust rewrite treats Scry as a private notebook that grows through use.
 Create begins with curiosity, not an import workflow or an assessment. A useful
 explanation and practice come first; answers and explicit feedback shape what
-comes next. [VISION](VISION.md), [USER_STORIES](USER_STORIES.md), and
-[S11 in SPEC](SPEC.md#s11--create-useful-material-from-intent-us-013) govern the
-experience. This design is implementation direction, not deployment or
+comes next. [VISION](VISION.md) explains intent; [SPEC](SPEC.md), especially
+[S11](SPEC.md#s11--create-useful-material-from-intent-us-013), alone governs
+behavior. This document owns visual decisions, not deployment or
 physical-phone acceptance evidence.
 
 ## A quiet page with a clear next action

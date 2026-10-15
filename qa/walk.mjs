@@ -13,7 +13,7 @@ import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 if(process.env.SCRY_SKIP_BUILD!=='1')execFileSync('worker-build',['--release','--locked'],{stdio:'inherit',env:process.env});
-const source=readFileSync('USER_STORIES.md','utf8');
+const source=readFileSync('SPEC.md','utf8');
 const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
 const live=sections.filter((m,i)=>!/^Superseded|^Retired|\(retired\)/m.test(source.slice(m.index,sections[i+1]?.index))).map(m=>m[1]);
 const argv=process.argv.slice(2);
