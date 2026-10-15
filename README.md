@@ -114,11 +114,11 @@ spend and recovery policies; this entrypoint is not another copy.
 ## Release and recovery
 
 [The Rust target release procedure](docs/rust-cloudflare.md) describes the new
-namespace, frozen artifacts, private-ingress and recovery proof, and explicit
-activation approval.
+namespace, frozen artifacts, and verifiable private-ingress, recovery and
+cutover conditions. Routine activation needs no separate operator approval
+once those conditions pass.
 
-Activation, live migration, and retirement of the current Go writer require
-explicit operator approval and concrete source-bound release/recovery evidence.
-The existing [runbook](docs/runbook.md) and
+Changed private-data, credential, spend or irreversible-action scope still
+requires its own authorization. The existing [runbook](docs/runbook.md) and
 [Container hosting notes](deploy/cloudflare-hosting/README.md) remain the
-operational authority for production until that approved replacement occurs.
+operational authority for production until the verified replacement occurs.
