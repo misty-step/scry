@@ -9,7 +9,9 @@ configuration remain independent recovery material. Old Rust Workers,
 Worker/R2 data, frozen Postgres, and the retained VM stay separate and paused.
 
 The candidate is a ground-up implementation, not a resurrection of the retired
-Rust stack or an import of old learning records. A green gate, local workerd,
+Rust stack. [ADR 006](adr/006-one-way-revival-custody.md) owns the subsequently
+authorized one-way Go revival and Cloudflare-only custody exception; it does
+not provide an implemented converter or learner-data acceptance. A green gate, local workerd,
 authored fixture, screenshot, or merge is not activation approval, model-quality
 acceptance, or physical-phone approval.
 

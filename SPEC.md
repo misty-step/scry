@@ -16,7 +16,8 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 Prompt-first Create was reaffirmed on 2026-10-02; the 2026-10-07 rewrite uses
 these contracts without inheriting historical runtime acceptance. The current
-Rust candidate starts fresh. US-001.1's Go schema 4→5 preservation and
+Rust candidate ordinarily starts fresh; the separately authorized one-way
+revival in D6 is the sole exception. US-001.1's Go schema 4→5 preservation and
 US-005/S03's explicit-mode capture remain historical Go obligations at Git
 `c6ba395`; US-012 is retired with its ID reserved. Old Go and retired Rust/preview
 receipts do not certify the candidate, and a green gate does not activate it.
@@ -47,7 +48,7 @@ belong in ADRs, not this table.
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
 | D4 | One question, one answer action, held feedback and deliberate Next; Create/Map masthead. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
 | D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. |
-| D6 | Fresh replacement data, no legacy API parity. Preserve historical stores, source and recovery artifacts separately; no import, deletion or simultaneous historical writer is implied. |
+| D6 | No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
 ## Experience contract
 
@@ -545,8 +546,9 @@ Criteria:
 
 Criterion 1 remains binding on the retained Go/SQLite runtime and its schema
 4→5 migration, preserved at Git `c6ba395` with compatible recovery artifacts.
-The fresh Rust candidate never performs that upgrade, imports, or deletes that
-store. Criterion 2 applies to the current candidate. Neither proves serving state.
+The Rust candidate never performs that Go schema upgrade or deletes that store;
+D6's separately authorized one-way revival is not the historical migration or
+API parity. Criterion 2 applies to the current candidate. Neither proves serving state.
 
 No-gos: no manual graph editor, no automatic replanner.
 
