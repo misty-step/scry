@@ -41,6 +41,21 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   official SQLite WASM and returns per-table canonical counts/digests only.
   Its reference schema is derived from the exact retained Go source. It remains
   outside learner routes and is not itself the one-way conversion or live proof.
+- A revived Rust space retains the original Go recovery ZIP verbatim in
+  `App.revival_go`. The Go store also contains historical foundation, source
+  revision and operational records that have no exact active Rust counterpart;
+  a projection must not silently discard them. Retention is byte custody, not
+  a substitute for mapping and reconciling learner-visible content, schedules,
+  history and receipts. The temporary converter must inspect the original and
+  prepare the active projection separately before any learner binding.
+  Custody uses SHA-256-addressed, ordered base64 chunks in existing record
+  storage and the existing complete backup/export/restore paths, with no new
+  endpoint, dependency, scheduler or historical-code execution. It consumes
+  the existing 16 MiB total capacity. Ordinary archives remain compatible;
+  custody archives use a distinct identity so older builds reject restoration
+  rather than deserialize away unknown fields. Old builds likewise reject
+  the unfamiliar durable rows. They are not rollback targets after import;
+  the cutover must retain a tested custody-aware compatible rollback artifact.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a

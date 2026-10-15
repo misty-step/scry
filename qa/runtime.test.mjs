@@ -326,5 +326,85 @@ try {
       }
     } finally {await fixture.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===26?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  await check('revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup', async () => {
+    // Explicit opaque synthetic bytes, not proof of Go ZIP/SQLite conversion.
+    const opaque = Buffer.concat([Buffer.from('SYNTHETIC_GO_CUSTODY_CANARY\0'), Buffer.alloc(180000, 0xff)]);
+    const digest = createHash('sha256').update(opaque).digest('hex');
+    const custody = {};
+    for (let start = 0, index = 0; start < opaque.length; start += 48 * 1024, index++) {
+      custody[`${digest}/${String(index).padStart(8, '0')}`] = opaque.subarray(start, start + 48 * 1024).toString('base64');
+    }
+    const source = JSON.parse(archiveBytes);
+    source.format = 'scry-rust-durable-sqlite-go-custody-v1';
+    source.app.revival_go = custody;
+    const namespace = 'synthetic-go-custody';
+    const bindings = {SCRY_ENV:'restore', CANONICAL_ORIGIN:origin, SPACE_NAME:namespace, INTERNAL_KEY:internalKey, RESTORE_TOKEN:restoreToken};
+    const fixture = await createRuntime({bindings, name:'scry-go-custody-smoke', artifact, egress, inspect:true});
+    let second;
+    const restoreTo = async (target, archive) => {
+      const bytes = Buffer.from(JSON.stringify(archive));
+      return target.fetch(`${origin}/operator/restore`, {method:'POST', body:bytes,
+        headers:{'x-scry-restore-token':restoreToken, 'x-scry-sha256':createHash('sha256').update(bytes).digest('hex')}});
+    };
+    try {
+      for (const mode of ['wrong-format', 'corrupt', 'gap']) {
+        const invalid = structuredClone(source);
+        if (mode === 'wrong-format') invalid.format = 'scry-rust-durable-sqlite-v1';
+        if (mode === 'corrupt') invalid.app.revival_go[Object.keys(custody)[1]] = Buffer.alloc(48 * 1024, 1).toString('base64');
+        if (mode === 'gap') delete invalid.app.revival_go[Object.keys(custody)[0]];
+        assert.equal((await restoreTo(fixture.worker, invalid)).status, 422);
+        const storage = await fixture.mf.unsafeGetDurableObjectStorage('scry-go-custody-smoke', 'LearningSpace', {name:namespace});
+        assert.deepEqual(await storage.exec('SELECT key FROM records'), [], 'Reject invalid custody before ANY state/photo writes.');
+        assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length, 0);
+      }
+      assert.equal((await restoreTo(fixture.worker, source)).status, 200);
+      assert.equal((await restoreTo(fixture.worker, source)).status, 409);
+      const activeBindings = {...baseBindings, SPACE_NAME:namespace};
+      let active = await fixture.rebind(activeBindings);
+      const req = (path, init={}) => active.worker.fetch(`${origin}${path}`, {...init, redirect:'manual',
+        headers:{'Cf-Access-Jwt-Assertion':jwt(), ...init.headers}});
+      const before = await (await req('/export')).json();
+      assert.deepEqual(before.app.revival_go, custody);
+      assert.deepEqual(before.app.events, source.app.events);
+      assert.deepEqual(before.app.operations, source.app.operations);
+      assert.equal((await active.worker.fetch(`${origin}/export`, {headers:{'x-scry-backup-key':backupKey}})).status, 401);
+      const html = await (await req('/create')).text();
+      const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m => [m[1], m[2]]));
+      const submit = () => req('/create', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, intent:'A deliberate synthetic write after Go custody restore'})});
+      const saved = await submit();
+      assert.equal(saved.status, 303);
+      assert.equal((await submit()).headers.get('Location'), saved.headers.get('Location'));
+      active = await fixture.rebind(activeBindings);
+      const after = await (await req('/export')).json();
+      assert.deepEqual(after.app.revival_go, custody);
+      assert.equal(Object.keys(after.app.goals).length, Object.keys(before.app.goals).length + 1);
+      const response = await active.worker.fetch(`${origin}/internal/backup`, {method:'POST', headers:{'x-scry-backup-key':backupKey}});
+      assert.equal(response.status, 200);
+      const state = await (await req('/export')).json();
+      const remote = await (await fixture.mf.getR2Bucket('SCRY_BACKUPS')).get(state.app.backup.key);
+      const bytes = Buffer.from(await remote.arrayBuffer());
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), state.app.backup.sha256);
+      const snapshot = JSON.parse(bytes);
+      assert.deepEqual(snapshot.app.revival_go, custody);
+      assert.deepEqual(Buffer.concat(Object.values(snapshot.app.revival_go).map(chunk => Buffer.from(chunk, 'base64'))), opaque);
+      second = await createRuntime({bindings:{...bindings, SPACE_NAME:'synthetic-go-custody-independent'}, name:'scry-go-custody-independent', artifact});
+      assert.equal((await restoreTo(second.worker, snapshot)).status, 200);
+      const ns = await second.mf.getDurableObjectNamespace('LEARNING_SPACE');
+      const stub = ns.get(ns.idFromName('synthetic-go-custody-independent'));
+      const recovered = await (await stub.fetch(`${origin}/export`, {headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).json();
+      assert.deepEqual(recovered.app.revival_go, custody);
+      for (const goal of Object.values(recovered.app.goals)) {
+        if (goal.photo) {
+          assert.notEqual(goal.photo.key, snapshot.app.goals[goal.id].photo.key);
+          assert.deepEqual({...goal.photo, key:snapshot.app.goals[goal.id].photo.key}, snapshot.app.goals[goal.id].photo);
+          goal.photo.key = snapshot.app.goals[goal.id].photo.key;
+        }
+      }
+      assert.deepEqual(recovered.app.goals, snapshot.app.goals);
+      assert.deepEqual(recovered.photos.map(photo => photo.bytes), snapshot.photos.map(photo => photo.bytes));
+      assert.deepEqual(recovered.app.operations, snapshot.app.operations);
+    } finally {await second?.mf.dispose(); await fixture.mf.dispose();}
+  });
+  console.log(JSON.stringify({status:checks===27?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}

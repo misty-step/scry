@@ -30,6 +30,10 @@ pub struct App {
     pub feedback: Vec<Feedback>,
     pub preferences: Preferences,
     pub backup: BackupStatus,
+    /// Revival-only original Go archive, not runnable jobs or learning evidence.
+    /// Keys are sha256/zero-based-eight-digit-index; values are base64 chunks.
+    #[serde(default)]
+    pub revival_go: BTreeMap<String, String>,
 }
 
 impl App {
@@ -53,6 +57,7 @@ impl App {
             feedback: Vec::new(),
             preferences: Preferences::default(),
             backup: BackupStatus::default(),
+            revival_go: BTreeMap::new(),
         }
     }
     pub fn spent(&self, now: i64) -> u64 {
