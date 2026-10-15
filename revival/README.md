@@ -145,3 +145,63 @@ R2 original remains untouched. Synthetic mechanics are exercised by
 `cargo test --locked --test revival_custody` and the existing runtime suite.
 These checks do not implement or certify the active Go-to-Rust projection,
 canonical learner reconciliation, final consistent archive or production cutover.
+
+## Preparing the active projection
+
+`convert.mjs` reuses the same validated read-only SQLite/ZIP reader and pins.
+Its only route is authenticated empty-body `POST /convert`, with separate
+`CONVERT_KEY` and `CONVERT_UNTIL_MS`. Bind `SOURCE` to the preserved original
+bucket and `DESTINATION` to a physically different private isolated bucket;
+verify the actual provider binding names/IDs and no public access before use.
+Use the same short-lived private remote-preview procedure and actual expiry
+test as above. There is no published hostname, learner principal, model secret,
+app binding, restore authority, job, scheduler, or release engine in this tool.
+
+The existing build script now builds both temporary tools. The source gate
+exports `revival-convert/` with hashes in `proof.json` and the normal complete
+artifact manifest. Deploy those tested modules unchanged after independent
+review; never bind an unreviewed converter to learner storage.
+
+    python3 scripts/build-revival-inspect.py
+    node --test qa/revival-convert.test.mjs qa/revival-inspect.test.mjs
+
+`project.mjs` maps current goals, generated concepts/notes, every quiz/content
+version, full pinned FSRS cards and original schedule numbers, graded history,
+overrides, held feedback, receipt IDs/hashes, paid reservations and private
+photos. Topic provenance becomes the candidate's `general` label; source quotes
+must still validate against the saved source. Imported entity IDs begin with
+`legacy-import-`; old operation IDs and payload hashes remain fenced against
+reuse. Go-specific receipt kinds/result JSON and all other historical/source/
+foundation/operational rows remain exactly recoverable in the original ZIP,
+not executable compatibility responses or new learning evidence. Uncertain
+historical jobs are paused, never resumed or sent. ADR 006 owns the mechanical
+legacy-note and original-schedule-epoch decisions.
+
+This deliberately bounded converter refuses unsupported active shapes rather
+than inventing or silently dropping them: web documents, semantic-assessment
+rows, corrections/reset rows, merged concepts, ambiguous primary concepts,
+zero-rating Go events, incompatible algorithms, unsafe integers or submillisecond
+scheduler timestamps. Any such refusal must be investigated inside Cloudflare
+and repaired with an independently reviewed transformation before cutover.
+It does not reinterpret an unsupported dataset as a fresh start.
+
+The complete candidate is conditionally created at
+`converted-go/<original-sha256>/<candidate-sha256>.json`, then read back byte for
+byte before acknowledging. Replay/concurrency verify an existing object; a
+conflict never overwrites it. Content-addressing permits a later reviewed
+conversion to produce a different immutable candidate without erasing earlier
+custody. Only safe counts, original inventory fingerprints, candidate section
+hashes and object metadata leave Cloudflare. No record, archive or media body
+is returned or logged. The original ZIP remains in every complete Rust archive.
+
+Preparation explicitly returns `rust_restore_verified: false`: integrity and
+exact remote bytes do not prove Rust semantic validation or live acceptance.
+The synthetic suite exercises native SQLite -> real CF converter/R2 -> actual
+Rust/WASM restore, exact content/card/history/media readback, accepted capture
+replay, a complete independent backup and second unused-space restore. It also
+proves malformed content fails Rust restoration with zero SQL/asset writes.
+These are local synthetic boundary proofs, not hosted learner reconciliation.
+An operator must keep the prepared learner body inside Cloudflare when invoking
+the existing isolated restore capability, compare runtime readback canonically,
+and complete the remaining one-writer/private/live/rollback conditions before
+cutover. Never download the prepared body to perform that operation.

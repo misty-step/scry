@@ -56,6 +56,24 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   rather than deserialize away unknown fields. Old builds likewise reject
   the unfamiliar durable rows. They are not rollback targets after import;
   the cutover must retain a tested custody-aware compatible rollback artifact.
+- The subsequent owner decision keeps all 37 retained quizzes active. A quiz
+  without a current non-foundation assessing concept receives its own explicitly
+  labeled `legacy-import` concept and reference note, mechanically assembled
+  from the exact existing prompt, answer and explanation. No model call, invented
+  introduction, mastery observation or review event is permitted. Existing
+  generated concepts/notes retain their content; old foundation structures stay
+  in original-byte custody. Imported identities and mechanically created notes
+  identify their provenance so the projection can be found and redone later.
+  Report actual quiz/question/new legacy concept/new legacy note counts without
+  learner content. Source support or synthetic counts are not learner receipts.
+- Go's schedule epoch begins at one, Rust's ordinary epoch at zero. Preserve
+  original schedule numbers with `App.revival_schedule_origins`, restricted to
+  epoch one for existing `legacy-import-quiz-` records with retained Go bytes.
+  Every real transition and the current full card still require the same complete
+  chain and pinned scheduler checks. Nonempty origins select the distinct
+  `scry-rust-durable-sqlite-go-projection-v1` archive identity; the separate row
+  prefix makes older custody-only builds refuse the state rather than drop this
+  interpretation. Those older builds are not serving/rollback targets.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a

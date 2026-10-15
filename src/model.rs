@@ -34,6 +34,9 @@ pub struct App {
     /// Keys are sha256/zero-based-eight-digit-index; values are base64 chunks.
     #[serde(default)]
     pub revival_go: BTreeMap<String, String>,
+    /// Original Go schedule epochs start at one, not Rust's ordinary zero.
+    #[serde(default)]
+    pub revival_schedule_origins: BTreeMap<String, u64>,
 }
 
 impl App {
@@ -58,6 +61,7 @@ impl App {
             preferences: Preferences::default(),
             backup: BackupStatus::default(),
             revival_go: BTreeMap::new(),
+            revival_schedule_origins: BTreeMap::new(),
         }
     }
     pub fn spent(&self, now: i64) -> u64 {

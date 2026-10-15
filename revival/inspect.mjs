@@ -24,7 +24,7 @@ const schemaSQL = "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name N
 const rows = (db, sql) => db.exec({sql, rowMode: 'array', returnValue: 'resultRows'});
 const require = condition => {if (!condition) throw new Error('INVALID_ARCHIVE');};
 
-async function inspect(bytes) {
+async function inspect(bytes, consume) {
   const seen = new Set();
   const entries = unzipSync(bytes, {filter(file) {
     require(['manifest.json', 'scry.sqlite'].includes(file.name) && !seen.has(file.name));
@@ -88,10 +88,11 @@ async function inspect(bytes) {
       } finally {statement.finalize();}
       tables.push({name, rows: digests.length, columns, sha256: await hash(encode(digests.sort()))});
     }
-    return {format: 'scry-go-inventory-v1', verified: true, database_sha256: databaseHash,
+    const inventory = {format: 'scry-go-inventory-v1', verified: true, database_sha256: databaseHash,
       schema: 5, application_id: 0x53435259, integrity: 'ok', foreign_keys: 'ok',
       sqlite: s.version.libVersion, schema_sha256: await hash(encode(expected)),
       canonical: 'sorted-row-sha256/type-tagged-sql-values-v1', tables};
+    return consume ? await consume({db, sqlite: s, inventory, manifest, bytes}) : inventory;
   } finally {
     db.close();
     if (pointer) s.wasm.dealloc(pointer);
@@ -99,7 +100,7 @@ async function inspect(bytes) {
   }
 }
 
-export default {async fetch(request, env) {
+export async function handle(request, env, consume) {
   const url = new URL(request.url);
   if (url.pathname !== '/inspect' || url.search) return reply({error: 'NOT_FOUND'}, 404);
   if (request.method !== 'POST') return reply({error: 'METHOD_NOT_ALLOWED'}, 405);
@@ -124,9 +125,10 @@ export default {async fetch(request, env) {
     if (object.size !== size) return reply({error: 'SOURCE_CHANGED'}, 409);
     const bytes = new Uint8Array(await object.arrayBuffer());
     if (bytes.length !== size || await hash(bytes) !== env.SOURCE_SHA256) return reply({error: 'SOURCE_CHANGED'}, 409);
-    return reply({...await inspect(bytes), archive_sha256: env.SOURCE_SHA256, archive_bytes: size});
+    return reply({...await inspect(bytes, consume), archive_sha256: env.SOURCE_SHA256, archive_bytes: size});
   } catch {
     // Never return/log SQLite messages, SQL, private manifests, rows or media.
     return reply({error: 'INSPECTION_FAILED'}, 422);
   }
-}};
+}
+export default {fetch: (request, env) => handle(request, env)};
