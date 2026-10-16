@@ -1,12 +1,10 @@
 // Native-event browser failures in fresh, isolated workerd SQLite spaces.
 import assert from 'node:assert/strict';
-import {createServer} from 'node:net';
 import {createSyntheticRuntime} from './runtime-helper.mjs';
-const freePort=async()=>{const s=createServer();await new Promise((ok,bad)=>{s.once('error',bad);s.listen(0,'127.0.0.1',ok);});const p=s.address().port;await new Promise(ok=>s.close(ok));return p;};
 export async function recoveryWalk(browser,capture){
  const results=[];
  const check=async(name,options,run)=>{
-  const runtime=await createSyntheticRuntime({port:await freePort(),name:`recovery-${results.length}`});
+  const runtime=await createSyntheticRuntime({name:`recovery-${results.length}`});
   const context=await browser.newContext({viewport:{width:390,height:844},...options});const page=await context.newPage();page.setDefaultTimeout(12000);
   const result={name,status:'pass',evidence:[]};results.push(result);
   try{await page.goto(runtime.url+'/');await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();await run({page,context,url:runtime.url});}
