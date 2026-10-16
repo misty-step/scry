@@ -58,10 +58,11 @@ async function current(name) {
   assert.equal(deployment.versions[0].percentage, 100);
   return deployment.versions[0].version_id;
 }
-// Native deployment success precedes edge propagation. Wait only for these
-// disposable, read-only release sentinels, never for a mutation or telemetry.
+// Native deployment success precedes edge/DO propagation (seconds to minutes:
+// https://developers.cloudflare.com/durable-objects/platform/known-issues/#code-updates).
+// Wait only for disposable, read-only sentinels, never a mutation or telemetry.
 async function converged(url, status, text, options = {}) {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 180_000;
   let observed;
   do {
     const response = await fetch(url, { ...options, redirect: "manual" });
@@ -69,7 +70,7 @@ async function converged(url, status, text, options = {}) {
     if (observed.status === status && (text === undefined || observed.body === text)) return;
     await new Promise(resolve => setTimeout(resolve, 1000));
   } while (Date.now() < deadline);
-  assert.fail(`Disposable edge did not converge: expected HTTP${status}, observed HTTP${observed.status}`);
+  assert.fail(`Disposable edge did not converge: expected HTTP${status} ${text ?? ""}, observed ${JSON.stringify(observed)}`);
 }
 await mkdir("target", { recursive: true });
 if (mode === "cleanup") {
@@ -134,6 +135,7 @@ if (mode === "cleanup") {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { enabled: true, running: false, revision });
     assert.deepEqual(containers(await api(`${upstream}/versions/${await current(upstream)}`)), containers(fixtureLive));
+    console.log(JSON.stringify({ container_attachment_probe: revision, enabled: true, running: false }));
   };
   await attachment("candidate");
   const failure = await request("/healthz?mode=fail&private=PRIVATE-url-canary");
