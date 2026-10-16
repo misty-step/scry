@@ -97,6 +97,11 @@ elif mode == "bad-content":
     bad = dict(contents[1], prompt="")
     db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
     db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
+elif mode == "private-shape-error":
+    db.execute("DROP TRIGGER immutable_version_update")
+    bad = dict(contents[1], rubric={"required": canary})
+    db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
+    db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
 elif mode in {"settled-generation", "unknown-generation", "unsupported-generation-reservation", "unsupported-old-active"}:
     db.execute("UPDATE job_attempts SET started_at=?,finished_at=?", (money_now, money_now + 1))
     if mode == "settled-generation":

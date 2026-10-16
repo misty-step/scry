@@ -1,6 +1,6 @@
 // Temporary CF-only conversion into private R2; never returns learner bodies.
 import {handle} from './inspect.mjs';
-import {project} from './project.mjs';
+import {project, ProjectionRefusal} from './project.mjs';
 const encoder = new TextEncoder();
 const hash = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
   b => b.toString(16).padStart(2, '0')).join('');
@@ -70,5 +70,6 @@ export default {async fetch(request, env) {
       destination_key: key, destination_bytes: encoded.length, destination_sha256: checksum,
       counts, projection_sha256: sections, source_inventory: inventory,
       limits: 'Prepared archive only; exact Rust restore, learner reconciliation, final writer consistency and cutover remain separate.'};
-  });
+  }, error => error instanceof ProjectionRefusal ?
+    {error: 'UNSUPPORTED_GO_PROJECTION', reason: error.message} : undefined);
 }};

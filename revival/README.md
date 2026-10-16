@@ -197,6 +197,15 @@ scheduler timestamps. Any such refusal must be investigated inside Cloudflare
 and repaired with an independently reviewed transformation before cutover.
 It does not reinterpret an unsupported dataset as a fresh start.
 
+An unsupported projection returns HTTP 422 with `UNSUPPORTED_GO_PROJECTION`
+and a source-defined `reason` code only. This identifies the refused
+transformation without returning a record ID, SQL, private value, parser message
+or stack. Archive/SQLite/reader and destination failures remain the generic
+`INSPECTION_FAILED`; the read-only inspector's response contract is unchanged.
+No destination write occurs for a projection refusal. Investigate the code's
+named invariant and reproduce the shape with synthetic data before changing
+that transformation; a refusal is never an import or cutover receipt.
+
 The complete candidate is conditionally created at
 `converted-go/<original-sha256>/<candidate-sha256>.json`, then read back byte for
 byte before acknowledging. Replay/concurrency verify an existing object; a

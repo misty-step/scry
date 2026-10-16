@@ -279,12 +279,26 @@ for (const [mode, expectedMicros, criticCharges] of [
     });
   }));
 }
-for (const mode of ['unsupported-algorithm', 'inexact-timestamp', 'unsupported-web', 'unsafe-integer',
-  'zero-rating', 'unsupported-correction', 'unsupported-assessment', 'unsupported-generation-reservation',
-  'unsupported-old-active', 'unsupported-critic-purpose', 'unsupported-critic-owner',
-  'unsupported-critic-reservation', 'unsupported-critic-unsent', 'unsupported-critic-old-pending']) {
+for (const [mode, reason] of [
+  ['unsupported-algorithm', 'scheduler-algorithm'],
+  ['inexact-timestamp', 'timestamp-precision'],
+  ['private-shape-error', null], // Unexpected TypeError stays private/generic.
+  ['unsupported-web', 'unsupported-web-documents'],
+  ['unsafe-integer', null], // Reader failure, not a projection refusal.
+  ['zero-rating', 'event-transition'],
+  ['unsupported-correction', 'unsupported-assessments-or-corrections'],
+  ['unsupported-assessment', 'unsupported-assessments-or-corrections'],
+  ['unsupported-generation-reservation', 'unknown-reservation'],
+  ['unsupported-old-active', 'old-pending-usage'],
+  ['unsupported-critic-purpose', 'critic-policy'],
+  ['unsupported-critic-owner', 'critic-ownership'],
+  ['unsupported-critic-reservation', 'unknown-reservation'],
+  ['unsupported-critic-unsent', 'invariant'],
+  ['unsupported-critic-old-pending', 'old-pending-usage'],
+]) {
   test('refuses ' + mode + ' before destination writes without private diagnostics', () => fixture(mode, async ({request, destination}) => {
-    assert.deepEqual(await request(), {status: 422, body: {error: 'INSPECTION_FAILED'}});
+    assert.deepEqual(await request(), {status: 422, body: reason ?
+      {error: 'UNSUPPORTED_GO_PROJECTION', reason} : {error: 'INSPECTION_FAILED'}});
     assert.equal((await destination.list()).objects.length, 0);
   }));
 }

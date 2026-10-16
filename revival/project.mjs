@@ -1,29 +1,32 @@
 // One-way ADR 006 projection. Input is read only by the validated CF SQLite reader.
 // No provider calls, historical job execution, or learner-facing compatibility API.
 const encoder = new TextEncoder();
-const require = condition => {if (!condition) throw new Error('UNSUPPORTED_GO_PROJECTION');};
+// Only require constructs this type, with source-literal codes, never a caught
+// exception's message. All parser/SQL/storage errors retain the generic response.
+export class ProjectionRefusal extends Error {}
+const require = (condition, reason = 'invariant') => {if (!condition) throw new ProjectionRefusal(reason);};
 const json = text => JSON.parse(text);
 export const algorithm = 'go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1';
 const own = (object, key) => Object.hasOwn(object, key);
 const by = (records, field, value) => records.filter(record => record[field] === value);
-const unique = records => {require(records.length === 1); return records[0];};
+const unique = records => {require(records.length === 1, 'cardinality'); return records[0];};
 const id = (kind, original) => {
-  require(typeof original === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(original));
+  require(typeof original === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(original), 'identifier');
   return 'legacy-import-' + kind + '-' + original;
 };
 const timestamp = text => {
-  require(typeof text === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3}0*)?(?:Z|[+-]\d\d:\d\d)$/.test(text));
+  require(typeof text === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3}0*)?(?:Z|[+-]\d\d:\d\d)$/.test(text), 'timestamp-precision');
   const ms = Date.parse(text);
-  require(Number.isSafeInteger(ms));
+  require(Number.isSafeInteger(ms), 'timestamp-range');
   return ms;
 };
 export function card(text) {
   const c = json(text);
-  require(Object.keys(c).sort().join(',') === 'Difficulty,Due,Lapses,LastReview,RemainingSteps,Reps,ScheduledDays,Stability,State');
-  require(Number.isInteger(c.State) && c.State >= 0 && c.State <= 3);
-  for (const field of ['ScheduledDays', 'Reps', 'Lapses']) require(Number.isSafeInteger(c[field]) && c[field] >= 0);
-  require(Number.isInteger(c.RemainingSteps) && c.RemainingSteps >= 0 && c.RemainingSteps <= 2);
-  require(Number.isFinite(c.Stability) && Number.isFinite(c.Difficulty));
+  require(Object.keys(c).sort().join(',') === 'Difficulty,Due,Lapses,LastReview,RemainingSteps,Reps,ScheduledDays,Stability,State', 'card-shape');
+  require(Number.isInteger(c.State) && c.State >= 0 && c.State <= 3, 'card-state');
+  for (const field of ['ScheduledDays', 'Reps', 'Lapses']) require(Number.isSafeInteger(c[field]) && c[field] >= 0, 'card-count');
+  require(Number.isInteger(c.RemainingSteps) && c.RemainingSteps >= 0 && c.RemainingSteps <= 2, 'card-steps');
+  require(Number.isFinite(c.Stability) && Number.isFinite(c.Difficulty), 'card-real');
   return {due_ms: timestamp(c.Due), stability: c.Stability, difficulty: c.Difficulty,
     scheduled_days: c.ScheduledDays, reps: c.Reps, lapses: c.Lapses,
     state: ['new', 'learning', 'review', 'relearning'][c.State],
@@ -31,16 +34,16 @@ export function card(text) {
     remaining_steps: c.RemainingSteps};
 }
 function basis(value, evidence) {
-  require(value === 'topic' || value === 'source');
+  require(value === 'topic' || value === 'source', 'content-basis');
   const quotes = Array.isArray(evidence) ? evidence : evidence ? [evidence] : [];
-  require(quotes.every(quote => typeof quote === 'string'));
-  require(value !== 'topic' || quotes.length === 0);
+  require(quotes.every(quote => typeof quote === 'string'), 'content-quotes');
+  require(value !== 'topic' || quotes.length === 0, 'topic-quotes');
   return {basis: value === 'topic' ? 'general' : 'source', quotes};
 }
 function content(record) {
   const q = json(record.content);
-  require(q.kind === 'recall' || q.kind === 'choice');
-  require(!q.grading || q.grading === 'exact' || q.grading === 'semantic');
+  require(q.kind === 'recall' || q.kind === 'choice', 'content-kind');
+  require(!q.grading || q.grading === 'exact' || q.grading === 'semantic', 'content-grading');
   return {version: record.version, prompt: q.prompt,
     kind: q.grading === 'semantic' ? 'explain' : q.kind, answer: q.answer,
     variants: q.variants || [], choices: q.choices || [], explanation: q.explanation,
@@ -70,8 +73,8 @@ export function project(tables, originalBytes, originalHash, created) {
   const t = name => {require(Array.isArray(tables[name])); return tables[name];};
   // Unknown active constructs are never silently converted to invented learning.
   // They stay byte-preserved, but this version refuses to prepare a cutover archive.
-  require(t('corrections').length === 0 && t('semantic_assessments').length === 0);
-  require(t('source_documents').length === 0);
+  require(t('corrections').length === 0 && t('semantic_assessments').length === 0, 'unsupported-assessments-or-corrections');
+  require(t('source_documents').length === 0, 'unsupported-web-documents');
   const app = {schema: 1, revision: 0, restored_paused: true, csrf: 'legacy-import-' + originalHash,
     goals: {}, concepts: {}, questions: {}, occurrence: null, events: [], overrides: [], resets: [],
     operations: {}, jobs: {}, assessments: {}, spend: [], feedback: [],
@@ -81,10 +84,10 @@ export function project(tables, originalBytes, originalHash, created) {
   let createdConcepts = 0, createdNotes = 0;
   for (const source of t('sources')) {
     const old = unique(by(t('goals'), 'source_id', source.id));
-    require(['active', 'paused', 'archived'].includes(old.status));
+    require(['active', 'paused', 'archived'].includes(old.status), 'goal-status');
     const quizzes = by(t('quizzes'), 'source_id', source.id);
     const jobs = by(t('jobs'), 'source_id', source.id).sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id));
-    require(jobs.length > 0);
+    require(jobs.length > 0, 'source-without-job');
     const ready = quizzes.length > 0;
     const goal = put(app.goals, {id: id('goal', old.id), title: old.title, intent: source.text,
       created_ms: old.created_at, revision: source.revision, status: ready ? 'ready' : 'paused',
@@ -109,11 +112,11 @@ export function project(tables, originalBytes, originalHash, created) {
   // Preserve current generated ideas/notes per owning source. Foundation-origin
   // concepts remain historical; they are never revived as new introductions.
   for (const original of t('concepts').filter(c => c.origin !== 'foundation')) {
-    require(original.status === 'active' || original.status === 'archived');
+    require(original.status === 'active' || original.status === 'archived', 'concept-status');
     const goal = goalForSource.get(original.source_id);
-    require(goal);
+    require(goal, 'concept-goal');
     const notes = by(t('notes'), 'concept_id', original.id).sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id));
-    require(notes.length > 0);
+    require(notes.length > 0, 'concept-without-note');
     const observations = by(t('evidence'), 'concept_id', original.id);
     const intros = observations.filter(e => e.kind === 'read' || e.kind === 'know');
     const assessed = by(t('concept_quizzes'), 'concept_id', original.id).map(link => link.quiz_id);
@@ -136,13 +139,13 @@ export function project(tables, originalBytes, originalHash, created) {
     const goal = goalForSource.get(original.source_id);
     require(goal);
     const versions = by(t('quiz_versions'), 'quiz_id', original.id).sort((a, b) => a.version - b.version);
-    require(versions.length === original.version && versions.every((v, i) => v.version === i + 1));
+    require(versions.length === original.version && versions.every((v, i) => v.version === i + 1), 'content-version-chain');
     const schedule = unique(by(t('schedules'), 'quiz_id', original.id));
-    require(schedule.algorithm === algorithm);
+    require(schedule.algorithm === algorithm, 'scheduler-algorithm');
     const fullCard = card(schedule.card);
-    require(fullCard.due_ms === schedule.due_at);
+    require(fullCard.due_ms === schedule.due_at, 'scheduler-due');
     const active = by(t('concept_quizzes'), 'quiz_id', original.id).filter(link => link.role === 'assesses' && own(app.concepts, id('concept', link.concept_id)));
-    require(active.length <= 1);
+    require(active.length <= 1, 'ambiguous-primary-concept');
     let concept = active.length ? app.concepts[id('concept', active[0].concept_id)] : null;
     if (!concept) {
       const current = json(versions.at(-1).content);
@@ -165,7 +168,7 @@ export function project(tables, originalBytes, originalHash, created) {
   require(Object.keys(app.questions).length === t('schedules').length);
   const presentations = new Map(t('presentations').map(p => [p.id, p]));
   for (const old of [...t('review_events')].sort((a, b) => a.reviewed_at - b.reviewed_at || a.id.localeCompare(b.id))) {
-    require([1, 3].includes(old.rating) && old.schedule_version_after === old.schedule_version_before + 1);
+    require([1, 3].includes(old.rating) && old.schedule_version_after === old.schedule_version_before + 1, 'event-transition');
     const presented = presentations.get(old.presentation_id);
     require(presented);
     const q = app.questions[id('quiz', presented.quiz_id)];
@@ -173,10 +176,10 @@ export function project(tables, originalBytes, originalHash, created) {
     const presentation = q.versions[presented.content_version - 1];
     const snapshot = json(old.snapshot);
     require(snapshot.version === presentation.version && JSON.stringify(content({content: old.snapshot,
-      version: presentation.version, model: presentation.model, created_at: presentation.created_ms})) === JSON.stringify(presentation));
+      version: presentation.version, model: presentation.model, created_at: presentation.created_ms})) === JSON.stringify(presentation), 'event-content');
     const authority = old.outcome === 'revealed' ? 'reveal' : old.grading === 'exact-v1' ? 'exact' :
       old.grading === 'learner-v1' ? 'learner' : ['short-v1', 'semantic-v1'].includes(old.grading) ? 'jev' : null;
-    require(authority);
+    require(authority, 'event-authority');
     const before = card(old.schedule_before), after = card(old.schedule_after);
     require(after.due_ms === old.due_at);
     const event = {id: id('event', old.id), occurrence_id: id('presentation', old.presentation_id),
@@ -222,12 +225,12 @@ export function project(tables, originalBytes, originalHash, created) {
     require(Number.isSafeInteger(when) && when > 0);
     require(Number.isSafeInteger(old.reserved_micros) && old.reserved_micros >= 0);
     require(old.cost_micros === null || (Number.isSafeInteger(old.cost_micros) && old.cost_micros >= 0));
-    require(old.cost_micros !== null || old.reserved_micros === 500000);
+    require(old.cost_micros !== null || old.reserved_micros === 500000, 'unknown-reservation');
     require(typeof model === 'string' && model.length > 0 && encoder.encode(model).length <= 256);
     // Go includes old active/pending charges outside the rolling window. Rust
     // cannot express that exemption without changing its spending engine. Refuse
     // those obligations instead of aging them out or restarting their clock.
-    require(!pending || (old.cost_micros ?? old.reserved_micros) === 0 || when > created - 86400000);
+    require(!pending || (old.cost_micros ?? old.reserved_micros) === 0 || when > created - 86400000, 'old-pending-usage');
     require(!app.spend.some(spend => spend.id === spendId));
     // Rust keeps the nominal reservation even after settlement; known cost
     // always takes precedence. Go clears the reservation on measured settlement.
@@ -238,16 +241,16 @@ export function project(tables, originalBytes, originalHash, created) {
       status: old.cost_micros === null ? 'unknown' : 'known', model});
   };
   for (const old of t('job_attempts')) {
-    require(['active', 'unknown', 'settled'].includes(old.state));
+    require(['active', 'unknown', 'settled'].includes(old.state), 'generation-state');
     const job = app.jobs[id('job', old.job_id)];
     require(job);
     paid(old, id('spend', old.token), job.id, old.started_at, job.model, old.state === 'active');
   }
   for (const old of t('content_assessments')) {
-    require(old.purpose === 'critic' && old.policy_version === 'critic-v1');
+    require(old.purpose === 'critic' && old.policy_version === 'critic-v1', 'critic-policy');
     require(['pending', 'judged', 'failed'].includes(old.status) && [0, 1].includes(old.transmissions));
     const attempt = unique(by(t('job_attempts'), 'token', old.attempt_token));
-    require(attempt.job_id === old.job_id);
+    require(attempt.job_id === old.job_id, 'critic-ownership');
     const job = app.jobs[id('job', old.job_id)];
     require(job);
     if (old.transmissions === 0) {
