@@ -2129,13 +2129,71 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
 }
 
 pub fn validate_app(app: &App) -> AppResult<()> {
+    validate_app_checks(app, &mut ArchiveChecks::default())
+}
+
+/// Collection shares every native restore predicate. A missing dependency or
+/// unreadable nested payload invalidates the whole report, never a partial pass.
+pub fn diagnose_app(app: &App) -> AppResult<BTreeMap<String, u64>> {
+    let mut checks = ArchiveChecks {
+        collect: true,
+        ..ArchiveChecks::default()
+    };
+    validate_app_checks(app, &mut checks)?;
+    Ok(checks.counts)
+}
+
+#[derive(Default)]
+struct ArchiveChecks {
+    collect: bool,
+    counts: BTreeMap<String, u64>,
+    seen: BTreeSet<String>,
+}
+impl ArchiveChecks {
+    fn record(&mut self) {
+        self.seen.clear();
+    }
+    fn check(&mut self, result: AppResult<()>) -> AppResult<()> {
+        if let Err(error) = result {
+            if !self.collect {
+                return Err(error);
+            }
+            // Callers below supply only source-literal archive errors, never
+            // serde/runtime/provider errors, record values or identifiers.
+            let reason = error
+                .message
+                .strip_prefix("The archive contains ")
+                .and_then(|s| s.strip_suffix('.'))
+                .ok_or_else(|| archive_error("an incomplete validation traversal"))?;
+            let class = reason
+                .to_ascii_lowercase()
+                .split_whitespace()
+                .map(|word| {
+                    word.chars()
+                        .filter(char::is_ascii_alphanumeric)
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("-");
+            if self.seen.insert(class.clone()) {
+                *self.counts.entry(class).or_default() += 1;
+            }
+        }
+        Ok(())
+    }
+    fn reject(&mut self, reason: &'static str) -> AppResult<()> {
+        self.check(Err(archive_error(reason)))
+    }
+}
+
+fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
     if app.revival_schedule_origins.iter().any(|(id, origin)| {
         *origin != 1
             || app.revival_go.is_empty()
             || !id.starts_with("legacy-import-quiz-")
             || !app.questions.contains_key(id)
     }) {
-        return Err(archive_error("an invalid original Go schedule epoch"));
+        checks.reject("an invalid original Go schedule epoch")?;
     }
     if app.schema != SCHEMA
         || !(24..=256).contains(&app.csrf.len())
@@ -2144,11 +2202,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             "light" | "steady" | "intense"
         )
     {
-        return Err(archive_error("incompatible schema or owner metadata"));
+        checks.reject("incompatible schema or owner metadata")?;
     }
     let mut ids = BTreeSet::new();
     for (key, goal) in &app.goals {
-        archive_id(key, &goal.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(key, &goal.id, &mut ids))?;
         let concepts: BTreeSet<_> = goal.concept_ids.iter().collect();
         if goal.revision == 0
             || goal.intent.len() > TEXT_LIMIT
@@ -2171,7 +2230,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 "preparing" | "ready" | "partial" | "failed" | "unknown" | "paused" | "archived"
             )
         {
-            return Err(archive_error("broken goal references or saved input"));
+            checks.reject("broken goal references or saved input")?;
         }
         if let Some(photo) = &goal.photo
             && (!photo.key.starts_with("photos/")
@@ -2184,11 +2243,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 || !archive_hash(&photo.sha256)
                 || goal.intent.len() > 1024)
         {
-            return Err(archive_error("invalid saved photo metadata"));
+            checks.reject("invalid saved photo metadata")?;
         }
     }
     for (key, concept) in &app.concepts {
-        archive_id(key, &concept.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(key, &concept.id, &mut ids))?;
         let goal = app
             .goals
             .get(&concept.goal_id)
@@ -2207,7 +2267,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                         .is_none_or(|c| c.goal_id != concept.goal_id)
             })
         {
-            return Err(archive_error("broken idea references"));
+            checks.reject("broken idea references")?;
         }
         let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
         for note in &concept.notes {
@@ -2215,7 +2275,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 || !archive_grounded(&note.basis, &note.quotes, source)
                 || note.model.len() > 256
             {
-                return Err(archive_error("invalid reference material or its evidence"));
+                checks.reject("invalid reference material or its evidence")?;
             }
         }
     }
@@ -2230,10 +2290,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
         }
     }
     if reached.len() != app.concepts.len() {
-        return Err(archive_error("a circular prerequisite graph"));
+        checks.record();
+        checks.reject("a circular prerequisite graph")?;
     }
     for (key, question) in &app.questions {
-        archive_id(key, &question.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(key, &question.id, &mut ids))?;
         let goal = app
             .goals
             .get(&question.goal_id)
@@ -2249,39 +2311,47 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 .windows(2)
                 .any(|v| v[0].version.checked_add(1) != Some(v[1].version))
         {
-            return Err(archive_error("broken question versions or idea references"));
+            checks.reject("broken question versions or idea references")?;
         }
-        archive_card(&question.card)?;
+        checks.check(archive_card(&question.card))?;
         let source = goal.transcript.as_deref().unwrap_or(&goal.intent);
         for content in &question.versions {
-            archive_content(content, source)?;
+            archive_content(content, source, checks)?;
         }
         match (&question.draft, question.draft_for_version) {
             (None, None) => {}
             (Some(draft), Some(version))
-                if version == question.content().version
+                if question
+                    .versions
+                    .last()
+                    .is_some_and(|c| version == c.version)
                     && version.checked_add(1) == Some(draft.version) =>
             {
-                archive_content(draft, source)?
+                archive_content(draft, source, checks)?
             }
-            _ => return Err(archive_error("a draft without its exact source version")),
+            _ => checks.reject("a draft without its exact source version")?,
         }
     }
     let mut occurrences = BTreeSet::new();
     let mut presentations = BTreeMap::new();
     let mut event_versions: BTreeMap<&str, u64> = BTreeMap::new();
     for event in &app.events {
-        archive_id(&event.id, &event.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&event.id, &event.id, &mut ids))?;
         let question = app
             .questions
             .get(&event.question_id)
             .ok_or_else(|| archive_error("an orphaned attempt"))?;
         let presented = (event.question_id.as_str(), &event.presentation);
+        // Populate traversal bookkeeping even when another guard on this row
+        // already failed; otherwise collection loses later duplicate classes.
+        let duplicate = !event.is_ungraded() && !occurrences.insert(&event.occurrence_id);
+        let conflicting = presentations
+            .insert(&event.occurrence_id, presented)
+            .is_some_and(|prior| prior != presented);
         if event.concept_id != question.concept_id
-            || (!event.is_ungraded() && !occurrences.insert(&event.occurrence_id))
-            || presentations
-                .insert(&event.occurrence_id, presented)
-                .is_some_and(|prior| prior != presented)
+            || duplicate
+            || conflicting
             || !question.versions.iter().any(|c| c == &event.presentation)
             || event.result.event_id != event.id
             || event.result.corrected
@@ -2293,13 +2363,13 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                     .get(event.question_id.as_str())
                     .is_some_and(|v| *v >= event.schedule_version))
         {
-            return Err(archive_error("incompatible or duplicated attempt history"));
+            checks.reject("incompatible or duplicated attempt history")?;
         }
         if !revival_observation(app, event) {
             event_versions.insert(&event.question_id, event.schedule_version);
         }
-        archive_card(&event.before_card)?;
-        archive_card(&event.after_card)?;
+        checks.check(archive_card(&event.before_card))?;
+        checks.check(archive_card(&event.after_card))?;
         let policy = match event.result.authority.as_str() {
             "ungraded" if event.is_ungraded() => "exact-v1",
             "exact" | "reveal" => "exact-v1",
@@ -2309,7 +2379,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             _ => return Err(archive_error("an unknown grading authority")),
         };
         if event.algorithm != learning::event_algorithm(policy) {
-            return Err(archive_error("an incompatible event algorithm"));
+            checks.reject("an incompatible event algorithm")?;
         }
         let valid_outcome = match event.result.outcome.as_str() {
             "selfcheck" | "warm_selfcheck" => {
@@ -2341,9 +2411,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             _ => false,
         };
         if !valid_outcome || event.answer.len() > 4000 {
-            return Err(archive_error(
-                "a grade inconsistent with assistance or authority",
-            ));
+            checks.reject("a grade inconsistent with assistance or authority")?;
         }
         if event.result.authority == "exact" {
             let grade = learning::exact_grade(
@@ -2363,9 +2431,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 && event.result.outcome == "warm_wrong"
                 && revival_observation(app, event);
             if grade != Some(expected) && !retained_helped_miss {
-                return Err(archive_error(
-                    "an exact grade without an authored answer match",
-                ));
+                checks.reject("an exact grade without an authored answer match")?;
             }
         }
         let expected = if event.result.rating == 0 {
@@ -2379,14 +2445,13 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             .map_err(|_| archive_error("an impossible scheduler transition"))?
         };
         if !archive_cards_agree(&expected, &event.after_card) {
-            return Err(archive_error(
-                "an attempt whose recorded schedule does not agree",
-            ));
+            checks.reject("an attempt whose recorded schedule does not agree")?;
         }
     }
     let mut corrected = BTreeSet::new();
     for correction in &app.overrides {
-        archive_id(&correction.id, &correction.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&correction.id, &correction.id, &mut ids))?;
         let event = app
             .events
             .iter()
@@ -2399,12 +2464,10 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             || correction.correct == (event.result.outcome == "correct")
             || !archive_cards_agree(&correction.before_card, &event.after_card)
         {
-            return Err(archive_error(
-                "an ineligible, repeated, or inconsistent grade correction",
-            ));
+            checks.reject("an ineligible, repeated, or inconsistent grade correction")?;
         }
-        archive_card(&correction.before_card)?;
-        archive_card(&correction.after_card)?;
+        checks.check(archive_card(&correction.before_card))?;
+        checks.check(archive_card(&correction.after_card))?;
         let expected = learning::schedule(
             &event.before_card,
             if correction.correct { 3 } else { 1 },
@@ -2412,14 +2475,13 @@ pub fn validate_app(app: &App) -> AppResult<()> {
         )
         .map_err(|_| archive_error("an impossible correction transition"))?;
         if !archive_cards_agree(&correction.after_card, &expected) {
-            return Err(archive_error(
-                "a correction that did not replay the original attempt",
-            ));
+            checks.reject("a correction that did not replay the original attempt")?;
         }
     }
     let mut reset_causes = BTreeSet::new();
     for reset in &app.resets {
-        archive_id(&reset.id, &reset.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&reset.id, &reset.id, &mut ids))?;
         let question = app
             .questions
             .get(&reset.question_id)
@@ -2446,15 +2508,14 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             })
             || reset.after_card != learning::new_card(reset.created_ms)
         {
-            return Err(archive_error(
-                "a reset without its exact version, cause, or new-card transition",
-            ));
+            checks.reject("a reset without its exact version, cause, or new-card transition")?;
         }
-        archive_card(&reset.before_card)?;
-        archive_card(&reset.after_card)?;
+        checks.check(archive_card(&reset.before_card))?;
+        checks.check(archive_card(&reset.after_card))?;
     }
     for (key, job) in &app.jobs {
-        archive_id(key, &job.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(key, &job.id, &mut ids))?;
         let goal = app
             .goals
             .get(&job.goal_id)
@@ -2498,9 +2559,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 .as_ref()
                 .is_some_and(|v| !generation::text_valid(v, 1000))
         {
-            return Err(archive_error(
-                "invalid preparation state or feedback ownership",
-            ));
+            checks.reject("invalid preparation state or feedback ownership")?;
         }
         match (&job.question_id, job.question_version) {
             (None, None) if job.kind != "fix" => {}
@@ -2509,14 +2568,19 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                     && app.questions.get(id).is_some_and(|q| {
                         q.goal_id == job.goal_id && q.versions.iter().any(|c| c.version == version)
                     }) => {}
-            _ => return Err(archive_error("a fix without its retained question version")),
+            _ => checks.reject("a fix without its retained question version")?,
         }
         if matches!(job.status.as_str(), "sent" | "critic-sent") {
-            archive_lease(app, &job.id, job.lease.as_deref(), job.started_ms)?;
+            checks.check(archive_lease(
+                app,
+                &job.id,
+                job.lease.as_deref(),
+                job.started_ms,
+            ))?;
         }
         if let Some(candidate) = &job.candidate_json {
             if candidate.len() > generation::RESPONSE_LIMIT {
-                return Err(archive_error("oversized saved candidates"));
+                checks.reject("oversized saved candidates")?;
             }
             let batch: Batch = serde_json::from_str(candidate)
                 .map_err(|_| archive_error("unreadable saved candidates"))?;
@@ -2533,22 +2597,23 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 generation::validate_batch_with_existing(batch.clone(), source, &known)
                     .map_err(|_| archive_error("invalid saved candidates"))?;
             if !rejected.is_empty() {
-                return Err(archive_error("saved candidates that bypassed validation"));
+                checks.reject("saved candidates that bypassed validation")?;
             }
-            archive_critic_history(app, job, &batch)?;
+            archive_critic_history(app, job, &batch, checks)?;
         } else if matches!(job.status.as_str(), "candidates" | "critic-sent") {
-            return Err(archive_error("a content check without saved candidates"));
+            checks.reject("a content check without saved candidates")?;
         } else if job.critic_cache_json.is_some()
             || job.critic_json.is_some()
             || job.critic_parent_id.is_some()
             || job.critic_model.is_some()
             || !job.critic_inherited_keys.is_empty()
         {
-            return Err(archive_error("critic history without saved candidates"));
+            checks.reject("critic history without saved candidates")?;
         }
     }
     for (key, assessment) in &app.assessments {
-        archive_id(key, &assessment.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(key, &assessment.id, &mut ids))?;
         let question = app
             .questions
             .get(&assessment.question_id)
@@ -2582,7 +2647,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 .as_ref()
                 .is_some_and(|v| v.len() > generation::RESPONSE_LIMIT)
         {
-            return Err(archive_error("invalid answer checking state"));
+            checks.reject("invalid answer checking state")?;
         }
         if matches!(assessment.status.as_str(), "queued" | "sent")
             && app.occurrence.as_ref().is_none_or(|o| {
@@ -2591,21 +2656,20 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                     || o.assessment_id.as_deref() != Some(key)
             })
         {
-            return Err(archive_error(
-                "an active check without its current occurrence",
-            ));
+            checks.reject("an active check without its current occurrence")?;
         }
         if assessment.status == "sent" {
-            archive_lease(
+            checks.check(archive_lease(
                 app,
                 &assessment.id,
                 assessment.lease.as_deref(),
                 assessment.started_ms,
-            )?;
+            ))?;
         }
     }
     for spend in &app.spend {
-        archive_id(&spend.id, &spend.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&spend.id, &spend.id, &mut ids))?;
         // Only retained, unknown Go obligations can exceed the normal reserve.
         // This can increase accounting, never reduce the allowance guard or
         // manufacture a measured cost. New sends still reserve RESERVATION.
@@ -2652,11 +2716,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 ("known", Some(_)) | ("unknown", None)
             )
         {
-            return Err(archive_error("orphaned or inconsistent paid usage"));
+            checks.reject("orphaned or inconsistent paid usage")?;
         }
     }
     for feedback in &app.feedback {
-        archive_id(&feedback.id, &feedback.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&feedback.id, &feedback.id, &mut ids))?;
         if !app.goals.contains_key(&feedback.goal_id)
             || !generation::text_valid(&feedback.text, 4000)
             || feedback.concept_id.as_ref().is_some_and(|id| {
@@ -2674,14 +2739,25 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 })
             })
         {
-            return Err(archive_error("broken feedback references"));
+            checks.reject("broken feedback references")?;
         }
     }
     for (operation, receipt) in &app.operations {
-        if !(16..=128).contains(&operation.len())
-            || !operation
+        checks.record();
+        let native_identity = (16..=128).contains(&operation.len())
+            && operation
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
+        // Go accepted bounded text IDs, not Rust's new-request ID grammar.
+        // Preserve the exact original key/hash; never rekey or invent a receipt.
+        // Only the converter's non-executable custody marker admits this shape.
+        let retained_identity = !app.revival_go.is_empty()
+            && generation::text_valid(operation, 200)
+            && receipt.result.redirect == "/history"
+            && receipt.result.entity_id.is_none()
+            && receipt.result.message.as_deref()
+                == Some("legacy-import: original receipt retained in the Go archive.");
+        if (!native_identity && !retained_identity)
             || !archive_hash(&receipt.payload_hash)
             || !receipt.result.redirect.starts_with('/')
             || receipt.result.redirect.starts_with("//")
@@ -2693,11 +2769,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                     && !app.jobs.contains_key(id)
             })
         {
-            return Err(archive_error("an invalid exact-operation receipt"));
+            checks.reject("an invalid exact-operation receipt")?;
         }
     }
     if let Some(occurrence) = &app.occurrence {
-        archive_id(&occurrence.id, &occurrence.id, &mut ids)?;
+        checks.record();
+        checks.check(archive_id(&occurrence.id, &occurrence.id, &mut ids))?;
         let question = app
             .questions
             .get(&occurrence.question_id)
@@ -2716,9 +2793,9 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 .as_ref()
                 .is_some_and(|answer| answer.len() > 4000)
         {
-            return Err(archive_error("an invalid current occurrence"));
+            checks.reject("an invalid current occurrence")?;
         }
-        archive_card(&occurrence.before_card)?;
+        checks.check(archive_card(&occurrence.before_card))?;
         if occurrence.phase == "result" {
             let result = occurrence
                 .result
@@ -2734,7 +2811,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 || !archive_cards_agree(&event.before_card, &occurrence.before_card)
                 || occurrence.answer.as_deref().unwrap_or("") != event.answer
             {
-                return Err(archive_error("held feedback inconsistent with its attempt"));
+                checks.reject("held feedback inconsistent with its attempt")?;
             }
             let mut expected = event.result.clone();
             if let Some(correction) = app.overrides.iter().find(|o| o.event_id == event.id) {
@@ -2750,20 +2827,21 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 expected.due_ms = correction.after_card.due_ms;
             }
             if result != &expected {
-                return Err(archive_error(
-                    "held feedback inconsistent with its correction",
-                ));
+                checks.reject("held feedback inconsistent with its correction")?;
             }
         } else {
             if occurrence.result.is_some()
                 || question.archived
-                || app.goals[&question.goal_id].archived
-                || app.concepts[&question.concept_id].archived
-                || question.content() != &occurrence.presentation
+                || app.goals.get(&question.goal_id).is_none_or(|g| g.archived)
+                || app
+                    .concepts
+                    .get(&question.concept_id)
+                    .is_none_or(|c| c.archived)
+                || question.versions.last() != Some(&occurrence.presentation)
                 || question.schedule_version != occurrence.schedule_version
                 || !archive_cards_agree(&question.card, &occurrence.before_card)
             {
-                return Err(archive_error("a stale unanswered occurrence"));
+                checks.reject("a stale unanswered occurrence")?;
             }
             // Old Go stored held exact-policy attempts before it had answer
             // assessments. Keep their saved answer actionable without inventing
@@ -2808,18 +2886,16 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                     || assessment.schedule_version != occurrence.schedule_version
                     || occurrence.answer.as_deref() != Some(assessment.answer.as_str())
                 {
-                    return Err(archive_error("checking inconsistent with its saved answer"));
+                    checks.reject("checking inconsistent with its saved answer")?;
                 }
             } else if !retained_self_check
                 && (occurrence.answer.is_some() || occurrence.assessment_id.is_some())
             {
-                return Err(archive_error(
-                    "an unanswered occurrence carrying a later attempt",
-                ));
+                checks.reject("an unanswered occurrence carrying a later attempt")?;
             }
         }
     }
-    archive_schedule_chains(app)
+    archive_schedule_chains(app, checks)
 }
 
 fn archive_error(reason: &str) -> AppError {
@@ -2844,7 +2920,12 @@ fn archive_hash(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn archive_critic_history(app: &App, job: &Job, batch: &Batch) -> AppResult<()> {
+fn archive_critic_history(
+    app: &App,
+    job: &Job,
+    batch: &Batch,
+    checks: &mut ArchiveChecks,
+) -> AppResult<()> {
     let baseline = if let Some(parent_id) = &job.critic_parent_id {
         let parent = app
             .jobs
@@ -2864,34 +2945,30 @@ fn archive_critic_history(app: &App, job: &Job, batch: &Batch) -> AppResult<()> 
                 "failed" | "unknown" | "paused" | "superseded"
             )
         {
-            return Err(archive_error(
-                "a critic retry that changes retained candidates or ancestry",
-            ));
+            checks.reject("a critic retry that changes retained candidates or ancestry")?;
         }
         let keys: BTreeSet<_> = job.critic_inherited_keys.iter().collect();
         if keys.len() != job.critic_inherited_keys.len() {
-            return Err(archive_error("duplicate inherited critic judgments"));
+            checks.reject("duplicate inherited critic judgments")?;
         }
         let mut inherited =
             generation::read_critic_cache(batch, parent.critic_cache_json.as_deref())
                 .map_err(|_| archive_error("invalid preceding critic cache"))?;
         if keys.iter().any(|key| !inherited.answers.contains_key(*key)) {
-            return Err(archive_error(
-                "inherited judgments absent from their retained parent attempt",
-            ));
+            checks.reject("inherited judgments absent from their retained parent attempt")?;
         }
         // A late parent result may add judgments after this explicit retry.
         // Only the whole batteries already inherited at retry time belong to
         // this child's immutable starting snapshot.
         inherited.answers.retain(|key, _| keys.contains(key));
-        generation::validate_critic_cache(batch, &inherited)
-            .map_err(|_| archive_error("incomplete inherited critic batteries"))?;
+        checks.check(
+            generation::validate_critic_cache(batch, &inherited)
+                .map_err(|_| archive_error("incomplete inherited critic batteries")),
+        )?;
         inherited
     } else {
         if !job.critic_inherited_keys.is_empty() {
-            return Err(archive_error(
-                "inherited critic judgments without a parent attempt",
-            ));
+            checks.reject("inherited critic judgments without a parent attempt")?;
         }
         generation::read_critic_cache(batch, None)
             .map_err(|_| archive_error("invalid critic candidate envelope"))?
@@ -2905,7 +2982,7 @@ fn archive_critic_history(app: &App, job: &Job, batch: &Batch) -> AppResult<()> 
             .is_some_and(|v| v.get("answers").is_some())
             && job.critic_model.is_none()
         {
-            return Err(archive_error("unattributed raw critic judgments"));
+            checks.reject("unattributed raw critic judgments")?;
         }
         let receipt = job.critic_model.as_ref().and_then(|model| {
             app.spend.iter().find(|receipt| {
@@ -2915,9 +2992,7 @@ fn archive_critic_history(app: &App, job: &Job, batch: &Batch) -> AppResult<()> 
             })
         });
         if job.critic_model.is_some() && receipt.is_none() {
-            return Err(archive_error(
-                "critic judgments without their original paid response receipt",
-            ));
+            checks.reject("critic judgments without their original paid response receipt")?;
         }
         if receipt.is_some_and(|r| r.response_outcome.as_deref() == Some("rejected")) {
             baseline.clone()
@@ -2927,18 +3002,14 @@ fn archive_critic_history(app: &App, job: &Job, batch: &Batch) -> AppResult<()> 
         }
     } else {
         if job.critic_model.is_some() {
-            return Err(archive_error(
-                "a critic model without its retained response",
-            ));
+            checks.reject("a critic model without its retained response")?;
         }
         baseline.clone()
     };
     let saved = generation::read_critic_cache(batch, job.critic_cache_json.as_deref())
         .map_err(|_| archive_error("invalid reusable critic judgments"))?;
     if saved != expected {
-        return Err(archive_error(
-            "cached critic judgments that differ from retained raw attempts",
-        ));
+        checks.reject("cached critic judgments that differ from retained raw attempts")?;
     }
     Ok(())
 }
@@ -2957,7 +3028,7 @@ fn archive_grounded(basis: &str, quotes: &[String], source: &str) -> bool {
     }
 }
 
-fn archive_content(content: &Content, source: &str) -> AppResult<()> {
+fn archive_content(content: &Content, source: &str, checks: &mut ArchiveChecks) -> AppResult<()> {
     let candidate = generation::GeneratedQuestion {
         prompt: content.prompt.clone(),
         kind: content.kind.clone(),
@@ -2971,10 +3042,12 @@ fn archive_content(content: &Content, source: &str) -> AppResult<()> {
         contradictions: content.contradictions.clone(),
     };
     if content.version == 0 || content.model.len() > 256 {
-        return Err(archive_error("invalid content attribution or version"));
+        checks.reject("invalid content attribution or version")?;
     }
-    generation::validate_question(&candidate, source)
-        .map_err(|_| archive_error("invalid question content or evidence"))
+    checks.check(
+        generation::validate_question(&candidate, source)
+            .map_err(|_| archive_error("invalid question content or evidence")),
+    )
 }
 
 fn archive_card(card: &learning::Card) -> AppResult<()> {
@@ -3074,7 +3147,7 @@ fn revival_observation(app: &App, event: &Event) -> bool {
 /// Versions order all scheduler writes even when wall clocks coincide or move
 /// backward. A correction occupies the version immediately after its original
 /// event; a reset is explicitly positioned by its before/after versions.
-fn archive_schedule_chains(app: &App) -> AppResult<()> {
+fn archive_schedule_chains(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
     struct Step<'a> {
         before_version: u64,
         after_version: u64,
@@ -3082,6 +3155,7 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
         after: &'a learning::Card,
     }
     for question in app.questions.values() {
+        checks.record();
         let mut steps = Vec::new();
         for event in app
             .events
@@ -3090,7 +3164,10 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
         {
             if !revival_observation(app, event) {
                 steps.push(Step {
-                    before_version: event.schedule_version - 1,
+                    before_version: event
+                        .schedule_version
+                        .checked_sub(1)
+                        .ok_or_else(|| archive_error("a zero attempt schedule version"))?,
                     after_version: event.schedule_version,
                     before: &event.before_card,
                     after: &event.after_card,
@@ -3144,9 +3221,7 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
                 || previous.is_some_and(|card| !archive_cards_agree(card, step.before))
                 || (previous.is_none() && !step.before.is_new())
             {
-                return Err(archive_error(
-                    "a missing, competing, or disconnected schedule transition",
-                ));
+                checks.reject("a missing, competing, or disconnected schedule transition")?;
             }
             version = step.after_version;
             previous = Some(step.after);
@@ -3156,9 +3231,7 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             || previous.is_some_and(|card| !archive_cards_agree(card, &question.card))
             || (previous.is_none() && !question.card.is_new())
         {
-            return Err(archive_error(
-                "a current schedule that differs from its complete history",
-            ));
+            checks.reject("a current schedule that differs from its complete history")?;
         }
         for event in app
             .events
@@ -3169,9 +3242,7 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
                 .get(&event.schedule_version)
                 .is_none_or(|card| !archive_cards_agree(card, &event.before_card))
             {
-                return Err(archive_error(
-                    "a Go observation disconnected from its original schedule epoch",
-                ));
+                checks.reject("a Go observation disconnected from its original schedule epoch")?;
             }
         }
     }

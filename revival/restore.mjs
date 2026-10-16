@@ -56,7 +56,7 @@ function reconcile(source, actual, space) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!['/restore', '/verify'].includes(url.pathname) || url.search) return error('NOT_FOUND', 404);
+    if (!['/restore', '/verify', '/diagnose'].includes(url.pathname) || url.search) return error('NOT_FOUND', 404);
     if (request.method !== 'POST') return error('METHOD_NOT_ALLOWED', 405);
     if (typeof env.TRANSFER_KEY !== 'string' || env.TRANSFER_KEY.length < 32) return error('UNCONFIGURED', 503);
     if (request.headers.get('Authorization') !== 'Bearer ' + env.TRANSFER_KEY) return error('UNAUTHORIZED', 403);
@@ -83,6 +83,19 @@ export default {
       const stub = env.TARGET.get(env.TARGET.idFromName(space));
       const headers = {'x-scry-internal-key': env.INTERNAL_KEY, 'x-scry-owner': 'private-owner'};
       if (expired()) return error('CAPABILITY_EXPIRED', 403);
+      if (url.pathname === '/diagnose') {
+        const response = await stub.fetch('https://restore.invalid/operator/restore-dry-run', {method: 'POST',
+          headers: {...headers, 'x-scry-restore-token': env.RESTORE_TOKEN, 'x-scry-sha256': env.SOURCE_SHA256}, body: bytes});
+        if (response.status !== 200) {
+          await response.body?.cancel();
+          return error('INCOMPLETE_IMPORT_REPORT', 422);
+        }
+        const report = await response.json();
+        if (!report || Array.isArray(report) || typeof report !== 'object' ||
+            !Object.entries(report).every(([key, count]) => /^[a-z][a-z0-9-]{1,150}$/.test(key) && Number.isSafeInteger(count) && count > 0))
+          return error('INCOMPLETE_IMPORT_REPORT', 422);
+        return reply(report);
+      }
       if (url.pathname === '/restore') {
         const response = await stub.fetch('https://restore.invalid/operator/restore', {method: 'POST',
           headers: {...headers, 'x-scry-restore-token': env.RESTORE_TOKEN, 'x-scry-sha256': env.SOURCE_SHA256}, body: bytes});

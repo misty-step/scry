@@ -135,6 +135,29 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   dependent parsing/shape failure invalidates the report rather than publishing
   a partial pass. Only the actual complete report triggers further shape-specific
   repair, batched into one independently reviewed change before real import.
+- After two native import-time refusals, the operator requires an end-to-end
+  rehearsal of the same candidate and retained dataset on disposable private
+  Cloudflare storage before any further production-store write. Native restore
+  validation now has a collection mode using its existing predicates, separate
+  from projection diagnostics. The temporary bridge can request this mode with
+  the same pinned source and expiring transfer/restore authority; it returns only
+  source-literal class names and once-per-class-per-record counts. It reads no
+  durable rows and writes no SQL, assets or snapshots. A missing dependency,
+  unreadable nested payload, invalid envelope/media or unvalidated storage row
+  invalidates the entire report instead of releasing a partial aggregate.
+  Ordinary restore still stops at its first refusal. A successful diagnostic is
+  not an import: the complete native restore, remote backup and strict canonical
+  reconciliation must then run on the disposable target before production.
+- The first complete native report found one `an-invalid-exactoperation-receipt`
+  refusal. Go's `validOperation` accepted nonblank bounded UTF-8 text (200 bytes),
+  whereas new Rust operation IDs require 16–128 ASCII identifier bytes. Preserve
+  Go receipt keys and payload hashes exactly, including valid short or non-ASCII
+  IDs, only with retained Go bytes and the converter's existing `/history`,
+  null-entity, `legacy-import` receipt marker. Reuse the existing bounded-text
+  validator; do not rekey, discard, hash-normalize or replay historical responses.
+  All payload hashes and other receipt integrity guards remain unchanged, as does
+  the grammar for every new Rust request. Older builds refusing these retained
+  IDs are not compatible rollback targets. The class report is not import proof.
 - Project generator and transmitted critic usage into the existing Rust spend
   records, preserving owning job, stable per-attempt identity, original timestamp,
   model and exact known cost or unknown reservation. All critic retries

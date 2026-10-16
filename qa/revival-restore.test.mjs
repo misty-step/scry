@@ -94,7 +94,7 @@ async function fixture(fn, mode = 'valid') {
   } finally {await mf.dispose();}
 }
 
-for (const mode of ['valid', 'selfcheck-repeated', 'legacy-generation-reservations', 'critic-lifecycles', 'legacy-critic-reservations']) {
+for (const mode of ['valid', 'selfcheck-repeated', 'legacy-operation-identities', 'legacy-generation-reservations', 'critic-lifecycles', 'legacy-critic-reservations']) {
   test(mode + ': bridge restores and strictly reconciles full state and independent complete snapshot', () => fixture(async ({request, bucket, rows, receipt}) => {
     const first = await request();
     assert.equal(first.status, 200, JSON.stringify(first.body));
@@ -196,3 +196,119 @@ test('every protected record family and media stays in the canonical comparison'
   await rebind({SOURCE_KEY: receipt.destination_key, SOURCE_BYTES: String(candidate.length), SOURCE_SHA256: sha(candidate)});
   assert.equal((await request('/verify')).status, 200, 'Exact original pin recovers without rewriting any record');
 }));
+
+for (const mode of ['valid', 'selfcheck-repeated', 'legacy-operation-identities', 'critic-lifecycles', 'legacy-generation-reservations', 'legacy-critic-reservations']) {
+  test(mode + ': complete native diagnostic is read-only and agrees with actual import', () => fixture(async ({request, rows, bucket}) => {
+    assert.deepEqual(await request('/diagnose'), {status: 200, body: {}});
+    assert.deepEqual(await request('/diagnose'), {status: 200, body: {}});
+    assert.equal((await rows()).length, 0);
+    assert.equal((await (await bucket('BACKUPS')).list()).objects.length, 0);
+    assert.equal((await (await bucket('SCRY_ASSETS', 'target')).list()).objects.length, 0);
+    assert.equal((await request()).status, 200);
+    const accepted = await rows();
+    assert.deepEqual(await request('/diagnose'), {status: 200, body: {}});
+    assert.deepEqual(await rows(), accepted, 'Diagnostic never changes a used space either');
+  }, mode));
+}
+test('native full pass collects independent nested/same-row and later-record failures, import still fails closed', () => fixture(async ({request, rows, candidate, bucket, rebind}) => {
+  const archive = JSON.parse(candidate);
+  const questions = Object.values(archive.app.questions);
+  questions[0].versions[0].model = 'x'.repeat(257);
+  questions[0].versions[0].prompt = '';
+  questions[1].card.lapses = 1;
+  archive.app.events[0].algorithm = 'SYNTHETIC_PRIVATE_BAD_ALGORITHM';
+  archive.app.events[0].answer = 'SYNTHETIC_PRIVATE_UNMATCHED';
+  archive.app.spend[0].status = 'SYNTHETIC_PRIVATE_BAD_STATUS';
+  const bytes = Buffer.from(JSON.stringify(archive)), digest = sha(bytes);
+  const pin = 'converted-go/' + '0'.repeat(64) + '/' + digest + '.json';
+  await (await bucket('SOURCE')).put(pin, bytes);
+  await rebind({SOURCE_KEY: pin, SOURCE_BYTES: String(bytes.length), SOURCE_SHA256: digest});
+  const result = await request('/diagnose');
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  for (const name of ['invalid-content-attribution-or-version', 'invalid-question-content-or-evidence',
+    'invalid-complete-scheduler-state', 'an-incompatible-event-algorithm',
+    'an-exact-grade-without-an-authored-answer-match', 'orphaned-or-inconsistent-paid-usage']) assert.equal(result.body[name], 1, name);
+  assert.deepEqual(await request('/diagnose'), result);
+  assert.deepEqual(await request(), {status: 422, body: {error: 'RESTORE_REFUSED'}});
+  assert.equal((await rows()).length, 0);
+  assert.equal((await (await bucket('BACKUPS')).list()).objects.length, 0);
+  assert.equal((await (await bucket('SCRY_ASSETS', 'target')).list()).objects.length, 0);
+}));
+test('native incomplete dependency/media traversal returns no partial aggregate and recovers on original pin', () => fixture(async ({request, rows, candidate, bucket, rebind, receipt}) => {
+  for (const mutate of [
+    archive => {Object.values(archive.app.concepts)[0].goal_id = 'SYNTHETIC_PRIVATE_MISSING';},
+    archive => {archive.photos[0].bytes = 'AAAA';},
+    archive => {archive.app.events[0].result.authority = 'SYNTHETIC_PRIVATE_UNKNOWN';},
+  ]) {
+    const archive = JSON.parse(candidate); mutate(archive);
+    const bytes = Buffer.from(JSON.stringify(archive)), digest = sha(bytes);
+    const pin = 'converted-go/' + '0'.repeat(64) + '/' + digest + '.json';
+    await (await bucket('SOURCE')).put(pin, bytes);
+    await rebind({SOURCE_KEY: pin, SOURCE_BYTES: String(bytes.length), SOURCE_SHA256: digest});
+    assert.deepEqual(await request('/diagnose'), {status: 422, body: {error: 'INCOMPLETE_IMPORT_REPORT'}});
+    assert.equal((await rows()).length, 0);
+  }
+  await rebind({SOURCE_KEY: receipt.destination_key, SOURCE_BYTES: String(candidate.length), SOURCE_SHA256: sha(candidate)});
+  assert.deepEqual(await request('/diagnose'), {status: 200, body: {}});
+  assert.equal((await request()).status, 200);
+}));
+test('mid-dataset version failure does not hide nested content guards or later records', () => fixture(async ({request, rows, candidate, bucket, rebind}) => {
+  const archive = JSON.parse(candidate), questions = Object.values(archive.app.questions);
+  for (const index of [0, 1, 2]) questions[index].versions[0].model = 'x'.repeat(257);
+  questions[1].versions[0].version = 0;
+  questions[1].versions[0].prompt = '';
+  questions[2].versions[0].prompt = '';
+  const bytes = Buffer.from(JSON.stringify(archive)), digest = sha(bytes);
+  const pin = 'converted-go/' + '0'.repeat(64) + '/' + digest + '.json';
+  await (await bucket('SOURCE')).put(pin, bytes);
+  await rebind({SOURCE_KEY: pin, SOURCE_BYTES: String(bytes.length), SOURCE_SHA256: digest});
+  const result = await request('/diagnose');
+  assert.equal(result.status, 200);
+  assert.equal(result.body['invalid-content-attribution-or-version'], 3, 'Version and attribution count once per question');
+  assert.equal(result.body['invalid-question-content-or-evidence'], 2);
+  assert.equal(result.body['broken-question-versions-or-idea-references'], 1);
+  assert.equal((await rows()).length, 0);
+  assert.deepEqual(await request(), {status: 422, body: {error: 'RESTORE_REFUSED'}});
+}));
+test('native diagnostic shares capability, expiry, mode, paid-key and method fences', () => fixture(async ({request, rebind, rows}) => {
+  assert.equal((await request('/diagnose', {headers: {Authorization: 'Bearer invalid'}})).status, 403);
+  assert.equal((await request('/diagnose', {method: 'GET'})).status, 405);
+  assert.equal((await request('/diagnose', {body: 'SYNTHETIC_PRIVATE'})).status, 400);
+  await rebind({RESTORE_TOKEN: key});
+  assert.deepEqual(await request('/diagnose'), {status: 422, body: {error: 'INCOMPLETE_IMPORT_REPORT'}});
+  await rebind({RESTORE_TOKEN: token}, {OPENROUTER_API_KEY: 'synthetic-not-a-real-key'});
+  assert.deepEqual(await request('/diagnose'), {status: 422, body: {error: 'INCOMPLETE_IMPORT_REPORT'}});
+  await rebind({}, {OPENROUTER_API_KEY: '', SCRY_ENV: 'production'});
+  assert.deepEqual(await request('/diagnose'), {status: 422, body: {error: 'INCOMPLETE_IMPORT_REPORT'}});
+  await rebind({}, {SCRY_ENV: 'restore'});
+  assert.deepEqual(await request('/diagnose'), {status: 200, body: {}});
+  await rebind({TRANSFER_UNTIL_MS: String(Date.now() - 1)});
+  assert.deepEqual(await request('/diagnose'), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await rows()).length, 0);
+}));
+test('retained receipt allowance rejects missing custody/marker, bad hash and invalid Go text without writes', () => fixture(async ({request, rows, candidate, bucket, rebind}) => {
+  for (const mode of ['custody', 'marker', 'redirect', 'entity', 'hash', 'blank', 'oversize', 'control']) {
+    const archive = JSON.parse(candidate);
+    const receipt = archive.app.operations.old;
+    if (mode === 'custody') archive.app.revival_go = {};
+    else if (mode === 'marker') receipt.result.message = null;
+    else if (mode === 'redirect') receipt.result.redirect = '/';
+    else if (mode === 'entity') receipt.result.entity_id = 'missing';
+    else if (mode === 'hash') receipt.payload_hash = 'invalid';
+    else {
+      delete archive.app.operations.old;
+      archive.app.operations[mode === 'blank' ? ' ' : mode === 'oversize' ? 'x'.repeat(201) : 'bad\0id'] = receipt;
+    }
+    const bytes = Buffer.from(JSON.stringify(archive)), digest = sha(bytes);
+    const pin = 'converted-go/' + '0'.repeat(64) + '/' + digest + '.json';
+    await (await bucket('SOURCE')).put(pin, bytes);
+    await rebind({SOURCE_KEY: pin, SOURCE_BYTES: String(bytes.length), SOURCE_SHA256: digest});
+    const result = await request('/diagnose');
+    assert.equal(result.status, 200, mode);
+    assert.equal(result.body['an-invalid-exactoperation-receipt'], mode === 'custody' ? 4 : 1, mode);
+    assert.deepEqual(await request(), {status: 422, body: {error: 'RESTORE_REFUSED'}}, mode);
+    assert.equal((await rows()).length, 0, mode);
+  }
+  assert.equal((await (await bucket('BACKUPS')).list()).objects.length, 0);
+  assert.equal((await (await bucket('SCRY_ASSETS', 'target')).list()).objects.length, 0);
+}, 'legacy-operation-identities'));
