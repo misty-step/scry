@@ -216,8 +216,29 @@ fn configured_origin(env: &Env) -> Result<Url> {
     Ok(url)
 }
 
+#[wasm_bindgen::prelude::wasm_bindgen(module = "/deploy/cloudflare-hosting/telemetry.mjs")]
+extern "C" {
+    #[wasm_bindgen(catch, js_name = reportRust)]
+    fn report_rust(env: &Env, ctx: &JsValue, category: &str) -> std::result::Result<(), JsValue>;
+}
+
 #[event(fetch)]
-pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
+    let result = handle_fetch(req, env.clone()).await;
+    let category = match &result {
+        Err(_) => Some("request_exception"),
+        Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
+        _ => None,
+    };
+    if let Some(category) = category {
+        // No request, response, error, learner identity or content crosses this
+        // interface. JS owns waitUntil; even a reporter exception is ignored.
+        let _ = report_rust(&env, ctx.as_ref().as_ref(), category);
+    }
+    result
+}
+
+async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     // Only a safe persisted freshness verdict is exposed, never archive metadata.
     if req.path() == "/healthz" && req.method() == Method::Get {
         return match internal_request(&env, "/__internal/health", Method::Get).await {

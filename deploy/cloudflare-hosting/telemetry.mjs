@@ -4,21 +4,23 @@
 const DSN = "https://a64d1b367f9a28f503fd81c733198d14@o4510313803677696.ingest.us.sentry.io/4510313841426432";
 const CATEGORIES = new Set(["request_exception", "upstream_5xx"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EDGE = { logger: "scry.edge", release: "scry-edge", label: "Scry edge", boundary: "go-container-edge" };
+const RUST = { logger: "scry.rust", release: "scry-rust", label: "Scry Rust", boundary: "rust-worker" };
 let nextSendAt = 0;
 
-async function send(env, category) {
+async function send(env, category, profile) {
   const dsn = new URL(DSN);
   const event = {
     event_id: crypto.randomUUID().replaceAll("-", ""),
     timestamp: Date.now() / 1000,
     platform: "javascript",
     level: "error",
-    logger: "scry.edge",
+    logger: profile.logger,
     environment: env.SENTRY_ENVIRONMENT,
-    release: `scry-edge@${env.SCRY_VERSION.id}`,
-    message: `Scry edge ${category}`,
-    fingerprint: ["scry-edge", category],
-    tags: { boundary: "go-container-edge", category },
+    release: `${profile.release}@${env.SCRY_VERSION.id}`,
+    message: `${profile.label} ${category}`,
+    fingerprint: [profile.release, category],
+    tags: { boundary: profile.boundary, category },
   };
   const response = await fetch(`${dsn.origin}/api${dsn.pathname}/envelope/`, {
     method: "POST",
@@ -36,19 +38,25 @@ async function send(env, category) {
   if (response.status !== 200) throw new Error("Sentry rejected report");
 }
 
-function report(env, ctx, category) {
+function report(env, ctx, category, profile = EDGE) {
   try {
     if (!CATEGORIES.has(category) || !UUID.test(env.SCRY_VERSION?.id || "") ||
         !["production", "synthetic-staging"].includes(env.SENTRY_ENVIRONMENT) || Date.now() < nextSendAt) return;
     // Per-isolate cap: at most one report/minute, no queue, cache or retries.
     nextSendAt = Date.now() + 60_000;
-    ctx.waitUntil(send(env, category).catch(() => {
-      console.warn("[scry-edge] telemetry unavailable; report dropped");
+    ctx.waitUntil(send(env, category, profile).catch(() => {
+      console.warn(`[${profile.release}] telemetry unavailable; report dropped`);
     }));
   } catch {
     // Even an invalid telemetry configuration/context cannot affect study.
-    console.warn("[scry-edge] telemetry unavailable; report dropped");
+    console.warn(`[${profile.release}] telemetry unavailable; report dropped`);
   }
+}
+
+// The Rust entrypoint passes only deployment bindings/context and a literal
+// category. Keep one DSN, transport, privacy allowlist and bounded-send policy.
+export function reportRust(env, ctx, category) {
+  report(env, ctx, category, RUST);
 }
 
 export function observeFetch(handler) {
