@@ -152,6 +152,44 @@ evidence. Do not delete evidence fixtures as part of review acceptance.
 
 ## Production boundary
 
+### Go edge runtime errors
+
+`telemetry.mjs` observes unexpected fetch exceptions and upstream 5xx responses
+at this operated Go edge. Its fixed, allowlisted Sentry envelope deliberately
+uses no automatic request/error collectors: learner content, raw errors and
+credentials never enter its interface. The public DSN belongs to the existing
+Scry project. Native version metadata identifies the exact deployed release.
+Reporting is background-only, with a two-second deadline, no retries and at
+most one event per minute per isolate; it is not uptime/cron coverage or a
+global traffic quota. Sentry's existing first-seen workflow owns alert routing.
+
+Use Node 22.22.0 and the root lockfile on the authorized build host:
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+node --test deploy/cloudflare-hosting/*.test.mjs
+./node_modules/.bin/wrangler deploy --config deploy/cloudflare-hosting/wrangler.jsonc --env production --dry-run --containers-rollout none --outdir "$PWD/target/edge-release"
+node qa/edge-runtime.mjs
+```
+
+The `Go edge errors` CI workflow exercises these exact module bytes locally,
+then in two run-scoped disposable Workers with a synthetic upstream. It reads
+back hosted bytes and success/denial/failure/recovery, then deletes both Workers.
+Retrieve the matching Sentry event and approved-intake notification separately;
+a hosted 503 alone is not delivery evidence. No owner session or learner data
+is used. On master, CI promotes the same tested module only to the still-Go
+edge, preserving all existing bindings, images, routes, schedules and data.
+It refuses a newer/divergent source or changed cutover boundary. Failed release
+readback restores only its own still-active prior code. The previous UUID in
+the production receipt is also the compatible code-only rollback target:
+
+```sh
+gh workflow run go-edge.yml -R misty-step/scry --ref master -f rollback_version=PREVIOUS_UUID
+```
+
+Retire this Go-specific workflow and boundary with the Go runtime; do not use
+it to deploy the Rust replacement. It grants no learner cutover authority.
+
 `mistystep-prod` and `production` are source definitions, not authorization to
 deploy. Do not attach a custom domain, change DNS, copy the production database,
 restart the existing service, or activate production until a separate cutover

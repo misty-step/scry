@@ -7,6 +7,7 @@ import { getContainer } from "@cloudflare/containers";
 import { accessAuthorized } from "./auth.mjs";
 import { ScryContainer } from "./container.mjs";
 import { timingSafeStringEqual } from "./timing-safe-equal.mjs";
+import { observeFetch } from "./telemetry.mjs";
 
 export { ScryContainer };
 
@@ -26,7 +27,7 @@ function denied(body, status) {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  fetch: observeFetch(async (request, env, ctx) => {
     const url = new URL(request.url);
 
     // Operation probes: anonymous callers get nothing; the token holder gets
@@ -40,7 +41,7 @@ export default {
     // Single named instance: one writer, mirroring the one-VM contract.
     const container = getContainer(env.SCRY_CONTAINER, "singleton");
     return container.fetch(request);
-  },
+  }),
   async scheduled(_event, env) {
     // Cron is platform-owned, not an HTTP route or an additional writer.
     const result = await getContainer(env.SCRY_CONTAINER, "singleton").scheduledBackup();
