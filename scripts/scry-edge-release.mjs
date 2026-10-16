@@ -49,6 +49,19 @@ async function current(name) {
   assert.equal(deployment.versions[0].percentage, 100);
   return deployment.versions[0].version_id;
 }
+// Native deployment success precedes edge propagation. Wait only for these
+// disposable, read-only release sentinels, never for a mutation or telemetry.
+async function converged(url, status, text) {
+  const deadline = Date.now() + 30_000;
+  let observed;
+  do {
+    const response = await fetch(url, { redirect: "manual" });
+    observed = { status: response.status, body: await response.text() };
+    if (observed.status === status && (text === undefined || observed.body === text)) return;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  } while (Date.now() < deadline);
+  assert.fail(`Disposable edge did not converge: expected HTTP${status}, observed HTTP${observed.status}`);
+}
 await mkdir("target", { recursive: true });
 if (mode === "cleanup") {
   for (const name of [edge, upstream]) {
@@ -85,7 +98,7 @@ if (mode === "cleanup") {
   assert(subdomain.ok); const domain = (await subdomain.json()).result.subdomain;
   const origin = `https://${edge}.${domain}.workers.dev`;
   const request = path => fetch(origin + path, { headers: { authorization: "Bearer synthetic-only", cookie: "PRIVATE-cookie-canary" }, redirect: "manual" });
-  assert.equal((await fetch(origin + "/healthz", { redirect: "manual" })).status, 401);
+  await converged(origin + "/healthz", 401);
   assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
   assert.equal((await request("/healthz")).status, 200);
   const failure = await request("/healthz?mode=fail&private=PRIVATE-url-canary");
@@ -95,10 +108,11 @@ if (mode === "cleanup") {
   const version = await current(edge);
   await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: prior, percentage: 100 }] });
   assert.equal(await current(edge), prior);
-  assert.equal(await (await request("/healthz")).text(), "prior synthetic boundary");
+  await converged(origin + "/healthz", 200, "prior synthetic boundary");
   await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: version, percentage: 100 }] });
   assert.equal(await current(edge), version);
   await readback(edge, script);
+  await converged(origin + "/healthz", 401);
   assert.equal((await request("/healthz")).status, 200);
   assert.equal((await fetch(origin + "/healthz", { redirect: "manual" })).status, 401);
   // Let the observed request's bounded waitUntil send finish before cleanup.
