@@ -212,7 +212,10 @@ function runProjection(tables, originalBytes, originalHash, created, refusals = 
     require(q);
     const presentation = q.versions[presented.content_version - 1];
     const snapshot = json(old.snapshot);
-    require(snapshot.version === presentation.version && JSON.stringify(content({content: old.snapshot,
+    // Collection mode must still visit nested guards after a version refusal;
+    // conversion continues to throw at that same first refusal.
+    require(snapshot.version === presentation.version, 'event-content');
+    require(JSON.stringify(content({content: old.snapshot,
       version: presentation.version, model: presentation.model, created_at: presentation.created_ms})) === JSON.stringify(presentation), 'event-content');
     const authority = ungraded ? 'ungraded' : old.outcome === 'revealed' ? 'reveal' : old.grading === 'exact-v1' ? 'exact' :
       old.grading === 'learner-v1' ? 'learner' : ['short-v1', 'semantic-v1'].includes(old.grading) ? 'jev' : null;

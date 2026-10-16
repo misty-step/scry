@@ -150,6 +150,28 @@ elif mode in {"diagnostic-multiclass", "diagnostic-same-row"}:
     else:
         db.execute("UPDATE review_events SET rating=0,assisted=0,outcome='correct',schedule_version_after=99,due_at=123")
     db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode.startswith("diagnostic-event-"):
+    # Independent, parseable nested faults. In the middle-dataset case, rows
+    # before and after the mismatched snapshot must both contribute counts.
+    fault = mode.removeprefix("diagnostic-event-")
+    assert fault in {"version", "grading", "combined", "nested", "middle"}
+    bad: dict[str, object] = dict(snapshot)
+    if fault != "grading":
+        bad["version"] = 99
+    if fault != "version":
+        bad["grading"] = canary
+    if fault in {"nested", "middle"}:
+        bad.update(kind=canary, basis=canary, evidence=[1])
+    db.execute("DROP TRIGGER immutable_review_update")
+    db.execute("UPDATE review_events SET snapshot=?", (encode(bad),))
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+    if fault == "middle":
+        for label, when, content in [("before", transition["now_ms"] - 1, dict(snapshot, grading=canary)),
+                                     ("after", transition["now_ms"] + 1, dict(snapshot, basis=canary))]:
+            presentation_id = "presentation-" + label
+            db.execute("INSERT INTO presentations SELECT ?,quiz_id,content_version,schedule_version,snapshot,created_at,answer,outcome,assisted,graded,rating,due_at,reviewed_at,review_id FROM presentations WHERE id='presentation0'", (presentation_id,))
+            db.execute("INSERT INTO review_events SELECT ?,?,?,answer,outcome,rating,assisted,?,due_at,algorithm,schedule_before,schedule_after,schedule_version_before,schedule_version_after,grading FROM review_events WHERE id='event0'",
+                       ("event-" + label, presentation_id, encode(content), when))
 elif mode == "unsupported-correction":
     db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))
 elif mode == "unsupported-assessment":

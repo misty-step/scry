@@ -86,6 +86,13 @@ for (const [mode, expected] of [
     'scheduler-algorithm': 3, 'unknown-reservation': 2,
     'unsupported-assessments-or-corrections': 2, 'unsupported-web-documents': 2}],
   ['diagnostic-same-row', {'event-due': 1, 'event-observation': 1, 'event-observation-card': 1, 'event-transition': 1}],
+  ['diagnostic-event-version', {'event-content': 1}],
+  ['diagnostic-event-grading', {'content-grading': 1}],
+  ['diagnostic-event-combined', {'content-grading': 1, 'event-content': 1}],
+  ['diagnostic-event-nested', {'content-basis': 1, 'content-grading': 1, 'content-kind': 1,
+    'content-quotes': 1, 'event-content': 1}],
+  ['diagnostic-event-middle', {'content-basis': 2, 'content-grading': 2, 'content-kind': 1,
+    'content-quotes': 1, 'event-content': 2}],
 ]) {
   test(mode + ': full-pass diagnostic returns only exact class/counts with no destination capability', () => fixture(mode, async ({request}) => {
     const first = await request({}, '/dry-run');
@@ -96,6 +103,13 @@ for (const [mode, expected] of [
     assert.equal((await request()).status, 422, 'Real conversion still needs a separate destination capability');
   }, {readOnly: true}));
 }
+test('mid-dataset version mismatch collects nested and later refusals but conversion still writes nothing', () => fixture('diagnostic-event-middle', async ({request, destination}) => {
+  assert.deepEqual(await request({}, '/dry-run'), {status: 200,
+    body: {'content-basis': 2, 'content-grading': 2, 'content-kind': 1, 'content-quotes': 1, 'event-content': 2}});
+  assert.deepEqual(await request(), {status: 422,
+    body: {error: 'UNSUPPORTED_GO_PROJECTION', reason: 'content-grading'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
 test('dry-run refuses unknown/partial traversal instead of advertising a complete aggregate', () => fixture('private-shape-error', async ({request, destination}) => {
   assert.deepEqual(await request({}, '/dry-run'), {status: 422, body: {error: 'INSPECTION_FAILED'}});
   assert.equal((await destination.list()).objects.length, 0);
