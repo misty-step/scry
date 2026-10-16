@@ -107,6 +107,14 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
 
 ## Executed synthetic checkpoint, not learner or live acceptance
 
+On 2026-10-16 the reviewed active converter ran inside Cloudflare against the
+retained learner archive and refused it before a candidate write. Its generic
+failure could not distinguish an unsupported transformation from archive or
+storage failure. Temporary conversion now identifies projection refusals with
+source-defined invariant codes, never exception text or private values.
+This changes diagnostics only, not mapping, custody, supported shapes, or the
+conditions for cutover. The normal app and read-only inventory remain unchanged.
+
 On 2026-10-15 the independently reviewed `41c647ac5ef71559bce2912d229d794db0822ef1`
 master artifact was downloaded from CI run `38788688431`, artifact `12000250186`.
 The ZIP digest is

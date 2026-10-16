@@ -100,7 +100,7 @@ async function inspect(bytes, consume) {
   }
 }
 
-export async function handle(request, env, consume) {
+export async function handle(request, env, consume, failure) {
   const url = new URL(request.url);
   if (url.pathname !== '/inspect' || url.search) return reply({error: 'NOT_FOUND'}, 404);
   if (request.method !== 'POST') return reply({error: 'METHOD_NOT_ALLOWED'}, 405);
@@ -126,9 +126,9 @@ export async function handle(request, env, consume) {
     const bytes = new Uint8Array(await object.arrayBuffer());
     if (bytes.length !== size || await hash(bytes) !== env.SOURCE_SHA256) return reply({error: 'SOURCE_CHANGED'}, 409);
     return reply({...await inspect(bytes, consume), archive_sha256: env.SOURCE_SHA256, archive_bytes: size});
-  } catch {
+  } catch (error) {
     // Never return/log SQLite messages, SQL, private manifests, rows or media.
-    return reply({error: 'INSPECTION_FAILED'}, 422);
+    return reply(failure?.(error) || {error: 'INSPECTION_FAILED'}, 422);
   }
 }
 export default {fetch: (request, env) => handle(request, env)};
