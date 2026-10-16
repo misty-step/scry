@@ -2598,8 +2598,18 @@ pub fn validate_app(app: &App) -> AppResult<()> {
     }
     for spend in &app.spend {
         archive_id(&spend.id, &spend.id, &mut ids)?;
+        // Only retained, unknown Go obligations can exceed the normal reserve.
+        // This can increase accounting, never reduce the allowance guard or
+        // manufacture a measured cost. New sends still reserve RESERVATION.
+        let imported_reservation = !app.revival_go.is_empty()
+            && app.jobs.contains_key(&spend.work_id)
+            && spend.work_id.starts_with("legacy-import-job-")
+            && (spend.id.starts_with("legacy-import-spend-")
+                || spend.id.starts_with("legacy-import-critic-spend-"))
+            && spend.cost_micros.is_none()
+            && spend.reserved_micros >= RESERVATION;
         if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
-            || spend.reserved_micros != RESERVATION
+            || (spend.reserved_micros != RESERVATION && !imported_reservation)
             || spend.model.is_empty()
             || spend.model.len() > 256
             || spend

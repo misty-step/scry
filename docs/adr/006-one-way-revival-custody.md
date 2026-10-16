@@ -109,12 +109,18 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   repair, batched into one independently reviewed change before real import.
 - Project generator and transmitted critic usage into the existing Rust spend
   records, preserving owning job, stable per-attempt identity, original timestamp,
-  model and exact known cost or unknown $0.50 reservation. All critic retries
+  model and exact known cost or unknown reservation. All critic retries
   count independently, without reconstructing executable assessment leases.
   Rust's nominal reservation remains $0.50 after known settlement; Go's cleared
   reservation is therefore normalized only when measured cost (including zero)
-  takes precedence. Keep the exact original in custody. Unsent zero-obligation
-  critic rows remain historical; unsupported purpose/ownership/unknown amounts
+  takes precedence. Unknown imported usage reserves the greater of the original
+  Go reservation and Rust's $0.50, retaining unknown status and original time;
+  it is never invented measured zero or a smaller outstanding obligation. Only
+  retained `legacy-import` job/spend identities may restore a larger unknown
+  reservation. Ordinary archive validation and all future sends retain $0.50.
+  Keep the exact original in custody. Older builds reject larger imported
+  reservations and are not compatible rollback targets for that state.
+  Unsent zero-obligation critic rows remain historical; unsupported purpose/ownership
   and old active/pending obligations Rust cannot express fail before candidate
   writes. No new spending engine or silently restarted allowance window follows.
 - Synthetic service QA remains confined to ADR 005's synthetic bindings. Never

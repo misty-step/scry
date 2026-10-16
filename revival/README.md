@@ -215,8 +215,15 @@ retries remain separate charges, never a new send lease. Known zero remains zero
 Go's cleared settled reservation maps to Rust's nominal $0.50 reservation because
 measured cost always takes precedence. Exact original fields/results remain in
 the retained ZIP. Untransmitted zero-obligation critic rows stay historical only.
-Unknown amounts other than $0.50, unsupported critic purposes/policies/ownership,
-and old active/pending obligations that Rust's rolling window cannot represent
+Unknown imported costs remain unknown, reserving the greater of the original
+amount and the native $0.50 without restarting the original clock. This is a
+conservative accounting floor, not a claim about measured spend or proof that a
+zero-reservation Go claim sent anything. Larger unknown reservations require
+retained original bytes and imported job/spend identities in Rust validation;
+ordinary archives and all future sends still use the native $0.50 reservation.
+Older builds reject larger imported reservations and are not rollback targets.
+Unsupported critic purposes/policies/ownership and old active/pending
+obligations that Rust's rolling window cannot represent
 refuse preparation before destination writes; never reset a charge's clock or
 silently release it. No spending engine or allowance policy is changed.
 
