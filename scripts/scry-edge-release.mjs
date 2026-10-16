@@ -61,7 +61,7 @@ if (mode === "cleanup") {
 } else if (mode === "preview") {
   const script = await readFile("target/edge-release/index.js");
   await upload(upstream, await readFile("qa/edge-fixture.mjs"), { compatibility_date: "2026-09-09",
-    migrations: { new_sqlite_classes: ["FixtureContainer"], tag: "v1" } });
+    migrations: { new_sqlite_classes: ["FixtureContainer"], new_tag: "v1" } });
   await upload(edge, script, { compatibility_date: "2026-09-09", bindings: [
     { type: "durable_object_namespace", name: "SCRY_CONTAINER", class_name: "FixtureContainer", script_name: upstream },
     { type: "plain_text", name: "SCRY_PROBE_TOKEN", text: "synthetic-only" },
