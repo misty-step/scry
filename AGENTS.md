@@ -1,5 +1,7 @@
 # Scry
 
+Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
+
 Read [SPEC.md](SPEC.md), especially US-013/S11, before scoping or verifying
 behavior. It is the only story/acceptance authority. [VISION](VISION.md) explains
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
