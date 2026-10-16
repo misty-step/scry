@@ -19,10 +19,21 @@ const sha = value => createHash("sha256").update(value).digest("hex");
 const telemetryBindings = ["SCRY_VERSION", "SENTRY_ENVIRONMENT"];
 const unchanged = list => list.filter(binding => !telemetryBindings.includes(binding.name)).sort((a, b) => a.name.localeCompare(b.name));
 async function api(path, method = "GET", body) {
-  const response = await fetch(`${base}/${path}`, { method,
-    headers: { authorization: `Bearer ${token}`, ...(body && !(body instanceof FormData) ? { "content-type": "application/json" } : {}) },
-    body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
-  });
+  // A newly uploaded immutable version can briefly return 404. Wait only for
+  // that exact metadata read; never retry writes, auth failures or bad metadata.
+  const versionRead = method === "GET" && /^[^/]+\/versions\/[0-9a-f-]{36}$/.test(path);
+  const deadline = Date.now() + 180_000;
+  let response;
+  do {
+    response = await fetch(`${base}/${path}`, { method,
+      headers: { authorization: `Bearer ${token}`, ...(body && !(body instanceof FormData) ? { "content-type": "application/json" } : {}) },
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+      signal: versionRead ? AbortSignal.timeout(Math.max(1, deadline - Date.now())) : undefined,
+    });
+    if (!versionRead || response.status !== 404 || Date.now() >= deadline) break;
+    await response.body?.cancel();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  } while (Date.now() < deadline);
   assert(response.ok, `Cloudflare ${method} ${path}: HTTP${response.status}`);
   const result = await response.json();
   assert(result.success, `Cloudflare ${method} ${path} failed`);
