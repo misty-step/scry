@@ -175,10 +175,15 @@ node qa/edge-runtime.mjs
 The `Go edge errors` CI workflow exercises these exact module bytes locally,
 then in two run-scoped disposable Workers with a synthetic upstream. It reads
 back hosted bytes and success/denial/failure/recovery, then deletes both Workers.
+The upstream has a Container-enabled namespace: native version promotion,
+distinct-code rollback and re-promotion must retain both its versioned attachment
+and runtime `ctx.container`. No application/image is created or instance started.
 Retrieve the matching Sentry event and approved-intake notification separately;
 a hosted 503 alone is not delivery evidence. No owner session or learner data
 is used. On master, CI promotes the same tested module only to the still-Go
 edge, preserving all existing bindings, images, routes, schedules and data.
+Version upload copies the live Container attachment separately from DO bindings
+and reads it back before promotion; rollback must preserve that attachment too.
 It refuses a newer/divergent source or changed cutover boundary. Failed release
 readback restores only its own still-active prior code. The previous UUID in
 the production receipt is also the compatible code-only rollback target:

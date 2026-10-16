@@ -34,6 +34,15 @@ async function upload(name, script, metadata, version = false) {
   form.set("index.js", new Blob([script], { type: "application/javascript+module" }), "index.js");
   return api(`${name}${version ? "/versions" : ""}`, version ? "POST" : "PUT", form);
 }
+const containers = version => version.resources.script_runtime.containers || [];
+async function uploadPreservingContainers(name, script, metadata, live) {
+  // Container attachment is versioned separately from the ordinary DO binding.
+  // Omitting it disables Containers even when that binding is unchanged.
+  const version = await upload(name, script, { ...metadata, containers: containers(live) }, true);
+  const uploaded = await api(`${name}/versions/${version.id}`);
+  assert.deepEqual(containers(uploaded), containers(live), "Uploaded version changed Container attachments; do not promote");
+  return version;
+}
 async function readback(name, expected) {
   const response = await fetch(`${base}/${name}/content/v2`, { headers: { authorization: `Bearer ${token}` } });
   assert(response.ok, "Deployed-module readback failed");
@@ -51,11 +60,11 @@ async function current(name) {
 }
 // Native deployment success precedes edge propagation. Wait only for these
 // disposable, read-only release sentinels, never for a mutation or telemetry.
-async function converged(url, status, text) {
+async function converged(url, status, text, options = {}) {
   const deadline = Date.now() + 30_000;
   let observed;
   do {
-    const response = await fetch(url, { redirect: "manual" });
+    const response = await fetch(url, { ...options, redirect: "manual" });
     observed = { status: response.status, body: await response.text() };
     if (observed.status === status && (text === undefined || observed.body === text)) return;
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -73,8 +82,25 @@ if (mode === "cleanup") {
   console.log("Both exactly named disposable Workers absent");
 } else if (mode === "preview") {
   const script = await readFile("target/edge-release/index.js");
-  await upload(upstream, await readFile("qa/edge-fixture.mjs"), { compatibility_date: "2026-09-09",
+  const fixture = await readFile("qa/edge-fixture.mjs", "utf8");
+  const fixtureMetadata = { compatibility_date: "2026-09-09",
+    bindings: [{ type: "durable_object_namespace", name: "FIXTURE", class_name: "FixtureContainer" }] };
+  // Enable a real Container namespace without creating an application, uploading
+  // an image or starting compute. ctx.container proves the attachment at runtime.
+  await upload(upstream, fixture.replace('const revision = "candidate";', 'const revision = "prior";'), {
+    ...fixtureMetadata, containers: [{ class_name: "FixtureContainer", name: upstream }],
     migrations: { new_sqlite_classes: ["FixtureContainer"], new_tag: "v1" } });
+  const fixturePrior = await current(upstream);
+  const fixtureLive = await api(`${upstream}/versions/${fixturePrior}`);
+  assert.equal(containers(fixtureLive).length, 1);
+  // Reproduce the reviewed omission only on this disposable namespace. It must
+  // be detectable before promotion; then the shared upload path repairs it.
+  const detached = await upload(upstream, fixture, fixtureMetadata, true);
+  assert.notDeepEqual(containers(await api(`${upstream}/versions/${detached.id}`)), containers(fixtureLive));
+  assert.equal(await current(upstream), fixturePrior, "Negative control was never promoted");
+  const fixtureCandidate = await uploadPreservingContainers(upstream, fixture, fixtureMetadata, fixtureLive);
+  await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixtureCandidate.id, percentage: 100 }] });
+  assert.equal(await current(upstream), fixtureCandidate.id);
   const bindings = [
     { type: "durable_object_namespace", name: "SCRY_CONTAINER", class_name: "FixtureContainer", script_name: upstream },
     { type: "plain_text", name: "SCRY_PROBE_TOKEN", text: "synthetic-only" },
@@ -88,7 +114,7 @@ if (mode === "cleanup") {
       { type: "secret_text", name: "QA_UNUSED_SECRET", text: "PRIVATE-unused-environment-canary" }],
   });
   const prior = await current(edge);
-  const candidate = await upload(edge, script, { compatibility_date: "2026-09-09", bindings, keep_bindings: ["secret_text"] }, true);
+  const candidate = await uploadPreservingContainers(edge, script, { compatibility_date: "2026-09-09", bindings, keep_bindings: ["secret_text"] }, await api(`${edge}/versions/${prior}`));
   await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: candidate.id, percentage: 100 }] });
   assert.equal(await current(edge), candidate.id);
   assert((await api(`${edge}/settings`)).bindings.some(binding => binding.name === "QA_UNUSED_SECRET" && binding.type === "secret_text"));
@@ -101,6 +127,15 @@ if (mode === "cleanup") {
   await converged(origin + "/healthz", 401);
   assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
   assert.equal((await request("/healthz")).status, 200);
+  const attachment = async revision => {
+    await converged(origin + "/healthz?mode=container-status", 200,
+      JSON.stringify({ enabled: true, running: false, revision }), { headers: { authorization: "Bearer synthetic-only" } });
+    const response = await request("/healthz?mode=container-status");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { enabled: true, running: false, revision });
+    assert.deepEqual(containers(await api(`${upstream}/versions/${await current(upstream)}`)), containers(fixtureLive));
+  };
+  await attachment("candidate");
   const failure = await request("/healthz?mode=fail&private=PRIVATE-url-canary");
   assert.equal(failure.status, 503); assert.equal(await failure.text(), "PRIVATE-response-canary");
   const recovered = await request("/healthz");
@@ -109,17 +144,26 @@ if (mode === "cleanup") {
   await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: prior, percentage: 100 }] });
   assert.equal(await current(edge), prior);
   await converged(origin + "/healthz", 200, "prior synthetic boundary");
+  await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixturePrior, percentage: 100 }] });
+  assert.equal(await current(upstream), fixturePrior);
   await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: version, percentage: 100 }] });
   assert.equal(await current(edge), version);
   await readback(edge, script);
   await converged(origin + "/healthz", 401);
   assert.equal((await request("/healthz")).status, 200);
+  await attachment("prior");
+  await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixtureCandidate.id, percentage: 100 }] });
+  assert.equal(await current(upstream), fixtureCandidate.id);
+  await attachment("candidate");
   assert.equal((await fetch(origin + "/healthz", { redirect: "manual" })).status, 401);
   // Let the observed request's bounded waitUntil send finish before cleanup.
   await new Promise(resolve => setTimeout(resolve, 2500));
   const proof = { source: process.env.GITHUB_SHA, worker: edge, version, origin, artifact_sha256: sha(script),
     environment: "synthetic-staging", release: `scry-edge@${version}`, denied: [401, 403], failure: 503, recovered: 200,
     native_version_upload_and_promotion: true, synthetic_secret_preserved: true, distinct_prior_rollback: prior, exact_candidate_repromoted: true,
+    container_attachment: { containers: containers(fixtureLive), previous: fixturePrior, version: fixtureCandidate.id,
+      omission_detected_before_promotion: detached.id, enabled_after_promotion_rollback_and_repromotion: true,
+      image_or_application_created: false, instance_started: false },
     limits: "Exact operated Go-edge module; disposable synthetic upstream, not live learner content, Go application or owner-session proof." };
   await writeFile("target/edge-hosted-proof.json", JSON.stringify(proof, null, 2));
   console.log(JSON.stringify(proof));
@@ -127,6 +171,7 @@ if (mode === "cleanup") {
   const name = "scry-app-host";
   const previous = await current(name);
   const settings = await api(`${name}/settings`);
+  const live = await api(`${name}/versions/${previous}`);
   assert(settings.bindings.some(binding => binding.name === "SCRY_CONTAINER" && binding.class_name === "ScryContainer"),
     "Operated runtime changed: do not overwrite the Rust cutover");
   if (mode === "rollback") {
@@ -134,13 +179,13 @@ if (mode === "cleanup") {
     assert(/^[0-9a-f-]{36}$/.test(version));
     const target = await api(`${name}/versions/${version}`);
     assert.deepEqual(unchanged(target.resources.bindings), unchanged(settings.bindings), "Rollback would change existing runtime bindings");
+    assert.deepEqual(containers(target), containers(live), "Rollback would change Container attachments");
     assert.equal(await current(name), previous);
     await api(`${name}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: version, percentage: 100 }], annotations: { "workers/message": "Scry Go edge code-only compatible rollback" } });
     assert.equal(await current(name), version);
     console.log(JSON.stringify({ previous, rollback: version, accepted_data_changed: false }));
   } else {
     const script = await readFile("target/edge-release/index.js");
-    const live = await api(`${name}/versions/${previous}`);
     const source = /^scry-go-edge ([0-9a-f]{40})$/.exec(live.annotations?.["workers/message"] || "")?.[1];
     if (source) execFileSync("git", ["merge-base", "--is-ancestor", source, process.env.GITHUB_SHA]);
     else assert.equal(previous, "004c1645-5063-465f-b089-a7ad5bf0601a", "Unrecognized pre-CI release; do not overwrite another lane");
@@ -148,10 +193,10 @@ if (mode === "cleanup") {
     const bindings = settings.bindings.filter(binding => binding.type !== "secret_text" && !added.includes(binding.name));
     bindings.push({ type: "version_metadata", name: "SCRY_VERSION" },
       { type: "plain_text", name: "SENTRY_ENVIRONMENT", text: "production" });
-    const version = await upload(name, script, { bindings, keep_bindings: ["secret_text"],
+    const version = await uploadPreservingContainers(name, script, { bindings, keep_bindings: ["secret_text"],
       compatibility_date: settings.compatibility_date, compatibility_flags: settings.compatibility_flags,
       annotations: { "workers/message": `scry-go-edge ${process.env.GITHUB_SHA}` },
-    }, true);
+    }, live);
     assert.equal(await current(name), previous, "Live release moved; do not overwrite another lane");
     await api(`${name}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: version.id, percentage: 100 }], annotations: { "workers/message": `scry-go-edge ${process.env.GITHUB_SHA}` } });
     try {
@@ -159,6 +204,7 @@ if (mode === "cleanup") {
       await readback(name, script);
       const after = await api(`${name}/settings`);
       assert.deepEqual(unchanged(after.bindings), unchanged(settings.bindings), "Existing runtime bindings changed");
+      assert.deepEqual(containers(await api(`${name}/versions/${version.id}`)), containers(live), "Deployed Container attachments changed");
       for (const key of ["observability", "tags", "tail_consumers", "logpush", "placement", "usage_model"])
         assert.deepEqual(after[key], settings[key], `Existing ${key} changed`);
     } catch (error) {
@@ -170,7 +216,7 @@ if (mode === "cleanup") {
       throw error;
     }
     const proof = { source: process.env.GITHUB_SHA, previous, version: version.id, artifact_sha256: sha(script),
-      existing_bindings_unchanged: true, container_images_uploaded: false, routes_schedules_or_data_changed: false };
+      existing_bindings_unchanged: true, container_attachments_unchanged: containers(live), container_images_uploaded: false, routes_schedules_or_data_changed: false };
     await writeFile("target/edge-production-proof.json", JSON.stringify(proof, null, 2));
     console.log(JSON.stringify(proof));
   }
