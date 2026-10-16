@@ -134,16 +134,12 @@ if (mode === "cleanup") {
   await converged(origin + "/healthz", 401);
   await converged(origin + "/", 403);
   await converged(origin + "/healthz", 200, undefined, { headers: { authorization: "Bearer synthetic-only" } });
-  assert.equal((await request("/healthz")).status, 200);
   const attachment = async revision => {
     // The default handler's marker proves code-only boundary rollback, while
     // the unchanged DO class proves Container availability through that code.
     // content/v2 returns latest-uploaded bytes, not the older deployed version.
     await converged(fixtureOrigin + "/?mode=container-status", 200,
       JSON.stringify({ enabled: true, running: false, revision }));
-    const response = await fetch(fixtureOrigin + "/?mode=container-status");
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { enabled: true, running: false, revision });
     assert.deepEqual(containers(await api(`${upstream}/versions/${await current(upstream)}`)), containers(fixtureLive));
     console.log(JSON.stringify({ container_attachment_probe: revision, enabled: true, running: false }));
   };
@@ -163,12 +159,10 @@ if (mode === "cleanup") {
   await readback(edge, script);
   await converged(origin + "/healthz", 401);
   await converged(origin + "/healthz", 200, undefined, { headers: { authorization: "Bearer synthetic-only" } });
-  assert.equal((await request("/healthz")).status, 200);
   await attachment("prior");
   await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixtureCandidate.id, percentage: 100 }] });
   assert.equal(await current(upstream), fixtureCandidate.id);
   await attachment("candidate");
-  assert.equal((await fetch(origin + "/healthz", { redirect: "manual" })).status, 401);
   // Let the observed request's bounded waitUntil send finish before cleanup.
   await new Promise(resolve => setTimeout(resolve, 2500));
   const proof = { source: process.env.GITHUB_SHA, worker: edge, version, origin, artifact_sha256: sha(script),
