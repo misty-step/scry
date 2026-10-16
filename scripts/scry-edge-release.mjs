@@ -45,11 +45,11 @@ async function uploadPreservingContainers(name, script, metadata, live) {
 }
 async function readback(name, expected) {
   const response = await fetch(`${base}/${name}/content/v2`, { headers: { authorization: `Bearer ${token}` } });
-  assert(response.ok, "Deployed-module readback failed");
+  assert(response.ok, "Uploaded-module readback failed");
   const form = await response.formData();
   const module = form.get("index.js");
   assert(module, "Uploaded module missing from readback");
-  assert.equal(sha(Buffer.from(await module.arrayBuffer())), sha(expected), "Deployed bytes differ from tested artifact");
+  assert.equal(sha(Buffer.from(await module.arrayBuffer())), sha(expected), "Latest-uploaded bytes differ from tested artifact");
 }
 async function current(name) {
   const value = await api(`${name}/deployments`);
@@ -93,6 +93,7 @@ if (mode === "cleanup") {
   await upload(upstream, fixturePriorScript, {
     ...fixtureMetadata, containers: [{ class_name: "FixtureContainer", name: upstream }],
     migrations: { new_sqlite_classes: ["FixtureContainer"], new_tag: "v1" } });
+  await readback(upstream, fixturePriorScript);
   const fixturePrior = await current(upstream);
   const fixtureLive = await api(`${upstream}/versions/${fixturePrior}`);
   assert.equal(containers(fixtureLive).length, 1);
@@ -102,6 +103,7 @@ if (mode === "cleanup") {
   assert.notDeepEqual(containers(await api(`${upstream}/versions/${detached.id}`)), containers(fixtureLive));
   assert.equal(await current(upstream), fixturePrior, "Negative control was never promoted");
   const fixtureCandidate = await uploadPreservingContainers(upstream, fixture, fixtureMetadata, fixtureLive);
+  await readback(upstream, fixture);
   await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixtureCandidate.id, percentage: 100 }] });
   assert.equal(await current(upstream), fixtureCandidate.id);
   const bindings = [
@@ -133,9 +135,9 @@ if (mode === "cleanup") {
   assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
   assert.equal((await request("/healthz")).status, 200);
   const attachment = async revision => {
-    // Invoke the Container class through its own deployed Worker, like the
-    // operated Go boundary, not an external binding's separate release boundary.
-    await readback(upstream, revision === "prior" ? fixturePriorScript : fixture);
+    // The default handler's marker proves code-only boundary rollback, while
+    // the unchanged DO class proves Container availability through that code.
+    // content/v2 returns latest-uploaded bytes, not the older deployed version.
     await converged(fixtureOrigin + "/?mode=container-status", 200,
       JSON.stringify({ enabled: true, running: false, revision }));
     const response = await fetch(fixtureOrigin + "/?mode=container-status");
