@@ -1,7 +1,7 @@
 # Promote downloaded, verified CI bytes; never rebuild during deployment.
 name = "scry-rust-production"
 account_id = "b069014f6a46558ea9146fb6c4ff8f6c"
-main = "../target/ci-release/worker/worker/shim.mjs"
+main = "../target/ci-release/worker/index.js"
 base_dir = "../target/ci-release/worker"
 compatibility_date = "2026-09-10"
 workers_dev = false

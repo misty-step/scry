@@ -103,7 +103,9 @@ def deploy():
         name = part.get_filename() or part.get_param('name', header='Content-Disposition')
         assert isinstance(name, str)
         actual[Path(name).name] = sha(part.get_payload(decode=True))
-    expected = {Path(name).name: digest for name, digest in json.loads((OUT / 'proof.json').read_text())['worker'].items() if name in ('worker/shim.mjs', 'index.js', 'index_bg.wasm')}
+    # worker/shim.mjs is the artifact's backwards-compatibility re-export only;
+    # native Wrangler uses the exact tested index.js directly.
+    expected = {name: digest for name, digest in json.loads((OUT / 'proof.json').read_text())['worker'].items() if name in ('index.js', 'index_bg.wasm')}
     assert actual == expected, 'Deployed modules differ from verified artifact'
     deployed = request(script + '/deployments')['deployments'][0]
     version = request(script + '/versions/' + deployed['versions'][0]['version_id'])
