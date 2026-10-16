@@ -79,6 +79,25 @@ images, Worker modules, or public receipts. `.dev.vars.example` contains only
 safe synthetic values. Production `.env` and historical systemd configuration
 are not files to source or copy wholesale.
 
+### Private runtime errors
+
+The Rust fetch entrypoint reports returned 5xx responses and unexpected Rust
+request errors through the existing Scry Sentry envelope transport in
+`deploy/cloudflare-hosting/telemetry.mjs`. It sends only fixed categories and
+deployment identity, not requests, raw errors, bodies or owner identity. Bind
+native `SCRY_VERSION` version metadata and set `SENTRY_ENVIRONMENT` to
+`production` or `synthetic-staging`; absent/invalid telemetry configuration
+disables sending without changing study. Rust events use logger `scry.rust`,
+boundary `rust-worker` and release `scry-rust@<Worker version UUID>`, distinct
+from retained Go-edge events. The existing Sentry workflow owns alert routing.
+No new Sentry credential, failure endpoint or scheduler is introduced.
+
+`node --test qa/rust-telemetry.test.mjs` exercises the exact compiled native
+entrypoint against a controlled HTTP sink, including real one-minute recovery.
+Retrieve a controlled hosted synthetic event and its owned intake separately
+before claiming delivery; local tests, Go-edge events and source merges do not
+prove Rust production reporting, uptime/cron health or owner access.
+
 The application allows $3.50 per rolling day and reserves $0.50 per preparation
 against shared generation/meaning/critic use. Unknown sent outcomes keep their
 reservation. The provider's existing $25/week key cap is a separate control.
@@ -147,7 +166,8 @@ lane's responsibility; this adds no second workflow or release policy.
 The former Go Container deploy job is removed rather than pointed at replacement source.
 The deployment/recovery scripts under `deploy/cloudflare-hosting/`, retained
 exe.dev VM scripts, and old data tooling remain specific to their corresponding
-historical/live-Go environment.
+historical/live-Go environment, except the shared Sentry envelope transport
+described above.
 
 ## Independent fresh-space restore
 
