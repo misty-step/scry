@@ -56,6 +56,8 @@ for n in range(3):
     source = "source0" if n < 2 else "source1"
     q = {"kind": "recall", "prompt": "Which policy lets a cache reuse a stored response?", "answer": "freshness",
          "explanation": "Freshness permits reuse without contacting the origin.", "evidence": "", "basis": "topic", "choices": [], "variants": []}
+    if mode == "zero-rating-wrong":
+        q.update(kind="choice", choices=["freshness", "revalidation"])
     contents.append(q)
     db.execute("INSERT INTO quizzes VALUES(?,?,?,?,?,?,?)", (f"quiz{n}", source, 2 if n == 0 else 1, 0, now, "job0" if n < 2 else "job1", n))
     db.execute("INSERT INTO quiz_versions VALUES(?,?,?,?,?,?)", (f"quiz{n}", 1, encode(q), "synthetic-original-model", "prompt-v1", now))
@@ -73,9 +75,38 @@ assisted = int(outcome == "revealed")
 db.execute("INSERT INTO presentations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("presentation0", "quiz0", 1, 1, encode(snapshot), now, answer, outcome, assisted, 1, transition["rating"], transition["after"]["due_ms"], transition["now_ms"], "event0"))
 db.execute("INSERT INTO review_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("event0", "presentation0", encode(snapshot), answer, outcome, transition["rating"], assisted, transition["now_ms"], transition["after"]["due_ms"], algorithm, go_card(transition["before"]), go_card(transition["after"]), 1, 2, "exact-v1"))
 db.execute("UPDATE review_session SET current_id='presentation0'")
-if mode == "zero-rating":
+if mode.startswith("zero-rating"):
     db.execute("DROP TRIGGER immutable_review_update")
-    db.execute("UPDATE review_events SET rating=0,assisted=1,outcome='warm_correct',schedule_version_after=1")
+    before = go_card(transition["before"])
+    if mode == "zero-rating-chain":
+        # Go applyGrade persists assisted observations without a schedule write.
+        # Include repeated epochs before and after a real FSRS transition.
+        for index, epoch, c, when in [(1, 1, transition["before"], transition["now_ms"]),
+                                      (2, 2, transition["after"], transition["now_ms"]),
+                                      (3, 2, transition["after"], transition["now_ms"])]:
+            presentation, event = f"warm-presentation{index}", f"warm-event{index}"
+            db.execute("INSERT INTO presentations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (presentation, "quiz0", 1, epoch, encode(snapshot), when, "freshness", "warm_correct", 1, 1, 0, 0, when, event))
+            db.execute("INSERT INTO review_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (event, presentation, encode(snapshot), "freshness", "warm_correct", 0, 1, when, 0, algorithm, go_card(c), go_card(c), epoch, epoch, "exact-v1"))
+        db.execute("UPDATE review_session SET current_id='warm-presentation3'")
+    else:
+        db.execute("UPDATE review_events SET rating=0,assisted=1,outcome='warm_correct',schedule_version_after=1,schedule_after=?,due_at=0", (before,))
+        db.execute("UPDATE presentations SET rating=0,assisted=1,outcome='warm_correct',due_at=0")
+        db.execute("UPDATE schedules SET version=1,card=?,due_at=? WHERE quiz_id='quiz0'", (before, transition["before"]["due_ms"]))
+        if mode == "zero-rating-changing-card":
+            db.execute("UPDATE review_events SET schedule_after=?", (go_card(transition["after"]),))
+        elif mode == "zero-rating-changing-version":
+            db.execute("UPDATE review_events SET schedule_version_after=2")
+        elif mode == "zero-rating-unassisted":
+            db.execute("UPDATE review_events SET assisted=0")
+        elif mode == "zero-rating-bad-outcome":
+            db.execute("UPDATE review_events SET outcome='correct'")
+        elif mode == "zero-rating-bad-due":
+            db.execute("UPDATE review_events SET due_at=1")
+        elif mode == "zero-rating-wrong":
+            db.execute("UPDATE review_events SET outcome='warm_wrong',answer='revalidation'")
+            db.execute("UPDATE presentations SET outcome='warm_wrong',answer='revalidation'")
+        else:
+            assert mode == "zero-rating"
     db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
 elif mode == "unsupported-correction":
     db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))

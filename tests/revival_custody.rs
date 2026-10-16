@@ -174,3 +174,85 @@ fn original_go_schedule_epoch_is_explicit_preserved_and_fail_closed() {
         assert!(invalid.encode().is_err(), "Accepted {mode}");
     }
 }
+
+#[test]
+fn imported_helped_observations_do_not_invent_scheduler_writes() {
+    use scry::engine;
+    use std::collections::BTreeMap;
+
+    let now = 1_700_000_000_000;
+    let mut app = retained_app(b"synthetic-original-go-helped-history");
+    engine::seed_fixture(&mut app, now).unwrap();
+    let occurrence = app.occurrence.as_ref().unwrap().clone();
+    let mut fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("occurrence_id".into(), occurrence.id),
+        ("operation_id".into(), "synthetic-help-original".into()),
+    ]);
+    engine::mutate(&mut app, "/review/help", &fields, now, "help").unwrap();
+    fields.insert("operation_id".into(), "synthetic-warm-original".into());
+    fields.insert("answer".into(), occurrence.presentation.answer);
+    engine::mutate(&mut app, "/review/answer", &fields, now, "warm").unwrap();
+    let old = app.events[0].question_id.clone();
+    assert_eq!(app.events[0].result.rating, 0);
+    assert_eq!(app.questions[&old].schedule_version, 1);
+    let mut question = app.questions.remove(&old).unwrap();
+    let id = format!("legacy-import-quiz-{old}");
+    question.id = id.clone();
+    app.questions.insert(id.clone(), question);
+    app.revival_schedule_origins.insert(id.clone(), 1);
+    app.occurrence = None;
+    let event = &mut app.events[0];
+    event.question_id = id.clone();
+    event.id = "legacy-import-event-first".into();
+    event.result.event_id = event.id.clone();
+    event.occurrence_id = "legacy-import-presentation-first".into();
+    let mut second = event.clone();
+    second.id = "legacy-import-event-second".into();
+    second.result.event_id = second.id.clone();
+    second.occurrence_id = "legacy-import-presentation-second".into();
+    app.events.push(second);
+    let archive = |app| Archive::new(app, vec![], now + 1);
+    assert!(archive(app.clone()).encode().is_ok());
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&app).unwrap()).unwrap(),
+        app
+    );
+    for mode in [
+        "origin",
+        "custody",
+        "marker",
+        "assistance",
+        "card",
+        "epoch",
+        "duplicate",
+    ] {
+        let mut bad = app.clone();
+        match mode {
+            "origin" => bad.revival_schedule_origins.clear(),
+            "custody" => bad.revival_go.clear(),
+            "marker" => bad.events[1].occurrence_id = "ordinary-occurrence".into(),
+            "assistance" => bad.events[1].assisted = false,
+            "card" => {
+                bad.events[1].before_card.due_ms += 1;
+                bad.events[1].after_card.due_ms += 1;
+                bad.events[1].result.due_ms += 1;
+            }
+            "epoch" => bad.events[1].schedule_version += 1,
+            "duplicate" => bad.events.push(bad.events[0].clone()),
+            _ => unreachable!(),
+        }
+        assert!(archive(bad).encode().is_err(), "Accepted {mode}");
+    }
+    // New Rust warm events still advance their own concurrency epoch.
+    let mut rust = app.events[1].clone();
+    rust.id = "ordinary-rust-event".into();
+    rust.result.event_id = rust.id.clone();
+    rust.occurrence_id = "ordinary-rust-occurrence".into();
+    rust.schedule_version = 2;
+    app.events.push(rust);
+    app.questions.get_mut(&id).unwrap().schedule_version = 2;
+    assert!(archive(app.clone()).encode().is_ok());
+    app.questions.get_mut(&id).unwrap().schedule_version = 1;
+    assert!(archive(app).encode().is_err());
+}

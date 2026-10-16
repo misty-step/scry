@@ -279,13 +279,66 @@ for (const [mode, expectedMicros, criticCharges] of [
     });
   }));
 }
+for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
+  test(mode + ': Go assisted observations retain original schedule epochs through Rust and second restore', () => fixture(mode, async ({request, destination, input}) => {
+    const prepared = await request();
+    assert.equal(prepared.status, 200);
+    const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
+    const app = JSON.parse(bytes).app;
+    const question = app.questions['legacy-import-quiz-quiz0'];
+    const chained = mode === 'zero-rating-chain';
+    assert.equal(question.schedule_version, chained ? 2 : 1);
+    assert.deepEqual(question.card, chained ? input.transition.after : input.transition.before);
+    const observations = app.events.filter(e => e.result.rating === 0);
+    assert.deepEqual(observations.map(e => e.schedule_version), chained ? [1, 2, 2] : [1]);
+    assert.equal(app.events.length, chained ? 4 : 1);
+    assert.ok(observations.every(e => e.assisted && e.result.outcome === (mode === 'zero-rating-wrong' ? 'warm_wrong' : 'warm_correct') &&
+      e.result.due_ms === e.after_card.due_ms && JSON.stringify(e.before_card) === JSON.stringify(e.after_card)));
+    await restore(bytes, async ({response, fixture, name}) => {
+      assert.equal(response.status, 200, await response.text());
+      const origin = 'http://127.0.0.1';
+      const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+      const read = async () => (await active.worker.fetch(origin + '/export')).json();
+      const restored = (await read()).app;
+      assert.deepEqual(restored.events, app.events);
+      assert.deepEqual(restored.questions, app.questions);
+      assert.deepEqual(restored.occurrence, app.occurrence);
+      assert.deepEqual(restored.revival_go, app.revival_go);
+      // Deliberate Next dismisses the imported held result, not its history.
+      const fields = {csrf: restored.csrf, occurrence_id: restored.occurrence.id,
+        operation_id: 'synthetic-next-after-go-noop'};
+      const next = await active.worker.fetch(origin + '/review/next', {method: 'POST', redirect: 'manual',
+        headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams(fields)});
+      assert.equal(next.status, 303);
+      const snapshot = await active.worker.scheduled({cron: '17 3 * * *'});
+      assert.equal(snapshot.outcome, 'ok');
+      const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const list = await backups.list({prefix: 'snapshots/' + name + '/'});
+      assert.equal(list.objects.length, 1);
+      const independent = Buffer.from(await (await backups.get(list.objects[0].key)).arrayBuffer());
+      await restore(independent, async ({response, fixture, name}) => {
+        assert.equal(response.status, 200, await response.text());
+        const recovered = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+        const saved = (await (await recovered.worker.fetch(origin + '/export')).json()).app;
+        assert.deepEqual(saved.events, app.events);
+        assert.deepEqual(saved.questions, app.questions);
+        assert.deepEqual(saved.revival_go, app.revival_go);
+      });
+    });
+  }));
+}
 for (const [mode, reason] of [
   ['unsupported-algorithm', 'scheduler-algorithm'],
   ['inexact-timestamp', 'timestamp-precision'],
   ['private-shape-error', null], // Unexpected TypeError stays private/generic.
   ['unsupported-web', 'unsupported-web-documents'],
   ['unsafe-integer', null], // Reader failure, not a projection refusal.
-  ['zero-rating', 'event-transition'],
+  ['zero-rating-changing-card', 'event-observation-card'],
+  ['zero-rating-changing-version', 'event-transition'],
+  ['zero-rating-unassisted', 'event-observation'],
+  ['zero-rating-bad-outcome', 'event-observation'],
+  ['zero-rating-bad-due', 'event-due'],
   ['unsupported-correction', 'unsupported-assessments-or-corrections'],
   ['unsupported-assessment', 'unsupported-assessments-or-corrections'],
   ['unsupported-generation-reservation', 'unknown-reservation'],

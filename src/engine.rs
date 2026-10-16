@@ -2280,13 +2280,16 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             || event.result.due_ms != event.after_card.due_ms
             || event.schedule_version == 0
             || event.schedule_version > question.schedule_version
-            || event_versions
-                .get(event.question_id.as_str())
-                .is_some_and(|v| *v >= event.schedule_version)
+            || (!revival_observation(app, event)
+                && event_versions
+                    .get(event.question_id.as_str())
+                    .is_some_and(|v| *v >= event.schedule_version))
         {
             return Err(archive_error("incompatible or duplicated attempt history"));
         }
-        event_versions.insert(&event.question_id, event.schedule_version);
+        if !revival_observation(app, event) {
+            event_versions.insert(&event.question_id, event.schedule_version);
+        }
         archive_card(&event.before_card)?;
         archive_card(&event.after_card)?;
         let policy = match event.result.authority.as_str() {
@@ -2989,6 +2992,20 @@ fn archive_lease(
     Ok(())
 }
 
+// Go records helped observations without a scheduler write. Only imported
+// events on an explicitly retained Go epoch have this meaning; new Rust warm
+// events retain their ordinary version increment.
+fn revival_observation(app: &App, event: &Event) -> bool {
+    event.result.rating == 0
+        && event.id.starts_with("legacy-import-event-")
+        && event
+            .occurrence_id
+            .starts_with("legacy-import-presentation-")
+        && app
+            .revival_schedule_origins
+            .contains_key(&event.question_id)
+}
+
 /// Versions order all scheduler writes even when wall clocks coincide or move
 /// backward. A correction occupies the version immediately after its original
 /// event; a reset is explicitly positioned by its before/after versions.
@@ -3006,12 +3023,14 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             .iter()
             .filter(|event| event.question_id == question.id)
         {
-            steps.push(Step {
-                before_version: event.schedule_version - 1,
-                after_version: event.schedule_version,
-                before: &event.before_card,
-                after: &event.after_card,
-            });
+            if !revival_observation(app, event) {
+                steps.push(Step {
+                    before_version: event.schedule_version - 1,
+                    after_version: event.schedule_version,
+                    before: &event.before_card,
+                    after: &event.after_card,
+                });
+            }
             for correction in app
                 .overrides
                 .iter()
@@ -3047,6 +3066,13 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             .copied()
             .unwrap_or(0);
         let mut previous: Option<&learning::Card> = None;
+        let mut states = BTreeMap::from([(
+            version,
+            steps
+                .first()
+                .map(|step| step.before)
+                .unwrap_or(&question.card),
+        )]);
         for step in steps {
             if step.before_version != version
                 || version.checked_add(1) != Some(step.after_version)
@@ -3059,6 +3085,7 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             }
             version = step.after_version;
             previous = Some(step.after);
+            states.insert(version, step.after);
         }
         if question.schedule_version != version
             || previous.is_some_and(|card| !archive_cards_agree(card, &question.card))
@@ -3067,6 +3094,20 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             return Err(archive_error(
                 "a current schedule that differs from its complete history",
             ));
+        }
+        for event in app
+            .events
+            .iter()
+            .filter(|event| event.question_id == question.id && revival_observation(app, event))
+        {
+            if states
+                .get(&event.schedule_version)
+                .is_none_or(|card| !archive_cards_agree(card, &event.before_card))
+            {
+                return Err(archive_error(
+                    "a Go observation disconnected from its original schedule epoch",
+                ));
+            }
         }
     }
     Ok(())

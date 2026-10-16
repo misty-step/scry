@@ -74,6 +74,17 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   `scry-rust-durable-sqlite-go-projection-v1` archive identity; the separate row
   prefix makes older custody-only builds refuse the state rather than drop this
   interpretation. Those older builds are not serving/rollback targets.
+- Go's assisted zero-rating `warm_correct`/`warm_wrong` observations do not write
+  a schedule or increment its epoch. Preserve their original epoch, immutable
+  answer/assistance/authority and unchanged full card rather than renumbering
+  them as transitions. Only `legacy-import-event-`/`legacy-import-presentation-`
+  identities on retained Go question epochs have this interpretation. Validate
+  each against the real card at that epoch, separately from the complete chain
+  of scheduler writes. Go's zero `due_at` sentinel means no new deadline; Rust's
+  held result names the unchanged card's real due date. The original sentinel
+  stays byte-exact in custody. Ordinary/new Rust warm events still increment
+  their concurrency epoch. Earlier projection builds reject these archives and
+  cannot be rollback targets after this import.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a
