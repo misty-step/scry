@@ -132,6 +132,24 @@ elif mode.startswith("zero-rating"):
         else:
             assert mode == "zero-rating"
     db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode in {"diagnostic-multiclass", "diagnostic-same-row"}:
+    db.execute("DROP TRIGGER immutable_review_update")
+    if mode == "diagnostic-multiclass":
+        db.execute("UPDATE schedules SET algorithm='SYNTHETIC_PRIVATE_UNSUPPORTED'")
+        db.execute("UPDATE review_events SET schedule_version_after=99")
+        db.execute("UPDATE job_attempts SET cost_micros=NULL,reserved_micros=1")
+        db.execute("DROP TRIGGER immutable_version_update")
+        bad = dict(contents[1], grading=canary)
+        db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
+        db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
+        db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))
+        db.execute("INSERT INTO semantic_assessments(id,presentation_id,operation_id,content_version,schedule_version,answer,status,policy_version,request_model,request_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                   ("assessment0", "presentation0", "assessment-operation", 1, 1, canary, "failed", "short-v1", "synthetic", "{}", now))
+        for index in range(2):
+            db.execute("INSERT INTO source_documents VALUES(?,?,?,?,?,?,?,?,?,?,?)", (f"web{index}", "source0", "job0", "page", index, "https://synthetic.invalid", canary, "", canary, "synthetic", now))
+    else:
+        db.execute("UPDATE review_events SET rating=0,assisted=0,outcome='correct',schedule_version_after=99,due_at=123")
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
 elif mode == "unsupported-correction":
     db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))
 elif mode == "unsupported-assessment":

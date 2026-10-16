@@ -21,7 +21,7 @@ function data(mode = 'valid') {
   }
   return cache.get(mode);
 }
-async function fixture(mode, fn) {
+async function fixture(mode, fn, {readOnly = false} = {}) {
   const input = data(mode);
   const sourceKey = 'preserved-go/' + sha(input.bytes) + '/scry-synthetic-conversion.scry-backup.zip';
   let bindings = {CONVERT_KEY: key, CONVERT_UNTIL_MS: String(Date.now() + 300000), SOURCE_KEY: sourceKey,
@@ -32,7 +32,7 @@ async function fixture(mode, fn) {
       modules: readdirSync(root).filter(name => /\.(js|wasm|sql)$/.test(name))
         .sort((a, b) => Number(b === 'convert.js') - Number(a === 'convert.js'))
         .map(name => ({path: resolve(root, name), type: name.endsWith('.wasm') ? 'CompiledWasm' : name.endsWith('.sql') ? 'Text' : 'ESModule'})),
-      cf: false, compatibilityDate: '2026-09-10', r2Buckets: ['SOURCE', 'DESTINATION'], bindings,
+      cf: false, compatibilityDate: '2026-09-10', r2Buckets: readOnly ? ['SOURCE'] : ['SOURCE', 'DESTINATION'], bindings,
       outboundService: async () => {egress++; throw Error('External egress forbidden');}};
     return runtime.convertV4MiniflareOptions ? runtime.convertV4MiniflareOptions(v4) : v4;
   };
@@ -76,6 +76,60 @@ async function restore(bytes, fn) {
     await fn({fixture, response, send, name});
   } finally {await fixture.mf.dispose(); assert.equal(egress, 0);}
 }
+
+for (const [mode, expected] of [
+  ['valid', {}],
+  ['selfcheck-repeated', {}],
+  ['critic-lifecycles', {}],
+  ['unsupported-algorithm', {'scheduler-algorithm': 3}],
+  ['diagnostic-multiclass', {'content-grading': 1, 'event-transition': 1,
+    'scheduler-algorithm': 3, 'unknown-reservation': 2,
+    'unsupported-assessments-or-corrections': 2, 'unsupported-web-documents': 2}],
+  ['diagnostic-same-row', {'event-due': 1, 'event-observation': 1, 'event-observation-card': 1, 'event-transition': 1}],
+]) {
+  test(mode + ': full-pass diagnostic returns only exact class/counts with no destination capability', () => fixture(mode, async ({request}) => {
+    const first = await request({}, '/dry-run');
+    assert.deepEqual(first, {status: 200, body: expected});
+    assert.deepEqual(await request({}, '/dry-run'), first);
+    assert.ok(Object.values(first.body).every(value => Number.isSafeInteger(value) && value > 0));
+    assert.deepEqual(Object.keys(first.body), Object.keys(first.body).sort());
+    assert.equal((await request()).status, 422, 'Real conversion still needs a separate destination capability');
+  }, {readOnly: true}));
+}
+test('dry-run refuses unknown/partial traversal instead of advertising a complete aggregate', () => fixture('private-shape-error', async ({request, destination}) => {
+  assert.deepEqual(await request({}, '/dry-run'), {status: 422, body: {error: 'INSPECTION_FAILED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
+test('dry-run never changes an existing destination and conversion still fails closed', () => fixture('diagnostic-multiclass', async ({request, destination}) => {
+  const before = await destination.put('synthetic-existing', 'SYNTHETIC_PRIVATE_DESTINATION');
+  assert.equal((await request({}, '/dry-run')).status, 200);
+  assert.deepEqual(await request(), {status: 422,
+    body: {error: 'UNSUPPORTED_GO_PROJECTION', reason: 'unsupported-assessments-or-corrections'}});
+  const final = await destination.get('synthetic-existing');
+  assert.equal(final.version, before.version);
+  assert.equal(await final.text(), 'SYNTHETIC_PRIVATE_DESTINATION');
+  assert.equal((await destination.list()).objects.length, 1);
+}));
+test('dry-run shares exact authentication, expiry, pin, method, body and route refusals', () => fixture('valid', async ({request, rebind, destination}) => {
+  assert.equal((await request({headers: {Authorization: ''}}, '/dry-run')).status, 403);
+  assert.equal((await request({headers: {Authorization: 'Bearer forged'}}, '/dry-run')).status, 403);
+  assert.equal((await request({body: 'SYNTHETIC_PRIVATE'}, '/dry-run')).status, 400);
+  assert.equal((await request({method: 'GET'}, '/dry-run')).status, 405);
+  assert.equal((await request({}, '/dry-run?source=other')).status, 404);
+  await rebind({SOURCE_BYTES: '1'});
+  assert.equal((await request({}, '/dry-run')).status, 409);
+  await rebind({CONVERT_UNTIL_MS: String(Date.now() - 1)});
+  assert.deepEqual(await request({}, '/dry-run'), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
+test('same immutable dry-run capability expires on the actual clock with zero writes', () => fixture('valid', async ({request, rebind, destination}) => {
+  const until = Date.now() + 1800;
+  await rebind({CONVERT_UNTIL_MS: String(until)});
+  assert.deepEqual(await request({}, '/dry-run'), {status: 200, body: {}});
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, until - Date.now()) + 50));
+  assert.deepEqual(await request({}, '/dry-run'), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
 
 test('native source -> CF-only projection -> real Rust restore preserves content/history/schedules/custody/media', () => fixture('valid', async ({request, destination, input}) => {
   const first = await request();

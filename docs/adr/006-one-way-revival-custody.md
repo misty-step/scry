@@ -100,6 +100,13 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   runtime initializes a new namespace concurrency revision at one, creates a
   fresh CSRF token and photo keys, clears inherited backup receipts and pauses
   uncertain work. Content/schedule/history versions do not reset with that epoch.
+- Diagnose the whole preserved dataset before another import, inside the same
+  private Cloudflare custody with no destination capability. Collection and
+  conversion use the same projection guards; a complete diagnostic releases
+  only fixed refusal classes and counts, and writes nothing. An unexpected
+  dependent parsing/shape failure invalidates the report rather than publishing
+  a partial pass. Only the actual complete report triggers further shape-specific
+  repair, batched into one independently reviewed change before real import.
 - Project generator and transmitted critic usage into the existing Rust spend
   records, preserving owning job, stable per-attempt identity, original timestamp,
   model and exact known cost or unknown $0.50 reservation. All critic retries
