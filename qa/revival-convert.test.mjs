@@ -355,7 +355,7 @@ for (const [mode, expectedMicros, criticCharges] of [
     });
   }));
 }
-for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
+for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-recall-wrong', 'zero-rating-chain']) {
   test(mode + ': Go assisted observations retain original schedule epochs through Rust and second restore', () => fixture(mode, async ({request, destination, input}) => {
     const prepared = await request();
     assert.equal(prepared.status, 200);
@@ -368,7 +368,7 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
     const observations = app.events.filter(e => e.result.rating === 0);
     assert.deepEqual(observations.map(e => e.schedule_version), chained ? [1, 2, 2] : [1]);
     assert.equal(app.events.length, chained ? 4 : 1);
-    assert.ok(observations.every(e => e.assisted && e.result.outcome === (mode === 'zero-rating-wrong' ? 'warm_wrong' : 'warm_correct') &&
+    assert.ok(observations.every(e => e.assisted && e.result.outcome === (mode.endsWith('-wrong') ? 'warm_wrong' : 'warm_correct') &&
       e.result.due_ms === e.after_card.due_ms && JSON.stringify(e.before_card) === JSON.stringify(e.after_card)));
     await restore(bytes, async ({response, fixture, name}) => {
       assert.equal(response.status, 200, await response.text());
@@ -404,6 +404,32 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
     });
   }));
 }
+test('historical helped recall misses do not relax current identities, successful grades or assistance guards', () => fixture('zero-rating-recall-wrong', async ({request, destination}) => {
+  const prepared = await request();
+  assert.equal(prepared.status, 200);
+  const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
+  for (const mode of ['new-event', 'new-presentation', 'no-custody', 'no-original-epoch', 'unassisted', 'forged-success', 'authored-match']) {
+    const archive = JSON.parse(bytes);
+    const app = archive.app, event = app.events[0];
+    if (mode === 'new-event') {
+      event.id = 'new-native-event';
+      event.result.event_id = event.id;
+      app.occurrence.result.event_id = event.id;
+    }
+    if (mode === 'new-presentation') event.occurrence_id = app.occurrence.id = 'new-native-presentation';
+    if (mode === 'no-custody') app.revival_go = {};
+    if (mode === 'no-original-epoch') app.revival_schedule_origins = {};
+    if (mode === 'unassisted') event.assisted = app.occurrence.assisted = false;
+    if (mode === 'forged-success') event.result.outcome = app.occurrence.result.outcome = 'warm_correct';
+    if (mode === 'authored-match') event.answer = app.occurrence.answer = 'freshness';
+    await restore(Buffer.from(JSON.stringify(archive)), async ({response, fixture, name}) => {
+      assert.equal(response.status, 422, mode);
+      const sql = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+      assert.deepEqual(await sql.exec('SELECT key FROM records'), [], mode);
+      assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length, 0, mode);
+    });
+  }
+}));
 for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfcheck-repeated']) {
   test(mode + ': historical ungraded attempts remain ungraded across Rust, deliberate judgment and recovery', () => fixture(mode, async ({request, destination}) => {
     const prepared = await request();

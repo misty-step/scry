@@ -126,7 +126,7 @@ elif mode.startswith("zero-rating"):
             db.execute("UPDATE review_events SET outcome='correct'")
         elif mode == "zero-rating-bad-due":
             db.execute("UPDATE review_events SET due_at=1")
-        elif mode == "zero-rating-wrong":
+        elif mode in {"zero-rating-wrong", "zero-rating-recall-wrong"}:
             db.execute("UPDATE review_events SET outcome='warm_wrong',answer='revalidation'")
             db.execute("UPDATE presentations SET outcome='warm_wrong',answer='revalidation'")
         else:

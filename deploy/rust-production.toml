@@ -1,0 +1,52 @@
+# Promote downloaded, verified CI bytes; never rebuild during deployment.
+name = "scry-rust-production"
+account_id = "b069014f6a46558ea9146fb6c4ff8f6c"
+main = "../target/ci-release/worker/worker/shim.mjs"
+base_dir = "../target/ci-release/worker"
+compatibility_date = "2026-09-10"
+workers_dev = false
+preview_urls = false
+no_bundle = true
+find_additional_modules = true
+preserve_file_names = true
+# Existing explicitly commissioned provider settings remain operator-owned.
+keep_vars = true
+
+# Routes move separately, after the unused-space import and canonical proof.
+# No inherited Container, legacy namespace, model key or restore capability.
+[vars]
+SCRY_ENV = "production"
+CANONICAL_ORIGIN = "https://scry.study"
+SPACE_NAME = "revival-production-20261016"
+ACCESS_TEAM = "misty-step-pantry.cloudflareaccess.com"
+ACCESS_AUDIENCE = "f298e34f9f499a33915bcaac46029df6b027008716a45c739e62485afe652a9b"
+ALTERNATE_HOSTS = "www.scry.study,scry.mistystep.io"
+
+[[durable_objects.bindings]]
+name = "LEARNING_SPACE"
+class_name = "LearningSpace"
+script_name = "scry-rust-production"
+
+[[r2_buckets]]
+binding = "SCRY_ASSETS"
+bucket_name = "scry-rust-assets"
+
+[[r2_buckets]]
+binding = "SCRY_BACKUPS"
+bucket_name = "scry-rust-backups"
+
+[triggers]
+crons = []
+
+[observability]
+enabled = false
+
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js"]
+fallthrough = false
+
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = false
