@@ -132,7 +132,7 @@ if (mode === "cleanup") {
   const fixtureOrigin = `https://${upstream}.${domain}.workers.dev`;
   const request = path => fetch(origin + path, { headers: { authorization: "Bearer synthetic-only", cookie: "PRIVATE-cookie-canary" }, redirect: "manual" });
   await converged(origin + "/healthz", 401);
-  assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
+  await converged(origin + "/", 403);
   await converged(origin + "/healthz", 200, undefined, { headers: { authorization: "Bearer synthetic-only" } });
   assert.equal((await request("/healthz")).status, 200);
   const attachment = async revision => {
