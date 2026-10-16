@@ -19,7 +19,9 @@ async function send(env, category, profile) {
     environment: env.SENTRY_ENVIRONMENT,
     release: `${profile.release}@${env.SCRY_VERSION.id}`,
     message: `${profile.label} ${category}`,
-    fingerprint: [profile.release, category],
+    // Do not let a controlled Rust staging drill consume production's
+    // first-seen alert. Preserve the already-operated Go grouping unchanged.
+    fingerprint: profile === RUST ? [profile.release, env.SENTRY_ENVIRONMENT, category] : [profile.release, category],
     tags: { boundary: profile.boundary, category },
   };
   const response = await fetch(`${dsn.origin}/api${dsn.pathname}/envelope/`, {

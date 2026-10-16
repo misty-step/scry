@@ -32,7 +32,7 @@ async function instance(changes={}) {
   }});
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,2300));
-function envelope(category) {
+function envelope(category,environment='synthetic-staging') {
   assert.equal(received.length,1);
   const raw=received[0].body;
   assert(!raw.includes('PRIVATE-'));assert(!raw.includes(internalKey));
@@ -40,10 +40,10 @@ function envelope(category) {
   assert.deepEqual(item,{type:'event'});assert.equal(header.event_id,event.event_id);
   assert.match(event.event_id,/^[a-f0-9]{32}$/);
   assert.deepEqual(Object.keys(event).sort(),['event_id','timestamp','platform','level','logger','environment','release','message','fingerprint','tags'].sort());
-  assert.equal(event.environment,'synthetic-staging');assert.equal(event.release,`scry-rust@${version}`);
+  assert.equal(event.environment,environment);assert.equal(event.release,`scry-rust@${version}`);
   assert.equal(event.logger,'scry.rust');assert.equal(event.message,`Scry Rust ${category}`);
   assert.deepEqual(event.tags,{boundary:'rust-worker',category});
-  assert.deepEqual(event.fingerprint,['scry-rust',category]);
+  assert.deepEqual(event.fingerprint,['scry-rust',environment,category]);
 }
 try {
   await test('native success and ordinary auth/input/host denials produce no telemetry',async()=>{
@@ -69,6 +69,13 @@ try {
       assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);
       await settle();assert.equal(received.length,1);
       assert.equal((await local.worker.fetch(origin+'/create')).status,200);
+    }finally{await local.mf.dispose();}
+  });
+  await test('native production grouping is distinct from a controlled staging first-seen alert',async()=>{
+    const local=await instance({SENTRY_ENVIRONMENT:'production'});
+    try {
+      assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);
+      await settle();envelope('upstream_5xx','production');
     }finally{await local.mf.dispose();}
   });
   await test('native Rust error preserves error response and reports only request_exception',async()=>{
