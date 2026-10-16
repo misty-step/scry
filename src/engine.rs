@@ -2354,7 +2354,15 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             );
             let expected =
                 event.result.outcome == "correct" || event.result.outcome == "warm_correct";
-            if grade != Some(expected) {
+            // Earlier Go exact-v1 could record an assisted recall miss without
+            // changing its card. Preserve that historical judgment, not a new
+            // local grading rule. Current/new events and all claimed successes
+            // still require the authored answer match above.
+            let retained_helped_miss = grade.is_none()
+                && event.presentation.kind == "recall"
+                && event.result.outcome == "warm_wrong"
+                && revival_observation(app, event);
+            if grade != Some(expected) && !retained_helped_miss {
                 return Err(archive_error(
                     "an exact grade without an authored answer match",
                 ));

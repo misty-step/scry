@@ -5,12 +5,23 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: Verified master CI Worker artifact ID (no rebuild)
+        required: true
+        type: string
+      artifact_sha256:
+        description: Independently verified artifact ZIP SHA-256
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   ci:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -56,6 +67,7 @@ jobs:
           retention-days: 14
 
   story-walk:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -81,6 +93,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-# No deployment job yet: the Go Container remains the learner writer until
-# docs/rust-cloudflare.md's verifiable cutover conditions pass. Routine
-# activation requires that evidence, not a separate operator approval.
+  promote:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: scry-rust-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Retrieve and verify the frozen successful master artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+        run: python3 scripts/scry-promote.py prepare
+      - name: Promote exact modules without rebuilding or changing routes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: python3 scripts/scry-promote.py deploy
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: scry-rust-promotion-${{ github.run_id }}
+          path: target/promotion.json
+          if-no-files-found: warn
+          retention-days: 14

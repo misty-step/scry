@@ -95,6 +95,17 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   choosing a grade later creates an ordinary new learner event. Earlier Rust
   builds reject this history and are not compatible rollback targets. Verbatim
   original outcomes and grading policy remain in the retained Go archive.
+- The first production-space restore exposed a native validation defect, not a
+  converter refusal: earlier Go exact-v1 also recorded an assisted recall
+  `warm_wrong` when a short unmatched answer was a local miss. The complete
+  exact-policy event census found one such retained observation. Preserve its
+  original answer, authority, assistance, zero rating, unchanged card and epoch;
+  do not rejudge it under the current rule, erase it, or invent an assessor call.
+  Only imported event/presentation identities on retained Go epochs admit this
+  historical miss. New events, unassisted attempts and every claimed success
+  keep their existing guards. Earlier builds rejecting this history are not
+  compatible rollback targets after import. This records the decision, not a
+  successful learner restore or production cutover.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a

@@ -51,8 +51,9 @@ The source-snapshot gate exports the exact tested Worker modules/assets,
 checksums, source inventory/archive, and proof. Release output must use committed
 source with `--require-committed`; worktree output is development evidence. Use
 the bytes exercised by the smoke and browser, without rebuilding at deployment.
-Automatic deployment from master is intentionally absent: CI prepares a candidate
-with functional Rust/WASM checks and browser story walks.
+Push/PR CI prepares a candidate with functional Rust/WASM checks and browser
+story walks. The same `ci.yml` workflow can promote an already-verified master
+artifact without rebuilding; it never changes the serving domains automatically.
 
 ## Fresh namespace and private configuration
 
@@ -122,8 +123,28 @@ bounded exercise; do not clone integrations into a recovery preview.
    verification fails. Keep one writer and retain historical stores/artifacts
    independently recoverable; deleting a predecessor is a separate action.
 
-No automatic deployment credential enters the build/test workflow. The former
-Go Container deploy job is removed rather than pointed at replacement source.
+The build/test jobs receive no deploy credential. After the CF-only import and
+canonical restore proof, commission production's exact owner/internal/backup
+secrets and invoke the existing CI promotion job with the independently verified
+master artifact ID and ZIP digest:
+
+```sh
+gh workflow run ci.yml -R misty-step/scry --ref master \
+  -f artifact_id=VERIFIED_MASTER_ARTIFACT_ID \
+  -f artifact_sha256=VERIFIED_ZIP_SHA256
+```
+
+[`scripts/scry-promote.py`](../scripts/scry-promote.py) owns provenance and native
+Wrangler invocation; [`deploy/rust-production.toml`](../deploy/rust-production.toml)
+owns the recovered production binding configuration. Promotion preserves that
+namespace, space and private R2, refuses an empty/uncommissioned target, verifies
+the uploaded module bytes, and emits `target/promotion.json`. Domain cutover and
+live-owner verification remain the separate operator steps above. Compatible
+code rollback uses a retained custody/history-compatible artifact on these same
+bindings, never an old Go snapshot. Versions/notes remain the existing release
+lane's responsibility; this adds no second workflow or release policy.
+
+The former Go Container deploy job is removed rather than pointed at replacement source.
 The deployment/recovery scripts under `deploy/cloudflare-hosting/`, retained
 exe.dev VM scripts, and old data tooling remain specific to their corresponding
 historical/live-Go environment.
