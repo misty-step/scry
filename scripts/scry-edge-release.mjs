@@ -133,6 +133,7 @@ if (mode === "cleanup") {
   const request = path => fetch(origin + path, { headers: { authorization: "Bearer synthetic-only", cookie: "PRIVATE-cookie-canary" }, redirect: "manual" });
   await converged(origin + "/healthz", 401);
   assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
+  await converged(origin + "/healthz", 200, undefined, { headers: { authorization: "Bearer synthetic-only" } });
   assert.equal((await request("/healthz")).status, 200);
   const attachment = async revision => {
     // The default handler's marker proves code-only boundary rollback, while
@@ -161,6 +162,7 @@ if (mode === "cleanup") {
   assert.equal(await current(edge), version);
   await readback(edge, script);
   await converged(origin + "/healthz", 401);
+  await converged(origin + "/healthz", 200, undefined, { headers: { authorization: "Bearer synthetic-only" } });
   assert.equal((await request("/healthz")).status, 200);
   await attachment("prior");
   await api(`${upstream}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: fixtureCandidate.id, percentage: 100 }] });
