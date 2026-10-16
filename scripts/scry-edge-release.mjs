@@ -88,7 +88,9 @@ if (mode === "cleanup") {
     bindings: [{ type: "durable_object_namespace", name: "FIXTURE", class_name: "FixtureContainer" }] };
   // Enable a real Container namespace without creating an application, uploading
   // an image or starting compute. ctx.container proves the attachment at runtime.
-  await upload(upstream, fixture.replace('const revision = "candidate";', 'const revision = "prior";'), {
+  const fixturePriorScript = fixture.replace('const revision = "candidate";', 'const revision = "prior";');
+  assert.notEqual(fixturePriorScript, fixture, "Distinct fixture prior code must actually differ");
+  await upload(upstream, fixturePriorScript, {
     ...fixtureMetadata, containers: [{ class_name: "FixtureContainer", name: upstream }],
     migrations: { new_sqlite_classes: ["FixtureContainer"], new_tag: "v1" } });
   const fixturePrior = await current(upstream);
@@ -120,18 +122,23 @@ if (mode === "cleanup") {
   assert.equal(await current(edge), candidate.id);
   assert((await api(`${edge}/settings`)).bindings.some(binding => binding.name === "QA_UNUSED_SECRET" && binding.type === "secret_text"));
   await api(`${edge}/subdomain`, "POST", { enabled: true, previews_enabled: false });
+  await api(`${upstream}/subdomain`, "POST", { enabled: true, previews_enabled: false });
   await readback(edge, script);
   const subdomain = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/subdomain`, { headers: { authorization: `Bearer ${token}` } });
   assert(subdomain.ok); const domain = (await subdomain.json()).result.subdomain;
   const origin = `https://${edge}.${domain}.workers.dev`;
+  const fixtureOrigin = `https://${upstream}.${domain}.workers.dev`;
   const request = path => fetch(origin + path, { headers: { authorization: "Bearer synthetic-only", cookie: "PRIVATE-cookie-canary" }, redirect: "manual" });
   await converged(origin + "/healthz", 401);
   assert.equal((await fetch(origin + "/", { redirect: "manual" })).status, 403);
   assert.equal((await request("/healthz")).status, 200);
   const attachment = async revision => {
-    await converged(origin + "/healthz?mode=container-status", 200,
-      JSON.stringify({ enabled: true, running: false, revision }), { headers: { authorization: "Bearer synthetic-only" } });
-    const response = await request("/healthz?mode=container-status");
+    // Invoke the Container class through its own deployed Worker, like the
+    // operated Go boundary, not an external binding's separate release boundary.
+    await readback(upstream, revision === "prior" ? fixturePriorScript : fixture);
+    await converged(fixtureOrigin + "/?mode=container-status", 200,
+      JSON.stringify({ enabled: true, running: false, revision }));
+    const response = await fetch(fixtureOrigin + "/?mode=container-status");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { enabled: true, running: false, revision });
     assert.deepEqual(containers(await api(`${upstream}/versions/${await current(upstream)}`)), containers(fixtureLive));

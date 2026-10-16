@@ -14,4 +14,7 @@ export class FixtureContainer {
     });
   }
 }
-export default { fetch() { return new Response("Not found", { status: 404 }); } };
+export default { fetch(request, env) {
+  if (new URL(request.url).searchParams.get("mode") !== "container-status") return new Response("Not found", { status: 404 });
+  return env.FIXTURE.get(env.FIXTURE.idFromName("singleton")).fetch(request);
+} };
