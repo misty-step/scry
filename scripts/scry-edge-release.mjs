@@ -150,7 +150,6 @@ if (mode === "cleanup") {
       { type: "plain_text", name: "SENTRY_ENVIRONMENT", text: "production" });
     const version = await upload(name, script, { bindings, keep_bindings: ["secret_text"],
       compatibility_date: settings.compatibility_date, compatibility_flags: settings.compatibility_flags,
-      observability: settings.observability, tags: settings.tags,
       annotations: { "workers/message": `scry-go-edge ${process.env.GITHUB_SHA}` },
     }, true);
     assert.equal(await current(name), previous, "Live release moved; do not overwrite another lane");
@@ -160,6 +159,8 @@ if (mode === "cleanup") {
       await readback(name, script);
       const after = await api(`${name}/settings`);
       assert.deepEqual(unchanged(after.bindings), unchanged(settings.bindings), "Existing runtime bindings changed");
+      for (const key of ["observability", "tags", "tail_consumers", "logpush", "placement", "usage_model"])
+        assert.deepEqual(after[key], settings[key], `Existing ${key} changed`);
     } catch (error) {
       // Only revert our own still-active code; never stomp a concurrent cutover.
       if (await current(name) === version.id) {
