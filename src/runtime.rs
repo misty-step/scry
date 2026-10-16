@@ -274,7 +274,10 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
     } else if mode == "restore" {
         if provider_secrets_present(&env)
-            || req.path() != "/operator/restore"
+            || !matches!(
+                req.path().as_str(),
+                "/operator/restore" | "/operator/restore-dry-run"
+            )
             || method != Method::Post
         {
             return private(Response::error(
@@ -662,7 +665,10 @@ impl DurableObject for LearningSpace {
                 Response::error("backup_stale", 503)?
             });
         }
-        if path == "/operator/restore" {
+        if matches!(
+            path.as_str(),
+            "/operator/restore" | "/operator/restore-dry-run"
+        ) {
             return self.restore(req).await;
         }
         if path == "/__internal/daily" {
@@ -1543,7 +1549,8 @@ impl LearningSpace {
         {
             return private(Response::error("Restore authorization required.", 403)?);
         }
-        if !self.stored_rows()?.is_empty() {
+        let diagnostic = req.path() == "/operator/restore-dry-run";
+        if !diagnostic && !self.stored_rows()?.is_empty() {
             return private(Response::error(
                 "Restore requires an unused learning-space object.",
                 409,
@@ -1551,6 +1558,21 @@ impl LearningSpace {
         }
         let hash = req.headers().get("x-scry-sha256")?.unwrap_or_default();
         let bytes = bounded_request_body(&req, persistence::MAX_ARCHIVE_BYTES).await?;
+        if diagnostic {
+            if bytes.len() > persistence::MAX_ARCHIVE_BYTES
+                || hash.len() != 64
+                || persistence::sha256(&bytes) != hash
+            {
+                return private(Response::error("INCOMPLETE_IMPORT_REPORT", 422)?);
+            }
+            let report = serde_json::from_slice::<persistence::Archive>(&bytes)
+                .ok()
+                .and_then(|archive| archive.diagnose().ok());
+            return private(match report {
+                Some(report) => Response::from_json(&report)?,
+                None => Response::error("INCOMPLETE_IMPORT_REPORT", 422)?,
+            });
+        }
         let mut archive = match persistence::Archive::decode(&bytes, &hash) {
             Ok(a) => a,
             Err(e) => return app_error(e),

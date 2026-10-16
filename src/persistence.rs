@@ -445,6 +445,19 @@ impl Archive {
         Ok(archive)
     }
     pub fn validate(&self) -> AppResult<()> {
+        self.validate_envelope()?;
+        crate::engine::validate_app(&self.app)?;
+        self.validate_photos_and_rows()
+    }
+    /// Never return a partial aggregate: malformed envelopes, unreadable
+    /// dependencies, photos or storage rows invalidate the entire traversal.
+    pub fn diagnose(&self) -> AppResult<BTreeMap<String, u64>> {
+        self.validate_envelope()?;
+        let refusals = crate::engine::diagnose_app(&self.app)?;
+        self.validate_photos_and_rows()?;
+        Ok(refusals)
+    }
+    fn validate_envelope(&self) -> AppResult<()> {
         if self.format != archive_format(&self.app)
             || self.schema != SCHEMA
             || self.app.schema != SCHEMA
@@ -456,7 +469,9 @@ impl Archive {
             ));
         }
         validate_go_custody(&self.app)?;
-        crate::engine::validate_app(&self.app)?;
+        Ok(())
+    }
+    fn validate_photos_and_rows(&self) -> AppResult<()> {
         let required = required_photos(&self.app)?;
         let mut seen = BTreeSet::new();
         for archived in &self.photos {

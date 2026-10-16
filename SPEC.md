@@ -538,6 +538,11 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   identifiers. An incomplete traversal is a failure, not a complete report.
   Further shape-specific repairs follow that complete report as one batch;
   repeated first-refusal imports are not the diagnostic workflow.
+  Before writing the production store, rehearse the complete import with the
+  same retained dataset and candidate on disposable private hosted storage.
+  Native archive/history/scheduler refusals must be included, not only the Go
+  projection checks. An incomplete native traversal is failure; never report it
+  as an empty refusal table or retry production to discover the next defect.
 
 ## User stories
 
