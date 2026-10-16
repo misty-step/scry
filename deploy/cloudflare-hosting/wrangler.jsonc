@@ -77,6 +77,7 @@
     // canonical-host guard rejects mutation replay across origins.
     "production": {
       "name": "scry-app-host",
+      "version_metadata": { "binding": "SCRY_VERSION" },
       "workers_dev": false,
       "triggers": { "crons": ["0 */12 * * *"] },
       "routes": [

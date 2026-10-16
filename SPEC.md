@@ -56,6 +56,21 @@ machine trigger may request a backup, but cannot read learner data or act as
 the owner. Trigger success acknowledges complete remote verification, not just
 an attempted upload. Failed backups never advance the last verified time.
 
+### Private runtime failure reporting
+
+As the learner, I want an unexpected failure at the operated application
+boundary to reach the existing Sentry/owned-triage route without exposing my
+notebook or making study depend on the telemetry service.
+
+- Unexpected request exceptions and upstream server failures identify the
+  environment and deployed release; ordinary access denials are not incidents.
+- Reports contain only a fixed failure category and deployment identity, never
+  learner content, URLs, headers, credentials, raw errors or response bodies.
+- Reporting is bounded and asynchronous. An unavailable or rejecting sink does
+  not delay or change the application response; later reporting can recover.
+- A controlled synthetic failure, its remote event and owned recovery are
+  retrieved before claiming coverage. This does not certify uptime or cron health.
+
 ## Experience contract
 
 The first screen is the learning moment, not a dashboard. Learning effort is

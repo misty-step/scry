@@ -1,0 +1,122 @@
+name: Go edge errors
+
+on:
+  pull_request:
+    branches: [master]
+    paths: ['deploy/cloudflare-hosting/**', 'qa/edge-*', 'scripts/scry-edge-release.mjs', '.github/workflows/go-edge.yml', 'package.json', 'package-lock.json']
+  push:
+    branches: [master]
+    paths: ['deploy/cloudflare-hosting/**', 'qa/edge-*', 'scripts/scry-edge-release.mjs', '.github/workflows/go-edge.yml', 'package.json', 'package-lock.json']
+  workflow_dispatch:
+    inputs:
+      rollback_version:
+        description: Existing Go-edge version UUID (code only; never restores learner data)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: inputs.rollback_version == ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node --test deploy/cloudflare-hosting/*.test.mjs
+      - name: Build once without building or uploading a Container
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: ./node_modules/.bin/wrangler deploy --config deploy/cloudflare-hosting/wrangler.jsonc --env production --dry-run --containers-rollout none --outdir "$GITHUB_WORKSPACE/target/edge-release"
+      - run: node qa/edge-runtime.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scry-go-edge-${{ github.sha }}
+          path: |
+            target/edge-release/index.js
+            target/edge-runtime-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
+  hosted-proof:
+    needs: verify
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: scry-go-edge-${{ github.sha }}
+          path: target
+      - run: node scripts/scry-edge-release.mjs preview
+      - name: Remove only this run's two disposable Workers and verify absence
+        if: always()
+        run: node scripts/scry-edge-release.mjs cleanup
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: scry-go-edge-hosted-${{ github.sha }}
+          path: target/edge-hosted-proof.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  promote:
+    needs: [verify, hosted-proof]
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: scry-go-edge-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: scry-go-edge-${{ github.sha }}
+          path: target
+      - run: node scripts/scry-edge-release.mjs production
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: scry-go-edge-production-${{ github.sha }}
+          path: target/edge-production-proof.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  rollback:
+    if: github.ref == 'refs/heads/master' && inputs.rollback_version != ''
+    runs-on: ubuntu-latest
+    concurrency:
+      group: scry-go-edge-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ROLLBACK_VERSION: ${{ inputs.rollback_version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.22.0
+      - run: node scripts/scry-edge-release.mjs rollback
