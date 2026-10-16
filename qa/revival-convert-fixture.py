@@ -217,6 +217,10 @@ elif mode == "private-shape-error":
     bad = dict(contents[1], rubric={"required": canary})
     db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
     db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
+elif mode == "legacy-operation-identities":
+    # These are valid Go validOperation/validText inputs, never new Rust IDs.
+    for index, operation in enumerate(["old", "old/receipt:1", "révision\tancienne", "x" * 200]):
+        db.execute("INSERT INTO operations VALUES(?,?,?,?,?,?)", (operation, "capture", "f" * 64, "source0", encode({"private": canary}), now))
 elif mode == "legacy-generation-reservations":
     db.execute("DELETE FROM job_attempts")
     for index, reserve in enumerate([0, 1, 500000, 900000]):

@@ -2744,10 +2744,20 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
     }
     for (operation, receipt) in &app.operations {
         checks.record();
-        if !(16..=128).contains(&operation.len())
-            || !operation
+        let native_identity = (16..=128).contains(&operation.len())
+            && operation
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
+        // Go accepted bounded text IDs, not Rust's new-request ID grammar.
+        // Preserve the exact original key/hash; never rekey or invent a receipt.
+        // Only the converter's non-executable custody marker admits this shape.
+        let retained_identity = !app.revival_go.is_empty()
+            && generation::text_valid(operation, 200)
+            && receipt.result.redirect == "/history"
+            && receipt.result.entity_id.is_none()
+            && receipt.result.message.as_deref()
+                == Some("legacy-import: original receipt retained in the Go archive.");
+        if (!native_identity && !retained_identity)
             || !archive_hash(&receipt.payload_hash)
             || !receipt.result.redirect.starts_with('/')
             || receipt.result.redirect.starts_with("//")
