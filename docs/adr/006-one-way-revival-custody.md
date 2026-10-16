@@ -79,6 +79,16 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   runtime initializes a new namespace concurrency revision at one, creates a
   fresh CSRF token and photo keys, clears inherited backup receipts and pauses
   uncertain work. Content/schedule/history versions do not reset with that epoch.
+- Project generator and transmitted critic usage into the existing Rust spend
+  records, preserving owning job, stable per-attempt identity, original timestamp,
+  model and exact known cost or unknown $0.50 reservation. All critic retries
+  count independently, without reconstructing executable assessment leases.
+  Rust's nominal reservation remains $0.50 after known settlement; Go's cleared
+  reservation is therefore normalized only when measured cost (including zero)
+  takes precedence. Keep the exact original in custody. Unsent zero-obligation
+  critic rows remain historical; unsupported purpose/ownership/unknown amounts
+  and old active/pending obligations Rust cannot express fail before candidate
+  writes. No new spending engine or silently restarted allowance window follows.
 - Synthetic service QA remains confined to ADR 005's synthetic bindings. Never
   apply that mode or principal to a namespace containing imported learner data.
   Any approved existing-owner readback is read-only; do not obtain or impersonate

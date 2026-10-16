@@ -66,13 +66,15 @@ async function restore(bytes, fn) {
   const token = 'synthetic-conversion-restore-key-at-least-32-chars';
   const bindings = {SCRY_ENV: 'restore', SPACE_NAME: name, CANONICAL_ORIGIN: 'https://synthetic.invalid',
     RESTORE_TOKEN: token, INTERNAL_KEY: internalKey};
-  const fixture = await createRuntime({name, bindings, inspect: true});
+  let egress = 0;
+  const fixture = await createRuntime({name, bindings, inspect: true,
+    egress: async () => {egress++; throw Error('External egress forbidden');}});
   try {
     const send = async data => fixture.worker.fetch('https://synthetic.invalid/operator/restore', {
       method: 'POST', headers: {'x-scry-restore-token': token, 'x-scry-sha256': sha(data)}, body: data});
     const response = await send(bytes);
     await fn({fixture, response, send, name});
-  } finally {await fixture.mf.dispose();}
+  } finally {await fixture.mf.dispose(); assert.equal(egress, 0);}
 }
 
 test('native source -> CF-only projection -> real Rust restore preserves content/history/schedules/custody/media', () => fixture('valid', async ({request, destination, input}) => {
@@ -175,8 +177,112 @@ test('forged/expired/body/alternate-path requests cannot create a projection', (
   assert.deepEqual(await request(), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
   assert.equal((await destination.list()).objects.length, 0);
 }));
+for (const [mode, expectedMicros, criticCharges] of [
+  ['settled-generation', 1000, 0], ['unknown-generation', 1000000, 0],
+  ['critic-spend', 1200000, 2], ['critic-lifecycles', 1700000, 6], ['critic-budget', 3600000, 2],
+]) {
+  test(mode + ': original monetary obligations survive CF projection, Rust restore and independent backup', () => fixture(mode, async ({request, destination, input}) => {
+    const result = await request();
+    assert.equal(result.status, 200);
+    assert.equal(input.spent_micros, expectedMicros, 'Independent native Go SQL allowance oracle');
+    const bytes = Buffer.from(await (await destination.get(result.body.destination_key)).arrayBuffer());
+    const original = JSON.parse(bytes).app;
+    const selected = records => records.map(({id, work_id, created_ms, reserved_micros, cost_micros, status, model}) =>
+      ({id, work_id, created_ms, reserved_micros, cost_micros, status, model}));
+    const spent = app => app.spend.filter(s => s.created_ms > input.spend_at_ms - 86400000)
+      .reduce((sum, s) => sum + (s.cost_micros ?? s.reserved_micros), 0);
+    assert.equal(spent(original), expectedMicros);
+    const critics = original.spend.filter(s => s.id.startsWith('legacy-import-critic-spend-'));
+    assert.equal(critics.length, criticCharges);
+    assert.ok(critics.every(s => s.work_id === 'legacy-import-job-job0' && s.model === 'synthetic-critic-model'));
+    if (mode === 'settled-generation') {
+      assert.deepEqual(original.spend.map(s => s.cost_micros), [1000, 0]);
+      assert.ok(original.spend.every(s => s.status === 'known'));
+    } else if (mode === 'unknown-generation') {
+      assert.ok(original.spend.every(s => s.cost_micros === null && s.status === 'unknown' && s.reserved_micros === 500000));
+    } else {
+      assert.equal(critics[0].cost_micros, mode === 'critic-budget' ? 3100000 : 700000);
+      assert.equal(critics[1].cost_micros, null);
+      assert.equal(critics[1].status, 'unknown');
+      assert.equal(critics[1].reserved_micros, 500000);
+      assert.equal(critics[1].created_ms, input.spend_at_ms, 'Never restart the unknown-charge clock');
+      if (mode === 'critic-lifecycles') {
+        assert.equal(critics[2].cost_micros, 0, 'Measured zero is not unknown');
+        assert.equal(critics[3].status, 'unknown', 'Pending sent work never becomes a new runnable assessment');
+        assert.equal(critics[4].created_ms, input.spend_at_ms - 86400001, 'Old costs stay historical');
+        assert.equal(critics[5].cost_micros, null, 'Old unknown reservations remain inspectable');
+      }
+    }
+    await restore(bytes, async ({response, fixture, name}) => {
+      assert.equal(response.status, 200, await response.text());
+      const origin = 'http://127.0.0.1';
+      let active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+      const exported = await active.worker.fetch(origin + '/export');
+      assert.equal(exported.status, 200);
+      const readback = await exported.json();
+      assert.deepEqual(selected(readback.app.spend), selected(original.spend));
+      assert.equal(spent(readback.app), input.spent_micros);
+      assert.deepEqual(readback.app.assessments, {}, 'Never recreate critic send leases');
+      assert.ok(Object.values(readback.app.jobs).every(j => j.lease === null && !['queued', 'sent', 'critic-sent'].includes(j.status)));
+      const settings = await active.worker.fetch(origin + '/settings');
+      assert.equal(settings.status, 200);
+      assert.ok((await settings.text()).includes('$' + (expectedMicros / 1000000).toFixed(2)));
+      if (mode === 'critic-budget') {
+        // Exercise the actual Rust capture/claim boundary through its internal
+        // authenticated DO interface. Outer Access ingress is tested separately.
+        const configuredOrigin = 'https://synthetic.invalid';
+        const operatorKey = 'synthetic-import-resume-key-at-least-32-chars';
+        active = await fixture.rebind({SCRY_ENV: 'preview', SPACE_NAME: name,
+          CANONICAL_ORIGIN: configuredOrigin, INTERNAL_KEY: internalKey, OPERATOR_KEY: operatorKey,
+          OPENROUTER_API_KEY: 'synthetic-import-budget-key', OPENROUTER_MODEL: 'synthetic-import-model'});
+        const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        const stub = ns.get(ns.idFromName(name));
+        const request = (path, init = {}) => stub.fetch(configuredOrigin + path, {...init,
+          headers: {'x-scry-internal-key': internalKey, 'x-scry-owner': 'private-owner', ...init.headers}});
+        assert.equal((await request('/operator/resume-work', {method: 'POST',
+          headers: {'x-scry-operator-key': operatorKey}})).status, 200);
+        const page = await request('/create');
+        assert.equal(page.status, 200);
+        const html = await page.text();
+        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)]
+          .map(match => [match[1], match[2]]));
+        assert.ok(fields.csrf && fields.operation_id);
+        const saved = await request('/create', {method: 'POST', redirect: 'manual',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: new URLSearchParams({...fields, intent: 'Synthetic deliberate new work after import'}).toString()});
+        assert.equal(saved.status, 303, await saved.text());
+        const goalId = saved.headers.get('Location').split('/').at(-1);
+        const deadline = Date.now() + 5000;
+        let app;
+        do {
+          app = (await (await request('/export')).json()).app;
+          if (app.goals[goalId].status === 'failed') break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } while (Date.now() < deadline);
+        assert.equal(app.goals[goalId].status, 'failed');
+        assert.match(app.jobs[app.goals[goalId].job_id].error, /allowance/);
+        assert.deepEqual(selected(app.spend), selected(original.spend), 'No new reserve or paid send beyond imported allowance');
+      }
+      assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
+      const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const list = await backups.list({prefix: 'snapshots/' + name + '/'});
+      assert.ok(list.objects.length >= 1);
+      const snapshot = Buffer.from(await (await backups.get(list.objects.at(-1).key)).arrayBuffer());
+      await restore(snapshot, async ({response, fixture, name}) => {
+        assert.equal(response.status, 200, await response.text());
+        const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+        const recovered = await (await active.worker.fetch(origin + '/export')).json();
+        assert.deepEqual(selected(recovered.app.spend), selected(original.spend));
+        assert.equal(spent(recovered.app), input.spent_micros);
+        assert.deepEqual(Buffer.concat(Object.entries(recovered.app.revival_go).sort().map(([, chunk]) => Buffer.from(chunk, 'base64'))), input.bytes);
+      });
+    });
+  }));
+}
 for (const mode of ['unsupported-algorithm', 'inexact-timestamp', 'unsupported-web', 'unsafe-integer',
-  'zero-rating', 'unsupported-correction', 'unsupported-assessment']) {
+  'zero-rating', 'unsupported-correction', 'unsupported-assessment', 'unsupported-generation-reservation',
+  'unsupported-old-active', 'unsupported-critic-purpose', 'unsupported-critic-owner',
+  'unsupported-critic-reservation', 'unsupported-critic-unsent', 'unsupported-critic-old-pending']) {
   test('refuses ' + mode + ' before destination writes without private diagnostics', () => fixture(mode, async ({request, destination}) => {
     assert.deepEqual(await request(), {status: 422, body: {error: 'INSPECTION_FAILED'}});
     assert.equal((await destination.list()).objects.length, 0);

@@ -177,6 +177,18 @@ not executable compatibility responses or new learning evidence. Uncertain
 historical jobs are paused, never resumed or sent. ADR 006 owns the mechanical
 legacy-note and original-schedule-epoch decisions.
 
+Both generator attempts and every transmitted `content_assessments` critic row
+project into the existing Rust spending ledger under their original job, identity,
+timestamp, request model and exact known cost or unknown reservation. Critic
+retries remain separate charges, never a new send lease. Known zero remains zero;
+Go's cleared settled reservation maps to Rust's nominal $0.50 reservation because
+measured cost always takes precedence. Exact original fields/results remain in
+the retained ZIP. Untransmitted zero-obligation critic rows stay historical only.
+Unknown amounts other than $0.50, unsupported critic purposes/policies/ownership,
+and old active/pending obligations that Rust's rolling window cannot represent
+refuse preparation before destination writes; never reset a charge's clock or
+silently release it. No spending engine or allowance policy is changed.
+
 This deliberately bounded converter refuses unsupported active shapes rather
 than inventing or silently dropping them: web documents, semantic-assessment
 rows, corrections/reset rows, merged concepts, ambiguous primary concepts,
@@ -200,6 +212,11 @@ The synthetic suite exercises native SQLite -> real CF converter/R2 -> actual
 Rust/WASM restore, exact content/card/history/media readback, accepted capture
 replay, a complete independent backup and second unused-space restore. It also
 proves malformed content fails Rust restoration with zero SQL/asset writes.
+Native Go SQL independently checks the financial fixtures against converted,
+restored and twice-recovered usage; an over-budget import blocks a new configured
+preparation without a provider send. Known zero, cleared measured reservations,
+unknown cost, critic retries, untransmitted work and old-window records are
+separate controls, not inferred from original-byte custody.
 These are local synthetic boundary proofs, not hosted learner reconciliation.
 An operator must keep the prepared learner body inside Cloudflare when invoking
 the existing isolated restore capability, compare runtime readback canonically,

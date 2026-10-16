@@ -48,7 +48,7 @@ export default {async fetch(request, env) {
     const tables = {};
     for (const name of ['sources', 'goals', 'jobs', 'concepts', 'notes', 'concept_relations', 'evidence',
       'assistance_exposures', 'quizzes', 'quiz_versions', 'schedules', 'concept_quizzes', 'presentations',
-      'review_events', 'grade_overrides', 'review_session', 'operations', 'job_attempts', 'preferences',
+      'review_events', 'grade_overrides', 'review_session', 'operations', 'job_attempts', 'content_assessments', 'preferences',
       'capture_images', 'corrections', 'semantic_assessments', 'source_documents']) tables[name] = table(db, sqlite, name);
     for (const image of tables.capture_images) image.sha256 = await hash(image.bytes);
     const {archive, counts} = project(tables, bytes, env.SOURCE_SHA256, manifest.created_at);

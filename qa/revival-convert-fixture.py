@@ -8,12 +8,14 @@ import json
 from pathlib import Path
 import sqlite3
 import sys
+import time
 import zipfile
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "valid"
 db = sqlite3.connect(":memory:")
 db.executescript(Path("target/revival-schema.sql").read_text())
 now = 1700000000000
+money_now = int(time.time() * 1000)
 canary = "SYNTHETIC_PRIVATE_CONVERSION_CANARY"
 encode = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))
 sha = lambda b: hashlib.sha256(b).hexdigest()
@@ -95,6 +97,47 @@ elif mode == "bad-content":
     bad = dict(contents[1], prompt="")
     db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
     db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
+elif mode in {"settled-generation", "unknown-generation", "unsupported-generation-reservation", "unsupported-old-active"}:
+    db.execute("UPDATE job_attempts SET started_at=?,finished_at=?", (money_now, money_now + 1))
+    if mode == "settled-generation":
+        db.execute("UPDATE job_attempts SET reserved_micros=0,cost_micros=CASE WHEN token='attempt0' THEN 1000 ELSE 0 END")
+    else:
+        db.execute("UPDATE job_attempts SET cost_micros=NULL,state=CASE WHEN token='attempt0' THEN 'active' ELSE 'unknown' END")
+        if mode == "unsupported-generation-reservation":
+            db.execute("UPDATE job_attempts SET reserved_micros=0")
+        elif mode == "unsupported-old-active":
+            db.execute("UPDATE job_attempts SET started_at=? WHERE state='active'", (money_now - 86400001,))
+elif mode.startswith("critic-") or mode.startswith("unsupported-critic-"):
+    # All records, including retries of the same candidate, remain independent
+    # paid obligations. The source's native SQL below is the allowance oracle.
+    entries = [("judged", 1, 700000, 0, money_now), ("failed", 1, None, 500000, money_now)]
+    if mode == "critic-lifecycles":
+        entries += [("failed", 1, 0, 0, money_now), ("pending", 1, None, 500000, money_now),
+                    ("pending", 0, None, 0, money_now), ("failed", 0, 0, 0, money_now),
+                    ("judged", 1, 200000, 0, money_now - 86400001),
+                    ("failed", 1, None, 500000, money_now - 86400001)]
+    elif mode == "critic-budget":
+        entries[0] = ("judged", 1, 3100000, 0, money_now)
+    else:
+        assert mode in {"critic-spend", "unsupported-critic-purpose", "unsupported-critic-owner",
+                        "unsupported-critic-reservation", "unsupported-critic-unsent", "unsupported-critic-old-pending"}
+    for index, (status, sent, cost, reserve, when) in enumerate(entries):
+        # Separate retry claims for one candidate: never collapse to latest.
+        token = f"critic-attempt{index}"
+        db.execute("INSERT INTO job_attempts(token,job_id,number,started_at,finished_at,reserved_micros,cost_micros,state) VALUES(?,?,?,?,?,?,?,?)",
+                   (token, "job0", index + 2, now, now + 1, 500000, 0, "settled"))
+        db.execute("INSERT INTO content_assessments(id,job_id,attempt_token,candidate_index,candidate_json,status,policy_version,request_model,request_json,created_at,finished_at,transmissions,cost_micros,reserved_micros) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (f"critic{index}", "job0", token, 0, "{}", status, "critic-v1", "synthetic-critic-model" if sent else "", "{}", when, when + 1 if status != "pending" else 0, sent, cost, reserve))
+    if mode == "unsupported-critic-purpose":
+        db.execute("UPDATE content_assessments SET purpose='dedupe' WHERE id='critic0'")
+    elif mode == "unsupported-critic-owner":
+        db.execute("UPDATE content_assessments SET attempt_token='attempt1' WHERE id='critic0'")
+    elif mode == "unsupported-critic-reservation":
+        db.execute("UPDATE content_assessments SET reserved_micros=1 WHERE id='critic1'")
+    elif mode == "unsupported-critic-unsent":
+        db.execute("UPDATE content_assessments SET transmissions=0 WHERE id='critic1'")
+    elif mode == "unsupported-critic-old-pending":
+        db.execute("UPDATE content_assessments SET status='pending',created_at=? WHERE id='critic1'", (money_now - 86400001,))
 else:
     assert mode == "valid"
 db.commit()
@@ -102,11 +145,14 @@ assert db.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
 assert db.execute("PRAGMA foreign_key_check").fetchall() == []
 data = db.serialize()
 manifest = {"format": 1, "id": "scry-20261015T003631.153157340Z-" + "a" * 32,
-            "created_at": now + 100000, "database": {"schema": 5, "application_id": 0x53435259},
+            "created_at": money_now, "database": {"schema": 5, "application_id": 0x53435259},
             "integrity": "ok", "bytes": len(data), "sha256": sha(data)}
 archive = io.BytesIO()
 with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as z:
     z.writestr("manifest.json", encode(manifest))
     z.writestr("scry.sqlite", data)
 print(json.dumps({"bytes": base64.b64encode(archive.getvalue()).decode(),
-                  "photo_sha256": sha(photo), "transition": transition, "original_content": contents[0]}))
+                  "photo_sha256": sha(photo), "transition": transition, "original_content": contents[0],
+                  "spend_at_ms": money_now,
+                  "spent_micros": db.execute("SELECT COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts WHERE started_at>=? OR state='active'),0)+COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM content_assessments WHERE created_at>=? OR status='pending'),0)",
+                                             (money_now - 86400000, money_now - 86400000)).fetchone()[0]}))

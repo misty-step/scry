@@ -218,13 +218,47 @@ export function project(tables, originalBytes, originalHash, created) {
     app.operations[old.id] = {payload_hash: old.payload_hash,
       result: {redirect: '/history', entity_id: null, message: 'legacy-import: original receipt retained in the Go archive.'}};
   }
+  const paid = (old, spendId, workId, when, model, pending) => {
+    require(Number.isSafeInteger(when) && when > 0);
+    require(Number.isSafeInteger(old.reserved_micros) && old.reserved_micros >= 0);
+    require(old.cost_micros === null || (Number.isSafeInteger(old.cost_micros) && old.cost_micros >= 0));
+    require(old.cost_micros !== null || old.reserved_micros === 500000);
+    require(typeof model === 'string' && model.length > 0 && encoder.encode(model).length <= 256);
+    // Go includes old active/pending charges outside the rolling window. Rust
+    // cannot express that exemption without changing its spending engine. Refuse
+    // those obligations instead of aging them out or restarting their clock.
+    require(!pending || (old.cost_micros ?? old.reserved_micros) === 0 || when > created - 86400000);
+    require(!app.spend.some(spend => spend.id === spendId));
+    // Rust keeps the nominal reservation even after settlement; known cost
+    // always takes precedence. Go clears the reservation on measured settlement.
+    // Keep exact cost (including zero), identity and time, with original fields
+    // byte-preserved in custody. Unknown amounts must match the native reserve.
+    app.spend.push({id: spendId, work_id: workId, created_ms: when,
+      reserved_micros: 500000, cost_micros: old.cost_micros,
+      status: old.cost_micros === null ? 'unknown' : 'known', model});
+  };
   for (const old of t('job_attempts')) {
-    require(old.reserved_micros === 500000 && ['active', 'unknown', 'settled'].includes(old.state));
+    require(['active', 'unknown', 'settled'].includes(old.state));
     const job = app.jobs[id('job', old.job_id)];
     require(job);
-    app.spend.push({id: id('spend', old.token), work_id: job.id, created_ms: old.started_at,
-      reserved_micros: old.reserved_micros, cost_micros: old.cost_micros,
-      status: old.cost_micros === null ? 'unknown' : 'known', model: job.model || 'legacy-import'});
+    paid(old, id('spend', old.token), job.id, old.started_at, job.model, old.state === 'active');
+  }
+  for (const old of t('content_assessments')) {
+    require(old.purpose === 'critic' && old.policy_version === 'critic-v1');
+    require(['pending', 'judged', 'failed'].includes(old.status) && [0, 1].includes(old.transmissions));
+    const attempt = unique(by(t('job_attempts'), 'token', old.attempt_token));
+    require(attempt.job_id === old.job_id);
+    const job = app.jobs[id('job', old.job_id)];
+    require(job);
+    if (old.transmissions === 0) {
+      // Staged or rejected before send: no paid obligation and no runnable work.
+      // Original criticism/candidates/results remain in the verbatim Go archive.
+      require(old.reserved_micros === 0 && (old.cost_micros === null || old.cost_micros === 0));
+      continue;
+    }
+    // Every sent row, including failed/retried candidates, keeps its own usage.
+    // Attach to the existing owning job, never recreate a critic send lease.
+    paid(old, id('critic-spend', old.id), job.id, old.created_at, old.request_model, old.status === 'pending');
   }
   for (let start = 0, index = 0; start < originalBytes.length; start += 48 * 1024, index++) {
     app.revival_go[originalHash + '/' + String(index).padStart(8, '0')] = base64(originalBytes.subarray(start, start + 48 * 1024));
