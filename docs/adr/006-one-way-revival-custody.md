@@ -100,6 +100,13 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   runtime initializes a new namespace concurrency revision at one, creates a
   fresh CSRF token and photo keys, clears inherited backup receipts and pauses
   uncertain work. Content/schedule/history versions do not reset with that epoch.
+  The temporary [custody bridge](../../revival/README.md#cloudflare-only-unused-space-restore-and-reconciliation)
+  transfers one pinned candidate directly from private R2 to that exact namespace,
+  then reconciles the native complete remote snapshot inside Cloudflare. It uses
+  only the isolated restore/internal capabilities, never a synthetic learner or
+  human identity. Every record and photo byte is compared after explicit native
+  restore normalization; only aggregate integrity receipts leave Cloudflare.
+  A used-target refusal and readback mismatch never authorize replacement.
 - Diagnose the whole preserved dataset before another import, inside the same
   private Cloudflare custody with no destination capability. Collection and
   conversion use the same projection guards; a complete diagnostic releases
