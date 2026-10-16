@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {createServer} from 'node:net';
 import {existsSync,readFileSync} from 'node:fs';
 import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -42,12 +41,11 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
-const freePort=async()=>{const s=createServer();await new Promise((ok,bad)=>{s.once('error',bad);s.listen(0,'127.0.0.1',ok);});const p=s.address().port;await new Promise(ok=>s.close(ok));return p;};
 let browser;
 try{
  browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
-  const runtime=await createSyntheticRuntime({port:await freePort(),name:`walk-${id.toLowerCase()}`});
+  const runtime=await createSyntheticRuntime({name:`walk-${id.toLowerCase()}`});
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);

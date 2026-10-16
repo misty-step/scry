@@ -28,13 +28,18 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
     {type:'ESModule',path:resolve(artifact,'index.js'),contents:readFileSync(resolve(artifact,'index.js'),'utf8')},
     {type:'CompiledWasm',path:resolve(artifact,'index_bg.wasm'),contents:readFileSync(resolve(artifact,'index_bg.wasm'))}
   ];
-  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,...(port?{host:'127.0.0.1',port}:{})};
+  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,...(port!==undefined?{host:'127.0.0.1',port}:{})};
   const options=runtime.convertV4MiniflareOptions?runtime.convertV4MiniflareOptions(v4):v4;
   if(inspect)options.unsafeInspectDurableObjects=true;
   const mf=new runtime.Miniflare(options);
   try {await mf.ready;return {mf,worker:await mf.getWorker(),url:bindings.CANONICAL_ORIGIN,rebind:async nextBindings=>{const next={...v4,bindings:nextBindings};const options=runtime.convertV4MiniflareOptions?runtime.convertV4MiniflareOptions(next):next;if(inspect)options.unsafeInspectDurableObjects=true;await mf.setOptions(options);return {worker:await mf.getWorker(),url:nextBindings.CANONICAL_ORIGIN};}};}
   catch(error){await mf.dispose();throw error;}
 }
-export function createSyntheticRuntime({port=8788,name='scry-browser-synthetic',artifact}={}) {
-  return createRuntime({port,name,artifact,bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:`http://127.0.0.1:${port}`,SPACE_NAME:'synthetic-browser-only',INTERNAL_KEY:internalKey}});
+export async function createSyntheticRuntime({port=0,name='scry-browser-synthetic',artifact}={}) {
+  const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:`http://127.0.0.1:${port}`,SPACE_NAME:'synthetic-browser-only',INTERNAL_KEY:internalKey};
+  const local=await createRuntime({port,name,artifact,bindings});
+  // Let workerd own port 0, then configure its actual canonical origin.
+  // Miniflare retains that listener when updating bindings with port:0.
+  try {return {...local,...await local.rebind({...bindings,CANONICAL_ORIGIN:(await local.mf.ready).origin})};}
+  catch(error){await local.mf.dispose();throw error;}
 }

@@ -5,7 +5,8 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, createHash } from 'node:crypto';
 import test from 'node:test';
-import {createRuntime,Response,internalKey} from './runtime-helper.mjs';
+import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
+import {createServer} from 'node:net';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
@@ -408,3 +409,44 @@ try {
   });
   console.log(JSON.stringify({status:checks===27?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
+
+await test('listener allocation survives deterministic contention and concurrent isolated starts',async t=>{
+  // Reclaim a probe's released port before workerd starts: the old race,
+  // controlled without timing, retries, a global lock or another service.
+  const probe=createServer();
+  await new Promise((ok,bad)=>{probe.once('error',bad);probe.listen(0,'127.0.0.1',ok);});
+  const port=probe.address().port;
+  await new Promise(ok=>probe.close(ok));
+  const contender=createServer();
+  await new Promise((ok,bad)=>{contender.once('error',bad);contender.listen(port,'127.0.0.1',ok);});
+  t.after(()=>new Promise(ok=>contender.close(ok)));
+  await assert.rejects(createSyntheticRuntime({port,artifact}),{code:'ERR_ADDRESS_IN_USE'});
+
+  // Identical names/bindings must still own distinct listeners and stores.
+  const starts=await Promise.allSettled(Array.from({length:4},(_,i)=>
+    createSyntheticRuntime({artifact,...(i===0?{port:0}:{})}).then(local=>{t.after(()=>local.mf.dispose());return local;})));
+  for(const start of starts)assert.equal(start.status,'fulfilled',start.reason?.stack);
+  const runtimes=starts.map(start=>start.value);
+  assert.equal(new Set(runtimes.map(local=>local.url)).size,runtimes.length);
+  for(const local of runtimes){
+    const listener=(await local.mf.ready).origin;
+    assert.equal(local.url,listener,'Canonical origin must match the retained native listener.');
+    assert.equal(new URL(listener).hostname,'127.0.0.1');
+    assert.notEqual(new URL(listener).port,'0');
+    assert.notEqual(new URL(listener).port,String(port));
+    const response=await fetch(listener+'/create');
+    assert.equal(response.status,200);
+    const html=await response.text();
+    const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+    assert.ok(fields.csrf);
+    const submit=origin=>fetch(listener+'/create',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,intent:'Listener-owned isolated capture'})});
+    assert.equal((await submit('https://foreign.invalid')).status,403);
+    assert.equal((await submit(runtimes.find(other=>other!==local).url)).status,403);
+    assert.equal((await fetch(listener+'/',{headers:{'X-Scry-Test-Host':'foreign.invalid'}})).status,421);
+    assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,0);
+    assert.equal((await submit(listener)).status,303,'A rejected write must not consume the operation.');
+    assert.equal((await submit(listener)).status,303,'An exact retry must remain idempotent.');
+    assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,1);
+  }
+  console.log(JSON.stringify({listener_allocation:'PASS',reclaimed_probe_port:port,concurrent_origins:runtimes.map(local=>local.url),isolated_goals_per_runtime:1,foreign_origin_status:403,foreign_host_status:421,canonical_write_and_replay_status:303}));
+});
