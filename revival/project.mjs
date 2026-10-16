@@ -220,6 +220,12 @@ function runProjection(tables, originalBytes, originalHash, created, refusals = 
     const authority = ungraded ? 'ungraded' : old.outcome === 'revealed' ? 'reveal' : old.grading === 'exact-v1' ? 'exact' :
       old.grading === 'learner-v1' ? 'learner' : ['short-v1', 'semantic-v1'].includes(old.grading) ? 'jev' : null;
     require(authority, 'event-authority');
+    // Go SelfGrade and Rust use different names for the same deliberate
+    // learner judgment. Translate vocabulary only; never infer a grade or
+    // erase assistance. Original spelling and every source byte stay in custody.
+    const learnerOutcome = old.outcome === 'self_correct' ? 'correct' : old.outcome === 'self_missed' ? 'wrong' : null;
+    require(!learnerOutcome || (authority === 'learner' && old.assisted === 0 &&
+      old.rating === (learnerOutcome === 'correct' ? 3 : 1)), 'event-learner-judgment');
     const before = card(old.schedule_before), after = card(old.schedule_after);
     require(!observation || JSON.stringify(before) === JSON.stringify(after), 'event-observation-card');
     // Go leaves the presentation's due_at sentinel at zero when no schedule
@@ -229,7 +235,7 @@ function runProjection(tables, originalBytes, originalHash, created, refusals = 
       question_id: q.id, concept_id: q.concept_id, presentation, answer: old.answer,
       assisted: old.assisted === 1, before_card: before, after_card: after,
       schedule_version: old.schedule_version_after, algorithm: old.algorithm,
-      result: {event_id: id('event', old.id), outcome: old.outcome, authority, rating: old.rating,
+      result: {event_id: id('event', old.id), outcome: learnerOutcome || old.outcome, authority, rating: old.rating,
         reviewed_ms: old.reviewed_at, due_ms: after.due_ms, corrected: false}};
     app.events.push(event);
   });
