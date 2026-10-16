@@ -175,7 +175,9 @@ reuse. Go-specific receipt kinds/result JSON and all other historical/source/
 foundation/operational rows remain exactly recoverable in the original ZIP,
 not executable compatibility responses or new learning evidence. Uncertain
 historical jobs are paused, never resumed or sent. ADR 006 owns the mechanical
-legacy-note and original-schedule-epoch decisions.
+legacy-note, original-schedule-epoch and assisted zero-rating observation
+decisions, including their compatibility/rollback limits. These observations
+remain history, never invented scheduler writes or unaided recall.
 
 Both generator attempts and every transmitted `content_assessments` critic row
 project into the existing Rust spending ledger under their original job, identity,
@@ -192,8 +194,8 @@ silently release it. No spending engine or allowance policy is changed.
 This deliberately bounded converter refuses unsupported active shapes rather
 than inventing or silently dropping them: web documents, semantic-assessment
 rows, corrections/reset rows, merged concepts, ambiguous primary concepts,
-zero-rating Go events, incompatible algorithms, unsafe integers or submillisecond
-scheduler timestamps. Any such refusal must be investigated inside Cloudflare
+unsupported zero-rating outcomes, incompatible algorithms, unsafe integers or
+submillisecond scheduler timestamps. Any such refusal must be investigated inside Cloudflare
 and repaired with an independently reviewed transformation before cutover.
 It does not reinterpret an unsupported dataset as a fresh start.
 

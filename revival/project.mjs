@@ -168,7 +168,9 @@ export function project(tables, originalBytes, originalHash, created) {
   require(Object.keys(app.questions).length === t('schedules').length);
   const presentations = new Map(t('presentations').map(p => [p.id, p]));
   for (const old of [...t('review_events')].sort((a, b) => a.reviewed_at - b.reviewed_at || a.id.localeCompare(b.id))) {
-    require([1, 3].includes(old.rating) && old.schedule_version_after === old.schedule_version_before + 1, 'event-transition');
+    const observation = old.rating === 0;
+    require([0, 1, 3].includes(old.rating) && old.schedule_version_after === old.schedule_version_before + (observation ? 0 : 1), 'event-transition');
+    require(!observation || (old.assisted === 1 && ['warm_correct', 'warm_wrong'].includes(old.outcome)), 'event-observation');
     const presented = presentations.get(old.presentation_id);
     require(presented);
     const q = app.questions[id('quiz', presented.quiz_id)];
@@ -181,13 +183,16 @@ export function project(tables, originalBytes, originalHash, created) {
       old.grading === 'learner-v1' ? 'learner' : ['short-v1', 'semantic-v1'].includes(old.grading) ? 'jev' : null;
     require(authority, 'event-authority');
     const before = card(old.schedule_before), after = card(old.schedule_after);
-    require(after.due_ms === old.due_at);
+    require(!observation || JSON.stringify(before) === JSON.stringify(after), 'event-observation-card');
+    // Go leaves the presentation's due_at sentinel at zero when no schedule
+    // was written. Rust's result names the unchanged real card's due date.
+    require(after.due_ms === old.due_at || (observation && old.due_at === 0), 'event-due');
     const event = {id: id('event', old.id), occurrence_id: id('presentation', old.presentation_id),
       question_id: q.id, concept_id: q.concept_id, presentation, answer: old.answer,
       assisted: old.assisted === 1, before_card: before, after_card: after,
       schedule_version: old.schedule_version_after, algorithm: old.algorithm,
       result: {event_id: id('event', old.id), outcome: old.outcome, authority, rating: old.rating,
-        reviewed_ms: old.reviewed_at, due_ms: old.due_at, corrected: false}};
+        reviewed_ms: old.reviewed_at, due_ms: after.due_ms, corrected: false}};
     app.events.push(event);
   }
   for (const old of t('grade_overrides')) {
