@@ -197,17 +197,20 @@ elif mode == "private-shape-error":
     bad = dict(contents[1], rubric={"required": canary})
     db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
     db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
-elif mode in {"settled-generation", "unknown-generation", "unsupported-generation-reservation", "unsupported-old-active"}:
+elif mode == "legacy-generation-reservations":
+    db.execute("DELETE FROM job_attempts")
+    for index, reserve in enumerate([0, 1, 500000, 900000]):
+        db.execute("INSERT INTO job_attempts(token,job_id,number,started_at,finished_at,reserved_micros,cost_micros,state) VALUES(?,?,?,?,?,?,?,?)",
+                   (f"legacy-attempt{index}", "job0", index + 1, money_now, money_now + 1, reserve, None, "unknown"))
+elif mode in {"settled-generation", "unknown-generation", "unsupported-old-active"}:
     db.execute("UPDATE job_attempts SET started_at=?,finished_at=?", (money_now, money_now + 1))
     if mode == "settled-generation":
         db.execute("UPDATE job_attempts SET reserved_micros=0,cost_micros=CASE WHEN token='attempt0' THEN 1000 ELSE 0 END")
     else:
         db.execute("UPDATE job_attempts SET cost_micros=NULL,state=CASE WHEN token='attempt0' THEN 'active' ELSE 'unknown' END")
-        if mode == "unsupported-generation-reservation":
-            db.execute("UPDATE job_attempts SET reserved_micros=0")
-        elif mode == "unsupported-old-active":
+        if mode == "unsupported-old-active":
             db.execute("UPDATE job_attempts SET started_at=? WHERE state='active'", (money_now - 86400001,))
-elif mode.startswith("critic-") or mode.startswith("unsupported-critic-"):
+elif mode.startswith("critic-") or mode.startswith("unsupported-critic-") or mode.startswith("legacy-critic-"):
     # All records, including retries of the same candidate, remain independent
     # paid obligations. The source's native SQL below is the allowance oracle.
     entries = [("judged", 1, 700000, 0, money_now), ("failed", 1, None, 500000, money_now)]
@@ -218,9 +221,12 @@ elif mode.startswith("critic-") or mode.startswith("unsupported-critic-"):
                     ("failed", 1, None, 500000, money_now - 86400001)]
     elif mode == "critic-budget":
         entries[0] = ("judged", 1, 3100000, 0, money_now)
+    elif mode in {"legacy-critic-reservations", "legacy-critic-budget"}:
+        entries = [("failed", 1, None, reserve, money_now) for reserve in
+                   [0, 1, 500000, 2500001 if mode == "legacy-critic-budget" else 900000]]
     else:
         assert mode in {"critic-spend", "unsupported-critic-purpose", "unsupported-critic-owner",
-                        "unsupported-critic-reservation", "unsupported-critic-unsent", "unsupported-critic-old-pending"}
+                        "unsupported-critic-unsent", "unsupported-critic-old-pending"}
     for index, (status, sent, cost, reserve, when) in enumerate(entries):
         # Separate retry claims for one candidate: never collapse to latest.
         token = f"critic-attempt{index}"
@@ -232,8 +238,6 @@ elif mode.startswith("critic-") or mode.startswith("unsupported-critic-"):
         db.execute("UPDATE content_assessments SET purpose='dedupe' WHERE id='critic0'")
     elif mode == "unsupported-critic-owner":
         db.execute("UPDATE content_assessments SET attempt_token='attempt1' WHERE id='critic0'")
-    elif mode == "unsupported-critic-reservation":
-        db.execute("UPDATE content_assessments SET reserved_micros=1 WHERE id='critic1'")
     elif mode == "unsupported-critic-unsent":
         db.execute("UPDATE content_assessments SET transmissions=0 WHERE id='critic1'")
     elif mode == "unsupported-critic-old-pending":
@@ -254,5 +258,7 @@ with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as z:
 print(json.dumps({"bytes": base64.b64encode(archive.getvalue()).decode(),
                   "photo_sha256": sha(photo), "transition": transition, "original_content": contents[0],
                   "spend_at_ms": money_now,
+                  "conservative_spent_micros": db.execute("SELECT COALESCE((SELECT sum(COALESCE(cost_micros,max(reserved_micros,500000))) FROM job_attempts WHERE started_at>=? OR state='active'),0)+COALESCE((SELECT sum(COALESCE(cost_micros,max(reserved_micros,500000))) FROM content_assessments WHERE transmissions>0 AND (created_at>=? OR status='pending')),0)",
+                                                          (money_now - 86400000, money_now - 86400000)).fetchone()[0],
                   "spent_micros": db.execute("SELECT COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM job_attempts WHERE started_at>=? OR state='active'),0)+COALESCE((SELECT sum(COALESCE(cost_micros,reserved_micros)) FROM content_assessments WHERE created_at>=? OR status='pending'),0)",
                                              (money_now - 86400000, money_now - 86400000)).fetchone()[0]}))

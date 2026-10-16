@@ -271,7 +271,6 @@ function runProjection(tables, originalBytes, originalHash, created, refusals = 
     require(Number.isSafeInteger(when) && when > 0);
     require(Number.isSafeInteger(old.reserved_micros) && old.reserved_micros >= 0);
     require(old.cost_micros === null || (Number.isSafeInteger(old.cost_micros) && old.cost_micros >= 0));
-    require(old.cost_micros !== null || old.reserved_micros === 500000, 'unknown-reservation');
     require(typeof model === 'string' && model.length > 0 && encoder.encode(model).length <= 256);
     // Go includes old active/pending charges outside the rolling window. Rust
     // cannot express that exemption without changing its spending engine. Refuse
@@ -280,10 +279,11 @@ function runProjection(tables, originalBytes, originalHash, created, refusals = 
     require(!app.spend.some(spend => spend.id === spendId));
     // Rust keeps the nominal reservation even after settlement; known cost
     // always takes precedence. Go clears the reservation on measured settlement.
-    // Keep exact cost (including zero), identity and time, with original fields
-    // byte-preserved in custody. Unknown amounts must match the native reserve.
+    // Keep exact cost (including zero), identity and time. Unknown usage keeps
+    // at least BOTH the original obligation and Rust's conservative reservation;
+    // it never becomes measured zero. Exact original fields stay in custody.
     app.spend.push({id: spendId, work_id: workId, created_ms: when,
-      reserved_micros: 500000, cost_micros: old.cost_micros,
+      reserved_micros: old.cost_micros === null ? Math.max(500000, old.reserved_micros) : 500000, cost_micros: old.cost_micros,
       status: old.cost_micros === null ? 'unknown' : 'known', model});
   };
   visit(t('job_attempts'), old => {

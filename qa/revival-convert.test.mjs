@@ -83,7 +83,7 @@ for (const [mode, expected] of [
   ['critic-lifecycles', {}],
   ['unsupported-algorithm', {'scheduler-algorithm': 3}],
   ['diagnostic-multiclass', {'content-grading': 1, 'event-transition': 1,
-    'scheduler-algorithm': 3, 'unknown-reservation': 2,
+    'scheduler-algorithm': 3,
     'unsupported-assessments-or-corrections': 2, 'unsupported-web-documents': 2}],
   ['diagnostic-same-row', {'event-due': 1, 'event-observation': 1, 'event-observation-card': 1, 'event-transition': 1}],
   ['diagnostic-event-version', {'event-content': 1}],
@@ -248,11 +248,14 @@ test('forged/expired/body/alternate-path requests cannot create a projection', (
 for (const [mode, expectedMicros, criticCharges] of [
   ['settled-generation', 1000, 0], ['unknown-generation', 1000000, 0],
   ['critic-spend', 1200000, 2], ['critic-lifecycles', 1700000, 6], ['critic-budget', 3600000, 2],
+  ['legacy-generation-reservations', 2400000, 0], ['legacy-critic-reservations', 2400000, 4],
+  ['legacy-critic-budget', 4000001, 4],
 ]) {
   test(mode + ': original monetary obligations survive CF projection, Rust restore and independent backup', () => fixture(mode, async ({request, destination, input}) => {
     const result = await request();
     assert.equal(result.status, 200);
-    assert.equal(input.spent_micros, expectedMicros, 'Independent native Go SQL allowance oracle');
+    assert.equal(input.conservative_spent_micros, expectedMicros, 'Independent native SQL conservative allowance oracle');
+    assert.ok(expectedMicros >= input.spent_micros, 'Never discard a retained monetary obligation');
     const bytes = Buffer.from(await (await destination.get(result.body.destination_key)).arrayBuffer());
     const original = JSON.parse(bytes).app;
     const selected = records => records.map(({id, work_id, created_ms, reserved_micros, cost_micros, status, model}) =>
@@ -263,7 +266,12 @@ for (const [mode, expectedMicros, criticCharges] of [
     const critics = original.spend.filter(s => s.id.startsWith('legacy-import-critic-spend-'));
     assert.equal(critics.length, criticCharges);
     assert.ok(critics.every(s => s.work_id === 'legacy-import-job-job0' && s.model === 'synthetic-critic-model'));
-    if (mode === 'settled-generation') {
+    if (mode.startsWith('legacy-')) {
+      const imported = mode === 'legacy-generation-reservations' ? original.spend : critics;
+      assert.deepEqual(imported.map(s => s.reserved_micros), [500000, 500000, 500000,
+        mode === 'legacy-critic-budget' ? 2500001 : 900000]);
+      assert.ok(imported.every(s => s.cost_micros === null && s.status === 'unknown' && s.created_ms === input.spend_at_ms));
+    } else if (mode === 'settled-generation') {
       assert.deepEqual(original.spend.map(s => s.cost_micros), [1000, 0]);
       assert.ok(original.spend.every(s => s.status === 'known'));
     } else if (mode === 'unknown-generation') {
@@ -289,13 +297,13 @@ for (const [mode, expectedMicros, criticCharges] of [
       assert.equal(exported.status, 200);
       const readback = await exported.json();
       assert.deepEqual(selected(readback.app.spend), selected(original.spend));
-      assert.equal(spent(readback.app), input.spent_micros);
+      assert.equal(spent(readback.app), expectedMicros);
       assert.deepEqual(readback.app.assessments, {}, 'Never recreate critic send leases');
       assert.ok(Object.values(readback.app.jobs).every(j => j.lease === null && !['queued', 'sent', 'critic-sent'].includes(j.status)));
       const settings = await active.worker.fetch(origin + '/settings');
       assert.equal(settings.status, 200);
       assert.ok((await settings.text()).includes('$' + (expectedMicros / 1000000).toFixed(2)));
-      if (mode === 'critic-budget') {
+      if (mode === 'critic-budget' || mode === 'legacy-critic-budget') {
         // Exercise the actual Rust capture/claim boundary through its internal
         // authenticated DO interface. Outer Access ingress is tested separately.
         const configuredOrigin = 'https://synthetic.invalid';
@@ -341,7 +349,7 @@ for (const [mode, expectedMicros, criticCharges] of [
         const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
         const recovered = await (await active.worker.fetch(origin + '/export')).json();
         assert.deepEqual(selected(recovered.app.spend), selected(original.spend));
-        assert.equal(spent(recovered.app), input.spent_micros);
+        assert.equal(spent(recovered.app), expectedMicros);
         assert.deepEqual(Buffer.concat(Object.entries(recovered.app.revival_go).sort().map(([, chunk]) => Buffer.from(chunk, 'base64'))), input.bytes);
       });
     });
@@ -491,11 +499,9 @@ for (const [mode, reason] of [
   ['zero-rating-bad-due', 'event-due'],
   ['unsupported-correction', 'unsupported-assessments-or-corrections'],
   ['unsupported-assessment', 'unsupported-assessments-or-corrections'],
-  ['unsupported-generation-reservation', 'unknown-reservation'],
   ['unsupported-old-active', 'old-pending-usage'],
   ['unsupported-critic-purpose', 'critic-policy'],
   ['unsupported-critic-owner', 'critic-ownership'],
-  ['unsupported-critic-reservation', 'unknown-reservation'],
   ['unsupported-critic-unsent', 'invariant'],
   ['unsupported-critic-old-pending', 'old-pending-usage'],
 ]) {
@@ -505,6 +511,32 @@ for (const [mode, reason] of [
     assert.equal((await destination.list()).objects.length, 0);
   }));
 }
+test('larger unknown imported reservations cannot relax ordinary archive accounting', () => fixture('legacy-critic-reservations', async ({request, destination}) => {
+  const prepared = await request();
+  assert.equal(prepared.status, 200);
+  const original = JSON.parse(await (await destination.get(prepared.body.destination_key)).text());
+  for (const mode of ['custody', 'spend-marker', 'job-marker', 'known', 'below-floor']) {
+    const archive = structuredClone(original), app = archive.app;
+    const spend = app.spend.find(s => s.reserved_micros === 900000);
+    assert.ok(spend);
+    if (mode === 'custody') app.revival_go = {};
+    if (mode === 'spend-marker') spend.id = 'ordinary-paid-attempt';
+    if (mode === 'job-marker') {
+      const old = spend.work_id, job = app.jobs[old];
+      delete app.jobs[old]; job.id = 'ordinary-job'; app.jobs[job.id] = job;
+      for (const goal of Object.values(app.goals)) if (goal.job_id === old) goal.job_id = job.id;
+      for (const charge of app.spend) if (charge.work_id === old) charge.work_id = job.id;
+    }
+    if (mode === 'known') {spend.cost_micros = 0; spend.status = 'known';}
+    if (mode === 'below-floor') spend.reserved_micros = 499999;
+    await restore(Buffer.from(JSON.stringify(archive)), async ({response, fixture, name}) => {
+      assert.equal(response.status, 422, mode);
+      const storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+      assert.deepEqual(await storage.exec('SELECT key FROM records'), []);
+      assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length, 0);
+    });
+  }
+}));
 test('a conflicting existing destination is never overwritten', () => fixture('valid', async ({request, destination}) => {
   const first = await request();
   assert.equal(first.status, 200);
