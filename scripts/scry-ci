@@ -231,7 +231,7 @@ def gate(args):
     inspect_artifact = {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}
     converter = source / "target/revival-convert"
     convert_artifact = {p.name: digest(p.read_bytes()) for p in sorted(converter.iterdir()) if p.is_file()}
-    run(["node", "--test", "qa/revival-inspect.test.mjs", "qa/revival-convert.test.mjs"], cwd=source, env=inspect_env, log=log)
+    run(["node", "--test", "qa/revival-inspect.test.mjs", "qa/revival-convert.test.mjs", "qa/revival-restore.test.mjs"], cwd=source, env=inspect_env, log=log)
     require(inspect_artifact == {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}, "smoke changed the revival inspector")
     require(convert_artifact == {p.name: digest(p.read_bytes()) for p in sorted(converter.iterdir()) if p.is_file()}, "smoke changed the revival converter")
     walk_env = qa_env

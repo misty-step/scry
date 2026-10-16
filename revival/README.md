@@ -269,3 +269,57 @@ An operator must keep the prepared learner body inside Cloudflare when invoking
 the existing isolated restore capability, compare runtime readback canonically,
 and complete the remaining one-writer/private/live/rollback conditions before
 cutover. Never download the prepared body to perform that operation.
+
+## Cloudflare-only unused-space restore and reconciliation
+
+`restore.mjs` is the temporary custody bridge for the last step above. It reads
+one deployment-pinned `converted-go/<original-sha256>/<candidate-sha256>.json`
+from private `SOURCE`, checks `SOURCE_BYTES` and `SOURCE_SHA256`, and sends those
+bytes directly to the exact compatible Rust `LearningSpace` through `TARGET`.
+No archive, export, photo or learner response passes through the operator.
+This is not a mapper, owner endpoint, production release workflow or new restore
+implementation. The existing Rust restore validates the complete archive, refuses
+a used space, verifies media, creates fresh CSRF/photo identities and pauses work.
+
+Deploy only the independently reviewed module from the verified CI source archive.
+Bind `TARGET` to the separately deployed compatible Rust Worker's exact isolated
+namespace; pin `SPACE_NAME` to an unused `revival-…` (or `synthetic-…`) object.
+That Worker stays in `SCRY_ENV=restore`, has no provider credentials, synthetic-QA
+principal, routes or enabled provider/version URLs. Bind `BACKUPS` to that target's
+private backup bucket, not a production or original-custody bucket. Read back all
+namespace, space, mode, secret-name and private-bucket metadata before invocation.
+
+The bridge has its own memory-only `TRANSFER_KEY` (at least 32 characters) and
+absolute `TRANSFER_UNTIL_MS`. It also needs the isolated target's `INTERNAL_KEY`
+and `RESTORE_TOKEN`, never an owner identity or account/deployment credential.
+Only authenticated empty-body `POST /restore` and `POST /verify` exist; requests
+cannot choose a key, target, SQL, URL or operation payload. Use the existing private
+remote-preview path, synthetic denial drill and actual immutable expiry procedure.
+There is no external `fetch`, logging, deletion, model call or learner-principal mode.
+
+After native restore, the bridge invokes the existing complete backup on that
+same object. It identifies exactly one newly created snapshot, reads it back
+inside Cloudflare and strictly compares every application field and every photo
+byte against the pinned candidate. Only documented restore changes and native
+Serde defaults are normalized; no reference-read exposure, schedule, monetary,
+history or operation change is ignored. Successful output contains only fixed
+section names/counts/digests and snapshot integrity metadata. Rust's own backup
+has already validated full remote size, hash, bytes and archive semantics.
+
+A repeated `/restore` retains native 409 without overwriting or backing up the
+used target. `/verify` recovers a completed restore after an interrupted bridge
+response: an intentionally invalid native restore proves the target is used
+without initializing an unused object, then repeats backup and reconciliation.
+A mismatch returns fixed `RECONCILIATION_FAILED`, never private differences, and
+never replaces accepted data. A failed bridge receipt is not an import pass;
+retain the target for diagnosis. Remove the target restore capability after proof
+and observe the bridge's original immutable token expire before learner operations
+are considered finished. Keep the snapshot and compatible artifact independently.
+
+    node --test qa/revival-restore.test.mjs
+
+The existing gate runs this after building the converter. Native Go fixtures pass
+through the exact converter, real bridge and real Rust/WASM SQLite/R2 target,
+including media, history, conservative reservations, refusal and recovery. Those
+synthetic observations do not establish learner restoration or final consistency,
+one writer, private owner access, live cutover, telemetry or compatible rollback.
