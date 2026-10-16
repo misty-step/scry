@@ -59,9 +59,10 @@ for n in range(3):
     if mode == "zero-rating-wrong":
         q.update(kind="choice", choices=["freshness", "revalidation"])
     contents.append(q)
-    db.execute("INSERT INTO quizzes VALUES(?,?,?,?,?,?,?)", (f"quiz{n}", source, 2 if n == 0 else 1, 0, now, "job0" if n < 2 else "job1", n))
+    newer_version = n == 0 and not mode.startswith("selfcheck")
+    db.execute("INSERT INTO quizzes VALUES(?,?,?,?,?,?,?)", (f"quiz{n}", source, 2 if newer_version else 1, 0, now, "job0" if n < 2 else "job1", n))
     db.execute("INSERT INTO quiz_versions VALUES(?,?,?,?,?,?)", (f"quiz{n}", 1, encode(q), "synthetic-original-model", "prompt-v1", now))
-    if n == 0:
+    if newer_version:
         newer = dict(q, prompt="Which policy governs fresh cached response reuse?")
         db.execute("INSERT INTO quiz_versions VALUES(?,?,?,?,?,?)", ("quiz0", 2, encode(newer), "synthetic-original-model", "prompt-v2", now + 1))
     c = transition["after"] if n == 0 else transition["before"]
@@ -75,7 +76,30 @@ assisted = int(outcome == "revealed")
 db.execute("INSERT INTO presentations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("presentation0", "quiz0", 1, 1, encode(snapshot), now, answer, outcome, assisted, 1, transition["rating"], transition["after"]["due_ms"], transition["now_ms"], "event0"))
 db.execute("INSERT INTO review_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("event0", "presentation0", encode(snapshot), answer, outcome, transition["rating"], assisted, transition["now_ms"], transition["after"]["due_ms"], algorithm, go_card(transition["before"]), go_card(transition["after"]), 1, 2, "exact-v1"))
 db.execute("UPDATE review_session SET current_id='presentation0'")
-if mode.startswith("zero-rating"):
+if mode.startswith("selfcheck"):
+    # Pre-f966 Go Grade/Submit saved an ungraded exact-policy self-check
+    # before any later learner grade, sometimes repeatedly on one presentation.
+    db.execute("DROP TRIGGER immutable_review_update")
+    before = go_card(transition["before"])
+    if mode in {"selfcheck-history", "selfcheck-repeated"}:
+        for index in range(2 if mode == "selfcheck-repeated" else 1):
+            db.execute("INSERT INTO review_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (f"ungraded{index}", "presentation0", encode(snapshot), "FRESHNESS", "selfcheck", 0, 0, transition["now_ms"] - 1, 0, algorithm, before, before, 1, 1, "exact-v1"))
+    else:
+        outcome = "warm_selfcheck" if mode == "selfcheck-helped" else "selfcheck"
+        assisted = int(mode == "selfcheck-helped")
+        db.execute("UPDATE review_events SET rating=0,assisted=?,answer='FRESHNESS',outcome=?,schedule_version_after=1,schedule_after=?,due_at=0", (assisted, outcome, before))
+        db.execute("UPDATE presentations SET rating=0,graded=?,assisted=?,answer='FRESHNESS',outcome=?,due_at=0", (assisted, assisted, outcome))
+        db.execute("UPDATE schedules SET version=1,card=?,due_at=? WHERE quiz_id='quiz0'", (before, transition["before"]["due_ms"]))
+        if mode == "selfcheck-changing-card":
+            db.execute("UPDATE review_events SET schedule_after=?", (go_card(transition["after"]),))
+        elif mode == "selfcheck-changing-version":
+            db.execute("UPDATE review_events SET schedule_version_after=2")
+        elif mode == "selfcheck-bad-policy":
+            db.execute("UPDATE review_events SET grading='learner-v1'")
+        else:
+            assert mode in {"selfcheck", "selfcheck-helped"}
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode.startswith("zero-rating"):
     db.execute("DROP TRIGGER immutable_review_update")
     before = go_card(transition["before"])
     if mode == "zero-rating-chain":
@@ -108,6 +132,46 @@ if mode.startswith("zero-rating"):
         else:
             assert mode == "zero-rating"
     db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode in {"diagnostic-multiclass", "diagnostic-same-row"}:
+    db.execute("DROP TRIGGER immutable_review_update")
+    if mode == "diagnostic-multiclass":
+        db.execute("UPDATE schedules SET algorithm='SYNTHETIC_PRIVATE_UNSUPPORTED'")
+        db.execute("UPDATE review_events SET schedule_version_after=99")
+        db.execute("UPDATE job_attempts SET cost_micros=NULL,reserved_micros=1")
+        db.execute("DROP TRIGGER immutable_version_update")
+        bad = dict(contents[1], grading=canary)
+        db.execute("UPDATE quiz_versions SET content=? WHERE quiz_id='quiz1'", (encode(bad),))
+        db.execute("CREATE TRIGGER immutable_version_update BEFORE UPDATE ON quiz_versions BEGIN SELECT RAISE(ABORT,'quiz versions are immutable'); END")
+        db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))
+        db.execute("INSERT INTO semantic_assessments(id,presentation_id,operation_id,content_version,schedule_version,answer,status,policy_version,request_model,request_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                   ("assessment0", "presentation0", "assessment-operation", 1, 1, canary, "failed", "short-v1", "synthetic", "{}", now))
+        for index in range(2):
+            db.execute("INSERT INTO source_documents VALUES(?,?,?,?,?,?,?,?,?,?,?)", (f"web{index}", "source0", "job0", "page", index, "https://synthetic.invalid", canary, "", canary, "synthetic", now))
+    else:
+        db.execute("UPDATE review_events SET rating=0,assisted=0,outcome='correct',schedule_version_after=99,due_at=123")
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode.startswith("diagnostic-event-"):
+    # Independent, parseable nested faults. In the middle-dataset case, rows
+    # before and after the mismatched snapshot must both contribute counts.
+    fault = mode.removeprefix("diagnostic-event-")
+    assert fault in {"version", "grading", "combined", "nested", "middle"}
+    bad: dict[str, object] = dict(snapshot)
+    if fault != "grading":
+        bad["version"] = 99
+    if fault != "version":
+        bad["grading"] = canary
+    if fault in {"nested", "middle"}:
+        bad.update(kind=canary, basis=canary, evidence=[1])
+    db.execute("DROP TRIGGER immutable_review_update")
+    db.execute("UPDATE review_events SET snapshot=?", (encode(bad),))
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+    if fault == "middle":
+        for label, when, content in [("before", transition["now_ms"] - 1, dict(snapshot, grading=canary)),
+                                     ("after", transition["now_ms"] + 1, dict(snapshot, basis=canary))]:
+            presentation_id = "presentation-" + label
+            db.execute("INSERT INTO presentations SELECT ?,quiz_id,content_version,schedule_version,snapshot,created_at,answer,outcome,assisted,graded,rating,due_at,reviewed_at,review_id FROM presentations WHERE id='presentation0'", (presentation_id,))
+            db.execute("INSERT INTO review_events SELECT ?,?,?,answer,outcome,rating,assisted,?,due_at,algorithm,schedule_before,schedule_after,schedule_version_before,schedule_version_after,grading FROM review_events WHERE id='event0'",
+                       ("event-" + label, presentation_id, encode(content), when))
 elif mode == "unsupported-correction":
     db.execute("INSERT INTO corrections VALUES(?,?,?,?,?,?,?)", ("correction0", "event0", canary, 1, now, go_card(transition["after"]), go_card(transition["before"])))
 elif mode == "unsupported-assessment":

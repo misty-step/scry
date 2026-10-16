@@ -517,6 +517,12 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   acknowledged live writes or reactivate a historical writer during rehearsal.
   Measure private-service recovery and name untested provisioning/DNS/configuration
   steps against D5; copying a live store is not a complete recovery demonstration.
+- Before the one-way revival import, an authorized read-only dry run traverses
+  the complete preserved dataset inside private Cloudflare. It writes nothing
+  and reports only fixed refusal class names and their counts, never content or
+  identifiers. An incomplete traversal is a failure, not a complete report.
+  Further shape-specific repairs follow that complete report as one batch;
+  repeated first-refusal imports are not the diagnostic workflow.
 
 ## User stories
 

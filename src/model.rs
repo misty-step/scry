@@ -238,6 +238,13 @@ pub struct Event {
     pub result: ReviewResult,
 }
 
+impl Event {
+    /// Historical Go held attempts are neither grades nor completed practice.
+    pub fn is_ungraded(&self) -> bool {
+        matches!(self.result.outcome.as_str(), "selfcheck" | "warm_selfcheck")
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Override {
     pub id: String,

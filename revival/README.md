@@ -157,6 +157,26 @@ Use the same short-lived private remote-preview procedure and actual expiry
 test as above. There is no published hostname, learner principal, model secret,
 app binding, restore authority, job, scheduler, or release engine in this tool.
 
+Before importing, use authenticated empty-body `POST /dry-run` on the same exact
+converter artifact with only the read-only `SOURCE` binding. It reuses the source
+pins, archive/SQLite checks, key and immutable expiry above; no destination is
+needed or accessed. Its successful response is only a sorted JSON object mapping
+fixed refusal class names to positive integer counts (an empty object means no
+projection refusals). No inventory, hashes, identifiers, content or candidate
+leaves Cloudflare, and no storage is written. The same projection guards execute
+in collection mode across all independent records, including multiple classes
+on one record. A class counts once per visited record (versions and notes are
+visited individually); archive-wide guards count once. Unexpected parser/shape
+errors invalidate the entire report with generic HTTP 422, never a partial success.
+Zero refusals do not establish Rust restore or cutover acceptance.
+
+Operate the reviewed diagnostic inside private Cloudflare and retain the actual
+complete class/count report before any further shape-specific source repair or
+learner import. Batch the reported classes into one reviewed repair; do not repeat
+first-refusal learner imports. `/convert` remains fail-closed at its first refusal
+and cannot use the diagnostic's partial in-memory projection. No storage bindings
+or request-supplied switches can turn `/dry-run` into a write.
+
 The existing build script now builds both temporary tools. The source gate
 exports `revival-convert/` with hashes in `proof.json` and the normal complete
 artifact manifest. Deploy those tested modules unchanged after independent
@@ -178,6 +198,15 @@ historical jobs are paused, never resumed or sent. ADR 006 owns the mechanical
 legacy-note, original-schedule-epoch and assisted zero-rating observation
 decisions, including their compatibility/rollback limits. These observations
 remain history, never invented scheduler writes or unaided recall.
+
+Earlier exact-policy Go self-check attempts also remain immutable, visibly
+ungraded history, including repeated submissions before a later grade on the
+same presentation. They do not count as misses, helped completions or recall,
+and cannot suppress due practice. A still-current saved self-check keeps its
+answer and deliberate learner judgment without inventing an assessor call.
+Current feedback is selected by its exact Go `review_id`, not the first event
+on a presentation. Older Rust builds reject this history; retain only a proven
+compatible build for rollback.
 
 Both generator attempts and every transmitted `content_assessments` critic row
 project into the existing Rust spending ledger under their original job, identity,

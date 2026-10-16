@@ -21,7 +21,7 @@ function data(mode = 'valid') {
   }
   return cache.get(mode);
 }
-async function fixture(mode, fn) {
+async function fixture(mode, fn, {readOnly = false} = {}) {
   const input = data(mode);
   const sourceKey = 'preserved-go/' + sha(input.bytes) + '/scry-synthetic-conversion.scry-backup.zip';
   let bindings = {CONVERT_KEY: key, CONVERT_UNTIL_MS: String(Date.now() + 300000), SOURCE_KEY: sourceKey,
@@ -32,7 +32,7 @@ async function fixture(mode, fn) {
       modules: readdirSync(root).filter(name => /\.(js|wasm|sql)$/.test(name))
         .sort((a, b) => Number(b === 'convert.js') - Number(a === 'convert.js'))
         .map(name => ({path: resolve(root, name), type: name.endsWith('.wasm') ? 'CompiledWasm' : name.endsWith('.sql') ? 'Text' : 'ESModule'})),
-      cf: false, compatibilityDate: '2026-09-10', r2Buckets: ['SOURCE', 'DESTINATION'], bindings,
+      cf: false, compatibilityDate: '2026-09-10', r2Buckets: readOnly ? ['SOURCE'] : ['SOURCE', 'DESTINATION'], bindings,
       outboundService: async () => {egress++; throw Error('External egress forbidden');}};
     return runtime.convertV4MiniflareOptions ? runtime.convertV4MiniflareOptions(v4) : v4;
   };
@@ -76,6 +76,74 @@ async function restore(bytes, fn) {
     await fn({fixture, response, send, name});
   } finally {await fixture.mf.dispose(); assert.equal(egress, 0);}
 }
+
+for (const [mode, expected] of [
+  ['valid', {}],
+  ['selfcheck-repeated', {}],
+  ['critic-lifecycles', {}],
+  ['unsupported-algorithm', {'scheduler-algorithm': 3}],
+  ['diagnostic-multiclass', {'content-grading': 1, 'event-transition': 1,
+    'scheduler-algorithm': 3, 'unknown-reservation': 2,
+    'unsupported-assessments-or-corrections': 2, 'unsupported-web-documents': 2}],
+  ['diagnostic-same-row', {'event-due': 1, 'event-observation': 1, 'event-observation-card': 1, 'event-transition': 1}],
+  ['diagnostic-event-version', {'event-content': 1}],
+  ['diagnostic-event-grading', {'content-grading': 1}],
+  ['diagnostic-event-combined', {'content-grading': 1, 'event-content': 1}],
+  ['diagnostic-event-nested', {'content-basis': 1, 'content-grading': 1, 'content-kind': 1,
+    'content-quotes': 1, 'event-content': 1}],
+  ['diagnostic-event-middle', {'content-basis': 2, 'content-grading': 2, 'content-kind': 1,
+    'content-quotes': 1, 'event-content': 2}],
+]) {
+  test(mode + ': full-pass diagnostic returns only exact class/counts with no destination capability', () => fixture(mode, async ({request}) => {
+    const first = await request({}, '/dry-run');
+    assert.deepEqual(first, {status: 200, body: expected});
+    assert.deepEqual(await request({}, '/dry-run'), first);
+    assert.ok(Object.values(first.body).every(value => Number.isSafeInteger(value) && value > 0));
+    assert.deepEqual(Object.keys(first.body), Object.keys(first.body).sort());
+    assert.equal((await request()).status, 422, 'Real conversion still needs a separate destination capability');
+  }, {readOnly: true}));
+}
+test('mid-dataset version mismatch collects nested and later refusals but conversion still writes nothing', () => fixture('diagnostic-event-middle', async ({request, destination}) => {
+  assert.deepEqual(await request({}, '/dry-run'), {status: 200,
+    body: {'content-basis': 2, 'content-grading': 2, 'content-kind': 1, 'content-quotes': 1, 'event-content': 2}});
+  assert.deepEqual(await request(), {status: 422,
+    body: {error: 'UNSUPPORTED_GO_PROJECTION', reason: 'content-grading'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
+test('dry-run refuses unknown/partial traversal instead of advertising a complete aggregate', () => fixture('private-shape-error', async ({request, destination}) => {
+  assert.deepEqual(await request({}, '/dry-run'), {status: 422, body: {error: 'INSPECTION_FAILED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
+test('dry-run never changes an existing destination and conversion still fails closed', () => fixture('diagnostic-multiclass', async ({request, destination}) => {
+  const before = await destination.put('synthetic-existing', 'SYNTHETIC_PRIVATE_DESTINATION');
+  assert.equal((await request({}, '/dry-run')).status, 200);
+  assert.deepEqual(await request(), {status: 422,
+    body: {error: 'UNSUPPORTED_GO_PROJECTION', reason: 'unsupported-assessments-or-corrections'}});
+  const final = await destination.get('synthetic-existing');
+  assert.equal(final.version, before.version);
+  assert.equal(await final.text(), 'SYNTHETIC_PRIVATE_DESTINATION');
+  assert.equal((await destination.list()).objects.length, 1);
+}));
+test('dry-run shares exact authentication, expiry, pin, method, body and route refusals', () => fixture('valid', async ({request, rebind, destination}) => {
+  assert.equal((await request({headers: {Authorization: ''}}, '/dry-run')).status, 403);
+  assert.equal((await request({headers: {Authorization: 'Bearer forged'}}, '/dry-run')).status, 403);
+  assert.equal((await request({body: 'SYNTHETIC_PRIVATE'}, '/dry-run')).status, 400);
+  assert.equal((await request({method: 'GET'}, '/dry-run')).status, 405);
+  assert.equal((await request({}, '/dry-run?source=other')).status, 404);
+  await rebind({SOURCE_BYTES: '1'});
+  assert.equal((await request({}, '/dry-run')).status, 409);
+  await rebind({CONVERT_UNTIL_MS: String(Date.now() - 1)});
+  assert.deepEqual(await request({}, '/dry-run'), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
+test('same immutable dry-run capability expires on the actual clock with zero writes', () => fixture('valid', async ({request, rebind, destination}) => {
+  const until = Date.now() + 1800;
+  await rebind({CONVERT_UNTIL_MS: String(until)});
+  assert.deepEqual(await request({}, '/dry-run'), {status: 200, body: {}});
+  await new Promise(resolve => setTimeout(resolve, Math.max(0, until - Date.now()) + 50));
+  assert.deepEqual(await request({}, '/dry-run'), {status: 403, body: {error: 'CAPABILITY_EXPIRED'}});
+  assert.equal((await destination.list()).objects.length, 0);
+}));
 
 test('native source -> CF-only projection -> real Rust restore preserves content/history/schedules/custody/media', () => fixture('valid', async ({request, destination, input}) => {
   const first = await request();
@@ -328,7 +396,89 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
     });
   }));
 }
+for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfcheck-repeated']) {
+  test(mode + ': historical ungraded attempts remain ungraded across Rust, deliberate judgment and recovery', () => fixture(mode, async ({request, destination}) => {
+    const prepared = await request();
+    assert.equal(prepared.status, 200);
+    const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
+    const original = JSON.parse(bytes).app;
+    const pending = original.events.filter(e => e.result.authority === 'ungraded');
+    assert.equal(pending.length, mode === 'selfcheck-repeated' ? 2 : 1);
+    assert.ok(pending.every(e => e.result.rating === 0 && e.schedule_version === 1 &&
+      e.answer === 'FRESHNESS' && JSON.stringify(e.before_card) === JSON.stringify(e.after_card)));
+    const historical = mode === 'selfcheck-history' || mode === 'selfcheck-repeated';
+    assert.equal(original.occurrence.phase, historical ? 'result' : 'self-check');
+    assert.equal(original.occurrence.assessment_id, null, 'Never invent an assessor invocation');
+    await restore(bytes, async ({response, fixture, name}) => {
+      assert.equal(response.status, 200, await response.text());
+      const origin = 'http://127.0.0.1';
+      const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+      const read = async () => (await (await active.worker.fetch(origin + '/export')).json()).app;
+      const restored = await read();
+      assert.deepEqual(restored.events, original.events);
+      assert.deepEqual(restored.questions, original.questions);
+      const history = await (await active.worker.fetch(origin + '/history')).text();
+      assert.ok(history.includes('Ungraded') && history.includes('Awaiting self-check'));
+      const concept = await (await active.worker.fetch(origin + '/concepts/legacy-import-concept-concept0')).text();
+      assert.equal((concept.match(/class="tally-/g) || []).length, historical ? 1 : 0,
+        'Ungraded is neither a miss, unaided recall nor completed helped practice');
+      if (!historical) {
+        const fields = {csrf: restored.csrf, occurrence_id: restored.occurrence.id,
+          operation_id: 'synthetic-self-after-import', correct: 'false'};
+        const judge = () => active.worker.fetch(origin + '/review/self', {method: 'POST', redirect: 'manual',
+          headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(fields)});
+        assert.equal((await judge()).status, 303);
+        assert.equal((await judge()).status, 303);
+        const judged = await read();
+        assert.equal(judged.events.length, original.events.length + 1);
+        assert.deepEqual(judged.events.slice(0, original.events.length), original.events);
+        assert.equal(judged.events.at(-1).result.authority, 'learner');
+        assert.equal(judged.questions['legacy-import-quiz-quiz0'].schedule_version, 2);
+      }
+      assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
+      const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const listing = await backups.list({prefix: 'snapshots/' + name + '/'});
+      const independent = Buffer.from(await (await backups.get(listing.objects[0].key)).arrayBuffer());
+      const saved = await read();
+      await restore(independent, async ({response, fixture, name}) => {
+        assert.equal(response.status, 200, await response.text());
+        const recovered = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+        const app = (await (await recovered.worker.fetch(origin + '/export')).json()).app;
+        assert.deepEqual(app.events, saved.events);
+        assert.deepEqual(app.questions, saved.questions);
+        assert.deepEqual(app.revival_go, saved.revival_go);
+      });
+    });
+  }));
+}
+test('imported ungraded history refuses forged state before any SQL or photo writes', () => fixture('selfcheck', async ({request, destination}) => {
+  const prepared = await request();
+  assert.equal(prepared.status, 200);
+  const original = JSON.parse(await (await destination.get(prepared.body.destination_key)).text());
+  for (const mode of ['origin', 'custody', 'marker', 'authority', 'card', 'epoch', 'known-answer', 'current-answer', 'current-assistance', 'current-phase']) {
+    const archive = structuredClone(original), app = archive.app, event = app.events[0];
+    if (mode === 'origin') app.revival_schedule_origins = {};
+    if (mode === 'custody') app.revival_go = {};
+    if (mode === 'marker') {event.id = 'ordinary-event'; event.result.event_id = event.id;}
+    if (mode === 'authority') event.result.authority = 'exact';
+    if (mode === 'card') event.after_card.due_ms++;
+    if (mode === 'epoch') event.schedule_version++;
+    if (mode === 'known-answer') event.answer = event.presentation.answer;
+    if (mode === 'current-answer') app.occurrence.answer = 'A different answer';
+    if (mode === 'current-assistance') app.occurrence.assisted = !app.occurrence.assisted;
+    if (mode === 'current-phase') app.occurrence.phase = 'checking';
+    await restore(Buffer.from(JSON.stringify(archive)), async ({response, fixture, name}) => {
+      assert.equal(response.status, 422, mode);
+      const sql = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+      assert.deepEqual(await sql.exec('SELECT key FROM records'), []);
+      assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length, 0);
+    });
+  }
+}));
 for (const [mode, reason] of [
+  ['selfcheck-changing-card', 'event-observation-card'],
+  ['selfcheck-changing-version', 'event-transition'],
+  ['selfcheck-bad-policy', 'event-observation'],
   ['unsupported-algorithm', 'scheduler-algorithm'],
   ['inexact-timestamp', 'timestamp-precision'],
   ['private-shape-error', null], // Unexpected TypeError stays private/generic.

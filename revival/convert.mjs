@@ -1,6 +1,6 @@
 // Temporary CF-only conversion into private R2; never returns learner bodies.
 import {handle} from './inspect.mjs';
-import {project, ProjectionRefusal} from './project.mjs';
+import {project, diagnose, ProjectionRefusal} from './project.mjs';
 const encoder = new TextEncoder();
 const hash = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
   b => b.toString(16).padStart(2, '0')).join('');
@@ -38,19 +38,23 @@ function table(db, sqlite, name) {
 }
 export default {async fetch(request, env) {
   const url = new URL(request.url);
-  if (url.pathname !== '/convert' || url.search) return Response.json({error: 'NOT_FOUND'}, {status: 404});
+  const dryRun = url.pathname === '/dry-run';
+  if ((!dryRun && url.pathname !== '/convert') || url.search) return Response.json({error: 'NOT_FOUND'}, {status: 404});
   url.pathname = '/inspect';
   // Reuse every reviewed archive/auth/pin/expiry check. Keys are separate from
   // read-only inventory authority; no caller controls a bucket, key, SQL or time.
-  return handle(new Request(url, request), {...env, INSPECT_KEY: env.CONVERT_KEY,
+  const response = await handle(new Request(url, request), {...env, INSPECT_KEY: env.CONVERT_KEY,
     INSPECT_UNTIL_MS: env.CONVERT_UNTIL_MS}, async ({db, sqlite, inventory, manifest, bytes}) => {
-    require(env.DESTINATION && env.SOURCE !== env.DESTINATION);
+    if (!dryRun) require(env.DESTINATION && env.SOURCE !== env.DESTINATION);
     const tables = {};
     for (const name of ['sources', 'goals', 'jobs', 'concepts', 'notes', 'concept_relations', 'evidence',
       'assistance_exposures', 'quizzes', 'quiz_versions', 'schedules', 'concept_quizzes', 'presentations',
       'review_events', 'grade_overrides', 'review_session', 'operations', 'job_attempts', 'content_assessments', 'preferences',
       'capture_images', 'corrections', 'semantic_assessments', 'source_documents']) tables[name] = table(db, sqlite, name);
     for (const image of tables.capture_images) image.sha256 = await hash(image.bytes);
+    // No destination binding or storage access in this branch. Never return the
+    // partial projection, original inventory, pins, hashes or private values.
+    if (dryRun) return {refusals: diagnose(tables, bytes, env.SOURCE_SHA256, manifest.created_at)};
     const {archive, counts} = project(tables, bytes, env.SOURCE_SHA256, manifest.created_at);
     const encoded = encoder.encode(JSON.stringify(archive)), checksum = await hash(encoded);
     const key = 'converted-go/' + env.SOURCE_SHA256 + '/' + checksum + '.json';
@@ -72,4 +76,6 @@ export default {async fetch(request, env) {
       limits: 'Prepared archive only; exact Rust restore, learner reconciliation, final writer consistency and cutover remain separate.'};
   }, error => error instanceof ProjectionRefusal ?
     {error: 'UNSUPPORTED_GO_PROJECTION', reason: error.message} : undefined);
+  if (!dryRun || response.status !== 200) return response;
+  return Response.json((await response.json()).refusals, {headers: response.headers});
 }};

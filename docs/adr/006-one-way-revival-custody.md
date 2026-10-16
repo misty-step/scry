@@ -85,11 +85,28 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   stays byte-exact in custody. Ordinary/new Rust warm events still increment
   their concurrency epoch. Earlier projection builds reject these archives and
   cannot be rollback targets after this import.
+- Earlier Go revisions also durably recorded exact-policy `selfcheck` (and
+  exposed `warm_selfcheck`) attempts with rating zero and no scheduler write,
+  sometimes before a later graded attempt on the same presentation. Retain
+  every original event/answer/assistance/epoch, labeled `ungraded`, not a miss,
+  helped completion, recall success or invented assessor transmission. Shared
+  presentation identity must keep identical content and allow at most one
+  completed grade. A still-current held answer remains actionable self-check;
+  choosing a grade later creates an ordinary new learner event. Earlier Rust
+  builds reject this history and are not compatible rollback targets. Verbatim
+  original outcomes and grading policy remain in the retained Go archive.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a
   fresh CSRF token and photo keys, clears inherited backup receipts and pauses
   uncertain work. Content/schedule/history versions do not reset with that epoch.
+- Diagnose the whole preserved dataset before another import, inside the same
+  private Cloudflare custody with no destination capability. Collection and
+  conversion use the same projection guards; a complete diagnostic releases
+  only fixed refusal classes and counts, and writes nothing. An unexpected
+  dependent parsing/shape failure invalidates the report rather than publishing
+  a partial pass. Only the actual complete report triggers further shape-specific
+  repair, batched into one independently reviewed change before real import.
 - Project generator and transmitted critic usage into the existing Rust spend
   records, preserving owning job, stable per-attempt identity, original timestamp,
   model and exact known cost or unknown $0.50 reservation. All critic retries

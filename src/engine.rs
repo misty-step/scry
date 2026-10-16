@@ -1074,7 +1074,10 @@ pub fn ensure_occurrence(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
             continue;
         }
         if app.events.iter().rev().any(|e| {
-            e.question_id == q.id && e.result.rating == 0 && e.result.reviewed_ms > now - DAY_MS
+            e.question_id == q.id
+                && !e.is_ungraded()
+                && e.result.rating == 0
+                && e.result.reviewed_ms > now - DAY_MS
         }) {
             continue;
         }
@@ -2265,6 +2268,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
         }
     }
     let mut occurrences = BTreeSet::new();
+    let mut presentations = BTreeMap::new();
     let mut event_versions: BTreeMap<&str, u64> = BTreeMap::new();
     for event in &app.events {
         archive_id(&event.id, &event.id, &mut ids)?;
@@ -2272,8 +2276,12 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             .questions
             .get(&event.question_id)
             .ok_or_else(|| archive_error("an orphaned attempt"))?;
+        let presented = (event.question_id.as_str(), &event.presentation);
         if event.concept_id != question.concept_id
-            || !occurrences.insert(&event.occurrence_id)
+            || (!event.is_ungraded() && !occurrences.insert(&event.occurrence_id))
+            || presentations
+                .insert(&event.occurrence_id, presented)
+                .is_some_and(|prior| prior != presented)
             || !question.versions.iter().any(|c| c == &event.presentation)
             || event.result.event_id != event.id
             || event.result.corrected
@@ -2293,6 +2301,7 @@ pub fn validate_app(app: &App) -> AppResult<()> {
         archive_card(&event.before_card)?;
         archive_card(&event.after_card)?;
         let policy = match event.result.authority.as_str() {
+            "ungraded" if event.is_ungraded() => "exact-v1",
             "exact" | "reveal" => "exact-v1",
             "jev" if event.presentation.kind == "explain" => learning::SEMANTIC_POLICY,
             "jev" => learning::SHORT_POLICY,
@@ -2303,6 +2312,20 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             return Err(archive_error("an incompatible event algorithm"));
         }
         let valid_outcome = match event.result.outcome.as_str() {
+            "selfcheck" | "warm_selfcheck" => {
+                revival_observation(app, event)
+                    && event.result.authority == "ungraded"
+                    && event.presentation.kind == "recall"
+                    && (event.result.outcome != "warm_selfcheck" || event.assisted)
+                    && generation::text_valid(&event.answer, 4000)
+                    && learning::exact_grade(
+                        "recall",
+                        &event.presentation.answer,
+                        &event.presentation.variants,
+                        &event.answer,
+                    )
+                    .is_none()
+            }
             "correct" => {
                 !event.assisted && event.result.rating == 3 && event.result.authority != "reveal"
             }
@@ -2724,7 +2747,29 @@ pub fn validate_app(app: &App) -> AppResult<()> {
             {
                 return Err(archive_error("a stale unanswered occurrence"));
             }
-            if matches!(occurrence.phase.as_str(), "checking" | "self-check") {
+            // Old Go stored held exact-policy attempts before it had answer
+            // assessments. Keep their saved answer actionable without inventing
+            // an assessor request or a completed grade.
+            let retained_self_check = occurrence.phase == "self-check"
+                && occurrence.assessment_id.is_none()
+                && app.events.iter().any(|e| {
+                    e.is_ungraded()
+                        && revival_observation(app, e)
+                        && e.occurrence_id == occurrence.id
+                        && e.question_id == occurrence.question_id
+                        && e.presentation == occurrence.presentation
+                        && e.schedule_version == occurrence.schedule_version
+                        && occurrence.answer.as_deref() == Some(e.answer.as_str())
+                        && e.assisted == occurrence.assisted
+                        && archive_cards_agree(&e.before_card, &occurrence.before_card)
+                })
+                && !app
+                    .events
+                    .iter()
+                    .any(|e| !e.is_ungraded() && e.occurrence_id == occurrence.id);
+            if matches!(occurrence.phase.as_str(), "checking" | "self-check")
+                && !retained_self_check
+            {
                 let assessment = occurrence
                     .assessment_id
                     .as_ref()
@@ -2747,7 +2792,9 @@ pub fn validate_app(app: &App) -> AppResult<()> {
                 {
                     return Err(archive_error("checking inconsistent with its saved answer"));
                 }
-            } else if occurrence.answer.is_some() || occurrence.assessment_id.is_some() {
+            } else if !retained_self_check
+                && (occurrence.answer.is_some() || occurrence.assessment_id.is_some())
+            {
                 return Err(archive_error(
                     "an unanswered occurrence carrying a later attempt",
                 ));
