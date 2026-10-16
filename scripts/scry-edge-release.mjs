@@ -62,12 +62,23 @@ if (mode === "cleanup") {
   const script = await readFile("target/edge-release/index.js");
   await upload(upstream, await readFile("qa/edge-fixture.mjs"), { compatibility_date: "2026-09-09",
     migrations: { new_sqlite_classes: ["FixtureContainer"], new_tag: "v1" } });
-  await upload(edge, script, { compatibility_date: "2026-09-09", bindings: [
+  const bindings = [
     { type: "durable_object_namespace", name: "SCRY_CONTAINER", class_name: "FixtureContainer", script_name: upstream },
     { type: "plain_text", name: "SCRY_PROBE_TOKEN", text: "synthetic-only" },
     { type: "plain_text", name: "SENTRY_ENVIRONMENT", text: "synthetic-staging" },
     { type: "version_metadata", name: "SCRY_VERSION" },
-  ] });
+  ];
+  // Exercise the same native version upload/secret-preservation/promotion used
+  // in production, then a distinct prior-code rollback. Everything is synthetic.
+  await upload(edge, 'export default {fetch(){return new Response("prior synthetic boundary")}}', {
+    compatibility_date: "2026-09-09", bindings: [...bindings,
+      { type: "secret_text", name: "QA_UNUSED_SECRET", text: "PRIVATE-unused-environment-canary" }],
+  });
+  const prior = await current(edge);
+  const candidate = await upload(edge, script, { compatibility_date: "2026-09-09", bindings, keep_bindings: ["secret_text"] }, true);
+  await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: candidate.id, percentage: 100 }] });
+  assert.equal(await current(edge), candidate.id);
+  assert((await api(`${edge}/settings`)).bindings.some(binding => binding.name === "QA_UNUSED_SECRET" && binding.type === "secret_text"));
   await api(`${edge}/subdomain`, "POST", { enabled: true, previews_enabled: false });
   await readback(edge, script);
   const subdomain = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/subdomain`, { headers: { authorization: `Bearer ${token}` } });
@@ -82,10 +93,19 @@ if (mode === "cleanup") {
   const recovered = await request("/healthz");
   assert.equal(recovered.status, 200); assert((await recovered.text()).includes("deliberate Next"));
   const version = await current(edge);
+  await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: prior, percentage: 100 }] });
+  assert.equal(await current(edge), prior);
+  assert.equal(await (await request("/healthz")).text(), "prior synthetic boundary");
+  await api(`${edge}/deployments`, "POST", { strategy: "percentage", versions: [{ version_id: version, percentage: 100 }] });
+  assert.equal(await current(edge), version);
+  await readback(edge, script);
+  assert.equal((await request("/healthz")).status, 200);
+  assert.equal((await fetch(origin + "/healthz", { redirect: "manual" })).status, 401);
   // Let the observed request's bounded waitUntil send finish before cleanup.
   await new Promise(resolve => setTimeout(resolve, 2500));
   const proof = { source: process.env.GITHUB_SHA, worker: edge, version, origin, artifact_sha256: sha(script),
     environment: "synthetic-staging", release: `scry-edge@${version}`, denied: [401, 403], failure: 503, recovered: 200,
+    native_version_upload_and_promotion: true, synthetic_secret_preserved: true, distinct_prior_rollback: prior, exact_candidate_repromoted: true,
     limits: "Exact operated Go-edge module; disposable synthetic upstream, not live learner content, Go application or owner-session proof." };
   await writeFile("target/edge-hosted-proof.json", JSON.stringify(proof, null, 2));
   console.log(JSON.stringify(proof));
