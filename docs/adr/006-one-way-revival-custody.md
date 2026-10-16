@@ -106,6 +106,16 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   keep their existing guards. Earlier builds rejecting this history are not
   compatible rollback targets after import. This records the decision, not a
   successful learner restore or production cutover.
+- The next actual native restore refused Go's learner-confirmed `self_correct`
+  vocabulary. A complete read-only outcome-family census found one unaided
+  learner-authority rating-three result in this class, no other outcome mismatch.
+  Translate Go `self_correct`/`self_missed` to Rust `correct`/`wrong` only with
+  learner authority, no assistance, and the original matching rating. Keep the
+  exact answer, algorithm, full before/after card, schedule epoch and held result;
+  retain original names and bytes in custody. This is vocabulary translation,
+  never a new grade, assessor call or scheduler transition. Assisted or
+  inconsistent variants refuse rather than being relabeled as cold recall.
+  This decision does not itself establish a successful learner restore.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a

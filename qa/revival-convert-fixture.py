@@ -21,6 +21,9 @@ encode = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))
 sha = lambda b: hashlib.sha256(b).hexdigest()
 golden = json.loads(Path("tests/fixtures/fsrs-golden.json").read_text())
 transition = golden["cases"][0]["transitions"][0]
+if mode == "learner-missed":
+    transition = next(case["transitions"][0] for case in golden["cases"]
+                      if case["transitions"][0]["rating"] == 1 and case["transitions"][0]["before"]["state"] == "new")
 
 def go_card(c):
     date = lambda ms: datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -76,7 +79,24 @@ assisted = int(outcome == "revealed")
 db.execute("INSERT INTO presentations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("presentation0", "quiz0", 1, 1, encode(snapshot), now, answer, outcome, assisted, 1, transition["rating"], transition["after"]["due_ms"], transition["now_ms"], "event0"))
 db.execute("INSERT INTO review_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("event0", "presentation0", encode(snapshot), answer, outcome, transition["rating"], assisted, transition["now_ms"], transition["after"]["due_ms"], algorithm, go_card(transition["before"]), go_card(transition["after"]), 1, 2, "exact-v1"))
 db.execute("UPDATE review_session SET current_id='presentation0'")
-if mode.startswith("selfcheck"):
+if mode.startswith("learner-"):
+    # Native Go SelfGrade uses self_correct/self_missed while Rust names the
+    # same learner-authority judgment correct/wrong. No assessor was called.
+    db.execute("DROP TRIGGER immutable_review_update")
+    outcome = "self_missed" if mode == "learner-missed" else "self_correct"
+    db.execute("UPDATE review_events SET outcome=?,answer='FRESHNESS',assisted=0,grading='learner-v1',algorithm=?",
+               (outcome, golden["scheduler"] + ";grading=learner-v1"))
+    db.execute("UPDATE presentations SET outcome=?,answer='FRESHNESS',assisted=0", (outcome,))
+    if mode == "learner-bad-rating":
+        db.execute("UPDATE review_events SET rating=1")
+    elif mode == "learner-bad-authority":
+        db.execute("UPDATE review_events SET grading='exact-v1',algorithm=?", (algorithm,))
+    elif mode == "learner-assisted":
+        db.execute("UPDATE review_events SET assisted=1")
+    else:
+        assert mode in {"learner-correct", "learner-missed"}
+    db.execute("CREATE TRIGGER immutable_review_update BEFORE UPDATE ON review_events BEGIN SELECT RAISE(ABORT,'review events are immutable'); END")
+elif mode.startswith("selfcheck"):
     # Pre-f966 Go Grade/Submit saved an ungraded exact-policy self-check
     # before any later learner grade, sometimes repeatedly on one presentation.
     db.execute("DROP TRIGGER immutable_review_update")

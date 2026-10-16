@@ -355,6 +355,58 @@ for (const [mode, expectedMicros, criticCharges] of [
     });
   }));
 }
+for (const mode of ['learner-correct', 'learner-missed']) {
+  test(mode + ': native Go learner judgment translates vocabulary without regrading or changing history and cards', () => fixture(mode, async ({request, destination, input}) => {
+    assert.deepEqual(await request({}, '/dry-run'), {status: 200, body: {}});
+    const prepared = await request();
+    assert.equal(prepared.status, 200);
+    const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
+    const app = JSON.parse(bytes).app, event = app.events[0], correct = mode === 'learner-correct';
+    assert.equal(event.result.outcome, correct ? 'correct' : 'wrong');
+    assert.equal(event.result.authority, 'learner');
+    assert.equal(event.result.rating, correct ? 3 : 1);
+    assert.equal(event.answer, 'FRESHNESS');
+    assert.equal(event.assisted, false);
+    assert.equal(event.schedule_version, 2);
+    assert.deepEqual(event.before_card, input.transition.before);
+    assert.deepEqual(event.after_card, input.transition.after);
+    assert.deepEqual(app.questions[event.question_id].card, input.transition.after);
+    assert.deepEqual(app.occurrence.result, event.result);
+    assert.deepEqual(Buffer.concat(Object.entries(app.revival_go).sort().map(([, chunk]) => Buffer.from(chunk, 'base64'))), input.bytes);
+    await restore(bytes, async ({response, fixture, name}) => {
+      assert.equal(response.status, 200, await response.text());
+      const origin = 'http://127.0.0.1';
+      const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+      const restored = (await (await active.worker.fetch(origin + '/export')).json()).app;
+      assert.deepEqual(restored.events, app.events);
+      assert.deepEqual(restored.questions, app.questions);
+      assert.deepEqual(restored.occurrence, app.occurrence);
+      assert.match(await (await active.worker.fetch(origin + '/')).text(), /You checked your answer/);
+      assert.match(await (await active.worker.fetch(origin + '/history')).text(), /Self-checked/);
+      assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
+      const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const list = await backups.list({prefix: 'snapshots/' + name + '/'});
+      assert.equal(list.objects.length, 1);
+      const independent = Buffer.from(await (await backups.get(list.objects[0].key)).arrayBuffer());
+      await restore(independent, async ({response, fixture, name}) => {
+        assert.equal(response.status, 200, await response.text());
+        const recovered = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+        const saved = (await (await recovered.worker.fetch(origin + '/export')).json()).app;
+        assert.deepEqual(saved.events, app.events);
+        assert.deepEqual(saved.questions, app.questions);
+        assert.deepEqual(saved.occurrence, app.occurrence);
+        assert.deepEqual(saved.revival_go, app.revival_go);
+      });
+    });
+  }));
+}
+for (const mode of ['learner-bad-rating', 'learner-bad-authority', 'learner-assisted']) {
+  test(mode + ': vocabulary translation refuses changed authority, rating or assistance before writing', () => fixture(mode, async ({request, destination}) => {
+    assert.deepEqual(await request({}, '/dry-run'), {status: 200, body: {'event-learner-judgment': 1}});
+    assert.deepEqual(await request(), {status: 422, body: {error: 'UNSUPPORTED_GO_PROJECTION', reason: 'event-learner-judgment'}});
+    assert.equal((await destination.list()).objects.length, 0);
+  }));
+}
 for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-recall-wrong', 'zero-rating-chain']) {
   test(mode + ': Go assisted observations retain original schedule epochs through Rust and second restore', () => fixture(mode, async ({request, destination, input}) => {
     const prepared = await request();
