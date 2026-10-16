@@ -256,3 +256,73 @@ fn imported_helped_observations_do_not_invent_scheduler_writes() {
     app.questions.get_mut(&id).unwrap().schedule_version = 1;
     assert!(archive(app).encode().is_err());
 }
+
+#[test]
+fn historical_ungraded_attempts_are_not_grades_and_keep_their_original_epoch() {
+    use scry::engine;
+    use std::collections::BTreeMap;
+
+    let now = 1_700_000_000_000;
+    let mut app = retained_app(b"synthetic-original-go-ungraded-history");
+    engine::seed_fixture(&mut app, now).unwrap();
+    let qid = app.occurrence.as_ref().unwrap().question_id.clone();
+    let question = app.questions.get_mut(&qid).unwrap();
+    question.versions[0].kind = "recall".into();
+    question.versions[0].choices.clear();
+    app.occurrence.as_mut().unwrap().presentation = question.versions[0].clone();
+    let occurrence = app.occurrence.as_ref().unwrap().clone();
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("occurrence_id".into(), occurrence.id),
+        ("operation_id".into(), "synthetic-original-reveal".into()),
+    ]);
+    engine::mutate(&mut app, "/review/reveal", &fields, now, "reveal").unwrap();
+    let event = &mut app.events[0];
+    let old = event.question_id.clone();
+    let id = format!("legacy-import-quiz-{old}");
+    event.question_id = id.clone();
+    event.id = "legacy-import-event-ungraded".into();
+    event.occurrence_id = "legacy-import-presentation-ungraded".into();
+    event.answer = "Synthetic answer awaiting a judgment".into();
+    event.assisted = false;
+    event.after_card = event.before_card.clone();
+    event.result.event_id = event.id.clone();
+    event.result.outcome = "selfcheck".into();
+    event.result.authority = "ungraded".into();
+    event.result.rating = 0;
+    event.result.due_ms = event.before_card.due_ms;
+    let mut question = app.questions.remove(&old).unwrap();
+    question.id = id.clone();
+    question.card = event.before_card.clone();
+    app.questions.insert(id.clone(), question);
+    app.revival_schedule_origins.insert(id, 1);
+    app.occurrence = None;
+    let archive = |app| Archive::new(app, vec![], now + 1);
+    archive(app.clone()).encode().unwrap();
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&app).unwrap()).unwrap(),
+        app
+    );
+    for mode in [
+        "marker",
+        "custody",
+        "authority",
+        "card",
+        "epoch",
+        "answer",
+        "kind",
+    ] {
+        let mut bad = app.clone();
+        match mode {
+            "marker" => bad.events[0].id = "ordinary-event".into(),
+            "custody" => bad.revival_go.clear(),
+            "authority" => bad.events[0].result.authority = "exact".into(),
+            "card" => bad.events[0].after_card.due_ms += 1,
+            "epoch" => bad.events[0].schedule_version += 1,
+            "answer" => bad.events[0].answer = bad.events[0].presentation.answer.clone(),
+            "kind" => bad.events[0].presentation.kind = "choice".into(),
+            _ => unreachable!(),
+        }
+        assert!(archive(bad).encode().is_err(), "Accepted {mode}");
+    }
+}

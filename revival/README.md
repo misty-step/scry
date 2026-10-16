@@ -179,6 +179,15 @@ legacy-note, original-schedule-epoch and assisted zero-rating observation
 decisions, including their compatibility/rollback limits. These observations
 remain history, never invented scheduler writes or unaided recall.
 
+Earlier exact-policy Go self-check attempts also remain immutable, visibly
+ungraded history, including repeated submissions before a later grade on the
+same presentation. They do not count as misses, helped completions or recall,
+and cannot suppress due practice. A still-current saved self-check keeps its
+answer and deliberate learner judgment without inventing an assessor call.
+Current feedback is selected by its exact Go `review_id`, not the first event
+on a presentation. Older Rust builds reject this history; retain only a proven
+compatible build for rollback.
+
 Both generator attempts and every transmitted `content_assessments` critic row
 project into the existing Rust spending ledger under their original job, identity,
 timestamp, request model and exact known cost or unknown reservation. Critic

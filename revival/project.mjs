@@ -169,8 +169,11 @@ export function project(tables, originalBytes, originalHash, created) {
   const presentations = new Map(t('presentations').map(p => [p.id, p]));
   for (const old of [...t('review_events')].sort((a, b) => a.reviewed_at - b.reviewed_at || a.id.localeCompare(b.id))) {
     const observation = old.rating === 0;
+    const ungraded = ['selfcheck', 'warm_selfcheck'].includes(old.outcome);
     require([0, 1, 3].includes(old.rating) && old.schedule_version_after === old.schedule_version_before + (observation ? 0 : 1), 'event-transition');
-    require(!observation || (old.assisted === 1 && ['warm_correct', 'warm_wrong'].includes(old.outcome)), 'event-observation');
+    require(!observation || (old.assisted === 1 && ['warm_correct', 'warm_wrong'].includes(old.outcome)) ||
+      (ungraded && old.grading === 'exact-v1' && (old.outcome !== 'warm_selfcheck' || old.assisted === 1)), 'event-observation');
+    require(!ungraded || observation, 'event-observation');
     const presented = presentations.get(old.presentation_id);
     require(presented);
     const q = app.questions[id('quiz', presented.quiz_id)];
@@ -179,7 +182,7 @@ export function project(tables, originalBytes, originalHash, created) {
     const snapshot = json(old.snapshot);
     require(snapshot.version === presentation.version && JSON.stringify(content({content: old.snapshot,
       version: presentation.version, model: presentation.model, created_at: presentation.created_ms})) === JSON.stringify(presentation), 'event-content');
-    const authority = old.outcome === 'revealed' ? 'reveal' : old.grading === 'exact-v1' ? 'exact' :
+    const authority = ungraded ? 'ungraded' : old.outcome === 'revealed' ? 'reveal' : old.grading === 'exact-v1' ? 'exact' :
       old.grading === 'learner-v1' ? 'learner' : ['short-v1', 'semantic-v1'].includes(old.grading) ? 'jev' : null;
     require(authority, 'event-authority');
     const before = card(old.schedule_before), after = card(old.schedule_after);
@@ -207,14 +210,15 @@ export function project(tables, originalBytes, originalHash, created) {
     require(old);
     const q = app.questions[id('quiz', old.quiz_id)];
     require(q);
-    const event = app.events.find(e => e.occurrence_id === id('presentation', current));
-    require((old.graded === 1) === Boolean(event));
-    const result = event ? structuredClone(event.result) : null;
+    const event = old.review_id ? app.events.find(e => e.id === id('event', old.review_id)) : null;
+    const ungraded = event?.result.authority === 'ungraded';
+    require(ungraded || (old.graded === 1) === Boolean(event), 'current-event');
+    const result = event && !ungraded ? structuredClone(event.result) : null;
     const override = event && app.overrides.find(o => o.event_id === event.id);
     if (override) Object.assign(result, {outcome: override.correct ? 'correct' : 'wrong', authority: 'learner',
       corrected: true, rating: override.correct ? 3 : 1, due_ms: override.after_card.due_ms});
     app.occurrence = {id: id('presentation', current), question_id: q.id, concept_id: q.concept_id,
-      presentation: q.versions[old.content_version - 1], phase: event ? 'result' : 'question',
+      presentation: q.versions[old.content_version - 1], phase: ungraded ? 'self-check' : event ? 'result' : 'question',
       assisted: old.assisted === 1, before_card: event ? event.before_card : q.card,
       schedule_version: old.schedule_version, created_ms: old.created_at,
       answer: event ? old.answer : null, assessment_id: null, result};

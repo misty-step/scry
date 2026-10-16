@@ -328,7 +328,89 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-chain']) {
     });
   }));
 }
+for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfcheck-repeated']) {
+  test(mode + ': historical ungraded attempts remain ungraded across Rust, deliberate judgment and recovery', () => fixture(mode, async ({request, destination}) => {
+    const prepared = await request();
+    assert.equal(prepared.status, 200);
+    const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
+    const original = JSON.parse(bytes).app;
+    const pending = original.events.filter(e => e.result.authority === 'ungraded');
+    assert.equal(pending.length, mode === 'selfcheck-repeated' ? 2 : 1);
+    assert.ok(pending.every(e => e.result.rating === 0 && e.schedule_version === 1 &&
+      e.answer === 'FRESHNESS' && JSON.stringify(e.before_card) === JSON.stringify(e.after_card)));
+    const historical = mode === 'selfcheck-history' || mode === 'selfcheck-repeated';
+    assert.equal(original.occurrence.phase, historical ? 'result' : 'self-check');
+    assert.equal(original.occurrence.assessment_id, null, 'Never invent an assessor invocation');
+    await restore(bytes, async ({response, fixture, name}) => {
+      assert.equal(response.status, 200, await response.text());
+      const origin = 'http://127.0.0.1';
+      const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+      const read = async () => (await (await active.worker.fetch(origin + '/export')).json()).app;
+      const restored = await read();
+      assert.deepEqual(restored.events, original.events);
+      assert.deepEqual(restored.questions, original.questions);
+      const history = await (await active.worker.fetch(origin + '/history')).text();
+      assert.ok(history.includes('Ungraded') && history.includes('Awaiting self-check'));
+      const concept = await (await active.worker.fetch(origin + '/concepts/legacy-import-concept-concept0')).text();
+      assert.equal((concept.match(/class="tally-/g) || []).length, historical ? 1 : 0,
+        'Ungraded is neither a miss, unaided recall nor completed helped practice');
+      if (!historical) {
+        const fields = {csrf: restored.csrf, occurrence_id: restored.occurrence.id,
+          operation_id: 'synthetic-self-after-import', correct: 'false'};
+        const judge = () => active.worker.fetch(origin + '/review/self', {method: 'POST', redirect: 'manual',
+          headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(fields)});
+        assert.equal((await judge()).status, 303);
+        assert.equal((await judge()).status, 303);
+        const judged = await read();
+        assert.equal(judged.events.length, original.events.length + 1);
+        assert.deepEqual(judged.events.slice(0, original.events.length), original.events);
+        assert.equal(judged.events.at(-1).result.authority, 'learner');
+        assert.equal(judged.questions['legacy-import-quiz-quiz0'].schedule_version, 2);
+      }
+      assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
+      const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+      const listing = await backups.list({prefix: 'snapshots/' + name + '/'});
+      const independent = Buffer.from(await (await backups.get(listing.objects[0].key)).arrayBuffer());
+      const saved = await read();
+      await restore(independent, async ({response, fixture, name}) => {
+        assert.equal(response.status, 200, await response.text());
+        const recovered = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name, CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+        const app = (await (await recovered.worker.fetch(origin + '/export')).json()).app;
+        assert.deepEqual(app.events, saved.events);
+        assert.deepEqual(app.questions, saved.questions);
+        assert.deepEqual(app.revival_go, saved.revival_go);
+      });
+    });
+  }));
+}
+test('imported ungraded history refuses forged state before any SQL or photo writes', () => fixture('selfcheck', async ({request, destination}) => {
+  const prepared = await request();
+  assert.equal(prepared.status, 200);
+  const original = JSON.parse(await (await destination.get(prepared.body.destination_key)).text());
+  for (const mode of ['origin', 'custody', 'marker', 'authority', 'card', 'epoch', 'known-answer', 'current-answer', 'current-assistance', 'current-phase']) {
+    const archive = structuredClone(original), app = archive.app, event = app.events[0];
+    if (mode === 'origin') app.revival_schedule_origins = {};
+    if (mode === 'custody') app.revival_go = {};
+    if (mode === 'marker') {event.id = 'ordinary-event'; event.result.event_id = event.id;}
+    if (mode === 'authority') event.result.authority = 'exact';
+    if (mode === 'card') event.after_card.due_ms++;
+    if (mode === 'epoch') event.schedule_version++;
+    if (mode === 'known-answer') event.answer = event.presentation.answer;
+    if (mode === 'current-answer') app.occurrence.answer = 'A different answer';
+    if (mode === 'current-assistance') app.occurrence.assisted = !app.occurrence.assisted;
+    if (mode === 'current-phase') app.occurrence.phase = 'checking';
+    await restore(Buffer.from(JSON.stringify(archive)), async ({response, fixture, name}) => {
+      assert.equal(response.status, 422, mode);
+      const sql = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+      assert.deepEqual(await sql.exec('SELECT key FROM records'), []);
+      assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length, 0);
+    });
+  }
+}));
 for (const [mode, reason] of [
+  ['selfcheck-changing-card', 'event-observation-card'],
+  ['selfcheck-changing-version', 'event-transition'],
+  ['selfcheck-bad-policy', 'event-observation'],
   ['unsupported-algorithm', 'scheduler-algorithm'],
   ['inexact-timestamp', 'timestamp-precision'],
   ['private-shape-error', null], // Unexpected TypeError stays private/generic.

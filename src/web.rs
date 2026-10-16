@@ -357,7 +357,9 @@ impl View<'_> {
             .is_some_and(|a| matches!(a.status.as_str(), "failed" | "unknown" | "superseded"));
         let mut out = format!(
             "<div class=\"feedback feedback-self\" role=\"status\"><span class=\"result-mark\" aria-hidden=\"true\">≈</span><div><h2>You know your answer best.</h2><p>{}</p></div></div>{}<p class=\"fineprint\">Your judgment will be saved as a learner check. Reading this answer makes the next practice helped.</p><div class=\"thumb-actions split-actions\">",
-            if failed {
+            if assessment.is_none() {
+                "Your saved answer is still ungraded. Compare it below."
+            } else if failed {
                 "The check couldn't finish. Compare your answer below."
             } else {
                 "The check wasn't certain. Compare your answer below."
@@ -893,7 +895,9 @@ impl View<'_> {
                 continue;
             }
             let corrected = self.app.overrides.iter().any(|o| o.event_id == event.id);
-            let outcome = if event.assisted {
+            let outcome = if event.is_ungraded() {
+                "Ungraded"
+            } else if event.assisted {
                 "With help"
             } else {
                 outcome_label(&event.result.outcome)
@@ -1379,7 +1383,7 @@ fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
             let attempts = app
                 .events
                 .iter()
-                .filter(|e| e.question_id == q.id)
+                .filter(|e| e.question_id == q.id && !e.is_ungraded())
                 .map(|e| {
                     let correction = app.overrides.iter().rev().find(|v| v.event_id == e.id);
                     let correct = correction
@@ -1481,6 +1485,7 @@ fn outcome_label(value: &str) -> &'static str {
 }
 fn authority_label(value: &str) -> &'static str {
     match value {
+        "ungraded" => "Awaiting self-check",
         "exact" => "Exact match",
         "jev" => "Meaning checked",
         "learner" => "Self-checked",
