@@ -56,11 +56,39 @@ boundaries. Unknown Convex custody is not permission to merge or delete it.
   rather than deserialize away unknown fields. Old builds likewise reject
   the unfamiliar durable rows. They are not rollback targets after import;
   the cutover must retain a tested custody-aware compatible rollback artifact.
+- The subsequent owner decision keeps all 37 retained quizzes active. A quiz
+  without a current non-foundation assessing concept receives its own explicitly
+  labeled `legacy-import` concept and reference note, mechanically assembled
+  from the exact existing prompt, answer and explanation. No model call, invented
+  introduction, mastery observation or review event is permitted. Existing
+  generated concepts/notes retain their content; old foundation structures stay
+  in original-byte custody. Imported identities and mechanically created notes
+  identify their provenance so the projection can be found and redone later.
+  Report actual quiz/question/new legacy concept/new legacy note counts without
+  learner content. Source support or synthetic counts are not learner receipts.
+- Go's schedule epoch begins at one, Rust's ordinary epoch at zero. Preserve
+  original schedule numbers with `App.revival_schedule_origins`, restricted to
+  epoch one for existing `legacy-import-quiz-` records with retained Go bytes.
+  Every real transition and the current full card still require the same complete
+  chain and pinned scheduler checks. Nonempty origins select the distinct
+  `scry-rust-durable-sqlite-go-projection-v1` archive identity; the separate row
+  prefix makes older custody-only builds refuse the state rather than drop this
+  interpretation. Those older builds are not serving/rollback targets.
 - Restore only into an unused isolated namespace, with separate private R2 and
   no paid integrations. Review all expected transformations explicitly. The
   runtime initializes a new namespace concurrency revision at one, creates a
   fresh CSRF token and photo keys, clears inherited backup receipts and pauses
   uncertain work. Content/schedule/history versions do not reset with that epoch.
+- Project generator and transmitted critic usage into the existing Rust spend
+  records, preserving owning job, stable per-attempt identity, original timestamp,
+  model and exact known cost or unknown $0.50 reservation. All critic retries
+  count independently, without reconstructing executable assessment leases.
+  Rust's nominal reservation remains $0.50 after known settlement; Go's cleared
+  reservation is therefore normalized only when measured cost (including zero)
+  takes precedence. Keep the exact original in custody. Unsent zero-obligation
+  critic rows remain historical; unsupported purpose/ownership/unknown amounts
+  and old active/pending obligations Rust cannot express fail before candidate
+  writes. No new spending engine or silently restarted allowance window follows.
 - Synthetic service QA remains confined to ADR 005's synthetic bindings. Never
   apply that mode or principal to a namespace containing imported learner data.
   Any approved existing-owner readback is read-only; do not obtain or impersonate

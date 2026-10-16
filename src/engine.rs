@@ -2126,6 +2126,14 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
 }
 
 pub fn validate_app(app: &App) -> AppResult<()> {
+    if app.revival_schedule_origins.iter().any(|(id, origin)| {
+        *origin != 1
+            || app.revival_go.is_empty()
+            || !id.starts_with("legacy-import-quiz-")
+            || !app.questions.contains_key(id)
+    }) {
+        return Err(archive_error("an invalid original Go schedule epoch"));
+    }
     if app.schema != SCHEMA
         || !(24..=256).contains(&app.csrf.len())
         || !matches!(
@@ -3033,7 +3041,11 @@ fn archive_schedule_chains(app: &App) -> AppResult<()> {
             });
         }
         steps.sort_by_key(|step| step.before_version);
-        let mut version = 0_u64;
+        let mut version = app
+            .revival_schedule_origins
+            .get(&question.id)
+            .copied()
+            .unwrap_or(0);
         let mut previous: Option<&learning::Card> = None;
         for step in steps {
             if step.before_version != version

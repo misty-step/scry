@@ -229,14 +229,18 @@ def gate(args):
     run([sys.executable, "scripts/build-revival-inspect.py"], cwd=source, env=inspect_env, log=log)
     inspector = source / "target/revival-inspect"
     inspect_artifact = {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}
-    run(["node", "--test", "qa/revival-inspect.test.mjs"], cwd=source, env=inspect_env, log=log)
+    converter = source / "target/revival-convert"
+    convert_artifact = {p.name: digest(p.read_bytes()) for p in sorted(converter.iterdir()) if p.is_file()}
+    run(["node", "--test", "qa/revival-inspect.test.mjs", "qa/revival-convert.test.mjs"], cwd=source, env=inspect_env, log=log)
     require(inspect_artifact == {p.name: digest(p.read_bytes()) for p in sorted(inspector.iterdir()) if p.is_file()}, "smoke changed the revival inspector")
+    require(convert_artifact == {p.name: digest(p.read_bytes()) for p in sorted(converter.iterdir()) if p.is_file()}, "smoke changed the revival converter")
     walk_env = qa_env
     run(["node", "qa/walk.mjs", "--all"], cwd=source, env=walk_env, log=log)
     require(artifact == {str(p.relative_to(worker)): digest(p.read_bytes()) for p in sorted(worker.rglob("*")) if p.is_file()}, "smoke changed the release Worker")
     verify_source(source, metadata)
     shutil.copytree(worker, output / "worker")
     shutil.copytree(inspector, output / "revival-inspect")
+    shutil.copytree(converter, output / "revival-convert")
     shutil.copytree(source / "target/walk", output / "walk")
     archive_source(source, metadata, output / "source.tar.gz")
     shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
@@ -245,7 +249,7 @@ def gate(args):
     proof = {
         "format": "scry-rust-worker-release-proof-v1", "revision": metadata["revision"],
         "source_state": metadata["source_state"], "source_sha256": metadata["source_sha256"],
-        "worker": artifact, "revival_inspect": inspect_artifact, "rustc": toolchain,
+        "worker": artifact, "revival_inspect": inspect_artifact, "revival_convert": convert_artifact, "rustc": toolchain,
         "checks": ["rustfmt", "Rust native tests", "native and WASM Clippy", "browser JS syntax", "retained historical recovery contracts", "redacted Gitleaks", "critic provenance/negative-controls/current-Worker browser", "exact-WASM private-ingress/SQLite/R2 smoke", "real Chromium story walk"],
         "limits": ["synthetic data", "mocked public Access certs/providers", "local R2 binding", "no live generation, physical phone, production activation, or off-account restore claim"],
     }

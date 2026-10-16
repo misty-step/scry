@@ -16,6 +16,7 @@ pub const MAX_RECORD_BYTES: usize = 1024 * 1024;
 pub const MAX_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
 pub const ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-v1";
 const REVIVAL_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-custody-v1";
+const PROJECTION_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-projection-v1";
 const MAPS: &[&str] = &[
     "goals",
     "concepts",
@@ -24,6 +25,7 @@ const MAPS: &[&str] = &[
     "jobs",
     "assessments",
     "revival_go",
+    "revival_schedule_origins",
 ];
 const LISTS: &[&str] = &["events", "overrides", "spend", "feedback", "resets"];
 const JOB_PAYLOADS: &[&str] = &[
@@ -233,7 +235,9 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if app.revival_go.is_empty() {
+    if !app.revival_schedule_origins.is_empty() {
+        PROJECTION_ARCHIVE_FORMAT
+    } else if app.revival_go.is_empty() {
         ARCHIVE_FORMAT
     } else {
         REVIVAL_ARCHIVE_FORMAT

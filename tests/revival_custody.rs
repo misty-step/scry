@@ -127,3 +127,50 @@ fn retained_custody_counts_toward_existing_complete_archive_capacity() {
             .is_err()
     );
 }
+
+#[test]
+fn original_go_schedule_epoch_is_explicit_preserved_and_fail_closed() {
+    let mut app = retained_app(b"synthetic-original-go-recovery");
+    scry::engine::seed_fixture(&mut app, 1_700_000_000_000).unwrap();
+    let old = app.questions.keys().next().unwrap().clone();
+    let mut question = app.questions.remove(&old).unwrap();
+    question.id = format!("legacy-import-quiz-{old}");
+    question.schedule_version = 1;
+    let id = question.id.clone();
+    app.questions.insert(id.clone(), question);
+    let archive = |app| Archive::new(app, vec![], 1_700_000_000_001);
+    assert!(archive(app.clone()).encode().is_err());
+    app.revival_schedule_origins.insert(id.clone(), 1);
+    let valid = archive(app.clone());
+    assert_eq!(valid.format, "scry-rust-durable-sqlite-go-projection-v1");
+    assert!(valid.encode().is_ok());
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&app).unwrap()).unwrap(),
+        app
+    );
+    for mode in [
+        "no-custody",
+        "orphan",
+        "wrong-origin",
+        "gap",
+        "wrong-identity",
+    ] {
+        let mut changed = app.clone();
+        match mode {
+            "no-custody" => changed.revival_go.clear(),
+            "orphan" => {
+                changed.revival_schedule_origins.insert("missing".into(), 1);
+            }
+            "wrong-origin" => {
+                changed.revival_schedule_origins.insert(id.clone(), 2);
+            }
+            "gap" => changed.questions.get_mut(&id).unwrap().schedule_version = 2,
+            _ => {}
+        }
+        let mut invalid = archive(changed);
+        if mode == "wrong-identity" {
+            invalid.format = "scry-rust-durable-sqlite-go-custody-v1".into();
+        }
+        assert!(invalid.encode().is_err(), "Accepted {mode}");
+    }
+}

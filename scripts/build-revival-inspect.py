@@ -33,5 +33,6 @@ target.mkdir(exist_ok=True)
 (target / "revival-schema.sql").write_text("\n".join(sql))
 package = subprocess.check_output(["node", "-p", "require.resolve('wrangler/package.json')"], cwd=root, text=True).strip()
 wrangler = Path(package).parent / "bin/wrangler.js"
-subprocess.run(["node", wrangler, "deploy", "--config", "revival/inspect.wrangler.toml",
-                "--dry-run", "--outdir", str(target / "revival-inspect")], cwd=root, check=True)
+for tool in ("inspect", "convert"):
+    subprocess.run(["node", wrangler, "deploy", "--config", f"revival/{tool}.wrangler.toml",
+                    "--dry-run", "--outdir", str(target / f"revival-{tool}")], cwd=root, check=True)
