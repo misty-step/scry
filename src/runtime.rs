@@ -1238,8 +1238,14 @@ impl LearningSpace {
         call(&raw, "transactionSync", &[callback.as_ref().clone()])?;
         Ok(())
     }
+    fn external_work_allowed(&self) -> bool {
+        // Access to an isolated QA notebook is not an additional spending
+        // allocation. Derive this capability from its durable identity so
+        // eviction, alarms and owner provider bindings cannot grant it to QA.
+        !isolated(&self.env) && matches!(self.principal(), Ok(AccessPrincipal::Owner))
+    }
     fn work_config(&self) -> engine::WorkConfig {
-        let disabled = isolated(&self.env);
+        let disabled = !self.external_work_allowed();
         let model = variable(&self.env, "OPENROUTER_MODEL");
         let jev_model = variable(&self.env, "JEV_MODEL");
         let generation =
@@ -1330,9 +1336,9 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
-        if isolated(&self.env) {
+        if !self.external_work_allowed() {
             return Err((
-                "External work is disabled in this isolated environment.".into(),
+                "External work is disabled for this learning space.".into(),
                 false,
             ));
         }

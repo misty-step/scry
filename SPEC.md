@@ -367,6 +367,9 @@ maintaining a signup product or exposing my learning material.
   access and operations remain unchanged. QA photos, complete backups and
   background work stay with the QA notebook across eviction/restart. Missing
   QA configuration denies service access; it never falls back to the owner.
+  QA access grants no separate provider allowance: paid generation, photo
+  transcription, meaning checks and criticism stay disabled pending an explicitly
+  approved allocation. Configuring owner providers does not enable them for QA.
 
 Proof: actual private HTTPS access, negative ingress/CSRF/content tests, and
 inspection of the deployed capability boundary. A local auth stub is not proof.

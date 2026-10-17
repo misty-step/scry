@@ -82,6 +82,13 @@ ordinary Settings backup and alarms act only on its own notebook. There is no
 schema change, import or new integration. Missing QA binding leaves the path
 inert. Provisioning and hosted ingress proof are separate from this source change.
 
+QA does not inherit provider capabilities. Its separate notebook cannot safely
+reserve against the owner's application ledger, so object-derived capability
+checks disable all QA paid work before reservation and again at transmission.
+This preserves the existing owner spending boundary without a distributed ledger
+or a second allowance. Enabling QA providers requires a separately approved
+allocation and implementation; Access admission alone never authorizes spend.
+
 Complete versioned JSON archives include referenced photo bytes and metadata in
 private R2. After two account-level Cron Trigger drills went unobserved on
 2026-10-15, the existing chief no-agent minute job is the daily trigger instead;

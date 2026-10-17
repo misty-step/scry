@@ -34,8 +34,8 @@ const egress = async request => {
   return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
 };
 const baseBindings = {SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'synthetic-only',ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner,INTERNAL_KEY:internalKey,OPERATOR_KEY:operatorKey,BACKUP_TRIGGER_KEY:backupKey,ALTERNATE_HOSTS:'alternate-synthetic.invalid'};
-let checks=0;
-const check = (label,fn)=>test(label,async()=>{await fn();checks++;});
+let checks=0,failures=0;
+const check = (label,fn)=>test(label,async()=>{try{await fn();checks++;}catch(error){failures++;throw error;}});
 let {mf:preview,worker}=await createRuntime({bindings:baseBindings,name:'scry-auth-smoke',artifact,egress,inspect:true});
 let restored;
 try {
@@ -470,6 +470,166 @@ try {
       } finally {await fixture.mf.dispose();}
     });
   }
+  for (const mode of ['preview', 'production']) {
+    await check(`${mode}: QA cannot acquire a second paid allowance before or after owner exhaustion`, async () => {
+      const client = 'no-paid-scry-qa.access';
+      const service = jwt({sub:'',common_name:client});
+      const name = `scry-qa-spending-${mode}`;
+      const bindings = {...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
+        OPENROUTER_API_KEY:'synthetic-owner-generator-key',OPENROUTER_MODEL:'synthetic-owner-model',
+        JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
+        JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
+      let sends = 0;
+      const provider = async request => {
+        if (request.url === `https://${team}/cdn-cgi/access/certs`) return egress(request);
+        assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');
+        assert.equal(request.headers.get('Authorization'),'Bearer synthetic-owner-generator-key');
+        sends++;
+        // Controlled usage exhausts the real application ledger; no remote calls.
+        return new Response(JSON.stringify({model:'synthetic-owner-model',usage:{cost:3.5},
+          choices:[{message:{content:'{}'}}]}),{headers:{'Content-Type':'application/json'}});
+      };
+      const fixture = await createRuntime({bindings,name,artifact,egress:provider});
+      let active = fixture;
+      const req = (path,token,init={}) => active.worker.fetch(`${origin}${path}`,{
+        ...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers},
+      });
+      const state = async token => {
+        const response = await req('/export',token);
+        assert.equal(response.status,200);
+        return (await response.json()).app;
+      };
+      const capture = async (token,intent,photo=false) => {
+        const html = await (await req('/create',token)).text();
+        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+        let body = new URLSearchParams({...fields,intent});
+        let contentType = 'application/x-www-form-urlencoded';
+        if (photo) {
+          const form = new FormData();
+          for (const [key,value] of Object.entries({...fields,intent})) form.set(key,value);
+          form.set('photo',new Blob([photoBytes],{type:'image/png'}),'qa-only.png');
+          const encoded = new globalThis.Request(origin,{method:'POST',body:form});
+          body = Buffer.from(await encoded.arrayBuffer());
+          contentType = encoded.headers.get('Content-Type');
+        }
+        const response = await req('/create',token,{method:'POST',body,
+          headers:{'X-Scry-Test-Origin':origin,'Content-Type':contentType}});
+        assert.equal(response.status,303);
+        return response.headers.get('Location').split('/').at(-1);
+      };
+      const settled = async (token,goal) => {
+        const deadline = Date.now()+5000;
+        do {
+          const app = await state(token);
+          if (app.goals[goal].status === 'failed') return app;
+          await new Promise(resolve=>setTimeout(resolve,50));
+        } while (Date.now()<deadline);
+        throw new Error('Actual alarm did not settle the controlled capture.');
+      };
+      try {
+        const ownerInitial = await state(jwt());
+        const qaFirst = await capture(service,'QA intent with no paid allocation');
+        let qaApp = await settled(service,qaFirst);
+        assert.match(qaApp.jobs[qaApp.goals[qaFirst].job_id].error,/not configured/);
+        assert.equal(qaApp.goals[qaFirst].intent,'QA intent with no paid allocation');
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,0,'QA cannot use owner providers even with an unused owner allowance.');
+        assert.deepEqual(await state(jwt()),ownerInitial);
+
+        const ownerFirst = await capture(jwt(),'Owner controlled allowance exhaustion');
+        const ownerSpent = await settled(jwt(),ownerFirst);
+        assert.equal(sends,1,'The unchanged owner provider remains usable.');
+        assert.equal(ownerSpent.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),3_500_000);
+        const ownerSecond = await capture(jwt(),'Owner must stop when the allowance is used');
+        const ownerBlocked = await settled(jwt(),ownerSecond);
+        assert.match(ownerBlocked.jobs[ownerBlocked.goals[ownerSecond].job_id].error,/allowance is used/);
+        assert.equal(sends,1);
+
+        const qaSecond = await capture(service,'QA must not get another application allowance');
+        qaApp = await settled(service,qaSecond);
+        assert.match(qaApp.jobs[qaApp.goals[qaSecond].job_id].error,/not configured/);
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,1,'An exhausted owner allowance cannot be bypassed by QA.');
+        assert.deepEqual(await state(jwt()),ownerBlocked,'QA work cannot mutate the owner ledger or notebook.');
+
+        // Restart after queuing photo work. Background capability comes from
+        // the immutable object ID, never the latest request or owner bindings.
+        const qaPhoto = await capture(service,'QA photo remains saved without paid transcription',true);
+        active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'restart-spending.invalid'});
+        await req('/settings',service);
+        qaApp = await settled(service,qaPhoto);
+        assert.match(qaApp.jobs[qaApp.goals[qaPhoto].job_id].error,/not configured/);
+        assert.ok(qaApp.goals[qaPhoto].photo);
+        assert.equal(qaApp.goals[qaPhoto].transcript,null);
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,1,'Restarted QA photo alarms cannot send through owner providers.');
+        assert.deepEqual(await state(jwt()),ownerBlocked);
+        console.log(JSON.stringify({qa_spend_boundary:'PASS',mode,provider_sends:sends,
+          owner_micros:ownerBlocked.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),
+          qa_micros:qaApp.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0)}));
+      } finally {await fixture.mf.dispose();}
+    });
+    await check(`${mode}: QA keeps local study and learner self-check without inheriting paid Jev`, async () => {
+      const localOrigin = 'http://127.0.0.1:8792';
+      const client = 'no-paid-checking-qa.access';
+      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,
+        bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:'scry-qa',INTERNAL_KEY:internalKey}});
+      let active = fixture,currentOrigin = localOrigin;
+      const req = (path,init={}) => active.worker.fetch(`${currentOrigin}${path}`,{...init,redirect:'manual',
+        headers:{'Cf-Access-Jwt-Assertion':jwt({sub:'',common_name:client}),...init.headers}});
+      const fields = (html,action) => {
+        const form = [...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);
+        assert.ok(form,`Missing real form ${action}`);
+        return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+      };
+      const post = (path,values) => req(path,{method:'POST',body:new URLSearchParams(values),
+        headers:{'X-Scry-Test-Origin':currentOrigin,'Content-Type':'application/x-www-form-urlencoded'}});
+      const snapshot = async identity => {
+        const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        const stub = ns.get(ns.idFromName('scry-qa'));
+        assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',
+          headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}})).status,200);
+        const bucket = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        const objects = (await bucket.list({prefix:'snapshots/scry-qa/'})).objects;
+        return (await (await bucket.get(objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key)).json()).app;
+      };
+      try {
+        // Authored local setup only; ordinary QA cannot call the fixture route.
+        let html = await (await req('/create')).text();
+        assert.equal((await post('/__fixture',fields(html,'/create'))).status,303);
+        let app = await snapshot('private-owner');
+        if (app.occurrence.presentation.kind === 'choice') {
+          assert.equal((await post(`/questions/${app.occurrence.question_id}/archive`,{
+            csrf:app.csrf,operation_id:'qa-archive-authored-choice-only'})).status,303);
+        }
+        active = await fixture.rebind({...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
+          JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
+          JEV_URL:'https://openrouter.ai/api/alpha/decisions'});
+        currentOrigin = origin;
+        html = await (await req('/')).text();
+        assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),
+          answer:'A deliberately non-exact QA remembered response'})).status,303);
+        const deadline = Date.now()+5000;
+        do {
+          // Snapshotting arms the next timer; let the real one-second work
+          // alarm fire before requesting another complete backup.
+          await new Promise(resolve=>setTimeout(resolve,1100));
+          app = await snapshot('private-qa');
+          if (app.occurrence.phase === 'self-check') break;
+        } while (Date.now()<deadline);
+        assert.equal(app.occurrence.phase,'self-check');
+        assert.match(Object.values(app.assessments)[0].error,/Meaning checking is not configured/);
+        assert.deepEqual(app.spend,[]);
+        assert.equal(app.events.length,0);
+        html = await (await req('/')).text();
+        assert.equal((await post('/review/self',{...fields(html,'/review/self'),correct:'true'})).status,303);
+        app = await snapshot('private-qa');
+        assert.equal(app.events.length,1);
+        assert.equal(app.events[0].result.authority,'learner');
+        assert.deepEqual(app.spend,[]);
+      } finally {await fixture.mf.dispose();}
+    });
+  }
   await check('revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup', async () => {
     // Explicit opaque synthetic bytes, not proof of Go ZIP/SQLite conversion.
     const opaque = Buffer.concat([Buffer.from('SYNTHETIC_GO_CUSTODY_CANARY\0'), Buffer.alloc(180000, 0xff)]);
@@ -550,7 +710,7 @@ try {
       assert.deepEqual(recovered.app.operations, snapshot.app.operations);
     } finally {await second?.mf.dispose(); await fixture.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===29?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  console.log(JSON.stringify({status:failures?'FAIL':'PASS',checks,failures,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
 
 await test('listener allocation survives deterministic contention and concurrent isolated starts',async t=>{

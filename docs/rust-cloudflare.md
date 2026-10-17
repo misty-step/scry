@@ -119,8 +119,13 @@ does not authorize ordinary preview or production.
 QA requests verify the same signature, issuer, audience, time and CSRF fences.
 The signed service identity selects only SQLite object `scry-qa`, photo prefix
 `photos/scry-qa/`, and backup prefix `snapshots/scry-qa/`. QA has its own durable
-jobs, history, allowance and alarms. The existing providers, when configured,
-remain subject to the authorized bounded exercise; this slice provisions none.
+jobs, history and alarms, but no paid provider capability or separate allowance.
+Generation, photo transcription, meaning checking and criticism remain disabled
+for QA even when owner providers are configured, including after runtime restart.
+Captures remain saved with an honest unavailable-preparation state; local study
+and learner self-check do not require a provider. See SPEC S09.4 before planning
+a real-provider QA journey: it requires an explicitly approved allocation and
+implementation, not just an Access token or provider binding.
 Settings backup operates on QA only. Operator routes and the owner's machine
 backup route are forbidden to QA even with operational headers. `/healthz`
 remains the existing safe owner-backup freshness probe, not QA notebook access.
