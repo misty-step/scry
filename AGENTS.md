@@ -1,5 +1,10 @@
 # Scry
 
+For each change load [verify-scry](.agents/skills/verify-scry/SKILL.md), use the
+existing `features/` navigation map and retain actual journey proof in the card
+and PR. New Hermes profiles review the checkout, then use native
+`hermes skills trust` for project discovery.
+
 Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
 
 Read [SPEC.md](SPEC.md), especially US-013/S11, before scoping or verifying

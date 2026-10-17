@@ -4,44 +4,19 @@ Stories: US-001, US-006, US-009, US-010
 
 Source: src/learning.rs, src/model.rs, src/engine.rs, src/web.rs, assets/*
 
-## Sub-features
+## Reach and drive
 
-Durable notes and provenance, prerequisite links, Map and goal focus/pause,
-separate practice evidence, labeled recall estimates, and 3/6/12 new-idea pace.
-## How to get to it (user POV)
+Read [SPEC S07](../SPEC.md#s07--manage-what-i-am-learning-us-001us-009us-010),
+[S08](../SPEC.md#s08--return-to-worthwhile-practice-us-009us-011) and
+[US-006](../SPEC.md#us-006-understand-a-questions-concept) for intent.
+Open Map (`/map`), choose a displayed goal, then a concept in its ordinary
+concept list. Follow the supplied `/goals/{id}` and `/concepts/{id}` links,
+not invented IDs. Use the visible Look it up gate before protected reference;
+return to study. In isolated state, try focus/pause/resume, Settings pace, and
+Practice; inspect the resulting visible status and reference.
 
-Map (`/map`) offers readable goal sections, ordinary concept links, and one
-decorative prerequisite constellation. Goal reference (`/goals/{id}`) retains
-intent and preparation. Concept reference (`/concepts/{id}`) retains current
-notes, questions, provenance, prerequisites, and practice. It does not consume a
-held occurrence. An unaided current concept/goal opens behind an assistance
-POST before answer-bearing reference is served.
-
-Focus prioritizes a goal's new concepts. Pause excludes its new material while
-retaining notes/history and ordinary due work. Resume restores eligible new
-material. Settings offers light/steady/intense caps of 3/6/12 new concepts per
-rolling day. Status, due indications, separate unaided/helped/missed evidence,
-and weighted recall are stated honestly; percentages are estimates, not mastery.
-Reading, navigation, or “I know this already” never manufactures cold recall.
-
-Archive stops future selection, retains old content/history, and invalidates
-stale work. The target starts in a fresh namespace: historical Go v4→v5
-foundation preservation remains a contract of that historical migration, not an
-import step or foundation route in this rewrite. Old stores remain separate.
-
-## Driving it
-
-`cargo test --locked --test concept_policy --test application --test web_render`
-checks pure evidence, prerequisite/pace selection, goal controls, and reference
-secrecy. Use a real synthetic Worker browser to exercise Map/focus/pause,
-reference/assistance, accessible states, archive, and refresh. `svg.constellation`
-is decorative; `ol.concept-list` carries the usable navigation/state. The authored
-demo is not an unaided memory observation. Live source-backed references and
-independent recovery need their own proof.
-
-## Gotchas
-
-Synthetic data proves mechanics only. Follow the current QA recipe, retain
-source-bound real observations, and keep protected reference/answer material
-behind durable assistance. Never attach live integrations or import historical
-stores to make a preview appear complete.
+[scry-qa](../.agents/skills/scry-qa/SKILL.md) owns setup and cleanup.
+`qa/walk --stories "US-001 US-006 US-009 US-010"` selects the existing walk;
+US-001 also requires the documented retained-Go migration check. Do not use
+historical live stores as fixtures. Inspect desktop/phone navigation, not just
+the decorative constellation or a passing process exit.

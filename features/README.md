@@ -9,7 +9,9 @@ production activation. US-012 is retired and its identifier remains reserved.
 - [Create, preparation, and refinement](capture.md): US-004, US-013/S11.
 - [Concepts, references, and goals](concepts.md): US-001, US-006, US-009, US-010.
 
-Use [Scry QA](../.agents/skills/scry-qa/SKILL.md) and
+This is the shared navigation inventory for verification and fitness. Intent
+stays in SPEC; feature pages add only reach/drive instructions and source hints.
+Use [verify-scry](../.agents/skills/verify-scry/SKILL.md), [Scry QA](../.agents/skills/scry-qa/SKILL.md) and
 [verification](../docs/qa/system.md) for an isolated local workerd session and
 actual browser/story proof. Old Go/retired-Worker receipts and synthetic material
 do not establish provider usefulness, private deployment, phone acceptance, or
