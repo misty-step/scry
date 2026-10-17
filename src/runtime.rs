@@ -19,6 +19,31 @@ const MODEL_RESPONSE_LIMIT: usize = 256 * 1024;
 const MODEL_TIMEOUT_MS: i64 = 55_000;
 const RECOVERY_MS: i64 = 90_000;
 const INTERNAL_HEADER: &str = "x-scry-internal-key";
+const QA_SPACE_NAME: &str = "scry-qa";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AccessPrincipal {
+    Owner,
+    Qa,
+}
+impl AccessPrincipal {
+    fn internal_identity(self) -> &'static str {
+        match self {
+            Self::Owner => "private-owner",
+            Self::Qa => "private-qa",
+        }
+    }
+    fn space_name(self, env: &Env) -> Result<String> {
+        let owner = space_name(env)?;
+        match self {
+            Self::Owner => Ok(owner),
+            Self::Qa if owner != QA_SPACE_NAME => Ok(QA_SPACE_NAME.into()),
+            Self::Qa => Err(Error::RustError(
+                "QA requires a separate learning space.".into(),
+            )),
+        }
+    }
+}
 thread_local! {
     // Public keys only, scoped to an issuer and refreshed after five minutes.
     static ACCESS_KEYS: RefCell<BTreeMap<String, (i64, Value)>> = const { RefCell::new(BTreeMap::new()) };
@@ -283,6 +308,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         return private(Response::error("Not found.", 404)?);
     }
     let mode = variable(&env, "SCRY_ENV");
+    let mut principal = AccessPrincipal::Owner;
     if development(&env) {
         if !loopback(&url)
             || provider_secrets_present(&env)
@@ -330,7 +356,11 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         // A separately scoped machine capability cannot read learner routes or
         // impersonate the owner. The outer Access policy remains required.
+        let access = validate_access(&req, &env).await;
         if req.path() == "/internal/backup" {
+            if matches!(access, Ok(AccessPrincipal::Qa)) {
+                return private(Response::error("QA cannot invoke owner operations.", 403)?);
+            }
             if method != Method::Post {
                 return private(Response::error("Method not allowed.", 405)?);
             }
@@ -347,8 +377,12 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
                 _ => private(Response::error("backup_failed", 503)?),
             };
         }
-        if validate_access(&req, &env).await.is_err() {
-            return private(Response::error("Owner authorization required.", 401)?);
+        principal = match access {
+            Ok(principal) => principal,
+            Err(_) => return private(Response::error("Owner authorization required.", 401)?),
+        };
+        if principal == AccessPrincipal::Qa && req.path().starts_with("/operator/") {
+            return private(Response::error("QA cannot invoke owner operations.", 403)?);
         }
     }
     if !read && mode != "restore" {
@@ -411,7 +445,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
     }
     headers.set(INTERNAL_HEADER, &key)?;
-    headers.set("x-scry-owner", "private-owner")?;
+    headers.set("x-scry-owner", principal.internal_identity())?;
     let mut init = RequestInit::new();
     init.with_method(method)
         .with_headers(headers)
@@ -420,7 +454,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     let trusted = Request::new_with_init(url.as_ref(), &init)?;
     let stub = env
         .durable_object("LEARNING_SPACE")?
-        .get_by_name(&space_name(&env)?)?;
+        .get_by_name(&principal.space_name(&env)?)?;
     private(stub.fetch_with_request(trusted).await?)
 }
 
@@ -445,7 +479,7 @@ async fn internal_request(env: &Env, path: &str, method: Method) -> Result<Respo
         .await
 }
 
-async fn validate_access(req: &Request, env: &Env) -> Result<()> {
+async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
     let team = variable(env, "ACCESS_TEAM");
     let aud = variable(env, "ACCESS_AUDIENCE");
     let owner = secret(env, "OWNER_SUBJECT");
@@ -488,14 +522,25 @@ async fn validate_access(req: &Request, env: &Env) -> Result<()> {
             || v.as_array()
                 .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(aud.as_str())))
     });
-    // Access service tokens have an empty subject; never map one to the owner.
-    // Only the explicit synthetic-only mode admits its exact signed principal.
-    let valid_identity = if variable(env, "SCRY_ENV") == "synthetic-preview" {
-        claims.get("sub").and_then(Value::as_str) == Some("")
+    // Decide the principal from signed claims, never client routing headers.
+    // Service identities cannot become the owner. Absent QA configuration is inert.
+    let qa_client = secret(env, "SCRY_QA_ACCESS_CLIENT_ID");
+    let principal = if variable(env, "SCRY_ENV") == "synthetic-preview" {
+        (claims.get("sub").and_then(Value::as_str) == Some("")
             && claims.get("common_name").and_then(Value::as_str)
-                == Some(secret(env, "SYNTHETIC_ACCESS_CLIENT_ID").as_str())
+                == Some(secret(env, "SYNTHETIC_ACCESS_CLIENT_ID").as_str()))
+        .then_some(AccessPrincipal::Owner)
+    } else if claims.get("sub").and_then(Value::as_str) == Some(owner.as_str()) {
+        Some(AccessPrincipal::Owner)
+    } else if matches!(variable(env, "SCRY_ENV").as_str(), "preview" | "production")
+        && !qa_client.is_empty()
+        && claims.get("sub").and_then(Value::as_str) == Some("")
+        && claims.get("common_name").and_then(Value::as_str) == Some(qa_client.as_str())
+        && space_name(env)? != QA_SPACE_NAME
+    {
+        Some(AccessPrincipal::Qa)
     } else {
-        claims.get("sub").and_then(Value::as_str) == Some(owner.as_str())
+        None
     };
     if header.get("alg").and_then(Value::as_str) != Some("RS256")
         || header
@@ -504,7 +549,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<()> {
         || kid.is_empty()
         || kid.len() > 256
         || claims.get("iss").and_then(Value::as_str) != Some(issuer.as_str())
-        || !valid_identity
+        || principal.is_none()
         || !valid_aud
         || !claims
             .get("exp")
@@ -606,7 +651,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<()> {
     if verified.as_bool() != Some(true) {
         return Err(Error::RustError("Invalid signature.".into()));
     }
-    Ok(())
+    principal.ok_or_else(|| Error::RustError("Invalid identity.".into()))
 }
 
 async fn bounded_stream(stream: JsValue, max: usize) -> Result<Vec<u8>> {
@@ -666,13 +711,17 @@ impl DurableObject for LearningSpace {
     }
     async fn fetch(&self, mut req: Request) -> Result<Response> {
         let key = internal_key(&self.env);
+        let principal = self.principal()?;
         if key.len() < 32
             || req.headers().get(INTERNAL_HEADER)?.as_deref() != Some(key.as_str())
-            || req.headers().get("x-scry-owner")?.as_deref() != Some("private-owner")
+            || req.headers().get("x-scry-owner")?.as_deref() != Some(principal.internal_identity())
         {
             return private(Response::error("Internal authorization required.", 403)?);
         }
         let path = req.path();
+        if principal == AccessPrincipal::Qa && path.starts_with("/operator/") {
+            return private(Response::error("QA cannot invoke owner operations.", 403)?);
+        }
         if path == "/__internal/health" {
             let rows = self.stored_rows()?;
             let fresh = !rows.is_empty()
@@ -1006,7 +1055,7 @@ impl DurableObject for LearningSpace {
                 );
             };
             let hash = persistence::sha256(&bytes);
-            let key = format!("photos/{}/{op}-{hash}", space_name(&self.env)?);
+            let key = format!("photos/{}/{op}-{hash}", self.space_name()?);
             let photo = Photo {
                 key: key.clone(),
                 mime: mime.into(),
@@ -1116,6 +1165,21 @@ struct StoredRow {
     value: String,
 }
 impl LearningSpace {
+    fn principal(&self) -> Result<AccessPrincipal> {
+        // The object ID survives eviction and alarm delivery, unlike a request
+        // header or an in-memory last visitor. Owner IDs and paths are unchanged.
+        let namespace = self.env.durable_object("LEARNING_SPACE")?;
+        if self.state.id() == namespace.id_from_name(&space_name(&self.env)?)? {
+            Ok(AccessPrincipal::Owner)
+        } else if self.state.id() == namespace.id_from_name(QA_SPACE_NAME)? {
+            Ok(AccessPrincipal::Qa)
+        } else {
+            Err(Error::RustError("Unknown learning space.".into()))
+        }
+    }
+    fn space_name(&self) -> Result<String> {
+        self.principal()?.space_name(&self.env)
+    }
     fn stored_rows(&self) -> Result<BTreeMap<String, String>> {
         let sql = self.state.storage().sql();
         sql.exec("CREATE TABLE IF NOT EXISTS records (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID", None)?;
@@ -1174,8 +1238,14 @@ impl LearningSpace {
         call(&raw, "transactionSync", &[callback.as_ref().clone()])?;
         Ok(())
     }
+    fn external_work_allowed(&self) -> bool {
+        // Access to an isolated QA notebook is not an additional spending
+        // allocation. Derive this capability from its durable identity so
+        // eviction, alarms and owner provider bindings cannot grant it to QA.
+        !isolated(&self.env) && matches!(self.principal(), Ok(AccessPrincipal::Owner))
+    }
     fn work_config(&self) -> engine::WorkConfig {
-        let disabled = isolated(&self.env);
+        let disabled = !self.external_work_allowed();
         let model = variable(&self.env, "OPENROUTER_MODEL");
         let jev_model = variable(&self.env, "JEV_MODEL");
         let generation =
@@ -1266,9 +1336,9 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
-        if isolated(&self.env) {
+        if !self.external_work_allowed() {
             return Err((
-                "External work is disabled in this isolated environment.".into(),
+                "External work is disabled for this learning space.".into(),
                 false,
             ));
         }
@@ -1484,7 +1554,7 @@ impl LearningSpace {
             drop(archive);
             let expected_size = bytes.len();
             let hash = persistence::sha256(&bytes);
-            let prefix = format!("snapshots/{}/", space_name(&self.env)?);
+            let prefix = format!("snapshots/{}/", self.space_name()?);
             let key = format!(
                 "{prefix}{}-{}-{}.json",
                 now(),
@@ -1603,7 +1673,7 @@ impl LearningSpace {
         for photo in &archive.photos {
             let key = format!(
                 "photos/{}/{}-{}",
-                space_name(&self.env)?,
+                self.space_name()?,
                 photo.photo.sha256,
                 random_id()?
             );

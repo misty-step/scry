@@ -355,7 +355,7 @@ require separate delayed unaided recall data.
 As the owner, I want easy private access from my phone and computer without
 maintaining a signup product or exposing my learning material.
 
-- **S09.1:** Only the approved owner identity can access the app; missing,
+- **S09.1:** Only the approved owner identity can access the owner's notebook; missing,
   unapproved, or forged identity cannot read/export material or mutate it
   through any exposed hostname, backend listener, or alternate port. Verify
   the actual ingress trust boundary before accepting personal data.
@@ -368,6 +368,16 @@ maintaining a signup product or exposing my learning material.
   model, backup, or deployment authority by default. If machine access is added,
   it uses an explicitly scoped/revocable app credential, not VM management/root
   access or a browser token copied into a client.
+- **S09.4:** The separately approved QA learner may use ordinary preview and
+  production only through its exact signed service identity, in a dedicated
+  notebook of authored test material. It cannot select, read, export or mutate
+  the owner's notebook, or invoke operator/owner-backup capabilities. Owner
+  access and operations remain unchanged. QA photos, complete backups and
+  background work stay with the QA notebook across eviction/restart. Missing
+  QA configuration denies service access; it never falls back to the owner.
+  QA access grants no separate provider allowance: paid generation, photo
+  transcription, meaning checks and criticism stay disabled pending an explicitly
+  approved allocation. Configuring owner providers does not enable them for QA.
 
 Proof: actual private HTTPS access, negative ingress/CSRF/content tests, and
 inspection of the deployed capability boundary. A local auth stub is not proof.

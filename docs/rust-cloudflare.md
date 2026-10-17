@@ -98,6 +98,47 @@ Retrieve a controlled hosted synthetic event and its owned intake separately
 before claiming delivery; local tests, Go-edge events and source merges do not
 prove Rust production reporting, uptime/cron health or owner access.
 
+### Dedicated QA learner
+
+Ordinary `preview` and `production` may admit the approved `scry-qa` Access
+service token to its own fixed notebook. Bind that token's exact client ID as
+Worker secret `SCRY_QA_ACCESS_CLIENT_ID`; do not bind its client secret to the
+Worker. Missing/empty binding denies all QA service access. Owner subject,
+`SPACE_NAME`, internal/operational keys and existing owner routes stay unchanged.
+Do not configure the owner's space as `scry-qa`: a collision refuses QA access.
+
+The authorized provisioner creates token `scry-qa`, adds its own Service Auth
+policy on the ordinary preview and production Access apps for the whole app,
+and retains the pair in `misty-step/SCRY_QA_ACCESS_CLIENT_ID` and
+`misty-step/SCRY_QA_ACCESS_CLIENT_SECRET` in pass. Provisioning is an explicit
+credential/Access write, not performed by a deployment or test. Use that pair
+only in a dedicated QA browser/request context, never in a URL, capture or
+shared browser. The existing `synthetic-preview` principal is different and
+does not authorize ordinary preview or production.
+
+QA requests verify the same signature, issuer, audience, time and CSRF fences.
+The signed service identity selects only SQLite object `scry-qa`, photo prefix
+`photos/scry-qa/`, and backup prefix `snapshots/scry-qa/`. QA has its own durable
+jobs, history and alarms, but no paid provider capability or separate allowance.
+Generation, photo transcription, meaning checking and criticism remain disabled
+for QA even when owner providers are configured, including after runtime restart.
+Captures remain saved with an honest unavailable-preparation state; local study
+and learner self-check do not require a provider. See SPEC S09.4 before planning
+a real-provider QA journey: it requires an explicitly approved allocation and
+implementation, not just an Access token or provider binding.
+Settings backup operates on QA only. Operator routes and the owner's machine
+backup route are forbidden to QA even with operational headers. `/healthz`
+remains the existing safe owner-backup freshness probe, not QA notebook access.
+Removing the QA ID binding denies subsequent service requests without deleting
+either notebook. Access revocation is separately owned by the provisioner.
+
+`node --test qa/runtime.test.mjs` exercises both ordinary modes against the
+compiled WASM, including cross-principal reads/writes, same-operation photo
+keys, complete backup isolation, revocation/recovery and alarms after runtime
+restart. This is not hosted Access or authenticated phone-use evidence. After
+provisioning, exercise the real phone-size journey on ordinary preview first,
+then production, using only authored QA material and recording video.
+
 The application allows $3.50 per rolling day and reserves $0.50 per preparation
 against shared generation/meaning/critic use. Unknown sent outcomes keep their
 reservation. The provider's existing $25/week key cap is a separate control.
@@ -181,9 +222,9 @@ Generate a dedicated `BACKUP_TRIGGER_KEY` of at least 32 bytes into the existing
 encrypted pass store, bind it as a Worker secret, and retain the chief's private
 request configuration outside the checkout. Send it in `x-scry-backup-key`,
 alongside the existing approved Access service credentials for that environment.
-Never put capabilities in argv, URLs, source or receipts. Production does not
-admit a service principal to learner routes; this capability can only make a
-snapshot and cannot act as the owner. Keep synthetic and production keys separate.
+Never put capabilities in argv, URLs, source or receipts. The backup service
+principal does not gain learner routes; this capability can only make a snapshot
+and cannot act as the owner. Keep synthetic and production keys separate.
 
 Missing or wrong keys return 403; non-POST returns 405. Success returns 200 only
 after the same complete R2 verification used by the operator backup. Failure
