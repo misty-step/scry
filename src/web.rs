@@ -1132,6 +1132,57 @@ impl View<'_> {
     }
 }
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const SOURCE_REVISION: &str = match option_env!("SCRY_SOURCE_REVISION") {
+    Some(revision) => revision,
+    None => "unverified-development-build",
+};
+
+fn release_notes(markdown: &str) -> String {
+    use pulldown_cmark::{Event, Tag};
+    let events = pulldown_cmark::Parser::new(markdown).map(|mut event| {
+        if let Event::Start(Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. }) = &mut event
+            && !dest_url.starts_with("https://github.com/misty-step/scry/")
+            && !dest_url.starts_with('#')
+        {
+            *dest_url = "#".into();
+        }
+        match event {
+            pulldown_cmark::Event::Html(text) | pulldown_cmark::Event::InlineHtml(text) => {
+                pulldown_cmark::Event::Text(text)
+            }
+            other => other,
+        }
+    });
+    let mut notes = String::new();
+    pulldown_cmark::html::push_html(&mut notes, events);
+    notes
+}
+
+pub fn changelog() -> String {
+    let notes = release_notes(include_str!("../CHANGELOG.md"));
+    let content = format!(
+        "<section class=\"reading release-notes\"><p class=\"eyebrow\">This build</p><p>Version {} · source <code>{}</code></p>{notes}</section>",
+        escape(VERSION),
+        escape(SOURCE_REVISION)
+    );
+    shell("Changelog", "/changelog", &content, None, false, false)
+}
+
+#[cfg(test)]
+#[test]
+fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
+    let notes = release_notes(
+        "# Changelog\n\n<script>PRIVATE_CANARY</script>\n\n[click](javascript:alert%281%29) ![pixel](https://tracking.invalid/pixel)\n\n[commit](https://github.com/misty-step/scry/commit/abc)",
+    );
+    assert!(notes.contains("<h1>Changelog</h1>"));
+    assert!(!notes.contains("<script>"));
+    assert!(!notes.contains("javascript:"));
+    assert!(!notes.contains("tracking.invalid"));
+    assert!(notes.contains("href=\"https://github.com/misty-step/scry/commit/abc\""));
+    assert!(!changelog().contains("style=\""));
+}
+
 pub fn render(
     app: &App,
     path: &str,
@@ -1234,7 +1285,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" content=\"#f5f2ea\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/create\" {}>Create</a><a href=\"/map\" {}>Map</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><span class=\"footer-motto\">A little understanding, kept.</span><div><a href=\"/history\">History</a><a href=\"/settings\">Settings</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" content=\"#f5f2ea\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/create\" {}>Create</a><a href=\"/map\" {}>Map</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><span class=\"footer-motto\">A little understanding, kept.</span><div><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if matches!(path, "/create" | "/add") {

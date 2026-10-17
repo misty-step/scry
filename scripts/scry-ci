@@ -198,6 +198,7 @@ def gate(args):
     verify_source(source, metadata)
     output.mkdir(parents=True, exist_ok=False)
     env, log = environment(), output / "gate.log"
+    env["SCRY_SOURCE_REVISION"] = metadata["revision"]
     toolchain = run(["rustc", "--version"], cwd=source, env=env, log=log).decode().strip()
     require(toolchain.startswith("rustc 1.98.1 "), "Rust 1.98.1 is required")
     node = run(["node", "--version"], cwd=source, env=env, log=log).decode().strip()
@@ -209,6 +210,7 @@ def gate(args):
         ["cargo", "clippy", "--locked", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
         ["node", "--check", "assets/app.js"],
         ["node", "--test", "qa/walk-cli.test.mjs"],
+        [sys.executable, "qa/release-publish.test.py"],
         ["bash", "-n", "scripts/rust-dev"],
     ):
         run(command, cwd=source, env=env, log=log)

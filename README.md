@@ -113,6 +113,12 @@ spend and recovery policies; this entrypoint is not another copy.
 
 ## Release and recovery
 
+Read [generated release history](CHANGELOG.md), [GitHub Releases](https://github.com/misty-step/scry/releases),
+or Changelog in the private application's footer. [ADR 007](docs/adr/007-generated-releases.md)
+owns the single generator, baseline and bot release-PR procedure. Versions and
+notes describe source; `/changelog` and health identity headers identify the
+serving build. Neither a tag nor a source merge proves production promotion.
+
 [The Rust target release procedure](docs/rust-cloudflare.md) describes the new
 namespace, frozen artifacts, and verifiable private-ingress, recovery and
 cutover conditions. Routine activation needs no separate operator approval

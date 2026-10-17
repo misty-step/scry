@@ -10,6 +10,7 @@ import {specs} from './walk-specs.mjs';
 import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
+import {releaseWalk} from './browser-release.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
 const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
@@ -66,7 +67,8 @@ try{
  }
  receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.create_journey=await createWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
- receipt.exit=receipt.stories.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'?0:1;
+ receipt.release_journey=await releaseWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
+ receipt.exit=receipt.stories.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass')?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
 finally{await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
 process.exitCode=receipt.exit;

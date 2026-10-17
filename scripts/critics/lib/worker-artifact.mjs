@@ -6,7 +6,7 @@ import {readFile,writeFile,mkdir,readdir,lstat,copyFile} from 'node:fs/promises'
 import {join,resolve,relative} from 'node:path';
 
 export const artifactFiles=['index.js','index_bg.wasm'];
-const sourceFiles=['Cargo.toml','Cargo.lock','rust-toolchain.toml','deploy/cloudflare-hosting/telemetry.mjs'];
+const sourceFiles=['Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md','deploy/cloudflare-hosting/telemetry.mjs'];
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 export async function artifactIdentity(directory) {

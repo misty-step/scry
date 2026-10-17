@@ -1,0 +1,90 @@
+name: release
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+  workflow_run:
+    workflows: [ci]
+    branches: [master]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scry-release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'master' }}
+  cancel-in-progress: false
+
+jobs:
+  title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a publishable Conventional Commit title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"(?:feat|fix|chore|docs|test|build|ci|refactor|style|perf|revert)(?:\([a-zA-Z0-9_. /-]+\))?!?: [^\r\n]+", os.environ["PR_TITLE"]), "Use a Conventional Commit title; the title becomes public release input"'
+
+  release:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Refuse a moved head or missing bootstrap
+        env:
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          bootstrap=$(python3 -c 'import json; print(json.load(open("release-please-config.json"))["bootstrap-sha"])')
+          git merge-base --is-ancestor "$bootstrap" HEAD
+      - name: Refuse tagging an earlier failed release merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/scry-publish.py preflight
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0; release-please 17.6.0
+        id: release
+        with:
+          target-branch: master
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Run real exact-head CI for bot-created release PRs
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          for pr in json.loads(os.environ['RELEASE_PRS']):
+              repo = os.environ['GITHUB_REPOSITORY']
+              current = json.loads(subprocess.check_output(['gh', 'api', 'repos/' + repo + '/pulls/' + str(pr['number'])]))
+              assert current['state'] == 'open' and current['base']['ref'] == 'master'
+              assert current['head']['repo']['full_name'] == repo and current['head']['ref'] == pr['headBranchName']
+              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', repo, '--ref', current['head']['ref'], '-f', 'mode=verify', '-f', 'expected_head=' + current['head']['sha']], check=True)
+          PY
+      - name: Finalize or recover the existing exact tagged master artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: python3 scripts/scry-publish.py
+      - name: Open or update the existing Actions failure-issue path
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/scry-publish.py report-failure

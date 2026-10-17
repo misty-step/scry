@@ -1,10 +1,10 @@
 product:
   name: Scry
-  description: Personal quiz-first Go and SQLite learning application.
-audience: developer
+  description: Private prompt-first Rust learning notebook on Cloudflare Workers, SQLite Durable Objects and R2.
+audience: end-user
 voice: Clear, concrete, and specific to shipped behavior.
 changelog:
-  source: auto
+  source: changelog
 release:
   profile: synthesis-only
 model:
