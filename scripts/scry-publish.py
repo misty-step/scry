@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib.parse import urlencode
 
 
 def gh(*args, absent=False) -> bytes:
@@ -24,6 +25,22 @@ def gate(run, source):
             and run['event'] == 'push' and run['conclusion'] == 'success'
             and run['path'] == '.github/workflows/ci.yml'):
         raise RuntimeError('Release requires successful exact-source master push CI')
+
+
+def preflight():
+    # A later green commit cannot authorize tagging an earlier failed merge.
+    repo = os.environ['GITHUB_REPOSITORY']
+    label = json.loads(Path('release-please-config.json').read_text())['label']
+    query = urlencode({'state': 'closed', 'labels': label, 'per_page': 100})
+    pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/issues?{query}'))
+    for issue in (issue for page in pages for issue in page if 'pull_request' in issue):
+        pr = json.loads(gh('api', f'repos/{repo}/pulls/{issue["number"]}'))
+        if not pr['merged']:
+            continue
+        source = pr['merge_commit_sha']
+        runs = json.loads(gh('api', f'repos/{repo}/actions/workflows/ci.yml/runs?head_sha={source}&branch=master&event=push&status=success'))['workflow_runs']
+        assert runs, 'Refusing to tag a merged release PR without successful exact-source CI'
+        gate(runs[0], source)
 
 
 def main():
@@ -89,6 +106,8 @@ def report_failure():
 if __name__ == '__main__':
     if sys.argv[1:] == ['report-failure']:
         report_failure()
+    elif sys.argv[1:] == ['preflight']:
+        preflight()
     else:
         assert not sys.argv[1:]
         main()

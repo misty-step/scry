@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bootstrap-sha": "560d711cf71c6f4fc4aafa21fdfda4aeb91a67d5",
+  "label": "autorelease: pending",
   "packages": {
     ".": {
       "release-type": "rust",

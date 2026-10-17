@@ -14,6 +14,9 @@ PUBLISH = runpy.run_path(str(ROOT / 'scripts/scry-publish.py'))
 
 
 class ReleaseRefusals(unittest.TestCase):
+    def test_exact_source_preflight_runs_before_the_generator_can_publish(self):
+        self.assertLess(WORKFLOW.index('run: python3 scripts/scry-publish.py preflight'), WORKFLOW.index('uses: googleapis/release-please-action@'))
+
     def test_exact_ci_allows_success_and_refuses_failed_skipped_wrong_source_or_event(self):
         source = 'a' * 40
         good = dict(head_sha=source, head_branch='master', event='push', conclusion='success', path='.github/workflows/ci.yml')
@@ -24,7 +27,7 @@ class ReleaseRefusals(unittest.TestCase):
                 PUBLISH['gate'](good | change, source)
 
     def test_real_preflight_refuses_missing_baseline_and_moved_head(self):
-        block = WORKFLOW.split('      - name: Refuse a moved head or missing bootstrap\n', 1)[1].split('      - uses:', 1)[0]
+        block = WORKFLOW.split('      - name: Refuse a moved head or missing bootstrap\n', 1)[1].split('\n      - ', 1)[0]
         shell = '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())
         with tempfile.TemporaryDirectory() as directory:
             subprocess.run(['git', 'init', '--quiet', directory], check=True)
