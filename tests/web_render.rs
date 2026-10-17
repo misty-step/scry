@@ -140,8 +140,8 @@ fn revived() -> App {
         Question::new(question, LEGACY_GOAL.into(), concept, content, NOW - 1000),
     );
     // Original preparations that never produced material: paused, canceled
-    // (superseded), failed and completed-without-questions.
-    for (n, status) in ["paused", "superseded", "failed", "ready"]
+    // (superseded), failed, partial and completed-without-questions.
+    for (n, status) in ["paused", "superseded", "failed", "ready", "partial"]
         .iter()
         .enumerate()
     {
@@ -230,6 +230,21 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
         "/goals/legacy-import-goal-00000000000000000000000000000002",
     );
     assert!(stopped.contains("came from your earlier notebook"));
+    // Every view of a stopped import agrees that nothing is being prepared.
+    for n in 0..5 {
+        let page = check(
+            &app,
+            &format!("/goals/legacy-import-goal-0000000000000000000000000000000{n}"),
+        );
+        assert!(page.contains("This request didn't finish."), "goal {n}");
+        for claim in [
+            "taking shape",
+            "Scry is preparing",
+            "A useful part is ready",
+        ] {
+            assert!(!page.contains(claim), "goal {n} claims {claim}");
+        }
+    }
     let home = check(&app, "/");
     for words in [
         "Preparation is paused",
@@ -239,6 +254,10 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     ] {
         assert!(home.contains(words), "{words} missing from receipts");
     }
+    assert!(!home.contains("Some material is ready"));
+    let mut idle = app.clone();
+    idle.occurrence = None;
+    assert!(!check(&idle, "/").contains("taking shape"));
 
     // The new-idea introduction names the idea by its question, once.
     app.occurrence = Some(legacy_occurrence(&app, "intro"));

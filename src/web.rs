@@ -74,13 +74,21 @@ fn note_text<'a>(app: &App, concept: &Concept, text: &'a str) -> &'a str {
 }
 
 /// Imported requests whose original preparation never finished carry a
-/// provenance marker where a reason belongs.
-fn stop_reason(error: &str) -> &str {
-    if error.starts_with(LEGACY_JOB_MARKER) {
-        "This request came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again."
-    } else {
-        error
-    }
+/// provenance marker where a reason belongs; their page explains instead.
+fn imported_unfinished(job: Option<&Job>) -> bool {
+    job.and_then(|j| j.error.as_deref())
+        .is_some_and(|e| e.starts_with(LEGACY_JOB_MARKER))
+}
+
+/// Nothing is running or queued for this preparation until the learner asks
+/// again. Imported requests that never finished in the earlier notebook are
+/// stopped whatever status the old app recorded.
+fn preparation_stopped(job: Option<&Job>, status: &str) -> bool {
+    imported_unfinished(job)
+        || matches!(
+            status,
+            "unknown" | "failed" | "blocked" | "paused" | "superseded" | "ready"
+        )
 }
 
 /// One line of at most `limit` characters, cut at a word where possible.
@@ -217,30 +225,25 @@ impl View<'_> {
             .values()
             .filter(|g| !g.archived && g.status != "ready")
         {
-            let phase = self
-                .app
-                .jobs
-                .get(&goal.job_id)
+            let job = self.app.jobs.get(&goal.job_id);
+            let phase = job
                 .map(|j| j.status.as_str())
                 .unwrap_or(goal.status.as_str());
+            let stopped = preparation_stopped(job, phase);
             let text = match phase {
+                "unknown" => "Preparation stopped with an uncertain outcome",
+                "failed" | "blocked" => "Preparation needs your attention",
+                "paused" => "Preparation is paused",
+                "ready" => "No practice was prepared",
+                _ if stopped => "Preparation stopped",
                 "queued" | "pending" => "Preparing your material",
                 "running" | "generating" | "critic" | "sent" | "candidates" | "critic-sent" => {
                     "Working on your explanation and practice"
                 }
-                "unknown" => "Preparation stopped with an uncertain outcome",
-                "failed" | "blocked" => "Preparation needs your attention",
                 "partial" => "Some material is ready; preparation is incomplete",
-                "paused" => "Preparation is paused",
-                "superseded" => "Preparation stopped",
                 "budget" => "Waiting for today's preparation allowance",
-                "ready" => "No practice was prepared",
                 _ => "Preparation is in progress",
             };
-            let stopped = matches!(
-                phase,
-                "unknown" | "failed" | "blocked" | "paused" | "superseded" | "ready"
-            );
             let _ = write!(
                 out,
                 "<a class=\"preparation-receipt {}\" href=\"/goals/{}\"><span class=\"status-dot\" aria-hidden=\"true\"></span><span><strong>{}</strong><span>{text}</span></span><span aria-hidden=\"true\">↗</span></a>",
@@ -565,11 +568,12 @@ impl View<'_> {
     }
     fn empty(&self) -> String {
         let any = self.app.goals.values().any(|g| !g.archived);
-        let pending = self
-            .app
-            .goals
-            .values()
-            .any(|g| !g.archived && g.status != "ready");
+        let pending = self.app.goals.values().any(|g| {
+            let job = self.app.jobs.get(&g.job_id);
+            !g.archived
+                && g.status != "ready"
+                && !preparation_stopped(job, job.map_or(g.status.as_str(), |j| j.status.as_str()))
+        });
         let due = self
             .app
             .questions
@@ -812,12 +816,12 @@ impl View<'_> {
     fn preparation(&self, g: &Goal) -> String {
         let job = self.app.jobs.get(&g.job_id);
         let status = job.map(|j| j.status.as_str()).unwrap_or(g.status.as_str());
-        let stopped = matches!(
-            status,
-            "failed" | "unknown" | "blocked" | "budget" | "paused" | "superseded"
-        );
-        let pending = matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
+        let imported = imported_unfinished(job);
+        let stopped = preparation_stopped(job, status) || status == "budget";
+        let pending =
+            !stopped && matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
         let title = match status {
+            _ if imported => "This request didn't finish.",
             "queued" => "Preparing your reference.",
             "sent" => "Writing your reference and practice.",
             "candidates" | "critic-sent" => "Checking your new material.",
@@ -827,6 +831,7 @@ impl View<'_> {
             "budget" => "Your preparation allowance is in use.",
             "partial" => "A useful part is ready.",
             "superseded" => "Your request has changed.",
+            "ready" => "No practice was prepared.",
             _ => "Your material is taking shape.",
         };
         let mut out = format!(
@@ -838,7 +843,9 @@ impl View<'_> {
             } else {
                 "Your request is"
             },
-            if status == "unknown" {
+            if imported {
+                "It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again."
+            } else if status == "unknown" {
                 "A request may have reached the model. Its allowance remains accounted for. Retrying is a deliberate new attempt, not a claim that the earlier one failed."
             } else if status == "partial" {
                 "Your saved material is ready to read and practice. Add feedback below to shape the parts that still need work."
@@ -850,11 +857,11 @@ impl View<'_> {
                 "Scry is preparing an explanation, examples, and practice. You can leave this page; your progress is saved."
             }
         );
-        if let Some(error) = job.and_then(|j| j.error.as_ref()) {
+        if let Some(error) = job.and_then(|j| j.error.as_ref()).filter(|_| !imported) {
             let _ = write!(
                 out,
                 "<details><summary>Why preparation stopped</summary><p>{}</p></details>",
-                escape(stop_reason(error))
+                escape(error)
             );
         }
         if matches!(status, "failed" | "unknown" | "paused") && job.is_some_and(|j| j.attempt < 3) {
@@ -1113,11 +1120,11 @@ impl View<'_> {
                 / 1_000_000.0;
             return format!(
                 "<aside class=\"notice\"><strong>Draft preparation stopped.</strong><p>{}</p><p class=\"fineprint\">${accounted:.2} used or reserved. Your saved question has not changed.</p>{}</aside>",
-                escape(stop_reason(
+                escape(
                     job.error
                         .as_deref()
                         .unwrap_or("Its outcome has not been confirmed.")
-                )),
+                ),
                 if job.attempt < 3 {
                     self.form(
                         &format!("/questions/{}/fix", q.id),
