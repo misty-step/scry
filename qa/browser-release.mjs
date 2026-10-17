@@ -15,7 +15,7 @@ export async function releaseWalk(browser, capture) {
       try {
         await page.goto(runtime.url);
         await page.getByRole('link',{name:'Changelog',exact:true}).click();
-        await page.getByRole('heading',{name:'Changelog',exact:true}).waitFor();
+        await page.getByRole('heading',{name:'Changelog',level:1,exact:true}).waitFor();
         assert.equal(new URL(page.url()).pathname,'/changelog');
         const main=await page.locator('main').innerText();
         assert.ok(main.includes('Version '+version));
