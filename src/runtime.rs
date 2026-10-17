@@ -928,14 +928,10 @@ impl DurableObject for LearningSpace {
                 )?);
             }
             let mut app = self.load()?;
-            if !app.restored_paused {
-                return private(Response::error(
-                    "This space is not awaiting recovery review.",
-                    409,
-                )?);
-            }
             let before = app.revision;
-            app.restored_paused = false;
+            if let Err(error) = engine::resume_work(&mut app) {
+                return app_error(error);
+            }
             self.save(&mut app, Some(before))?;
             self.arm().await?;
             return private(Response::ok(

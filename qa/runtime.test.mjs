@@ -194,14 +194,27 @@ try {
     const response=await restore(archiveBytes);assert.equal(response.status,200);assert.match(await response.text(),/paused/);assert.equal((await restore(archiveBytes)).status,409);
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName('fresh-isolated-restore-only'));const readback=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(readback.status,200);const recovered=await readback.json();assert.equal(recovered.app.restored_paused,true);assert.equal(recovered.app.preferences.pace,'steady');assert.equal(Object.keys(recovered.app.goals).length,2);assert.equal(recovered.photos.length,1);assert.deepEqual(Buffer.from(recovered.photos[0].bytes,"base64"),photoBytes);assert.notEqual(recovered.photos[0].photo.key,JSON.parse(archiveBytes).photos[0].photo.key);assert.deepEqual(recovered.app.events,JSON.parse(archiveBytes).app.events);assert.deepEqual(recovered.app.operations,JSON.parse(archiveBytes).app.operations);
   });
-  await check('reviewed private recovery resumes only future explicit work',async()=>{
+  await check('learner Settings resume refuses CSRF, replays safely and preserves historical work',async()=>{
     const activeBindings={...baseBindings,SPACE_NAME:'fresh-isolated-restore-only',OPENROUTER_API_KEY:'synthetic-recovery-generator-key',OPENROUTER_MODEL:'synthetic-recovery-model'};
     const active=await restoreRuntime.rebind(activeBindings);const req=(path,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(activeBindings.SPACE_NAME));const state=async()=>{const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});return(await response.json()).app;};
     const before=await state();assert.equal(before.restored_paused,true);const oldJobs=structuredClone(before.jobs),oldAssessments=structuredClone(before.assessments);
     const html=await(await req('/create')).text();const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new deliberate request after recovery review'})});assert.equal(created.status,303);const newGoal=created.headers.get('Location').split('/').at(-1);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':'wrong'}})).status,403);assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':'https://attacker.invalid','x-scry-operator-key':operatorKey}})).status,403);
-    const resumed=await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}});assert.equal(resumed.status,200);assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}})).status,409);
+    const settings=await(await req('/settings')).text();
+    const resumeForm=/<form[^>]*action="\/settings\/resume"[^>]*>([\s\S]*?)<\/form>/.exec(settings);
+    assert.ok(resumeForm,'The owner must have a real native resume form, not an operator instruction.');
+    const resumeFields=Object.fromEntries([...resumeForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+    const resume=(values=resumeFields,originHeader=origin)=>req('/settings/resume',{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(values)});
+    for(const [values,originHeader,status] of [[resumeFields,'https://attacker.invalid',403],[{...resumeFields,csrf:'forged'},origin,403],[{...resumeFields,operation_id:''},origin,422]]){
+      assert.equal((await resume(values,originHeader)).status,status);
+      assert.equal((await state()).restored_paused,true);
+      assert.equal(recoverySends,0);
+    }
+    const resumed=await resume();assert.equal(resumed.status,303);assert.equal(resumed.headers.get('Location'),'/');
+    assert.equal((await resume()).status,303,'Lost-response replay reconciles the same operation.');
+    assert.equal((await resume({...resumeFields,operation_id:'second-distinct-resume-operation'})).status,409);
+    assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}})).status,409);
     const deadline=Date.now()+5000;let after;do{after=await state();if(recoverySends&&after.goals[newGoal].status==='failed')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(recoverySends,1);assert.equal(after.restored_paused,false);assert.equal(after.goals[newGoal].status,'failed');for(const[id,job]of Object.entries(oldJobs))assert.deepEqual(after.jobs[id],job,'Historical uncertain jobs must not be requeued.');assert.deepEqual(after.assessments,oldAssessments);assert.match(after.spend.at(-1).raw_response,/Controlled malformed recovery response/);
   });
   await check('complete asset capacity rejects capture atomically and removes its orphan',async()=>{
@@ -477,12 +490,43 @@ try {
         const ownerSnapshot = await (await ownerBackups.get(ownerAfter.app.backup.key)).json();
         assert.doesNotMatch(JSON.stringify(ownerSnapshot),/QA_ONLY_NOTEBOOK_CANARY/);
         assert.equal((await req('/internal/backup','',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);
+        for (const space of [baseBindings.SPACE_NAME,'scry-qa']) {
+          const db=await storage(space);
+          const meta=JSON.parse((await db.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+          meta.restored_paused=true;
+          await db.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+        }
+        const ownerPaused=(await exported(jwt())).app;
+        const qaPaused=(await exported(service)).app;
+        const resumeHtml=await(await req('/settings')).text();
+        const resumeForm=/<form[^>]*action="\/settings\/resume"[^>]*>([\s\S]*?)<\/form>/.exec(resumeHtml);
+        assert.ok(resumeForm);
+        const resumeFields=fields(resumeForm[1]);
+        assert.equal((await post('/settings/resume',{...resumeFields,csrf:ownerPaused.csrf})).status,403);
+        assert.equal((await post('/settings/resume',resumeFields,service,{'X-Scry-Test-Origin':'https://attacker.invalid'})).status,403);
+        assert.equal((await post('/settings/resume',resumeFields,service,{'x-scry-owner':'private-owner','x-scry-space':baseBindings.SPACE_NAME})).status,303);
+        assert.equal((await exported(service)).app.restored_paused,false);
+        assert.deepEqual((await exported(jwt())).app,ownerPaused,'QA resume must leave the owner paused and every owner record unchanged.');
+        const qaResumed=(await exported(service)).app;
+        for(const key of ['jobs','assessments','spend','events','questions']) assert.deepEqual(qaResumed[key],qaPaused[key]);
+        assert.equal((await post('/settings/resume',{...resumeFields,operation_id:'qa-repeat-resume-new-operation'})).status,409);
+        assert.equal((await post('/operator/resume-work',{},service,{'x-scry-operator-key':operatorKey})).status,403);
+        active=await fixture.rebind({...bindings,OPENROUTER_API_KEY:'synthetic-owner-provider',OPENROUTER_MODEL:'synthetic-owner-model'});
+        const nextFields=fields(await(await req('/create')).text());
+        const next=await post('/create',{...nextFields,intent:'QA after deliberate resume still cannot spend'});
+        assert.equal(next.status,303);
+        await new Promise(resolve=>setTimeout(resolve,1500));
+        const noPaid=(await exported(service)).app;
+        assert.equal(noPaid.goals[next.headers.get('Location').split('/').at(-1)].status,'failed');
+        assert.deepEqual(noPaid.spend,qaPaused.spend);
+        assert.deepEqual((await exported(jwt())).app,ownerPaused);
+        const qaFinalGoals=noPaid.goals;
         // Revocation removes QA admission without changing either persisted notebook.
         active = await fixture.rebind({...bindings,SCRY_QA_ACCESS_CLIENT_ID:''});
         assert.equal((await req('/export')).status,401);
         assert.equal((await req('/export',jwt())).status,200);
         active = await fixture.rebind(bindings);
-        assert.deepEqual((await exported(service)).app.goals,qaArchive.app.goals);
+        assert.deepEqual((await exported(service)).app.goals,qaFinalGoals);
         active = await fixture.rebind({...bindings,SPACE_NAME:'scry-qa'});
         assert.equal((await req()).status,401,'A colliding owner name must never admit QA as owner.');
         assert.equal((await req('/',jwt())).status,200,'Existing owner routing remains authoritative.');

@@ -468,8 +468,20 @@ fn apply(
             Ok(result("/settings", None))
         }
         "/settings/backup" => Ok(result("/settings", None)),
+        "/settings/resume" => {
+            resume_work(app)?;
+            Ok(result("/", None))
+        }
         _ => apply_entity(app, path, fields, now, seed),
     }
+}
+
+pub fn resume_work(app: &mut App) -> AppResult<()> {
+    if !app.restored_paused {
+        return Err(AppError::new(409, "Preparation is already resumed."));
+    }
+    app.restored_paused = false;
+    Ok(())
 }
 
 fn stage_assessment(app: &mut App, answer: &str, now: i64, seed: &str) -> AppResult<()> {

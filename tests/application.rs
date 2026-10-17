@@ -620,6 +620,31 @@ fn restored_state_keeps_paid_work_paused_and_held_feedback() {
             .unwrap()
             .is_none()
     );
+    let before = a.clone();
+    let resume = fields(&a, "resume-restored-notebook", &[]);
+    engine::mutate(&mut a, "/settings/resume", &resume, NOW + 2, "resume").unwrap();
+    assert!(!a.restored_paused);
+    assert_eq!(a.jobs, before.jobs);
+    assert_eq!(a.assessments, before.assessments);
+    assert_eq!(a.spend, before.spend);
+    assert_eq!(a.occurrence, before.occurrence);
+    assert_eq!(a.questions, before.questions);
+    let resumed = a.clone();
+    engine::mutate(&mut a, "/settings/resume", &resume, NOW + 3, "replay").unwrap();
+    assert_eq!(a, resumed);
+    let again = fields(&a, "resume-already-resumed", &[]);
+    assert_eq!(
+        engine::mutate(&mut a, "/settings/resume", &again, NOW + 4, "again")
+            .unwrap_err()
+            .status,
+        409
+    );
+    assert_eq!(a, resumed);
+    assert!(
+        engine::claim_work(&mut a, NOW + 5, "never-resend-history", &config())
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]

@@ -205,7 +205,7 @@
         const doc = await safePage(response);
         if (doc && response.ok && !pending && sequence === pageSequence) {
           // Never replace an editable page or an unanswered question just to poll.
-          if (['checking', 'checking-reference', 'pending', 'preparing', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
+          if (['checking', 'checking-reference', 'checking-paused', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
         }
       } catch { /* Poll reads never retry paid work or imply success. */ }
       finally { clearTimeout(timeout); if (pollRequest === controller) pollRequest = null; }

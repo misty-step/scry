@@ -295,6 +295,155 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
 }
 
 #[test]
+fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() {
+    for status in [
+        "failed",
+        "paused",
+        "unknown",
+        "superseded",
+        "partial",
+        "ready",
+    ] {
+        let mut app = revived();
+        app.goals.retain(|id, _| id == LEGACY_GOAL);
+        app.jobs.retain(|_, job| job.goal_id == LEGACY_GOAL);
+        app.concepts
+            .retain(|_, concept| concept.goal_id == LEGACY_GOAL);
+        app.questions
+            .retain(|_, question| question.goal_id == LEGACY_GOAL);
+        for question in app.questions.values_mut() {
+            question.card.due_ms = NOW + 86_400_000;
+        }
+        let job_id = app.goals[LEGACY_GOAL].job_id.clone();
+        app.jobs.get_mut(&job_id).unwrap().status = status.into();
+        app.occurrence = None;
+        app.restored_paused = true;
+        let historical = app.clone();
+        for paused in [true, false] {
+            assert_eq!(app.restored_paused, paused);
+            let before = app.clone();
+            let home = web::render(&app, "/", &query("ready-import"), NOW, None);
+            assert!(
+                home.contains("data-state=\"caught-up\""),
+                "{status}, paused={paused}"
+            );
+            assert!(home.contains("A good place to pause."));
+            assert!(home.contains("class=\"button primary\" href=\"/create\""));
+            assert!(!home.contains("Review your saved request"));
+            assert!(!home.contains("taking shape"));
+            let map = web::render(&app, "/map", &query("ready-map"), NOW, None);
+            assert!(
+                map.contains("class=\"goal-meta\">1 ideas · Ready</p>"),
+                "{status}, paused={paused}"
+            );
+            let page = web::render(
+                &app,
+                &format!("/goals/{LEGACY_GOAL}"),
+                &query("ready-page"),
+                NOW,
+                None,
+            );
+            assert!(page.contains(LEGACY_PROMPT));
+            assert!(!page.contains("preparation-panel"));
+            assert_eq!(app, before, "Status reads must not mutate imported work");
+            if paused {
+                let fields = BTreeMap::from([
+                    ("csrf".into(), app.csrf.clone()),
+                    ("operation_id".into(), "resume-ready-import".into()),
+                ]);
+                engine::mutate(&mut app, "/settings/resume", &fields, NOW, "resume-ready").unwrap();
+            }
+        }
+        assert_eq!(app.jobs, historical.jobs);
+        assert_eq!(app.goals, historical.goals);
+        assert_eq!(app.questions, historical.questions);
+        assert_eq!(app.concepts, historical.concepts);
+    }
+}
+
+#[test]
+fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rules() {
+    let mut app = revived();
+    app.goals.retain(|_, goal| goal.concept_ids.is_empty());
+    app.jobs
+        .retain(|_, job| app.goals.contains_key(&job.goal_id));
+    app.concepts.clear();
+    app.questions.clear();
+    app.occurrence = None;
+    app.restored_paused = true;
+    let historical = app.jobs.clone();
+    let goals = app.goals.clone();
+    let receipts = [
+        "Preparation is paused",
+        "Preparation stopped",
+        "Preparation needs your attention",
+        "No practice was prepared",
+    ];
+    for paused in [true, false] {
+        assert_eq!(app.restored_paused, paused);
+        let before = app.clone();
+        let home = web::render(&app, "/", &query("import-stream"), NOW, None);
+        assert!(home.contains("data-state=\"caught-up\""));
+        assert!(home.contains("A good place to pause."));
+        assert!(!home.contains("taking shape"));
+        assert!(!home.contains("Review your saved request"));
+        for text in receipts {
+            assert!(visible(&home).contains(text));
+        }
+        let map = web::render(&app, "/map", &query("import-map"), NOW, None);
+        assert_eq!(map.matches("Preparation paused").count(), app.goals.len());
+        for goal in app.goals.values() {
+            let path = format!("/goals/{}", goal.id);
+            assert!(map.contains(&path));
+            let page = web::render(&app, &path, &query("import-page"), NOW, None);
+            let panel = page.split("class=\"preparation-panel").nth(1).unwrap();
+            assert!(page.contains("This request didn't finish."));
+            assert!(page.contains("came from your earlier notebook"));
+            assert!(!page.contains("legacy-import: historical work"));
+            assert!(!panel.contains("data-poll"));
+            assert!(!page.contains("taking shape"));
+            assert!(!page.contains("A useful part is ready"));
+            assert_eq!(page.contains("/settings#preparation"), paused);
+            let retryable = matches!(app.jobs[&goal.job_id].status.as_str(), "paused" | "failed");
+            assert_eq!(page.contains("Try preparation again"), !paused && retryable);
+        }
+        assert_eq!(app, before, "Status reads must not mutate imported work");
+        if paused {
+            let fields = BTreeMap::from([
+                ("csrf".into(), app.csrf.clone()),
+                ("operation_id".into(), "resume-import-notebook".into()),
+            ]);
+            engine::mutate(&mut app, "/settings/resume", &fields, NOW, "resume-import").unwrap();
+        }
+    }
+    assert_eq!(app.jobs, historical);
+    assert_eq!(app.goals, goals);
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "new-request-with-imports".into()),
+        (
+            "intent".into(),
+            "How Rust ownership prevents data races".into(),
+        ),
+    ]);
+    let created = engine::mutate(&mut app, "/create", &fields, NOW, "new-with-imports").unwrap();
+    let goal = created.entity_id.unwrap();
+    let job = app.goals[&goal].job_id.clone();
+    assert!(web::render(&app, "/", &query("new"), NOW, None).contains("data-state=\"preparing\""));
+    app.restored_paused = true;
+    assert!(
+        web::render(&app, "/", &query("paused"), NOW, None)
+            .contains("data-state=\"preparation-paused\"")
+    );
+    app.restored_paused = false;
+    app.jobs.get_mut(&job).unwrap().status = "failed".into();
+    let stopped = web::render(&app, "/", &query("stopped"), NOW, None);
+    assert!(stopped.contains(&format!(
+        "class=\"button primary\" href=\"/goals/{goal}\">Review your saved request"
+    )));
+}
+
+#[test]
 fn answer_and_related_reference_are_absent_before_assistance() {
     let mut app = fixture();
     let occurrence = app.occurrence.as_mut().unwrap();
@@ -571,4 +720,220 @@ fn repair_dispute_form_fences_a_deliberate_schedule_reset() {
     assert!(form.contains("name=\"reset\" value=\"true\""));
     assert!(form.contains("name=\"text\""));
     assert!(!form.contains(" checked"));
+}
+
+fn captured_request() -> App {
+    let mut app = App::new("01234567890123456789012345678901".into());
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "stream-create-operation".into()),
+        (
+            "intent".into(),
+            "Understand Durable Object concurrency".into(),
+        ),
+    ]);
+    engine::mutate(&mut app, "/create", &fields, NOW, "stream-goal").unwrap();
+    app
+}
+
+#[test]
+fn restored_pause_is_truthful_across_preparation_views_without_retries() {
+    let mut app = captured_request();
+    app.restored_paused = true;
+    let goal_id = app.goals.keys().next().unwrap().clone();
+    for phase in [
+        "queued",
+        "candidates",
+        "sent",
+        "critic-sent",
+        "paused",
+        "unknown",
+        "failed",
+    ] {
+        app.jobs.values_mut().next().unwrap().status = phase.into();
+        let before = app.clone();
+        let stream = web::render(&app, "/", &query(phase), NOW + 7 * 86_400_000, None);
+        assert!(
+            stream.contains("data-state=\"preparation-paused\""),
+            "{phase}"
+        );
+        assert!(stream.contains("Preparation is paused · Resume preparation"));
+        for path in ["/".to_string(), format!("/goals/{goal_id}")] {
+            let html = web::render(&app, &path, &query(phase), NOW, None);
+            assert!(
+                html.contains("href=\"/settings#preparation\""),
+                "{path} {phase}"
+            );
+            assert!(!html.contains("taking shape"));
+            assert!(!html.contains("Try preparation again"));
+            assert!(!html.contains("Preparing your reference"));
+        }
+        assert_eq!(app, before);
+    }
+    let settings = web::render(&app, "/settings", &query("resume-one"), NOW, None);
+    assert!(settings.contains("action=\"/settings/resume\""));
+    assert!(settings.contains("Historical uncertain work stays stopped"));
+    let other = web::render(&app, "/settings", &query("resume-two"), NOW, None);
+    let operation = |html: &str| {
+        html.split("action=\"/settings/resume\"")
+            .nth(1)
+            .unwrap()
+            .split("name=\"operation_id\" value=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap()
+            .to_string()
+    };
+    assert_ne!(operation(&settings), operation(&other));
+    app.restored_paused = false;
+    assert!(
+        !web::render(&app, "/settings", &query("active"), NOW, None).contains("/settings/resume")
+    );
+}
+
+#[test]
+fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answers() {
+    let mut app = fixture();
+    app.restored_paused = true;
+    let o = app.occurrence.as_mut().unwrap();
+    o.presentation.kind = "recall".into();
+    o.assisted = false;
+    let question = o.question_id.clone();
+    let goal = app.questions[&question].goal_id.clone();
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "paused-meaning-check".into()),
+        ("occurrence_id".into(), o.id.clone()),
+        ("answer".into(), "A non-exact saved answer".into()),
+    ]);
+    engine::mutate(&mut app, "/review/answer", &fields, NOW, "paused-check").unwrap();
+    assert_eq!(app.occurrence.as_ref().unwrap().phase, "checking");
+    for path in ["/".to_string(), format!("/goals/{goal}")] {
+        let html = web::render(&app, &path, &query("paused-check"), NOW, None);
+        assert!(html.contains("Your meaning check is paused."));
+        assert!(html.contains("href=\"/settings#preparation\""));
+        assert!(!html.contains("Checking your meaning."));
+        assert!(!html.contains("action=\"/review/help\""));
+        assert!(!html.contains(&app.occurrence.as_ref().unwrap().presentation.explanation));
+    }
+    app.occurrence = None;
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "paused-question-fix".into()),
+        (
+            "content_version".into(),
+            app.questions[&question].content().version.to_string(),
+        ),
+    ]);
+    engine::mutate(
+        &mut app,
+        &format!("/questions/{question}/fix"),
+        &fields,
+        NOW,
+        "paused-fix",
+    )
+    .unwrap();
+    let html = web::render(
+        &app,
+        &format!("/questions/{question}/edit"),
+        &query("paused-fix"),
+        NOW,
+        None,
+    );
+    assert!(html.contains("Draft preparation is paused."));
+    assert!(html.contains("href=\"/settings#preparation\""));
+    assert!(!html.contains("A better version is being prepared."));
+    assert!(!html.contains("Try drafting again"));
+}
+
+#[test]
+fn stream_transitions_from_preparing_to_honest_stopped_recovery() {
+    let mut app = captured_request();
+    let pending = web::render(&app, "/", &query("pending"), NOW, None);
+    assert!(pending.contains("data-state=\"preparing\""));
+    assert!(pending.contains("Your next idea is taking shape."));
+    let config = engine::WorkConfig {
+        generation: false,
+        jev: false,
+        critic: false,
+        model: String::new(),
+        jev_model: String::new(),
+    };
+    assert!(
+        engine::claim_work(&mut app, NOW, "stream-claim", &config)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(app.goals.values().next().unwrap().status, "failed");
+    let saved = app.clone();
+    let stopped = web::render(&app, "/", &query("failed"), NOW, None);
+    assert!(stopped.contains("data-state=\"preparation-stopped\""));
+    assert!(stopped.contains("Your request needs attention."));
+    assert!(stopped.contains("Review your saved request"));
+    assert!(!stopped.contains("taking shape"));
+    assert!(!stopped.contains("while Scry prepares"));
+    assert_eq!(
+        app, saved,
+        "Rendering must not retry work or change the notebook"
+    );
+}
+
+#[test]
+fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
+    for phase in [
+        "unknown",
+        "paused",
+        "blocked",
+        "budget",
+        "superseded",
+        "failed",
+    ] {
+        let mut app = captured_request();
+        app.jobs.values_mut().next().unwrap().status = phase.into();
+        let html = web::render(&app, "/", &query(phase), NOW, None);
+        assert!(
+            html.contains("data-state=\"preparation-stopped\""),
+            "{phase}"
+        );
+        assert!(!html.contains("Preparation is in progress"), "{phase}");
+        assert!(!html.contains("taking shape"), "{phase}");
+    }
+    let mut app = captured_request();
+    let goal = app.goals.values_mut().next().unwrap();
+    goal.status = "partial".into();
+    app.jobs.values_mut().next().unwrap().status = "partial".into();
+    let partial = web::render(&app, "/", &query("partial"), NOW, None);
+    assert!(partial.contains("data-state=\"caught-up\""));
+    assert!(partial.contains("Some material is ready; preparation is incomplete"));
+    assert!(!partial.contains("taking shape"));
+    app.goals.values_mut().next().unwrap().archived = true;
+    let archived = web::render(&app, "/", &query("archived"), NOW, None);
+    assert!(archived.contains("Follow your curiosity."));
+    assert!(!archived.contains("Review your saved request"));
+
+    let mut app = captured_request();
+    app.jobs.values_mut().next().unwrap().status = "failed".into();
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "stream-second-operation".into()),
+        ("intent".into(), "Learn Rust ownership".into()),
+    ]);
+    let created = engine::mutate(&mut app, "/create", &fields, NOW + 1, "second-goal").unwrap();
+    let mixed = web::render(&app, "/", &query("mixed"), NOW, None);
+    assert!(mixed.contains("data-state=\"preparing\""));
+    assert!(mixed.contains("Preparation needs your attention"));
+    let latest = created.entity_id.unwrap();
+    let job = app.goals[&latest].job_id.clone();
+    app.jobs.get_mut(&job).unwrap().status = "failed".into();
+    let stopped = web::render(&app, "/", &query("latest"), NOW, None);
+    assert!(stopped.contains(&format!(
+        "class=\"button primary\" href=\"/goals/{latest}\">Review your saved request"
+    )));
+    app.goals.get_mut(&latest).unwrap().paused = true;
+    let paused_goal = web::render(&app, "/", &query("goal-paused"), NOW, None);
+    assert!(!paused_goal.contains(&format!(
+        "class=\"button primary\" href=\"/goals/{latest}\""
+    )));
 }
