@@ -1,4 +1,9 @@
-use scry::{engine, model::App, web};
+use scry::{
+    engine,
+    learning::new_card,
+    model::{App, Concept, Content, Goal, Job, Note, Occurrence, Question},
+    web,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 const NOW: i64 = 1_800_000_000_000;
@@ -9,6 +14,284 @@ fn fixture() -> App {
     let mut app = App::new("01234567890123456789012345678901".into());
     engine::seed_fixture(&mut app, NOW).unwrap();
     app
+}
+/// Text a reader can see: markup, attributes and hidden fields removed.
+fn visible(html: &str) -> String {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+    text
+}
+
+const QUIZ: &str = "d02c4e9a7f1b3d5e8a6c0b2f4e1d9a7c";
+const LEGACY_GOAL: &str = "legacy-import-goal-6b2e81f0c94a4d7e9a3155c2d8e0f417";
+const LEGACY_PROMPT: &str = "Which two rivers meet at Sacramento?";
+const LEGACY_GOAL_TITLE: &str = "Sacramento history and the 1862 flood";
+
+/// The revival projection's shapes (revival/project.mjs): an imported quiz
+/// without an idea of its own, and imported requests that never finished.
+fn revived() -> App {
+    let mut app = fixture();
+    let concept = format!("legacy-import-quiz-concept-{QUIZ}");
+    let question = format!("legacy-import-quiz-{QUIZ}");
+    let content = Content {
+        version: 1,
+        prompt: LEGACY_PROMPT.into(),
+        kind: "recall".into(),
+        answer: "The Sacramento and the American".into(),
+        variants: vec![],
+        choices: vec![],
+        explanation: "The American River joins the Sacramento just north of downtown.".into(),
+        basis: "general".into(),
+        quotes: vec![],
+        required_ideas: vec![],
+        contradictions: vec![],
+        model: "google/gemini-3.7-flash".into(),
+        created_ms: NOW - 1000,
+    };
+    let goal = |id: &str, title: &str, status: &str, concepts: Vec<String>, job: &str| Goal {
+        id: id.into(),
+        title: title.into(),
+        intent: title.into(),
+        created_ms: NOW - 1000,
+        revision: 1,
+        status: status.into(),
+        paused: false,
+        focused: false,
+        archived: false,
+        concept_ids: concepts,
+        job_id: job.into(),
+        photo: None,
+        transcript: None,
+    };
+    let job = |id: &str, goal: &str, status: &str, error: Option<&str>| Job {
+        id: id.into(),
+        goal_id: goal.into(),
+        question_id: None,
+        question_version: None,
+        source_revision: 1,
+        kind: "create".into(),
+        status: status.into(),
+        created_ms: NOW - 1000,
+        lease: None,
+        started_ms: None,
+        attempt: 1,
+        error: error.map(String::from),
+        raw_response: None,
+        model: Some("legacy-import".into()),
+        feedback_ids: vec![],
+        rejected: vec![],
+        candidate_json: None,
+        critic_json: None,
+        critic_cache_json: None,
+        critic_model: None,
+        critic_parent_id: None,
+        critic_inherited_keys: vec![],
+    };
+    let ready_job = "legacy-import-job-5f0e9d8c7b6a49382716a5b4c3d2e1f0";
+    app.goals.insert(
+        LEGACY_GOAL.into(),
+        goal(
+            LEGACY_GOAL,
+            LEGACY_GOAL_TITLE,
+            "ready",
+            vec![concept.clone()],
+            ready_job,
+        ),
+    );
+    app.jobs
+        .insert(ready_job.into(), job(ready_job, LEGACY_GOAL, "ready", None));
+    app.concepts.insert(
+        concept.clone(),
+        Concept {
+            id: concept.clone(),
+            goal_id: LEGACY_GOAL.into(),
+            name: format!("Legacy import — quiz {QUIZ}"),
+            summary: "Legacy import: reference assembled mechanically from the original quiz, not new learning evidence.".into(),
+            notes: vec![Note {
+                text: format!(
+                    "Legacy import\n\n{}\n\n{}\n\n{}",
+                    content.prompt, content.answer, content.explanation
+                ),
+                basis: "general".into(),
+                quotes: vec![],
+                created_ms: NOW - 1000,
+                model: "legacy-import".into(),
+            }],
+            prerequisites: vec![],
+            introduced_ms: None,
+            exposure_ms: None,
+            already_known: false,
+            archived: false,
+        },
+    );
+    app.questions.insert(
+        question.clone(),
+        Question::new(question, LEGACY_GOAL.into(), concept, content, NOW - 1000),
+    );
+    // Original preparations that never produced material: paused, canceled
+    // (superseded), failed, partial and completed-without-questions.
+    for (n, status) in ["paused", "superseded", "failed", "ready", "partial"]
+        .iter()
+        .enumerate()
+    {
+        let gid = format!("legacy-import-goal-0000000000000000000000000000000{n}");
+        let jid = format!("legacy-import-job-0000000000000000000000000000000{n}");
+        app.goals.insert(
+            gid.clone(),
+            goal(
+                &gid,
+                &format!("Unfinished request {n}"),
+                "paused",
+                vec![],
+                &jid,
+            ),
+        );
+        app.jobs.insert(
+            jid.clone(),
+            job(
+                &jid,
+                &gid,
+                status,
+                Some("legacy-import: historical work is paused; original receipts remain in the Go archive."),
+            ),
+        );
+    }
+    app
+}
+fn legacy_occurrence(app: &App, phase: &str) -> Occurrence {
+    let question = &app.questions[&format!("legacy-import-quiz-{QUIZ}")];
+    Occurrence {
+        id: "legacy-occurrence".into(),
+        question_id: question.id.clone(),
+        concept_id: question.concept_id.clone(),
+        presentation: question.content().clone(),
+        phase: phase.into(),
+        assisted: false,
+        before_card: new_card(NOW),
+        schedule_version: 0,
+        created_ms: NOW,
+        answer: None,
+        assessment_id: None,
+        result: None,
+    }
+}
+
+#[test]
+fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
+    let mut app = revived();
+    let concept = format!("legacy-import-quiz-concept-{QUIZ}");
+    let routes = [
+        "/".to_string(),
+        "/map".into(),
+        "/history".into(),
+        "/settings".into(),
+        format!("/goals/{LEGACY_GOAL}"),
+        format!("/concepts/{concept}"),
+        "/goals/legacy-import-goal-00000000000000000000000000000000".into(),
+        "/goals/legacy-import-goal-00000000000000000000000000000002".into(),
+    ];
+    let check = |app: &App, path: &str| {
+        let text = visible(&web::render(app, path, &query("legacy"), NOW, None));
+        assert!(
+            !text.to_lowercase().contains("legacy"),
+            "import label on {path}"
+        );
+        assert!(!text.contains(QUIZ), "quiz identifier on {path}");
+        assert!(!text.contains("00000000000"), "identifier on {path}");
+        assert!(
+            !text.contains("Preparation is in progress"),
+            "stopped import shown as in progress on {path}"
+        );
+        text
+    };
+    for path in &routes {
+        check(&app, path);
+    }
+    let map = check(&app, "/map");
+    assert!(map.contains(LEGACY_PROMPT));
+    assert!(map.contains("Preparation paused"));
+    let reference = check(&app, &format!("/concepts/{concept}"));
+    assert_eq!(reference.matches(LEGACY_PROMPT).count(), 2); // title + practice list
+    assert!(reference.contains("The Sacramento and the American"));
+    assert!(reference.contains("joins the Sacramento just north of downtown"));
+    let stopped = check(
+        &app,
+        "/goals/legacy-import-goal-00000000000000000000000000000002",
+    );
+    assert!(stopped.contains("came from your earlier notebook"));
+    // Every view of a stopped import agrees that nothing is being prepared.
+    for n in 0..5 {
+        let page = check(
+            &app,
+            &format!("/goals/legacy-import-goal-0000000000000000000000000000000{n}"),
+        );
+        assert!(page.contains("This request didn't finish."), "goal {n}");
+        for claim in [
+            "taking shape",
+            "Scry is preparing",
+            "A useful part is ready",
+        ] {
+            assert!(!page.contains(claim), "goal {n} claims {claim}");
+        }
+    }
+    let home = check(&app, "/");
+    for words in [
+        "Preparation is paused",
+        "Preparation stopped",
+        "Preparation needs your attention",
+        "No practice was prepared",
+    ] {
+        assert!(home.contains(words), "{words} missing from receipts");
+    }
+    assert!(!home.contains("Some material is ready"));
+    let mut idle = app.clone();
+    idle.occurrence = None;
+    assert!(!check(&idle, "/").contains("taking shape"));
+
+    // The new-idea introduction names the idea by its question, once.
+    app.occurrence = Some(legacy_occurrence(&app, "intro"));
+    let intro = check(&app, "/");
+    assert_eq!(intro.matches(LEGACY_PROMPT).count(), 1);
+    assert!(intro.contains("The Sacramento and the American"));
+
+    // Above its held result, the chip names and links the goal instead of
+    // repeating the question.
+    let mut result = legacy_occurrence(&app, "result");
+    result.answer = Some("Sacramento and American".into());
+    result.result = Some(scry::model::ReviewResult {
+        event_id: "legacy-result".into(),
+        outcome: "correct".into(),
+        authority: "jev".into(),
+        rating: 3,
+        reviewed_ms: NOW,
+        due_ms: NOW + 86_400_000,
+        corrected: false,
+    });
+    app.occurrence = Some(result);
+    let html = web::render(&app, "/", &query("result"), NOW, None);
+    let held = check(&app, "/");
+    assert!(html.contains(&format!("href=\"/goals/{LEGACY_GOAL}\"")));
+    assert!(held.contains(LEGACY_GOAL_TITLE));
+    assert_eq!(held.matches(LEGACY_PROMPT).count(), 1);
+
+    // While its question waits for an unaided answer, the imported idea and
+    // goal stay behind the same fence as generated material.
+    app.occurrence = Some(legacy_occurrence(&app, "question"));
+    let fenced = check(&app, "/map");
+    assert!(!fenced.contains(LEGACY_PROMPT));
+    assert!(!fenced.contains(LEGACY_GOAL_TITLE));
+    assert!(fenced.contains("Current idea"));
 }
 
 #[test]

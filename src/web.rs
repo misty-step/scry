@@ -20,6 +20,91 @@ pub fn escape(value: &str) -> String {
     output
 }
 
+// ADR 006 gives each imported quiz without an idea of its own a placeholder
+// idea and a mechanical note that name their provenance ("Legacy import — quiz
+// <id>"). The records keep that provenance; the screen shows the learner's own
+// material instead.
+const LEGACY_IDEA: &str = "legacy-import-quiz-concept-";
+const LEGACY_LABEL: &str = "Legacy import";
+const LEGACY_JOB_MARKER: &str = "legacy-import:";
+
+fn legacy_idea(concept: &Concept) -> bool {
+    concept.id.starts_with(LEGACY_IDEA) && concept.name.starts_with(LEGACY_LABEL)
+}
+
+/// The question an imported placeholder idea was assembled from.
+fn legacy_prompt<'a>(app: &'a App, concept: &Concept) -> Option<&'a str> {
+    app.questions
+        .values()
+        .filter(|q| q.concept_id == concept.id)
+        .map(|q| q.content().prompt.trim())
+        .find(|prompt| !prompt.is_empty())
+}
+
+/// An idea's title as the learner reads it: imported placeholders are named
+/// by their own question rather than by an import label and quiz identifier.
+fn idea_title(app: &App, concept: &Concept) -> String {
+    if !legacy_idea(concept) {
+        return concept.name.clone();
+    }
+    legacy_prompt(app, concept).map_or_else(|| "A saved idea".into(), |p| excerpt(p, 120))
+}
+
+fn idea_summary(concept: &Concept) -> &str {
+    if legacy_idea(concept) {
+        ""
+    } else {
+        &concept.summary
+    }
+}
+
+/// The mechanical note repeats its label and question above the answer and
+/// explanation; the question is already the idea's title.
+fn note_text<'a>(app: &App, concept: &Concept, text: &'a str) -> &'a str {
+    if !legacy_idea(concept) {
+        return text;
+    }
+    let body = text
+        .strip_prefix(LEGACY_LABEL)
+        .map_or(text, str::trim_start);
+    legacy_prompt(app, concept)
+        .and_then(|prompt| body.strip_prefix(prompt))
+        .filter(|rest| rest.is_empty() || rest.starts_with('\n'))
+        .map_or(body, str::trim_start)
+}
+
+/// Imported requests whose original preparation never finished carry a
+/// provenance marker where a reason belongs; their page explains instead.
+fn imported_unfinished(job: Option<&Job>) -> bool {
+    job.and_then(|j| j.error.as_deref())
+        .is_some_and(|e| e.starts_with(LEGACY_JOB_MARKER))
+}
+
+/// Nothing is running or queued for this preparation until the learner asks
+/// again. Imported requests that never finished in the earlier notebook are
+/// stopped whatever status the old app recorded.
+fn preparation_stopped(job: Option<&Job>, status: &str) -> bool {
+    imported_unfinished(job)
+        || matches!(
+            status,
+            "unknown" | "failed" | "blocked" | "paused" | "superseded" | "ready"
+        )
+}
+
+/// One line of at most `limit` characters, cut at a word where possible.
+fn excerpt(text: &str, limit: usize) -> String {
+    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() <= limit {
+        return line;
+    }
+    let cut: String = line.chars().take(limit).collect();
+    let cut = match cut.rfind(' ') {
+        Some(space) if space > cut.len() / 2 => &cut[..space],
+        _ => cut.as_str(),
+    };
+    format!("{}…", cut.trim_end_matches([' ', ',', ';', ':']))
+}
+
 struct View<'a> {
     app: &'a App,
     path: &'a str,
@@ -77,7 +162,32 @@ impl View<'_> {
         if self.app.protected_concept(&concept.id) {
             "Current idea".into()
         } else {
-            escape(&concept.name)
+            escape(&idea_title(self.app, concept))
+        }
+    }
+    /// Above a question, an imported placeholder is named by its goal: its own
+    /// title would repeat the question directly beneath it.
+    fn study_chip(&self, concept: &Concept) -> (String, String) {
+        let goal = self.app.goals.get(&concept.goal_id);
+        match goal {
+            Some(g) if legacy_idea(concept) && !self.app.protected_concept(&concept.id) => {
+                (self.goal_title(g), format!("/goals/{}", escape(&g.id)))
+            }
+            _ => (
+                self.concept_name(concept),
+                format!("/concepts/{}", escape(&concept.id)),
+            ),
+        }
+    }
+    fn notes(&self, concept: &Concept) -> String {
+        notes(self.app, concept)
+    }
+    fn lede(&self, class: &str, concept: &Concept) -> String {
+        let summary = idea_summary(concept);
+        if summary.trim().is_empty() {
+            String::new()
+        } else {
+            format!("<p class=\"{class}\">{}</p>", escape(summary))
         }
     }
     fn gate(&self, destination: &str) -> String {
@@ -115,23 +225,25 @@ impl View<'_> {
             .values()
             .filter(|g| !g.archived && g.status != "ready")
         {
-            let phase = self
-                .app
-                .jobs
-                .get(&goal.job_id)
+            let job = self.app.jobs.get(&goal.job_id);
+            let phase = job
                 .map(|j| j.status.as_str())
                 .unwrap_or(goal.status.as_str());
+            let stopped = preparation_stopped(job, phase);
             let text = match phase {
+                "unknown" => "Preparation stopped with an uncertain outcome",
+                "failed" | "blocked" => "Preparation needs your attention",
+                "paused" => "Preparation is paused",
+                "ready" => "No practice was prepared",
+                _ if stopped => "Preparation stopped",
                 "queued" | "pending" => "Preparing your material",
                 "running" | "generating" | "critic" | "sent" | "candidates" | "critic-sent" => {
                     "Working on your explanation and practice"
                 }
-                "unknown" => "Preparation stopped with an uncertain outcome",
-                "failed" | "blocked" => "Preparation needs your attention",
                 "partial" => "Some material is ready; preparation is incomplete",
+                "budget" => "Waiting for today's preparation allowance",
                 _ => "Preparation is in progress",
             };
-            let stopped = matches!(phase, "unknown" | "failed" | "blocked" | "paused");
             let _ = write!(
                 out,
                 "<a class=\"preparation-receipt {}\" href=\"/goals/{}\"><span class=\"status-dot\" aria-hidden=\"true\"></span><span><strong>{}</strong><span>{text}</span></span><span aria-hidden=\"true\">↗</span></a>",
@@ -159,12 +271,8 @@ impl View<'_> {
                     .unwrap_or_else(|| "A useful starting point".into())
             );
             if let Some(c) = concept {
-                let _ = write!(
-                    out,
-                    "<p class=\"lede\">{}</p>{}",
-                    escape(&c.summary),
-                    notes(c)
-                );
+                out.push_str(&self.lede("lede", c));
+                out.push_str(&self.notes(c));
             }
             out.push_str("<div class=\"thumb-actions\">");
             out.push_str(&self.review_form("intro", "read", "", "", &format!("{}<button class=\"button primary\">Start practicing <span aria-hidden=\"true\">→</span></button>",hidden("known","false"))));
@@ -184,18 +292,16 @@ impl View<'_> {
         let mut out = String::from("<section class=\"study\"");
         let _ = write!(out, " data-state=\"{}\">", escape(&o.phase));
         if let Some(c) = concept {
+            let (label, href) = self.study_chip(c);
             if o.phase == "result" || o.assisted {
                 let _ = write!(
                     out,
-                    "<a class=\"concept-chip\" href=\"/concepts/{}\"><span aria-hidden=\"true\">✦</span>{}</a>",
-                    escape(&c.id),
-                    self.concept_name(c)
+                    "<a class=\"concept-chip\" href=\"{href}\"><span aria-hidden=\"true\">✦</span>{label}</a>"
                 );
             } else {
                 let _ = write!(
                     out,
-                    "<span class=\"concept-chip\"><span aria-hidden=\"true\">✦</span>{}</span>",
-                    self.concept_name(c)
+                    "<span class=\"concept-chip\"><span aria-hidden=\"true\">✦</span>{label}</span>"
                 );
             }
         }
@@ -462,11 +568,12 @@ impl View<'_> {
     }
     fn empty(&self) -> String {
         let any = self.app.goals.values().any(|g| !g.archived);
-        let pending = self
-            .app
-            .goals
-            .values()
-            .any(|g| !g.archived && g.status != "ready");
+        let pending = self.app.goals.values().any(|g| {
+            let job = self.app.jobs.get(&g.job_id);
+            !g.archived
+                && g.status != "ready"
+                && !preparation_stopped(job, job.map_or(g.status.as_str(), |j| j.status.as_str()))
+        });
         let due = self
             .app
             .questions
@@ -630,14 +737,14 @@ impl View<'_> {
                 if let Some(c) = self.app.concepts.get(id).filter(|c| !c.archived) {
                     let _ = write!(
                         out,
-                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2><p class=\"lede small\">{}</p>{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea &amp; practice ↗</a></section>",
+                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea &amp; practice ↗</a></section>",
                         escape(&c.id),
                         self.concept_name(c),
-                        escape(&c.summary),
+                        self.lede("lede small", c),
                         if self.app.protected_concept(&c.id) {
                             "<p>This idea is in your current question. Open its page to record assistance before reading.</p>".into()
                         } else {
-                            notes(c)
+                            self.notes(c)
                         },
                         escape(&c.id)
                     );
@@ -709,12 +816,12 @@ impl View<'_> {
     fn preparation(&self, g: &Goal) -> String {
         let job = self.app.jobs.get(&g.job_id);
         let status = job.map(|j| j.status.as_str()).unwrap_or(g.status.as_str());
-        let stopped = matches!(
-            status,
-            "failed" | "unknown" | "blocked" | "budget" | "paused" | "superseded"
-        );
-        let pending = matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
+        let imported = imported_unfinished(job);
+        let stopped = preparation_stopped(job, status) || status == "budget";
+        let pending =
+            !stopped && matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
         let title = match status {
+            _ if imported => "This request didn't finish.",
             "queued" => "Preparing your reference.",
             "sent" => "Writing your reference and practice.",
             "candidates" | "critic-sent" => "Checking your new material.",
@@ -724,6 +831,7 @@ impl View<'_> {
             "budget" => "Your preparation allowance is in use.",
             "partial" => "A useful part is ready.",
             "superseded" => "Your request has changed.",
+            "ready" => "No practice was prepared.",
             _ => "Your material is taking shape.",
         };
         let mut out = format!(
@@ -735,7 +843,9 @@ impl View<'_> {
             } else {
                 "Your request is"
             },
-            if status == "unknown" {
+            if imported {
+                "It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again."
+            } else if status == "unknown" {
                 "A request may have reached the model. Its allowance remains accounted for. Retrying is a deliberate new attempt, not a claim that the earlier one failed."
             } else if status == "partial" {
                 "Your saved material is ready to read and practice. Add feedback below to shape the parts that still need work."
@@ -747,7 +857,7 @@ impl View<'_> {
                 "Scry is preparing an explanation, examples, and practice. You can leave this page; your progress is saved."
             }
         );
-        if let Some(error) = job.and_then(|j| j.error.as_ref()) {
+        if let Some(error) = job.and_then(|j| j.error.as_ref()).filter(|_| !imported) {
             let _ = write!(
                 out,
                 "<details><summary>Why preparation stopped</summary><p>{}</p></details>",
@@ -795,10 +905,10 @@ impl View<'_> {
         let helped = state.helped;
         let missed = state.missed;
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><p class=\"eyebrow\">{} · One connected idea</p><h1>{}</h1><p class=\"lede\">{}</p></div><section class=\"practice-evidence\" aria-label=\"Your practice record\"><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><p class=\"eyebrow\">{} · One connected idea</p><h1>{}</h1>{}</div><section class=\"practice-evidence\" aria-label=\"Your practice record\"><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
             concept_state(self.app, c, self.now),
             self.concept_name(c),
-            escape(&c.summary),
+            self.lede("lede", c),
             recall_label(self.app, c, self.now),
             if c.archived {
                 "<p>Archived: retained for reference.</p>".into()
@@ -811,7 +921,7 @@ impl View<'_> {
                     "<button class=\"button primary\">Practice this idea →</button>",
                 )
             },
-            format_args!("{}{}", tally(&state), notes(c))
+            format_args!("{}{}", tally(&state), self.notes(c))
         );
         if !c.prerequisites.is_empty() {
             out.push_str("<section class=\"connected\"><h2>Builds on</h2>");
@@ -1322,12 +1432,11 @@ fn emblem(class: &str) -> String {
 fn lock_icon() -> &'static str {
     "<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/></svg>"
 }
-fn notes(c: &Concept) -> String {
+fn notes(app: &App, c: &Concept) -> String {
     let Some(note) = c.notes.last() else {
         return "<p class=\"fineprint\">No note is available yet.</p>".into();
     };
-    let paragraphs = note
-        .text
+    let paragraphs = note_text(app, c, &note.text)
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
         .map(|p| format!("<p>{}</p>", escape(p)))
@@ -1524,6 +1633,7 @@ fn status_label(value: &str) -> &'static str {
         "failed" => "Needs attention",
         "unknown" => "Outcome uncertain",
         "partial" => "Partly ready",
+        "paused" => "Preparation paused",
         _ => "Preparing",
     }
 }
