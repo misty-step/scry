@@ -34,8 +34,8 @@ const egress = async request => {
   return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
 };
 const baseBindings = {SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'synthetic-only',ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner,INTERNAL_KEY:internalKey,OPERATOR_KEY:operatorKey,BACKUP_TRIGGER_KEY:backupKey,ALTERNATE_HOSTS:'alternate-synthetic.invalid'};
-let checks=0;
-const check = (label,fn)=>test(label,async()=>{await fn();checks++;});
+let checks=0,failures=0;
+const check = (label,fn)=>test(label,async()=>{try{await fn();checks++;}catch(error){failures++;throw error;}});
 let {mf:preview,worker}=await createRuntime({bindings:baseBindings,name:'scry-auth-smoke',artifact,egress,inspect:true});
 let restored;
 try {
@@ -346,6 +346,309 @@ try {
       }
     } finally {await fixture.mf.dispose();}
   });
+  for (const mode of ['preview', 'production']) {
+    await check(`${mode}: exact QA principal owns isolated SQLite, photos, backups and restarted alarms`, async () => {
+      const client = 'dedicated-scry-qa.access';
+      const serviceClaims = {sub:'', common_name:client};
+      const service = jwt(serviceClaims);
+      const bindings = {...baseBindings, SCRY_ENV:mode, SCRY_QA_ACCESS_CLIENT_ID:client};
+      const name = `scry-qa-isolation-${mode}`;
+      const fixture = await createRuntime({bindings, name, artifact, egress, inspect:true});
+      let active = fixture;
+      const req = (path='/', token=service, init={}) => active.worker.fetch(`${origin}${path}`, {
+        ...init, redirect:'manual', headers:{'Cf-Access-Jwt-Assertion':token, ...init.headers},
+      });
+      const fields = html => Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m => [m[1],m[2]]));
+      const post = (path, values, token=service, headers={}) => req(path, token, {
+        method:'POST', body:new URLSearchParams(values),
+        headers:{'X-Scry-Test-Origin':origin, 'Content-Type':'application/x-www-form-urlencoded', ...headers},
+      });
+      const exported = async token => {
+        const response = await req('/export', token);
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      const upload = async (values, token) => {
+        const form = new FormData();
+        for (const [key,value] of Object.entries(values)) form.set(key,value);
+        form.set('photo',new Blob([photoBytes],{type:'image/png'}),'private-test.png');
+        const encoded = new globalThis.Request(origin,{method:'POST',body:form});
+        return req('/create',token,{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),
+          headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});
+      };
+      const storage = space => fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+      try {
+        const forgedKey = generateKeyPairSync('rsa',{modulusLength:2048}).privateKey;
+        for (const token of ['', jwt({sub:'',common_name:'other.access'}), jwt({sub:'other',common_name:client}),
+          jwt({...serviceClaims,sub:null}), jwt({...serviceClaims,aud:['wrong']}),
+          jwt({...serviceClaims,iss:'https://wrong.invalid'}), jwt({...serviceClaims,exp:epoch-1}),
+          jwt({...serviceClaims,nbf:epoch+600}), jwt(serviceClaims,{alg:'HS256'}), jwt(serviceClaims,{},forgedKey)]) {
+          assert.equal((await req('/',token)).status,401);
+        }
+        assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-qa'}})).status,401);
+        const ownerFields = fields(await (await req('/create',jwt())).text());
+        const qaFields = fields(await (await req('/create')).text());
+        assert.notEqual(qaFields.csrf,ownerFields.csrf);
+        const sharedOperation = 'same-photo-operation-both-principals';
+        const ownerValues = {...ownerFields,operation_id:sharedOperation,intent:'OWNER_ONLY_NOTEBOOK_CANARY'};
+        const qaValues = {...qaFields,operation_id:sharedOperation,intent:'QA_ONLY_NOTEBOOK_CANARY'};
+        assert.equal((await post('/create',{...qaValues,csrf:ownerFields.csrf})).status,403);
+        assert.equal((await post('/create',qaValues,service,{'X-Scry-Test-Origin':'https://attacker.invalid'})).status,403);
+        assert.equal((await post('/create',qaValues,service,{'Sec-Fetch-Site':'cross-site'})).status,403);
+        const ownerSaved = await upload(ownerValues,jwt());
+        assert.equal(ownerSaved.status,303);
+        const qaSaved = await upload(qaValues,service);
+        assert.equal(qaSaved.status,303);
+        assert.equal((await upload(qaValues,service)).headers.get('Location'),qaSaved.headers.get('Location'));
+        await new Promise(resolve => setTimeout(resolve,1500)); // actual Rust alarms, no provider configured
+        const ownerArchive = await exported(jwt());
+        const qaArchive = await exported(service);
+        assert.equal(Object.keys(ownerArchive.app.goals).length,1);
+        assert.equal(Object.keys(qaArchive.app.goals).length,1);
+        assert.ok(Object.values(ownerArchive.app.jobs).every(job => job.status==='failed'));
+        assert.ok(Object.values(qaArchive.app.jobs).every(job => job.status==='failed'));
+        assert.match(JSON.stringify(ownerArchive),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(JSON.stringify(ownerArchive),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.match(JSON.stringify(qaArchive),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(JSON.stringify(qaArchive),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        const ownerGoal = Object.keys(ownerArchive.app.goals)[0];
+        const qaGoal = Object.keys(qaArchive.app.goals)[0];
+        assert.match(ownerArchive.photos[0].photo.key,/^photos\/synthetic-only\//);
+        assert.match(qaArchive.photos[0].photo.key,/^photos\/scry-qa\//);
+        assert.notEqual(ownerArchive.photos[0].photo.key,qaArchive.photos[0].photo.key);
+        assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length,2);
+        assert.equal((await req(`/photos/${ownerGoal}`)).status,404);
+        assert.equal((await req(`/photos/${qaGoal}`,jwt())).status,404);
+        for (const path of [ownerSaved.headers.get('Location'),'/map','/history','/export',
+          `/create?SPACE_NAME=${baseBindings.SPACE_NAME}&__owner=private-owner`]) {
+          const response = await req(path,service,{headers:{'x-scry-owner':'private-owner',
+            'x-scry-internal-key':internalKey,'x-scry-space':baseBindings.SPACE_NAME}});
+          assert.doesNotMatch(await response.text(),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        }
+        assert.notEqual((await post(`/goals/${ownerGoal}/archive`,{
+          csrf:qaFields.csrf,operation_id:'qa-cannot-archive-owner-goal',
+        })).status,303);
+        for (const path of ['/operator/backup','/operator/resume-work','/operator/restore','/operator/restore-dry-run','/internal/backup']) {
+          assert.equal((await post(path,{},service,{'x-scry-operator-key':operatorKey,
+            'x-scry-restore-token':restoreToken,'x-scry-backup-key':backupKey})).status,403);
+        }
+        const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        for (const [space,wrongIdentity] of [[baseBindings.SPACE_NAME,'private-qa'],['scry-qa','private-owner']]) {
+          const stub = ns.get(ns.idFromName(space));
+          assert.equal((await stub.fetch(`${origin}/export`,{headers:{
+            'x-scry-internal-key':internalKey,'x-scry-owner':wrongIdentity,
+          }})).status,403,'Internal capability cannot cross principal/object identity.');
+        }
+        assert.deepEqual((await exported(jwt())).app,ownerArchive.app,'QA operations leave owner records unchanged.');
+        assert.equal((await post('/operator/backup',{},jwt(),{'x-scry-operator-key':operatorKey})).status,200);
+        let ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        const ownerBefore = (await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key);
+        // Recreate the runtime before alarm delivery. Only the immutable object ID
+        // can choose the QA backup prefix; no request identity is available here.
+        active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'alternate-synthetic.invalid,unused.invalid'});
+        ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        assert.deepEqual((await exported(service)).app,qaArchive.app);
+        const initialSettings = fields(await (await req('/settings')).text());
+        assert.equal((await post('/settings/backup',initialSettings)).status,303);
+        const qaBefore = (await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects.map(o=>o.key);
+        const qaStorage = await storage('scry-qa');
+        const meta = JSON.parse((await qaStorage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+        meta.backup.completed_ms = Date.now()-25*60*60*1000;
+        await qaStorage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+        // Real request arming and timer delivery, not an invented inspection API.
+        await req('/settings');
+        const deadline = Date.now()+5000;
+        let snapshots;
+        do {
+          snapshots = await ownerBackups.list({prefix:'snapshots/scry-qa/'});
+          if (snapshots.objects.some(o=>!qaBefore.includes(o.key))) break;
+          await new Promise(resolve=>setTimeout(resolve,50));
+        } while (Date.now()<deadline);
+        const alarmSnapshot = snapshots.objects.find(o=>!qaBefore.includes(o.key));
+        assert.ok(alarmSnapshot,'Restarted QA alarm must create a QA-prefixed complete snapshot.');
+        const qaSnapshot = await (await ownerBackups.get(alarmSnapshot.key)).json();
+        assert.deepEqual(qaSnapshot.app.goals,qaArchive.app.goals);
+        assert.deepEqual(qaSnapshot.photos,qaArchive.photos);
+        assert.doesNotMatch(JSON.stringify(qaSnapshot),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.deepEqual((await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key),ownerBefore);
+        const qaSettings = fields(await (await req('/settings')).text());
+        assert.equal((await post('/settings/backup',qaSettings)).status,303,'QA may back up only its own notebook.');
+        const ownerAfter = await exported(jwt());
+        const ownerSnapshot = await (await ownerBackups.get(ownerAfter.app.backup.key)).json();
+        assert.doesNotMatch(JSON.stringify(ownerSnapshot),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.equal((await req('/internal/backup','',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);
+        // Revocation removes QA admission without changing either persisted notebook.
+        active = await fixture.rebind({...bindings,SCRY_QA_ACCESS_CLIENT_ID:''});
+        assert.equal((await req('/export')).status,401);
+        assert.equal((await req('/export',jwt())).status,200);
+        active = await fixture.rebind(bindings);
+        assert.deepEqual((await exported(service)).app.goals,qaArchive.app.goals);
+        active = await fixture.rebind({...bindings,SPACE_NAME:'scry-qa'});
+        assert.equal((await req()).status,401,'A colliding owner name must never admit QA as owner.');
+        assert.equal((await req('/',jwt())).status,200,'Existing owner routing remains authoritative.');
+      } finally {await fixture.mf.dispose();}
+    });
+  }
+  for (const mode of ['preview', 'production']) {
+    await check(`${mode}: QA cannot acquire a second paid allowance before or after owner exhaustion`, async () => {
+      const client = 'no-paid-scry-qa.access';
+      const service = jwt({sub:'',common_name:client});
+      const name = `scry-qa-spending-${mode}`;
+      const bindings = {...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
+        OPENROUTER_API_KEY:'synthetic-owner-generator-key',OPENROUTER_MODEL:'synthetic-owner-model',
+        JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
+        JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
+      let sends = 0;
+      const provider = async request => {
+        if (request.url === `https://${team}/cdn-cgi/access/certs`) return egress(request);
+        assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');
+        assert.equal(request.headers.get('Authorization'),'Bearer synthetic-owner-generator-key');
+        sends++;
+        // Controlled usage exhausts the real application ledger; no remote calls.
+        return new Response(JSON.stringify({model:'synthetic-owner-model',usage:{cost:3.5},
+          choices:[{message:{content:'{}'}}]}),{headers:{'Content-Type':'application/json'}});
+      };
+      const fixture = await createRuntime({bindings,name,artifact,egress:provider});
+      let active = fixture;
+      const req = (path,token,init={}) => active.worker.fetch(`${origin}${path}`,{
+        ...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers},
+      });
+      const state = async token => {
+        const response = await req('/export',token);
+        assert.equal(response.status,200);
+        return (await response.json()).app;
+      };
+      const capture = async (token,intent,photo=false) => {
+        const html = await (await req('/create',token)).text();
+        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+        let body = new URLSearchParams({...fields,intent});
+        let contentType = 'application/x-www-form-urlencoded';
+        if (photo) {
+          const form = new FormData();
+          for (const [key,value] of Object.entries({...fields,intent})) form.set(key,value);
+          form.set('photo',new Blob([photoBytes],{type:'image/png'}),'qa-only.png');
+          const encoded = new globalThis.Request(origin,{method:'POST',body:form});
+          body = Buffer.from(await encoded.arrayBuffer());
+          contentType = encoded.headers.get('Content-Type');
+        }
+        const response = await req('/create',token,{method:'POST',body,
+          headers:{'X-Scry-Test-Origin':origin,'Content-Type':contentType}});
+        assert.equal(response.status,303);
+        return response.headers.get('Location').split('/').at(-1);
+      };
+      const settled = async (token,goal) => {
+        const deadline = Date.now()+5000;
+        do {
+          const app = await state(token);
+          if (app.goals[goal].status === 'failed') return app;
+          await new Promise(resolve=>setTimeout(resolve,50));
+        } while (Date.now()<deadline);
+        throw new Error('Actual alarm did not settle the controlled capture.');
+      };
+      try {
+        const ownerInitial = await state(jwt());
+        const qaFirst = await capture(service,'QA intent with no paid allocation');
+        let qaApp = await settled(service,qaFirst);
+        assert.match(qaApp.jobs[qaApp.goals[qaFirst].job_id].error,/not configured/);
+        assert.equal(qaApp.goals[qaFirst].intent,'QA intent with no paid allocation');
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,0,'QA cannot use owner providers even with an unused owner allowance.');
+        assert.deepEqual(await state(jwt()),ownerInitial);
+
+        const ownerFirst = await capture(jwt(),'Owner controlled allowance exhaustion');
+        const ownerSpent = await settled(jwt(),ownerFirst);
+        assert.equal(sends,1,'The unchanged owner provider remains usable.');
+        assert.equal(ownerSpent.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),3_500_000);
+        const ownerSecond = await capture(jwt(),'Owner must stop when the allowance is used');
+        const ownerBlocked = await settled(jwt(),ownerSecond);
+        assert.match(ownerBlocked.jobs[ownerBlocked.goals[ownerSecond].job_id].error,/allowance is used/);
+        assert.equal(sends,1);
+
+        const qaSecond = await capture(service,'QA must not get another application allowance');
+        qaApp = await settled(service,qaSecond);
+        assert.match(qaApp.jobs[qaApp.goals[qaSecond].job_id].error,/not configured/);
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,1,'An exhausted owner allowance cannot be bypassed by QA.');
+        assert.deepEqual(await state(jwt()),ownerBlocked,'QA work cannot mutate the owner ledger or notebook.');
+
+        // Restart after queuing photo work. Background capability comes from
+        // the immutable object ID, never the latest request or owner bindings.
+        const qaPhoto = await capture(service,'QA photo remains saved without paid transcription',true);
+        active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'restart-spending.invalid'});
+        await req('/settings',service);
+        qaApp = await settled(service,qaPhoto);
+        assert.match(qaApp.jobs[qaApp.goals[qaPhoto].job_id].error,/not configured/);
+        assert.ok(qaApp.goals[qaPhoto].photo);
+        assert.equal(qaApp.goals[qaPhoto].transcript,null);
+        assert.deepEqual(qaApp.spend,[]);
+        assert.equal(sends,1,'Restarted QA photo alarms cannot send through owner providers.');
+        assert.deepEqual(await state(jwt()),ownerBlocked);
+        console.log(JSON.stringify({qa_spend_boundary:'PASS',mode,provider_sends:sends,
+          owner_micros:ownerBlocked.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),
+          qa_micros:qaApp.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0)}));
+      } finally {await fixture.mf.dispose();}
+    });
+    await check(`${mode}: QA keeps local study and learner self-check without inheriting paid Jev`, async () => {
+      const localOrigin = 'http://127.0.0.1:8792';
+      const client = 'no-paid-checking-qa.access';
+      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,
+        bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:'scry-qa',INTERNAL_KEY:internalKey}});
+      let active = fixture,currentOrigin = localOrigin;
+      const req = (path,init={}) => active.worker.fetch(`${currentOrigin}${path}`,{...init,redirect:'manual',
+        headers:{'Cf-Access-Jwt-Assertion':jwt({sub:'',common_name:client}),...init.headers}});
+      const fields = (html,action) => {
+        const form = [...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);
+        assert.ok(form,`Missing real form ${action}`);
+        return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+      };
+      const post = (path,values) => req(path,{method:'POST',body:new URLSearchParams(values),
+        headers:{'X-Scry-Test-Origin':currentOrigin,'Content-Type':'application/x-www-form-urlencoded'}});
+      const snapshot = async identity => {
+        const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        const stub = ns.get(ns.idFromName('scry-qa'));
+        assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',
+          headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}})).status,200);
+        const bucket = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        const objects = (await bucket.list({prefix:'snapshots/scry-qa/'})).objects;
+        return (await (await bucket.get(objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key)).json()).app;
+      };
+      try {
+        // Authored local setup only; ordinary QA cannot call the fixture route.
+        let html = await (await req('/create')).text();
+        assert.equal((await post('/__fixture',fields(html,'/create'))).status,303);
+        let app = await snapshot('private-owner');
+        if (app.occurrence.presentation.kind === 'choice') {
+          assert.equal((await post(`/questions/${app.occurrence.question_id}/archive`,{
+            csrf:app.csrf,operation_id:'qa-archive-authored-choice-only'})).status,303);
+        }
+        active = await fixture.rebind({...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
+          JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
+          JEV_URL:'https://openrouter.ai/api/alpha/decisions'});
+        currentOrigin = origin;
+        html = await (await req('/')).text();
+        assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),
+          answer:'A deliberately non-exact QA remembered response'})).status,303);
+        const deadline = Date.now()+5000;
+        do {
+          // Snapshotting arms the next timer; let the real one-second work
+          // alarm fire before requesting another complete backup.
+          await new Promise(resolve=>setTimeout(resolve,1100));
+          app = await snapshot('private-qa');
+          if (app.occurrence.phase === 'self-check') break;
+        } while (Date.now()<deadline);
+        assert.equal(app.occurrence.phase,'self-check');
+        assert.match(Object.values(app.assessments)[0].error,/Meaning checking is not configured/);
+        assert.deepEqual(app.spend,[]);
+        assert.equal(app.events.length,0);
+        html = await (await req('/')).text();
+        assert.equal((await post('/review/self',{...fields(html,'/review/self'),correct:'true'})).status,303);
+        app = await snapshot('private-qa');
+        assert.equal(app.events.length,1);
+        assert.equal(app.events[0].result.authority,'learner');
+        assert.deepEqual(app.spend,[]);
+      } finally {await fixture.mf.dispose();}
+    });
+  }
   await check('revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup', async () => {
     // Explicit opaque synthetic bytes, not proof of Go ZIP/SQLite conversion.
     const opaque = Buffer.concat([Buffer.from('SYNTHETIC_GO_CUSTODY_CANARY\0'), Buffer.alloc(180000, 0xff)]);
@@ -426,7 +729,7 @@ try {
       assert.deepEqual(recovered.app.operations, snapshot.app.operations);
     } finally {await second?.mf.dispose(); await fixture.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===27?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  console.log(JSON.stringify({status:failures?'FAIL':'PASS',checks,failures,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
 
 await test('listener allocation survives deterministic contention and concurrent isolated starts',async t=>{
