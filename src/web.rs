@@ -132,6 +132,10 @@ impl View<'_> {
         }
     }
     fn goal_phase<'a>(&'a self, goal: &'a Goal) -> &'a str {
+        // Imported material can be ready even when the latest Go job never finished.
+        if goal.status == "ready" {
+            return "ready";
+        }
         let job = self.app.jobs.get(&goal.job_id);
         self.effective_phase(
             job.map_or(&goal.status, |j| &j.status),

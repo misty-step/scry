@@ -295,6 +295,73 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
 }
 
 #[test]
+fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() {
+    for status in [
+        "failed",
+        "paused",
+        "unknown",
+        "superseded",
+        "partial",
+        "ready",
+    ] {
+        let mut app = revived();
+        app.goals.retain(|id, _| id == LEGACY_GOAL);
+        app.jobs.retain(|_, job| job.goal_id == LEGACY_GOAL);
+        app.concepts
+            .retain(|_, concept| concept.goal_id == LEGACY_GOAL);
+        app.questions
+            .retain(|_, question| question.goal_id == LEGACY_GOAL);
+        for question in app.questions.values_mut() {
+            question.card.due_ms = NOW + 86_400_000;
+        }
+        let job_id = app.goals[LEGACY_GOAL].job_id.clone();
+        app.jobs.get_mut(&job_id).unwrap().status = status.into();
+        app.occurrence = None;
+        app.restored_paused = true;
+        let historical = app.clone();
+        for paused in [true, false] {
+            assert_eq!(app.restored_paused, paused);
+            let before = app.clone();
+            let home = web::render(&app, "/", &query("ready-import"), NOW, None);
+            assert!(
+                home.contains("data-state=\"caught-up\""),
+                "{status}, paused={paused}"
+            );
+            assert!(home.contains("A good place to pause."));
+            assert!(home.contains("class=\"button primary\" href=\"/create\""));
+            assert!(!home.contains("Review your saved request"));
+            assert!(!home.contains("taking shape"));
+            let map = web::render(&app, "/map", &query("ready-map"), NOW, None);
+            assert!(
+                map.contains("class=\"goal-meta\">1 ideas · Ready</p>"),
+                "{status}, paused={paused}"
+            );
+            let page = web::render(
+                &app,
+                &format!("/goals/{LEGACY_GOAL}"),
+                &query("ready-page"),
+                NOW,
+                None,
+            );
+            assert!(page.contains(LEGACY_PROMPT));
+            assert!(!page.contains("preparation-panel"));
+            assert_eq!(app, before, "Status reads must not mutate imported work");
+            if paused {
+                let fields = BTreeMap::from([
+                    ("csrf".into(), app.csrf.clone()),
+                    ("operation_id".into(), "resume-ready-import".into()),
+                ]);
+                engine::mutate(&mut app, "/settings/resume", &fields, NOW, "resume-ready").unwrap();
+            }
+        }
+        assert_eq!(app.jobs, historical.jobs);
+        assert_eq!(app.goals, historical.goals);
+        assert_eq!(app.questions, historical.questions);
+        assert_eq!(app.concepts, historical.concepts);
+    }
+}
+
+#[test]
 fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rules() {
     let mut app = revived();
     app.goals.retain(|_, goal| goal.concept_ids.is_empty());
