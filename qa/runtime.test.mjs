@@ -327,6 +327,149 @@ try {
       }
     } finally {await fixture.mf.dispose();}
   });
+  for (const mode of ['preview', 'production']) {
+    await check(`${mode}: exact QA principal owns isolated SQLite, photos, backups and restarted alarms`, async () => {
+      const client = 'dedicated-scry-qa.access';
+      const serviceClaims = {sub:'', common_name:client};
+      const service = jwt(serviceClaims);
+      const bindings = {...baseBindings, SCRY_ENV:mode, SCRY_QA_ACCESS_CLIENT_ID:client};
+      const name = `scry-qa-isolation-${mode}`;
+      const fixture = await createRuntime({bindings, name, artifact, egress, inspect:true});
+      let active = fixture;
+      const req = (path='/', token=service, init={}) => active.worker.fetch(`${origin}${path}`, {
+        ...init, redirect:'manual', headers:{'Cf-Access-Jwt-Assertion':token, ...init.headers},
+      });
+      const fields = html => Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m => [m[1],m[2]]));
+      const post = (path, values, token=service, headers={}) => req(path, token, {
+        method:'POST', body:new URLSearchParams(values),
+        headers:{'X-Scry-Test-Origin':origin, 'Content-Type':'application/x-www-form-urlencoded', ...headers},
+      });
+      const exported = async token => {
+        const response = await req('/export', token);
+        assert.equal(response.status, 200);
+        return response.json();
+      };
+      const upload = async (values, token) => {
+        const form = new FormData();
+        for (const [key,value] of Object.entries(values)) form.set(key,value);
+        form.set('photo',new Blob([photoBytes],{type:'image/png'}),'private-test.png');
+        const encoded = new globalThis.Request(origin,{method:'POST',body:form});
+        return req('/create',token,{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),
+          headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});
+      };
+      const storage = space => fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+      try {
+        const forgedKey = generateKeyPairSync('rsa',{modulusLength:2048}).privateKey;
+        for (const token of ['', jwt({sub:'',common_name:'other.access'}), jwt({sub:'other',common_name:client}),
+          jwt({...serviceClaims,sub:null}), jwt({...serviceClaims,aud:['wrong']}),
+          jwt({...serviceClaims,iss:'https://wrong.invalid'}), jwt({...serviceClaims,exp:epoch-1}),
+          jwt({...serviceClaims,nbf:epoch+600}), jwt(serviceClaims,{alg:'HS256'}), jwt(serviceClaims,{},forgedKey)]) {
+          assert.equal((await req('/',token)).status,401);
+        }
+        assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-qa'}})).status,401);
+        const ownerFields = fields(await (await req('/create',jwt())).text());
+        const qaFields = fields(await (await req('/create')).text());
+        assert.notEqual(qaFields.csrf,ownerFields.csrf);
+        const sharedOperation = 'same-photo-operation-both-principals';
+        const ownerValues = {...ownerFields,operation_id:sharedOperation,intent:'OWNER_ONLY_NOTEBOOK_CANARY'};
+        const qaValues = {...qaFields,operation_id:sharedOperation,intent:'QA_ONLY_NOTEBOOK_CANARY'};
+        assert.equal((await post('/create',{...qaValues,csrf:ownerFields.csrf})).status,403);
+        assert.equal((await post('/create',qaValues,service,{'X-Scry-Test-Origin':'https://attacker.invalid'})).status,403);
+        assert.equal((await post('/create',qaValues,service,{'Sec-Fetch-Site':'cross-site'})).status,403);
+        const ownerSaved = await upload(ownerValues,jwt());
+        assert.equal(ownerSaved.status,303);
+        const qaSaved = await upload(qaValues,service);
+        assert.equal(qaSaved.status,303);
+        assert.equal((await upload(qaValues,service)).headers.get('Location'),qaSaved.headers.get('Location'));
+        await new Promise(resolve => setTimeout(resolve,1500)); // actual Rust alarms, no provider configured
+        const ownerArchive = await exported(jwt());
+        const qaArchive = await exported(service);
+        assert.equal(Object.keys(ownerArchive.app.goals).length,1);
+        assert.equal(Object.keys(qaArchive.app.goals).length,1);
+        assert.ok(Object.values(ownerArchive.app.jobs).every(job => job.status==='failed'));
+        assert.ok(Object.values(qaArchive.app.jobs).every(job => job.status==='failed'));
+        assert.match(JSON.stringify(ownerArchive),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(JSON.stringify(ownerArchive),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.match(JSON.stringify(qaArchive),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(JSON.stringify(qaArchive),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        const ownerGoal = Object.keys(ownerArchive.app.goals)[0];
+        const qaGoal = Object.keys(qaArchive.app.goals)[0];
+        assert.match(ownerArchive.photos[0].photo.key,/^photos\/synthetic-only\//);
+        assert.match(qaArchive.photos[0].photo.key,/^photos\/scry-qa\//);
+        assert.notEqual(ownerArchive.photos[0].photo.key,qaArchive.photos[0].photo.key);
+        assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length,2);
+        assert.equal((await req(`/photos/${ownerGoal}`)).status,404);
+        assert.equal((await req(`/photos/${qaGoal}`,jwt())).status,404);
+        for (const path of [ownerSaved.headers.get('Location'),'/map','/history','/export',
+          `/create?SPACE_NAME=${baseBindings.SPACE_NAME}&__owner=private-owner`]) {
+          const response = await req(path,service,{headers:{'x-scry-owner':'private-owner',
+            'x-scry-internal-key':internalKey,'x-scry-space':baseBindings.SPACE_NAME}});
+          assert.doesNotMatch(await response.text(),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        }
+        assert.notEqual((await post(`/goals/${ownerGoal}/archive`,{
+          csrf:qaFields.csrf,operation_id:'qa-cannot-archive-owner-goal',
+        })).status,303);
+        for (const path of ['/operator/backup','/operator/resume-work','/operator/restore','/operator/restore-dry-run','/internal/backup']) {
+          assert.equal((await post(path,{},service,{'x-scry-operator-key':operatorKey,
+            'x-scry-restore-token':restoreToken,'x-scry-backup-key':backupKey})).status,403);
+        }
+        const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        for (const [space,wrongIdentity] of [[baseBindings.SPACE_NAME,'private-qa'],['scry-qa','private-owner']]) {
+          const stub = ns.get(ns.idFromName(space));
+          assert.equal((await stub.fetch(`${origin}/export`,{headers:{
+            'x-scry-internal-key':internalKey,'x-scry-owner':wrongIdentity,
+          }})).status,403,'Internal capability cannot cross principal/object identity.');
+        }
+        assert.deepEqual((await exported(jwt())).app,ownerArchive.app,'QA operations leave owner records unchanged.');
+        assert.equal((await post('/operator/backup',{},jwt(),{'x-scry-operator-key':operatorKey})).status,200);
+        let ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        const ownerBefore = (await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key);
+        // Recreate the runtime before alarm delivery. Only the immutable object ID
+        // can choose the QA backup prefix; no request identity is available here.
+        active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'alternate-synthetic.invalid,unused.invalid'});
+        ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
+        assert.deepEqual((await exported(service)).app,qaArchive.app);
+        const initialSettings = fields(await (await req('/settings')).text());
+        assert.equal((await post('/settings/backup',initialSettings)).status,303);
+        const qaBefore = (await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects.map(o=>o.key);
+        const qaStorage = await storage('scry-qa');
+        const meta = JSON.parse((await qaStorage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+        meta.backup.completed_ms = Date.now()-25*60*60*1000;
+        await qaStorage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+        // Real request arming and timer delivery, not an invented inspection API.
+        await req('/settings');
+        const deadline = Date.now()+5000;
+        let snapshots;
+        do {
+          snapshots = await ownerBackups.list({prefix:'snapshots/scry-qa/'});
+          if (snapshots.objects.some(o=>!qaBefore.includes(o.key))) break;
+          await new Promise(resolve=>setTimeout(resolve,50));
+        } while (Date.now()<deadline);
+        const alarmSnapshot = snapshots.objects.find(o=>!qaBefore.includes(o.key));
+        assert.ok(alarmSnapshot,'Restarted QA alarm must create a QA-prefixed complete snapshot.');
+        const qaSnapshot = await (await ownerBackups.get(alarmSnapshot.key)).json();
+        assert.deepEqual(qaSnapshot.app.goals,qaArchive.app.goals);
+        assert.deepEqual(qaSnapshot.photos,qaArchive.photos);
+        assert.doesNotMatch(JSON.stringify(qaSnapshot),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.deepEqual((await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key),ownerBefore);
+        const qaSettings = fields(await (await req('/settings')).text());
+        assert.equal((await post('/settings/backup',qaSettings)).status,303,'QA may back up only its own notebook.');
+        const ownerAfter = await exported(jwt());
+        const ownerSnapshot = await (await ownerBackups.get(ownerAfter.app.backup.key)).json();
+        assert.doesNotMatch(JSON.stringify(ownerSnapshot),/QA_ONLY_NOTEBOOK_CANARY/);
+        assert.equal((await req('/internal/backup','',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);
+        // Revocation removes QA admission without changing either persisted notebook.
+        active = await fixture.rebind({...bindings,SCRY_QA_ACCESS_CLIENT_ID:''});
+        assert.equal((await req('/export')).status,401);
+        assert.equal((await req('/export',jwt())).status,200);
+        active = await fixture.rebind(bindings);
+        assert.deepEqual((await exported(service)).app.goals,qaArchive.app.goals);
+        active = await fixture.rebind({...bindings,SPACE_NAME:'scry-qa'});
+        assert.equal((await req()).status,401,'A colliding owner name must never admit QA as owner.');
+        assert.equal((await req('/',jwt())).status,200,'Existing owner routing remains authoritative.');
+      } finally {await fixture.mf.dispose();}
+    });
+  }
   await check('revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup', async () => {
     // Explicit opaque synthetic bytes, not proof of Go ZIP/SQLite conversion.
     const opaque = Buffer.concat([Buffer.from('SYNTHETIC_GO_CUSTODY_CANARY\0'), Buffer.alloc(180000, 0xff)]);
@@ -407,7 +550,7 @@ try {
       assert.deepEqual(recovered.app.operations, snapshot.app.operations);
     } finally {await second?.mf.dispose(); await fixture.mf.dispose();}
   });
-  console.log(JSON.stringify({status:checks===27?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
+  console.log(JSON.stringify({status:checks===29?'PASS':'FAIL',checks,artifact_sha256:createHash('sha256').update(readFileSync(resolve(artifact,'index_bg.wasm'))).digest('hex'),limits:'Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof.'}));
 } finally {await restored?.dispose();await preview.dispose();}
 
 await test('listener allocation survives deterministic contention and concurrent isolated starts',async t=>{
