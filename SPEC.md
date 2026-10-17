@@ -163,7 +163,11 @@ that I can start without organizing the app first.
   actionable response control without an intermediate dashboard/deck choice.
 - **S01.2:** With no material, the screen offers capture. With material but none
   currently due/eligible, it explains that state and offers a deliberate next
-  action; it does not invent due work or silently reset schedules.
+  action; it does not invent due work or silently reset schedules. Stopped
+  preparation is not described as running: the Stream links directly to the
+  saved request and its recovery options instead of asking the learner to wait.
+  Imported requests that never finished remain recoverable on their own page
+  and the Map, not as the Stream's next learning action.
 - **S01.3:** Returning from Create/Map/Concept preserves an unfinished occurrence
   or held result. Navigation and status reads do not consume it.
 
@@ -397,6 +401,14 @@ history or silently restart paid work.
   material and a compatible binary. Restored uncertain jobs stay paused until
   reconciled; they do not silently regenerate or send again. Measure actual data
   loss and restore time against the approved D5 policy before calling this safe.
+- **S10.4:** While restored background work is paused, preparation and meaning
+  checks say so and link to Settings, not indefinite progress or ineffective
+  retries. The notebook's own learner can deliberately choose Resume preparation
+  there, without an operator key. This enables queued and future work only;
+  historical paused/unknown jobs, assessments, reservations and learning history
+  remain unchanged. Same-origin/session protection and exact-operation replay
+  apply. A new resume after resumption conflicts without changing state. QA can
+  resume only its own notebook, without gaining paid provider capabilities.
 
 Proof: process interruption, concurrent review/backup, incomplete upload, and a
 real fresh-environment restore. Persistent disk or VM cloning is insufficient.

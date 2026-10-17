@@ -1,7 +1,7 @@
 // Real native browser journey through the compiled Worker with explicit,
 // authored provider responses. This verifies orchestration, never AI quality.
 import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign} from 'node:crypto';
+import {generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {createServer} from 'node:https';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
@@ -40,15 +40,26 @@ export async function createWalk(browser,capture){
   critics++;return new Response(JSON.stringify({model:'authored-browser-critic',usage:{cost:0.00003},answers:Object.fromEntries(Object.keys(body.questions).map(key=>[key,{type:'noul',noul:0.01}]))}),{headers:{'Content-Type':'application/json'}});
  };
  const bindings={SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'browser-provider-isolated',ACCESS_TEAM:team,ACCESS_AUDIENCE:'browser-synthetic',OWNER_SUBJECT:'browser-owner-synthetic',INTERNAL_KEY:internalKey,OPENROUTER_API_KEY:'synthetic-no-live-provider-key',OPENROUTER_MODEL:'authored-browser-generator',JEV_API_KEY:'synthetic-no-live-jev-key',JEV_MODEL:'authored-browser-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
- let context,page;const result={name:'Create → useful reference → practice → real feedback → refinement',status:'pass',evidence:[],scope:'Authored provider responses through real model transport; usefulness/calibration not evaluated.'};
+ let context,page;const result={name:'Restored pause → Create → Settings Resume → useful reference → meaning check → refinement',status:'pass',evidence:[],scope:'Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated.'};
  try{
- runtime=await createRuntime({bindings,name:'scry-browser-create',egress:provider});
+ runtime=await createRuntime({bindings:{...bindings,SPACE_NAME:'browser-before-restore'},name:'scry-browser-create',egress:provider});
+ const archive=Buffer.from(await(await runtime.worker.fetch(origin+'/export',{headers:{'Cf-Access-Jwt-Assertion':jwt}})).arrayBuffer());
+ const restoreToken='browser-synthetic-restore-token-at-least-32chars';
+ let active=await runtime.rebind({SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:bindings.SPACE_NAME,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken});
+ const restored=await active.worker.fetch(origin+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':createHash('sha256').update(archive).digest('hex')},body:archive});
+ assert.equal(restored.status,200);
+ active=await runtime.rebind(bindings);runtime.worker=active.worker;
  context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,ignoreHTTPSErrors:true});page=await context.newPage();page.setDefaultTimeout(20000);
  const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(bindings.SPACE_NAME));
  const readState=async()=>{const r=await stub.fetch(origin+'/export',{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(r.status,200);return(await r.json()).app;};
   // Native HTTPS requests/redirects traverse Rust ingress with a synthetic
   // owner assertion. The self-signed loopback certificate is test-only.
-  await page.goto(origin+'/create');await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');await page.getByRole('button',{name:'Make it understandable'}).click();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
+  await page.goto(origin+'/settings');await page.getByRole('button',{name:'Resume preparation',exact:true}).waitFor();result.evidence.push(await capture(page,'paused-settings.png'));
+  await page.getByRole('link',{name:'Create',exact:true}).tap();await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');await page.getByRole('button',{name:'Make it understandable'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
+  await page.getByRole('heading',{name:'Preparation is paused.',exact:true}).waitFor();assert.equal(preparations,0);assert.equal(await page.getByRole('button',{name:'Try preparation again'}).count(),0);result.evidence.push(await capture(page,'paused-saved-request.png'));
+  await page.goto(origin+'/');await page.locator('[data-state="preparation-paused"]').waitFor();assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-stream.png'));
+  await page.locator('.empty-stage').getByRole('link',{name:'Resume preparation'}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();await page.locator('[data-state="preparing"]').waitFor();assert.equal((await readState()).restored_paused,false);
+  await page.goto(goalUrl);
   await page.locator('.preparation-panel').waitFor();
   const draft='Show how a changed image affects the next conditional request.';
   await page.locator('#feedback').fill(draft);const operation=await page.locator('form[action$="/refine"] input[name="operation_id"]').inputValue();
