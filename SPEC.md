@@ -1,5 +1,13 @@
 # Scry prompt-first, concept-centered specification
 
+## What it does
+
+Scry turns what Phaedrus wants to learn into a private notebook of concepts, useful reference and practice, refined through his answers and feedback.
+
+## What it enables
+
+Phaedrus can turn curiosity into understanding and lasting recall through a daily learning habit that feels good on his phone.
+
 This is the single behavioral reference for rebuilding Scry: a private learning
 notebook for one person, from curiosity to useful reference and practice, then
 refinement through real answers and feedback. QA runs against this file's US,
