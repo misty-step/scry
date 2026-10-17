@@ -28,7 +28,7 @@ describe('Rust source and Worker artifact provenance',()=>{
   it('freezes exact Rust runtime/assets without importing credentials or the caller development state',async()=>{
     const source=join(temporary,'checkout');await mkdir(join(source,'src'),{recursive:true});
     await mkdir(join(source,'assets'));
-    for(const name of ['Cargo.toml','Cargo.lock','rust-toolchain.toml'])await writeFile(join(source,name),name+'\n');
+    for(const name of ['Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md'])await writeFile(join(source,name),name+'\n');
     await writeFile(join(source,'src/lib.rs'),'pub fn original() {}');
     await writeFile(join(source,'assets/app.css'),'body {color:ink}');
     await mkdir(join(source,'internal/web/assets/fonts'),{recursive:true});
@@ -42,7 +42,10 @@ describe('Rust source and Worker artifact provenance',()=>{
     await writeFile(join(source,'.dev.vars'),'PRIVATE_DO_NOT_COPY=secret');
     const copy=join(temporary,'snapshot');
     const identity=await snapshotSource(source,copy);
-    assert.equal(identity.files.length,7);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.equal(identity.files.length,8);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.equal(await readFile(join(copy,'CHANGELOG.md'),'utf8'),'CHANGELOG.md\n');
+    await writeFile(join(source,'CHANGELOG.md'),'# Updated public release notes\n');
+    assert.notEqual((await snapshotSource(source,join(temporary,'changed-notes'))).sha256,identity.sha256);
     assert.equal(await readFile(join(copy,telemetry),'utf8'),'export function reportRust() {}');
     await writeFile(join(source,telemetry),'export function reportRust() { /* changed */ }');
     assert.notEqual((await snapshotSource(source,join(temporary,'changed-telemetry'))).sha256,identity.sha256);
