@@ -13,8 +13,15 @@ Source: src/web.rs, assets/app.js, src/engine.rs, src/generation.rs, src/runtime
 Choose Create (`/create`; `/add` is an alias), enter text in the intent field
 and submit. Follow the returned goal link, leave for Map and return; inspect
 preparation and any offered retry. Use the optional photo chooser only with
-run-owned synthetic material. Open a prepared concept's feedback action for
-refinement, or the question's repair action and deliberate Save.
+run-owned synthetic material. Save feedback on a prepared concept, follow
+Original request & preparation, then choose Refine my material on the goal.
+The question's repair action instead opens a draft for deliberate Save.
+
+When an isolated restored notebook reports paused preparation, follow Settings
+(`/settings#preparation`) and its Resume preparation action; then return to the
+saved request. [S10](../SPEC.md#s10--keep-my-work-recoverable) owns the recovery
+contract. The existing `qa/browser-recovery.mjs` and `qa/browser-create.mjs`
+walks exercise this route through `qa/walk --all` with authored inputs.
 
 [QA](../docs/qa/system.md#core-journeys) owns setup, invalid-input and recovery
 recipes. `qa/walk --stories "US-004 US-013"` selects the existing checks.

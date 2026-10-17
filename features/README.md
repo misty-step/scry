@@ -8,6 +8,10 @@ production activation. US-012 is retired and its identifier remains reserved.
 - [One question and honest judgment](study.md): US-002, US-003, US-007, US-008, US-011.
 - [Create, preparation, and refinement](capture.md): US-004, US-013/S11.
 - [Concepts, references, and goals](concepts.md): US-001, US-006, US-009, US-010.
+- [Changes in this build](../SPEC.md#s12--inspect-the-changes-in-this-build):
+  follow the footer's Changelog link to `/changelog`, then return through the
+  header. Source: `src/web.rs`, `src/runtime.rs`. The existing `qa/walk --all`
+  includes `qa/browser-release.mjs` for phone/desktop and light/dark navigation.
 
 This is the shared navigation inventory for verification and fitness. Intent
 stays in SPEC; feature pages add only reach/drive instructions and source hints.

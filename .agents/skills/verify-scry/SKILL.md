@@ -19,10 +19,13 @@ Worker with local SQLite/R2 and no provider credentials. Inspect the printed
 loopback target before driving; never import a live notebook to populate it.
 
 For deployed inspection, first read the [runbook](../../../docs/runbook.md):
-source HEAD and serving architecture can differ. Only the approved owner Access
-login grants private browser access. A login redirect is denial evidence, not
-a completed learner journey. Do not borrow a protected human session or spend
-on generation to qualify this documentation.
+source HEAD and serving architecture can differ. Use only the approved owner
+Access login for the owner's notebook, or the separately approved QA identity
+for its own notebook under [S09](../../../SPEC.md#s09--keep-the-application-private).
+Source support does not establish deployed QA configuration or authorize its
+credentials. A login redirect is denial evidence, not a completed learner
+journey. Do not borrow a protected human session or spend on generation to
+qualify this documentation.
 
 ## Walk as Phaedrus
 
@@ -34,7 +37,8 @@ color schemes, following these map entries:
    leave and return. In the credential-free stack inspect the honest stopped
    preparation rather than pretending generated material exists.
 2. Study: in a separate fresh synthetic notebook, explicitly load the authored
-   demo. Start practicing, answer, read the held feedback, refresh, then choose
+   demo. It opens a question directly; use Start practicing only if an actual
+   introduction offers it. Answer, read the held feedback, refresh, then choose
    Next. Try an incorrect answer and the visible help route too.
 3. Map/reference: open Map, follow a displayed goal/concept, inspect reference
    through its assistance gate when offered, then return to the same study.
