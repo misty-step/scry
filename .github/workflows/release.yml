@@ -66,7 +66,11 @@ jobs:
           python3 - <<'PY'
           import json, os, subprocess
           for pr in json.loads(os.environ['RELEASE_PRS']):
-              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', os.environ['GITHUB_REPOSITORY'], '--ref', pr['headBranchName'], '-f', 'mode=verify', '-f', 'expected_head=' + pr['sha']], check=True)
+              repo = os.environ['GITHUB_REPOSITORY']
+              current = json.loads(subprocess.check_output(['gh', 'api', 'repos/' + repo + '/pulls/' + str(pr['number'])]))
+              assert current['state'] == 'open' and current['base']['ref'] == 'master'
+              assert current['head']['repo']['full_name'] == repo and current['head']['ref'] == pr['headBranchName']
+              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', repo, '--ref', current['head']['ref'], '-f', 'mode=verify', '-f', 'expected_head=' + current['head']['sha']], check=True)
           PY
       - name: Finalize or recover the existing exact tagged master artifact
         env:
