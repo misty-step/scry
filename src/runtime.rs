@@ -169,6 +169,8 @@ fn private(mut response: Response) -> Result<Response> {
     let fresh: Headers = response.headers().entries().collect();
     response = response.with_headers(fresh);
     let headers = response.headers_mut();
+    headers.set("X-Scry-Version", web::VERSION)?;
+    headers.set("X-Scry-Revision", web::SOURCE_REVISION)?;
     headers.set("Cache-Control", "private, no-store, max-age=0")?;
     headers.set("Pragma", "no-cache")?;
     headers.set("Vary", "Cf-Access-Jwt-Assertion")?;
@@ -363,6 +365,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
                 403,
             )?);
         }
+    }
+    if req.path() == "/changelog" {
+        return private(if read {
+            Response::from_html(web::changelog())?
+        } else {
+            Response::error("Method not allowed.", 405)?
+        });
     }
     let key = internal_key(&env);
     if key.len() < 32 {

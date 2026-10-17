@@ -89,7 +89,8 @@ def deploy():
     if prior: ancestor(prior[1], receipt['source'])
     else: assert bindings['SCRY_ENV']['text'] == 'restore', 'Unrecognized live release'
     assert request(script + '/deployments')['deployments'][0]['id'] == previous['id']
-    subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
+    if not prior or prior[1] != receipt['source']:
+        subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
     after = request(script + '/settings')
     exact = {b['name']: b for b in after['bindings']}
     assert {k: exact[k][field] for k, field in [('LEARNING_SPACE', 'namespace_id'), ('SCRY_ASSETS', 'bucket_name'), ('SCRY_BACKUPS', 'bucket_name')]} == mutable

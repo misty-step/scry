@@ -450,6 +450,15 @@ learning history. Exercise slow, partial, failed, and uncertain work separately.
 Historical Go Add walks prove their capture/privacy boundary only; source documentation, fixture
 success, and older phone receipts do not establish S11 acceptance.
 
+### S12 — Inspect the changes in this build
+
+As the learner, I can follow Changelog from the private application's navigation
+to useful release notes included in the serving build, not newer unpublished
+work. The page names the semantic version and full source revision, works in
+light and dark themes on phone and desktop, and does not read or change my
+learning state. It retains the application's private access boundary. Health
+responses identify that same version and revision without exposing notebook data.
+
 ## Cross-cutting quality contracts
 
 These are candidate budgets to approve through the experience slice, not

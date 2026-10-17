@@ -51,6 +51,25 @@ try {
   await check('real RS256 owner signature and private response headers',async()=>{
     const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/Create/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
+  await check('private build-bound changelog is read-only, with health version and revision',async()=>{
+    assert.equal((await request('/changelog','')).status,401);
+    assert.equal((await request('/changelog',jwt({sub:'wrong'}))).status,401);
+    const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
+    const rows=await storage.exec('SELECT key,value FROM records ORDER BY key');
+    const response=await request('/changelog');
+    assert.equal(response.status,200);
+    assert.match(response.headers.get('Cache-Control'),/no-store/);
+    const html=await response.text();
+    assert.match(html,/<h1>Changelog<\/h1>/);
+    const version=/version = "([^"]+)"/.exec(readFileSync('Cargo.toml','utf8'))[1];
+    assert.ok(html.includes('Version ' + version));
+    assert.ok(html.includes(process.env.SCRY_SOURCE_REVISION || 'unverified-development-build'));
+    assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'),rows);
+    const health=await request('/healthz','');
+    assert.equal(health.headers.get('X-Scry-Version'),version);
+    assert.equal(health.headers.get('X-Scry-Revision'),process.env.SCRY_SOURCE_REVISION || 'unverified-development-build');
+    assert.equal((await request('/changelog',jwt(),{method:'POST',headers:{Origin:origin}})).status,405);
+  });
   await check('cached issuer keys still require every token signature',async()=>{
     const token=jwt();const [h,p,s]=token.split('.');const forged=`${h}.${b64({...claims,sub:'attacker'})}.${s}`;assert.equal((await request('/',forged)).status,401);assert.equal((await request()).status,200);assert.equal(certRequests,1);
   });
