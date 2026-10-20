@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Production promotion refuses binding drift before upload and records unchanged serving edges, offline."""
+from contextlib import contextmanager
+from copy import deepcopy
 import importlib.util
 import io
 import json
@@ -53,6 +55,61 @@ class Promotion(unittest.TestCase):
                                 ([DOMAIN, dict(www, zone_id='z')], []), ([DOMAIN, www], [{'pattern': 'scry.study/*'}])]:
             with self.subTest(domains=domains, routes=routes):
                 self.assertNotEqual(PROMOTE.edges(domains, routes, NAME), seen)
+
+    def test_declared_refuses_foreign_worker_with_reason(self):
+        config = deepcopy(CONFIG)
+        config['durable_objects']['bindings'][0]['script_name'] = 'other-worker'
+        with self.assertRaisesRegex(AssertionError, 'Durable Object binding points at another Worker'):
+            PROMOTE.declared(config)
+
+    @contextmanager
+    def deployment(self, domains, routes):
+        requested = []
+        bindings = drift('SCRY_ENV', text='restore') + [
+            {'name': name, 'type': 'secret_text'} for name in ('OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY')]
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'promotion.json'
+            receipt.write_text(json.dumps({'source': 'a' * 40}))
+            with mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict('os.environ', CLOUDFLARE_API_TOKEN='synthetic'), \
+                    mock.patch.object(PROMOTE.subprocess, 'run') as run:
+                def urlopen(request, timeout):
+                    path = request.full_url.split('/accounts/' + CONFIG['account_id'], 1)[1]
+                    requested.append(path)
+                    script = '/workers/scripts/' + NAME
+                    if path == script + '/settings': result = {'bindings': bindings}
+                    elif path.endswith('/domains/managed'): result = {'enabled': False}
+                    elif path.endswith('/domains/custom'): result = {'domains': []}
+                    elif '/objects?' in path: result = [{'key': 'synthetic-snapshot'}]
+                    elif path == script + '/deployments':
+                        result = {'deployments': [{'id': 'previous', 'versions': [{'version_id': 'previous'}]}]}
+                    elif path == script + '/versions/previous': result = {}
+                    elif path == '/workers/domains?service=' + NAME: result = domains if run.called else [DOMAIN]
+                    elif path == script + '/routes': result = routes if run.called else []
+                    else: self.fail('Unexpected request: ' + path)
+                    return io.BytesIO(json.dumps({'success': True, 'result': result}).encode())
+                with mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen):
+                    yield run, requested, receipt
+
+    def test_deploy_refuses_serving_edge_drift(self):
+        for domains, routes in [([dict(DOMAIN, hostname='changed.scry.study')], []),
+                                ([DOMAIN], [{'pattern': 'scry.study/*'}])]:
+            with self.subTest(domains=domains, routes=routes), self.deployment(domains, routes) as (run, requested, receipt):
+                with self.assertRaisesRegex(AssertionError, '^Custom domains or routes changed during promotion$'):
+                    PROMOTE.deploy()
+                run.assert_called_once()
+                self.assertEqual(json.loads(receipt.read_text()), {'source': 'a' * 40})
+
+    def test_deploy_observes_serving_edges_before_wrangler(self):
+        with self.deployment([DOMAIN], []) as (run, requested, receipt):
+            def wrangler(*args, **kwargs):
+                self.assertEqual(requested[-2:], ['/workers/domains?service=' + NAME,
+                                                 '/workers/scripts/' + NAME + '/routes'])
+                self.assertEqual(args[0][1], 'deploy')
+                raise RuntimeError('wrangler intercepted')
+            run.side_effect = wrangler
+            with self.assertRaisesRegex(RuntimeError, '^wrangler intercepted$'):
+                PROMOTE.deploy()
+            run.assert_called_once()
 
     def test_deploy_refuses_config_drift_before_any_upload(self):
         def urlopen(request, timeout):
