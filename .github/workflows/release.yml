@@ -44,25 +44,26 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Refuse a moved head or missing bootstrap
+      - name: Skip an outdated head or refuse missing bootstrap
+        id: head
         env:
           EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
         run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          bootstrap=$(python3 -c 'import json; print(json.load(open("release-please-config.json"))["bootstrap-sha"])')
-          git merge-base --is-ancestor "$bootstrap" HEAD
+          python3 scripts/scry-publish.py check-head
       - name: Refuse tagging an earlier failed release merge
+        if: steps.head.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/scry-publish.py preflight
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0; release-please 17.6.0
         id: release
+        if: steps.head.outputs.skip == 'false'
         with:
           target-branch: master
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
       - name: Run real exact-head CI for bot-created release PRs
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.head.outputs.skip == 'false' && steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PRS: ${{ steps.release.outputs.prs }}
@@ -77,6 +78,7 @@ jobs:
               subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', repo, '--ref', current['head']['ref'], '-f', 'mode=verify', '-f', 'expected_head=' + current['head']['sha']], check=True)
           PY
       - name: Finalize or recover the existing exact tagged master artifact
+        if: steps.head.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
