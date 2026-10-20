@@ -76,9 +76,9 @@ only that bearer and cannot satisfy an owner browser login policy by itself.
 Before claiming hosted CLI/API access, the parent of [#314](https://github.com/misty-step/scry/issues/314),
 [#313](https://github.com/misty-step/scry/issues/313), must arrange reviewed
 route-specific Access admission/provisioning and retain hosted positive and
-negative proof: an admitted Owner token reaches the canonical API and works,
-missing/invalid/revoked tokens are refused, and browser routes retain their
-owner Access protection. That policy work and its independent verification are
+negative proof. Confirm that an admitted Owner token can use the canonical API.
+Requests without a token or with an invalid or revoked token must be refused.
+Browser routes must retain owner Access protection. That policy work and its independent verification are
 parent-owned follow-up. Local synthetic Worker checks do not establish hosted
 admission; it remains unverified. This change does not alter live Access policy
 or expose the application.
