@@ -7,6 +7,7 @@ import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {resolve,join} from 'node:path';
 import {specs} from './walk-specs.mjs';
+import {ownerJourney,buildCli} from './owner-api.mjs';
 import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
@@ -42,28 +43,31 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
+if(selected.includes('US-014'))buildCli();
 let browser;
 try{
  browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
+  const owner=id==='US-014'?await ownerJourney():null;
   const runtime=await createSyntheticRuntime({name:`walk-${id.toLowerCase()}`});
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
   try{
    await page.goto(runtime.url+'/');
-   if(id!=='US-013'){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
-   const c={page,url:path=>runtime.url+path,policy,retainedGoMigration};
+   if(!['US-013','US-014'].includes(id)){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
+   const c={page,url:path=>runtime.url+path,policy,retainedGoMigration,owner};
    for(let i=0;i<specs[id].length;i++){
     const legacy=id==='US-001'&&i===0;
     const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);
     try{await specs[id][i](c);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow on390px');}
     catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
-    if(!legacy){const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);criterion.evidence.push(path);}
+    if(!legacy){const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true,...(id==='US-014'?{mask:[page.locator('textarea[aria-label="Owner token secret"]')]}:{})});await register(path);criterion.evidence.push(path);}
    }
+   if(owner){const path='logs/US-014-cli.json';await writeFile(join(output,path),JSON.stringify(owner.transcript,null,2)+'\n');await register(path);for(const criterion of result.criteria)criterion.evidence.push(path);}
    assert.deepEqual(errors,[],'Browser console/page errors');
   }catch(error){result.status='fail';result.error=error.message;console.error(`${id}: ${error.message}`);}
-  finally{await context.close();await runtime.mf.dispose();}
+  finally{await context.close();await runtime.mf.dispose();await owner?.close();}
  }
  receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.create_journey=await createWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});

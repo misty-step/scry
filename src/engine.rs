@@ -1,5 +1,6 @@
 //! The owner application state machine. Every public mutation is all-or-nothing.
 //! External requests are claimed durably, performed by the runtime, then fenced again here.
+use crate::owner_token::{self, MutationActor, OwnerToken};
 use crate::{
     generation::{self, Batch},
     learning,
@@ -67,6 +68,17 @@ pub fn mutate(
             "Your session needs to be refreshed before saving.",
         ));
     }
+    mutate_as(app, path, fields, now, seed, MutationActor::Browser)
+}
+
+pub fn mutate_as(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    actor: MutationActor<'_>,
+) -> AppResult<MutationResult> {
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
         || !operation
@@ -94,9 +106,29 @@ pub fn mutate(
     }
     let mut next = app.clone();
     let response = apply(&mut next, path, fields, now, seed)?;
+    let acting_token = actor.token_id();
+    for (id, job) in &mut next.jobs {
+        if app.jobs.get(id) != Some(job) && matches!(job.status.as_str(), "queued" | "candidates") {
+            if !actor.paid() {
+                return Err(owner_token::paid_refusal());
+            }
+            job.acting_token = acting_token.clone();
+        }
+    }
+    for (id, assessment) in &mut next.assessments {
+        if app.assessments.get(id) != Some(assessment) && assessment.status == "queued" {
+            if !actor.paid() {
+                return Err(owner_token::paid_refusal());
+            }
+            assessment.acting_token = acting_token.clone();
+        }
+    }
     next.operations.insert(
         operation.into(),
         Receipt {
+            acting_token,
+            path: Some(path.into()),
+            created_ms: Some(now),
             payload_hash: hash,
             result: response.clone(),
         },
@@ -180,6 +212,7 @@ fn create_job(
     app.jobs.insert(
         job_id.clone(),
         Job {
+            acting_token: None,
             id: job_id.clone(),
             goal_id: goal_id.into(),
             question_id,
@@ -289,6 +322,46 @@ fn apply(
         return Ok(result(format!("/goals/{goal_id}"), Some(goal_id)));
     }
     match path {
+        "/tokens/create" => {
+            let expiry = field(fields, "expires_ms");
+            let expires_ms = if expiry.is_empty() {
+                let local = field(fields, "expires_at");
+                if local.is_empty() {
+                    None
+                } else {
+                    Some(
+                        chrono::NaiveDateTime::parse_from_str(local, "%Y-%m-%dT%H:%M")
+                            .map_err(|_| AppError::new(422, "Choose a future expiry."))?
+                            .and_utc()
+                            .timestamp_millis(),
+                    )
+                }
+            } else {
+                Some(
+                    expiry
+                        .parse::<i64>()
+                        .map_err(|_| AppError::new(422, "Use an expiry in Unix milliseconds."))?,
+                )
+            };
+            let paid = match field(fields, "paid") {
+                "" | "false" => false,
+                "true" => true,
+                _ => return Err(AppError::new(422, "Choose a paid permission.")),
+            };
+            let token = OwnerToken::issue(field(fields, "name"), expires_ms, paid, now, seed)?;
+            let id = token.info.id.clone();
+            app.owner_tokens.insert(id.clone(), token);
+            Ok(result("/settings", Some(id)))
+        }
+        "/tokens/revoke" => {
+            let id = field(fields, "token_id");
+            let token = app
+                .owner_tokens
+                .get_mut(id)
+                .ok_or_else(|| AppError::new(404, "Owner token not found."))?;
+            token.info.revoked_ms.get_or_insert(now);
+            Ok(result("/settings", Some(id.into())))
+        }
         "/review/intro" => {
             let o = active_occurrence(app, fields, &["intro"])?;
             let known = boolean(fields, "known")?;
@@ -502,6 +575,7 @@ fn stage_assessment(app: &mut App, answer: &str, now: i64, seed: &str) -> AppRes
     app.assessments.insert(
         aid.clone(),
         Assessment {
+            acting_token: None,
             id: aid.clone(),
             occurrence_id: o.id.clone(),
             question_id: o.question_id.clone(),
@@ -1142,7 +1216,28 @@ pub fn ensure_occurrence(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
     Ok(())
 }
 
+pub fn authorize_work(app: &App, work_id: &str, now: i64) -> AppResult<()> {
+    let token = app
+        .jobs
+        .get(work_id)
+        .and_then(|j| j.acting_token.as_ref())
+        .or_else(|| {
+            app.assessments
+                .get(work_id)
+                .and_then(|a| a.acting_token.as_ref())
+        });
+    if let Some(id) = token
+        && app
+            .owner_tokens
+            .get(id)
+            .is_none_or(|t| !t.info.paid || !t.active(now))
+    {
+        return Err(owner_token::paid_refusal());
+    }
+    Ok(())
+}
 fn reserve(app: &mut App, work_id: &str, lease: &str, model: &str, now: i64) -> AppResult<()> {
+    authorize_work(app, work_id, now)?;
     if app.spent(now).saturating_add(RESERVATION) > DAILY_ALLOWANCE {
         return Err(AppError::new(
             429,
@@ -2106,6 +2201,7 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
     app.goals.insert(gid.clone(),Goal{id:gid.clone(),title:"Understand HTTP caching".into(),intent:"Understand why a browser can show an old version of a page, and how caches validate it.".into(),created_ms:now,revision:1,status:"ready".into(),paused:false,focused:false,archived:false,concept_ids:Vec::new(),job_id:jid.clone(),photo:None,transcript:None});
     let batch:Batch=serde_json::from_value(json!({"title":"Understand HTTP caching","complete":true,"concepts":[{"key":"freshness","name":"Cache freshness","summary":"A fresh response can be reused without asking the origin.","note":"A cache stores a response and its freshness lifetime. During that lifetime, the browser can reuse it without contacting the origin. For example, Cache-Control: max-age=60 allows reuse for sixty seconds. When it becomes stale, the browser may need to validate it; stale does not mean the underlying content changed.","basis":"general","quotes":[],"prerequisites":[],"questions":[{"prompt":"A stored response has passed its freshness lifetime. What does that tell you?","kind":"choice","answer":"It may need validation before reuse","choices":["It may need validation before reuse","The origin content definitely changed","The browser must delete it forever"],"explanation":"Staleness is about permission to reuse the stored response without checking. The origin content may be unchanged.","basis":"general","quotes":[]},{"prompt":"Which response directive sets how long a cached response may be reused without validation?","kind":"recall","answer":"max-age","variants":["Cache-Control: max-age"],"choices":[],"explanation":"The max-age directive specifies the freshness lifetime in seconds. Once that time passes, validation may be required.","basis":"general","quotes":[]}]},{"key":"validation","name":"Conditional validation","summary":"A validator lets the origin confirm that a stored response is still current.","note":"An ETag is an opaque identifier for a representation. A browser can send If-None-Match with the saved ETag. If the representation has not changed, the server can answer 304 Not Modified; the browser reuses the stored body. Freshness decides when a check is needed, while validation decides whether the saved content is still suitable.","basis":"general","quotes":[],"prerequisites":["freshness"],"questions":[{"prompt":"What HTTP status tells a browser its cached representation can be reused after a conditional request?","kind":"recall","answer":"304","variants":["304 Not Modified"],"choices":[],"explanation":"304 Not Modified confirms the conditional request's validator still matches. The browser reuses the cached body rather than receiving another full representation.","basis":"general","quotes":[]}]}]})).unwrap();
     let job = Job {
+        acting_token: None,
         id: jid.clone(),
         goal_id: gid,
         question_id: None,
@@ -2199,6 +2295,49 @@ impl ArchiveChecks {
 }
 
 fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
+    for (id, token) in &app.owner_tokens {
+        checks.record();
+        let t = &token.info;
+        if id != &t.id
+            || id.len() != 32
+            || !archive_hash(&token.verifier)
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            || t.name.trim().is_empty()
+            || t.name.len() > 120
+            || t.name.chars().any(char::is_control)
+            || t.expires_ms.is_some_and(|v| v <= t.created_ms)
+            || t.last_used_ms.is_some_and(|v| v < t.created_ms)
+            || t.revoked_ms.is_some_and(|v| v < t.created_ms)
+        {
+            checks.reject("invalid Owner token metadata")?;
+        }
+    }
+    for receipt in app.operations.values() {
+        if receipt
+            .acting_token
+            .as_ref()
+            .is_some_and(|id| !app.owner_tokens.contains_key(id))
+        {
+            checks.reject("a missing acting Owner token")?;
+        }
+    }
+    for id in app
+        .jobs
+        .values()
+        .filter_map(|j| j.acting_token.as_ref())
+        .chain(
+            app.assessments
+                .values()
+                .filter_map(|a| a.acting_token.as_ref()),
+        )
+    {
+        if !app.owner_tokens.contains_key(id) {
+            checks.reject("a missing paid-work Owner token")?;
+        }
+    }
+
     if app.revival_schedule_origins.iter().any(|(id, origin)| {
         *origin != 1
             || app.revival_go.is_empty()
@@ -2779,6 +2918,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                     && !app.concepts.contains_key(id)
                     && !app.questions.contains_key(id)
                     && !app.jobs.contains_key(id)
+                    && !app.owner_tokens.contains_key(id)
             })
         {
             checks.reject("an invalid exact-operation receipt")?;

@@ -1130,6 +1130,23 @@ impl View<'_> {
         if self.app.events.is_empty() {
             out.push_str("<p class=\"quiet-empty\">Your first practice will appear here.</p>");
         }
+        for (operation, receipt) in &self.app.operations {
+            if let Some(id) = &receipt.acting_token {
+                let name = self
+                    .app
+                    .owner_tokens
+                    .get(id)
+                    .map(|t| t.info.name.as_str())
+                    .unwrap_or(id);
+                out.push_str(&format!(
+                    "<p class=\"token-history\">Owner token {} ({}) · {} · operation {}</p>",
+                    escape(name),
+                    escape(id),
+                    escape(receipt.path.as_deref().unwrap_or("saved change")),
+                    escape(operation)
+                ));
+            }
+        }
         for event in self.app.events.iter().rev() {
             if self.app.protected_concept(&event.concept_id) {
                 out.push_str("<p class=\"fineprint\">An earlier attempt is hidden while you work on its question from memory.</p>");
@@ -1164,6 +1181,41 @@ impl View<'_> {
                     "This is the wording you saw at the time."
                 }
             );
+        }
+        out.push_str("</section>");
+        out
+    }
+    fn owner_tokens(&self) -> String {
+        let mut out = String::from(
+            "<section class=\"settings-section\" id=\"owner-tokens\"><h2>Owner tokens</h2><p>Let your CLI or an agent act for you. Save the secret when it appears; it is shown once.</p>",
+        );
+        out.push_str(&self.form("/tokens/create", "token-create", "token-form", "", "<label for=\"token-name\">Name</label><input id=\"token-name\" name=\"name\" maxlength=\"120\" required><label for=\"token-expiry\">Expires (UTC, optional)</label><input id=\"token-expiry\" name=\"expires_at\" type=\"datetime-local\"><label><input type=\"checkbox\" name=\"paid\" value=\"true\"> Allow paid work</label><button class=\"button secondary\">Create Owner token</button>"));
+        for token in self.app.owner_tokens.values() {
+            let t = &token.info;
+            out.push_str(&format!(
+                "<article><h3>{}</h3><p>Created {} · Last used {} · Expiry {} · Paid work {}</p>",
+                escape(&t.name),
+                date(t.created_ms),
+                t.last_used_ms.map(date).unwrap_or_else(|| "never".into()),
+                t.expires_ms.map(date).unwrap_or_else(|| "none".into()),
+                if t.paid { "allowed" } else { "off" }
+            ));
+            if t.revoked_ms.is_some() {
+                out.push_str("<p>Revoked</p>");
+            } else {
+                out.push_str(&self.form(
+                    "/tokens/revoke",
+                    &t.id,
+                    "token-form",
+                    "",
+                    &format!(
+                        "{}<button class=\"button secondary\">Revoke {}</button>",
+                        hidden("token_id", &t.id),
+                        escape(&t.name)
+                    ),
+                ));
+            }
+            out.push_str("</article>");
         }
         out.push_str("</section>");
         out
@@ -1231,6 +1283,7 @@ impl View<'_> {
             "<button class=\"button secondary\">Create a verified backup</button>",
         ));
 
+        out.push_str(&self.owner_tokens());
         if self.query.get("__synthetic").is_some_and(|v| v == "true") {
             out.push_str("<p class=\"synthetic-note\">This is an isolated synthetic notebook. It does not prove production access, model usefulness, or remote recovery.</p>");
         }
@@ -1849,4 +1902,13 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
         )),
         _ => None,
     }
+}
+
+/// Deliberately outside render query/state: a refresh must never recover the secret.
+pub fn token_created(secret: &str) -> String {
+    let content = format!(
+        "<section><h1>Save your Owner token</h1><p>This secret is shown once. Use <code>scry login --token-stdin</code> to save it on your computer.</p><textarea aria-label=\"Owner token secret\" readonly>{}</textarea><p><a href=\"/settings#owner-tokens\">Return to Owner tokens</a></p></section>",
+        escape(secret)
+    );
+    shell("Owner token", "/settings", &content, None, false, false)
 }

@@ -18,6 +18,7 @@ pub const ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-v1";
 const REVIVAL_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-custody-v1";
 const PROJECTION_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-projection-v1";
 const MAPS: &[&str] = &[
+    "owner_tokens",
     "goals",
     "concepts",
     "questions",
@@ -75,6 +76,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
         .as_object_mut()
         .ok_or_else(|| AppError::new(500, "Invalid state."))?;
     let mut result = BTreeMap::new();
+    object
+        .entry("owner_tokens")
+        .or_insert_with(|| serde_json::json!({}));
     for field in MAPS {
         let entries = object
             .get_mut(*field)
@@ -116,6 +120,7 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
             result.insert(format!("{field}/{index:016}"), bounded_json(&record)?);
         }
     }
+    object.remove("owner_tokens");
     result.insert("meta".into(), bounded_json(&value)?);
     Ok(result)
 }
@@ -125,6 +130,9 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         .get("meta")
         .ok_or_else(|| AppError::new(500, "State metadata is missing."))?;
     let mut value: Value = serde_json::from_str(meta).map_err(serialization)?;
+    if value.get("owner_tokens").is_none() {
+        value["owner_tokens"] = serde_json::json!({});
+    }
     for (key, data) in rows {
         if key == "meta" {
             continue;

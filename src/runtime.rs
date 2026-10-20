@@ -1,7 +1,12 @@
 //! Native Rust/WASM Cloudflare entrypoint and singleton SQLite Durable Object.
 //! Authentication and all public-to-object trust are enforced here. No model
 //! call is performed while a learning transaction is open.
-use crate::{engine, model::*, persistence, web};
+use crate::{
+    api, engine,
+    model::*,
+    owner_token::{self, MutationActor, OwnerToken},
+    persistence, web,
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use js_sys::{Array, Function, Promise, Reflect, Uint8Array};
 use serde::Deserialize;
@@ -198,7 +203,7 @@ fn private(mut response: Response) -> Result<Response> {
     headers.set("X-Scry-Revision", web::SOURCE_REVISION)?;
     headers.set("Cache-Control", "private, no-store, max-age=0")?;
     headers.set("Pragma", "no-cache")?;
-    headers.set("Vary", "Cf-Access-Jwt-Assertion")?;
+    headers.set("Vary", "Cf-Access-Jwt-Assertion, Authorization, Cookie")?;
     headers.set("X-Content-Type-Options", "nosniff")?;
     // Native same-origin forms need the browser's exact Origin value for CSRF
     // enforcement. Same-origin keeps it while withholding external referrers.
@@ -210,6 +215,15 @@ fn private(mut response: Response) -> Result<Response> {
     )?;
     headers.set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")?;
     Ok(response)
+}
+fn api_json(value: &impl serde::Serialize, status: u16) -> Result<Response> {
+    private(Response::from_json(value)?.with_status(status))
+}
+fn api_error(error: AppError) -> Result<Response> {
+    api_json(&json!({"error": error.message}), error.status)
+}
+fn api_refusal() -> Result<Response> {
+    api_json(&json!({"error": "Owner authorization required."}), 401)
 }
 fn redirect(location: &str) -> Result<Response> {
     let mut r = Response::empty()?.with_status(303);
@@ -309,6 +323,8 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     if req.path().starts_with("/__internal") {
         return private(Response::error("Not found.", 404)?);
     }
+    let api_request = req.path().starts_with("/api/v1/");
+    let bearer = api_request && req.headers().has("Authorization")?;
     let mode = variable(&env, "SCRY_ENV");
     let mut principal = AccessPrincipal::Owner;
     if development(&env) {
@@ -358,7 +374,11 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         // A separately scoped machine capability cannot read learner routes or
         // impersonate the owner. The outer Access policy remains required.
-        let access = validate_access(&req, &env).await;
+        let access = if bearer {
+            Ok(AccessPrincipal::Owner)
+        } else {
+            validate_access(&req, &env).await
+        };
         if req.path() == "/internal/backup" {
             if matches!(access, Ok(AccessPrincipal::Qa)) {
                 return private(Response::error("QA cannot invoke owner operations.", 403)?);
@@ -381,13 +401,44 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         principal = match access {
             Ok(principal) => principal,
+            Err(_) if api_request => return api_refusal(),
             Err(_) => return private(Response::error("Owner authorization required.", 401)?),
         };
         if principal == AccessPrincipal::Qa && req.path().starts_with("/operator/") {
             return private(Response::error("QA cannot invoke owner operations.", 403)?);
         }
     }
-    if !read && mode != "restore" {
+    if api_request && !bearer && development(&env) {
+        return api_refusal();
+    }
+    if api_request && principal != AccessPrincipal::Owner {
+        return api_refusal();
+    }
+    if bearer {
+        // Authenticate before buffering a bearer body. Invalid credentials have
+        // one refusal even when the body is oversized or cannot be parsed.
+        let headers = Headers::new();
+        headers.set(INTERNAL_HEADER, &internal_key(&env))?;
+        headers.set("x-scry-owner", "private-owner")?;
+        headers.set(
+            "Authorization",
+            &req.headers().get("Authorization")?.unwrap_or_default(),
+        )?;
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get).with_headers(headers);
+        let check = env
+            .durable_object("LEARNING_SPACE")?
+            .get_by_name(&space_name(&env)?)?
+            .fetch_with_request(Request::new_with_init(
+                "https://internal.invalid/__internal/owner-token",
+                &init,
+            )?)
+            .await?;
+        if check.status_code() != 200 {
+            return api_refusal();
+        }
+    }
+    if !read && mode != "restore" && !bearer {
         let origin = req.headers().get("Origin")?.unwrap_or_default();
         let cross_site = req
             .headers()
@@ -442,6 +493,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     let headers = Headers::new();
     for name in [
         "Content-Type",
+        "Authorization",
         "Origin",
         "Sec-Fetch-Site",
         "Accept",
@@ -728,6 +780,21 @@ impl DurableObject for LearningSpace {
             return private(Response::error("Internal authorization required.", 403)?);
         }
         let path = req.path();
+        if path == "/__internal/owner-token" {
+            return if principal == AccessPrincipal::Owner
+                && req
+                    .headers()
+                    .get("Authorization")?
+                    .is_some_and(|raw| self.bearer_token(&raw).is_some())
+            {
+                api_json(&json!({"owner":true}), 200)
+            } else {
+                api_refusal()
+            };
+        }
+        if path.starts_with("/api/v1/") {
+            return self.api(req).await;
+        }
         if principal == AccessPrincipal::Qa && path.starts_with("/operator/") {
             return private(Response::error("QA cannot invoke owner operations.", 403)?);
         }
@@ -1078,7 +1145,11 @@ impl DurableObject for LearningSpace {
             app = self.load()?;
         }
         let before = app.revision;
-        let result = engine::mutate(&mut app, &path, &fields, now(), &random_id()?);
+        let seed = random_id()?;
+        let replayed = fields
+            .get("operation_id")
+            .is_some_and(|op| app.operations.contains_key(op));
+        let result = engine::mutate(&mut app, &path, &fields, now(), &seed);
         match result {
             Err(e) => {
                 if let Some(key) = photo_key {
@@ -1115,6 +1186,11 @@ impl DurableObject for LearningSpace {
                 self.save(&mut app, Some(before))?;
                 if path == "/settings/backup" {
                     self.backup(false).await?;
+                }
+                if path == "/tokens/create" && !replayed {
+                    return private(Response::from_html(web::token_created(
+                        &owner_token::issuance_secret(&seed),
+                    ))?);
                 }
                 self.arm().await?;
                 redirect(&result.redirect)
@@ -1170,6 +1246,157 @@ struct StoredRow {
     value: String,
 }
 impl LearningSpace {
+    fn bearer_token(&self, authorization: &str) -> Option<OwnerToken> {
+        let secret = authorization.strip_prefix("Bearer ")?;
+        let id = owner_token::token_id(secret)?;
+        // No load(), table creation, recovery, alarm, or learner query on refusal.
+        let rows: Vec<StoredRow> = self
+            .state
+            .storage()
+            .sql()
+            .exec(
+                "SELECT key, value FROM records WHERE key = ?",
+                Some(vec![format!("owner_tokens/{id}").into()]),
+            )
+            .ok()?
+            .to_array()
+            .ok()?;
+        let token: OwnerToken = serde_json::from_str(&rows.first()?.value).ok()?;
+        token.verifies(secret, now()).then_some(token)
+    }
+    async fn api(&self, mut req: Request) -> Result<Response> {
+        if self.principal()? != AccessPrincipal::Owner {
+            return api_refusal();
+        }
+        let authorization = req.headers().get("Authorization")?;
+        let mut token = match authorization.as_deref() {
+            Some(raw) => match self.bearer_token(raw) {
+                Some(token) => Some(token),
+                None => return api_refusal(),
+            },
+            None => None, // Outer ingress has verified Access owner (no development shortcut).
+        };
+        let path = req.path();
+        let read = matches!(req.method(), Method::Get | Method::Head);
+        let fields = if read {
+            BTreeMap::new()
+        } else {
+            if req.method() != Method::Post {
+                return api_error(AppError::new(405, "Method not allowed."));
+            }
+            if !req
+                .headers()
+                .get("Content-Type")?
+                .unwrap_or_default()
+                .starts_with("application/json")
+            {
+                return api_error(AppError::new(415, "Use application/json."));
+            }
+            let value = match req.json::<Value>().await {
+                Ok(value) => value,
+                Err(_) => return api_error(AppError::new(422, "Invalid JSON.")),
+            };
+            match api::fields(value) {
+                Ok(fields) => fields,
+                Err(e) => return api_error(e),
+            }
+        };
+        // Body parsing yielded. Revocation/expiry must still precede learner reads.
+        if let Some(raw) = authorization.as_deref() {
+            token = match self.bearer_token(raw) {
+                Some(t) => Some(t),
+                None => return api_refusal(),
+            };
+        }
+        let mut app = self.load()?;
+        let before = app.revision;
+        if !read && token.is_none() && fields.get("csrf") != Some(&app.csrf) {
+            return api_error(AppError::new(403, "Reload before submitting."));
+        }
+        if let Some(token) = &mut token {
+            token.info.last_used_ms = Some(now());
+            app.owner_tokens
+                .insert(token.info.id.clone(), token.clone());
+        }
+        if read {
+            let response = match path.as_str() {
+                "/api/v1/whoami" => api_json(
+                    &api::Identity {
+                        owner: true,
+                        token: token.map(|t| t.info),
+                    },
+                    200,
+                ),
+                "/api/v1/tokens" => api_json(
+                    &json!({"tokens": app.owner_tokens.values().map(|t| &t.info).collect::<Vec<_>>()}),
+                    200,
+                ),
+                "/api/v1/history" => api_json(&json!({"operations": app.operations}), 200),
+                "/api/v1/export" => {
+                    if app.protected_goal().is_some() {
+                        return api_error(AppError::new(409, "Record assistance before export."));
+                    }
+                    self.save(&mut app, Some(before))?;
+                    let archive = self.archive(app).await?;
+                    let latest = self.load()?;
+                    if let Some(raw) = authorization.as_deref()
+                        && self.bearer_token(raw).is_none()
+                    {
+                        return api_refusal();
+                    }
+                    if latest.protected_goal().is_some() {
+                        return api_error(AppError::new(409, "Record assistance before export."));
+                    }
+                    return api_json(&archive, 200);
+                }
+                _ => return api_error(AppError::new(404, "API action not found.")),
+            };
+            if authorization.is_some() {
+                self.save(&mut app, Some(before))?;
+            }
+            return response;
+        }
+        let Some(canonical_path) = api::mutation_path(&path) else {
+            return api_error(AppError::new(404, "API action not found."));
+        };
+        let replayed = fields
+            .get("operation_id")
+            .is_some_and(|id| app.operations.contains_key(id));
+        let actor = token
+            .as_ref()
+            .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
+        let seed = random_id()?;
+        let result = match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor)
+        {
+            Ok(result) => result,
+            Err(error) => return api_error(error),
+        };
+        if let Err(error) = persistence::archive_size(&app) {
+            return api_error(error);
+        }
+        self.save(&mut app, Some(before))?;
+        // Token creation is the only response containing a secret. Its receipt never does.
+        let created = canonical_path == "/tokens/create";
+        let token = if created {
+            result
+                .entity_id
+                .as_ref()
+                .and_then(|id| app.owner_tokens.get(id))
+                .map(|t| t.info.clone())
+        } else {
+            None
+        };
+        self.arm().await?;
+        api_json(
+            &api::MutationResponse {
+                result,
+                replayed,
+                token,
+                secret: (created && !replayed).then(|| owner_token::issuance_secret(&seed)),
+            },
+            200,
+        )
+    }
     fn principal(&self) -> Result<AccessPrincipal> {
         // The object ID survives eviction and alarm delivery, unlike a request
         // header or an in-memory last visitor. Owner IDs and paths are unchanged.
@@ -1444,6 +1671,10 @@ impl LearningSpace {
                 .unwrap_or_else(|| "Transcribe this photo accurately.".into());
             user["content"] = json!([{"type":"text","text":text},{"type":"image_url","image_url":{"url":format!("data:{};base64,{}",photo.mime,STANDARD.encode(bytes))}}]);
         }
+        let current = self
+            .load()
+            .map_err(|_| ("Saved state is unavailable.".into(), false))?;
+        engine::authorize_work(&current, &work.id, now()).map_err(|e| (e.message, false))?;
         let headers = Headers::new();
         headers
             .set("Authorization", &format!("Bearer {key}"))
