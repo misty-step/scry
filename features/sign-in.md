@@ -75,9 +75,11 @@ Preconditions:
   different `user_uuid` and is refused by design. That refusal is not yet observed.
 - The Access user's last-seen identity is account-wide. A One-time PIN login to
   any other Misty Step app changes it, so it says nothing about Scry's IdP.
-- Every owner page GET may freeze his next concept question, as opening Scry
-  does; `/` also freezes the next exact Prompt; `/history`, `/goals/*` and
-  `/concepts/*` mark exposure. Use `/create` for read-only proof: it renders no notebook content.
+- No owner page GET is write-free. Every one, `/create` included, may freeze
+  his next concept question exactly as opening Scry does. `/` also freezes the
+  next exact Prompt, and `/history`, `/goals/*` and `/concepts/*` mark exposure.
+  `/create` is the least-writing owner page, with none of those extras, and it
+  renders no notebook content. That is why the end state uses it; it is the only owner page agents load.
 - Production serves the code in the runbook's serving observation and can lag master.
   On 2026-10-20 it served `69435af`, where `/notebook` is "A page has gone astray".
 - `pass-env run -e` injects an entry's trailing newline, so Access treats the

@@ -5,14 +5,15 @@
 //   prod-states.mjs
 import {join} from 'node:path';
 import {writeFileSync} from 'node:fs';
-import {ORIGIN,ENTRIES,secret,outDir,reporter,launch,settle} from './lib.mjs';
+import {ACCESS_TEAM,ORIGIN,ENTRIES,secret,outDir,reporter,launch,settle} from './lib.mjs';
 
 const dir=outDir('prod-states');
 const {log,done}=reporter(dir);
 const host=new URL(ORIGIN).host;
 const check=async(id,fn)=>{try{await fn();}catch(e){log(id,'FAIL',e.message);}};
 const get=(url,headers={},method='GET')=>fetch(url,{method,headers,redirect:'manual'});
-const toAccess=r=>r.status===302&&new URL(r.headers.get('location')||'http://x').pathname===`/cdn-cgi/access/login/${host}`;
+// The redirect must go to this account's Access team, not just any login path.
+const toAccess=r=>{if(r.status!==302)return false;const u=new URL(r.headers.get('location')||'http://x');return u.origin===`https://${ACCESS_TEAM}`&&u.pathname===`/cdn-cgi/access/login/${host}`;};
 const qa=()=>({'CF-Access-Client-Id':secret(ENTRIES.QA_ID),'CF-Access-Client-Secret':secret(ENTRIES.QA_SECRET)});
 // Structurally valid, unsigned Access assertion with an expired exp.
 const b64=o=>Buffer.from(JSON.stringify(o)).toString('base64url');

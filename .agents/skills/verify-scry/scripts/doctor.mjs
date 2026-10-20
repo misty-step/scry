@@ -4,7 +4,7 @@
 //   doctor.mjs local <url>     a run-owned loopback Worker (bun run dev)
 // Exit 0 all PASS, 1 any FAIL, 3 only UNPROVEN left.
 import {createHash} from 'node:crypto';
-import {ACCOUNT,ORIGIN,OWNER_EMAIL,OWNER_APP,OWNER_IDP,WORKER,ENTRIES,cf,secret,outDir,reporter} from './lib.mjs';
+import {ACCOUNT,ACCESS_TEAM,ORIGIN,OWNER_EMAIL,OWNER_APP,OWNER_IDP,WORKER,ENTRIES,cf,secret,outDir,reporter} from './lib.mjs';
 
 const [mode='prod',target]=process.argv.slice(2);
 const dir=outDir(`doctor-${mode}`);
@@ -25,8 +25,9 @@ if(mode==='local'){
   log('local.page','PASS',`GET / → 200 "${title}"`);
  });
  await check('local.changelog',async()=>{
-  const html=await(await fetch(url.origin+'/changelog')).text();
-  log('local.changelog','PASS',/Version [0-9.]+/.exec(html)?.[0]||'version not rendered');
+  const r=await fetch(url.origin+'/changelog');const version=/Version [0-9.]+/.exec(await r.text())?.[0];
+  if(r.status!==200||!version)throw Error(`GET /changelog → ${r.status} ${version||'no version rendered'}`);
+  log('local.changelog','PASS',version);
  });
  process.exit(done());
 }
@@ -37,9 +38,9 @@ let vars={},app,idp,user;
 await check('worker.config',async()=>{
  const s=(await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result;
  for(const b of s.bindings)vars[b.name]=b.type==='plain_text'?b.text:`<${b.type}>`;
- const want={SCRY_ENV:'production',CANONICAL_ORIGIN:ORIGIN,OWNER_SUBJECT:'<secret_text>'};
+ const want={SCRY_ENV:'production',CANONICAL_ORIGIN:ORIGIN,ACCESS_TEAM,OWNER_SUBJECT:'<secret_text>'};
  const bad=Object.entries(want).filter(([k,v])=>vars[k]!==v).map(([k])=>k);
- if(!vars.ACCESS_TEAM||!vars.ACCESS_AUDIENCE)bad.push('ACCESS_TEAM/ACCESS_AUDIENCE');
+ if(!vars.ACCESS_AUDIENCE)bad.push('ACCESS_AUDIENCE');
  if(bad.length)throw Error(`unexpected ${bad.join(', ')}`);
  log('worker.config','PASS',`SCRY_ENV=production, CANONICAL_ORIGIN=${ORIGIN}, ACCESS_TEAM=${vars.ACCESS_TEAM}, OWNER_SUBJECT bound (value unreadable)`);
 });
@@ -72,8 +73,9 @@ await check('access.idp',async()=>{
 await check('access.policy',async()=>{
  const allow=app.policies.filter(p=>p.decision==='allow');
  if(!allow.some(p=>p.include.some(r=>r.email?.email===OWNER_EMAIL)))throw Error(`no allow policy includes ${OWNER_EMAIL}`);
- const wide=allow.flatMap(p=>p.include).filter(r=>r.everyone||r.email_domain||r.login_method);
- if(wide.length)throw Error(`allow policy is wider than exact emails: ${JSON.stringify(wide.map(Object.keys))}`);
+ // Include rules are ORed: any selector other than an exact email could admit someone else.
+ const wide=allow.flatMap(p=>p.include).filter(r=>Object.keys(r).join()!=='email');
+ if(wide.length)throw Error(`allow policy includes non-email selectors: ${JSON.stringify(wide.map(Object.keys))}`);
  log('access.policy','PASS',`allow policy includes ${OWNER_EMAIL} (exact emails only); non-identity policies: ${app.policies.filter(p=>p.decision==='non_identity').map(p=>p.name).join(', ')||'none'}`);
 });
 await check('owner.identity',async()=>{

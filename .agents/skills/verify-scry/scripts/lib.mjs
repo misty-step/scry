@@ -12,6 +12,8 @@ export const OWNER_EMAIL=process.env.SCRY_OWNER_EMAIL||'phaedrus@mistystep.io';
 export const OWNER_APP='Scry production owner';
 export const OWNER_IDP='Misty Step password';
 export const WORKER='scry-rust-production';
+// doctor.mjs checks this against the Worker's ACCESS_TEAM and the account's Access team.
+export const ACCESS_TEAM=process.env.SCRY_ACCESS_TEAM||'misty-step-pantry.cloudflareaccess.com';
 // Entry names only. Override with the env var of the same name.
 export const ENTRIES={
  ACCESS_READ:process.env.SCRY_VERIFY_ACCESS_ENTRY||'workstation/CLOUDFLARE_API_TOKEN',
@@ -56,8 +58,9 @@ export function reporter(dir,file='checks.jsonl'){
   console.log(`${status.padEnd(8)} ${id}: ${observed}`);
  };
  const done=()=>{
-  writeFileSync(join(dir,'summary.json'),JSON.stringify({checks:rows.length,fail:rows.filter(r=>r.status==='FAIL').length,unproven:rows.filter(r=>r.status==='UNPROVEN').map(r=>r.id)},null,1)+'\n');
-  return rows.some(r=>r.status==='FAIL')?1:rows.some(r=>r.status==='UNPROVEN')?3:0;
+  writeFileSync(join(dir,'summary.json'),JSON.stringify({checks:rows.length,fail:rows.filter(r=>r.status==='FAIL').length,unproven:rows.filter(r=>!['PASS','FAIL'].includes(r.status)).map(r=>r.id)},null,1)+'\n');
+  // Anything that is not PASS (UNPROVEN, UNVERIFIED) is missing proof.
+  return rows.some(r=>r.status==='FAIL')?1:rows.some(r=>r.status!=='PASS')?3:0;
  };
  return {log,done,rows};
 }

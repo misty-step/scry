@@ -1,15 +1,15 @@
 [
  {
-  "cmd": "scry login --url http://127.0.0.1:33783 --token-stdin --json",
+  "cmd": "scry login --url http://127.0.0.1:42305 --token-stdin --json",
   "stdin": "<redacted>",
   "exit": 0,
   "stdout": {
    "owner": true,
    "token": {
-    "created_ms": 1792533900309,
+    "created_ms": 1792535813359,
     "expires_ms": null,
-    "id": "b2c4ab5ec791c05f5bcc9c8c04076f0b",
-    "last_used_ms": 1792533901265,
+    "id": "75d205d8003f96e88fe0441fe6f8a4d8",
+    "last_used_ms": 1792535814526,
     "name": "verify-scry local CLI",
     "paid": false,
     "revoked_ms": null
@@ -22,10 +22,10 @@
   "stdout": {
    "owner": true,
    "token": {
-    "created_ms": 1792533900309,
+    "created_ms": 1792535813359,
     "expires_ms": null,
-    "id": "b2c4ab5ec791c05f5bcc9c8c04076f0b",
-    "last_used_ms": 1792533901514,
+    "id": "75d205d8003f96e88fe0441fe6f8a4d8",
+    "last_used_ms": 1792535814914,
     "name": "verify-scry local CLI",
     "paid": false,
     "revoked_ms": null
@@ -42,14 +42,14 @@
   }
  },
  {
-  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file /home/phaedrus/.cache/tmp/verify-scry-local-5SoIKA/text.txt --sections-file /home/phaedrus/.cache/tmp/verify-scry-local-5SoIKA/sections.json --json",
+  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file <temp>/text.txt --sections-file <temp>/sections.json --json",
   "exit": 0,
   "stdout": {
    "replayed": false,
    "result": {
-    "entity_id": "ea191f08cc60584f6233469a66be29d7",
+    "entity_id": "a08c3020b05f06d94fbc6623e56209f6",
     "message": null,
-    "redirect": "/api/v1/library/versions/ea191f08cc60584f6233469a66be29d7"
+    "redirect": "/api/v1/library/versions/a08c3020b05f06d94fbc6623e56209f6"
    }
   }
  },
@@ -63,13 +63,13 @@
      "relations": [
       {
        "kind": "version_of",
-       "version_id": "ea191f08cc60584f6233469a66be29d7",
-       "work_id": "213aac4df661daae8223162c24ff2159"
+       "version_id": "a08c3020b05f06d94fbc6623e56209f6",
+       "work_id": "1b473edc784314bf43004aefcac2b3de"
       }
      ],
      "versions": [
       {
-       "id": "ea191f08cc60584f6233469a66be29d7",
+       "id": "a08c3020b05f06d94fbc6623e56209f6",
        "kind": "text",
        "name": "verify-scry synthetic wording",
        "normalized_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
@@ -78,14 +78,14 @@
        "sections": [
         {
          "heading": "Synthetic first article",
-         "id": "0d97b73ffc8398077d008ae9f44f9b2e",
+         "id": "dd5b55f4e6f2acadfff48a47d3b7d909",
          "units": [
           {
-           "id": "b235c1199c1b1d2a20e91cd8dd6ab260",
+           "id": "6aa42ae034f2ad4ec0f7ebe0bc8440dd",
            "text": "The path begins in our synthetic notebook.\n"
           },
           {
-           "id": "faf55b307b166bdf26d86f9b11d1d2a1",
+           "id": "ffdcf37e0ebce96d840176a06d523bf7",
            "text": "We conceived a patient garden by the water.\n"
           }
          ]
@@ -96,7 +96,7 @@
        ],
        "spelling_strict": false,
        "text": "The path begins in our synthetic notebook.\nWe conceived a patient garden by the water.\n",
-       "work_id": "213aac4df661daae8223162c24ff2159"
+       "work_id": "1b473edc784314bf43004aefcac2b3de"
       }
      ],
      "work": {
@@ -104,7 +104,7 @@
        "Symbolum Syntheticum"
       ],
       "context": "",
-      "id": "213aac4df661daae8223162c24ff2159",
+      "id": "1b473edc784314bf43004aefcac2b3de",
       "kind": "text",
       "revision": 1,
       "title": "Synthetic Creed"
@@ -115,44 +115,44 @@
   }
  },
  {
-  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file /home/phaedrus/.cache/tmp/verify-scry-local-5SoIKA/text.txt --sections-file /home/phaedrus/.cache/tmp/verify-scry-local-5SoIKA/sections.json --json",
+  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file <temp>/text.txt --sections-file <temp>/sections.json --json",
   "exit": 0,
   "stdout": {
    "replayed": false,
    "result": {
-    "entity_id": "ea191f08cc60584f6233469a66be29d7",
+    "entity_id": "a08c3020b05f06d94fbc6623e56209f6",
     "message": null,
-    "redirect": "/api/v1/library/versions/ea191f08cc60584f6233469a66be29d7"
+    "redirect": "/api/v1/library/versions/a08c3020b05f06d94fbc6623e56209f6"
    }
   }
  },
  {
-  "cmd": "scry learn ea191f08cc60584f6233469a66be29d7 --json",
+  "cmd": "scry learn a08c3020b05f06d94fbc6623e56209f6 --json",
   "exit": 0,
   "stdout": {
    "practice": {
     "study": {
-     "created_ms": 1792533902581,
-     "id": "184289550e6eb8b7acb40b89d2d80afa",
+     "created_ms": 1792535818113,
+     "id": "16b71f5bc5c71b1749932829108e46c0",
      "pace": "steady",
      "status": "active",
      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-     "version_id": "ea191f08cc60584f6233469a66be29d7"
+     "version_id": "a08c3020b05f06d94fbc6623e56209f6"
     }
    },
    "replayed": false,
    "result": {
     "data": {
      "study": {
-      "created_ms": 1792533902581,
-      "id": "184289550e6eb8b7acb40b89d2d80afa",
+      "created_ms": 1792535818113,
+      "id": "16b71f5bc5c71b1749932829108e46c0",
       "pace": "steady",
       "status": "active",
       "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-      "version_id": "ea191f08cc60584f6233469a66be29d7"
+      "version_id": "a08c3020b05f06d94fbc6623e56209f6"
      }
     },
-    "entity_id": "184289550e6eb8b7acb40b89d2d80afa",
+    "entity_id": "16b71f5bc5c71b1749932829108e46c0",
     "message": null,
     "redirect": "/api/v1/practice"
    }
@@ -167,14 +167,14 @@
      "acting_token": null,
      "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1",
      "assisted": true,
-     "created_ms": 1792533903421,
+     "created_ms": 1792535819673,
      "effects": [
       {
        "after": {
         "cue": "read",
         "schedule": {
          "difficulty": 0,
-         "due_ms": 1792533902728,
+         "due_ms": 1792535818626,
          "lapses": 0,
          "last_review_ms": null,
          "remaining_steps": 0,
@@ -190,7 +190,7 @@
         "cue": "read",
         "schedule": {
          "difficulty": 0,
-         "due_ms": 1792533902728,
+         "due_ms": 1792535818626,
          "lapses": 0,
          "last_review_ms": null,
          "remaining_steps": 0,
@@ -201,12 +201,12 @@
         },
         "successes": 0
        },
-       "card_id": "114a3de4daf71103c200897d3188f1b0",
+       "card_id": "7d72a6a93092c115d66b2ff05dc70caa",
        "cue_level": "read",
        "extra_practice": false,
        "revision_before": 0,
        "scheduled": false,
-       "unit_id": "b235c1199c1b1d2a20e91cd8dd6ab260",
+       "unit_id": "6aa42ae034f2ad4ec0f7ebe0bc8440dd",
        "unit_index": 0,
        "verdict": "Again"
       }
@@ -354,33 +354,33 @@
       "verdict": "Again",
       "wrong_version_hint": null
      },
-     "id": "6f337a7a95c4c2f8c9180c9582b23f6a",
+     "id": "01d526cccacf71c0261273c8487ee607",
      "prompt": {
       "assisted": true,
       "context": null,
       "cue": "The path begins in our synthetic notebook.\n",
       "cue_level": "read",
-      "id": "02744362a7924426e66a487344eb63e4",
+      "id": "4af0f3fb0c2cade00fb2bfdfad63c029",
       "scope": {
        "kind": "unit",
        "position": 1,
-       "unit_id": "b235c1199c1b1d2a20e91cd8dd6ab260"
+       "unit_id": "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
       },
-      "study_id": "184289550e6eb8b7acb40b89d2d80afa",
+      "study_id": "16b71f5bc5c71b1749932829108e46c0",
       "title": "Synthetic Creed",
       "unit_ids": [
-       "b235c1199c1b1d2a20e91cd8dd6ab260"
+       "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
       ],
       "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-      "version_id": "ea191f08cc60584f6233469a66be29d7"
+      "version_id": "a08c3020b05f06d94fbc6623e56209f6"
      },
      "raw_answer": "The path begins in a synthetic notebook.",
      "revealed": false,
      "sequence": 16,
      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-     "version_id": "ea191f08cc60584f6233469a66be29d7"
+     "version_id": "a08c3020b05f06d94fbc6623e56209f6"
     },
-    "attempt_id": "6f337a7a95c4c2f8c9180c9582b23f6a",
+    "attempt_id": "01d526cccacf71c0261273c8487ee607",
     "correction_ids": [],
     "corrections": [],
     "prompt": {
@@ -388,45 +388,45 @@
      "context": null,
      "cue": "The path begins in our synthetic notebook.\n",
      "cue_level": "read",
-     "id": "02744362a7924426e66a487344eb63e4",
+     "id": "4af0f3fb0c2cade00fb2bfdfad63c029",
      "scope": {
       "kind": "unit",
       "position": 1,
-      "unit_id": "b235c1199c1b1d2a20e91cd8dd6ab260"
+      "unit_id": "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
      },
-     "study_id": "184289550e6eb8b7acb40b89d2d80afa",
+     "study_id": "16b71f5bc5c71b1749932829108e46c0",
      "title": "Synthetic Creed",
      "unit_ids": [
-      "b235c1199c1b1d2a20e91cd8dd6ab260"
+      "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
      ],
      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-     "version_id": "ea191f08cc60584f6233469a66be29d7"
+     "version_id": "a08c3020b05f06d94fbc6623e56209f6"
     },
     "revealed": false
    },
    "replayed": false,
    "result": {
     "data": {
-     "attempt_id": "6f337a7a95c4c2f8c9180c9582b23f6a",
+     "attempt_id": "01d526cccacf71c0261273c8487ee607",
      "correction_ids": [],
      "prompt": {
       "assisted": true,
       "context": null,
       "cue": "The path begins in our synthetic notebook.\n",
       "cue_level": "read",
-      "id": "02744362a7924426e66a487344eb63e4",
+      "id": "4af0f3fb0c2cade00fb2bfdfad63c029",
       "scope": {
        "kind": "unit",
        "position": 1,
-       "unit_id": "b235c1199c1b1d2a20e91cd8dd6ab260"
+       "unit_id": "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
       },
-      "study_id": "184289550e6eb8b7acb40b89d2d80afa",
+      "study_id": "16b71f5bc5c71b1749932829108e46c0",
       "title": "Synthetic Creed",
       "unit_ids": [
-       "b235c1199c1b1d2a20e91cd8dd6ab260"
+       "6aa42ae034f2ad4ec0f7ebe0bc8440dd"
       ],
       "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
-      "version_id": "ea191f08cc60584f6233469a66be29d7"
+      "version_id": "a08c3020b05f06d94fbc6623e56209f6"
      },
      "revealed": false
     },

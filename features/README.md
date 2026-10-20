@@ -13,7 +13,9 @@ US-012 is retired and its identifier remains reserved.
 - Local: built Worker (`worker-build --release --locked`) and CLI
   (`cargo build --locked --bin scry`); each helper starts its own disposable
   workerd SQLite/R2 space with no egress. Never import a live notebook.
-- Pinned runtimes from README, `npm ci --ignore-scripts` for Playwright, and an unlocked `pass`.
+- Pinned runtimes from README, `npm ci --ignore-scripts` for Playwright,
+  `npx playwright install chromium` (the install skips its download script) or
+  `SCRY_CRITICS_CHROMIUM_PATH`, and an unlocked `pass`.
 
 ## Driving conventions
 

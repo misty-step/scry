@@ -1,0 +1,7 @@
+{"id":"state.signed-out","status":"PASS","observed":"anonymous GET / /create /settings /api/v1/library → 302 Access login; no Worker content","at":"2026-10-20T22:36:00.651Z"}
+{"id":"state.expired-or-forged","status":"PASS","observed":"expired CF_Authorization cookie, forged Cf-Access-Jwt-Assertion and forged service token → 302 Access login","at":"2026-10-20T22:36:00.756Z"}
+{"id":"state.wrong-identity","status":"PASS","observed":"isolated QA service identity → 200 its own scry-qa space only; owner API → 401; operator → 403; machine health identity /create → 302","at":"2026-10-20T22:36:01.433Z"}
+{"id":"state.alternate-host","status":"PASS","observed":"scry.study GET → 303 https://scry.mistystep.io/create; POST → 421","at":"2026-10-20T22:36:01.845Z"}
+{"id":"state.phone-390","status":"PASS","observed":"QA identity /create at 390px touch: 200, no horizontal overflow","evidence":"qa-identity-create-390.png","at":"2026-10-20T22:36:02.666Z"}
+{"id":"cli.hosted-admission","status":"UNPROVEN","observed":"Bearer /api/v1/whoami → 302 Access login: hosted Owner-token admission (#335) is not commissioned","at":"2026-10-20T22:36:05.636Z"}
+{"id":"state.backend-down","status":"UNPROVEN","observed":"not inducible on production read-only; local-journeys.mjs stops its own Worker","at":"2026-10-20T22:36:05.636Z"}

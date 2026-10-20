@@ -1,9 +1,9 @@
 # verify-scry end-to-end run — 2026-10-20
 
-The first full run of [verify-scry](../../../../../.agents/skills/verify-scry/SKILL.md)
-followed its Drive section in order, from 22:04 to 22:05 UTC on host `mirrodin`.
-The source was master `4358124` plus this change's helpers, the same bytes as the
-PR. [run-transcript.txt](run-transcript.txt) has every command, PASS/FAIL/UNPROVEN
+An end-to-end run of [verify-scry](../../../../../.agents/skills/verify-scry/SKILL.md)
+ran Doctor and then its Drive section in order, from 22:35 to 22:37 UTC on host
+`mirrodin`. The source was master `4358124` plus this PR's helpers after review
+fixes. [run-transcript.txt](run-transcript.txt) has every command, PASS/FAIL/UNPROVEN
 line and exit code. Each directory holds a helper's `checks.jsonl`, `summary.json`
 and screenshots.
 
@@ -21,27 +21,25 @@ and screenshots.
 
 | Feature | Result | Evidence |
 | --- | --- | --- |
-| Doctor: owner identity configuration | PASS 9, UNPROVEN `owner.subject` (secret unreadable) | [doctor-prod](2026-10-20T220415Z-doctor-prod/checks.jsonl) |
-| Doctor: local Worker | PASS | [doctor-local](2026-10-20T220420Z-doctor-local/checks.jsonl) |
-| Owner sign-in, signed-out → Access → Misty Step "Welcome back" | PASS at 390 and 1280 | [390](2026-10-20T220423Z-owner-signin/signin-idp-390.png), [1280](2026-10-20T220541Z-owner-signin/signin-idp-1280.png), [hops](2026-10-20T220423Z-owner-signin/navigation.txt) |
-| **Owner sign-in as phaedrus@mistystep.io** | **UNPROVEN: needs his Misty Step password in pass** | [checks](2026-10-20T220423Z-owner-signin/checks.jsonl) |
-| Signed out, expired/forged session, wrong identity, alternate host, 390px | PASS | [prod-states](2026-10-20T220439Z-prod-states/checks.jsonl), [QA view 390](2026-10-20T220439Z-prod-states/qa-identity-create-390.png) |
+| Doctor: owner identity configuration | PASS 9, UNPROVEN `owner.subject` (secret unreadable) | [doctor-prod](2026-10-20T223550Z-doctor-prod/checks.jsonl) |
+| Doctor: local Worker | PASS | [doctor-local](2026-10-20T223554Z-doctor-local/checks.jsonl) |
+| Owner sign-in, signed-out → Access → Misty Step "Welcome back" | PASS at 390 and 1280 | [390](2026-10-20T223555Z-owner-signin/signin-idp-390.png), [1280](2026-10-20T223557Z-owner-signin/signin-idp-1280.png), [hops](2026-10-20T223555Z-owner-signin/navigation.txt) |
+| **Owner sign-in as phaedrus@mistystep.io** | **UNPROVEN: needs his Misty Step password in pass** | [checks](2026-10-20T223555Z-owner-signin/checks.jsonl) |
+| Signed out, expired/forged session, wrong identity, alternate host, 390px | PASS | [prod-states](2026-10-20T223600Z-prod-states/checks.jsonl), [QA view 390](2026-10-20T223600Z-prod-states/qa-identity-create-390.png) |
 | Hosted Owner-token admission (#335) | UNPROVEN (uncommissioned) | same |
-| Empty notebook and legacy concept flow | PASS | [empty](2026-10-20T220444Z-local-journeys/notebook-empty-390.png), [held result](2026-10-20T220444Z-local-journeys/notebook-held-result-390.png), [concept](2026-10-20T220444Z-local-journeys/notebook-concept-390.png) |
-| Owner token → CLI login → revoke | PASS | [shown once (masked)](2026-10-20T220444Z-local-journeys/token-shown-once-390.png), [list](2026-10-20T220444Z-local-journeys/token-list-390.png), [CLI](2026-10-20T220444Z-local-journeys/cli-transcript.json) |
-| Library find and keep | PASS | [CLI](2026-10-20T220444Z-local-journeys/cli-transcript.json) |
-| Exact Study on the phone Stream | PASS | [prompt](2026-10-20T220444Z-local-journeys/study-prompt-390.png), [arrival](2026-10-20T220444Z-local-journeys/study-result-arrival-390.png), [Diff](2026-10-20T220444Z-local-journeys/study-diff-390.png), [next](2026-10-20T220444Z-local-journeys/study-next-390.png) |
-| Backend down | PASS (local) | [390](2026-10-20T220444Z-local-journeys/backend-down-390.png) |
+| Empty notebook and legacy concept flow | PASS | [empty](2026-10-20T223605Z-local-journeys/notebook-empty-390.png), [held result](2026-10-20T223605Z-local-journeys/notebook-held-result-390.png), [concept](2026-10-20T223605Z-local-journeys/notebook-concept-390.png) |
+| Owner token → CLI login → revoke | PASS | [shown once (masked)](2026-10-20T223605Z-local-journeys/token-shown-once-390.png), [list](2026-10-20T223605Z-local-journeys/token-list-390.png), [CLI](2026-10-20T223605Z-local-journeys/cli-transcript.json) |
+| Library find and keep | PASS | [CLI](2026-10-20T223605Z-local-journeys/cli-transcript.json) |
+| Exact Study on the phone Stream | PASS | [prompt](2026-10-20T223605Z-local-journeys/study-prompt-390.png), [arrival](2026-10-20T223605Z-local-journeys/study-result-arrival-390.png), [Diff](2026-10-20T223605Z-local-journeys/study-diff-390.png), [next](2026-10-20T223605Z-local-journeys/study-next-390.png) |
+| Backend down | PASS (local) | [390](2026-10-20T223605Z-local-journeys/backend-down-390.png) |
 
-The 1280px local run is in [2026-10-20T220509Z-local-journeys](2026-10-20T220509Z-local-journeys/checks.jsonl).
-The first 1280px sign-in attempt hit a transient host `net::ERR_NETWORK_CHANGED`
-([kept](2026-10-20T220433Z-owner-signin/checks.jsonl)); the retry is logged at the end of the transcript.
+The 1280px local run is in [2026-10-20T223642Z-local-journeys](2026-10-20T223642Z-local-journeys/checks.jsonl).
 
 ## Observations
 
 - On a 390×844 phone, the sticky Next / I was right bar covers the first row of
   the word-by-word Diff when the result arrives
-  ([arrival](2026-10-20T220444Z-local-journeys/study-result-arrival-390.png)).
+  ([arrival](2026-10-20T223605Z-local-journeys/study-result-arrival-390.png)).
   "Again." is visible, but which words were wrong is not until the learner
   scrolls. At 1280×844 the Diff starts below the fold. US-018.2's held
   Verdict and Diff are present and equal to the CLI's; this is a hesitation, not a criterion failure.

@@ -1,3 +1,0 @@
-{"id":"local.loopback","status":"PASS","observed":"http://127.0.0.1:57603","at":"2026-10-20T22:04:20.508Z"}
-{"id":"local.page","status":"PASS","observed":"GET / → 200 \"Your notebook · Scry\"","at":"2026-10-20T22:04:23.450Z"}
-{"id":"local.changelog","status":"PASS","observed":"Version 0.3.0","at":"2026-10-20T22:04:23.640Z"}

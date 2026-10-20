@@ -35,6 +35,7 @@ Local write flows need the built artifacts once per source change:
 ```sh
 export PATH="$HOME/.cargo/bin:$HOME/.local/share/node-22.22.0/bin:$HOME/.local/bin:$PATH"
 npm ci --ignore-scripts --no-audit --no-fund
+npx playwright install chromium   # or set SCRY_CRITICS_CHROMIUM_PATH
 worker-build --release --locked
 cargo build --locked --bin scry
 ```
@@ -80,7 +81,8 @@ Run in order. Each helper prints one line per check and exits 0/1/3 like Doctor.
 4. For the stories you changed, run `qa/walk --stories "US-0NN ..."` (or `--all`).
 
 Never write to production beyond what sign-in creates. Every owner page GET can
-freeze the next question, so the owner journey reads only `/create`.
+freeze the next question; the owner journey loads only `/create`, which freezes
+no exact Prompt, marks no exposure and renders no notebook content.
 
 ## Walk as Phaedrus
 

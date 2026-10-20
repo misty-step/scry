@@ -7,7 +7,8 @@
 // Needs `worker-build --release --locked` (build/) and
 // `cargo build --locked --bin scry` (target/debug/scry). Exit 0 PASS, 1 FAIL.
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {repo,outDir,reporter,launch,settle} from './lib.mjs';
@@ -21,7 +22,9 @@ for(const [path,build] of [['build/index_bg.wasm','worker-build --release --lock
 
 const dir=outDir('local-journeys');
 const {log,done}=reporter(dir);
-const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/verify-scry-local-'));
+// Private run directory: holds the run-owned login.json with the Owner token.
+const scratch=process.env.HOME?join(process.env.HOME,'.cache/tmp'):tmpdir();await mkdir(scratch,{recursive:true});
+const temp=await mkdtemp(join(scratch,'verify-scry-local-'));
 const config=join(temp,'login.json');
 // Authored synthetic wording only, shared with qa/phone-stream.mjs.
 const {previousText,phoneText}=await import(join(repo,'qa/phone-stream.mjs'));
@@ -29,11 +32,11 @@ let secret='';
 const cli=(args,input='')=>new Promise((ok,fail)=>{
  const child=spawn(cliPath,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
  let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);child.on('error',fail);
- child.on('exit',code=>{if(secret&&(out+err).includes(secret))return fail(Error('CLI echoed the token'));let value=null;try{value=JSON.parse(out);}catch{}ok({code,value,err:err.trim().slice(0,160)});});
+ child.on('close',code=>{if(secret&&(out+err).includes(secret))return fail(Error('CLI echoed the token'));let value=null;try{value=JSON.parse(out);}catch{}ok({code,value,err:err.trim().slice(0,160)});});
  child.stdin.end(input);
 });
 const transcript=[];
-const run=async(args,input)=>{const r=await cli(args,input);transcript.push({cmd:['scry',...args,'--json'].join(' '),stdin:input?'<redacted>':undefined,exit:r.code,stdout:r.value});return r;};
+const run=async(args,input)=>{const r=await cli(args,input);transcript.push({cmd:['scry',...args,'--json'].join(' ').replaceAll(temp,'<temp>'),stdin:input?'<redacted>':undefined,exit:r.code,stdout:r.value});return r;};
 
 const runtime=await createSyntheticRuntime({name:'verify-scry-local'});
 const origin=runtime.url;
@@ -133,7 +136,9 @@ try{
  });
  await step('token.revoke',async()=>{
   await page.goto(origin+'/settings#owner-tokens');
+  const revoked=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/tokens/revoke');
   await page.locator('#owner-tokens').getByRole('button',{name:/Revoke/}).first().click();
+  if((await revoked).status()>=400)throw Error('revoke request refused');
   await page.waitForLoadState();
   const who=await run(['whoami']);
   if(who.code===0)throw Error('revoked token still admitted');
