@@ -7,8 +7,8 @@ and PR. New Hermes profiles review the checkout, then use native
 
 Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
 
-Read [SPEC.md](SPEC.md), especially US-013/S11, before scoping or verifying
-behavior. It is the only story/acceptance authority. [VISION](VISION.md) explains
+Read [SPEC.md](SPEC.md), especially "Exact recall first" and US-014 to US-021,
+before scoping or verifying behavior. [GLOSSARY](GLOSSARY.md) owns the words. It is the only story/acceptance authority. [VISION](VISION.md) explains
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
 decisions. Do not restate their contracts here.
 

@@ -1,30 +1,43 @@
 # Scry Product Vision
 
-Scry is a private learning notebook for one person. Its purpose is understanding
-and later recall, not collection size, engagement time, an accuracy badge, or a
-general learning platform. Curiosity should lead to something useful without
-making the learner organize the application first.
+Scry gets fixed texts and sets into phaedrus's head word for word, and keeps
+them there for the fewest minutes a day. Examples are the Apostles' Creed,
+a Frost poem, the Mysteries of the Rosary and the NATO alphabet. Scry is for
+him alone: one owner, no other accounts, nothing public.
 
-Prompt-first intent was reaffirmed on 2026-10-02: start from what the learner
-wants to understand, then refine through use. Retrieval-led study and revisitable
-reference serve that goal together; neither a compulsory pretest nor disposable
-question cards define the product. The operator reported no active users at the
-rewrite decision; fixture and deployment success are not sustained use or gains.
+Direction set by the owner on 2026-10-20
+([#296](https://github.com/misty-step/scry/issues/296)):
 
-## One behavioral authority
+- **Exact recall first.** He names something, and Scry finds it in his
+  Library or creates it. He then recites it unit by unit as the cues fade.
+  Every word gets a deterministic verdict and a diff. A memory model decides
+  when each unit comes back. Understanding, meaning concepts and explanations,
+  comes later and builds on the same Library.
+- **An agent with tools creates the material.** A generation agent writes a
+  Version from model memory when that is good enough, and searches the web
+  when it judges a check is worth it. Code checks the result deterministically
+  before it enters the Library, and every run is kept.
+- **Find before create.** The Library is a cache. Search comes first, and
+  each thing to learn is created once. It is private today but shaped so it
+  could be shared later without exposing his study.
+- **Agent-drivable.** Every action is an API call that an agent can drive
+  through the `scry` CLI with an owner token. His phone is one client of the
+  same behavior.
+- **Cheap to run.** Practice costs nothing. Only creating new material spends
+  money.
 
-[SPEC](SPEC.md) alone owns stories, acceptance criteria, product boundaries,
-learning/privacy/spend/recovery policy, and open acceptance. Read US-013/S11 for
-the full Create journey and the other US/S contracts for ongoing study.
-[USER_STORIES](USER_STORIES.md) is only a compatibility index, not another copy.
+Scry is not about collection size, streaks, engagement time or a general
+learning platform.
 
-[DESIGN](DESIGN.md) owns the curiosity notebook's visual decisions.
-[ADRs](docs/adr/README.md) own implementation decisions, including the
-2026-10-07 Rust/Cloudflare candidate. [The runbook](docs/runbook.md) owns
-operational records; a rewritten checkout or green gate is not serving proof
-or activation permission. [QA](docs/qa/system.md) owns verification procedures.
+## Where things are decided
 
-[Specification lineage](docs/history/specification-lineage.md) and the retained
-[concept study](docs/design/concept-centered-study.md) preserve intent history.
-[Learning-science research](docs/science/README.md) supplies rationale and limits,
-not a second requirements document or a claim of demonstrated efficacy.
+[SPEC](SPEC.md) alone owns stories, acceptance criteria and policy.
+[GLOSSARY](GLOSSARY.md) owns the words. [DESIGN](DESIGN.md) owns visuals.
+[ADRs](docs/adr/README.md) own technical decisions. [The runbook](docs/runbook.md)
+owns operational records. [QA](docs/qa/system.md) owns verification procedures.
+
+Earlier intent, the 2026-10-02 prompt-first curiosity notebook, is preserved in
+[specification lineage](docs/history/specification-lineage.md) and the
+[concept study](docs/design/concept-centered-study.md).
+[Learning-science research](docs/science/README.md) supplies rationale and
+limits, not requirements.

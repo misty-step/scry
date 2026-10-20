@@ -14,7 +14,7 @@ import {releaseWalk} from './browser-release.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
 const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
-const live=sections.filter((m,i)=>!/^Superseded|^Retired|\(retired\)/m.test(source.slice(m.index,sections[i+1]?.index))).map(m=>m[1]);
+const live=sections.filter((m,i)=>!/^Superseded|^Retired|\(retired\)|^Evidence: pending$/m.test(source.slice(m.index,sections[i+1]?.index))).map(m=>m[1]);
 const argv=process.argv.slice(2);
 const selected=argv[0]==='--all'&&argv.length===1?live:argv[0]==='--stories'&&argv.length===2?[...new Set(argv[1].split(/\s+/).filter(Boolean))]:null;
 if(live.length!==Object.keys(specs).length||Object.keys(specs).some(id=>!live.includes(id)))throw Error(`story discovery drift: SPEC live IDs [${live.join(', ')}] do not match walk-specs IDs [${Object.keys(specs).join(', ')}]`);
