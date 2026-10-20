@@ -1,6 +1,7 @@
 // Mixed exact Study + understanding occurrence, through the real isolated Worker.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
 
 export function formFields(html, action) {
@@ -49,7 +50,7 @@ export async function mixedHttpProof() {
       const page = await r.text();
       assert.ok(page.includes('data-state="question"'), 'Rejected legacy answer retains its question view');
       assert.ok(!page.includes('data-state="exact-'), 'Legacy refusal must not render exact practice');
-      assert.deepEqual(await f.sql.exec('SELECT key,value FROM records ORDER BY key'), before);
+      assert.ok(isDeepStrictEqual(await f.sql.exec('SELECT key,value FROM records ORDER BY key'), before), 'Refusal changes no rows');
       observed.push({status, view:'legacy question', rows_unchanged:true});
     }
     const answer = 'The origin content definitely changed';
@@ -63,8 +64,15 @@ export async function mixedHttpProof() {
     const saved = await f.sql.exec('SELECT key,value FROM records ORDER BY key');
     const replay = await f.post('/review/answer', {...fields, answer});
     assert.equal(new URL(replay.headers.get('location'), f.origin).pathname, '/notebook');
-    assert.deepEqual(await f.sql.exec('SELECT key,value FROM records ORDER BY key'), saved);
-    observed.push({answer_redirect:'/notebook', held_result:true, replay_rows_unchanged:true, exact_practice_unchanged:true});
+    const after = await f.sql.exec('SELECT key,value FROM records ORDER BY key');
+    const withoutRevision = rows => rows.map(({key, value}) => {
+      const record = JSON.parse(value);
+      if (key === 'meta') delete record.revision;
+      return {key, value:record};
+    });
+    // The existing browser save increments the storage revision even on replay.
+    assert.ok(isDeepStrictEqual(withoutRevision(after), withoutRevision(saved)), 'Replay changes no learning records or receipts');
+    observed.push({answer_redirect:'/notebook', held_result:true, replay_learning_rows_unchanged:true, exact_practice_unchanged:true});
     return observed;
   } finally {await f.close();}
 }
