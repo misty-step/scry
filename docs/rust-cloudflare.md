@@ -236,6 +236,24 @@ headers to canonical `POST /internal/backup`. Redirects are refused. Never put
 capabilities in argv, URLs, source or receipts. This principal cannot read
 learner routes or act as the owner. Keep synthetic and production keys separate.
 
+Each execution sends Sentry native cron `in_progress`, then `ok` only after
+snapshot verification or `error` on failure, using one check-in ID. The script
+reuses the public DSN in `deploy/cloudflare-hosting/telemetry.mjs`; there is no
+new credential, SDK, watcher, or journal reader. Reports contain only execution
+ID, fixed monitor/environment/status, script SHA-256 release, duration, and the
+schedule. No origin, backup credentials, raw error, or response body is sent.
+
+The first start check-in upserts `scry-mirrodin-daily-backup` in Sentry project
+`scry`, environment `production`, with `30 9 * * *` / UTC, a 15-minute check-in
+margin, three-minute maximum runtime, and one-failure/one-recovery thresholds.
+Once registered, Sentry detects a missing start after **09:45 UTC** even if the
+timer never fires or Mirrodin is down; a killed/hung execution times out there
+without a local failure hook. It uses the existing Scry production issues and
+monitor failures workflow to `#ops`. Both check-ins have a two-second timeout,
+refuse redirects, and are never retried. Reporting failure does not prevent the
+backup attempt, but prints only `Scry backup monitoring unavailable.` and makes
+the service exit non-zero. Ingest acceptance alone is not owner-delivery proof.
+
 #### Install or update after merge
 
 The conductor installs from master and disables the old Hermes job after merge;
@@ -271,12 +289,44 @@ loginctl show-user "$USER" -p Linger
 ```
 
 Confirm user lingering is enabled so the timer survives logout. If needed, the
-conductor enables it with `loginctl enable-linger "$USER"`. Disable archived
-Hermes cron `37ca5bbdd570` if reachable; otherwise record its reachability limit
-on #299. Keep the old job until the new service has verified a snapshot.
+conductor enables it with `loginctl enable-linger "$USER"`.
+
+Before retiring Hermes, read back the Sentry monitor's production schedule,
+thresholds, successful check-in, and enabled existing `#ops` workflow. Retain a
+controlled failed-run notification in that channel and independently observe a
+missed check-in alert before calling missed-run delivery proven. Use only a
+scratch checkout with an invalid origin and synthetic backup credentials for a
+failure drill, never production with bad credentials. A manual success registers
+the schedule; without an accepted first upsert there is no remote missed-run
+coverage. If monitor upsert or existing routing is unavailable, keep Hermes and
+escalate the exact missing configuration/credential instead of creating one.
+
+Only after installation, snapshot verification, and owner-alert proof, the
+conductor disables archived Hermes cron `37ca5bbdd570` if reachable; otherwise
+records its reachability limit on #309. Disable it before #301's canonical
+promotion, since its hard-coded origin will then be rejected. The implementation
+PR does not install units or disable Hermes.
 Failure exits non-zero with a fixed reason in the journal, without upstream
 bodies, URLs, error details, or credentials. Missing noninteractive pass access
 must be resolved before relying on the timer.
+
+#### Stop or roll back the daily trigger
+
+Reverting source does not stop an installed timer. As its Mirrodin user:
+
+```sh
+systemctl --user disable --now scry-daily-backup.timer
+systemctl --user stop scry-daily-backup.service
+rm -f "$HOME/.config/systemd/user/scry-daily-backup.service" "$HOME/.config/systemd/user/scry-daily-backup.timer"
+systemctl --user daemon-reload
+```
+
+Also pause the `scry-mirrodin-daily-backup` production monitor in Sentry during
+an intentional stop so it does not report expected missed runs. Retain the
+monitor's history. To resume, install the reviewed master units as above,
+re-enable the monitor, verify a successful check-in, and enable the timer.
+Coordinate an authorized replacement daily trigger before leaving this stopped;
+do not silently restore Hermes across an origin change.
 
 Missing or wrong keys return 403; non-POST returns 405. Success returns 200 only
 after the same complete R2 verification used by the operator backup. Failure
