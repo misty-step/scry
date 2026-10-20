@@ -30,8 +30,9 @@ Read SPEC, especially US-013/S11, before scoping work. VISION explains intent;
 USER_STORIES is only a compatibility index. Technical decisions live in ADRs.
 Use the current operator request as authority; preserve overlapping work and
 inspect `git status --short --branch` and `git rev-parse HEAD` in the selected
-checkout. [Glass](https://mirrodin.tail5f5eb4.ts.net) in scope `misty-step/scry`
-owns work state; legacy MIS and Linear identities are provenance. Link accepted
+checkout. [GitHub issues](https://github.com/misty-step/scry/issues) own work
+state: initiative [#273](https://github.com/misty-step/scry/issues/273) tracks its
+child issues. Legacy MIS, Linear, Powder and Glass identities are provenance. Link accepted
 scope, exact source, tests, and remaining evidence from the session/PR.
 
 [DESIGN](DESIGN.md) governs visual decisions; [SPEC](SPEC.md) alone governs
