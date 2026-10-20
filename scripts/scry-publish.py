@@ -27,6 +27,25 @@ def gate(run, source):
         raise RuntimeError('Release requires successful exact-source master push CI')
 
 
+def check_head():
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    bootstrap = json.loads(Path('release-please-config.json').read_text())['bootstrap-sha']
+    subprocess.run(['git', 'merge-base', '--is-ancestor', bootstrap, head], check=True)
+    expected = os.environ['EXPECTED_HEAD']
+    skip = head != expected
+    if skip:
+        subprocess.run(['git', 'merge-base', '--is-ancestor', expected, head], check=True)
+        repo = os.environ['GITHUB_REPOSITORY']
+        runs = json.loads(gh('api', f'repos/{repo}/actions/workflows/ci.yml/runs?head_sha={head}&branch=master&event=push&status=success'))['workflow_runs']
+        skip = not runs
+        if runs:
+            gate(runs[0], head)
+        else:
+            print(f'::notice::Skipping release: master advanced from {expected} to {head}; the newer head\'s own CI will trigger its release run if it succeeds.')
+    with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+        print('skip=' + str(skip).lower(), file=output)
+
+
 def preflight():
     # A later green commit cannot authorize tagging an earlier failed merge.
     repo = os.environ['GITHUB_REPOSITORY']
@@ -106,6 +125,8 @@ def report_failure():
 if __name__ == '__main__':
     if sys.argv[1:] == ['report-failure']:
         report_failure()
+    elif sys.argv[1:] == ['check-head']:
+        check_head()
     elif sys.argv[1:] == ['preflight']:
         preflight()
     else:

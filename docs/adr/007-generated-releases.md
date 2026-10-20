@@ -31,10 +31,14 @@ State transitions:
     -> scry-promote.py verifies custody and promotes those same bytes
 
 The generator runs after successful master push CI, not from PR code or a
-failed/skipped gate. A moved head is refused. Replays use the same release PR
-and immutable tag; no-release inputs leave releases unchanged. Release and
-promotion serialization do not cancel a running promotion. Failures use the
-existing Actions failure-issue path, with a run URL and no notebook content.
+failed/skipped gate. An outdated ancestor head is skipped only while the
+current head has no successful master push CI. If that CI has succeeded, the
+release proceeds for the current head. A divergent or unknown head, or a
+missing or invalid bootstrap, is refused through the existing failure-issue
+path. Replays use the same release PR and immutable tag; no-release inputs
+leave releases unchanged. Release and promotion serialization do not cancel a
+running promotion. Failures use the existing Actions failure-issue path, with a
+run URL and no notebook content.
 There is no new credential, runner, deploy engine, store, migration or route.
 
 The private `/changelog` is rendered from CHANGELOG.md compiled into the Worker,
