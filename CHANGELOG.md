@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/misty-step/scry/compare/v0.1.0...v0.1.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **recovery:** let learners resume paused preparation safely ([#271](https://github.com/misty-step/scry/issues/271)) ([e976346](https://github.com/misty-step/scry/commit/e9763468c4d1d5209f51913700bd4be124eb9d89))
+* **web:** show imported material in its own words ([#269](https://github.com/misty-step/scry/issues/269)) ([199053d](https://github.com/misty-step/scry/commit/199053d099f10fb7a63c31168d1684eca6d2a612))
+
 ## 0.1.0 (2026-10-17)
 
 
