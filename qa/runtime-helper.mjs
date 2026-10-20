@@ -13,19 +13,19 @@ catch {
 export const Response=runtime.Response;
 export const denyEgress=async()=>{throw new Error('External calls are forbidden in synthetic QA.');};
 export const internalKey='synthetic-internal-private-storage-key-32chars';
-export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath}) {
+export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath,testClock=false}) {
   artifact=resolve(artifact);
   // Miniflare replaces Host with its own listener. This transport-only adapter
   // restores the simulated external Host before Rust enforces its real checks.
   // worker-rs exports a non-RPC class. Only inspection fixtures wrap it in the
   // native base required by Miniflare's SQL inspection; fetch/alarm stay Rust.
   const space=inspect
-    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}fetch(request){return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
+    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}fetch(request){${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
     : `export {RustLearningSpace as LearningSpace};`;
   // Like Wrangler's drain-body middleware, discard unread transport bytes only
   // after Rust responds. Otherwise workerd can reset the upload and erase its
   // early refusal (cloudflare/workerd#7634). Never buffer them before auth.
-  const adapter=`import App,{LearningSpace as RustLearningSpace} from './index.js';${space}export default class extends App{async fetch(request){const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}
+  const adapter=`import App,{LearningSpace as RustLearningSpace} from './index.js';${space}export default class extends App{async fetch(request){${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}
     const forwarded=new Request(request,{headers});
     const response=await super.fetch(forwarded);
     response.headers.set('X-Scry-Test-Body-Used',String(forwarded.bodyUsed));

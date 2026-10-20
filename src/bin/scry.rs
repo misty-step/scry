@@ -316,9 +316,106 @@ mod cli {
             };
             return request(&client, &login, &resource_path(resource, &args[2])?, None);
         }
+        if args.as_slice() == ["study", "list"] {
+            return request(&client, &login, "/api/v1/studies", None);
+        }
+        if args.len() == 1 && matches!(args[0].as_str(), "due" | "history" | "export") {
+            return request(&client, &login, &format!("/api/v1/{}", args[0]), None);
+        }
         let operation = option(&mut args, "--operation-id")?
             .map(Ok)
             .unwrap_or_else(random_id)?;
+        if args.first().is_some_and(|a| a == "learn") {
+            let pace = option(&mut args, "--pace")?.unwrap_or_else(|| "steady".into());
+            if args.len() != 2 {
+                return Err("Usage: scry learn VERSION [--pace light|steady|intense]");
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/learn",
+                Some(&json!({"operation_id":operation,"version_id":args[1],"pace":pace})),
+            );
+        }
+        if args.first().is_some_and(|a| a == "study")
+            && args.len() == 3
+            && matches!(args[1].as_str(), "pause" | "resume" | "drop")
+        {
+            return request(
+                &client,
+                &login,
+                &format!("/api/v1/studies/{}", args[1]),
+                Some(&json!({"operation_id":operation,"study_id":args[2]})),
+            );
+        }
+        if args.first().is_some_and(|a| a == "next") {
+            let mut payload = json!({"operation_id":operation});
+            for (option_name, field) in [
+                ("--after", "after"),
+                ("--study", "study_id"),
+                ("--card", "card_id"),
+                ("--recite", "recite"),
+                ("--section", "section_id"),
+            ] {
+                if let Some(value) = option(&mut args, option_name)? {
+                    payload[field] = json!(value);
+                }
+            }
+            if args.len() != 1 {
+                return Err(
+                    "Usage: scry next [--after PROMPT] [--study STUDY] [--card CARD | --recite whole|section --section SECTION]",
+                );
+            }
+            return request(&client, &login, "/api/v1/next", Some(&payload));
+        }
+        if args.first().is_some_and(|a| a == "answer") {
+            let file = option(&mut args, "--text-file")?;
+            let stdin = flag(&mut args, "--text-stdin");
+            if args.len() != 2 || file.is_some() == stdin {
+                return Err("Usage: scry answer PROMPT --text-file PATH|--text-stdin");
+            }
+            let answer = if let Some(path) = file {
+                fs::read_to_string(path).map_err(|_| "Cannot read UTF-8 answer file.")?
+            } else {
+                let mut text = String::new();
+                std::io::stdin()
+                    .take(scry::library::TEXT_BYTES as u64 + 1)
+                    .read_to_string(&mut text)
+                    .map_err(|_| "Cannot read answer.")?;
+                text
+            };
+            return request(
+                &client,
+                &login,
+                "/api/v1/answer",
+                Some(&json!({"operation_id":operation,"prompt_id":args[1],"answer":answer})),
+            );
+        }
+        if args.first().is_some_and(|a| a == "reveal") && args.len() == 2 {
+            return request(
+                &client,
+                &login,
+                "/api/v1/reveal",
+                Some(&json!({"operation_id":operation,"prompt_id":args[1]})),
+            );
+        }
+        if args.first().is_some_and(|a| a == "correct") {
+            let verdict = option(&mut args, "--verdict")?.ok_or("Use --verdict Good|Again.")?;
+            let unit = option(&mut args, "--unit")?.unwrap_or_default();
+            if args.len() != 3 {
+                return Err(
+                    "Usage: scry correct PROMPT ATTEMPT --verdict Good|Again [--unit UNIT]",
+                );
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/correct",
+                Some(
+                    &json!({"operation_id":operation,"prompt_id":args[1],"attempt_id":args[2],"unit_id":unit,"verdict":verdict}),
+                ),
+            );
+        }
         if args.starts_with(&["version".into(), "add".into()])
             || args.starts_with(&["version".into(), "supersede".into()])
         {
@@ -418,7 +515,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|export --library|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

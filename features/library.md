@@ -12,8 +12,8 @@ Work metadata, delete unused content, and export only the Library.
 CLI and actual isolated Worker with SQLite and local R2. This CLI-only story
 needs no browser. `node --test qa/library.test.mjs` reuses those journeys;
 `tests/library.rs` proves the durable Study-reference refusal contract.
-Actual used Study and Attempt behavior needs #317, which must retain references
-when a Study is dropped. The fixture is caller-authored synthetic text under
+The [text Study journey](exact-study.md) also proves real used-Version and Work
+deletion refusal after active, paused and dropped Studies, with retained Attempts. The fixture is caller-authored synthetic text under
 Creed title/version metadata. It does not prove the owner's full Roman Missal
 2011 input, hosted admission, phone experience, or independent remote recovery.
 

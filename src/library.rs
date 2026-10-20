@@ -685,6 +685,7 @@ pub fn mutate(
         "versions"
     };
     Ok(MutationResult {
+        data: None,
         redirect: format!("/api/v1/library/{resource}/{id}"),
         entity_id: Some(id),
         message: None,

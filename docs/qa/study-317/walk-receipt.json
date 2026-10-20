@@ -1,0 +1,358 @@
+{
+  "schema": "foundation-walk-receipt/1",
+  "check": "scry-story-walk",
+  "run": "local-1792519214279",
+  "head": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+  "tree": "8c093b2ef9ed12ebcace3d37c51ddd8df672d266",
+  "base": "17ae38bf07f5d062e06ba3065642f149e5b323a0",
+  "source_state": "worktree",
+  "source_sha256": null,
+  "artifact_sha256": "4245b91c88862be1a585f23e2e9511ca32316ac5bc0909ea90a1ba85e1224eb9",
+  "started_at": "2026-10-20T18:00:14.286Z",
+  "finished_at": "2026-10-20T18:01:29.634Z",
+  "exit": 0,
+  "stories": [
+    {
+      "id": "US-015",
+      "status": "pass",
+      "criteria": [
+        {
+          "n": 1,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 2,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 3,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 4,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 5,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 6,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 7,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 8,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "US-016",
+      "status": "pass",
+      "criteria": [
+        {
+          "n": 1,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 2,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 3,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 4,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 5,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 6,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 7,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 8,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 9,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 10,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 11,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "US-017",
+      "status": "pass",
+      "criteria": [
+        {
+          "n": 1,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 2,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 3,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 4,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 5,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 6,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 7,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 8,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 9,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        },
+        {
+          "n": 10,
+          "status": "pass",
+          "target": "rust-worker-cli-sqlite-r2",
+          "source_revision": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+          "evidence": [
+            "native.txt",
+            "cli.jsonl"
+          ]
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cli.jsonl",
+      "sha256": "6833aa120ab3b53e399f71955ec92ade4d29cd39c7ac5cae80f42e8a3f57d9f1"
+    },
+    {
+      "path": "native.txt",
+      "sha256": "8f7961e5715816d1c047555a7aae643eeab2336166757472ec38ab126f6cf85b"
+    }
+  ],
+  "limits": [
+    "Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.",
+    "US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.",
+    "Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery."
+  ],
+  "original_artifacts": [
+    {
+      "path": "logs/rust-tests.txt",
+      "sha256": "8f7961e5715816d1c047555a7aae643eeab2336166757472ec38ab126f6cf85b"
+    },
+    {
+      "path": "logs/US-015-cli.json",
+      "sha256": "27598cf5bedaec816c18b636eef5aabc0160d21d4b062d897a37e506a1b19904"
+    },
+    {
+      "path": "logs/US-016-cli.json",
+      "sha256": "b879d796e0216d6cdfe95d0ee0533e7938c5d0b1d6673170f4569e6c5dafb1b5"
+    },
+    {
+      "path": "logs/US-017-cli.json",
+      "sha256": "c2c64cf424dd82f1089c1ec62b9aa59ea6f04b3aeb4b4027cdf5bf0e735699e4"
+    }
+  ],
+  "retention_note": "All command/result records retained as JSONL. Large Library read outputs use explicit hash/size summaries. Original per-story capture hashes are retained; Study output is complete. Synthetic Owner token identifiers are consistently pseudonymized as owner-1/owner-2 after runtime attribution assertions. No grader, schedule or operation outcome is changed."
+}

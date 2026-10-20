@@ -193,3 +193,37 @@ token foundation's verifier/revocation rollback limitations still apply.
 
 This is a source/storage decision, not activation. No historical store is
 changed, and no account, sharing, signup, or public read path is introduced.
+
+## 2026-10-20 text Study integration (#317)
+
+`src/study.rs` owns Study transitions and Prompt policy. Typed records distinguish
+Study status and Pace, one Unit/direction Card with its Cue and pinned FSRS
+state, a frozen presentation, immutable Attempts and per-Unit Corrections.
+[The implementation note](../implementation/exact-study-loop.md) records the
+access paths, concurrency analysis, selection order and reversible timing choices.
+The CLI and JSON routes adapt to `engine::mutate_as`; they add no writer,
+provider job, reservation or schedule implementation.
+
+The App's optional `practice` field is omitted when empty. Populated maps use
+`practice_studies`, `practice_cards`, `practice_attempts` and
+`practice_corrections` SQLite rows. Frozen current presentation remains in
+metadata. Attempt Grade and effects use the existing bounded payload-chunk
+codec under `practice_payload`. Study creation writes the Library reference in
+the same commit. Drop retains that reference and every Attempt.
+
+The shared operation result can contain optional response data. Practice
+receipts freeze safe Prompt responses or immutable Attempt/Correction identities.
+The runtime resolves those identities after the revision-fenced save, so no
+answer or reveal precedes its commit. Existing receipts omit the new field.
+Due, history, export and Study list share spend's narrow SQL snapshot read.
+They do not initialize application state, save last-use, recover work or arm
+alarms. Framework allocation on cold activation is a separate parent behavior.
+
+Populated practice or practice receipts require
+`scry-rust-durable-sqlite-study-v1` archives. Compatible archive validation checks
+Version/Unit references, deterministic Grade, per-Card effects, Corrections and
+current projections. Empty pre-Study rows and archives retain their old bytes.
+An older writer cannot safely handle populated practice. Rollback requires a
+compatible build that retains these records, not deletion or an older binary.
+Local SQLite/R2 restart and fresh restore proof do not authorize activation or
+establish independent hosted recovery.

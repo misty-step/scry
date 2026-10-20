@@ -1,0 +1,193 @@
+{
+  "format": "scry-study-fix-development-proof-v1",
+  "starting_head": "3344c8b16bf23f6f1a242c052b4e0840850d231b",
+  "fixed_base": "294f99808a352e066ca6a59cfaa8320eb37d2ee7",
+  "source_state": "worktree before evidence commit",
+  "tested_compile_inputs": [
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "1e664d19a44c6bc4cfa5a8407f13d768865fda23994541f30db32da8a3440409"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "9d952551719267044be79d48d6ebfad174c67fe174cff3fef0712d68f2047d2a"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "664ba89e0549fb7340cfb16448a08fbb915ee20fbcfd262a1658d8b9221439f5"
+    },
+    {
+      "path": "assets/app.css",
+      "sha256": "69a9f28ba61a5d19846847adb1de7477bf34e286ecd37209280a494115c141d1"
+    },
+    {
+      "path": "assets/app.js",
+      "sha256": "1181ce62eddf8548ada311194971aabdae8b35d8b63c1530d4bfe9bf79d890e2"
+    },
+    {
+      "path": "assets/icon.svg",
+      "sha256": "63c368191f003704ebfdddf0d3178b27ec222903a8e8f0fe926f8cab94f2056e"
+    },
+    {
+      "path": "internal/web/assets/fonts/AtkinsonHyperlegibleNext.woff2",
+      "sha256": "9fb432ea4354bf4333d2b4c81bcfde5eb3157bb8a3c4fe8f03d5523ee0a9f933"
+    },
+    {
+      "path": "internal/web/assets/fonts/JetBrainsMono-AUTHORS.txt",
+      "sha256": "33f99c94ef0a0909d7584a5d4bde1fb9b1630daa620f5a788c28c43327e79412"
+    },
+    {
+      "path": "internal/web/assets/fonts/JetBrainsMono-OFL.txt",
+      "sha256": "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad"
+    },
+    {
+      "path": "internal/web/assets/fonts/JetBrainsMono-Scry.woff2",
+      "sha256": "5c564cc08fb257675042eda7de8ecd751ea290e591816964594222f2edd41f40"
+    },
+    {
+      "path": "internal/web/assets/fonts/Literata-Italic.woff2",
+      "sha256": "3e22f034a3fe4e91024bbb9d5eb53b91bbb0c97a3a97b09d7e8802e91456be06"
+    },
+    {
+      "path": "internal/web/assets/fonts/Literata.woff2",
+      "sha256": "9f9c5ed09d06ae7c7a47e7e3a1661185b1de3fa769c9f7dc5e5a92ade3cbefeb"
+    },
+    {
+      "path": "internal/web/assets/fonts/OFL.txt",
+      "sha256": "4c7d14abbf8a23fc12c96b7b13facf0eb1ea999bd5a9767189e573b49960a86c"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "e59e54f494831c886540444d5bc14fc04924294ab7cd25b724b78b61127036af"
+    },
+    {
+      "path": "src/api.rs",
+      "sha256": "59399b27a9381b203a5fd66383ae60ceb8064b48bc18e54cc08c640b86b900fe"
+    },
+    {
+      "path": "src/bin/scry.rs",
+      "sha256": "104108d7fb51aa3c8263f4c72779aee7e3f6a500beffe869fe1e215b08685fed"
+    },
+    {
+      "path": "src/engine.rs",
+      "sha256": "a3dfb20f67519b9f47fc30c2e96c677a2626eb669df04393ad5ecbd212e00ca0"
+    },
+    {
+      "path": "src/generation.rs",
+      "sha256": "49a829394b06aad8b858ad476330b173394701ad5acf21bc8ffc896a580bd0e9"
+    },
+    {
+      "path": "src/grading/mod.rs",
+      "sha256": "393f15247a29afcb37060b872456efa183cbf40f55cabda0d64ac65949e8be75"
+    },
+    {
+      "path": "src/grading/unicode.rs",
+      "sha256": "7107c1d38a259b6bf197a398a90d7a2333ec35479d8e4bb4b25e2551ec8941a2"
+    },
+    {
+      "path": "src/grading/unicode_tables.rs",
+      "sha256": "f323fc9683770e603b6b6c282adaf05e79693ac2de17189bc704ad70c4ef15e3"
+    },
+    {
+      "path": "src/learning.rs",
+      "sha256": "696f60553c1c650d5a99dfcb3c331eb6a639040481004bbc36c36f6957228ef1"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "983e9e6e1d15f89f419e407684704f47b868c184085683cb941c15a64173d05c"
+    },
+    {
+      "path": "src/library.rs",
+      "sha256": "c89fc2b17ce0fd57995c771dffd69b4f22e8369acc5015ca6a3834f1d6fba91a"
+    },
+    {
+      "path": "src/model.rs",
+      "sha256": "ac0aa5d044718c1ff30accf35975afaed60c58083e669db005d462a1255351dc"
+    },
+    {
+      "path": "src/owner_token.rs",
+      "sha256": "21a3c96c3cae09fde4e8842d6b274820fc544f8f7981c8cef7e305c1f0436927"
+    },
+    {
+      "path": "src/persistence.rs",
+      "sha256": "e1cf749d62efa0a289c44e3c4516af9d86fbd1f8454484b5f74b13189dc791f9"
+    },
+    {
+      "path": "src/runtime.rs",
+      "sha256": "330f6f2667ad7aca751b379f7bf2a61bcfa99ceff0f2fc9dd4cae75d0d8b11f9"
+    },
+    {
+      "path": "src/spend.rs",
+      "sha256": "e34e348ab98e0e66cc73c97b7e93c607b2fcfec28a782224518e92c81f6eb3a2"
+    },
+    {
+      "path": "src/study.rs",
+      "sha256": "306099321be301cd3251b2ff28fef81587b069dc19274cc5ac7fdde20262133a"
+    },
+    {
+      "path": "src/web.rs",
+      "sha256": "21bc9485f5cb162551e28f63227489beab9cbc6cc2bf884b14cea80bee8db402"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "artifact/index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "artifact/index_bg.wasm",
+      "sha256": "96ff0e7c39d8f0797ea546c0b3239eef4e82bc87b29b9acbb797c753dd0395f8"
+    },
+    {
+      "path": "cli-target/debug/scry",
+      "sha256": "fe04ca5061eef006e86e3ac024ced18aa0f4ad0ffee54a638b7344ebd05c36e6"
+    }
+  ],
+  "before": {
+    "source": "f10e170d2967c9a7c3f5860a020a673c5cd05bb5",
+    "identical_tree_at_starting_head": "f8676ae3571137e6ed1755ded52c3ccc7d6b6d59",
+    "artifacts": [
+      {
+        "path": "artifact/index.js",
+        "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+      },
+      {
+        "path": "artifact/index_bg.wasm",
+        "sha256": "4245b91c88862be1a585f23e2e9511ca32316ac5bc0909ea90a1ba85e1224eb9"
+      },
+      {
+        "path": "scry",
+        "sha256": "41a55236348e0ee476186b9a3be2dc580d436e7ef85b0b4f65b715c79635f4b3"
+      }
+    ],
+    "runtime_pass": 4,
+    "runtime_fail": 5,
+    "native_pass": 8,
+    "native_fail": 3
+  },
+  "after": {
+    "study_native_pass": 12,
+    "nearby_native_pass_including_previous_11_study_tests": 76,
+    "unique_native_pass": 77,
+    "unchanged_unicode_test_ignored": 1,
+    "new_runtime_pass": 9,
+    "nearby_runtime_pass": 49,
+    "egress_calls_in_new_practice_fixtures": 0
+  },
+  "tools": {
+    "rust": "1.98.1",
+    "worker_build": "0.8.7",
+    "node_comparison": "22.22.0",
+    "node_nearby_supplement": "26.12.0",
+    "gitleaks": "8.30.1"
+  },
+  "limits": [
+    "Development artifacts built from worktree, not release artifacts or protected CI proof.",
+    "Independent QA/review/judge and exact-head CI remain root-owned.",
+    "Initial candidate runtime harness failed after correctly asking for no due Prompt; fixed to request explicit retained Card, original failure retained.",
+    "Pre-fix populated study-v1 Attempts without explicit revealed field are refused; no migration or populated rollback to an older writer.",
+    "Cold filesystem DB/WAL/SHM allocation remains FAIL under retained parent exception.",
+    "Phone, private canonical wording, hosted ingress, provider usefulness, independent hosted recovery and activation remain UNVERIFIED.",
+    "No #344 backup-flake or #347 long-Recitation capacity claim."
+  ]
+}

@@ -1,0 +1,193 @@
+TAP version 13
+# {"argv":["--stories",""],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"," "],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","\\t\\n\\r "],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories",""],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"preserved"}
+# {"argv":[],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all","extra"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-005"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-012"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-018"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-999"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002 US-999"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002 US-013"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"," US-004\\tUS-004\\n "],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-998"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017, US-018] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017, US-018] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017, US-999] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017, US-999] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-011] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-011] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016, US-017]","status":1,"build_invoked":false,"proof_output":"absent"}
+# Subtest: reject empty selection "" before build/proof
+ok 1 - reject empty selection "" before build/proof
+  ---
+  duration_ms: 173.472188
+  type: 'test'
+  ...
+# Subtest: reject empty selection " " before build/proof
+ok 2 - reject empty selection " " before build/proof
+  ---
+  duration_ms: 141.54008
+  type: 'test'
+  ...
+# Subtest: reject empty selection "\\t\\n\\r " before build/proof
+ok 3 - reject empty selection "\\t\\n\\r " before build/proof
+  ---
+  duration_ms: 138.622285
+  type: 'test'
+  ...
+# Subtest: invalid selection preserves prior owned proof
+ok 4 - invalid selection preserves prior owned proof
+  ---
+  duration_ms: 145.72278
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI []
+ok 5 - reject invalid CLI []
+  ---
+  duration_ms: 157.341352
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories"]
+ok 6 - reject invalid CLI ["--stories"]
+  ---
+  duration_ms: 148.467027
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--all","extra"]
+ok 7 - reject invalid CLI ["--all","extra"]
+  ---
+  duration_ms: 160.625602
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-005"]
+ok 8 - reject invalid CLI ["--stories","US-005"]
+  ---
+  duration_ms: 140.487637
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-012"]
+ok 9 - reject invalid CLI ["--stories","US-012"]
+  ---
+  duration_ms: 152.093644
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-018"]
+ok 10 - reject invalid CLI ["--stories","US-018"]
+  ---
+  duration_ms: 152.406497
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-999"]
+ok 11 - reject invalid CLI ["--stories","US-999"]
+  ---
+  duration_ms: 147.749839
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-002 US-999"]
+ok 12 - reject invalid CLI ["--stories","US-002 US-999"]
+  ---
+  duration_ms: 155.078607
+  type: 'test'
+  ...
+# Subtest: accept selector ["--all"] (guard-only)
+ok 13 - accept selector ["--all"] (guard-only)
+  ---
+  duration_ms: 143.576395
+  type: 'test'
+  ...
+# Subtest: accept selector ["--stories","US-002 US-013"] (guard-only)
+ok 14 - accept selector ["--stories","US-002 US-013"] (guard-only)
+  ---
+  duration_ms: 145.218656
+  type: 'test'
+  ...
+# Subtest: accept selector ["--stories"," US-004\\tUS-004\\n "] (guard-only)
+ok 15 - accept selector ["--stories"," US-004\\tUS-004\\n "] (guard-only)
+  ---
+  duration_ms: 149.196889
+  type: 'test'
+  ...
+# Subtest: pending stories are not walked until their ticket replaces Evidence: pending
+ok 16 - pending stories are not walked until their ticket replaces Evidence: pending
+  ---
+  duration_ms: 286.952873
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: no story headings --all
+ok 17 - reject discovery drift: no story headings --all
+  ---
+  duration_ms: 145.61195
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: no story headings --stories
+ok 18 - reject discovery drift: no story headings --stories
+  ---
+  duration_ms: 150.59187
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: trailing retirement wording --all
+ok 19 - reject discovery drift: trailing retirement wording --all
+  ---
+  duration_ms: 150.26407
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: trailing retirement wording --stories
+ok 20 - reject discovery drift: trailing retirement wording --stories
+  ---
+  duration_ms: 155.483053
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: pending marker removed without walks --all
+ok 21 - reject discovery drift: pending marker removed without walks --all
+  ---
+  duration_ms: 151.728032
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: pending marker removed without walks --stories
+ok 22 - reject discovery drift: pending marker removed without walks --stories
+  ---
+  duration_ms: 163.041486
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: unknown active story --all
+ok 23 - reject discovery drift: unknown active story --all
+  ---
+  duration_ms: 153.780639
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: unknown active story --stories
+ok 24 - reject discovery drift: unknown active story --stories
+  ---
+  duration_ms: 156.678647
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: duplicate replacing a live story --all
+ok 25 - reject discovery drift: duplicate replacing a live story --all
+  ---
+  duration_ms: 144.047457
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: duplicate replacing a live story --stories
+ok 26 - reject discovery drift: duplicate replacing a live story --stories
+  ---
+  duration_ms: 152.185087
+  type: 'test'
+  ...
+1..26
+# tests 26
+# suites 0
+# pass 26
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4099.682611

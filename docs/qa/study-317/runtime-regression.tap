@@ -1,0 +1,422 @@
+TAP version 13
+# Subtest: US-014.1: built Worker and Owner token / CLI journey
+ok 1 - US-014.1: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 572.217645
+  type: 'test'
+  ...
+# Subtest: US-014.2: built Worker and Owner token / CLI journey
+ok 2 - US-014.2: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 441.075047
+  type: 'test'
+  ...
+# Subtest: US-014.3: built Worker and Owner token / CLI journey
+not ok 3 - US-014.3: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 217.322248
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-213f40fd/qa/owner-api.test.mjs:7:11'
+  failureType: 'testCodeFailure'
+  error: 'fetch failed'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    Object.processResponse (/home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/undici/lib/web/fetch/index.js:237:16)
+    /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/undici/lib/web/fetch/index.js:1081:19
+    node:internal/process/task_queues:151:7
+    AsyncResource.runInAsyncScope (node:async_hooks:214:14)
+    AsyncResource.runMicrotask (node:internal/process/task_queues:148:8)
+    /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/undici/index.js:157:7
+    async fetch4 (/home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/miniflare/dist/src/index.js:63981:20)
+    async ProxyClientBridge.dispatchFetch (/home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/miniflare/dist/src/index.js:83182:22)
+    async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-213f40fd/qa/owner-api.mjs:82:23)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+    async file:///home/phaedrus/.t3/worktrees/scry/t3-213f40fd/qa/owner-api.test.mjs:7:5
+  ...
+# Subtest: US-014.4: built Worker and Owner token / CLI journey
+ok 4 - US-014.4: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 80.388143
+  type: 'test'
+  ...
+# Subtest: US-014.5: built Worker and Owner token / CLI journey
+ok 5 - US-014.5: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 195.86165
+  type: 'test'
+  ...
+# Subtest: US-014.6: built Worker and Owner token / CLI journey
+ok 6 - US-014.6: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 32.900947
+  type: 'test'
+  ...
+# Subtest: US-014.7: built Worker and Owner token / CLI journey
+ok 7 - US-014.7: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 184.656347
+  type: 'test'
+  ...
+# Sanitized CLI transcript: [{"command":"scry login --url http://127.0.0.1:37207 --token-stdin --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792518863717,"expires_ms":null,"id":"1086629231e5cae0a4351574b4d157fc","last_used_ms":1792518865209,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry whoami --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792518863717,"expires_ms":null,"id":"1086629231e5cae0a4351574b4d157fc","last_used_ms":1792518865240,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry token create forbidden paid cli child --paid --json","exit":1,"output":{"error":"Request refused."}},{"command":"scry token create cli agent --operation-id 522feb38-14b6-48e6-bb56-ab8da093c5f1 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"4a97741c68688ce6886964ea947e2bb8","message":null,"redirect":"/settings"},"token":{"created_ms":1792518865297,"expires_ms":null,"id":"4a97741c68688ce6886964ea947e2bb8","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create cli agent --operation-id 522feb38-14b6-48e6-bb56-ab8da093c5f1 --json","exit":0,"output":{"replayed":true,"result":{"entity_id":"4a97741c68688ce6886964ea947e2bb8","message":null,"redirect":"/settings"},"token":{"created_ms":1792518865297,"expires_ms":null,"id":"4a97741c68688ce6886964ea947e2bb8","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create changed payload --operation-id 522feb38-14b6-48e6-bb56-ab8da093c5f1 --json","exit":1,"output":{"error":"Operation conflict."}},{"command":"scry token list --json","exit":0,"output":{"tokens":[{"created_ms":1792518863861,"expires_ms":1792519463851,"id":"0ce13ad7563c89148f783a400626fb58","last_used_ms":1792518864249,"name":"delegated agent","paid":false,"revoked_ms":null},{"created_ms":1792518863717,"expires_ms":null,"id":"1086629231e5cae0a4351574b4d157fc","last_used_ms":1792518865383,"name":"builder","paid":false,"revoked_ms":null},{"created_ms":1792518864692,"expires_ms":null,"id":"2112a6c971cc6497e95c71a214deb5cf","last_used_ms":null,"name":"lost response","paid":false,"revoked_ms":null},{"created_ms":1792518864340,"expires_ms":1792518864370,"id":"4168280865a91a6e8c8fa03d47440b20","last_used_ms":null,"name":"expiry probe","paid":false,"revoked_ms":null},{"created_ms":1792518865297,"expires_ms":null,"id":"4a97741c68688ce6886964ea947e2bb8","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null},{"created_ms":1792518864498,"expires_ms":null,"id":"583aaafea6c2b3e7bd968dec510efa88","last_used_ms":1792518864525,"name":"immediate revocation","paid":false,"revoked_ms":1792518864544},{"created_ms":1792518864280,"expires_ms":null,"id":"6ffd1671ebee3cdef0cd66715468fc0f","last_used_ms":null,"name":"revoked probe","paid":false,"revoked_ms":1792518864309},{"created_ms":1792518863900,"expires_ms":null,"id":"8674b4536e2a41dd301371ec7bb4b969","last_used_ms":null,"name":"rotation","paid":false,"revoked_ms":1792518864249},{"created_ms":1792518864942,"expires_ms":null,"id":"87f28bd1a5a4715a946a7da2fab4e5a5","last_used_ms":1792518864960,"name":"paid delegated agent","paid":true,"revoked_ms":null},{"created_ms":1792518864865,"expires_ms":null,"id":"deb7933922f5f5d278832ef23561de44","last_used_ms":1792518864942,"name":"owner-authorized paid agent","paid":true,"revoked_ms":null}]}},{"command":"scry token revoke 4a97741c68688ce6886964ea947e2bb8 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"4a97741c68688ce6886964ea947e2bb8","message":null,"redirect":"/settings"}}},{"command":"scry login --url http://127.0.0.1:37207 --token-stdin --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry token revoke 1086629231e5cae0a4351574b4d157fc --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"1086629231e5cae0a4351574b4d157fc","message":null,"redirect":"/settings"}}},{"command":"scry whoami --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry unknown --json","exit":1,"output":{"error":"Usage: scry login|whoami|token|search|work|version|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]"}},{"command":"scry login --url http://external.invalid --token-stdin --json","exit":1,"output":{"error":"Use an HTTPS origin (HTTP is allowed only on loopback)."}}]
+# Subtest: US-014.8: built Worker and Owner token / CLI journey
+ok 8 - US-014.8: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 526.918711
+  type: 'test'
+  ...
+# Subtest: authorization, route and method rejection cannot read or create records
+ok 9 - authorization, route and method rejection cannot read or create records
+  ---
+  duration_ms: 3215.924607
+  type: 'test'
+  ...
+# Subtest: complete exact-byte preservation, independent readback and safe replay keep source immutable
+ok 10 - complete exact-byte preservation, independent readback and safe replay keep source immutable
+  ---
+  duration_ms: 1212.053021
+  type: 'test'
+  ...
+# Subtest: concurrent preservation has one immutable destination version
+ok 11 - concurrent preservation has one immutable destination version
+  ---
+  duration_ms: 667.631014
+  type: 'test'
+  ...
+# Subtest: changed or missing pinned source refuses without writing destination
+ok 12 - changed or missing pinned source refuses without writing destination
+  ---
+  duration_ms: 887.576589
+  type: 'test'
+  ...
+# Subtest: a corrupt existing destination is never overwritten or accepted
+ok 13 - a corrupt existing destination is never overwritten or accepted
+  ---
+  duration_ms: 1040.390241
+  type: 'test'
+  ...
+# Subtest: same-size destination corruption is detected by full-byte readback
+ok 14 - same-size destination corruption is detected by full-byte readback
+  ---
+  duration_ms: 1369.479551
+  type: 'test'
+  ...
+# Subtest: untrusted body, source path, ETag and size pins fail closed
+ok 15 - untrusted body, source path, ETag and size pins fail closed
+  ---
+  duration_ms: 2384.967134
+  type: 'test'
+  ...
+# Subtest: source metadata larger than the exact bounded pin is refused before copy
+ok 16 - source metadata larger than the exact bounded pin is refused before copy
+  ---
+  duration_ms: 1542.087896
+  type: 'test'
+  ...
+# Subtest: immutable capability expires on the actual clock without changing or overwriting either bucket
+ok 17 - immutable capability expires on the actual clock without changing or overwriting either bucket
+  ---
+  duration_ms: 2993.2191
+  type: 'test'
+  ...
+# Subtest: health fails closed before the first snapshot without initializing learner state
+ok 18 - health fails closed before the first snapshot without initializing learner state
+  ---
+  duration_ms: 139.598122
+  type: 'test'
+  ...
+# Subtest: real RS256 owner signature and private response headers
+ok 19 - real RS256 owner signature and private response headers
+  ---
+  duration_ms: 427.986457
+  type: 'test'
+  ...
+# Subtest: private build-bound changelog is read-only, with health version and revision
+ok 20 - private build-bound changelog is read-only, with health version and revision
+  ---
+  duration_ms: 79.095785
+  type: 'test'
+  ...
+# Subtest: cached issuer keys still require every token signature
+ok 21 - cached issuer keys still require every token signature
+  ---
+  duration_ms: 37.037533
+  type: 'test'
+  ...
+# Subtest: forged signature with valid owner claims is denied
+ok 22 - forged signature with valid owner claims is denied
+  ---
+  duration_ms: 25.006504
+  type: 'test'
+  ...
+# Subtest: anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+ok 23 - anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+  ---
+  duration_ms: 34.8189
+  type: 'test'
+  ...
+# Subtest: forged identity headers cannot replace owner authorization
+ok 24 - forged identity headers cannot replace owner authorization
+  ---
+  duration_ms: 35.614167
+  type: 'test'
+  ...
+# Subtest: canonical Host and alternate read-only redirect
+ok 25 - canonical Host and alternate read-only redirect
+  ---
+  duration_ms: 20.607532
+  type: 'test'
+  ...
+# Subtest: cross-site Origin, forged CSRF and body-length bounds
+ok 26 - cross-site Origin, forged CSRF and body-length bounds
+  ---
+  duration_ms: 65.46105
+  type: 'test'
+  ...
+# Subtest: atomic durable capture and exact operation replay
+ok 27 - atomic durable capture and exact operation replay
+  ---
+  duration_ms: 334.774494
+  type: 'test'
+  ...
+# Subtest: no implicit paid request or synthetic fallback without model configuration
+ok 28 - no implicit paid request or synthetic fallback without model configuration
+  ---
+  duration_ms: 1311.359184
+  type: 'test'
+  ...
+# Subtest: 422 retains escaped no-JavaScript Create draft
+ok 29 - 422 retains escaped no-JavaScript Create draft
+  ---
+  duration_ms: 13.6477
+  type: 'test'
+  ...
+# Subtest: photo type fence, durable exact capture and complete asset export
+ok 30 - photo type fence, durable exact capture and complete asset export
+  ---
+  duration_ms: 148.93687
+  type: 'test'
+  ...
+# Subtest: failed scheduled photo archive reaches the scheduler without hiding retained work
+ok 31 - failed scheduled photo archive reaches the scheduler without hiding retained work
+  ---
+  duration_ms: 118.802653
+  type: 'test'
+  ...
+# Subtest: complete R2 backup acknowledged only after exact checksum readback
+ok 32 - complete R2 backup acknowledged only after exact checksum readback
+  ---
+  duration_ms: 76.549081
+  type: 'test'
+  ...
+# Subtest: chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+ok 33 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+  ---
+  duration_ms: 5346.920942
+  type: 'test'
+  ...
+# Subtest: restore authorization and archive checksum fail before writes
+ok 34 - restore authorization and archive checksum fail before writes
+  ---
+  duration_ms: 192.876393
+  type: 'test'
+  ...
+# Subtest: independent complete restore is paused and refuses overwrite
+ok 35 - independent complete restore is paused and refuses overwrite
+  ---
+  duration_ms: 117.490225
+  type: 'test'
+  ...
+# Subtest: learner Settings resume refuses CSRF, replays safely and preserves historical work
+ok 36 - learner Settings resume refuses CSRF, replays safely and preserves historical work
+  ---
+  duration_ms: 3080.377819
+  type: 'test'
+  ...
+# Subtest: complete asset capacity rejects capture atomically and removes its orphan
+ok 37 - complete asset capacity rejects capture atomically and removes its orphan
+  ---
+  duration_ms: 2408.30998
+  type: 'test'
+  ...
+# Subtest: allowed reference reads mark future exposure while checking stays unaided and protected
+ok 38 - allowed reference reads mark future exposure while checking stays unaided and protected
+  ---
+  duration_ms: 2329.328304
+  type: 'test'
+  ...
+# {"controlled_spend":"PASS","purposes":[{"purpose":"critic","totals":{"entries":2,"unknown_entries":0,"reserved_micros":1000000,"known_cost_micros":468,"unknown_held_micros":0}},{"purpose":"generate.concepts","totals":{"entries":9,"unknown_entries":4,"reserved_micros":4500000,"known_cost_micros":2000000828,"unknown_held_micros":2000000}},{"purpose":"grade.jev","totals":{"entries":1,"unknown_entries":0,"reserved_micros":500000,"known_cost_micros":345,"unknown_held_micros":0}},{"purpose":"transcribe.photo","totals":{"entries":1,"unknown_entries":0,"reserved_micros":500000,"known_cost_micros":124,"unknown_held_micros":0}}],"entries":[{"id":"5f98db59462fafcfc7558c6fdc8b6b5e63ad086fe2d1f252","work_id":"e3185ae9527131a1291bfeef208d9894","work_kind":"concept_job","goal_id":"16bf6a9d5e276e9c11d4f47d261a962b","created_ms":1792518881464,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"abb958f75f122ac9f3e5c1ccd013c6dfa397893a1fa1e5e3","work_id":"e3185ae9527131a1291bfeef208d9894","work_kind":"concept_job","goal_id":"16bf6a9d5e276e9c11d4f47d261a962b","created_ms":1792518882484,"day":"2026-10-20","purpose":"critic","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":234,"unknown_held_micros":0},{"id":"8bca9c3be2f0102b6d0b5b7b9a1572cc5c68691c89824ecb","work_id":"4b403c677fff80d3648ae8904b1dc679","work_kind":"assessment","goal_id":"16bf6a9d5e276e9c11d4f47d261a962b","created_ms":1792518884042,"day":"2026-10-20","purpose":"grade.jev","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":345,"unknown_held_micros":0},{"id":"49ce1e3e8e1d9b68e58f5b69bffbe616da01a014f7dad347","work_id":"1418816a85e8c8e925a4a54d265ba30f","work_kind":"concept_job","goal_id":"c348b3464c3475ad3e53a259fee45a6d","created_ms":1792518885320,"day":"2026-10-20","purpose":"transcribe.photo","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"d263678e6bdd6972ea9d4b643a901e392728a302387a47ee","work_id":"1418816a85e8c8e925a4a54d265ba30f","work_kind":"concept_job","goal_id":"c348b3464c3475ad3e53a259fee45a6d","created_ms":1792518886383,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"1f667587f8990bf31bd01d5cab79975c5cbd501f9bcce463","work_id":"1418816a85e8c8e925a4a54d265ba30f","work_kind":"concept_job","goal_id":"c348b3464c3475ad3e53a259fee45a6d","created_ms":1792518887424,"day":"2026-10-20","purpose":"critic","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":234,"unknown_held_micros":0},{"id":"463b8e37b7efeaa542aa6aeb42a0719f4707489be61f0bdf","work_id":"97d95ebbb75268a3d6ba0d3fa7ee09e2","work_kind":"concept_job","goal_id":"3c115023ad76ac07eb1a7489b84045be","created_ms":1792518888534,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"f7da6fa5506c7f371ff561ee93ffbaa32e0ae94f069636e5","work_id":"6e58d5e3594cddcdb39f434d34f6e1fe","work_kind":"concept_job","goal_id":"9c4dc33843f40e8a70dd4761a7841634","created_ms":1792518890604,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"0fb3530f1797fab75f83083caa7cffae15c906ae9497fcb4","work_id":"21afd35c1d67aa364987eb462b7d48ba","work_kind":"concept_job","goal_id":"a6b44133c7d3c0cd6ea6e8c86b418608","created_ms":1792518892943,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"41855972b25204fd074df528c6c5222ade33737e5264bf7f","work_id":"6c5ed25844d9f5ce354f731b0e335008","work_kind":"concept_job","goal_id":"15012c7b6daaefdc5ea78c7101243486","created_ms":1792518895330,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"cb1da03b5f18b08fb30c2479b41520e1aa2213f5f7998795","work_id":"a460c17be29648945ead78a4c553a0b9","work_kind":"concept_job","goal_id":"c80ff0716a5a8a0796c6a3b8df199c5d","created_ms":1792518897692,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"18177497cbf15c0ec439ae252f2e32947af97656c80a9b35","work_id":"8be31e66312d053bcadbaf7433a19bd7","work_kind":"concept_job","goal_id":"f7e729479691e06013755f4f2543eb7c","created_ms":1792518900560,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":456,"unknown_held_micros":0},{"id":"baadca5c6ed6657506348ffbfaf2800418da30cd34c5f519","work_id":"c8586dcdce62f57c5f69b79a4698b987","work_kind":"concept_job","goal_id":"055df46d63dc4af961bfc47a9bbc9bcd","created_ms":1792518902887,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":2000000000,"unknown_held_micros":0}]}
+# Subtest: bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+ok 39 - bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+  ---
+  duration_ms: 25212.097994
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: verified snapshot
+ok 40 - scheduled snapshots: verified snapshot
+  ---
+  duration_ms: 1118.477858
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: missing internal authorization
+ok 41 - scheduled snapshots: missing internal authorization
+  ---
+  duration_ms: 426.381124
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: invalid namespace
+ok 42 - scheduled snapshots: invalid namespace
+  ---
+  duration_ms: 371.05255
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: paused restore
+ok 43 - scheduled snapshots: paused restore
+  ---
+  duration_ms: 359.448312
+  type: 'test'
+  ...
+# Subtest: named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+ok 44 - named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+  ---
+  duration_ms: 1954.771316
+  type: 'test'
+  ...
+# Subtest: preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 45 - preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 6179.273876
+  type: 'test'
+  ...
+# Subtest: production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 46 - production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 8778.58328
+  type: 'test'
+  ...
+# {"qa_spend_boundary":"PASS","mode":"preview","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 47 - preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 10983.474859
+  type: 'test'
+  ...
+# Subtest: preview: QA keeps local study and learner self-check without inheriting paid Jev
+ok 48 - preview: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 5104.240432
+  type: 'test'
+  ...
+# {"qa_spend_boundary":"PASS","mode":"production","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: production: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 49 - production: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 7831.290153
+  type: 'test'
+  ...
+# Subtest: production: QA keeps local study and learner self-check without inheriting paid Jev
+ok 50 - production: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 5066.061738
+  type: 'test'
+  ...
+# {"status":"PASS","checks":34,"failures":0,"artifact_sha256":"4245b91c88862be1a585f23e2e9511ca32316ac5bc0909ea90a1ba85e1224eb9","limits":"Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof."}
+# Subtest: revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+ok 51 - revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+  ---
+  duration_ms: 2309.299246
+  type: 'test'
+  ...
+# *** Fatal uncaught kj::Exception: kj/async-io-unix.c++:941: failed: ::bind(sockfd, &addr.generic, addrlen): Address already in use; toString() = 127.0.0.1:45519
+# stack: /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56880d6 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5687ea9 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56861fc /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2475dcc /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2476721 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247724d /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247881a /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@23ada69 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50965 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50eb6 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e8ee /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e6ee /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394d6c /usr/lib/libc.so.6@27780 /usr/lib/libc.so.6@278b8 /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394024
+# {"listener_allocation":"PASS","reclaimed_probe_port":45519,"concurrent_origins":["http://127.0.0.1:38165","http://127.0.0.1:40525","http://127.0.0.1:44487","http://127.0.0.1:36471"],"isolated_goals_per_runtime":1,"foreign_origin_status":403,"foreign_host_status":421,"canonical_write_and_replay_status":303}
+# Subtest: listener allocation survives deterministic contention and concurrent isolated starts
+ok 52 - listener allocation survives deterministic contention and concurrent isolated starts
+  ---
+  duration_ms: 8818.817872
+  type: 'test'
+  ...
+# Subtest: native success and ordinary auth/input/host denials produce no telemetry
+ok 53 - native success and ordinary auth/input/host denials produce no telemetry
+  ---
+  duration_ms: 7542.104872
+  type: 'test'
+  ...
+# Subtest: native 503 keeps exact response, sends one fixed private envelope and caps duplicates
+ok 54 - native 503 keeps exact response, sends one fixed private envelope and caps duplicates
+  ---
+  duration_ms: 5404.097951
+  type: 'test'
+  ...
+# Subtest: native production grouping is distinct from a controlled staging first-seen alert
+ok 55 - native production grouping is distinct from a controlled staging first-seen alert
+  ---
+  duration_ms: 2905.47848
+  type: 'test'
+  ...
+# A fresh explicit learning-space name is required.
+# Subtest: native Rust error preserves error response and reports only request_exception
+ok 56 - native Rust error preserves error response and reports only request_exception
+  ---
+  duration_ms: 3033.552906
+  type: 'test'
+  ...
+# {"sink":"reject","native_failure_and_next_study_ms":27.48929599999974}
+# [scry-rust] telemetry unavailable; report dropped
+# Subtest: native sink reject cannot delay or alter failure and next study
+ok 57 - native sink reject cannot delay or alter failure and next study
+  ---
+  duration_ms: 5122.41147
+  type: 'test'
+  ...
+# {"sink":"hang","native_failure_and_next_study_ms":26.58421200000157}
+# [scry-rust] telemetry unavailable; report dropped
+# Subtest: native sink hang cannot delay or alter failure and next study
+ok 58 - native sink hang cannot delay or alter failure and next study
+  ---
+  duration_ms: 5565.114655
+  type: 'test'
+  ...
+# {"sink":"redirect","native_failure_and_next_study_ms":25.26365999999689}
+# [scry-rust] telemetry unavailable; report dropped
+# Subtest: native sink redirect cannot delay or alter failure and next study
+ok 59 - native sink redirect cannot delay or alter failure and next study
+  ---
+  duration_ms: 5071.944799
+  type: 'test'
+  ...
+# Subtest: invalid/missing telemetry config leaves native responses unchanged and makes no send
+ok 60 - invalid/missing telemetry config leaves native responses unchanged and makes no send
+  ---
+  duration_ms: 2833.467157
+  type: 'test'
+  ...
+# Subtest: invalid/missing telemetry config leaves native responses unchanged and makes no send
+ok 61 - invalid/missing telemetry config leaves native responses unchanged and makes no send
+  ---
+  duration_ms: 3190.130063
+  type: 'test'
+  ...
+# Subtest: invalid/missing telemetry config leaves native responses unchanged and makes no send
+ok 62 - invalid/missing telemetry config leaves native responses unchanged and makes no send
+  ---
+  duration_ms: 2927.816508
+  type: 'test'
+  ...
+# [scry-rust] telemetry unavailable; report dropped
+# Subtest: same-isolate reporting recovers after sink rejection and the real one-minute bound
+ok 63 - same-isolate reporting recovers after sink rejection and the real one-minute bound
+  ---
+  duration_ms: 64276.049991
+  type: 'test'
+  ...
+1..63
+# tests 63
+# suites 0
+# pass 62
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 108539.861073

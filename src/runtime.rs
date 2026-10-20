@@ -843,6 +843,12 @@ impl DurableObject for LearningSpace {
             if app != previous {
                 self.save(&mut app, Some(previous.revision))?;
             }
+            if app.practice.protected() && path == "/export" {
+                return api_error(AppError::new(
+                    409,
+                    "Record exact practice assistance before export.",
+                ));
+            }
             if app.protected_goal().is_some()
                 && (path == "/export"
                     || path
@@ -871,6 +877,12 @@ impl DurableObject for LearningSpace {
                 // Assets await outside SQLite. Recheck the latest attempt
                 // before returning answers from the earlier committed snapshot.
                 let mut latest = self.load()?;
+                if latest.practice.protected() {
+                    return api_error(AppError::new(
+                        409,
+                        "Record exact practice assistance before export.",
+                    ));
+                }
                 if latest.protected_goal().is_some() {
                     let mut query = BTreeMap::new();
                     query.insert("return_to".into(), path.clone());
@@ -1278,41 +1290,57 @@ impl LearningSpace {
         };
         let path = req.path();
         let read = matches!(req.method(), Method::Get | Method::Head);
-        if read && path == "/api/v1/spend" {
-            let url = req.url()?;
-            let selectors: Vec<_> = url.query_pairs().filter(|(key, _)| key == "by").collect();
-            let by = match selectors.as_slice() {
-                [(_, value)] => crate::spend::SpendBy::parse(value),
-                _ => Err(AppError::new(422, "Use by=day|purpose|model.")),
-            };
-            let by = match by {
-                Ok(by) => by,
-                Err(error) => return api_error(error),
-            };
-            // Authentication above is synchronous. This path must not initialize
-            // a store, save token last-use, recover work, arm alarms, or save rows.
-            let sql = self.state.storage().sql();
-            let tables: Vec<Value> = sql
-                .exec(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='records'",
-                    None,
-                )?
-                .to_array()?;
-            let app = if tables.is_empty() {
-                App::new(String::new())
-            } else {
-                let records: Vec<StoredRow> = sql
-                    .exec("SELECT key, value FROM records ORDER BY key", None)?
-                    .to_array()?;
-                let rows = records
-                    .into_iter()
-                    .map(|row| (row.key, row.value))
-                    .collect();
-                persistence::app_from_rows(&rows).map_err(to_worker_error)?
-            };
-            return match crate::spend::report(&app, by) {
-                Ok(report) => api_json(&report, 200),
-                Err(error) => api_error(error),
+        if read
+            && matches!(
+                path.as_str(),
+                "/api/v1/spend"
+                    | "/api/v1/due"
+                    | "/api/v1/history"
+                    | "/api/v1/export"
+                    | "/api/v1/studies"
+            )
+        {
+            let app = self.read_snapshot()?;
+            return match path.as_str() {
+                "/api/v1/spend" => {
+                    let url = req.url()?;
+                    let selectors: Vec<_> =
+                        url.query_pairs().filter(|(key, _)| key == "by").collect();
+                    let by = match selectors.as_slice() {
+                        [(_, value)] => crate::spend::SpendBy::parse(value),
+                        _ => Err(AppError::new(422, "Use by=day|purpose|model.")),
+                    };
+                    match by.and_then(|by| crate::spend::report(&app, by)) {
+                        Ok(report) => api_json(&report, 200),
+                        Err(error) => api_error(error),
+                    }
+                }
+                "/api/v1/due" => api_json(&crate::study::due(&app, now()), 200),
+                "/api/v1/studies" => api_json(&json!({"studies":app.practice.studies}), 200),
+                "/api/v1/history" => match crate::study::history(&app) {
+                    Ok(history) => api_json(&history, 200),
+                    Err(error) => api_error(error),
+                },
+                _ => {
+                    if app.protected_goal().is_some() || app.practice.protected() {
+                        return api_error(AppError::new(409, "Record assistance before export."));
+                    }
+                    let mut snapshot = app;
+                    if snapshot.csrf.is_empty() {
+                        snapshot.csrf = random_id()?;
+                    }
+                    let archive = self.archive(snapshot).await?;
+                    if let Some(raw) = authorization.as_deref()
+                        && self.bearer_token(raw).is_none()
+                    {
+                        return api_refusal();
+                    }
+                    let latest = self.read_snapshot()?;
+                    if latest.protected_goal().is_some() || latest.practice.protected() {
+                        return api_error(AppError::new(409, "Record assistance before export."));
+                    }
+                    api_json(&archive, 200)
+                }
             };
         }
         let fields = if read {
@@ -1373,25 +1401,13 @@ impl LearningSpace {
                     &json!({"tokens": app.owner_tokens.values().map(|t| &t.info).collect::<Vec<_>>()}),
                     200,
                 ),
-                "/api/v1/history" => api_json(&json!({"operations": app.operations}), 200),
-                "/api/v1/export" => {
-                    if app.protected_goal().is_some() {
-                        return api_error(AppError::new(409, "Record assistance before export."));
-                    }
-                    self.save(&mut app, Some(before))?;
-                    let archive = self.archive(app).await?;
-                    let latest = self.load()?;
-                    if let Some(raw) = authorization.as_deref()
-                        && self.bearer_token(raw).is_none()
-                    {
-                        return api_refusal();
-                    }
-                    if latest.protected_goal().is_some() {
-                        return api_error(AppError::new(409, "Record assistance before export."));
-                    }
-                    return api_json(&archive, 200);
-                }
                 _ if path.starts_with("/api/v1/library/") => {
+                    if app.practice.protected() {
+                        return api_error(AppError::new(
+                            409,
+                            "Record assistance before reading Library text.",
+                        ));
+                    }
                     let url = req.url()?;
                     let query = url
                         .query_pairs()
@@ -1443,6 +1459,7 @@ impl LearningSpace {
         self.arm().await?;
         api_json(
             &api::MutationResponse {
+                practice: crate::study::wire_response(&app, &result),
                 result,
                 replayed,
                 token,
@@ -1465,6 +1482,25 @@ impl LearningSpace {
     }
     fn space_name(&self) -> Result<String> {
         self.principal()?.space_name(&self.env)
+    }
+    // No application initialization, token metadata save, recovery or alarm.
+    // The platform may allocate SQLite files when it activates the object.
+    fn read_snapshot(&self) -> Result<App> {
+        let sql = self.state.storage().sql();
+        let tables: Vec<Value> = sql
+            .exec(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='records'",
+                None,
+            )?
+            .to_array()?;
+        if tables.is_empty() {
+            return Ok(App::new(String::new()));
+        }
+        let records: Vec<StoredRow> = sql
+            .exec("SELECT key, value FROM records ORDER BY key", None)?
+            .to_array()?;
+        let rows = records.into_iter().map(|r| (r.key, r.value)).collect();
+        persistence::app_from_rows(&rows).map_err(to_worker_error)
     }
     fn stored_rows(&self) -> Result<BTreeMap<String, String>> {
         let sql = self.state.storage().sql();

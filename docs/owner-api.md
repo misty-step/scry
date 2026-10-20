@@ -63,7 +63,7 @@ tokens return the same 401 JSON refusal. Paid refusal is 403 before reservation.
 Token-authenticated changes appear by token ID in receipts/history/export.
 
 The foundation routes share the engine and durable boundary with the Library
-routes below. Study actions belong to #317. Source support does not establish
+routes below. Text Study actions are documented below. Source support does not establish
 production API activation or Access admission.
 
 ## Hosted admission follow-up
@@ -162,7 +162,98 @@ Every Library mutation retains token attribution in private history and complete
 export. The Library-only export excludes that attribution and all study state.
 
 Unused Versions and Works can be deleted; a recorded Study reference refuses
-both. #317 must create and retain references with real Studies and Attempts.
+both, including active, paused and dropped Studies.
 Until that slice lands, used-Study refusal has native unit proof only. Library
 CRUD needs no paid permission, makes no provider call, and reserves no allowance.
 The hosted Access admission limitation above also applies to these routes.
+
+## Text Study and practice
+
+`learn` returns the one retained Study for an immutable text Version. Pace
+applies to new Units. Pause keeps due Cards available. Drop stops presentation
+and keeps all history and the Version reference. Explicit resume reactivates
+that same Study. Learning again returns the current Study without changing its
+Pace or status.
+
+```sh
+./target/debug/scry learn VERSION --pace steady --json
+./target/debug/scry study list --json
+./target/debug/scry next --study STUDY --operation-id retained-prompt-operation --json
+./target/debug/scry answer PROMPT --text-file /private/answer.txt \
+  --operation-id retained-answer-operation --json
+./target/debug/scry next --json
+./target/debug/scry next --after PROMPT --json
+./target/debug/scry due --json
+./target/debug/scry history --json
+./target/debug/scry export --json
+./target/debug/scry spend --by day --json
+```
+
+An ordinary `next` returns the saved Prompt or held result. Only `--after`
+releases an answered Prompt. `next --card CARD` requests deliberate extra
+practice after the held result is released. `--text-stdin` accepts an answer
+without an input file. Empty answers count as misses. Dictated text uses the
+same answer field and grader.
+
+`reveal PROMPT` saves assistance before returning the target Units. A cued
+Prompt already records assistance. Lower-help Prompt JSON contains only its
+allowed cue and context. History, complete export, and Library reads refuse
+while an unanswered Free recall Prompt protects its target. Due and Study list
+remain available. These reads never record help or consume a Prompt.
+
+```sh
+./target/debug/scry next --after PROMPT --study STUDY \
+  --recite section --section SECTION --json
+./target/debug/scry next --after PROMPT --study STUDY --recite whole --json
+./target/debug/scry reveal PROMPT --json
+./target/debug/scry correct PROMPT ATTEMPT --verdict Good --unit UNIT --json
+./target/debug/scry study pause STUDY --json
+./target/debug/scry study resume STUDY --json
+./target/debug/scry study drop STUDY --json
+```
+
+Recitations require every Unit in the selected scope to have been introduced.
+Section prompts contain the heading alone. Whole prompts contain the title
+alone. Each target Unit gets its own Verdict and schedule effect.
+Correction accepts `Good` or `Again`; `--unit` is required for a Recitation.
+It appends an Owner override for the held Attempt and recomputes that Card from
+its original state and answer time. The original Attempt remains unchanged.
+A second override of that Unit, or a Correction after Next, conflicts.
+
+| Method | Route | Payload or result |
+| --- | --- | --- |
+| POST | `/api/v1/learn` | `operation_id`, `version_id`, optional `pace` |
+| GET | `/api/v1/studies` | All Studies, including paused and dropped |
+| POST | `/api/v1/studies/pause`, `/api/v1/studies/resume`, `/api/v1/studies/drop` | `operation_id`, `study_id` |
+| POST | `/api/v1/next` | `operation_id`, optional `after`, `study_id`, `card_id`, `recite`, `section_id` |
+| POST | `/api/v1/answer` | `operation_id`, `prompt_id`, raw `answer` |
+| POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |
+| POST | `/api/v1/correct` | `operation_id`, `prompt_id`, `attempt_id`, `verdict`, optional `unit_id` |
+| GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time |
+| GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
+| GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
+
+Practice mutations return `practice` beside the shared `result` and `replayed`
+fields. The engine receipt freezes each response reference. Answer replay
+returns the same immutable Attempt, even after Next or Correction. Changed
+payload under an operation ID conflicts. Every new Attempt names `exact-v2`
+and its grader version, the acting token, Version identity and normalized hash,
+actual Cue, raw answer, Diff, Verdict and per-Card scheduling effects.
+
+Free recall schedules once per UTC calendar day. Extra practice records an
+Attempt and can change cues, but leaves FSRS unchanged. New introductions use
+a rolling 24-hour window. The existing FSRS adapter identity remains pinned;
+its historical `ALGORITHM` string includes `exact-v1`, while the Attempt's
+separate `grade.authority` names the actual `exact-v2` grader.
+
+Answers allow at most 256 KiB. The local edit grid allows at most 1,000,000
+cells for the target and each sibling comparison. Capacity refusal preserves
+the current Prompt, every Card and all receipts. Smaller Sections avoid that
+bound. Complete archives retain the existing 16 MiB limit.
+
+Due, history, export, Study list and spend do not change application rows,
+revision, token last-use, receipts or alarms. On first Durable Object activation,
+the platform can allocate SQLite, WAL and SHM files before application SQL.
+Initialized read stability does not establish a literal cold-filesystem guarantee.
+The local synthetic journey does not establish hosted API admission under #335,
+physical-phone behavior, private Missal wording or independent hosted recovery.
