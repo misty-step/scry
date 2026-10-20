@@ -126,6 +126,7 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.locator('[data-state="result"]').waitFor();
       await shot('learner-result');
       await page.getByRole('button', {name:'Next question', exact:false}).tap();
+      await page.locator('[data-state="result"]').waitFor({state:'detached'});
       assert.equal(new URL(page.url()).pathname, '/notebook');
       assert.deepEqual((await f.record('meta')).practice, f.practice);
       await page.goto(f.origin + '/');
