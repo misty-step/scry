@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/misty-step/scry/compare/v0.1.1...v0.1.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **promote:** verify domains and bindings before production upload ([#282](https://github.com/misty-step/scry/issues/282)) ([747a6af](https://github.com/misty-step/scry/commit/747a6afaa877797964557cca29808161669ce178))
+
 ## [0.1.1](https://github.com/misty-step/scry/compare/v0.1.0...v0.1.1) (2026-10-17)
 
 
