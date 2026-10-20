@@ -54,21 +54,43 @@ notebook. Each invocation disposes only its own Miniflare runtime and sink.
 
 [Recorded evidence](evidence.json) binds the observed controls and normal shared
 runtime group. Before: expected two reports, observed one; the second request
-was 58,428 ms after completed rejection. After: two reports, with the second
-request 60,005 ms after completed rejection. The unmodified current eight-file
-group passed 103/103 with zero skips on its first run, including all eleven
-telemetry tests. Syntax, formatting, walk-runner, release, promotion,
-daily-backup, and retained historical recovery checks also passed.
+was 56,368 ms after completed rejection. After: two reports, with the second
+request 60,010 ms after completed rejection. Syntax, formatting, walk-runner,
+release, promotion, daily-backup, and retained historical recovery checks passed.
 
-This implementation run freshly built the merged base
-`99415ae0336aa38fe08ae9532c8be82bc3b4024f`, froze its Worker, and reused those
-exact bytes for both controls and the group. The Worker reports that base
-revision and version 0.2.0. The change affects only QA and these receipts;
-`git diff 99415ae -- . ':!qa' ':!docs'` is empty, including every Rust, asset,
+The fresh 0.3.0 eight-file group is **102/103 FAIL**, zero skips, one run.
+Recovery passed; the unchanged reject-sink no-delay check failed its
+`elapsed < 1000` assertion. Its elapsed value is logged only after the assertion,
+so the red does not retain the exact duration or establish its cause. There was
+no full-group retry and no relaxation of that assertion.
+
+One separate diagnostic delayed the local 429 reply by 1,500 ms, logged timing
+before the existing assertion, and asserted that failure and subsequent Create
+finish before the sink replies. It passed the original no-delay/privacy/retry
+assertions: failure response at `1792526170602`, subsequent Create at
+`1792526170638`, sink reply at `1792526172118`; measured failure plus Create
+was 48.34 ms. Its generated script, log, hashes and events remain in
+`post-release/async-reject-diagnostic.*`. This proves asynchronous reporting in
+that control, not the cause of the group red. Attribution to load, version or
+another change remains unverified. The root judge owns its disposition.
+
+This qualification freshly built ordinary merge
+`31285a46f946fda16646b360cde1b20fb0f78146`, froze its Worker, and reused those
+exact bytes for both controls and the group. That merge preserves the original
+implementation commit and brings in release
+`69435af34fe7a8be7b5683f8b5d3e6b27852e177`, whose six files change only version
+and changelog information. The Worker reports the merge revision and version
+0.3.0. The change affects only QA and these receipts;
+`git diff 31285a46 -- . ':!qa' ':!docs'` is empty, including every Rust, asset,
 loader source, manifest, lockfile, and toolchain input. This is compile-input
 equivalence, not a fresh build of the final PR revision. Protected CI must build
 that committed source afresh; the root agent owns CI, independent QA/review,
 judgment and merging.
+
+The earlier 0.2.0 controls and 103/103 group remain at
+[the original implementation commit](https://github.com/misty-step/scry/blob/34f9d34c9bec16f97ad7ebcbe4f71cd28671fa2c/docs/qa/telemetry-deadline-350/evidence.json)
+and `~/.cache/tmp/scry-350-builder/`. They are not relabeled as 0.3.0 proof.
+The new frozen Worker, controls and group are under its `post-release/` directory.
 
 The historical 72/73 group red and earlier controlled red remain recorded with
 their original hashes. The historical group lacks actual send timestamps, so
