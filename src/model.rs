@@ -362,7 +362,10 @@ pub struct Spend {
     pub reserved_micros: u64,
     pub cost_micros: Option<u64>,
     pub status: String,
-    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
     #[serde(default)]
     pub response_hash: Option<String>,
     #[serde(default)]

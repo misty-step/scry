@@ -1,0 +1,31 @@
+{
+  "source_commit": "42778fa0466a28338dea81d94e4a366886d02e8b",
+  "probe": "qa/spend.test.mjs (candidate probe against fixed-base Worker)",
+  "artifacts": [
+    {
+      "path": "index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "index_bg.wasm",
+      "sha256": "d4df13392a196de19045b56fe68218ef77901cd36e2394ef079e875cec2a8cdb"
+    }
+  ],
+  "observations": [
+    {
+      "request": "GET /api/v1/spend?by=day with mixed ledger including a missing historical model",
+      "expected": 200,
+      "actual": 500,
+      "diagnostic": "Stored data could not be decoded safely."
+    },
+    {
+      "request": "GET /api/v1/spend?by=day with Access owner and empty store",
+      "expected": 200,
+      "actual": 404
+    }
+  ],
+  "test_exit": 1,
+  "tests": 2,
+  "passed": 0,
+  "failed": 2
+}

@@ -1278,6 +1278,43 @@ impl LearningSpace {
         };
         let path = req.path();
         let read = matches!(req.method(), Method::Get | Method::Head);
+        if read && path == "/api/v1/spend" {
+            let url = req.url()?;
+            let selectors: Vec<_> = url.query_pairs().filter(|(key, _)| key == "by").collect();
+            let by = match selectors.as_slice() {
+                [(_, value)] => crate::spend::SpendBy::parse(value),
+                _ => Err(AppError::new(422, "Use by=day|purpose|model.")),
+            };
+            let by = match by {
+                Ok(by) => by,
+                Err(error) => return api_error(error),
+            };
+            // Authentication above is synchronous. This path must not initialize
+            // a store, save token last-use, recover work, arm alarms, or save rows.
+            let sql = self.state.storage().sql();
+            let tables: Vec<Value> = sql
+                .exec(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='records'",
+                    None,
+                )?
+                .to_array()?;
+            let app = if tables.is_empty() {
+                App::new(String::new())
+            } else {
+                let records: Vec<StoredRow> = sql
+                    .exec("SELECT key, value FROM records ORDER BY key", None)?
+                    .to_array()?;
+                let rows = records
+                    .into_iter()
+                    .map(|row| (row.key, row.value))
+                    .collect();
+                persistence::app_from_rows(&rows).map_err(to_worker_error)?
+            };
+            return match crate::spend::report(&app, by) {
+                Ok(report) => api_json(&report, 200),
+                Err(error) => api_error(error),
+            };
+        }
         let fields = if read {
             BTreeMap::new()
         } else {

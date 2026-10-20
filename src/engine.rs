@@ -1242,7 +1242,14 @@ pub fn authorize_work(app: &App, work_id: &str, now: i64) -> AppResult<()> {
     }
     Ok(())
 }
-fn reserve(app: &mut App, work_id: &str, lease: &str, model: &str, now: i64) -> AppResult<()> {
+fn reserve(
+    app: &mut App,
+    work_id: &str,
+    lease: &str,
+    model: &str,
+    purpose: &str,
+    now: i64,
+) -> AppResult<()> {
     authorize_work(app, work_id, now)?;
     if app.spent(now).saturating_add(RESERVATION) > DAILY_ALLOWANCE {
         return Err(AppError::new(
@@ -1257,7 +1264,8 @@ fn reserve(app: &mut App, work_id: &str, lease: &str, model: &str, now: i64) -> 
         reserved_micros: RESERVATION,
         cost_micros: None,
         status: "unknown".into(),
-        model: model.into(),
+        model: Some(model.into()),
+        purpose: Some(purpose.into()),
         response_hash: None,
         response_model: None,
         raw_response: None,
@@ -1310,7 +1318,7 @@ pub fn claim_work(
             app.revision += 1;
             return Ok(None);
         }
-        if let Err(e) = reserve(app, &a.id, lease, &config.jev_model, now) {
+        if let Err(e) = reserve(app, &a.id, lease, &config.jev_model, "grade.jev", now) {
             assessment_failed(app, &a.id, &e.message, false, now);
             app.revision += 1;
             return Ok(None);
@@ -1409,7 +1417,7 @@ pub fn claim_work(
             app.revision += 1;
             return Ok(None);
         }
-        if let Err(e) = reserve(app, &j.id, lease, &config.jev_model, now) {
+        if let Err(e) = reserve(app, &j.id, lease, &config.jev_model, "critic", now) {
             job_failed(app, &j.id, &e.message, false);
             app.revision += 1;
             return Ok(None);
@@ -1439,12 +1447,17 @@ pub fn claim_work(
         app.revision += 1;
         return Ok(None);
     }
-    if let Err(e) = reserve(app, &j.id, lease, &config.model, now) {
+    let transcribe = goal.photo.is_some() && goal.transcript.is_none();
+    let purpose = if transcribe {
+        "transcribe.photo"
+    } else {
+        "generate.concepts"
+    };
+    if let Err(e) = reserve(app, &j.id, lease, &config.model, purpose, now) {
         job_failed(app, &j.id, &e.message, false);
         app.revision += 1;
         return Ok(None);
     }
-    let transcribe = goal.photo.is_some() && goal.transcript.is_none();
     let request = if transcribe {
         generation::transcription_request(&goal, &config.model)
     } else {
@@ -2848,8 +2861,11 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             && spend.reserved_micros >= RESERVATION;
         if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
             || (spend.reserved_micros != RESERVATION && !imported_reservation)
-            || spend.model.is_empty()
-            || spend.model.len() > 256
+            || spend.model.as_ref().is_some_and(|model| model.len() > 256)
+            || spend
+                .purpose
+                .as_ref()
+                .is_some_and(|purpose| purpose.len() > 256)
             || spend
                 .response_hash
                 .as_ref()

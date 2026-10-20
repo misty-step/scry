@@ -1,0 +1,199 @@
+{
+  "classification": "Builder proof only; independent QA/review/judge remain with root",
+  "observed_utc": "2026-10-20T17:19:48.853356+00:00",
+  "ticket": "https://github.com/misty-step/scry/issues/321",
+  "parent": "https://github.com/misty-step/scry/issues/313",
+  "criteria": [
+    "US-019.7",
+    "D5",
+    "US-014.3",
+    "US-014.7",
+    "US-014.8",
+    "AG1",
+    "S06",
+    "S09"
+  ],
+  "initial_base": "42778fa0466a28338dea81d94e4a366886d02e8b",
+  "implementation_commit": "c2eec92e4647de89796bd0cfcaecf44250ffe231",
+  "master_integrated": "31de4f7934ae1a1fc73b848879bdfb1ce534986d",
+  "integration_commit": "9c7d14e711b808927b82a1aac7465ff090e3791e",
+  "source_commit": "9c7d14e711b808927b82a1aac7465ff090e3791e",
+  "source_tree": "675c68ea965d3b5dceb500050d5ef67a43cc1fc3",
+  "environment": "Clean git archive of committed source, env -i, local workerd/SQLite/R2, controlled egress and authored synthetic data only",
+  "runtimes": {
+    "rust": "1.98.1",
+    "node": "22.22.0",
+    "worker-build": "0.8.7",
+    "gitleaks_required": "8.30.1"
+  },
+  "artifact_directory": "/home/phaedrus/.cache/tmp/scry-spend-proof-owq2leyn/source",
+  "artifacts": [
+    {
+      "path": "build/index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "build/index_bg.wasm",
+      "sha256": "d949d867444b163779f42e74ce4b5f78456d2b1a7b5c1830a0efee9bb33d80ba"
+    },
+    {
+      "path": "target/debug/scry",
+      "sha256": "af67371e9c309137d403635d489c6393c9713e89ebef7a650690399c7d8ede16"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "docs/spend.md",
+      "sha256": "b001e10e79c653388b7b7ceb7bc31b40e455c9b924075716fc05c4c8117ae193"
+    },
+    {
+      "path": "features/owner-tokens.md",
+      "sha256": "bd19c2edd056175f592d23babc9b24b2007b12ef13f2314b54ddef86b7b99e06"
+    },
+    {
+      "path": "qa/runtime-helper.mjs",
+      "sha256": "8886188968f3474d96538199fd25254aef254a13565477da70556ba2b48af0d5"
+    },
+    {
+      "path": "qa/runtime.test.mjs",
+      "sha256": "936b4c45370e1ceb5a14ffbfb25c888c99d4574a156968e73a58ff70ee3eb8d2"
+    },
+    {
+      "path": "qa/spend.test.mjs",
+      "sha256": "80f24b7bdb4c299b606ede197fddf21bc36b69454892a4b1ee335b219016818a"
+    },
+    {
+      "path": "scripts/scry-ci",
+      "sha256": "fdf85415b944e002c143c2f135d07675933cfe4797c2f507caedbb211e37bdf8"
+    },
+    {
+      "path": "src/bin/scry.rs",
+      "sha256": "269cb9a202ce0978f3fbb0aee42a85fd0e762763336d9d96639704510ca80d90"
+    },
+    {
+      "path": "src/engine.rs",
+      "sha256": "f3bdcee20c27487d105f09590f1939a1b8a8c1568259515d9e36c98c044fbbfb"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "c02a55c1d11f1fb00e38de8fba305c1b643618723de9cad0a26fd0e2dffec35b"
+    },
+    {
+      "path": "src/model.rs",
+      "sha256": "75439d3122d6bbfbdb474ce89285ec34ddde8a0253a7be201877fa4b44dac257"
+    },
+    {
+      "path": "src/persistence.rs",
+      "sha256": "dbbbe4001dccbf2b68d5c8c3aa19acb2891cce27bcdf9d7c77e79650693891ab"
+    },
+    {
+      "path": "src/runtime.rs",
+      "sha256": "bf41ffeb25cdf56e172bf8ee753509592b03b9079462ef3ee55524b597b2d4ba"
+    },
+    {
+      "path": "src/spend.rs",
+      "sha256": "e34e348ab98e0e66cc73c97b7e93c607b2fcfec28a782224518e92c81f6eb3a2"
+    },
+    {
+      "path": "tests/application.rs",
+      "sha256": "8538c2e2b4c94135b6c14dccbcf9d1933cffb144794962476598dac0964ffc4f"
+    },
+    {
+      "path": "tests/spend.rs",
+      "sha256": "f334c6e8cdd4e73479394c3a91283346a35c3ebb6b7964cb370001fc6e29a613"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "SPEC.md",
+      "sha256": "73c6c211a9e411d11944aded7ec62a98c11122d0500c5e48ace9fda919e7d575"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "9d952551719267044be79d48d6ebfad174c67fe174cff3fef0712d68f2047d2a"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "ebf7c2627788070c4e5905e776a9f7a18918d250e592dac48b70773a75ec06f4"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "e59e54f494831c886540444d5bc14fc04924294ab7cd25b724b78b61127036af"
+    }
+  ],
+  "checks": [
+    {
+      "command": "cargo fmt --all -- --check",
+      "exit": 0
+    },
+    {
+      "command": "cargo test --locked --all-targets",
+      "exit": 0
+    },
+    {
+      "command": "cargo clippy --locked --all-targets -- -D warnings",
+      "exit": 0
+    },
+    {
+      "command": "cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings",
+      "exit": 0
+    },
+    {
+      "command": "cargo check --locked --target wasm32-unknown-unknown",
+      "exit": 0
+    },
+    {
+      "command": "worker-build --release --locked",
+      "exit": 0
+    },
+    {
+      "command": "node --test qa/spend.test.mjs qa/owner-api.test.mjs qa/library.test.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node --test qa/runtime.test.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node --check qa/spend.test.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node --check qa/runtime-helper.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node --check qa/runtime.test.mjs",
+      "exit": 0
+    },
+    {
+      "command": "Python ast.parse of scripts/scry-ci",
+      "exit": 0
+    }
+  ],
+  "native": {
+    "suites": 20,
+    "passed": 128,
+    "failed": 0,
+    "ignored": 1
+  },
+  "cli": {
+    "tests": 18,
+    "pass": 18,
+    "fail": 0,
+    "skipped": 0
+  },
+  "runtime": {
+    "tests": 35,
+    "pass": 35,
+    "fail": 0,
+    "skipped": 0
+  },
+  "ignored": "Existing Unicode 17 corpus conformance test requires its separately documented corpus; no test changed or disabled",
+  "limits": [
+    "US-019 remains Evidence: pending for #322. No generate.version agent or new caps.",
+    "No external provider transmission or actual spend, private/live application credentials, production/historical writes, deployment, activation or merge.",
+    "No hosted ingress, model quality, physical phone, independent hosted recovery, full browser story walk or full scry-ci claim.",
+    "Pre-attribution binaries cannot safely write populated SQLite without losing purpose; the new archive format refuses older restores. See docs/spend.md."
+  ]
+}

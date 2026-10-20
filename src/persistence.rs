@@ -266,7 +266,9 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if !app.library.is_empty()
+    if app.spend.iter().any(|s| s.purpose.is_some()) {
+        "scry-rust-durable-sqlite-attributed-spend-v1"
+    } else if !app.library.is_empty()
         || !app.study_version_refs.is_empty()
         || app.operations.values().any(|r| {
             r.path
@@ -640,7 +642,8 @@ mod tests {
             reserved_micros: RESERVATION,
             cost_micros: None,
             status: "unknown".into(),
-            model: "synthetic-model".into(),
+            model: Some("synthetic-model".into()),
+            purpose: None,
             response_hash: Some(sha256(escaped.as_bytes())),
             response_model: Some("synthetic-model".into()),
             response_outcome: Some("received".into()),

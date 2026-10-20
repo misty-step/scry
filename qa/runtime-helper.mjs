@@ -13,7 +13,7 @@ catch {
 export const Response=runtime.Response;
 export const denyEgress=async()=>{throw new Error('External calls are forbidden in synthetic QA.');};
 export const internalKey='synthetic-internal-private-storage-key-32chars';
-export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false}) {
+export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath}) {
   artifact=resolve(artifact);
   // Miniflare replaces Host with its own listener. This transport-only adapter
   // restores the simulated external Host before Rust enforces its real checks.
@@ -22,13 +22,25 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
   const space=inspect
     ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}fetch(request){return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
     : `export {RustLearningSpace as LearningSpace};`;
-  const adapter=`import App,{LearningSpace as RustLearningSpace} from './index.js';${space}export default class extends App{fetch(request){const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}return super.fetch(new Request(request,{headers}));}}`;
+  // Like Wrangler's drain-body middleware, discard unread transport bytes only
+  // after Rust responds. Otherwise workerd can reset the upload and erase its
+  // early refusal (cloudflare/workerd#7634). Never buffer them before auth.
+  const adapter=`import App,{LearningSpace as RustLearningSpace} from './index.js';${space}export default class extends App{async fetch(request){const headers=new Headers(request.headers);headers.set('Host',headers.get('X-Scry-Test-Host')||new URL(request.url).host);headers.delete('X-Scry-Test-Host');if(headers.has('X-Scry-Test-Origin')){headers.set('Origin',headers.get('X-Scry-Test-Origin'));headers.delete('X-Scry-Test-Origin');}
+    const forwarded=new Request(request,{headers});
+    const response=await super.fetch(forwarded);
+    response.headers.set('X-Scry-Test-Body-Used',String(forwarded.bodyUsed));
+    if(forwarded.body!==null&&!forwarded.bodyUsed){
+      const reader=forwarded.body.getReader();
+      while(!(await reader.read()).done){}
+    }
+    return response;
+  }}`;
   const modules=[
     {type:'ESModule',path:resolve(artifact,'smoke-adapter.js'),contents:adapter},
     {type:'ESModule',path:resolve(artifact,'index.js'),contents:readFileSync(resolve(artifact,'index.js'),'utf8')},
     {type:'CompiledWasm',path:resolve(artifact,'index_bg.wasm'),contents:readFileSync(resolve(artifact,'index_bg.wasm'))}
   ];
-  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,...(port!==undefined?{host:'127.0.0.1',port}:{})};
+  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,...(port!==undefined?{host:'127.0.0.1',port}:{}),...(resourcePersistencePath?{resourcePersistencePath}:{})};
   const options=runtime.convertV4MiniflareOptions?runtime.convertV4MiniflareOptions(v4):v4;
   if(inspect)options.unsafeInspectDurableObjects=true;
   const mf=new runtime.Miniflare(options);

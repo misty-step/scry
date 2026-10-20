@@ -1,0 +1,476 @@
+[
+  {
+    "command": "scry spend --by day --json",
+    "exit": 0,
+    "output": {
+      "by": "day",
+      "currency": "USD",
+      "day_basis": "UTC",
+      "entries": [
+        {
+          "cost_micros": 123,
+          "created_ms": 1792454399999,
+          "day": "2026-10-19",
+          "goal_id": "fixture-http",
+          "id": "known-before-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792454400000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "unknown-at-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 456,
+          "created_ms": 1792458000000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-missing",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792461600000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-empty",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 0,
+          "created_ms": 1792465200000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "retained-attribution",
+          "model": "retained-model",
+          "purpose": "historical.custom",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        }
+      ],
+      "groups": [
+        {
+          "key": "2026-10-19",
+          "totals": {
+            "entries": 1,
+            "known_cost_micros": 123,
+            "reserved_micros": 500000,
+            "unknown_entries": 0,
+            "unknown_held_micros": 0
+          }
+        },
+        {
+          "key": "2026-10-20",
+          "totals": {
+            "entries": 4,
+            "known_cost_micros": 456,
+            "reserved_micros": 2000000,
+            "unknown_entries": 2,
+            "unknown_held_micros": 1000000
+          }
+        }
+      ],
+      "totals": {
+        "entries": 5,
+        "known_cost_micros": 579,
+        "reserved_micros": 2500000,
+        "unknown_entries": 2,
+        "unknown_held_micros": 1000000
+      }
+    }
+  },
+  {
+    "command": "scry spend --by purpose --json",
+    "exit": 0,
+    "output": {
+      "by": "purpose",
+      "currency": "USD",
+      "day_basis": "UTC",
+      "entries": [
+        {
+          "cost_micros": 123,
+          "created_ms": 1792454399999,
+          "day": "2026-10-19",
+          "goal_id": "fixture-http",
+          "id": "known-before-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792454400000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "unknown-at-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 456,
+          "created_ms": 1792458000000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-missing",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792461600000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-empty",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 0,
+          "created_ms": 1792465200000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "retained-attribution",
+          "model": "retained-model",
+          "purpose": "historical.custom",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        }
+      ],
+      "groups": [
+        {
+          "key": "generate.concepts",
+          "totals": {
+            "entries": 2,
+            "known_cost_micros": 123,
+            "reserved_micros": 1000000,
+            "unknown_entries": 1,
+            "unknown_held_micros": 500000
+          }
+        },
+        {
+          "key": "historical.custom",
+          "totals": {
+            "entries": 1,
+            "known_cost_micros": 0,
+            "reserved_micros": 500000,
+            "unknown_entries": 0,
+            "unknown_held_micros": 0
+          }
+        },
+        {
+          "key": "unattributed",
+          "totals": {
+            "entries": 2,
+            "known_cost_micros": 456,
+            "reserved_micros": 1000000,
+            "unknown_entries": 1,
+            "unknown_held_micros": 500000
+          }
+        }
+      ],
+      "totals": {
+        "entries": 5,
+        "known_cost_micros": 579,
+        "reserved_micros": 2500000,
+        "unknown_entries": 2,
+        "unknown_held_micros": 1000000
+      }
+    }
+  },
+  {
+    "command": "scry spend --by model --json",
+    "exit": 0,
+    "output": {
+      "by": "model",
+      "currency": "USD",
+      "day_basis": "UTC",
+      "entries": [
+        {
+          "cost_micros": 123,
+          "created_ms": 1792454399999,
+          "day": "2026-10-19",
+          "goal_id": "fixture-http",
+          "id": "known-before-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792454400000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "unknown-at-midnight",
+          "model": "synthetic-model",
+          "purpose": "generate.concepts",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 456,
+          "created_ms": 1792458000000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-missing",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": null,
+          "created_ms": 1792461600000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "legacy-empty",
+          "model": "unattributed",
+          "purpose": "unattributed",
+          "reserved_micros": 500000,
+          "status": "unknown",
+          "unknown_held_micros": 500000,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        },
+        {
+          "cost_micros": 0,
+          "created_ms": 1792465200000,
+          "day": "2026-10-20",
+          "goal_id": "fixture-http",
+          "id": "retained-attribution",
+          "model": "retained-model",
+          "purpose": "historical.custom",
+          "reserved_micros": 500000,
+          "status": "known",
+          "unknown_held_micros": 0,
+          "work_id": "fixture-job",
+          "work_kind": "concept_job"
+        }
+      ],
+      "groups": [
+        {
+          "key": "retained-model",
+          "totals": {
+            "entries": 1,
+            "known_cost_micros": 0,
+            "reserved_micros": 500000,
+            "unknown_entries": 0,
+            "unknown_held_micros": 0
+          }
+        },
+        {
+          "key": "synthetic-model",
+          "totals": {
+            "entries": 2,
+            "known_cost_micros": 123,
+            "reserved_micros": 1000000,
+            "unknown_entries": 1,
+            "unknown_held_micros": 500000
+          }
+        },
+        {
+          "key": "unattributed",
+          "totals": {
+            "entries": 2,
+            "known_cost_micros": 456,
+            "reserved_micros": 1000000,
+            "unknown_entries": 1,
+            "unknown_held_micros": 500000
+          }
+        }
+      ],
+      "totals": {
+        "entries": 5,
+        "known_cost_micros": 579,
+        "reserved_micros": 2500000,
+        "unknown_entries": 2,
+        "unknown_held_micros": 1000000
+      }
+    }
+  },
+  {
+    "command": "scry spend --json",
+    "exit": 1,
+    "output": {
+      "error": "Use spend --by day|purpose|model."
+    }
+  },
+  {
+    "command": "scry spend --by invalid --json",
+    "exit": 1,
+    "output": {
+      "error": "Use spend --by day|purpose|model."
+    }
+  },
+  {
+    "command": "scry spend --by day extra --json",
+    "exit": 1,
+    "output": {
+      "error": "Use spend --by day|purpose|model."
+    }
+  },
+  {
+    "command": "scry spend --by purpose --json",
+    "exit": 1,
+    "output": {
+      "error": "Owner authorization required."
+    }
+  },
+  {
+    "command": "scry spend --by purpose --json",
+    "exit": 1,
+    "output": {
+      "error": "Owner authorization required."
+    }
+  },
+  {
+    "command": "scry spend --by day --json",
+    "exit": 1,
+    "output": {
+      "error": "Credential file must be private (chmod 600)."
+    }
+  },
+  {
+    "command": "scry spend --by day --url http://localhost:1 --json",
+    "exit": 1,
+    "output": {
+      "error": "Log in separately for this origin."
+    }
+  },
+  {
+    "command": "scry spend --by day --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "command": "scry spend --by day --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "observation": "Repeated API + CLI reads preserve every SQLite row, total_changes and all persisted resource bytes",
+    "files": [
+      {
+        "path": "cache/miniflare-CacheObject/metadata.sqlite",
+        "sha256": "97e8d54f8a7255106f66cf1b213c4a4d7b558d21310b1c2bfedc3d0d526dddda"
+      },
+      {
+        "path": "cache/miniflare-CacheObject/metadata.sqlite-shm",
+        "sha256": "eabd765f6f7701884c8ec3c8c92544ad4383fbae014cdf858c03487125dcf9cd"
+      },
+      {
+        "path": "cache/miniflare-CacheObject/metadata.sqlite-wal",
+        "sha256": "8c3ec79f32f7f7faeeefac116f3ad00098559d13a0722708696255ab10074f7c"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/bff13b24a0817b3d1e96a6a4de682a7e74c67cae058c13a2a8a84d9545a06722.sqlite",
+        "sha256": "97e8d54f8a7255106f66cf1b213c4a4d7b558d21310b1c2bfedc3d0d526dddda"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/bff13b24a0817b3d1e96a6a4de682a7e74c67cae058c13a2a8a84d9545a06722.sqlite-shm",
+        "sha256": "625a60581dbd46ec4feceee41b3b55eede124cb9d28f637f1efc8d08ab49c497"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/bff13b24a0817b3d1e96a6a4de682a7e74c67cae058c13a2a8a84d9545a06722.sqlite-wal",
+        "sha256": "417bef2478fdbf9dbb5e9562b789d359d228c9ce07d1c85d5f4cd8eef9974d1d"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/metadata.sqlite",
+        "sha256": "97e8d54f8a7255106f66cf1b213c4a4d7b558d21310b1c2bfedc3d0d526dddda"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/metadata.sqlite-shm",
+        "sha256": "1e73dcf0f04ca355e71fddf095b8e703c1a49dc59feb24a53056247b36553cf0"
+      },
+      {
+        "path": "do/spend-37302b2c-9df9-4733-a093-596eb307a662-LearningSpace/metadata.sqlite-wal",
+        "sha256": "9d99c8211f06f98c1ebb53d1abd545dd346189205c02a518cc7e0e99166fee3c"
+      },
+      {
+        "path": "r2/miniflare-R2BucketObject/metadata.sqlite",
+        "sha256": "97e8d54f8a7255106f66cf1b213c4a4d7b558d21310b1c2bfedc3d0d526dddda"
+      },
+      {
+        "path": "r2/miniflare-R2BucketObject/metadata.sqlite-shm",
+        "sha256": "a85d8dde29cdad84322c5490cecc346a0a080046b53293a9c86c077cbe760d45"
+      },
+      {
+        "path": "r2/miniflare-R2BucketObject/metadata.sqlite-wal",
+        "sha256": "1cc42ce4e7e94b5e60080e933e4372ae58718aa2c8200413275b032dbd6c38ad"
+      }
+    ],
+    "totals": {
+      "entries": 5,
+      "unknown_entries": 2,
+      "reserved_micros": 2500000,
+      "known_cost_micros": 579,
+      "unknown_held_micros": 1000000
+    },
+    "unpaid_reader": true
+  }
+]
