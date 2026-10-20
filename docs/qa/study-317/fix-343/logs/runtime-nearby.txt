@@ -1,0 +1,71 @@
+✔ US-015.1: private Library CLI → built Worker → SQLite/R2 (21.379277ms)
+✔ US-015.2: private Library CLI → built Worker → SQLite/R2 (81.39105ms)
+✔ US-015.3: private Library CLI → built Worker → SQLite/R2 (72.567256ms)
+✔ US-015.4: private Library CLI → built Worker → SQLite/R2 (34.434296ms)
+✔ US-015.5: private Library CLI → built Worker → SQLite/R2 (806.088387ms)
+✔ US-015.6: private Library CLI → built Worker → SQLite/R2 (382.481774ms)
+✔ US-015.7: private Library CLI → built Worker → SQLite/R2 (828.513153ms)
+✔ US-015.8: private Library CLI → built Worker → SQLite/R2 (446.782122ms)
+An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+Sanitized Library CLI transcript: target/library-cli.json
+✔ authorization, route and method rejection cannot read or create records (567.379236ms)
+✔ complete exact-byte preservation, independent readback and safe replay keep source immutable (321.417437ms)
+✔ concurrent preservation has one immutable destination version (286.052589ms)
+✔ changed or missing pinned source refuses without writing destination (352.335602ms)
+✔ a corrupt existing destination is never overwritten or accepted (254.342834ms)
+✔ same-size destination corruption is detected by full-byte readback (250.162727ms)
+✔ untrusted body, source path, ETag and size pins fail closed (809.71662ms)
+✔ source metadata larger than the exact bounded pin is refused before copy (726.58372ms)
+✔ immutable capability expires on the actual clock without changing or overwriting either bucket (2559.715746ms)
+✔ native success and ordinary auth/input/host denials produce no telemetry (5112.638347ms)
+✔ native 503 keeps exact response, sends one fixed private envelope and caps duplicates (4800.100936ms)
+✔ native production grouping is distinct from a controlled staging first-seen alert (2466.652393ms)
+A fresh explicit learning-space name is required.
+✔ native Rust error preserves error response and reports only request_exception (2460.264472ms)
+{"sink":"reject","native_failure_and_next_study_ms":7.187824999999066}
+[scry-rust] telemetry unavailable; report dropped
+✔ native sink reject cannot delay or alter failure and next study (4776.533025ms)
+{"sink":"hang","native_failure_and_next_study_ms":7.021789999998873}
+[scry-rust] telemetry unavailable; report dropped
+✔ native sink hang cannot delay or alter failure and next study (4785.103093ms)
+{"sink":"redirect","native_failure_and_next_study_ms":13.194652999998652}
+[scry-rust] telemetry unavailable; report dropped
+✔ native sink redirect cannot delay or alter failure and next study (4883.540609ms)
+✔ invalid/missing telemetry config leaves native responses unchanged and makes no send (2470.686205ms)
+✔ invalid/missing telemetry config leaves native responses unchanged and makes no send (2498.053542ms)
+✔ invalid/missing telemetry config leaves native responses unchanged and makes no send (2470.54202ms)
+[scry-rust] telemetry unavailable; report dropped
+✔ same-isolate reporting recovers after sink rejection and the real one-minute bound (63962.101567ms)
+✔ US-016.1: compiled CLI → built Worker → SQLite/R2 (996.464916ms)
+An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+✔ US-016.2: compiled CLI → built Worker → SQLite/R2 (14042.490773ms)
+✔ US-016.3: compiled CLI → built Worker → SQLite/R2 (519.667248ms)
+✔ US-016.4: compiled CLI → built Worker → SQLite/R2 (355.088385ms)
+✔ US-016.5: compiled CLI → built Worker → SQLite/R2 (376.217366ms)
+✔ US-016.6: compiled CLI → built Worker → SQLite/R2 (5846.49116ms)
+✔ US-016.7: compiled CLI → built Worker → SQLite/R2 (1792.909468ms)
+An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+✔ US-016.8: compiled CLI → built Worker → SQLite/R2 (350.401266ms)
+✔ US-016.9: compiled CLI → built Worker → SQLite/R2 (668.399665ms)
+✔ US-016.10: compiled CLI → built Worker → SQLite/R2 (1130.580862ms)
+✔ US-016.11: compiled CLI → built Worker → SQLite/R2 (100.082896ms)
+An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+✔ US-017.1: compiled CLI → built Worker → SQLite/R2 (187.602715ms)
+✔ US-017.2: compiled CLI → built Worker → SQLite/R2 (525.763134ms)
+✔ US-017.3: compiled CLI → built Worker → SQLite/R2 (76.964746ms)
+✔ US-017.4: compiled CLI → built Worker → SQLite/R2 (212.692018ms)
+✔ US-017.5: compiled CLI → built Worker → SQLite/R2 (139.419908ms)
+✔ US-017.6: compiled CLI → built Worker → SQLite/R2 (351.78656ms)
+✔ US-017.7: compiled CLI → built Worker → SQLite/R2 (5704.459534ms)
+✔ US-017.8: compiled CLI → built Worker → SQLite/R2 (2776.960701ms)
+✔ US-017.9: compiled CLI → built Worker → SQLite/R2 (199.72752ms)
+✔ US-017.10: compiled CLI → built Worker → SQLite/R2 (1238.494378ms)
+ℹ tests 49
+ℹ suites 0
+ℹ pass 49
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 100926.823836

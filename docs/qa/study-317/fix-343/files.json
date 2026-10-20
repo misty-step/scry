@@ -1,0 +1,74 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "7aa33128777f2ad48da5661c0149b98c38f4576e99bb52b34d0e991c87000d53"
+  },
+  {
+    "path": "compatibility.json",
+    "sha256": "833df3e29edcae2a42910bb03f36efe212e4fa6015b27f24d7e3663202ac5ff3"
+  },
+  {
+    "path": "logs/cli-build.txt",
+    "sha256": "7dc6234143d6654fcbf1a592e70f94ccb911dfcdcf14eccc1cadee84b43b7278"
+  },
+  {
+    "path": "logs/clippy-native.txt",
+    "sha256": "fa756a7c248c411d76f53c1cb90a79baa8b2779327b640ef97faad5f3971002c"
+  },
+  {
+    "path": "logs/clippy-wasm.txt",
+    "sha256": "16080430fb0e6449a3733109a1d94e17b88eff24aa6148b0f81d605082d70653"
+  },
+  {
+    "path": "logs/fmt.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "logs/gitleaks-source.txt",
+    "sha256": "6e846fd3b75d2a17b1069ab7f0fc74fb2b79beb5b5a4c982064be9d4f0452b2a"
+  },
+  {
+    "path": "logs/native-after.txt",
+    "sha256": "49707091c461fdebea92bc6090185fa96a551464cff6aa4ac0651c53b58fa0d3"
+  },
+  {
+    "path": "logs/native-before.txt",
+    "sha256": "7e5b551241929b96edc1348d22bf73edefd4bb309af7d3e78f9a0f895cd06480"
+  },
+  {
+    "path": "logs/native-nearby.txt",
+    "sha256": "253dc9d39faaff262dae7540a4269691762028c62f0e22515cb0ee85ff020fca"
+  },
+  {
+    "path": "logs/runtime-after.tap",
+    "sha256": "50d31af30c23fac54ae415374b2cfdff1bdf537410db91685a1e123cdb249588"
+  },
+  {
+    "path": "logs/runtime-before.tap",
+    "sha256": "b60b53580d8a2ce90665a94fc1c6931ff3eff32cf240460558c7ec3a174bcf3d"
+  },
+  {
+    "path": "logs/runtime-harness-initial-failure.txt",
+    "sha256": "0597b70722a825262fdbfacc7c5197f6456e28d15ed523a346a55e981e75ad38"
+  },
+  {
+    "path": "logs/runtime-nearby.txt",
+    "sha256": "a180af679e9e2772d9f033341907b0daf0561cf5be5c567011149ae01626d43c"
+  },
+  {
+    "path": "logs/wasm-build.txt",
+    "sha256": "f6ce2a9fbf9b62fac3d8ea0eed70dec84ef7a07c15529c50bc03ce963bb63bff"
+  },
+  {
+    "path": "logs/wasm-check.txt",
+    "sha256": "5100b17aa8cc7e0820757d043ec898339394f1fe52fa638cddaee9279d5d7b60"
+  },
+  {
+    "path": "observations.json",
+    "sha256": "b4dc029b665b1e1e9f2da7002c7458a1c1fe3c63ae22675844c7d3548549027e"
+  },
+  {
+    "path": "source-artifact.json",
+    "sha256": "483170b970149075ddf51de3d13c94db4f7670ef4f991836e480095bf77426ff"
+  }
+]

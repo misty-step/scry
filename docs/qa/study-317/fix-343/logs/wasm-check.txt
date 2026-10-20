@@ -1,0 +1,2 @@
+    Checking scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-355a0a56)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.42s

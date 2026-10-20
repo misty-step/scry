@@ -40,12 +40,13 @@ impl Owner {
     fn operation(&mut self, path: &str, data: Value) -> AppResult<Value> {
         let fields = api::library_fields(data)?;
         let t = self.app.owner_tokens.values().next().unwrap().info.clone();
+        let operation_seed = format!("seed-{}", fields.get("operation_id").unwrap());
         let r = engine::mutate_as(
             &mut self.app,
             api::mutation_path(path).unwrap(),
             &fields,
             self.now,
-            &format!("seed-{}", self.op),
+            &operation_seed,
             MutationActor::Token(&t),
         )?;
         engine::validate_app(&self.app)?;
@@ -474,6 +475,19 @@ fn populated_study_archive_requires_compatible_format_and_intact_payload_chunks(
     wrong["format"] = json!("scry-rust-durable-sqlite-library-v1");
     let wrong = serde_json::to_vec(&wrong).unwrap();
     assert!(persistence::Archive::decode(&wrong, &persistence::sha256(&wrong)).is_err());
+    let mut ambiguous: Value = serde_json::from_slice(&bytes).unwrap();
+    for attempt in ambiguous["app"]["practice"]["attempts"]
+        .as_object_mut()
+        .unwrap()
+        .values_mut()
+    {
+        attempt.as_object_mut().unwrap().remove("revealed");
+    }
+    let ambiguous = serde_json::to_vec(&ambiguous).unwrap();
+    assert!(
+        persistence::Archive::decode(&ambiguous, &persistence::sha256(&ambiguous)).is_err(),
+        "Pre-fix populated Attempts cannot infer Reveal from generic cue assistance."
+    );
     let mut rows = persistence::rows(&o.app).unwrap();
     assert!(rows.keys().any(|k| k.starts_with("practice_payload/")));
     let key = rows
@@ -532,4 +546,284 @@ fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
     assert!(!held.contains("<svg onload"));
     assert!(held.contains("&lt;script&gt;alert(2)&lt;/script&gt;"));
     assert!(held.contains("Expected &lt;svg onload=alert(1)&gt; text."));
+}
+
+#[test]
+fn study_old_disclosures_cannot_cross_a_new_protected_prompt() {
+    for scope in ["unit", "section", "whole"] {
+        let mut o = Owner::new();
+        let text = "Copper lanterns shelter quiet gardens.";
+        let v = o.add(text, false);
+        let learn = json!({"operation_id":"replay-safe-learn-operation","version_id":v});
+        let learned = o.operation("/api/v1/learn", learn.clone()).unwrap();
+        let sid = learned["study"]["id"].as_str().unwrap();
+        let next = json!({"operation_id":"replay-old-next-operation","study_id":sid});
+        let first = o.operation("/api/v1/next", next.clone()).unwrap();
+        let pid = first["prompt"]["id"].as_str().unwrap();
+        let cid = o.app.practice.current.as_ref().unwrap().targets[0]
+            .card_id
+            .clone();
+        let reveal = json!({"operation_id":"replay-old-reveal-operation","prompt_id":pid});
+        let shown = o.operation("/api/v1/reveal", reveal.clone()).unwrap();
+        assert_eq!(
+            o.operation("/api/v1/reveal", reveal.clone()).unwrap(),
+            shown
+        );
+        let answer =
+            json!({"operation_id":"replay-old-answer-operation","prompt_id":pid,"answer":text});
+        let answered = o.operation("/api/v1/answer", answer.clone()).unwrap();
+        assert_eq!(
+            o.operation("/api/v1/answer", answer.clone()).unwrap(),
+            answered
+        );
+        let held = json!({"operation_id":"replay-old-held-operation"});
+        o.operation("/api/v1/next", held.clone()).unwrap();
+        let correct = json!({"operation_id":"replay-old-correct-operation","prompt_id":pid,"attempt_id":answered["attempt"]["id"],"verdict":"Again"});
+        let corrected = o.operation("/api/v1/correct", correct.clone()).unwrap();
+        assert_eq!(
+            o.operation("/api/v1/correct", correct.clone()).unwrap(),
+            corrected
+        );
+        for _ in 0..6 {
+            o.next(Some(&cid));
+            o.answer(text);
+        }
+        let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+        let section = &o.app.library.versions[&v].sections[0].id;
+        let selection = match scope {
+            "section" => {
+                json!({"after":after,"study_id":sid,"recite":"section","section_id":section})
+            }
+            "whole" => json!({"after":after,"study_id":sid,"recite":"whole"}),
+            _ => json!({"after":after,"card_id":cid}),
+        };
+        let protected = o.call("/api/v1/next", selection).unwrap();
+        assert!(o.app.practice.protected());
+        assert_eq!(study::history(&o.app).unwrap_err().status, 409);
+        for (path, payload) in [
+            ("/api/v1/next", next),
+            ("/api/v1/reveal", reveal),
+            ("/api/v1/answer", answer.clone()),
+            ("/api/v1/next", held),
+        ] {
+            let before = o.app.clone();
+            assert_eq!(
+                o.operation(path, payload.clone()).unwrap_err().status,
+                409,
+                "{scope}: {path}"
+            );
+            assert_eq!(o.app, before);
+            let mut fields = api::library_fields(payload).unwrap();
+            fields.insert("csrf".into(), o.app.csrf.clone());
+            assert_eq!(
+                engine::mutate(
+                    &mut o.app,
+                    api::mutation_path(path).unwrap(),
+                    &fields,
+                    NOW,
+                    "browser-replay"
+                )
+                .unwrap_err()
+                .status,
+                409
+            );
+            assert_eq!(
+                o.app, before,
+                "The browser and API use the same receipt fence."
+            );
+        }
+        // Corrections contain state, not answer text. Safe receipts still reconcile.
+        let before = o.app.clone();
+        assert_eq!(o.operation("/api/v1/correct", correct).unwrap(), corrected);
+        assert_eq!(o.operation("/api/v1/learn", learn).unwrap(), learned);
+        assert_eq!(o.app, before);
+        let same = json!({"operation_id":"replay-current-safe-next"});
+        assert_eq!(
+            o.operation("/api/v1/next", same.clone()).unwrap(),
+            protected
+        );
+        let before = o.app.clone();
+        assert_eq!(o.operation("/api/v1/next", same).unwrap(), protected);
+        assert_eq!(o.app, before);
+        let mut changed = answer;
+        changed["answer"] = json!("Changed payload");
+        assert_eq!(
+            o.operation("/api/v1/answer", changed).unwrap_err().status,
+            409
+        );
+        assert_eq!(o.app, before);
+        let final_attempt = o.answer(text);
+        assert_eq!(final_attempt["attempt"]["assisted"], false);
+        assert_eq!(final_attempt["attempt"]["effects"][0]["scheduled"], true);
+        assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 1);
+    }
+}
+
+#[test]
+fn study_explicit_reveal_breaks_success_runs_at_every_rung_and_correction() {
+    let mut o = Owner::new();
+    let text = "Copper lanterns shelter quiet gardens.";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    o.next(None);
+    let cid = o.app.practice.current.as_ref().unwrap().targets[0]
+        .card_id
+        .clone();
+    let rungs = [
+        Cue::Read,
+        Cue::FirstLetters,
+        Cue::FirstLetter,
+        Cue::PreviousLine,
+        Cue::SectionHeading,
+        Cue::WholeTitle,
+    ];
+    for (i, cue) in rungs.iter().enumerate() {
+        assert_eq!(
+            o.app.practice.current.as_ref().unwrap().prompt.cue_level,
+            *cue
+        );
+        o.answer(text);
+        assert_eq!(o.app.practice.cards[&cid].state.successes, 1);
+        o.next(Some(&cid));
+        let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+        o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
+        let schedule = o.app.practice.cards[&cid].state.schedule.clone();
+        let copied = o.answer(text);
+        assert_eq!(
+            o.app.practice.cards[&cid].state.cue, *cue,
+            "A revealed Good must not fade {cue:?}."
+        );
+        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
+        assert_eq!(copied["attempt"]["revealed"], true);
+        assert_eq!(o.app.practice.cards[&cid].state.schedule, schedule);
+        o.next(Some(&cid));
+        o.answer(text);
+        o.next(Some(&cid));
+        let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+        o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
+        let a = o.answer("Wrong words")["attempt"].clone();
+        assert_eq!(
+            o.app.practice.cards[&cid].state.cue, *cue,
+            "A revealed Again must not lapse."
+        );
+        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
+        let correction = json!({"operation_id":format!("revealed-correction-rung-{i}"),"prompt_id":pid,"attempt_id":a["id"],"verdict":"Good"});
+        let corrected = o.operation("/api/v1/correct", correction.clone()).unwrap();
+        assert_eq!(o.app.practice.cards[&cid].state.cue, *cue);
+        assert_eq!(
+            o.app.practice.cards[&cid].state.successes, 0,
+            "A Correction retains explicit Reveal."
+        );
+        let before = o.app.clone();
+        assert_eq!(
+            o.operation("/api/v1/correct", correction).unwrap(),
+            corrected
+        );
+        assert_eq!(o.app, before);
+        assert_eq!(json!(o.app.practice.attempts[a["id"].as_str().unwrap()]), a);
+        let bytes = persistence::Archive::new(o.app.clone(), vec![], o.now)
+            .encode()
+            .unwrap();
+        assert_eq!(
+            persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+                .unwrap()
+                .app,
+            o.app
+        );
+        let mut dishonest: Value = serde_json::from_slice(&bytes).unwrap();
+        dishonest["app"]["practice"]["attempts"][copied["attempt"]["id"].as_str().unwrap()]["revealed"] =
+            json!(false);
+        let dishonest = serde_json::to_vec(&dishonest).unwrap();
+        assert!(
+            persistence::Archive::decode(&dishonest, &persistence::sha256(&dishonest)).is_err()
+        );
+        for _ in 0..2 {
+            o.next(Some(&cid));
+            o.answer(text);
+        }
+        let next_cue = rungs[(i + 1).min(rungs.len() - 1)];
+        assert_eq!(o.app.practice.cards[&cid].state.cue, next_cue);
+        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
+        o.next(Some(&cid));
+    }
+}
+
+#[test]
+fn study_old_free_prompt_context_cannot_disclose_a_new_target() {
+    let mut o = Owner::new();
+    let first = "Copper lanterns shelter quiet gardens.";
+    let second = "Amber streams carry patient wishes.";
+    let v = o.add(&format!("{first}\n{second}"), false);
+    o.learn(&v, "steady");
+    let cid = o.fade_to_free(first);
+    o.answer(first);
+    o.fade_to_free(second);
+    let operation = json!({"operation_id":"old-free-prompt-with-context"});
+    let old = o.operation("/api/v1/next", operation.clone()).unwrap();
+    assert_eq!(old["prompt"]["assisted"], false);
+    assert_eq!(old["prompt"]["context"].as_str().unwrap().trim(), first);
+    o.answer(second);
+    o.next(Some(&cid));
+    let before = o.app.clone();
+    assert_eq!(
+        o.operation("/api/v1/next", operation).unwrap_err().status,
+        409
+    );
+    assert_eq!(o.app, before);
+}
+
+fn diagnostic_study_fixture() -> App {
+    let mut o = Owner::new();
+    let v = o.add("Copper lanterns shelter quiet gardens.", false);
+    let sid = o.learn(&v, "steady");
+    o.next(None);
+    o.answer("Copper lanterns shelter quiet gardens.");
+    o.call("/api/v1/studies/drop", json!({"study_id":sid}))
+        .unwrap();
+    o.app
+}
+
+fn assert_diagnostic_refusal(app: App) {
+    let archive = persistence::Archive::new(app, vec![], NOW);
+    let bytes = serde_json::to_vec(&archive).unwrap();
+    assert_eq!(
+        persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+            .unwrap_err()
+            .status,
+        422
+    );
+    assert_eq!(archive.diagnose().unwrap_err().status, 422);
+}
+
+#[test]
+fn study_archive_diagnosis_refuses_missing_work_without_panicking() {
+    let mut app = diagnostic_study_fixture();
+    app.library.works.clear();
+    assert_diagnostic_refusal(app);
+}
+
+#[test]
+fn study_archive_diagnosis_refuses_missing_version_and_malformed_targets() {
+    let app = diagnostic_study_fixture();
+    let mut missing = app.clone();
+    missing.library.versions.clear();
+    assert_diagnostic_refusal(missing);
+    for field in ["section", "unit", "card", "index", "study", "version"] {
+        let mut missing = app.clone();
+        let a = missing.practice.attempts.values_mut().next().unwrap();
+        match field {
+            "section" => {
+                a.prompt.scope = study::Scope::Section {
+                    section_id: "missing-section".into(),
+                }
+            }
+            "unit" => a.effects[0].unit_id = "missing-unit".into(),
+            "card" => a.effects[0].card_id = "missing-card".into(),
+            "index" => a.effects[0].unit_index = usize::MAX,
+            "study" => a.prompt.study_id = "missing-study".into(),
+            "version" => a.prompt.version_id = "missing-version".into(),
+            _ => unreachable!(),
+        }
+        assert_diagnostic_refusal(missing);
+    }
 }

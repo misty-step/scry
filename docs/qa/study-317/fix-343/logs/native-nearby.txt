@@ -1,0 +1,147 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-355a0a56)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.78s
+     Running unittests src/lib.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/scry-12cf133605b79052)
+
+running 6 tests
+test grading::unicode::tests::unicode_17_conformance ... ignored, requires pinned Unicode 17 NormalizationTest.txt and CaseFolding.txt; see module README
+test persistence::tests::checks_image_bytes_instead_of_a_declared_mime ... ok
+test web::generated_markdown_cannot_activate_raw_html_or_untrusted_urls ... ok
+test persistence::tests::checks_complete_asset_capacity_without_loading_photo_bodies ... ok
+test persistence::tests::row_roundtrip_and_archive_checksum ... ok
+test persistence::tests::paid_payloads_roundtrip_in_separate_bounded_sql_records ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/application.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/application-28d16a8a86b81db6)
+
+running 18 tests
+test missing_generation_never_fabricates_content ... ok
+test allowance_is_shared_and_unknown_cost_is_never_free ... ok
+test missing_assessor_keeps_answer_and_learner_authority ... ok
+test competing_occurrences_and_archive_cannot_publish_stale_answer ... ok
+test assessment_send_once_timeout_unknown_reservation_and_explicit_retry ... ok
+test content_edits_leave_historical_presentations_immutable ... ok
+test refinement_uses_real_feedback_and_never_rewrites_attempts ... ok
+test reveal_is_held_and_next_is_deliberate ... ok
+test restored_state_keeps_paid_work_paused_and_held_feedback ... ok
+test semantic_verdict_fenced_and_grade_override_keeps_original ... ok
+test capture_word_phrase_dictated_and_url_stay_private_and_exact ... ok
+test failures_do_not_partially_capture_and_csrf_is_required ... ok
+test look_up_is_durable_and_cannot_become_unaided_success ... ok
+test exact_answer_event_schedule_and_receipt_are_one_transition ... ok
+test candidates_are_saved_before_critic_and_critic_retry_reuses_generation ... ok
+test export_readback_roundtrip_preserves_complete_schedule_and_evidence ... ok
+test new_practice_follows_authored_order_without_overriding_due_time ... ok
+test full_text_refinement_keeps_existing_material_when_generation_or_critic_is_partial ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/archive_integrity.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/archive_integrity-63d3d3bfe1f64b06)
+
+running 5 tests
+test corrections_are_unique_eligible_and_replay_the_original_attempt ... ok
+test broken_references_and_evidence_do_not_become_recovery_authority ... ok
+test historical_schedule_policy_and_assistance_cannot_be_forged ... ok
+test valid_history_corrections_warm_attempts_and_paused_work_roundtrip ... ok
+test paid_leases_and_saved_checking_answers_have_complete_ownership ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/concept_policy.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/concept_policy-959193d6119264ff)
+
+running 3 tests
+test observations_distinguish_exposure_help_and_cold_recall_without_mutations ... ok
+test levels_weight_estimates_and_tally_caps_observations_without_losing_counts ... ok
+test solid_and_fading_are_recall_estimates_and_latest_help_prevents_solid ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fsrs_golden.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/fsrs_golden-8c3967edf17b559b)
+
+running 4 tests
+test published_trajectory_and_algorithm_identity_remain_exact ... ok
+test invalid_and_unearned_transitions_are_rejected ... ok
+test utc_calendar_scheduling_and_elapsed_day_estimate_keep_distinct_conventions ... ok
+test all_persisted_fields_match_pinned_go_scheduler ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/learning_policy.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/learning_policy-c2cd02cd215cf4c8)
+
+running 4 tests
+test local_grading_accepts_only_authored_forms_and_choice_identity ... ok
+test critic_requires_whole_applicable_battery_and_never_vetoes_teaching_score ... ok
+test required_idea_policy_and_shadow_classes_keep_honest_authority ... ok
+test short_answer_thresholds_and_risks_fail_closed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/library.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/library-786cd2f4b245bf52)
+
+running 5 tests
+test empty_library_preserves_legacy_application_rows_and_archive_shape ... ok
+test library_search_dedupe_segmentation_and_shared_receipts ... ok
+test unused_crud_fences_names_unicode_and_library_export ... ok
+test supersede_retains_original_and_study_reference_refuses_deletion ... ok
+test segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_boundaries ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/revival_custody.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/revival_custody-e69b22864e37c72c)
+
+running 7 tests
+test ordinary_old_archives_and_rows_remain_compatible_without_custody ... ok
+test historical_ungraded_attempts_are_not_grades_and_keep_their_original_epoch ... ok
+test original_go_schedule_epoch_is_explicit_preserved_and_fail_closed ... ok
+test imported_helped_observations_do_not_invent_scheduler_writes ... ok
+test malformed_or_changed_retained_bytes_fail_before_restore ... ok
+test retained_go_bytes_survive_rows_and_complete_archives_without_becoming_learning ... ok
+test retained_custody_counts_toward_existing_complete_archive_capacity ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/revival_receipts.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/revival_receipts-8352c2f5ad7c449c)
+
+running 3 tests
+test imported_receipt_shape_never_allows_a_new_non_native_request_identity ... ok
+test imported_receipt_allowance_requires_custody_exact_marker_and_valid_hash ... ok
+test retained_receipt_keys_and_hashes_roundtrip_without_rekeying ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/schedule_history.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/schedule_history-8eeb78399832ee9a)
+
+running 11 tests
+test revealing_records_future_help_instead_of_an_immediate_cold_success ... ok
+test self_check_preserves_original_attempt_and_records_exposure_for_later_occurrences ... ok
+test leaving_held_feedback_does_not_help_an_unrelated_concept ... ok
+test due_reviews_remain_available_while_paused_and_another_goal_is_focused ... ok
+test stale_reset_cannot_erase_a_newer_review_or_content_revision ... ok
+test assistance_is_pinned_to_occurrence_even_when_24_hours_elapse_before_answer ... ok
+test pausing_excludes_unseen_questions_even_after_the_concept_intro ... ok
+test dismissed_feedback_keeps_the_existing_one_day_exposure_window ... ok
+test reset_history_is_immutable_atomic_exactly_replayed_and_self_contained ... ok
+test missing_or_tampered_schedule_history_cannot_become_restore_authority ... ok
+test leaving_held_feedback_refreshes_exposure_without_changing_the_saved_attempt ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/study.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/study-0c41424835128cd8)
+
+running 11 tests
+test study_archive_diagnosis_refuses_missing_work_without_panicking ... ok
+test populated_study_archive_requires_compatible_format_and_intact_payload_chunks ... ok
+test study_archive_diagnosis_refuses_missing_version_and_malformed_targets ... ok
+test study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes ... ok
+test study_answer_replay_conflict_and_correction_keep_original ... ok
+test study_receipts_assistance_fading_free_recall_once_daily_and_lapse ... ok
+test study_recitation_grades_each_unit_and_strict_slips ... ok
+test study_oversized_alignment_refuses_without_consuming_prompt_or_receipt ... ok
+test study_old_disclosures_cannot_cross_a_new_protected_prompt ... ok
+test study_explicit_reveal_breaks_success_runs_at_every_rung_and_correction ... ok
+test study_paces_are_rolling_caps_and_recitation_never_introduces_units ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.54s
+
