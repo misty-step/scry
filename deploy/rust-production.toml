@@ -16,11 +16,11 @@ keep_vars = true
 # No inherited Container, legacy namespace, model key or restore capability.
 [vars]
 SCRY_ENV = "production"
-CANONICAL_ORIGIN = "https://scry.study"
+CANONICAL_ORIGIN = "https://scry.mistystep.io"
 SPACE_NAME = "revival-production-20261016"
 ACCESS_TEAM = "misty-step-pantry.cloudflareaccess.com"
 ACCESS_AUDIENCE = "f298e34f9f499a33915bcaac46029df6b027008716a45c739e62485afe652a9b" # Public app identifier, not a credential. gitleaks:allow
-ALTERNATE_HOSTS = "www.scry.study,scry.mistystep.io"
+ALTERNATE_HOSTS = "scry.study,www.scry.study"
 SENTRY_ENVIRONMENT = "production"
 
 [version_metadata]
