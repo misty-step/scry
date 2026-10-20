@@ -2,11 +2,11 @@
 
 The operator instructed a full redesign/rewrite on 2026-10-07. This document
 owns the replacement's build and proposed release procedure.
-[The operational runbook](runbook.md) still owns deployed state: the documented
-Go/SQLite Container at `scry.study` has not been replaced by source changes.
-Its exact source remains in Git at `c6ba395`; compatible artifacts and private
-configuration remain independent recovery material. Old Rust Workers,
-Worker/R2 data, frozen Postgres, and the retained VM stay separate and paused.
+[The runbook's dated serving observation](runbook.md#rust-production-serving--observed-2026-10-20)
+owns deployed state. The retained Go source remains in Git at `c6ba395`;
+compatible artifacts and private configuration remain independent recovery
+material. Old Rust Workers, Worker/R2 data, frozen Postgres, and the retained VM
+stay separate and paused.
 
 The candidate is a ground-up implementation, not a resurrection of the retired
 Rust stack. [ADR 006](adr/006-one-way-revival-custody.md) owns the subsequently

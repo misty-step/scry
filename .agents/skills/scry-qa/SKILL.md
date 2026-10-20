@@ -9,10 +9,11 @@ argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 # Scry QA
 
 The active rewrite is Rust/WASM on a plain Cloudflare Worker, one SQLite Durable
-Object, and private R2. The documented deployed app remains the Go Container
-behind Access and `scry-app-host`; source changes do not activate a replacement.
-Read [QA](../../../docs/qa/system.md) and the relevant
-[operational runbook](../../../docs/runbook.md) before selecting proof.
+Object, and private R2. Before selecting proof, read
+[QA](../../../docs/qa/system.md) and
+[the runbook's dated serving observation](../../../docs/runbook.md#rust-production-serving--observed-2026-10-20).
+The runbook owns production serving state; source changes alone do not
+establish it.
 
 ## Doctor — choose meaningful proof
 

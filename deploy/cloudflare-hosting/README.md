@@ -1,13 +1,18 @@
-# Scry Cloudflare hosting (exe.dev retirement)
+# Retained Go Cloudflare hosting
+
+This document describes the retired Go Container host and its retained source
+configuration. [The runbook's dated serving observation](../../docs/runbook.md#rust-production-serving--observed-2026-10-20)
+owns production serving state. Removal of this hosting tree and the Go edge
+workflow is tracked in [#325](https://github.com/misty-step/scry/issues/325).
 
 Standing policy: `daybook/meetings/decisions/2026-09-18-hosting-and-autonomy.md`
 — public/private product Scry runs on Cloudflare, not exe.dev. Private ingress
 uses Cloudflare Access; the container does not accept public identity headers.
 
-## Shape
+## Retained Go shape
 
 ```text
-scry.study (Cloudflare edge)
+Retired Go host
   └─ Worker scry-app-host (index.mjs)
        ├─ Cloudflare Access JWT gate (jose + Access JWKS)
        ├─ immutable owner-subject check
@@ -39,8 +44,8 @@ than the last remotely verified snapshot.
 - `index.mjs` / `auth.mjs` — Access JWT, immutable owner subject, and probe gate.
 - `container.mjs` — singleton Container Durable Object and R2 snapshot selection.
 - `runtime-env.mjs` — complete bounded environment validation.
-- `wrangler.jsonc` — isolated `staging`, pre-cutover `mistystep-prod`, and final
-  `production` environments. Named-environment bindings are intentionally
+- `wrangler.jsonc` — isolated `staging` and retired Go `mistystep-prod` and
+  `production` source environments. Named-environment bindings are intentionally
   repeated because Wrangler does not inherit them.
 
 ## Private configuration
@@ -61,9 +66,7 @@ Worker-only secrets:
 The `SCRY_ACCESS_TEAM_DOMAIN` values in `wrangler.jsonc` name the shared
 Cloudflare Access team `misty-step-pantry.cloudflareaccess.com`. This is the
 JWT issuer/JWKS authority and may appear during the Access login handoff; it is
-not a Pantry Worker or Scry application origin. Production requests still use
-`https://scry.study`; successful authentication should return to that app
-origin.
+not a Pantry Worker or Scry application origin.
 
 Container secrets:
 
@@ -155,7 +158,7 @@ evidence. Do not delete evidence fixtures as part of review acceptance.
 ### Go edge runtime errors
 
 `telemetry.mjs` observes unexpected fetch exceptions and upstream 5xx responses
-at this operated Go edge. Its fixed, allowlisted Sentry envelope deliberately
+at this retained Go edge. Its fixed, allowlisted Sentry envelope deliberately
 uses no automatic request/error collectors: learner content, raw errors and
 credentials never enter its interface. The public DSN belongs to the existing
 Scry project. Native version metadata identifies the exact deployed release.
@@ -180,7 +183,7 @@ distinct-code rollback and re-promotion must retain both its versioned attachmen
 and runtime `ctx.container`. No application/image is created or instance started.
 Retrieve the matching Sentry event and approved-intake notification separately;
 a hosted 503 alone is not delivery evidence. No owner session or learner data
-is used. On master, CI promotes the same tested module only to the still-Go
+is used. On master, CI promotes the same tested module only to the retired Go
 edge, preserving all existing bindings, images, routes, schedules and data.
 Version upload copies the live Container attachment separately from DO bindings
 and reads it back before promotion; rollback must preserve that attachment too.
@@ -192,8 +195,9 @@ the production receipt is also the compatible code-only rollback target:
 gh workflow run go-edge.yml -R misty-step/scry --ref master -f rollback_version=PREVIOUS_UUID
 ```
 
-Retire this Go-specific workflow and boundary with the Go runtime; do not use
-it to deploy the Rust replacement. It grants no learner cutover authority.
+[#325](https://github.com/misty-step/scry/issues/325) owns retirement of this
+Go-specific workflow and boundary; do not use it to deploy the Rust replacement.
+It grants no learner cutover authority.
 
 `mistystep-prod` and `production` are source definitions, not authorization to
 deploy. Do not attach a custom domain, change DNS, copy the production database,

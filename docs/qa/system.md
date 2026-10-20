@@ -1,9 +1,9 @@
 # Scry verification
 
 The active replacement source is Rust/WASM on a plain Cloudflare Worker with a
-singleton SQLite Durable Object and private R2. The production Go/SQLite
-Container remains the deployed runtime until an approved replacement;
-[the operational runbook](../runbook.md) owns that state. [VISION](../../VISION.md)
+singleton SQLite Durable Object and private R2.
+[The runbook's dated serving observation](../runbook.md#rust-production-serving--observed-2026-10-20)
+owns production serving state. [VISION](../../VISION.md)
 explains intent, [SPEC](../../SPEC.md) alone owns stories and acceptance, and
 [README](../../README.md#start-or-resume-work) identifies work ownership.
 
