@@ -13,6 +13,9 @@ const require=createRequire(import.meta.url);
 const modules=require.resolve.paths('miniflare').find(path=>existsSync(join(path,'miniflare')));
 const usage='usage: qa/walk --all | --stories "US-002 US-003"';
 const walkIds=Object.keys(specs);
+// Text placed after the last walked story's block, before any pending story.
+const afterLastWalked=text=>{const start=source.indexOf(`## ${walkIds.at(-1)} `);const rest=source.slice(start+1).search(/^## US-\d{3}/m);return rest<0?source+text:source.slice(0,start+1+rest)+text.trimStart()+'\n'+source.slice(start+1+rest);};
+const pendingStory='\n## US-998 Planned\n\nCriteria:\n1. WHEN tested, THE SYSTEM SHALL wait for its ticket.\n\nEvidence: pending\n';
 
 function probe(argv,spec=source,{accepted=false,ownedOutput=false,expectedError=usage}={}){
  const fixture=mkdtempSync(join(tmpdir(),'scry-walk-cli-'));
@@ -40,11 +43,13 @@ function probe(argv,spec=source,{accepted=false,ownedOutput=false,expectedError=
 
 for(const value of ['', ' ', '\t\n\r '])test(`reject empty selection ${JSON.stringify(value)} before build/proof`,()=>probe(['--stories',value]));
 test('invalid selection preserves prior owned proof',()=>probe(['--stories',''],source,{ownedOutput:true}));
-for(const argv of [[],['--stories'],['--all','extra'],['--stories','US-005'],['--stories','US-012'],['--stories','US-999'],['--stories','US-002 US-999']])test(`reject invalid CLI ${JSON.stringify(argv)}`,()=>probe(argv));
+for(const argv of [[],['--stories'],['--all','extra'],['--stories','US-005'],['--stories','US-012'],['--stories','US-014'],['--stories','US-999'],['--stories','US-002 US-999']])test(`reject invalid CLI ${JSON.stringify(argv)}`,()=>probe(argv));
 for(const argv of [['--all'],['--stories','US-002 US-013'],['--stories',' US-004\tUS-004\n ']])test(`accept selector ${JSON.stringify(argv)} (guard-only)`,()=>probe(argv,source,{accepted:true}));
+test('pending stories are not walked until their ticket replaces Evidence: pending',()=>{probe(['--all'],source+pendingStory,{accepted:true});probe(['--stories','US-998'],source+pendingStory);});
 for(const [name,spec,live] of [
  ['no story headings',source.replace(/^## (US-\d{3})/gm,'### $1'),[]],
- ['trailing retirement wording',source+'\n## Change log\n\nSuperseded wording for an unrelated change.\n',walkIds.slice(0,-1)],
+ ['trailing retirement wording',afterLastWalked('\n## Change log\n\nSuperseded wording for an unrelated change.\n'),walkIds.slice(0,-1)],
+ ['pending marker removed without walks',source.replace(/^Evidence: pending$/m,'Evidence: none'),[...walkIds,'US-014']],
  ['unknown active story',source+'\n## US-999 Unknown\n\nCriteria:\n1. WHEN tested, THE SYSTEM SHALL fail closed.\n',[...walkIds,'US-999']],
  ['duplicate replacing a live story',source.replace('## US-013 Create','## US-011 Create'),walkIds.with(-1,'US-011')]
 ])for(const argv of [['--all'],['--stories','US-002']])test(`reject discovery drift: ${name} ${argv[0]}`,()=>probe(argv,spec,{expectedError:`story discovery drift: SPEC live IDs [${live.join(', ')}] do not match walk-specs IDs [${walkIds.join(', ')}]`}));

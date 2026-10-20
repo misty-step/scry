@@ -98,8 +98,10 @@ harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
 Go walks and their selectors are not rewrite proof. `qa/walk --all` discovers
 active US stories and their numbered criteria directly from SPEC; `--stories`
-selects a subset. It excludes superseded US-005 and retired US-012 without
-discarding their canonical definitions. Existing walk implementations and policy
+selects a subset. It excludes superseded US-005, retired US-012, and stories whose
+evidence line reads `Evidence: pending`, without discarding their canonical
+definitions. The ticket that builds a pending story adds its walks and removes
+that line in the same change. Existing walk implementations and policy
 checks remain in `qa/walk-specs.mjs`; selection does not make them proof of all
 S criteria, real-provider quality, phone experience, or hosted recovery.
 

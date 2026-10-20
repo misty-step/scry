@@ -1,9 +1,10 @@
 # Scry
 
-Scry is a private, prompt-first learning notebook: **Create → express what you
-want to understand → useful reference and practice → refine through real
-answers and feedback**. A word, phrase, or dictated ramble is enough. There is
-no setup questionnaire, compulsory import, or diagnostic quiz before material.
+Scry gets fixed texts and sets into its owner's head word for word: **find or
+create a Work in the private Library → learn a Version unit by unit → exact
+verdict and diff on every word → a memory model schedules each unit**. Every
+action is drivable by an agent through the API and the `scry` CLI. The
+prompt-first understanding notebook comes later on the same Library.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
 rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
@@ -26,7 +27,8 @@ reactivate, rename, or erase those stores.
 
 ## Start or resume work
 
-Read SPEC, especially US-013/S11, before scoping work. VISION explains intent;
+Read SPEC, especially "Exact recall first" and US-014 to US-021, before
+scoping work. GLOSSARY owns the words. VISION explains intent;
 USER_STORIES is only a compatibility index. Technical decisions live in ADRs.
 Use the current operator request as authority; preserve overlapping work and
 inspect `git status --short --branch` and `git rev-parse HEAD` in the selected

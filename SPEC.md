@@ -1,48 +1,83 @@
-# Scry prompt-first, concept-centered specification
+# Scry specification: exact recall first
 
 ## What it does
 
-Scry turns what Phaedrus wants to learn into a private notebook of concepts, useful reference and practice, refined through his answers and feedback.
+Scry gets fixed texts and sets into Phaedrus's head word for word and keeps them
+there. He names something; Scry finds it in his private Library or creates it,
+then has him recite it unit by unit with fading cues, an exact verdict and diff
+for every word, and a memory model deciding when each unit returns.
 
 ## What it enables
 
-Phaedrus can turn curiosity into understanding and lasting recall through a daily learning habit that feels good on his phone.
+Phaedrus can recite the creeds, prayers, poems, lists and mappings he cares
+about, in a few minutes a day on his phone, and an agent can drive all of it
+from a terminal. Understanding (concepts and explanations) comes later on the
+same Library.
 
-This is the single behavioral reference for rebuilding Scry: a private learning
-notebook for one person, from curiosity to useful reference and practice, then
-refinement through real answers and feedback. QA runs against this file's US,
+This is the single behavioral reference for Scry, for one owner. Words follow
+[GLOSSARY](GLOSSARY.md). QA runs against this file's US,
 S, and quality-contract IDs. They describe accepted intent, not implementation
 or deployment success. Never weaken a criterion to fit code; change intent
 through review, and retire identifiers explicitly rather than reusing them.
 
-[VISION](VISION.md) explains the goal; [DESIGN](DESIGN.md) owns visual decisions;
+[VISION](VISION.md) explains the goal; [GLOSSARY](GLOSSARY.md) owns the words;
+[DESIGN](DESIGN.md) owns visual decisions;
 [ADRs](docs/adr/README.md) own technical decisions; [QA](docs/qa/system.md) owns
 verification procedures and evidence limits. [README](README.md#start-or-resume-work)
 is the work entrypoint. Dated receipts and proposals are not competing requirements.
 
 ## Scope and acceptance status
 
-Prompt-first Create was reaffirmed on 2026-10-02; the 2026-10-07 rewrite uses
-these contracts without inheriting historical runtime acceptance. The current
-Rust candidate ordinarily starts fresh; the separately authorized one-way
-revival in D6 is the sole exception. US-001.1's Go schema 4→5 preservation and
+On 2026-10-20 the owner made exact recall Scry's first purpose
+([#296](https://github.com/misty-step/scry/issues/296)); see
+[Exact recall first](#exact-recall-first-2026-10-20) for what that retired and
+narrowed. Prompt-first Create (2026-10-02) now governs the understanding
+notebook, which is deferred, not the front door. The 2026-10-07 rewrite uses
+these contracts without inheriting historical runtime acceptance. The revived
+notebook from D6 is archived read-only and exact recall starts fresh. US-001.1's Go schema 4→5 preservation and
 US-005/S03's explicit-mode capture remain historical Go obligations at Git
 `c6ba395`; US-012 is retired with its ID reserved. Old Go and retired Rust/preview
 receipts do not certify the candidate, and a green gate does not activate it.
 [The runbook](docs/runbook.md) owns operational records; serving provenance and
 revival remain separately governed, not inferred from this specification.
 
-Useful real material, short-v1 holdout quality, physical-phone experience,
+Useful real material, physical-phone experience,
 deployed private ingress (including S09.2 account/history return), live provider
 outcomes, and independent recovery still require their own evidence. The
 existing rewrite acceptance stays open. No historical-store import, deletion,
 writer reactivation, new paid capability, or deployment permission follows here.
 
-No public signup, billing, collaboration, universal import, course/chat product,
-manual graph editor, CLI/MCP parity, compulsory foundation detour, or invisible
-offline mutation queue is required. Dictated input is text, not an assumed
-speech engine or automatic recording integration. A mandatory activity ladder
-is excluded from scope.
+Scry has one owner. Accounts or tokens for anyone else, public signup or
+anonymous reading, a public Library, billing, collaboration, universal import,
+a course/chat product, a manual graph editor, MCP, a compulsory foundation
+detour, and an invisible offline mutation queue are out of scope. Every
+exact-recall action is available through the API and the `scry` CLI (AG1).
+Dictated input is text, not an assumed speech engine or automatic recording
+integration; it is graded as typed. A mandatory activity ladder is excluded;
+the exact-recall Ladder is a cue scaffold, not a required activity sequence.
+
+### Exact recall first (2026-10-20)
+
+The owner confirmed this direction on 2026-10-20 (#296, with his changes: a
+generation agent with tools, one owner, Roman Missal 2011 wording, the slip
+default, owner tokens, an archived revived notebook, no spend decision yet,
+and cuts to unrequested gates). US-014 to US-021 add the exact-recall
+stories. These existing contracts are retired or narrowed as of that date:
+
+| Contract | Change on 2026-10-20 |
+| --- | --- |
+| Prompt-first front door (Experience contract, S11, US-013) | Narrowed: governs the understanding notebook's Create. Exact recall starts by searching the Library (US-015) and creating with the generation agent (US-019). |
+| No inferred web search (S11.3, US-013.2, Create bullet) | Narrowed: still binds Create. A request to create a Work authorizes the generation agent to search the web for that named Work (US-019). |
+| Local grading forbidden beyond exact key (S02.5, US-003.1, US-008) | Narrowed: govern answers outside exact recall. Exact-recall answers are graded locally by `exact-v2` (US-017); its one enumerated Slip tolerance is not the liberal similarity those stories exclude. |
+| US-008 holdout evidence before live activation | Retired: Jev is off the exact-recall path and the owner did not ask for this gate. |
+| AI1 operator-approved real-input set | Retired: usefulness is judged by the owner's use and Self-checks (US-019). |
+| US-004 critic-v1 gate and 60-candidate bound | Narrowed: concept generation only. Library Versions publish on deterministic Self-checks (US-019), whatever their Unit count. |
+| Prerequisite-first concepts and 3/6/12 new concepts (S08.2, US-010.3, US-011) | Narrowed: concept goals only. Studies introduce Units in reading order at the same Pace numbers (US-016). |
+| Owner identity (S09.1) | Extended: an unexpired, unrevoked Owner token is owner identity (US-014). |
+| Bespoke QA identity (S09.4) | Retired: machine access uses Owner tokens (S09.3, US-014) or synthetic environments; removal of the QA object is a ticket. |
+| One-way revival (D6, revival dry-run boundary) | Retired for new work: the revived notebook is archived read-only, nothing deleted, and exact recall starts in a fresh space. |
+| Two masthead destinations (US-002.4) | Unchanged: exact-recall Prompts open in the Stream (US-018), so no new destination is needed. |
+| `exact-v1` trim equality | Narrowed: history keeps its attribution; new exact-recall Attempts use `exact-v2`. |
 
 ## Adopted behavioral policies
 
@@ -52,11 +87,11 @@ belong in ADRs, not this table.
 | ID | Binding policy |
 | --- | --- |
 | D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
-| D2 | Honest grading and uncertainty follow S02 and US-003/US-008; policy adoption alone is not holdout calibration. |
+| D2 | Honest grading and uncertainty follow S02 and US-003/US-008 outside exact recall; exact-recall answers follow US-017's deterministic `exact-v2`. |
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
 | D4 | One question, one answer action, held feedback and deliberate Next; Create/Map masthead. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
-| D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. |
-| D6 | No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
+| D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. Exact-recall practice makes no provider call. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
+| D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
 Health must report non-200 with reason `backup_stale` if no verified remote
 snapshot exists or the last one is older than 26 hours. A separately authorized
@@ -86,8 +121,9 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-The Stream opens into a question, a concept introduction, a preparing receipt,
-or an honest first-run/caught-up state; never an administration dashboard.
+The Stream opens into a question, an exact-recall Prompt (US-018), a concept
+introduction, a preparing receipt, or an honest first-run/caught-up state; never
+an administration dashboard.
 Concepts are teachable ideas, goals express intent, and notes are durable
 reference material, one current note per concept. The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
@@ -130,7 +166,9 @@ I was right (quiet, automatic miss only)
   until assistance is recorded; a concept page links to
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
-- Create has one private intent field and optional photo (US-013/S11). Text,
+- Create has one private intent field and optional photo (US-013/S11). It
+  serves the understanding notebook; exact-recall Works are found or created
+  through US-015/US-019. Text,
   including URLs, never infers public search or link reading; photos transcribe
   before preparation. Saved goals expose captured intent, useful reference,
   practice, refinement, and honest failure. `/add` is an alias; text/URL prefill
@@ -199,7 +237,8 @@ interaction teaches me something without taking away control.
   prompt whether an exact value or form is required, and accepts only with accept
   probability ≥0.85, identity risk ≤0.35, injection risk ≤0.20, or rejects
   only with reject probability ≥0.90 and injection risk ≤0.20. Otherwise it
-  stays ungraded for learner self-check. Explain-level authored required-idea
+  stays ungraded for learner self-check. Exact-recall answers are outside this
+  criterion and graded by `exact-v2` (US-017). Explain-level authored required-idea
   rubrics retain `semantic-v1`: only independently supported correct judgments
   become success; incomplete/incorrect shadow classes stay ungraded.
 - **S02.6 (US-002/US-007):** A close, unsure, or failed check preserves the
@@ -250,6 +289,9 @@ honest invalid/empty/provider-failure outcomes.
 
 As the learner, I want AI to produce material worth reviewing so that I do not
 become a full-time editor of generated cards.
+
+S04 governs concept material. Versions made by the generation agent follow
+US-019 (narrowed 2026-10-20).
 
 - **S04.1:** Source-basis material quotes exact saved source/page/transcript
   text; web-basis material quotes exact saved Exa search excerpts and cites their
@@ -345,7 +387,8 @@ appropriate review from honest evidence, without mistaking exposure for recall.
   and practice observations remain separate from graded attempts.
 - **S08.2:** Selection v2 introduces unseen concepts prerequisite-first,
   interleaves eligible due practice, honors focused/paused goals, and caps new
-  concepts per rolling day at 3/6/12 for light/steady/intense pace.
+  concepts per rolling day at 3/6/12 for light/steady/intense pace. Narrowed
+  2026-10-20 to concept goals; Studies follow US-016.
 - **S08.3:** Concept state distinguishes new/learning/solid/fading and tallies
   unaided/helped/missed events. Predicted recall is explicitly an estimate;
   navigation, animation, or a note read never manufactures a learning event.
@@ -359,7 +402,8 @@ require separate delayed unaided recall data.
 As the owner, I want easy private access from my phone and computer without
 maintaining a signup product or exposing my learning material.
 
-- **S09.1:** Only the approved owner identity can access the owner's notebook; missing,
+- **S09.1:** Only the approved owner identity, through Access or an unexpired,
+  unrevoked Owner token (US-014), can access the owner's notebook; missing,
   unapproved, or forged identity cannot read/export material or mutate it
   through any exposed hostname, backend listener, or alternate port. Verify
   the actual ingress trust boundary before accepting personal data.
@@ -372,16 +416,10 @@ maintaining a signup product or exposing my learning material.
   model, backup, or deployment authority by default. If machine access is added,
   it uses an explicitly scoped/revocable app credential, not VM management/root
   access or a browser token copied into a client.
-- **S09.4:** The separately approved QA learner may use ordinary preview and
-  production only through its exact signed service identity, in a dedicated
-  notebook of authored test material. It cannot select, read, export or mutate
-  the owner's notebook, or invoke operator/owner-backup capabilities. Owner
-  access and operations remain unchanged. QA photos, complete backups and
-  background work stay with the QA notebook across eviction/restart. Missing
-  QA configuration denies service access; it never falls back to the owner.
-  QA access grants no separate provider allowance: paid generation, photo
-  transcription, meaning checks and criticism stay disabled pending an explicitly
-  approved allocation. Configuring owner providers does not enable them for QA.
+- **S09.4:** Retired 2026-10-20; the identifier stays reserved. The bespoke QA
+  service identity and notebook are no longer a contract: machine access uses
+  Owner tokens without paid work (US-014) or synthetic environments (S09.3).
+  The former text is at Git `cb93333`.
 
 Proof: actual private HTTPS access, negative ingress/CSRF/content tests, and
 inspection of the deployed capability boundary. A local auth stub is not proof.
@@ -407,8 +445,7 @@ history or silently restart paid work.
   there, without an operator key. This enables queued and future work only;
   historical paused/unknown jobs, assessments, reservations and learning history
   remain unchanged. Same-origin/session protection and exact-operation replay
-  apply. A new resume after resumption conflicts without changing state. QA can
-  resume only its own notebook, without gaining paid provider capabilities.
+  apply. A new resume after resumption conflicts without changing state.
 
 Proof: process interruption, concurrent review/backup, incomplete upload, and a
 real fresh-environment restore. Persistent disk or VM cloning is insufficient.
@@ -416,6 +453,9 @@ real fresh-environment restore. Persistent disk or VM cloning is insufficient.
 ### S11 — Create useful material from intent (US-013)
 
 Approved product acceptance, reaffirmed 2026-10-02; not an implementation receipt.
+Narrowed 2026-10-20: S11 governs the understanding notebook's Create, which is
+deferred behind exact recall. It no longer defines Scry's front door, and
+S11.3's search boundary does not restrict US-019.
 As the learner, I want to express what I want to learn and receive useful
 tailored material first, then improve it through use rather than setup.
 
@@ -490,11 +530,12 @@ reliability, usability, and learning outcomes separate.
 | ID | Proposed contract | Measurement / acceptance |
 | --- | --- | --- |
 | UX1 | Input acknowledgement p95 <100 ms | Pointer/key action to visible pressed/pending response on the owner's actual phone, including an induced 300 ms RTT profile; no network dependency for acknowledgement |
-| UX2 | Deterministic graded feedback p95 <300 ms | Submit to committed, visible result, on a declared <=100 ms RTT profile; include DB/render/browser time, not just handler time; no claim that AI semantic grading meets this budget |
+| UX2 | Deterministic graded feedback p95 <300 ms, including `exact-v2` | Submit to committed, visible result, on a declared <=100 ms RTT profile; include DB/render/browser time, not just handler time; no claim that AI semantic grading meets this budget |
 | UX3 | Prefetched Next p95 <150 ms; existing first review p95 <2 s; capture to first usable quiz p95 <20 s | Report warm/cold state, payload sizes, network/device, sample count, failures/timeouts and measurement endpoints separately; pending UI is not completion, and failed jobs remain in the outcome report |
 | UX4 | Usable at 320 CSS px, with keyboard and 200% text zoom | No horizontal clipping; visible focus, labeled controls, accessible result announcements, >=44 CSS px primary targets, adequate contrast, reduced motion; test long questions and explanations, not only short fixtures |
 | UX5 | Smooth but honest continuity | At most one speculative next prompt, no speculative success/mastery; canceled gestures and stale responses do not submit; loss/conflict recovers without an invisible offline queue |
-| AI1 | Useful material rather than parser success | Operator-approved real-input set includes topics, qualified passages, complete sets, and ambiguous/adversarial inputs; record keep/revise/reject with reasons, coverage, factual/provenance defects, latency and spend; hold out examples from prompt tuning |
+| AI1 | Retired 2026-10-20 | The operator-approved real-input set is no longer required; usefulness is judged by the owner's use and US-019's Self-checks |
+| AG1 | Agent-drivable | Every exact-recall create, read, update and delete action is available through the versioned API and the `scry` CLI with machine-readable output, driven by an Owner token (US-014). The phone UI calls the same behavior; no exact-recall action is web-only |
 | OPS1 | Privacy and recovery are release requirements | S09/S10 proof against the actual private Cloudflare application and remote recovery path; D5 recovery/spend choices approved before relying on real personal data |
 
 A small smoke sample can establish a functioning path, not a production p95 or
@@ -541,7 +582,8 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   due practice; focusing prioritizes new concepts. Scheduler compatibility
   preserves full due/stability/difficulty/interval/repetition/lapse/state/
   last-review/remaining-step state and pinned algorithm identity, not efficacy.
-- When configured, US-004's critic independently judges each applicable hard
+- Concept generation only (narrowed 2026-10-20; Library Versions follow
+  US-019): when configured, US-004's critic independently judges each applicable hard
   defect: unsupported source claims, contradictions,
   changed qualifications, missing context, ambiguous/indefensible answers,
   leaked answers, overlapping choices, misaligned rubrics, and adversarial
@@ -571,7 +613,7 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
   acknowledged live writes or reactivate a historical writer during rehearsal.
   Measure private-service recovery and name untested provisioning/DNS/configuration
   steps against D5; copying a live store is not a complete recovery demonstration.
-- Before the one-way revival import, an authorized read-only dry run traverses
+- Historical (D6 amended 2026-10-20): before the one-way revival import, an authorized read-only dry run traverses
   the complete preserved dataset inside private Cloudflare. It writes nothing
   and reports only fixed refusal class names and their counts, never content or
   identifiers. An incomplete traversal is a failure, not a complete report.
@@ -586,7 +628,15 @@ section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudfl
 ## User stories
 
 The original US IDs and numbered criteria below remain binding alongside the
-S criteria above. Overlapping IDs express the same contract at different journey
+S criteria above, as narrowed in [Exact recall first](#exact-recall-first-2026-10-20).
+A story whose evidence line reads `Evidence: pending` is accepted intent not yet
+built; the ticket that implements it replaces that line with its walks and tests.
+
+US-014 to US-021, added 2026-10-20, make Scry exact-recall-first for its owner
+([#296](https://github.com/misty-step/scry/issues/296)). In them "I" is the
+owner, whether he acts on his phone or through an agent holding an Owner token.
+Every criterion holds through the API and the `scry` CLI (AG1); US-018 adds the
+phone. S06 retry/conflict, S09 privacy and S10 recovery apply unchanged. Overlapping IDs express the same contract at different journey
 scales, not competing authorities. Policy names (FSRS, Jev, short-v1, semantic-v1,
 critic-v1) retain their accepted compatibility meaning; technical decisions and
 verification commands live outside this behavioral reference.
@@ -595,17 +645,25 @@ verification commands live outside this behavioral reference.
 | --- | --- | --- |
 | US-001 | S05, S07 | Current concepts/history; criterion 1 is retained Go migration only |
 | US-002 | S01, S02 | Current study loop |
-| US-003 | S02, S06 | Current grading |
-| US-004 | S04, S06 | Current prepublication criticism |
+| US-003 | S02, S06 | Current grading outside exact recall |
+| US-004 | S04, S06 | Current prepublication criticism, concept generation only |
 | US-005 | S03 | Superseded front door; historical Go explicit-mode callers only |
 | US-006 | S02, S04, S07 | Current concept reference |
 | US-007 | S02, S05, S06 | Current grade correction |
-| US-008 | S02 | Current short-answer policy |
+| US-008 | S02 | Current short-answer policy outside exact recall |
 | US-009 | S07, S08 | Current Map/evidence |
-| US-010 | S07, S08 | Current focus, pause and pace |
-| US-011 | S08 | Current prerequisites |
+| US-010 | S07, S08 | Current focus, pause and pace for concept goals |
+| US-011 | S08 | Current prerequisites for concept goals |
 | US-012 | S11.5 excludes reinstatement | Retired; ID reserved |
-| US-013 | S11, S04, S06, S09, S10 | Current Create and refinement |
+| US-013 | S11, S04, S06, S09, S10 | Create and refinement for the understanding notebook |
+| US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (evidence pending) |
+| US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
+| US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (evidence pending) |
+| US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (evidence pending) |
+| US-018 | S01, S02, UX4 | Exact recall on the phone (evidence pending) |
+| US-019 | S04, S06, D5 | Exact recall: generation agent (evidence pending) |
+| US-020 | S02, S08 | Exact recall: ordered lists (evidence pending) |
+| US-021 | S02, S08 | Exact recall: keyed mappings (evidence pending) |
 
 ## US-001 Find and reuse saved understanding
 
@@ -649,6 +707,10 @@ Criteria:
 
 No-gos: no liberal string-similarity grading, model call inside a SQL transaction, learner rubric authoring, or change to pinned scheduler identity.
 
+Narrowed 2026-10-20: US-003 governs answers outside exact recall. Exact-recall
+answers are graded locally by `exact-v2` (US-017), whose single enumerated Slip
+tolerance is shown in every Diff and is not liberal similarity.
+
 ## US-004 Check generated candidates before publication
 
 Statement: I want generated quizzes checked for critical defects before they
@@ -673,6 +735,10 @@ Criteria:
 
 No-gos: no generator-v4 change, pairwise duplicate checks,
 practice-coverage UI, production activation, or general accuracy claim.
+
+Narrowed 2026-10-20: US-004 applies to concept generation. Versions from the
+generation agent publish on deterministic Self-checks (US-019), and the
+60-candidate bound does not limit a Version's Units.
 
 ## US-005 Capture a goal in one step
 
@@ -722,7 +788,10 @@ Criteria:
 2. WHEN accept probability is at least 0.85 and identity risk at most 0.35 and injection risk at most 0.20, THE SYSTEM SHALL accept; WHEN reject probability is at least 0.90 and injection risk at most 0.20, THE SYSTEM SHALL reject; otherwise it SHALL ask me to self-check.
 3. WHEN a check fails or its result cannot be trusted, THE SYSTEM SHALL keep my answer, name the learner's judgment as authority if I self-check, and SHALL NOT silently award success.
 
-No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed; policy adoption requires holdout evidence before live activation.
+No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed.
+
+Narrowed 2026-10-20: US-008 governs short answers outside exact recall. Its
+former requirement of holdout evidence before live activation is retired.
 
 ## US-009 See what I know
 
@@ -745,6 +814,9 @@ Criteria:
 
 No-gos: no invisible goal deletion or goal settings as a gate before capture.
 
+Narrowed 2026-10-20: US-010 applies to concept goals. Studies pause and set
+Pace under US-016.
+
 ## US-011 Meet prerequisites first
 
 Statement: When one idea depends on another, I want a useful introduction and simpler starting point before its questions, so I am not repeatedly tested on something I have not encountered.
@@ -754,6 +826,9 @@ Criteria:
 2. WHEN I choose "I know this already" on the intro, THE SYSTEM SHALL record that observation without scoring a cold review or skipping later due questions.
 
 No-gos: no compulsory foundation detour or reading counted as a graded success.
+
+Narrowed 2026-10-20: US-011 applies to concept goals. Studies introduce Units
+in reading order (US-016).
 
 ## US-012 Practice a real confusion (retired)
 
@@ -767,6 +842,9 @@ Statement: When curiosity starts as a word, phrase, or long dictated ramble,
 I want Create to produce useful tailored study/reference and practice material
 without a setup questionnaire, so I can start learning and refine it through
 actual practice and feedback.
+
+Narrowed 2026-10-20: US-013 is the understanding notebook's Create, deferred
+behind exact recall; it no longer defines Scry's front door.
 
 Acceptance: [S11.1–S11.7](#s11--create-useful-material-from-intent-us-013)
 bind the approved Create journey, including useful first material, honest
@@ -788,3 +866,171 @@ Criteria:
 No-gos: mandatory import, onboarding questionnaire or diagnostic quiz before
 useful material; inferred public search; assumed speech engine or recording
 integration; source-only docs treated as runtime or deployment acceptance.
+
+## US-014 Drive Scry with an owner token
+
+Statement: When I or an agent I trust work from a terminal, I want every Scry
+action available through an API and the `scry` CLI with a revocable owner
+token, so I can add, practise and inspect without a browser.
+
+Criteria:
+1. WHEN I, signed in through Access, create an Owner token, THE SYSTEM SHALL show its secret once, keep only a verifier, and afterwards list it by name, creation time, last use and expiry without the secret.
+2. WHEN a request presents an unexpired, unrevoked Owner token, THE SYSTEM SHALL act as the Owner for every API action, including creating, listing and revoking Owner tokens.
+3. IF a request presents a missing, malformed, expired or revoked token, THE SYSTEM SHALL refuse it before reading or changing any state, with the same refusal whether or not the token ever existed.
+4. WHEN an Owner token is revoked, THE SYSTEM SHALL refuse that token's next request.
+5. WHEN an API mutation repeats a committed operation ID with the same payload, THE SYSTEM SHALL return the committed result without a second change; IF the payload differs, THE SYSTEM SHALL refuse it as a conflict.
+6. WHEN a token-authenticated mutation commits, THE SYSTEM SHALL record which Owner token acted, visible in history and export.
+7. IF a token without paid permission asks for paid work, THE SYSTEM SHALL refuse before reserving any allowance; a new token SHALL lack paid permission unless created with it.
+8. WHEN a CLI command runs with `--json`, THE SYSTEM SHALL print machine-readable output and exit non-zero on any refusal or failure.
+
+No-gos: no accounts or tokens for anyone but the owner, no signup, no anonymous
+or public reading, no token kept in browser storage, no relaxed CSRF for
+browser sessions, no MCP server.
+
+Evidence: pending
+
+## US-015 Find a Work before creating it
+
+Statement: When I want to learn something by heart, I want Scry to look in my
+Library first and keep each Work and Version once, so I build on what is
+already there instead of collecting duplicates.
+
+Criteria:
+1. WHEN I search by a title, alias or opening words, THE SYSTEM SHALL return matching Works with their Versions, and SHALL say plainly when nothing matches.
+2. WHEN I add a Version under a title or alias of an existing Work, THE SYSTEM SHALL attach it to that Work instead of creating another Work.
+3. WHEN I add a Version whose text, ignoring case, punctuation and spacing, equals an existing Version's, THE SYSTEM SHALL return the existing Version and create nothing.
+4. WHEN I add a Version, THE SYSTEM SHALL store its Kind, ordered Sections and Units, Provenance and Rights status; IF its Units joined in order do not reproduce its text exactly, THE SYSTEM SHALL refuse it and store nothing.
+5. WHEN I correct a Version's wording, THE SYSTEM SHALL create a new Version that supersedes the old one and SHALL leave the old Version and every Attempt against it unchanged.
+6. WHEN I show a Work or Version, THE SYSTEM SHALL show its Versions, Units, Provenance, Rights status and Relations without changing any Study.
+7. WHEN I delete a Work or Version that no Study uses, THE SYSTEM SHALL remove it; IF a Study uses it, THE SYSTEM SHALL refuse and keep it.
+8. WHEN the Library is exported on its own, THE SYSTEM SHALL include no Study, Card, Attempt, request or token.
+
+No-gos: no public or anonymous reading, no sharing yet, no meaning-based
+(embedding) search, no editing a Version in place.
+
+Evidence: pending
+
+## US-016 Learn a Version unit by unit
+
+Statement: When I choose a Version to learn, I want Scry to bring its Units to
+me in reading order with cues that fade as I improve, so I can recite it word
+for word in the fewest minutes a day.
+
+Criteria:
+1. WHEN I learn a Version, THE SYSTEM SHALL create one Study for it; learning the same Version again SHALL return that Study.
+2. WHEN a Study introduces new Units, THE SYSTEM SHALL introduce them in reading order, at most 3, 6 or 12 per rolling day for light, steady or intense Pace.
+3. WHEN I ask for the next Prompt, THE SYSTEM SHALL show the Work title, the previous Unit as context and the cue for the Card's Cue level, and nothing more of the Unit than that level allows.
+4. WHEN I ask to recite a Section or a whole Version, THE SYSTEM SHALL prompt from its heading or title alone and treat the answer as a Recitation.
+5. WHEN I answer with an answer-bearing cue, THE SYSTEM SHALL record the Attempt as assisted and leave the Card's schedule unchanged.
+6. WHEN I answer in Free recall, THE SYSTEM SHALL schedule the Card with the pinned memory model from the Verdict at most once per Card per day; later same-day Attempts SHALL be recorded as extra practice without changing the schedule.
+7. WHEN I succeed twice in a row at a Card's Cue level, THE SYSTEM SHALL fade its cue one level; WHEN a Free recall Attempt is Again, THE SYSTEM SHALL drop the Card one Cue level for relearning.
+8. WHEN I ask what is due, THE SYSTEM SHALL list due Cards and upcoming due times without presenting, consuming or changing any Card.
+9. WHEN I pause a Study, THE SYSTEM SHALL stop introducing its new Units while keeping its due Cards and history; WHEN I drop a Study, THE SYSTEM SHALL stop presenting its Cards and keep its Attempts.
+10. WHEN I read history or export, THE SYSTEM SHALL include each Study, its Cards with schedules and Cue levels, every Attempt with its Diff, Verdict and Authority, and the Versions they reference.
+11. WHILE I practise exact recall, THE SYSTEM SHALL make no provider call and record no spend.
+
+No-gos: no separate Cards per Cue level, no prerequisite ordering, no
+concept selection, no streaks or due-count chrome.
+
+Evidence: pending
+
+## US-017 Get an exact verdict and a word-by-word diff
+
+Statement: When I recite a Unit or a whole text, I want an instant verdict on
+every word and a diff of what I got wrong, so I know exactly what to fix and
+my schedule reflects what I actually recalled.
+
+Criteria:
+1. WHEN I submit an exact-recall answer, THE SYSTEM SHALL grade it locally without a network call, ignoring case, punctuation, line breaks and quote or dash style.
+2. WHEN every expected word is present, in order, with nothing extra, THE SYSTEM SHALL return Good; WHEN any word is wrong, missing, extra or out of order, THE SYSTEM SHALL return Again.
+3. WHEN a typed word differs from an expected word of at least five letters by one inserted, deleted, substituted or swapped letter, and is not another word of the Version, THE SYSTEM SHALL mark it a Slip and count it correct.
+4. IF the Version is Spelling-strict, THE SYSTEM SHALL count every Slip as a wrong word.
+5. WHEN a Verdict is shown, THE SYSTEM SHALL show the Diff marking each word correct, slipped, wrong, missing or extra, with the expected text, and keep both until I choose Next.
+6. WHEN an Again answer matches another Version of the same Work more closely than the studied one, THE SYSTEM SHALL name that Version beside the Diff.
+7. WHEN a Recitation covers several Units, THE SYSTEM SHALL attribute each edit to its Unit and record a Verdict for each Unit.
+8. WHEN an answer arrives as dictated text, THE SYSTEM SHALL grade it exactly as typed text.
+9. EACH exact-recall Verdict SHALL name `exact-v2` and its grader version as Authority, and the same Version, answer and grader version SHALL always give the same Verdict and Diff.
+10. WHEN I correct an exact-recall Verdict, THE SYSTEM SHALL record one immutable Correction as US-007 does and keep the original Attempt.
+
+No-gos: no model judge, no tolerance beyond the Slip, no grading of punctuation
+or case, no voice-specific tolerance yet, no meaning-level variants inside a
+Version ("Holy Ghost" and "Holy Spirit" are different Versions).
+
+Evidence: pending
+
+## US-018 Practise exact recall on my phone
+
+Statement: When I have a few minutes with my phone, I want Scry to open
+straight into my next due Unit, so practice fits into my day without a
+terminal.
+
+Criteria:
+1. WHEN I open Scry on my phone with exact-recall Cards due, THE SYSTEM SHALL show the next Prompt in the Stream with one answer field and one submit control.
+2. WHEN I submit, THE SYSTEM SHALL show the Verdict and Diff the API gives for that Attempt and hold them until I choose Next.
+3. WHEN I ask for a cue or to see the Unit before answering, THE SYSTEM SHALL record the Attempt as assisted before showing it.
+4. WHEN no exact-recall Card is due, THE SYSTEM SHALL say when the next one is due instead of inventing practice.
+5. WHEN an automatic Verdict is shown, THE SYSTEM SHALL offer the US-007 corrections without auto-advancing.
+
+No-gos: no new masthead destination, no web-only exact-recall action, no
+microphone integration, no swipe grading.
+
+Evidence: pending
+
+## US-019 Create a Version with the generation agent
+
+Statement: When something I want to learn is not in my Library, I want to
+name it and have an agent with tools produce a checked Version, so I can start
+learning without typing the text myself.
+
+Criteria:
+1. WHEN I ask to create something, THE SYSTEM SHALL search the Library first and start a Generation run only if nothing matches or I ask for another Version.
+2. WHEN a Generation run drafts a Version, THE SYSTEM SHALL let the Generation agent choose between model memory and web search, and SHALL record in the Version's Provenance which it used, with any sources cited.
+3. WHEN a draft passes its Self-checks (Units join to its text exactly, and any declared count matches, such as 26 NATO letters), THE SYSTEM SHALL add it to the Library through US-015 without critic-v1 or another model judge.
+4. IF a Self-check fails, or the run fails or is cancelled, THE SYSTEM SHALL keep the run with its draft, tool calls, Self-check results and cost, leave it unpublished, and allow a deliberate new run.
+5. EACH Generation run SHALL reserve against the shared allowance before sending and stop at its cost bound; an unknown sent cost SHALL keep its reservation until deliberately resolved (D5).
+6. WHEN the same create operation is replayed, THE SYSTEM SHALL return the existing run without spending again.
+7. EACH Spend ledger entry SHALL record its purpose and model; WHEN I ask for spend, THE SYSTEM SHALL report it by day, purpose and model, and the cost of each run.
+8. IF the owner has not enabled production generation, THE SYSTEM SHALL refuse a Generation run before reserving allowance, and supplied Versions (US-015) SHALL still work.
+
+No-gos: no rule that texts must come from sources or from two sources, no ban on
+model memory, no Study or Attempt data sent to the agent, no unbounded run, no
+discarded run.
+
+Evidence: pending
+
+## US-020 Learn an ordered list
+
+Statement: When order is the content, such as the Mysteries of the Rosary, the
+books of the New Testament or the English monarchs since 1066, I want to
+practise each item from the one before it, so I can say the whole list in order.
+
+Criteria:
+1. WHEN I study an ordered list, THE SYSTEM SHALL make one Card per item and prompt each item from the previous item and its position.
+2. WHEN an item has authored aliases, THE SYSTEM SHALL accept an alias as correct and show the Version's own form.
+3. WHEN a Card has not yet reached Free recall, THE SYSTEM SHALL offer a choice of the next item and record that Attempt as assisted.
+4. WHEN I recite the whole list, THE SYSTEM SHALL grade order by alignment and give each item its own Verdict.
+5. WHEN a list is part of a larger Work (the Glorious Mysteries in the Rosary), THE SYSTEM SHALL record and show that Relation on both Works.
+
+No-gos: no reordering or sampling of a complete set, no relations editor.
+
+Evidence: pending
+
+## US-021 Learn a keyed mapping
+
+Statement: When the content is pairs, such as the NATO alphabet, the Rosary day
+schedule or the first seven ecumenical councils with their years, I want to
+practise each pair in the directions worth practising, so I can answer from
+either side.
+
+Criteria:
+1. WHEN I study a keyed mapping, THE SYSTEM SHALL make one Card per pair and declared direction.
+2. WHEN the value is a year, THE SYSTEM SHALL accept it with or without AD or CE and grade it as an exact number.
+3. WHEN a Spelling-strict mapping is answered (NATO "Alfa", "Juliett"), THE SYSTEM SHALL count any misspelling as wrong and show the official form.
+4. WHEN a Card has not yet reached Free recall, THE SYSTEM SHALL offer a choice of values and record that Attempt as assisted.
+5. WHEN I recite the whole set from a random start, THE SYSTEM SHALL give each pair its own Verdict.
+6. WHEN a mapping relates to another Work (the Rosary day schedule to the Mysteries of the Rosary), THE SYSTEM SHALL record and show that Relation on both Works.
+
+No-gos: no tolerance on years unless the Version declares a range, no
+relations editor.
+
+Evidence: pending
