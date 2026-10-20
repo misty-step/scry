@@ -50,16 +50,40 @@
     "logs/worker-before.txt": "bcc1b338c4ae6a746abe16678810ecf055ec82169714851a749a22d3a8a89678",
     "logs/worker-mixed-after.txt": "2da3e6ef6254736327faee5d4fe89b2dca09967e6c37287488509a50eacb0b1e"
   },
-  "unchanged_from_c708": {
-    "src/engine.rs": "a3dfb20f67519b9f47fc30c2e96c677a2626eb669df04393ad5ecbd212e00ca0",
-    "src/study.rs": "d7cdc08c05d04a333e81dcc7bebca6630b259bad553a6f1b5050defc8de6e21d",
-    "src/model.rs": "ac0aa5d044718c1ff30accf35975afaed60c58083e669db005d462a1255351dc",
-    "src/api.rs": "59399b27a9381b203a5fd66383ae60ceb8064b48bc18e54cc08c640b86b900fe",
-    "src/persistence.rs": "e1cf749d62efa0a289c44e3c4516af9d86fbd1f8454484b5f74b13189dc791f9",
-    "assets/app.js": "e5409095efbdab3bac55b14fad7b4352fb2fd65a35d8600fd6b1c5555bf8cbee",
-    "assets/app.css": "4629906482e1f9e2794ed7def35089c788102bb61ace533802d561e87ba8e996",
-    "qa/phone-stream.mjs": "3331047472a0446887f2b03903f50d89b630e83a47523a375e462136e46f9f43"
-  },
+  "unchanged_from_c708": [
+    {
+      "path": "src/engine.rs",
+      "sha256": "a3dfb20f67519b9f47fc30c2e96c677a2626eb669df04393ad5ecbd212e00ca0"
+    },
+    {
+      "path": "src/study.rs",
+      "sha256": "d7cdc08c05d04a333e81dcc7bebca6630b259bad553a6f1b5050defc8de6e21d"
+    },
+    {
+      "path": "src/model.rs",
+      "sha256": "ac0aa5d044718c1ff30accf35975afaed60c58083e669db005d462a1255351dc"
+    },
+    {
+      "path": "src/api.rs",
+      "sha256": "59399b27a9381b203a5fd66383ae60ceb8064b48bc18e54cc08c640b86b900fe"
+    },
+    {
+      "path": "src/persistence.rs",
+      "sha256": "e1cf749d62efa0a289c44e3c4516af9d86fbd1f8454484b5f74b13189dc791f9"
+    },
+    {
+      "path": "assets/app.js",
+      "sha256": "e5409095efbdab3bac55b14fad7b4352fb2fd65a35d8600fd6b1c5555bf8cbee"
+    },
+    {
+      "path": "assets/app.css",
+      "sha256": "4629906482e1f9e2794ed7def35089c788102bb61ace533802d561e87ba8e996"
+    },
+    {
+      "path": "qa/phone-stream.mjs",
+      "sha256": "3331047472a0446887f2b03903f50d89b630e83a47523a375e462136e46f9f43"
+    }
+  ],
   "original_receipt_sha256": "ffff4013cee68c32adffbcfb32d0c141a6904895fb6c23ae0542d788156e394c",
   "gates_carry": {
     "source": "9fb49a3ec49c47ea4fa8537f98db98478338b55d",
@@ -83,5 +107,9 @@
     "log": "logs/runtime-qualified.txt",
     "log_sha256": "f713745d24d2db50a20623cc84699b1330b496f4057fdf42086a4e71476659d6"
   },
-  "cli_sha256": "e0ca4c4c2624313ac63b7d073a67e92b2ef9da82a787bc2dd4f72446b922fe5b"
+  "cli_sha256": "e0ca4c4c2624313ac63b7d073a67e92b2ef9da82a787bc2dd4f72446b922fe5b",
+  "final_evidence_scan_diagnostic": {
+    "result": "One generic-api-key match on the public src/api.rs file checksum used as a JSON map value. Re-encoded as explicitly named path/sha256 fields. No credential or scanner allowance changed.",
+    "raw_report": "gitleaks-final-diagnostic.json"
+  }
 }
