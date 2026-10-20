@@ -63,5 +63,18 @@ export const specs={
  'US-013':[
   async c=>{await c.page.goto(c.url('/create'));assert.equal(await c.page.locator('input[name="mode"]').count(),0);await c.page.locator('textarea[name="intent"]').fill('Learn cache validation using practical examples.');await c.page.getByRole('button',{name:'Make it understandable'}).click();await c.page.locator('[data-state="goal"]').waitFor();await c.page.locator('.saved-input>summary').click();assert.match(await c.page.locator('.saved-input').innerText(),/Learn cache validation/);c.policy('capture_word_phrase_dictated_and_url_stay_private_and_exact');},
   async c=>{await c.page.goto(c.url('/create?text=https%3A%2F%2Fprivate.invalid%2Fnotes'));assert.equal(await c.page.locator('textarea[name="intent"]').inputValue(),'https://private.invalid/notes');c.policy('failures_do_not_partially_capture_and_csrf_is_required','capture_word_phrase_dictated_and_url_stay_private_and_exact');}
+ ],
+ 'US-014':[
+  async c=>{
+    await c.owner.criteria[0]();
+    await c.page.goto(c.url('/settings'));
+    await c.page.getByRole('textbox',{name:'Name',exact:true}).fill('browser agent');
+    await c.page.getByRole('button',{name:'Create Owner token',exact:true}).click();
+    await c.page.getByRole('heading',{name:'Save your Owner token'}).waitFor();
+    // Never retain a secret in screenshots or artifacts.
+    await c.page.getByRole('link',{name:'Return to Owner tokens'}).click();
+    await c.page.getByRole('heading',{name:'browser agent',exact:true}).waitFor();
+  },
+  ...Array.from({length:7},(_,i)=>async c=>c.owner.criteria[i+1]())
  ]
 };

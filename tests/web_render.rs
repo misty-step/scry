@@ -75,6 +75,7 @@ fn revived() -> App {
         transcript: None,
     };
     let job = |id: &str, goal: &str, status: &str, error: Option<&str>| Job {
+        acting_token: None,
         id: id.into(),
         goal_id: goal.into(),
         question_id: None,

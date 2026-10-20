@@ -11,6 +11,8 @@ pub const RESERVATION: u64 = 500_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct App {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub owner_tokens: BTreeMap<String, crate::owner_token::OwnerToken>,
     pub schema: u32,
     pub revision: u64,
     pub restored_paused: bool,
@@ -42,6 +44,7 @@ pub struct App {
 impl App {
     pub fn new(csrf: String) -> Self {
         Self {
+            owner_tokens: BTreeMap::new(),
             schema: SCHEMA,
             revision: 0,
             restored_paused: false,
@@ -275,6 +278,12 @@ pub struct Reset {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Receipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_ms: Option<i64>,
     pub payload_hash: String,
     pub result: MutationResult,
 }
@@ -288,6 +297,8 @@ pub struct MutationResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Job {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_token: Option<String>,
     pub id: String,
     pub goal_id: String,
     pub question_id: Option<String>,
@@ -319,6 +330,8 @@ pub struct Job {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Assessment {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_token: Option<String>,
     pub id: String,
     pub occurrence_id: String,
     pub question_id: String,

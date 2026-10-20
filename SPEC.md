@@ -656,7 +656,7 @@ verification commands live outside this behavioral reference.
 | US-011 | S08 | Current prerequisites for concept goals |
 | US-012 | S11.5 excludes reinstatement | Retired; ID reserved |
 | US-013 | S11, S04, S06, S09, S10 | Create and refinement for the understanding notebook |
-| US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (evidence pending) |
+| US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (see criterion walks) |
 | US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
 | US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (evidence pending) |
 | US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (evidence pending) |
@@ -887,7 +887,10 @@ No-gos: no accounts or tokens for anyone but the owner, no signup, no anonymous
 or public reading, no token kept in browser storage, no relaxed CSRF for
 browser sessions, no MCP server.
 
-Evidence: pending
+Evidence: `qa/walk --stories "US-014"` (eight criterion walks),
+`qa/owner-api.test.mjs` (built Worker, SQLite and compiled CLI),
+`tests/owner_api.rs` (shared receipts, paid authorization and archive compatibility).
+Synthetic local proof; deployed private ingress and physical phone remain unverified.
 
 ## US-015 Find a Work before creating it
 

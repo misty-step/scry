@@ -109,7 +109,25 @@ not independently configured by this record.
 
 ## Consequences and references
 
-No legacy API/CLI/MCP parity or old Go schema upgrade is inherited. Current route
+The 2026-10-20 exact-recall decision adds a versioned `/api/v1` JSON API on
+this Worker and a thin native Rust `scry` HTTP client sharing wire types.
+Access remains browser identity; named Owner tokens admit programs to the same
+owner space. The secret is returned only on first creation and only a SHA-256
+verifier is stored, in an independently addressed row so refusal precedes
+learner-state reads. Optional expiry, revocation, last use and paid permission
+(default off) belong to the token. There is no account or public signup model.
+
+Both transports use the same engine receipts, payload conflicts, operation
+fences and revision-fenced SQLite commit. Access writes retain Origin and CSRF;
+bearer writes skip those cookie-specific checks. Receipts retain the acting
+token for history/export, and queued paid work retains it for authorization
+before reservation and again before transmission. Old records deserialize with
+empty tokens and absent attribution. Complete private archives retain verifier
+and revocation metadata, never token secrets. Browser-owner backup/restore
+capabilities remain separate. Library and Study route adapters follow in their
+own slices; the historical QA object is not removed by this foundation.
+
+No legacy API/MCP parity or old Go schema upgrade is inherited. Current route
 and configuration details are inspectable in `src/runtime.rs`; operator endpoints
 are documented in the candidate procedure. Browser-owner identity is not restore
 or backup authority. A passing local Worker test is not deployed ingress or

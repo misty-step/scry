@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: US-014.1: built Worker and Owner token / CLI journey
+ok 1 - US-014.1: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 334.766565
+  type: 'test'
+  ...
+# Subtest: US-014.2: built Worker and Owner token / CLI journey
+ok 2 - US-014.2: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 62.479423
+  type: 'test'
+  ...
+# Subtest: US-014.3: built Worker and Owner token / CLI journey
+ok 3 - US-014.3: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 316.609353
+  type: 'test'
+  ...
+# Subtest: US-014.4: built Worker and Owner token / CLI journey
+ok 4 - US-014.4: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 43.368607
+  type: 'test'
+  ...
+# Subtest: US-014.5: built Worker and Owner token / CLI journey
+ok 5 - US-014.5: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 88.693234
+  type: 'test'
+  ...
+# Subtest: US-014.6: built Worker and Owner token / CLI journey
+ok 6 - US-014.6: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 33.590463
+  type: 'test'
+  ...
+# Subtest: US-014.7: built Worker and Owner token / CLI journey
+ok 7 - US-014.7: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 33.68427
+  type: 'test'
+  ...
+# Sanitized CLI transcript: [{"command":"scry login --url http://127.0.0.1:33855 --token-stdin --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792509985802,"expires_ms":null,"id":"7aa9485d0766626736f642112ad12325","last_used_ms":1792509986957,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry whoami --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792509985802,"expires_ms":null,"id":"7aa9485d0766626736f642112ad12325","last_used_ms":1792509986968,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry token create cli agent --operation-id 472554c3-6f02-44ed-864d-e1fcb6be6800 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"e8370eb23ab800cf4354cd59c92229b1","message":null,"redirect":"/settings"},"token":{"created_ms":1792509986982,"expires_ms":null,"id":"e8370eb23ab800cf4354cd59c92229b1","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create cli agent --operation-id 472554c3-6f02-44ed-864d-e1fcb6be6800 --json","exit":0,"output":{"replayed":true,"result":{"entity_id":"e8370eb23ab800cf4354cd59c92229b1","message":null,"redirect":"/settings"},"token":{"created_ms":1792509986982,"expires_ms":null,"id":"e8370eb23ab800cf4354cd59c92229b1","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create changed payload --operation-id 472554c3-6f02-44ed-864d-e1fcb6be6800 --json","exit":1,"output":{"error":"Operation conflict."}},{"command":"scry token list --json","exit":0,"output":{"tokens":[{"created_ms":1792509986302,"expires_ms":null,"id":"470f20192abe2c78dce2dba6acd3f389","last_used_ms":1792509986315,"name":"immediate revocation","paid":false,"revoked_ms":1792509986328},{"created_ms":1792509986040,"expires_ms":1792509986052,"id":"692ea542371b6d16b844799502b3fe7b","last_used_ms":null,"name":"expiry probe","paid":false,"revoked_ms":null},{"created_ms":1792509985999,"expires_ms":null,"id":"746be9b30bd4d1971fb63f12c7ab3a11","last_used_ms":null,"name":"revoked probe","paid":false,"revoked_ms":1792509986026},{"created_ms":1792509985802,"expires_ms":null,"id":"7aa9485d0766626736f642112ad12325","last_used_ms":1792509987049,"name":"builder","paid":false,"revoked_ms":null},{"created_ms":1792509986408,"expires_ms":null,"id":"c82179bf720452e17612ad8c940e3960","last_used_ms":null,"name":"lost response","paid":false,"revoked_ms":null},{"created_ms":1792509986982,"expires_ms":null,"id":"e8370eb23ab800cf4354cd59c92229b1","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null},{"created_ms":1792509985958,"expires_ms":null,"id":"ed9ecf23364114d22c33d3d8112e624b","last_used_ms":null,"name":"rotation","paid":false,"revoked_ms":1792509985971},{"created_ms":1792509985936,"expires_ms":1792510585928,"id":"f14ffdb58c9ddd035093f0f09fcd2aa8","last_used_ms":1792509985971,"name":"delegated agent","paid":true,"revoked_ms":null}]}},{"command":"scry token revoke e8370eb23ab800cf4354cd59c92229b1 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"e8370eb23ab800cf4354cd59c92229b1","message":null,"redirect":"/settings"}}},{"command":"scry login --url http://127.0.0.1:33855 --token-stdin --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry token revoke 7aa9485d0766626736f642112ad12325 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"7aa9485d0766626736f642112ad12325","message":null,"redirect":"/settings"}}},{"command":"scry whoami --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry unknown --json","exit":1,"output":{"error":"Usage: scry login|whoami|token create|list|revoke [--json] [--config PATH]"}},{"command":"scry login --url http://external.invalid --token-stdin --json","exit":1,"output":{"error":"Use an HTTPS origin (HTTP is allowed only on loopback)."}}]
+# Subtest: US-014.8: built Worker and Owner token / CLI journey
+ok 8 - US-014.8: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 604.751754
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3431.38969
