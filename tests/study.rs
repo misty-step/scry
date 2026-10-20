@@ -1047,3 +1047,148 @@ fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
         }
     }
 }
+
+fn rendered_links(html: &str) -> Vec<(String, String)> {
+    html.split("<a ")
+        .skip(1)
+        .map(|anchor| {
+            let (attributes, content) = anchor.split_once('>').unwrap();
+            let attribute = |name: &str| {
+                attributes
+                    .split_once(&format!("{name}=\""))
+                    .map(|(_, value)| value.split('"').next().unwrap().to_string())
+            };
+            let href = attribute("href").unwrap();
+            let label = attribute("aria-label").unwrap_or_else(|| {
+                let mut in_tag = false;
+                content
+                    .split("</a>")
+                    .next()
+                    .unwrap()
+                    .chars()
+                    .filter(|ch| match ch {
+                        '<' => {
+                            in_tag = true;
+                            false
+                        }
+                        '>' => {
+                            in_tag = false;
+                            false
+                        }
+                        _ => !in_tag,
+                    })
+                    .collect::<String>()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
+            (href, label)
+        })
+        .collect()
+}
+
+#[test]
+fn mixed_notebook_recovery_links_follow_legacy_home() {
+    use sha2::{Digest, Sha256};
+    let recovery = [
+        "Check again",
+        "Keep trying",
+        "Return to your saved answer →",
+    ];
+    // Four intentional root-link sites; preparation and not-found share a label.
+    let practice = [
+        "Scry, return to practice",
+        "Go to practice →",
+        "Return to practice →",
+    ];
+    let mut wrong = Vec::new();
+    let mut observed = std::collections::BTreeSet::new();
+    for exact in ["none", "prompt", "caught-up"] {
+        for phase in ["question", "checking", "result"] {
+            let mut o = mixed_notebook(exact != "none");
+            if exact == "caught-up" {
+                let text = "A separate authored exact Unit.";
+                o.fade_to_free(text);
+                o.answer(text);
+                o.next(None);
+                assert!(o.app.practice.current.is_none());
+            }
+            if phase == "checking" {
+                o.app.occurrence = None;
+                for q in o
+                    .app
+                    .questions
+                    .values_mut()
+                    .filter(|q| q.content().kind == "choice")
+                {
+                    q.card.due_ms = NOW + DAY_MS;
+                }
+                engine::ensure_occurrence(&mut o.app, NOW, "unassisted-recall").unwrap();
+                notebook_action(
+                    &mut o,
+                    "/review/answer",
+                    &[("answer", "My uncertain freshness answer")],
+                );
+                assert!(!o.app.occurrence.as_ref().unwrap().assisted);
+            } else if phase == "result" {
+                let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
+                notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]);
+            }
+            assert_eq!(o.app.occurrence.as_ref().unwrap().phase, phase);
+            let occurrence = o.app.occurrence.as_ref().unwrap();
+            let routes = [
+                "/notebook".to_string(),
+                "/gate".into(),
+                format!("/concepts/{}", occurrence.concept_id),
+                format!(
+                    "/goals/{}",
+                    o.app.questions[&occurrence.question_id].goal_id
+                ),
+                format!("/questions/{}/edit", occurrence.question_id),
+                "/missing".into(),
+            ];
+            let root = notebook_page(&o, "/");
+            let expected = if exact == "none" { "/" } else { "/notebook" };
+            if exact != "none" {
+                assert!(root.contains(if exact == "prompt" {
+                    "data-state=\"exact-prompt\""
+                } else {
+                    "data-state=\"exact-caught-up\""
+                }));
+            }
+            let before = o.app.clone();
+            for route in routes {
+                let page = notebook_page(&o, &route);
+                if exact == "none" {
+                    println!(
+                        "no-Study {phase} {route} {}",
+                        hex::encode(Sha256::digest(page.as_bytes()))
+                    );
+                }
+                for (href, label) in rendered_links(&page) {
+                    if recovery.contains(&label.as_str()) {
+                        observed.insert(label.clone());
+                        if href != expected {
+                            wrong.push(format!("{exact} {phase} {route}: {label} -> {href}"));
+                        }
+                    } else if href == "/" && !practice.contains(&label.as_str()) {
+                        wrong.push(format!(
+                            "Unexpected root link: {exact} {phase} {route}: {label}"
+                        ));
+                    }
+                }
+            }
+            assert_eq!(
+                o.app, before,
+                "Rendering recovery links does not mutate either practice"
+            );
+            assert_eq!(
+                notebook_page(&o, "/"),
+                root,
+                "Root retains its identical exact Prompt/caught-up view"
+            );
+        }
+    }
+    assert_eq!(observed, recovery.into_iter().map(String::from).collect());
+    assert!(wrong.is_empty(), "Wrong recovery destinations: {wrong:#?}");
+}

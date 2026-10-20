@@ -10,11 +10,11 @@ export function formFields(html, action) {
   return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m => [m[1], m[2]]));
 }
 
-export async function mixedFixture() {
+export async function mixedFixture({nowMs} = {}) {
   const name = 'mixed-' + randomUUID();
-  const bindings = {SCRY_ENV:'development', CANONICAL_ORIGIN:'http://127.0.0.1:0', SPACE_NAME:name, INTERNAL_KEY:internalKey};
+  const bindings = {SCRY_ENV:'development', CANONICAL_ORIGIN:'http://127.0.0.1:0', SPACE_NAME:name, INTERNAL_KEY:internalKey, ...(nowMs === undefined ? {} : {SCRY_TEST_NOW_MS:String(nowMs)})};
   let egress = 0;
-  const runtime = await createRuntime({port:0, name, inspect:true, bindings, egress:async () => {egress++; throw Error('No external effects allowed.');}});
+  const runtime = await createRuntime({port:0, name, inspect:true, bindings, testClock:nowMs !== undefined, egress:async () => {egress++; throw Error('No external effects allowed.');}});
   const origin = (await runtime.mf.ready).origin;
   const {worker} = await runtime.rebind({...bindings, CANONICAL_ORIGIN:origin});
   const sql = await runtime.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});

@@ -253,8 +253,9 @@ impl View<'_> {
                 );
             }
             return format!(
-                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"/\">Return to your saved answer →</a></div></section>",
-                emblem("large")
+                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"{}\">Return to your saved answer →</a></div></section>",
+                emblem("large"),
+                legacy_home(self.app)
             );
         }
         let action = self.review_form(
@@ -268,8 +269,9 @@ impl View<'_> {
             ),
         );
         format!(
-            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"/\">Keep trying</a></div></section>",
-            emblem("large")
+            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"{}\">Keep trying</a></div></section>",
+            emblem("large"),
+            legacy_home(self.app)
         )
     }
     fn pending(&self) -> String {
@@ -634,11 +636,15 @@ impl View<'_> {
                         escape(answer)
                     );
                 }
-                out.push_str(if self.check_paused(o) {
-                    self.resume_link()
+                if self.check_paused(o) {
+                    out.push_str(self.resume_link());
                 } else {
-                    "<a class=\"text-link\" href=\"/\">Check again</a>"
-                });
+                    let _ = write!(
+                        out,
+                        "<a class=\"text-link\" href=\"{}\">Check again</a>",
+                        legacy_home(self.app)
+                    );
+                }
             }
             _ => out.push_str(&self.question(o)),
         }
@@ -1735,18 +1741,25 @@ fn exact_stream_active(app: &App) -> bool {
             .any(|s| s.status != crate::study::Status::Dropped)
 }
 
+fn legacy_home(app: &App) -> &'static str {
+    if exact_stream_active(app) {
+        "/notebook"
+    } else {
+        "/"
+    }
+}
+
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if path.starts_with("/practice/") {
         "/"
     } else if redirect == "/"
-        && exact_stream_active(app)
         && (path.starts_with("/review/")
             || path == "/settings/resume"
             || path
                 .strip_prefix("/concepts/")
                 .is_some_and(|p| p.ends_with("/practice")))
     {
-        "/notebook"
+        legacy_home(app)
     } else {
         redirect
     }
