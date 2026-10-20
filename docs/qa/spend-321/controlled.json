@@ -1,0 +1,229 @@
+{
+  "controlled_spend": "PASS",
+  "purposes": [
+    {
+      "purpose": "critic",
+      "totals": {
+        "entries": 2,
+        "unknown_entries": 0,
+        "reserved_micros": 1000000,
+        "known_cost_micros": 468,
+        "unknown_held_micros": 0
+      }
+    },
+    {
+      "purpose": "generate.concepts",
+      "totals": {
+        "entries": 9,
+        "unknown_entries": 4,
+        "reserved_micros": 4500000,
+        "known_cost_micros": 2000000828,
+        "unknown_held_micros": 2000000
+      }
+    },
+    {
+      "purpose": "grade.jev",
+      "totals": {
+        "entries": 1,
+        "unknown_entries": 0,
+        "reserved_micros": 500000,
+        "known_cost_micros": 345,
+        "unknown_held_micros": 0
+      }
+    },
+    {
+      "purpose": "transcribe.photo",
+      "totals": {
+        "entries": 1,
+        "unknown_entries": 0,
+        "reserved_micros": 500000,
+        "known_cost_micros": 124,
+        "unknown_held_micros": 0
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "cd5b8a21c33b85fd3fc95edcad189253caa585e53b2d1a11",
+      "work_id": "1b291773789b8cf365b2066d26b634a2",
+      "work_kind": "concept_job",
+      "goal_id": "7c7c1ed24cc7acac6ce3a4109d76b1fc",
+      "created_ms": 1792516625008,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 124,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "9a246f823f995223e55fdcea6e53fadd51a87ef85e4c9ded",
+      "work_id": "1b291773789b8cf365b2066d26b634a2",
+      "work_kind": "concept_job",
+      "goal_id": "7c7c1ed24cc7acac6ce3a4109d76b1fc",
+      "created_ms": 1792516626029,
+      "day": "2026-10-20",
+      "purpose": "critic",
+      "model": "synthetic-jev",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 234,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "bb4529d11ba30a616e8a1a6e5bbc2d8d49a5664d27f2448a",
+      "work_id": "15b9873b9a7a74d755d9c9641f9ee25c",
+      "work_kind": "assessment",
+      "goal_id": "7c7c1ed24cc7acac6ce3a4109d76b1fc",
+      "created_ms": 1792516627203,
+      "day": "2026-10-20",
+      "purpose": "grade.jev",
+      "model": "synthetic-jev",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 345,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "3bfd595a9ccf180ad5aed51d482e367c0d0d43425cc44962",
+      "work_id": "6272320849a757ae8ead2a64b403fd6b",
+      "work_kind": "concept_job",
+      "goal_id": "a9109f6ad6222451648aa2ca25510422",
+      "created_ms": 1792516628412,
+      "day": "2026-10-20",
+      "purpose": "transcribe.photo",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 124,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "3b23235b800abb578308056eb6a0635d5702a7273f5ebadb",
+      "work_id": "6272320849a757ae8ead2a64b403fd6b",
+      "work_kind": "concept_job",
+      "goal_id": "a9109f6ad6222451648aa2ca25510422",
+      "created_ms": 1792516629443,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 124,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "527ac72e6a732731194c9fdc776c2905fdca36dd0b8d38d3",
+      "work_id": "6272320849a757ae8ead2a64b403fd6b",
+      "work_kind": "concept_job",
+      "goal_id": "a9109f6ad6222451648aa2ca25510422",
+      "created_ms": 1792516630488,
+      "day": "2026-10-20",
+      "purpose": "critic",
+      "model": "synthetic-jev",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 234,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "ba1feed8e80e313213a213543c00412d986a5d5bc1b284a2",
+      "work_id": "9d9b89c835b9e0fbf59b64bc9ac968da",
+      "work_kind": "concept_job",
+      "goal_id": "986e3e4286bb6f2f291f13d7c476a83c",
+      "created_ms": 1792516631598,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 124,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "ddc7ca7b338f154035dfd5791d54aeb8dac26645ff1fe925",
+      "work_id": "62bb7544b1e2f9c9a525cd2bffb644c9",
+      "work_kind": "concept_job",
+      "goal_id": "cc7e2b7b163e0527756cb822310b87e2",
+      "created_ms": 1792516633002,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "unknown",
+      "reserved_micros": 500000,
+      "cost_micros": null,
+      "unknown_held_micros": 500000
+    },
+    {
+      "id": "ed4976a0dcb74e21a15ddce011670b99b8d2b14d0cd93de7",
+      "work_id": "aa23f2e2d3640ed9d8eba0f3e0d6fc62",
+      "work_kind": "concept_job",
+      "goal_id": "a763e90837af7faf0c48be64522ddf8f",
+      "created_ms": 1792516636209,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "unknown",
+      "reserved_micros": 500000,
+      "cost_micros": null,
+      "unknown_held_micros": 500000
+    },
+    {
+      "id": "945ea86f73e6933b5ea5f6fe8fb3fb1e0bcdd62849f2c7c9",
+      "work_id": "114ae9112621f50f6ab3a7e905c133ca",
+      "work_kind": "concept_job",
+      "goal_id": "edf6c539e3185d9d8def88ca8d1e3de2",
+      "created_ms": 1792516639971,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "unknown",
+      "reserved_micros": 500000,
+      "cost_micros": null,
+      "unknown_held_micros": 500000
+    },
+    {
+      "id": "63ab5768963e1d6d8714e9b255e56ee29754e353dc8e2c18",
+      "work_id": "2f1f4458e49ec29ad9db49f9c66d1161",
+      "work_kind": "concept_job",
+      "goal_id": "5b8596d5ae0cf1393d1a1b6017754618",
+      "created_ms": 1792516644244,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "unknown",
+      "reserved_micros": 500000,
+      "cost_micros": null,
+      "unknown_held_micros": 500000
+    },
+    {
+      "id": "a7f24eac52cd82226a5554486b154ab780f4095d2a48899e",
+      "work_id": "b90a17192b8bbcb0cce55e632b77dfa6",
+      "work_kind": "concept_job",
+      "goal_id": "b28ab0bad2584ec2b25abdc758829d1a",
+      "created_ms": 1792516649642,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 456,
+      "unknown_held_micros": 0
+    },
+    {
+      "id": "5892e2f59b0b6e29bc8a4e5c4c3fce7e3ce9a8b5959752f9",
+      "work_id": "c3ec55ed8f3623f20ea2d901a7a55b97",
+      "work_kind": "concept_job",
+      "goal_id": "7de78676050b1ac2f682c547d43cdc67",
+      "created_ms": 1792516653244,
+      "day": "2026-10-20",
+      "purpose": "generate.concepts",
+      "model": "synthetic-generator",
+      "status": "known",
+      "reserved_micros": 500000,
+      "cost_micros": 2000000000,
+      "unknown_held_micros": 0
+    }
+  ]
+}
