@@ -7,6 +7,14 @@ use std::{collections::BTreeSet, ops::Range};
 mod unicode;
 mod unicode_tables;
 
+/// Shared pinned Unicode word normalization, without grading or Slip tolerance.
+pub fn normalized_words(text: &str) -> Vec<String> {
+    unicode::tokens(text)
+        .into_iter()
+        .map(|token| token.normalized)
+        .collect()
+}
+
 pub const AUTHORITY: &str = "exact-v2";
 pub const GRADER_VERSION: &str = "1;unicode=17.0.0";
 

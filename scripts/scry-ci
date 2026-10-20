@@ -228,7 +228,7 @@ def gate(args):
     run(["node", "--test", *critic_tests], cwd=source, env=qa_env, log=log)
     run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
     # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
-    run(["node", "--test", "qa/runtime.test.mjs", "qa/owner-api.test.mjs", "qa/revival-preserve.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=env, log=log)
+    run(["node", "--test", "qa/runtime.test.mjs", "qa/owner-api.test.mjs", "qa/library.test.mjs", "qa/revival-preserve.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=env, log=log)
     inspect_env = dict(env, SCRY_SOURCE_META=str(args.metadata.resolve()))
     run([sys.executable, "scripts/build-revival-inspect.py"], cwd=source, env=inspect_env, log=log)
     inspector = source / "target/revival-inspect"

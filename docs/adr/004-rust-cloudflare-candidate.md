@@ -138,3 +138,58 @@ The historical Go/SQLite/HTMX and private-hosting decisions remain in ADRs 001â€
 runbook. [R2 consistency](https://developers.cloudflare.com/r2/reference/consistency/)
 and [S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/) describe
 storage mechanics, not an assumption of object lock or independent replication.
+
+## 2026-10-20 Library storage amendment (#316)
+
+`src/library.rs` owns private content and its deterministic transitions. Its
+interface is `search`, `show_work`, `show_version`, `add`, `edit`, `delete`, and
+`validate`. `Work` holds title, aliases, Kind, context, and a revision.
+`Version` holds immutable text, name, Kind, Supplied Provenance, Rights status,
+citations, normalized hash, and ordered Sections containing ordered Units.
+`Relation` represents version-of, supersedes, part-of, and related-to. This
+slice creates version-of and supersedes; list and mapping slices own their
+Work relations. No relations editor is added.
+
+The existing singleton and SQLite transaction remain the sole writer. Content
+uses separate `library_works/<id>`, `library_versions/<id>`, and
+`library_relations/<id>` records. Each Version includes its Sections and Units,
+with stable identities and array order. `App.library` groups only these records;
+SQLite metadata carries no embedded Library. `study_version_refs/<study-id>`
+records a Version reference outside the Library. The practice slice must write
+that reference atomically with Study creation and retain it for dropped Studies
+and their Attempts. #316 tests the populated reference contract without adding
+a Study lifecycle or claiming real Attempt proof.
+
+`engine::mutate_as` still clones, applies, attributes the acting Owner token,
+records the operation receipt, and commits through the SQLite revision fence.
+Work edit, delete, and Version supersede take the current Work revision. Add
+resolves normalized titles and aliases before creating a Work. Text equality
+uses SHA-256 of the shared #315 Unicode-normalized words with spacing and
+apostrophes removed. There is no fuzzy comparison or second Unicode algorithm.
+Duplicates return the existing Version without changing Library records.
+A supersession to text that already exists conflicts; the caller can show that
+Version. A correction never edits the old Version. Free Library operations
+create no provider job, assessment, reservation, or spend.
+
+Default segmentation groups lines into Sections and splits clauses while
+retaining delimiters and whitespace. Callers can supply named Sections and
+exact Unit strings. Their concatenation must equal the submitted UTF-8 bytes,
+including CRLF and final whitespace, before any record is changed. Text is
+bounded at 256 KiB, with the existing row and complete archive limits also
+applying. Sources are optional caller-supplied citations; they are not fetched
+or certified. Rights default to private-only. Lists and mappings retain their
+Kind here; their practice rules remain in their own slices.
+
+The Library export serializes only `Library`, excluding study references,
+credentials, audit receipts, and the older notebook. Complete recovery archives
+include all of them and use `scry-rust-durable-sqlite-library-v1` while Library
+records, Study references, or Library operation receipts exist. Older builds must refuse this format instead
+of silently discarding content. Empty Library and empty reference state are
+omitted, so pre-Library archive bytes and SQLite rows round-trip unchanged.
+Deletion retains operation receipts even when their content no longer exists.
+A pre-Library build cannot read populated Library rows; rollback therefore
+requires a compatible build, not removal of acknowledged content. The Owner
+token foundation's verifier/revocation rollback limitations still apply.
+
+This is a source/storage decision, not activation. No historical store is
+changed, and no account, sharing, signup, or public read path is introduced.

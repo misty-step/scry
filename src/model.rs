@@ -11,6 +11,11 @@ pub const RESERVATION: u64 = 500_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct App {
+    #[serde(default, skip_serializing_if = "crate::library::Library::is_empty")]
+    pub library: crate::library::Library,
+    /// Study identity -> immutable Version. The practice slice owns writes and retention.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub study_version_refs: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub owner_tokens: BTreeMap<String, crate::owner_token::OwnerToken>,
     pub schema: u32,
@@ -44,6 +49,8 @@ pub struct App {
 impl App {
     pub fn new(csrf: String) -> Self {
         Self {
+            library: crate::library::Library::default(),
+            study_version_refs: BTreeMap::new(),
             owner_tokens: BTreeMap::new(),
             schema: SCHEMA,
             revision: 0,

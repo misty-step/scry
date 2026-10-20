@@ -60,6 +60,7 @@ receipt or a guarantee that remote recovery is usable.
 | Prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
 | HTML / assistance fence | `tests/web_render.rs` | Real pointer/keyboard, native forms without JS, hidden current answer/reference across navigation, held result, content draft/version fences, access loss |
 | Persistence / archives | `src/persistence.rs` unit tests, `tests/application.rs` | Real SQLite/R2 archive with every referenced photo, full-byte remote readback, independent fresh-space restore, paused uncertain work |
+| Private Library | `tests/library.rs`, `node --test qa/library.test.mjs`, `qa/walk --stories "US-015"` | Compiled CLI through built isolated Worker, SQLite rows and complete local R2 readback; used Study reference seam is native only until #317 |
 | Private Worker ingress | WASM check and runtime review | Actual owner JWT signature/issuer/audience/sub, anonymous/forged denial, Host/origin/CSRF, alternate-host write rejection, logout/account return |
 | Historical recovery | `bun run test:recovery` | Corresponding historical format/artifact only; do not reinterpret old snapshots as rewrite archives |
 

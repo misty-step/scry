@@ -167,6 +167,63 @@ mod cli {
         }
         serde_json::from_slice(&bytes).map_err(|_| "API returned invalid JSON.")
     }
+    fn draft(args: &mut Vec<String>) -> Result<scry::library::VersionInput> {
+        use scry::library::{Kind, Rights, SectionInput, VersionInput};
+        let title = option(args, "--title")?.ok_or("Use --title WORK_TITLE.")?;
+        let kind = match option(args, "--kind")?.as_deref() {
+            Some("text") => Kind::Text,
+            Some("ordered_list") => Kind::OrderedList,
+            Some("keyed_mapping") => Kind::KeyedMapping,
+            _ => return Err("Use --kind text|ordered_list|keyed_mapping."),
+        };
+        let text_path = option(args, "--text-file")?.ok_or("Use --text-file PATH.")?;
+        let text = fs::read_to_string(text_path).map_err(|_| "Cannot read UTF-8 text file.")?;
+        let mut aliases = Vec::new();
+        while let Some(alias) = option(args, "--alias")? {
+            aliases.push(alias);
+        }
+        let mut sources = Vec::new();
+        while let Some(source) = option(args, "--source")? {
+            sources.push(source);
+        }
+        let sections: Option<Vec<SectionInput>> = option(args, "--sections-file")?
+            .map(|path| {
+                let bytes = fs::read(path).map_err(|_| "Cannot read Sections file.")?;
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| "Use a JSON array of Sections with heading and units.")
+            })
+            .transpose()?;
+        let rights = match option(args, "--rights")?.as_deref() {
+            None | Some("private_only") => Rights::PrivateOnly,
+            Some("public_domain") => Rights::PublicDomain,
+            Some("licensed") => Rights::Licensed,
+            _ => return Err("Use --rights private_only|public_domain|licensed."),
+        };
+        Ok(VersionInput {
+            title,
+            kind,
+            text,
+            aliases,
+            sources,
+            rights,
+            sections,
+            name: option(args, "--name")?.unwrap_or_default(),
+            context: option(args, "--context")?.unwrap_or_default(),
+            spelling_strict: flag(args, "--spelling-strict"),
+        })
+    }
+    fn revision(args: &mut Vec<String>) -> Result<u64> {
+        option(args, "--revision")?
+            .ok_or("Use --revision from Work show.")?
+            .parse()
+            .map_err(|_| "Use the Work revision from show.")
+    }
+    fn resource_path(resource: &str, id: &str) -> Result<String> {
+        if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("Use a Work or Version identifier from search or show.");
+        }
+        Ok(format!("/api/v1/library/{resource}/{id}"))
+    }
     pub fn run() -> Result<Value> {
         let mut args: Vec<String> = std::env::args().skip(1).collect();
         flag(&mut args, "--json");
@@ -227,9 +284,103 @@ mod cli {
         if args.as_slice() == ["token", "list"] {
             return request(&client, &login, "/api/v1/tokens", None);
         }
+        if args.len() == 2 && args[0] == "search" {
+            let mut url = Url::parse(&format!("{}/api/v1/library/search", login.origin))
+                .map_err(|_| "Invalid origin.")?;
+            url.query_pairs_mut().append_pair("q", &args[1]);
+            return request(
+                &client,
+                &login,
+                &format!("{}?{}", url.path(), url.query().unwrap_or_default()),
+                None,
+            );
+        }
+        if args.as_slice() == ["export", "--library"] {
+            return request(&client, &login, "/api/v1/library/export", None);
+        }
+        if args.len() == 3 && matches!(args[0].as_str(), "work" | "version") && args[1] == "show" {
+            let resource = if args[0] == "work" {
+                "works"
+            } else {
+                "versions"
+            };
+            return request(&client, &login, &resource_path(resource, &args[2])?, None);
+        }
         let operation = option(&mut args, "--operation-id")?
             .map(Ok)
             .unwrap_or_else(random_id)?;
+        if args.starts_with(&["version".into(), "add".into()])
+            || args.starts_with(&["version".into(), "supersede".into()])
+        {
+            let supersede = args[1] == "supersede";
+            let rev = if supersede {
+                Some(revision(&mut args)?)
+            } else {
+                None
+            };
+            let data = draft(&mut args)?;
+            if args.len() != if supersede { 3 } else { 2 } {
+                return Err("Unexpected Version arguments.");
+            }
+            let mut payload = json!({"operation_id":operation,"data":data});
+            if let Some(rev) = rev {
+                resource_path("versions", &args[2])?;
+                payload["version_id"] = json!(args[2]);
+                payload["revision"] = json!(rev);
+            }
+            let route = if supersede {
+                "/api/v1/library/versions/supersede"
+            } else {
+                "/api/v1/library/versions"
+            };
+            return request(&client, &login, route, Some(&payload));
+        }
+        if args.starts_with(&["work".into(), "edit".into()]) {
+            let rev = revision(&mut args)?;
+            let title = option(&mut args, "--title")?;
+            let context = option(&mut args, "--context")?;
+            let clear_aliases = flag(&mut args, "--clear-aliases");
+            let mut aliases = Vec::new();
+            while let Some(alias) = option(&mut args, "--alias")? {
+                aliases.push(alias);
+            }
+            let aliases = if clear_aliases || !aliases.is_empty() {
+                Some(aliases)
+            } else {
+                None
+            };
+            if args.len() != 3 {
+                return Err(
+                    "Usage: scry work edit ID --revision N [--title TITLE] [--alias ALIAS] [--context NOTE]",
+                );
+            }
+            resource_path("works", &args[2])?;
+            return request(
+                &client,
+                &login,
+                "/api/v1/library/works/edit",
+                Some(&json!({"operation_id":operation,
+                "data":{"work_id":args[2],"revision":rev,"title":title,"aliases":aliases,"context":context}})),
+            );
+        }
+        if args.len() >= 2 && matches!(args[0].as_str(), "work" | "version") && args[1] == "delete"
+        {
+            let rev = revision(&mut args)?;
+            if args.len() != 3 {
+                return Err("Usage: scry work|version delete ID --revision N");
+            }
+            let work = args[0] == "work";
+            let resource = if work { "works" } else { "versions" };
+            resource_path(resource, &args[2])?;
+            let mut payload = json!({"operation_id":operation,"revision":rev});
+            payload[if work { "work_id" } else { "version_id" }] = json!(args[2]);
+            return request(
+                &client,
+                &login,
+                &format!("/api/v1/library/{resource}/delete"),
+                Some(&payload),
+            );
+        }
         if args.starts_with(&["token".into(), "create".into()]) {
             let paid = flag(&mut args, "--paid");
             let expiry = option(&mut args, "--expires-ms")?;
@@ -256,6 +407,8 @@ mod cli {
                 Some(&json!({"operation_id":operation,"token_id":args[2]})),
             );
         }
-        Err("Usage: scry login|whoami|token create|list|revoke [--json] [--config PATH]")
+        Err(
+            "Usage: scry login|whoami|token|search|work|version|export --library [--json] [--config PATH]",
+        )
     }
 }

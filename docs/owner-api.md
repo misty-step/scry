@@ -62,10 +62,9 @@ or booleans; internal fields are refused. Payload conflicts return 409. Invalid
 tokens return the same 401 JSON refusal. Paid refusal is 403 before reservation.
 Token-authenticated changes appear by token ID in receipts/history/export.
 
-These are the #314 foundation routes. Library and Study actions belong to
-#316/#317; they must adapt to this shared engine and durable boundary. This
-change does not switch canonical origin, archive a live space, enable providers,
-change Access deployment configuration, or activate an API in production.
+The foundation routes share the engine and durable boundary with the Library
+routes below. Study actions belong to #317. Source support does not establish
+production API activation or Access admission.
 
 ## Hosted admission follow-up
 
@@ -82,3 +81,79 @@ Browser routes must retain owner Access protection. That policy work and its ind
 parent-owned follow-up. Local synthetic Worker checks do not establish hosted
 admission; it remains unverified. This change does not alter live Access policy
 or expose the application.
+
+## Private Library
+
+Search before adding supplied text:
+
+```sh
+./target/debug/scry search 'apostles creed' --json
+./target/debug/scry version add --title "Apostles' Creed" --kind text \
+  --text-file /private/supplied.txt --name 'English, Roman Missal 2011' \
+  --alias 'Symbolum Apostolorum' --source 'Caller-supplied citation' \
+  --operation-id retained-library-operation --json
+./target/debug/scry version show VERSION_ID --json
+./target/debug/scry work show WORK_ID --json
+./target/debug/scry work edit WORK_ID --revision 1 \
+  --alias 'Symbolum Apostolorum' --context 'Private context note' --json
+./target/debug/scry version supersede VERSION_ID --revision 2 \
+  --title "Apostles' Creed" --kind text --text-file /private/corrected.txt --json
+./target/debug/scry export --library --json
+./target/debug/scry version delete UNUSED_VERSION_ID --revision 3 --json
+./target/debug/scry work delete UNUSED_WORK_ID --revision 4 --json
+```
+
+Use the current `work.revision` from show for edit, delete, and supersede.
+The numbers above illustrate successive revisions, not values to reuse blindly.
+`--alias` and `--source` repeat. Work edit replaces aliases when supplied;
+`--clear-aliases` removes them. Omitted title, aliases, and context stay unchanged.
+Kind belongs to the Work and is fixed; Version text and metadata are immutable.
+Supersede takes the same draft flags as add, with an existing Version ID and
+its Work revision. A correction to wording that already exists conflicts.
+
+Version flags include `--rights private_only|public_domain|licensed`,
+`--spelling-strict`, and `--sections-file PATH`. Rights default to private-only
+and Provenance is always supplied. Sources are optional and never fetched.
+`--kind` accepts `text`, `ordered_list`, and `keyed_mapping`; this slice stores
+them and adds no practice behavior. Text files must be UTF-8, at most 256 KiB.
+Default Sections follow lines, with clauses as Units. To name articles or stanzas,
+pass a JSON file such as:
+
+```json
+[{"heading":"Synthetic article","units":["First supplied clause,"," second clause.\n"]}]
+```
+
+Every byte must match the text file when Units are joined, including line endings
+and final whitespace. A mismatch refuses the whole add. Case, punctuation,
+and spacing differences return the existing Version, preserving its original
+bytes and metadata. Titles and aliases resolve one Work; ambiguous names conflict.
+Search matches titles, aliases, and the first 240 characters of each Version.
+An empty query lists the Library. No matches returns
+`{"matches":[],"empty":true,"message":"Nothing matches."}`.
+
+| Method | Route | Payload / result |
+| --- | --- | --- |
+| GET | `/api/v1/library/search?q=QUERY` | Matching Works with Versions and Relations, explicit empty result |
+| GET | `/api/v1/library/works/ID` | Work metadata, Versions with Sections and Units, Relations |
+| GET | `/api/v1/library/versions/ID` | Version, owning Work, incoming and outgoing Relations |
+| GET | `/api/v1/library/export` | Only `works`, `versions`, and `relations` |
+| POST | `/api/v1/library/versions` | `operation_id`, `data` Version draft |
+| POST | `/api/v1/library/versions/supersede` | `operation_id`, `version_id`, Work `revision`, `data` Version draft |
+| POST | `/api/v1/library/versions/delete` | `operation_id`, `version_id`, Work `revision` |
+| POST | `/api/v1/library/works/edit` | `operation_id`, `data` with `work_id`, `revision`, optional `title`, `aliases`, `context` |
+| POST | `/api/v1/library/works/delete` | `operation_id`, `work_id`, `revision` |
+
+The Version draft is an object with `title`, `kind`, `text`, optional `name`,
+`aliases`, `context`, `sources`, `rights`, `spelling_strict`, and `sections`.
+Each Section has `heading` and an ordered `units` array of exact strings.
+Only Library `data` supports nested JSON; other foundation API fields remain
+scalar. Mutations return the shared `result.entity_id`, `redirect`, and
+`replayed` fields. Show the returned identity to read the committed content.
+Every Library mutation retains token attribution in private history and complete
+export. The Library-only export excludes that attribution and all study state.
+
+Unused Versions and Works can be deleted; a recorded Study reference refuses
+both. #317 must create and retain references with real Studies and Attempts.
+Until that slice lands, used-Study refusal has native unit proof only. Library
+CRUD needs no paid permission, makes no provider call, and reserves no allowance.
+The hosted Access admission limitation above also applies to these routes.
