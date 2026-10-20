@@ -112,8 +112,8 @@ vars with synthetic identity and isolated SQLite/R2. It is not serving evidence.
 
 On 2026-10-20 at 20:44Z the owner signed in to `https://scry.mistystep.io`
 through Cloudflare Access with the Misty Step (OIDC) identity. Access allowed
-the sign-in, but the Worker answered "Owner authorization required." The Worker admits
-exactly one owner: the Access JWT `sub` must equal the `OWNER_SUBJECT` secret
+the sign-in, but the Worker answered "Owner authorization required." The
+Worker admits exactly one owner: the Access JWT `sub` must equal the `OWNER_SUBJECT` secret
 (`validate_access` in `src/runtime.rs`).
 
 Diagnosis, all read-only before the change:
@@ -136,8 +136,9 @@ created deployment `d40a58cf-2a4d-488a-87f3-f184ebf3ccff` with version
 `e44a9516-16e6-41c4-a148-8fd75c881699`, annotated `triggered_by: secret`. It
 replaced `d8d70e2f-f2c1-4f09-a4af-35346c7ff414` (`scry-rust 69435af`), and the
 code is unchanged. No Access policy, var, binding, code or data changed.
-Sign-in with the owner's other email is now refused. Rollback is one secret put
-of that identity's `user_uuid`.
+By the same subject check, sign-in with the owner's other email is now expected
+to be refused; that was not observed. Rollback is one secret put of that
+identity's `user_uuid`.
 
 Afterwards, both production hosts sent anonymous requests and a forged
 assertion to the Access login. Machine health returned 200. The `scry-qa`
