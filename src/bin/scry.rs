@@ -281,6 +281,16 @@ mod cli {
         if args.as_slice() == ["whoami"] {
             return request(&client, &login, "/api/v1/whoami", None);
         }
+        if args.first().is_some_and(|arg| arg == "spend") {
+            let by = option(&mut args, "--by")?.ok_or("Use spend --by day|purpose|model.")?;
+            if args.len() != 1 || scry::spend::SpendBy::parse(&by).is_err() {
+                return Err("Use spend --by day|purpose|model.");
+            }
+            let value = request(&client, &login, &format!("/api/v1/spend?by={by}"), None)?;
+            let report: scry::spend::SpendReport =
+                serde_json::from_value(value).map_err(|_| "Invalid spend report.")?;
+            return serde_json::to_value(report).map_err(|_| "Invalid spend report.");
+        }
         if args.as_slice() == ["token", "list"] {
             return request(&client, &login, "/api/v1/tokens", None);
         }
@@ -408,7 +418,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|export --library [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|export --library|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

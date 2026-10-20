@@ -258,6 +258,8 @@ try {
       const payload=await req.json();const chat=req.url.endsWith('/chat/completions');
       assert.equal(req.headers.get('Authorization'),`Bearer ${chat?'synthetic-generator-key':'synthetic-jev-key'}`);transmissions++;
       const state=await readState();const reservation=state.app.spend.at(-1);assert.equal(reservation.reserved_micros,500000);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);
+      assert.equal(reservation.model,chat?'synthetic-generator':'synthetic-jev');
+      assert.equal(reservation.purpose,chat?(Array.isArray(payload.messages.at(-1).content)?'transcribe.photo':'generate.concepts'):(payload.questions.verdict?'grade.jev':'critic'));
       if(chat){
         if(mode==='network-error')throw new Error('Synthetic interrupted provider transport');
         if(mode==='oversize')return new Response('x'.repeat(256*1024+1),{status:200});
@@ -297,6 +299,18 @@ try {
       mode='delayed';const started=new Promise(resolve=>{blockedStarted=resolve;});const staleGoal=await capture('A deliberately stale paid preparation');await started;const archivePath=`/goals/${staleGoal}/archive`;const archiveFields=formFields(await(await req(`/goals/${staleGoal}`)).text(),archivePath);assert.equal((await submit(archivePath,archiveFields)).status,303);releaseBlocked();const stale=await wait(app=>app.jobs[app.goals[staleGoal].job_id].raw_response!==null);const staleJob=stale.app.jobs[stale.app.goals[staleGoal].job_id];assert.equal(staleJob.status,'superseded');assert.ok(staleJob.raw_response);const charge=stale.app.spend.find(s=>s.work_id===staleJob.id);assert.equal(charge.status,'known');assert.ok(charge.cost_micros>0);assert.equal(stale.app.goals[staleGoal].concept_ids.length,0);
       for(const failure of ['network-error','oversize','http-error','malformed','http-success-shaped']){mode=failure;const failedGoal=await capture(`Controlled ${failure} request`);const failed=await wait(app=>['unknown','failed'].includes(app.goals[failedGoal].status));const failedJob=failed.app.jobs[failed.app.goals[failedGoal].job_id];const paid=failed.app.spend.find(s=>s.work_id===failedJob.id);assert.equal(paid.status,failure==='http-success-shaped'?'known':'unknown');assert.equal(paid.cost_micros,failure==='http-success-shaped'?456:null);assert.equal(paid.reserved_micros,500000);assert.equal(failed.app.goals[failedGoal].concept_ids.length,0,'Rejected or malformed transport must not publish any content.');if(['http-error','malformed','http-success-shaped'].includes(failure)){assert.ok(paid.raw_response);assert.equal(paid.response_hash,createHash('sha256').update(paid.raw_response).digest('hex'));assert.equal(paid.response_bytes,Buffer.byteLength(paid.raw_response));assert.equal(paid.response_outcome,failure==='malformed'?'received':'rejected');}const count=transmissions;await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,count,'Unknown paid requests must never resend automatically.');}
       mode='over-allowance';const expensive=await capture('Controlled measured expense beyond the daily allowance');const over=await wait(app=>app.goals[expensive].status==='failed');const expensiveJob=over.app.jobs[over.app.goals[expensive].job_id];const measured=over.app.spend.find(s=>s.work_id===expensiveJob.id);assert.equal(measured.status,'known');assert.equal(measured.cost_micros,2_000_000_000);assert.ok(expensiveJob.raw_response);assert.ok(expensiveJob.candidate_json);const stopped=transmissions;const blocked=await capture('Save this intent after the measured allowance is exhausted');await wait(app=>app.goals[blocked].status==='failed');assert.equal(transmissions,stopped,'Measured over-budget expense must stop further reservations and sends.');
+      const ledger=(await readState()).app.spend;
+      const response=await req('/api/v1/spend?by=purpose');assert.equal(response.status,200);
+      const report=await response.json();assert.equal(report.entries.length,ledger.length);
+      for(const purpose of ['generate.concepts','critic','grade.jev','transcribe.photo']){
+        // Existing transport rounds reported dollars upward to whole micros.
+        const expected={'generate.concepts':124,critic:234,'grade.jev':345,'transcribe.photo':124}[purpose];
+        assert.ok(report.entries.some(e=>e.purpose===purpose&&e.status==='known'&&e.cost_micros===expected));
+      }
+      for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros);assert.equal(entry.work_id,row.work_id);}
+      assert.ok(report.entries.some(e=>e.status==='unknown'&&e.cost_micros===null&&e.unknown_held_micros===500000));
+      assert.deepEqual((await readState()).app.spend,ledger);
+      console.log(JSON.stringify({controlled_spend:'PASS',purposes:report.groups.map(g=>({purpose:g.key,totals:g.totals})),entries:report.entries}));
     } finally {releaseBlocked?.();await instance.mf.dispose();}
   });
   for (const [label, changes, succeeds, snapshot] of [

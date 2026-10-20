@@ -13,3 +13,13 @@ native CLI walks are shared with `node --test qa/owner-api.test.mjs`.
 
 Source: `src/owner_token.rs`, `src/api.rs`, `src/engine.rs`, `src/runtime.rs`,
 `src/web.rs`, `src/bin/scry.rs`. The [Library](library.md) uses this API boundary; Study actions follow in #317. Synthetic proofs do not establish deployed ingress.
+
+US-019.7's spend slice (#321): use `scry spend --by day|purpose|model --json`
+or `GET /api/v1/spend?by=day|purpose|model` with an Owner token. Run
+`node --test qa/spend.test.mjs` against the built Worker for CLI/API values,
+UTC grouping, historical attribution, private errors and byte-identical store
+reads. The existing `qa/runtime.test.mjs` controlled provider lifecycle checks
+reservation attribution and measured/unknown costs. See the
+[projection/compatibility notes](../docs/spend.md) and
+[builder evidence](../docs/qa/spend-321/README.md). This partial proof leaves
+US-019 pending for #322; it adds no new story or acceptance gate.
