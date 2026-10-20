@@ -14,6 +14,117 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Rust production serving — observed 2026-10-20
+
+Since 2026-10-16 the Rust Worker, not the Go Container, serves the production
+hostnames. This supersedes the serving statements in the 2026-10-07 introduction
+above and in the September 22 [Current authority](#current-authority) section;
+those remain historical. Read back on 2026-10-20 with the Scry deploy token
+(pass entry `workstation/SCRY_CLOUDFLARE_DEPLOY_TOKEN`) through read-only
+Cloudflare API calls. The commands are listed at the end of this section.
+
+| Fact | Observed value | Source |
+| --- | --- | --- |
+| Serving Worker | `scry.study`, `www.scry.study`, `scry.mistystep.io` are Workers Custom Domains for `scry-rust-production` | `GET /workers/domains` |
+| Other Scry hosts | `preview.scry.study` → `scry-rust-preview-20261009`; `recovery-20261009-46c72f.scry.study` → `scry-rust-recovery-20261009-46c72f` | `GET /workers/domains` |
+| Zone routes | `scry.study` zone has no Worker routes | `GET /zones/{scry.study}/workers/routes` |
+| Learner space | `SPACE_NAME = revival-production-20261016`; Durable Object `LEARNING_SPACE` (class `LearningSpace`); R2 `SCRY_ASSETS`, `SCRY_BACKUPS` | script settings; bucket names in [`deploy/rust-production.toml`](../deploy/rust-production.toml) |
+| Origins | `CANONICAL_ORIGIN = https://scry.study`; `ALTERNATE_HOSTS = www.scry.study,scry.mistystep.io`; Access team `misty-step-pantry.cloudflareaccess.com` | script settings |
+| Secret binding names | `OWNER_SUBJECT`, `INTERNAL_KEY`, `BACKUP_TRIGGER_KEY`, `SCRY_QA_ACCESS_CLIENT_ID` (values not read) | script settings |
+| Generation | **Off.** No `OPENROUTER_API_KEY` or `JEV_API_KEY` binding; `OPENROUTER_MODEL` and `JEV_MODEL` are empty. `work_config` in `src/runtime.rs` needs a key and a model, so generation, meaning checks and critics are all disabled | script settings; `src/runtime.rs` |
+| Restore capability | No `RESTORE_TOKEN` or `OPERATOR_KEY` binding | script settings |
+| Other surfaces | Cron schedules `[]`; workers.dev and preview URLs disabled; observability disabled | `/schedules`, `/subdomain`, settings |
+| Current version | Version 28 `362cf35a-928e-45b0-8474-b7bc6546e814` at 100%, annotated `scry-rust 1ae32d88c0c87293dba869017f5801d53709f80c` (v0.1.1, [#270](https://github.com/misty-step/scry/pull/270)), deployed 2026-10-20T06:46:35Z | `/versions`, `/deployments` |
+| Who promoted it | `ci.yml` promote run [39382316760](https://github.com/misty-step/scry/actions/runs/39382316760), dispatched by `github-actions[bot]` from release run [39382282718](https://github.com/misty-step/scry/actions/runs/39382282718) | GitHub Actions API |
+
+### How and when the domains moved
+
+Cloudflare's account audit log (v2, `GET /accounts/{account}/logs/audit`) records
+three `Attach Worker Domain` calls (`PUT /workers/domains`, service
+`scry-rust-production`, HTTP 200):
+
+- `scry.study` at 2026-10-16T23:35:33.944Z
+- `www.scry.study` at 23:35:34.546Z
+- `scry.mistystep.io` at 23:35:35.115Z
+
+All three domain IDs, and their Worker-managed DNS records created
+2026-09-22, are unchanged. The attach re-pointed existing custom domains in
+place. The surrounding events from the same token were:
+
+- 23:33:40Z: an Access service token named `scry-machine` was created.
+- 23:33:43Z: Access application `Scry production health and backup` was created
+  for `scry.study/healthz` and `scry.study/internal/backup`.
+- 23:35:27Z: `scry-app-host` cron schedules were set to `[]`.
+- 23:37:12Z: a deployment rolled back to version 19 (`0a33d3e`), annotated
+  "Scry compatible code-only rollback; preserve accepted store".
+- 23:37:21Z: a deployment re-promoted version 20 (`b2cbf09`), annotated
+  "Scry compatible code-only repromote; preserve accepted store".
+
+At the move the serving code was `b2cbf09`. It was promoted at 12:06:50Z by
+`ci.yml` run [38898234775](https://github.com/misty-step/scry/actions/runs/38898234775).
+
+Known about who: every one of these calls used the account API token named
+`misty-step CD`, with user agent `Python-urllib/3.14`, from the same source
+address that created `scry-rust-production` at 2026-10-16T06:38:55Z. No GitHub
+Actions run in this repository was active at 23:35Z.
+**UNKNOWN:** which person or agent ran the script. No PR, issue, commit or
+receipt in this repository records the domain move. The native revival task
+`t_07292b91` (Access-protected Powder) was not read for this observation.
+
+### Revival import evidence
+
+- Known, from the audit log: `RESTORE_TOKEN` was bound to and removed from
+  `scry-rust-production` repeatedly between 2026-10-16T06:40Z and 08:06Z. Its
+  last removal was at 10:28:05Z. `OWNER_SUBJECT` and `BACKUP_TRIGGER_KEY` were
+  added at 10:29:35Z. Control-plane audit cannot show whether a restore succeeded.
+- Known, from this repository: [ADR 006](adr/006-one-way-revival-custody.md)
+  records two native import-time refusals against the production space.
+  [PR #269](https://github.com/misty-step/scry/pull/269) reports that the
+  owner saw imported placeholder material on live Scry by phone on 2026-10-16.
+  It cites an import receipt: 29 of the 37 revived questions received
+  placeholder ideas.
+- **UNKNOWN / not in this repository:** that import receipt, a canonical
+  learner/media reconciliation, an independently reviewed cutover proof, and a
+  compatible-rollback rehearsal with accepted writes. These are the
+  [release procedure](rust-cloudflare.md#reviewable-release-procedure) step 6
+  conditions. Every done-when item on
+  [#274](https://github.com/misty-step/scry/issues/274) is unchecked. These
+  observations are serving facts, not acceptance or recovery proof.
+
+### Go host `scry-app-host`
+
+The Worker still exists. No custom domain or route points at it. Its
+workers.dev URL is disabled and its cron schedules are `[]`. Its bindings still
+name the Container Durable Object `SCRY_CONTAINER`, the `RECOVERY` R2 bucket
+and the Go model/provider secrets; their values were not read.
+
+`go-edge.yml` runs on pushes that change `package.json`, so release commits
+keep promoting it after the move:
+
+- version `4c706ff6` (`scry-go-edge 1ae32d8`) at 2026-10-20T06:34:09Z, run
+  [39380962555](https://github.com/misty-step/scry/actions/runs/39380962555);
+- `c8dc7c5` at 2026-10-17T04:05:12Z, run
+  [39001118236](https://github.com/misty-step/scry/actions/runs/39001118236).
+
+Neither promotion serves a Scry domain. Whether `go-edge.yml` should keep
+promoting it is a separate decision ([#280](https://github.com/misty-step/scry/issues/280)).
+
+### Read commands
+
+All calls ran under `pass-env run -e CLOUDFLARE_API_TOKEN=workstation/SCRY_CLOUDFLARE_DEPLOY_TOKEN`
+with `curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"` against
+`https://api.cloudflare.com/client/v4`. Output went through `jq` filters that
+print binding names and types, and values only for `plain_text` bindings.
+
+- `GET /accounts/{acct}/workers/domains` and `GET /accounts/{acct}/workers/domains/{id}`
+- `GET /accounts/{acct}/workers/scripts/{scry-rust-production,scry-app-host}/{settings,deployments,schedules,subdomain}`
+- `GET /accounts/{acct}/workers/scripts/scry-rust-production/versions`
+- `GET /zones/{scry.study}/workers/routes` and `GET /zones/{zone}/dns_records`
+- `GET /accounts/{acct}/audit_logs` and `GET /accounts/{acct}/logs/audit?since=2026-10-16T00:00:00Z&before=2026-10-18T00:00:00Z&action_type={create,update,delete}`.
+  The v1 log does not include Workers Custom Domain changes; v2 does.
+- `GET /zones/{zone}/ssl/certificate_packs` returned 9109 (unauthorized) for this token.
+- `gh api repos/misty-step/scry/actions/workflows/{ci,go-edge}.yml/runs`
+
 ## Private Rust preview — 2026-10-09
 
 `https://preview.scry.study` is a separate owner-only Rust preview, served by
