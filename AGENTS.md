@@ -57,3 +57,17 @@ Merge only verified source through normal protection. A source merge is not
 deployment or closure of the rewrite acceptance; promotion follows the
 [candidate procedure's verifiable cutover conditions](docs/rust-cloudflare.md#reviewable-release-procedure).
 Foundation bot approval and adoption checks are retired.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `misty-step/scry`, initiative #273. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` (created lazily) and `docs/adr/`. See `docs/agents/domain.md`.
