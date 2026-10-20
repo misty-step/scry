@@ -75,7 +75,7 @@
     {
       "command": "gitleaks dir frozen-source --redact --no-banner",
       "status": "PASS",
-      "evidence": "logs/source-secrets.txt"
+      "evidence": "logs/source-scan.txt"
     }
   ],
   "limits": [
@@ -93,7 +93,7 @@
     "logs/native-clippy.txt": "44f7d8fd79b8b2dcddb69c4a1a46a638e6d84dd6b4996ec812cd716afd62557e",
     "logs/pinned-runtime.txt": "fb7539e6afc9c9fb3a543dddfcf20db86e33417f901944a2c9501dc5f835cf6b",
     "logs/rust-tests.txt": "30b866b5cdf8a5be2e7adffb0fca7c865788db7fe35d8e87110dfa65176f195a",
-    "logs/source-secrets.txt": "03b1499b6cdc522e0817380e20b596a633e7ef8c827168399ffdb22d3c7efc5b",
+    "logs/source-scan.txt": "03b1499b6cdc522e0817380e20b596a633e7ef8c827168399ffdb22d3c7efc5b",
     "logs/wasm-check.txt": "fbacc3b9d5bef430f18f02faf02e70af723862933868e8928022019e43011963",
     "logs/wasm-clippy.txt": "a5823c4a6a9b2c15e4961606d7769ac29dc7b1aa3408f2c8e80e0f3d129236fb",
     "logs/worker-build.txt": "59a6e6c5f3824fb0a4f1f4e89f71ab67720d3b0ca65d6fde8e80ef11c6627438",
