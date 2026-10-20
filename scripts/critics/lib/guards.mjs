@@ -5,7 +5,7 @@
 import { URL } from 'node:url';
 
 // production origins per spec
-const PRODUCTION_ORIGINS = new Set(['scry.study', 'www.scry.study']);
+const PRODUCTION_ORIGINS = new Set(['scry.study', 'www.scry.study', 'scry.mistystep.io']);
 
 export function classifyOrigin(rawUrl, { mutating = false, allowOrigin = null } = {}) {
   if (!rawUrl) return { ok: false, kind: 'invalid', reason: 'no url provided' };

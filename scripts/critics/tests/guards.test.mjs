@@ -9,6 +9,12 @@ describe('guards', () => {
     strictEqual(r.kind, 'production');
   });
 
+  it('classifyOrigin rejects scry.mistystep.io for mutating modes', () => {
+    const r = classifyOrigin('https://scry.mistystep.io', { mutating: true });
+    strictEqual(r.ok, false);
+    strictEqual(r.kind, 'production');
+  });
+
   it('classifyOrigin accepts loopback', () => {
     const r = classifyOrigin('http://127.0.0.1:18080');
     strictEqual(r.ok, true);
@@ -34,6 +40,12 @@ describe('guards', () => {
 
   it('classifyOrigin still refuses production origins with a matching --allow-origin', () => {
     const r = classifyOrigin('https://scry.study', { mutating: true, allowOrigin: 'https://scry.study' });
+    strictEqual(r.ok, false);
+    strictEqual(r.kind, 'production');
+  });
+
+  it('classifyOrigin refuses scry.mistystep.io with a matching --allow-origin', () => {
+    const r = classifyOrigin('https://scry.mistystep.io', { mutating: true, allowOrigin: 'https://scry.mistystep.io' });
     strictEqual(r.ok, false);
     strictEqual(r.kind, 'production');
   });
