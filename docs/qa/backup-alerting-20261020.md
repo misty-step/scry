@@ -85,14 +85,29 @@ is in the future; no second shortened-schedule test or real check-in was sent.
 Read-only discovery found enabled workflow `2777562`, named
 `scry: production issues and monitor failures to #ops`, linked to Scry's Issue
 Stream detector `6109865`, using existing approved intake. The new cron detector
-is `10702175`. The archived Hermes job's `failure_deliver` is
-`discord:1560049697781981205`; read-only Discord lookup names that channel
-`incidents`. No Hermes job was changed and no Discord message was sent directly.
+is `10702175`. Readback found its latest issue:
+[Cron failure: scry-mirrodin-daily-backup](https://misty-step.sentry.io/issues/7802576540/),
+`SCRY-W`, type `monitor_check_in_failure`, category `outage`, first seen
+`2026-10-20T14:38:49Z`, unresolved with reason `An error check-in was detected.`
+The Issue Stream workflow covers the new cron issue without a direct workflow
+association on the cron detector; no remote routing configuration was changed.
 
-Owner delivery is **UNVERIFIED**: the initial remote readback showed the cron
-incident, but no cron issue or matching new Discord message. The PR records the
-final observation and exact remaining configuration, if any. Do not retire
-Hermes based only on HTTP 200, source merge, or these offline tests.
+**PASS — forced failure reached the owner's existing channel.** Read-only
+Discord lookup found the matching Sentry issue link in
+[#ops message 1562113111710896239](https://discord.com/channels/1468712458536354050/1560044721181696042/1562113111710896239),
+delivered at `2026-10-20T14:39:48.490Z`. The channel is `ops`, ID
+`1560044721181696042`. The archived Hermes job's `failure_deliver` points to
+`discord:1560049697781981205`, currently named `incidents`; initial reads of
+that historical channel did not establish current Sentry delivery. Likewise,
+the initial `issue.category:cron` query did not find this `outage` issue. The
+final detector and correct channel readbacks resolve those earlier limits.
+No Hermes job was changed and no Discord message was sent directly.
+
+No new credential or Sentry admin provisioning is needed. The existing public
+DSN successfully upserted the native monitor and the existing workflow delivered
+the notification. Privileged Sentry and Discord tokens were used only for GET
+readbacks through `pass-env`; no token/DSN is retained in this evidence. Do not
+retire Hermes based only on HTTP 200, source merge, or offline tests.
 
 The conductor must install the merged units from master, verify the backup and
 check-in, complete owner-delivery and missed-run observations, then disable
@@ -103,3 +118,10 @@ Hermes, deploy, merge, or read `.env`/`.dev.vars`.
 
 Protocol references: [Sentry check-in wire format and DSN upsert](https://develop.sentry.dev/sdk/telemetry/check-ins/),
 [code-configured cron monitors](https://docs.sentry.io/platforms/python/crons/).
+
+Independent code review of implementation `5cd4d4e84b535c96daf544a091b29a5ecc762529`
+against the recorded base: Standards 0 findings; Spec 0 concrete defects or
+scope creep. The Spec review initially recorded an owner-delivery gap, then
+cleared it after receiving the actual issue and #ops message readback above.
+Both reviewers reran the 21 offline backup tests successfully. The subsequent
+receipt update changes documentation only.
