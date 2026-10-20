@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/misty-step/scry/compare/v0.1.3...v0.2.0) (2026-10-20)
+
+
+### Features
+
+* add pure exact-v2 grader with Unicode normalization and per-Unit Diff ([#334](https://github.com/misty-step/scry/issues/334)) ([79d0f8b](https://github.com/misty-step/scry/commit/79d0f8b17e1d0c8fcc23d939d049eee3908935ef))
+* **auth:** Owner tokens, /api/v1 and scry CLI login ([#332](https://github.com/misty-step/scry/issues/332)) ([28db32d](https://github.com/misty-step/scry/commit/28db32deda37488740cacc699adab0068a38dfd4))
+* **library:** find and keep supplied Versions once ([#340](https://github.com/misty-step/scry/issues/340)) ([31de4f7](https://github.com/misty-step/scry/commit/31de4f7934ae1a1fc73b848879bdfb1ce534986d))
+* **spend:** attribute reservations and report costs ([294f998](https://github.com/misty-step/scry/commit/294f99808a352e066ca6a59cfaa8320eb37d2ee7))
+
+
+### Bug Fixes
+
+* **ops:** make scry.mistystep.io the canonical origin ([#333](https://github.com/misty-step/scry/issues/333)) ([4798fb9](https://github.com/misty-step/scry/commit/4798fb94191c46dbf6585034f3a4296341a8baf5))
+
 ## [0.1.3](https://github.com/misty-step/scry/compare/v0.1.2...v0.1.3) (2026-10-20)
 
 
