@@ -13,7 +13,7 @@ catch {
 export const Response=runtime.Response;
 export const denyEgress=async()=>{throw new Error('External calls are forbidden in synthetic QA.');};
 export const internalKey='synthetic-internal-private-storage-key-32chars';
-export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath,testClock=false}) {
+export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath,testClock=false,handleStructuredLogs}) {
   artifact=resolve(artifact);
   // Miniflare replaces Host with its own listener. This transport-only adapter
   // restores the simulated external Host before Rust enforces its real checks.
@@ -40,7 +40,7 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
     {type:'ESModule',path:resolve(artifact,'index.js'),contents:readFileSync(resolve(artifact,'index.js'),'utf8')},
     {type:'CompiledWasm',path:resolve(artifact,'index_bg.wasm'),contents:readFileSync(resolve(artifact,'index_bg.wasm'))}
   ];
-  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,...(port!==undefined?{host:'127.0.0.1',port}:{}),...(resourcePersistencePath?{resourcePersistencePath}:{})};
+  const v4={name,modules,modulesRoot:artifact,cf:false,compatibilityDate:'2026-09-10',durableObjects:{LEARNING_SPACE:{className:'LearningSpace',useSQLite:true}},r2Buckets:['SCRY_ASSETS','SCRY_BACKUPS'],bindings,outboundService:egress,handleStructuredLogs,...(port!==undefined?{host:'127.0.0.1',port}:{}),...(resourcePersistencePath?{resourcePersistencePath}:{})};
   const options=runtime.convertV4MiniflareOptions?runtime.convertV4MiniflareOptions(v4):v4;
   if(inspect)options.unsafeInspectDurableObjects=true;
   const mf=new runtime.Miniflare(options);
