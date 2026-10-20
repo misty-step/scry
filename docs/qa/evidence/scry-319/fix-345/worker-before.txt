@@ -1,0 +1,17 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Rejected legacy answer retains its question view
+    at mixedHttpProof (file:///home/phaedrus/.t3/worktrees/scry/t3-33a6681f/qa/mixed-notebook.mjs:50:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///home/phaedrus/.cache/tmp/scry-345-fix-6k7c6m8z/before-http.mjs:2:28 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v22.22.0

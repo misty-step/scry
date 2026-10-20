@@ -39,6 +39,6 @@ fixture for Show me before answering. The understanding notebook remains at
 forms without JavaScript. It compares the phone with compiled `scry answer
 --json` on the identical frozen Prompt restored from a complete synthetic local
 R2 archive. It also exercises exact-route response loss, stale tabs, offline
-pause and private DOM removal. Read the current [builder receipt](../docs/qa/evidence/scry-319/README.md)
+pause and private DOM removal. Read the current [builder receipt](../docs/qa/evidence/scry-319/fix-345/README.md)
 for observations and limits. Source: `src/web.rs`, `src/study.rs`,
 `src/runtime.rs`, `assets/app.css`, `assets/app.js`, and `qa/phone-stream.mjs`.
