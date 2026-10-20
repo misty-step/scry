@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3](https://github.com/misty-step/scry/compare/v0.1.2...v0.1.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* **critics:** treat scry.mistystep.io as production ([#303](https://github.com/misty-step/scry/issues/303)) ([320af73](https://github.com/misty-step/scry/commit/320af736108d0ee794011d0699d0ec71e85514f9))
+* **ops:** own the daily production backup trigger on Mirrodin ([#304](https://github.com/misty-step/scry/issues/304)) ([59e7ad1](https://github.com/misty-step/scry/commit/59e7ad1f82ffdbead6e533be6328e212f34d9895))
+* **release:** check current-head CI before skipping stale runs ([#295](https://github.com/misty-step/scry/issues/295)) ([cb93333](https://github.com/misty-step/scry/commit/cb933335f1bd40e397bdaae3dfd99496dcafeeba))
+
 ## [0.1.2](https://github.com/misty-step/scry/compare/v0.1.1...v0.1.2) (2026-10-20)
 
 
