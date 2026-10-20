@@ -77,10 +77,10 @@ export const specs={
   },
   ...Array.from({length:7},(_,i)=>async c=>c.owner.criteria[i+1]())
  ],
- 'US-016':Array.from({length:11},(_,i)=>async c=>c.practice.studyCriteria[i]()),
- 'US-017':Array.from({length:10},(_,i)=>async c=>c.practice.graderCriteria[i]()),
  'US-015':Array.from({length:8},(_,i)=>async c=>{
    if(i===6)c.policy('supersede_retains_original_and_study_reference_refuses_deletion');
    await c.library.criteria[i]();
- })
+ }),
+ 'US-016':Array.from({length:11},(_,i)=>async c=>c.practice.studyCriteria[i]()),
+ 'US-017':Array.from({length:10},(_,i)=>async c=>c.practice.graderCriteria[i]()),
 };
