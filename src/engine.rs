@@ -99,11 +99,11 @@ pub fn mutate_as(
         serde_json::to_vec(&(path, payload)).map_err(|_| AppError::new(422, "Invalid request."))?,
     ));
     if let Some(receipt) = app.operations.get(operation) {
-        return if receipt.payload_hash == hash {
-            Ok(receipt.result.clone())
-        } else {
-            Err(AppError::conflict())
-        };
+        if receipt.payload_hash != hash {
+            return Err(AppError::conflict());
+        }
+        crate::study::check_replay(app, &receipt.result)?;
+        return Ok(receipt.result.clone());
     }
     if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
         return Err(owner_token::paid_refusal());

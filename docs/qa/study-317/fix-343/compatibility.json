@@ -1,0 +1,12 @@
+[
+  {
+    "path": "current-empty.rows",
+    "sha256": "d7b3289013542278a1f62527323802727ccc7f6674c9950d99070103f548eb33",
+    "equals_fixed_parent_bytes": true
+  },
+  {
+    "path": "current-empty.archive",
+    "sha256": "5b9d2b7efa495ed60c30a3ab78747d1a72df02bd8149ab70d263ec1788594938",
+    "equals_fixed_parent_bytes": true
+  }
+]

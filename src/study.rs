@@ -170,6 +170,7 @@ pub struct Attempt {
     pub grade: Grade,
     pub acting_token: Option<String>,
     pub assisted: bool,
+    pub revealed: bool,
     pub created_ms: i64,
     pub algorithm: String,
     pub effects: Vec<Effect>,
@@ -263,7 +264,31 @@ pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
     }
     Some(data)
 }
-fn effect(target: &Target, verdict: Verdict, assisted: bool, now: i64) -> AppResult<Effect> {
+/// Receipts retain their original disclosure, but permission to return it is
+/// determined by the current Prompt. Attempt references resolve to full text;
+/// Corrections and Study metadata contain no answer-bearing content.
+pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> {
+    if !app.practice.protected() {
+        return Ok(());
+    }
+    let Some(data) = &result.data else {
+        return Ok(());
+    };
+    if data.get("expected").is_some() || data.get("attempt_id").is_some_and(Value::is_string) {
+        return Err(AppError::conflict());
+    }
+    if let Some(value) = data.get("prompt").filter(|v| !v.is_null()) {
+        let prompt: Prompt =
+            serde_json::from_value(value.clone()).map_err(|_| AppError::conflict())?;
+        let current = &app.practice.current.as_ref().unwrap().prompt;
+        if prompt != *current && (prompt.cue_level.assisted() || prompt.context.is_some()) {
+            return Err(AppError::conflict());
+        }
+    }
+    Ok(())
+}
+fn effect(target: &Target, verdict: Verdict, revealed: bool, now: i64) -> AppResult<Effect> {
+    let assisted = target.cue.assisted() || revealed;
     let extra = !assisted
         && target
             .before
@@ -280,7 +305,7 @@ fn effect(target: &Target, verdict: Verdict, assisted: bool, now: i64) -> AppRes
         )
         .map_err(|m| AppError::new(422, m))?;
     }
-    if verdict == Verdict::Good && target.cue == after.cue {
+    if verdict == Verdict::Good && !revealed && target.cue == after.cue {
         after.successes += 1;
         if after.successes == 2 {
             after.cue = after.cue.fade();
@@ -784,7 +809,7 @@ pub fn mutate(
                 .targets
                 .iter()
                 .zip(&grade.units)
-                .map(|(t, g)| effect(t, g.verdict, assisted, now))
+                .map(|(t, g)| effect(t, g.verdict, p.revealed, now))
                 .collect::<AppResult<Vec<_>>>()?;
             for e in &effects {
                 let c = app.practice.cards.get_mut(&e.card_id).unwrap();
@@ -804,6 +829,7 @@ pub fn mutate(
                     grade,
                     acting_token: None,
                     assisted,
+                    revealed: p.revealed,
                     created_ms: now,
                     algorithm: learning::ALGORITHM.into(),
                     effects,
@@ -850,7 +876,7 @@ pub fn mutate(
                 revision: e.revision_before,
                 before: e.before.clone(),
             };
-            let replacement = effect(&t, verdict, e.assisted, a.created_ms)?;
+            let replacement = effect(&t, verdict, a.revealed, a.created_ms)?;
             let cid = id(seed, "correction");
             app.practice.corrections.insert(
                 cid.clone(),
@@ -935,6 +961,7 @@ pub fn validate(app: &App) -> AppResult<()> {
             || !valid_id(sid)
             || !versions.insert(&s.version_id)
             || s.version_hash != v.normalized_hash
+            || !app.library.works.contains_key(&v.work_id)
             || v.kind != Kind::Text
             || app.study_version_refs.get(sid) != Some(&s.version_id)
         {
@@ -1015,13 +1042,13 @@ pub fn validate(app: &App) -> AppResult<()> {
             prompt: a.prompt.clone(),
             targets,
             created_ms: a.created_ms,
-            revealed: a.assisted,
+            revealed: a.revealed,
             attempt_id: Some(aid.clone()),
         };
         let actual = grade(app, &pres, &a.raw_answer, false)?;
         let mut expected = a.grade.clone();
         expected.wrong_version_hint = actual.wrong_version_hint.clone();
-        if expected != actual || (a.prompt.assisted && !a.assisted) {
+        if expected != actual || a.assisted != (a.prompt.assisted || a.revealed) {
             return Err(fail());
         }
         entries.push((a.sequence, Entry::Attempt(a)));
@@ -1069,7 +1096,7 @@ pub fn validate(app: &App) -> AppResult<()> {
                         return Err(fail());
                     }
                     let target = target_from_effect(e);
-                    if effect(&target, e.verdict, a.assisted, a.created_ms)? != *e {
+                    if effect(&target, e.verdict, a.revealed, a.created_ms)? != *e {
                         return Err(fail());
                     }
                     *state = e.after.clone();
@@ -1091,7 +1118,7 @@ pub fn validate(app: &App) -> AppResult<()> {
                     || *revision != e.revision_before + 1
                     || *revision != c.revision_before
                     || *state != c.before
-                    || effect(&target_from_effect(e), c.verdict, e.assisted, a.created_ms)?.after
+                    || effect(&target_from_effect(e), c.verdict, a.revealed, a.created_ms)?.after
                         != c.after
                 {
                     return Err(fail());
@@ -1116,6 +1143,7 @@ pub fn validate(app: &App) -> AppResult<()> {
         if let Some(aid) = &current.attempt_id {
             let a = p.attempts.get(aid).ok_or_else(fail)?;
             if a.prompt != current.prompt
+                || a.revealed != current.revealed
                 || a.assisted != (current.revealed || current.prompt.assisted)
                 || a.created_ms < current.created_ms
             {

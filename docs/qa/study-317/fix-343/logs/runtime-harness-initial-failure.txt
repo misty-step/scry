@@ -1,0 +1,54 @@
+✖ Old disclosure replay refuses through CLI/API under a protected unit Prompt (1192.053563ms)
+✖ Old disclosure replay refuses through CLI/API under a protected section Prompt (751.278852ms)
+✖ Old disclosure replay refuses through CLI/API under a protected whole Prompt (770.90073ms)
+✖ Explicit reveal breaks the cue success run at all rungs through the compiled CLI (1252.147875ms)
+✔ Restore dry-run completes a refusal for a missing work reference and writes zero rows (961.969544ms)
+✔ Restore dry-run completes a refusal for a missing version reference and writes zero rows (600.62432ms)
+✔ Restore dry-run completes a refusal for a missing section reference and writes zero rows (577.806649ms)
+✔ Restore dry-run completes a refusal for a missing unit reference and writes zero rows (1885.294428ms)
+✔ Restore dry-run completes a refusal for a missing target reference and writes zero rows (2619.487723ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 5
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10873.922619
+
+✖ failing tests:
+
+test at qa/study-integrity.test.mjs:70:3
+✖ Old disclosure replay refuses through CLI/API under a protected unit Prompt (1192.053563ms)
+  TypeError [Error]: Cannot read properties of null (reading 'prompt')
+      at Object.answer (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:64:42)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:122:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at qa/study-integrity.test.mjs:70:3
+✖ Old disclosure replay refuses through CLI/API under a protected section Prompt (751.278852ms)
+  TypeError [Error]: Cannot read properties of null (reading 'prompt')
+      at Object.answer (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:64:42)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:122:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at qa/study-integrity.test.mjs:70:3
+✖ Old disclosure replay refuses through CLI/API under a protected whole Prompt (770.90073ms)
+  TypeError [Error]: Cannot read properties of null (reading 'prompt')
+      at Object.answer (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:64:42)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:122:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at qa/study-integrity.test.mjs:127:1
+✖ Explicit reveal breaks the cue success run at all rungs through the compiled CLI (1252.147875ms)
+  TypeError [Error]: Cannot read properties of null (reading 'prompt')
+      at TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:136:36)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

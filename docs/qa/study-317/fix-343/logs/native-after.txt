@@ -1,0 +1,20 @@
+   Compiling scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-355a0a56)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running tests/study.rs (/home/phaedrus/.cache/tmp/scry-343-fix/target/debug/deps/study-0c41424835128cd8)
+
+running 12 tests
+test study_archive_diagnosis_refuses_missing_work_without_panicking ... ok
+test populated_study_archive_requires_compatible_format_and_intact_payload_chunks ... ok
+test study_archive_diagnosis_refuses_missing_version_and_malformed_targets ... ok
+test study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes ... ok
+test study_answer_replay_conflict_and_correction_keep_original ... ok
+test study_receipts_assistance_fading_free_recall_once_daily_and_lapse ... ok
+test study_recitation_grades_each_unit_and_strict_slips ... ok
+test study_old_free_prompt_context_cannot_disclose_a_new_target ... ok
+test study_old_disclosures_cannot_cross_a_new_protected_prompt ... ok
+test study_oversized_alignment_refuses_without_consuming_prompt_or_receipt ... ok
+test study_explicit_reveal_breaks_success_runs_at_every_rung_and_correction ... ok
+test study_paces_are_rolling_caps_and_recitation_never_introduces_units ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.37s
+
