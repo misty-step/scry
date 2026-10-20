@@ -214,24 +214,74 @@ described above.
 
 ## Independent fresh-space restore
 
-### Chief-triggered daily snapshot
+### Mirrodin-triggered daily snapshot
 
-Configure the existing chief no-agent minute job to call canonical
-`POST /internal/backup` once daily; do not create a second cron or rely on
-Cloudflare Cron Triggers. This source prerequisite does not connect the chief
-job: daily delivery remains UNVERIFIED until that integration is observed.
-Generate a dedicated `BACKUP_TRIGGER_KEY` of at least 32 bytes into the existing
-encrypted pass store, bind it as a Worker secret, and retain the chief's private
-request configuration outside the checkout. Send it in `x-scry-backup-key`,
-alongside the existing approved Access service credentials for that environment.
-Never put capabilities in argv, URLs, source or receipts. The backup service
-principal does not gain learner routes; this capability can only make a snapshot
-and cannot act as the owner. Keep synthetic and production keys separate.
+The repo-owned [`scry-daily-backup.timer`](../deploy/mirrodin/scry-daily-backup.timer)
+runs daily at **09:30 UTC** with `Persistent=true` to catch up after downtime.
+Its [service](../deploy/mirrodin/scry-daily-backup.service) runs
+[`scripts/scry-daily-backup.py`](../scripts/scry-daily-backup.py) from the dedicated
+checkout `~/.local/share/scry-backup` on Mirrodin. Keeping the script and
+`deploy/rust-production.toml` in one checkout avoids separate copies drifting;
+each run derives its destination from `[vars].CANONICAL_ORIGIN`, including after
+the #297 origin flip. Update this checkout from master when production's origin
+changes. No Cloudflare Cron Trigger is used.
+
+The script needs Python 3.11 or newer and local `pass` with noninteractive GPG
+access for the timer's user. It reads `misty-step/SCRY_ACCESS_CLIENT_ID` and
+`misty-step/SCRY_ACCESS_CLIENT_SECRET` for the existing `scry-machine` Access
+token, plus `operations/scry/production-20261016/backup-trigger` for the existing
+Worker `BACKUP_TRIGGER_KEY`. It strips trailing newlines and sends those values
+only as `CF-Access-Client-Id`, `CF-Access-Client-Secret`, and `x-scry-backup-key`
+headers to canonical `POST /internal/backup`. Redirects are refused. Never put
+capabilities in argv, URLs, source or receipts. This principal cannot read
+learner routes or act as the owner. Keep synthetic and production keys separate.
+
+#### Install or update after merge
+
+The conductor installs from master and disables the old Hermes job after merge;
+the implementation PR does neither. As the Mirrodin user with the existing pass
+access, create the dedicated checkout once:
+
+```sh
+mkdir -p "$HOME/.local/share"
+git clone --branch master --single-branch https://github.com/misty-step/scry.git "$HOME/.local/share/scry-backup"
+```
+
+For installation and each update, refresh the clean checkout and copy both units:
+
+```sh
+git -C "$HOME/.local/share/scry-backup" pull --ff-only origin master
+install -Dm644 "$HOME/.local/share/scry-backup/deploy/mirrodin/scry-daily-backup.service" "$HOME/.config/systemd/user/scry-daily-backup.service"
+install -Dm644 "$HOME/.local/share/scry-backup/deploy/mirrodin/scry-daily-backup.timer" "$HOME/.config/systemd/user/scry-daily-backup.timer"
+systemctl --user daemon-reload
+systemctl --user start scry-daily-backup.service
+systemctl --user show scry-daily-backup.service -p Result -p ExecMainStatus
+journalctl --user -u scry-daily-backup.service -n 10 --no-pager
+```
+
+Require `Result=success`, `ExecMainStatus=0`, and the journal line
+`Scry production snapshot verified.` Confirm `GET /healthz` is 200 using the
+same machine token and `User-Agent: ScryDailyBackup/1.0`, and independently confirm a new snapshot object in private
+R2 `scry-rust-backups` without logging its contents. Then enable the timer:
+
+```sh
+systemctl --user enable --now scry-daily-backup.timer
+systemctl --user list-timers scry-daily-backup.timer
+loginctl show-user "$USER" -p Linger
+```
+
+Confirm user lingering is enabled so the timer survives logout. If needed, the
+conductor enables it with `loginctl enable-linger "$USER"`. Disable archived
+Hermes cron `37ca5bbdd570` if reachable; otherwise record its reachability limit
+on #299. Keep the old job until the new service has verified a snapshot.
+Failure exits non-zero with a fixed reason in the journal, without upstream
+bodies, URLs, error details, or credentials. Missing noninteractive pass access
+must be resolved before relying on the timer.
 
 Missing or wrong keys return 403; non-POST returns 405. Success returns 200 only
 after the same complete R2 verification used by the operator backup. Failure
 returns 503 `backup_failed` without private diagnostics. Record an actual natural
-chief-job execution plus independent remote archive readback before calling daily
+timer execution plus independent remote archive readback before calling daily
 delivery proven. `/healthz` returns 503 `backup_stale` before a verified backup or
 after SPEC's freshness limit; storage/configuration failure returns 503
 `backup_unavailable`. Health does not create a learning record or start work.
