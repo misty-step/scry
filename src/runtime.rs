@@ -840,6 +840,11 @@ impl DurableObject for LearningSpace {
             if let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?) {
                 return app_error(e);
             }
+            if path == "/"
+                && let Err(e) = crate::study::ensure_stream(&mut app, now(), &random_id()?)
+            {
+                return app_error(e);
+            }
             if app != previous {
                 self.save(&mut app, Some(previous.revision))?;
             }
@@ -1205,7 +1210,11 @@ impl DurableObject for LearningSpace {
                     ))?);
                 }
                 self.arm().await?;
-                redirect(&result.redirect)
+                redirect(if path.starts_with("/practice/") {
+                    "/"
+                } else {
+                    &result.redirect
+                })
             }
         }
     }

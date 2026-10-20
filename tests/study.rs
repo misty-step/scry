@@ -262,7 +262,19 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     let sid = o.learn(&v, "steady");
     let cid = o.fade_to_free("We conceived a patient garden.");
     let p = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let before = o.app.practice.cards[&cid].state.clone();
+    let shown = o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
+    let aid = shown["disclosure_attempt_id"].as_str().unwrap();
+    assert!(o.app.practice.attempts[aid].disclosure);
+    assert!(o.app.practice.attempts[aid].assisted);
+    assert_eq!(o.app.practice.cards[&cid].state, before);
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap(),
+        o.app
+    );
+    let attempts = o.app.practice.attempts.len();
     o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
+    assert_eq!(o.app.practice.attempts.len(), attempts);
     let a = o.answer("We conceived a patient garden.");
     assert_eq!(a["attempt"]["assisted"], true);
     assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 0);
@@ -291,8 +303,56 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     assert_eq!(o.app.study_version_refs[&sid], v);
     assert_eq!(o.learn(&v, "steady"), sid);
     assert_eq!(o.next(None)["prompt"], Value::Null);
-    assert_eq!(o.app.practice.attempts.len(), 7);
+    assert_eq!(o.app.practice.attempts.len(), 8);
     assert_eq!(o.app.spend, vec![]);
+}
+#[test]
+fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
+    let mut o = Owner::new();
+    let text = "We conceived a patient garden by the water.";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    let cid = o.fade_to_free(text);
+    let p = o.app.practice.current.as_ref().unwrap().prompt.clone();
+    let query = [("__nonce".into(), "synthetic-render-nonce".into())].into();
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("data-state=\"exact-prompt\""));
+    assert!(!page.contains(text));
+    assert_eq!(page.matches("<textarea").count(), 1);
+    assert_eq!(page.matches(">Check my answer<").count(), 1);
+    let a = o.answer("We concieved a tired garden the water extra.");
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("data-verdict=\"Again\""));
+    for d in a["attempt"]["grade"]["diff"].as_array().unwrap() {
+        assert!(page.contains(&format!(
+            "data-diff-kind=\"{}\"",
+            d["kind"].as_str().unwrap()
+        )));
+    }
+    assert!(page.contains(text));
+    assert!(page.contains("I was right"));
+    let held = o.app.clone();
+    study::ensure_stream(&mut o.app, NOW, "refresh").unwrap();
+    assert_eq!(o.app, held);
+    let aid = a["attempt"]["id"].as_str().unwrap();
+    let corrected = o
+        .call(
+            "/api/v1/correct",
+            json!({"prompt_id":p.id,"attempt_id":aid,"verdict":"Good"}),
+        )
+        .unwrap();
+    assert!(corrected["correction"].is_object());
+    assert_eq!(o.app.practice.attempts[aid].grade.verdict, Verdict::Again);
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("Owner Correction · Good"));
+    assert!(page.contains("data-state=\"exact-result\""));
+    assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 1);
+    o.next(None);
+    assert!(o.app.practice.current.is_none());
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("Next due at"));
+    assert!(!page.contains("<textarea"));
+    assert!(page.contains("Understanding practice"));
 }
 #[test]
 fn study_recitation_grades_each_unit_and_strict_slips() {
@@ -449,4 +509,27 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
     assert_eq!(error.status, 422);
     assert!(error.message.contains("capacity"));
     assert_eq!(o.app, before);
+}
+
+#[test]
+fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
+    let mut o = Owner::new();
+    let text = "Expected <svg onload=alert(1)> text.";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    o.fade_to_free(text);
+    let query = [("__nonce".into(), "one-render".into())].into();
+    let other = [("__nonce".into(), "another-render".into())].into();
+    let first = scry::web::render(&o.app, "/", &query, NOW, None);
+    let second = scry::web::render(&o.app, "/", &other, NOW, None);
+    assert!(!first.contains(text));
+    assert!(first.contains("method=\"post\" action=\"/practice/answer\""));
+    assert!(first.contains("name=\"csrf\""));
+    assert_ne!(first, second);
+    o.answer("<script>alert(2)</script>");
+    let held = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(!held.contains("<script>alert"));
+    assert!(!held.contains("<svg onload"));
+    assert!(held.contains("&lt;script&gt;alert(2)&lt;/script&gt;"));
+    assert!(held.contains("Expected &lt;svg onload=alert(1)&gt; text."));
 }

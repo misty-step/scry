@@ -14,6 +14,7 @@ import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 import {releaseWalk} from './browser-release.mjs';
+import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
 const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
@@ -45,12 +46,25 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
-if(selected.some(id=>['US-014','US-015','US-016','US-017'].includes(id)))buildCli();
+if(selected.some(id=>['US-014','US-015','US-016','US-017','US-018'].includes(id)))buildCli();
 let browser;
 const practice=selected.some(id=>['US-016','US-017'].includes(id))?await studyJourney():null;
 try{
  if(playwright)browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
+  if(id==='US-018'){
+   const paths=[];
+   const phone=await phoneWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const recovery=await phoneRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const recoveryPath='logs/US-018-recovery.json';await writeFile(join(output,recoveryPath),JSON.stringify(recovery,null,2)+'\n');await register(recoveryPath);
+   const path='logs/US-018-phone.json';await writeFile(join(output,path),JSON.stringify(phone,null,2)+'\n');await register(path);
+   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
+   for(let i=0;i<specs[id].length;i++){
+    const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:[path,recoveryPath,...paths]};result.criteria.push(criterion);
+    try{await specs[id][i]({phone,policy});assert.ok(recovery.every(r=>r.status==='pass'),JSON.stringify(recovery.filter(r=>r.status!=='pass')));}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+   }
+   continue;
+  }
   if(['US-016','US-017'].includes(id)){
    const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
    const first=practice.transcript.length;

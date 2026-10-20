@@ -170,6 +170,8 @@ pub struct Attempt {
     pub grade: Grade,
     pub acting_token: Option<String>,
     pub assisted: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disclosure: bool,
     pub created_ms: i64,
     pub algorithm: String,
     pub effects: Vec<Effect>,
@@ -305,6 +307,21 @@ fn effect(target: &Target, verdict: Verdict, assisted: bool, now: i64) -> AppRes
         before: target.before.clone(),
         after,
     })
+}
+fn disclosure_effect(target: &Target) -> Effect {
+    Effect {
+        card_id: target.card_id.clone(),
+        unit_id: target.unit_id.clone(),
+        unit_index: target.unit_index,
+        cue_level: target.cue,
+        verdict: Verdict::Again,
+        assisted: true,
+        extra_practice: false,
+        scheduled: false,
+        revision_before: target.revision,
+        before: target.before.clone(),
+        after: target.before.clone(),
+    }
 }
 fn target(card: &Card, cue: Cue) -> Target {
     Target {
@@ -761,10 +778,46 @@ pub fn mutate(
                 .iter()
                 .map(|t| json!({"unit_id":t.unit_id,"text":all[t.unit_index].text}))
                 .collect::<Vec<_>>();
+            let aid = if p.revealed {
+                app.practice
+                    .attempts
+                    .values()
+                    .find(|a| a.disclosure && a.prompt.id == p.prompt.id)
+                    .map(|a| a.id.clone())
+            } else {
+                let aid = id(seed, "attempt");
+                let grade = grade(app, &p, "", false)?;
+                let effects = p.targets.iter().map(disclosure_effect).collect::<Vec<_>>();
+                for e in &effects {
+                    app.practice.cards.get_mut(&e.card_id).unwrap().revision += 1;
+                }
+                app.practice.attempts.insert(
+                    aid.clone(),
+                    Attempt {
+                        id: aid.clone(),
+                        sequence: app.revision + 1,
+                        prompt: p.prompt.clone(),
+                        version_id: p.prompt.version_id.clone(),
+                        version_hash: p.prompt.version_hash.clone(),
+                        raw_answer: String::new(),
+                        grade,
+                        acting_token: None,
+                        assisted: true,
+                        disclosure: true,
+                        created_ms: now,
+                        algorithm: learning::ALGORITHM.into(),
+                        effects,
+                    },
+                );
+                for t in &mut app.practice.current.as_mut().unwrap().targets {
+                    t.revision += 1;
+                }
+                Some(aid)
+            };
             app.practice.current.as_mut().unwrap().revealed = true;
             Ok(response(
-                None,
-                json!({"prompt_id":p.prompt.id,"assisted":true,"expected":expected}),
+                aid.clone(),
+                json!({"prompt_id":p.prompt.id,"assisted":true,"disclosure_attempt_id":aid,"expected":expected}),
             ))
         }
         "/practice/answer" => {
@@ -804,6 +857,7 @@ pub fn mutate(
                     grade,
                     acting_token: None,
                     assisted,
+                    disclosure: false,
                     created_ms: now,
                     algorithm: learning::ALGORITHM.into(),
                     effects,
@@ -897,6 +951,18 @@ pub fn due(app: &App, now: i64) -> Value {
         .collect::<Vec<_>>();
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
     json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
+}
+/// The Stream presents through the same selection policy as API `next`.
+/// Reads retain an existing Prompt/result and never advance it.
+pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
+    if app.practice.current.is_none() {
+        let previous = app.practice.clone();
+        next(app, &BTreeMap::new(), now, seed)?;
+        if app.practice != previous {
+            app.revision += 1;
+        }
+    }
+    Ok(())
 }
 pub fn history(app: &App) -> AppResult<Value> {
     if app.practice.protected() || app.protected_goal().is_some() {
@@ -1021,7 +1087,10 @@ pub fn validate(app: &App) -> AppResult<()> {
         let actual = grade(app, &pres, &a.raw_answer, false)?;
         let mut expected = a.grade.clone();
         expected.wrong_version_hint = actual.wrong_version_hint.clone();
-        if expected != actual || (a.prompt.assisted && !a.assisted) {
+        if expected != actual
+            || (a.prompt.assisted && !a.assisted)
+            || (a.disclosure && (!a.assisted || !a.raw_answer.is_empty()))
+        {
             return Err(fail());
         }
         entries.push((a.sequence, Entry::Attempt(a)));
@@ -1069,7 +1138,12 @@ pub fn validate(app: &App) -> AppResult<()> {
                         return Err(fail());
                     }
                     let target = target_from_effect(e);
-                    if effect(&target, e.verdict, a.assisted, a.created_ms)? != *e {
+                    let expected = if a.disclosure {
+                        disclosure_effect(&target)
+                    } else {
+                        effect(&target, e.verdict, a.assisted, a.created_ms)?
+                    };
+                    if expected != *e {
                         return Err(fail());
                     }
                     *state = e.after.clone();
@@ -1115,7 +1189,8 @@ pub fn validate(app: &App) -> AppResult<()> {
         }
         if let Some(aid) = &current.attempt_id {
             let a = p.attempts.get(aid).ok_or_else(fail)?;
-            if a.prompt != current.prompt
+            if a.disclosure
+                || a.prompt != current.prompt
                 || a.assisted != (current.revealed || current.prompt.assisted)
                 || a.created_ms < current.created_ms
             {
