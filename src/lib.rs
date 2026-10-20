@@ -8,6 +8,7 @@ pub mod model;
 pub mod owner_token;
 pub mod persistence;
 pub mod spend;
+pub mod study;
 pub mod web;
 
 #[cfg(target_arch = "wasm32")]

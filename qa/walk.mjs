@@ -9,6 +9,7 @@ import {resolve,join} from 'node:path';
 import {specs} from './walk-specs.mjs';
 import {ownerJourney,buildCli} from './owner-api.mjs';
 import {libraryJourney} from './library.mjs';
+import {studyJourney} from './study.mjs';
 import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
@@ -25,7 +26,7 @@ for(const id of live){const i=sections.findIndex(m=>m[1]===id);const block=sourc
 if(process.env.SCRY_SKIP_BUILD!=='1')execFileSync('worker-build',['--release','--locked'],{stdio:'inherit',env:process.env});
 const require=createRequire(import.meta.url);
 let playwright;
-try{if(selected.some(id=>id!=='US-015'))playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');}catch{throw Error('Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.');}
+try{if(selected.some(id=>!['US-015','US-016','US-017'].includes(id)))playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');}catch{throw Error('Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.');}
 const output=join(repo,'target/walk'),marker=join(output,'.scry-walk-owned');
 if(existsSync(output)&&!existsSync(marker))throw Error('Refusing non-owned story-walk output.');
 if(existsSync(marker))await rm(output,{recursive:true});
@@ -44,18 +45,28 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
-if(selected.some(id=>['US-014','US-015'].includes(id)))buildCli();
+if(selected.some(id=>['US-014','US-015','US-016','US-017'].includes(id)))buildCli();
 let browser;
+const practice=selected.some(id=>['US-016','US-017'].includes(id))?await studyJourney():null;
 try{
  if(playwright)browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
+  if(['US-016','US-017'].includes(id)){
+   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
+   const first=practice.transcript.length;
+   for(let i=0;i<specs[id].length;i++){
+    const criterion={n:i+1,status:'pass',target:'rust-worker-cli-sqlite-r2',source_revision:receipt.head,evidence:['logs/rust-tests.txt',`logs/${id}-cli.json`]};result.criteria.push(criterion);
+    try{await specs[id][i]({practice,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+   }
+   const path=`logs/${id}-cli.json`;await writeFile(join(output,path),JSON.stringify(practice.transcript.slice(first),null,2)+'\n');await register(path);
+   continue;
+  }
   if(id==='US-015'){
    const library=await libraryJourney();
    const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
    try{
     for(let i=0;i<specs[id].length;i++){
-     const criterion={n:i+1,status:'pass',target:i===6?'rust-worker-and-native-reference-seam':'rust-worker-cli',source_revision:receipt.head,evidence:['logs/rust-tests.txt','logs/US-015-cli.json']};result.criteria.push(criterion);
-     if(i===6)criterion.limit='Used Study refusal is native reference-seam proof; real Study/Attempt journey waits for #317.';
+     const criterion={n:i+1,status:'pass',target:'rust-worker-cli',source_revision:receipt.head,evidence:['logs/rust-tests.txt','logs/US-015-cli.json']};result.criteria.push(criterion);
      try{await specs[id][i]({library,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
     }
     const path='logs/US-015-cli.json';await writeFile(join(output,path),JSON.stringify(library.transcript,null,2)+'\n');await register(path);
@@ -90,5 +101,5 @@ try{
  }
  receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
-finally{await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
+finally{await practice?.close();await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
 process.exitCode=receipt.exit;

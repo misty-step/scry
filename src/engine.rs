@@ -49,6 +49,7 @@ fn version(fields: &BTreeMap<String, String>) -> AppResult<u64> {
 }
 fn result(redirect: impl Into<String>, entity_id: Option<String>) -> MutationResult {
     MutationResult {
+        data: None,
         redirect: redirect.into(),
         entity_id,
         message: None,
@@ -110,6 +111,7 @@ pub fn mutate_as(
     let mut next = app.clone();
     let response = apply(&mut next, path, fields, now, seed)?;
     let acting_token = actor.token_id();
+    crate::study::attribute(&mut next, app, acting_token.clone());
     for (id, job) in &mut next.jobs {
         if app.jobs.get(id) != Some(job) && matches!(job.status.as_str(), "queued" | "candidates") {
             if !actor.paid() {
@@ -260,6 +262,9 @@ fn apply(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    if path.starts_with("/practice/") {
+        return crate::study::mutate(app, path, fields, now, seed);
+    }
     if path.starts_with("/library/") {
         return crate::library::mutate(app, path, fields, seed);
     }
@@ -2323,6 +2328,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
     {
         checks.reject("invalid Library records or Study references")?;
     }
+    checks.check(crate::study::validate(app))?;
     for (id, token) in &app.owner_tokens {
         checks.record();
         let t = &token.info;
@@ -2951,6 +2957,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                     && !app.jobs.contains_key(id)
                     && !app.owner_tokens.contains_key(id)
                     && !crate::library::receipt_entity(receipt, id)
+                    && !crate::study::receipt_entity(app, receipt, id)
             })
         {
             checks.reject("an invalid exact-operation receipt")?;

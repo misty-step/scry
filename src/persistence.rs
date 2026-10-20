@@ -80,6 +80,25 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     object
         .entry("owner_tokens")
         .or_insert_with(|| serde_json::json!({}));
+    if let Some(practice) = object.get_mut("practice") {
+        for field in ["studies", "cards", "attempts", "corrections"] {
+            let entries = practice[field]
+                .as_object_mut()
+                .ok_or_else(|| serialization("Practice"))?;
+            for (id, mut record) in std::mem::take(entries) {
+                if field == "attempts" {
+                    for payload in ["grade", "effects"] {
+                        let data = record
+                            .get_mut(payload)
+                            .ok_or_else(|| serialization("Attempt"))?;
+                        *data = Value::String(serde_json::to_string(data).map_err(serialization)?);
+                        payload_rows(&mut result, "practice_payload", &id, payload, data)?;
+                    }
+                }
+                result.insert(format!("practice_{field}/{id}"), bounded_json(&record)?);
+            }
+        }
+    }
     if let Some(library) = object.remove("library") {
         for field in ["works", "versions", "relations"] {
             for (id, record) in library[field]
@@ -157,11 +176,17 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         let (field, id) = key
             .split_once('/')
             .ok_or_else(|| AppError::new(500, "Invalid storage record."))?;
-        if matches!(field, "job_payload" | "spend_payload") {
+        if matches!(field, "job_payload" | "spend_payload" | "practice_payload") {
             continue;
         }
         let record: Value = serde_json::from_str(data).map_err(serialization)?;
-        if let Some(field) = field.strip_prefix("library_") {
+        if let Some(field) = field.strip_prefix("practice_") {
+            value["practice"]
+                .get_mut(field)
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| serialization("Practice rows"))?
+                .insert(id.into(), record);
+        } else if let Some(field) = field.strip_prefix("library_") {
             let entries = value["library"]
                 .get_mut(field)
                 .and_then(Value::as_object_mut)
@@ -188,7 +213,7 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         let Some((prefix, payload)) = key.split_once('/') else {
             continue;
         };
-        if !matches!(prefix, "job_payload" | "spend_payload") {
+        if !matches!(prefix, "job_payload" | "spend_payload" | "practice_payload") {
             continue;
         }
         let (head, tail) = payload
@@ -205,6 +230,7 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         };
         if (prefix == "job_payload" && !JOB_PAYLOADS.contains(&field))
             || (prefix == "spend_payload" && field != "raw_response")
+            || (prefix == "practice_payload" && !matches!(field, "grade" | "effects"))
         {
             return Err(AppError::new(500, "Unknown stored payload field."));
         }
@@ -221,6 +247,11 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     for ((prefix, id, field), chunks) in payloads {
         let record = if prefix == "job_payload" {
             value.get_mut("jobs").and_then(|jobs| jobs.get_mut(&id))
+        } else if prefix == "practice_payload" {
+            value
+                .get_mut("practice")
+                .and_then(|p| p.get_mut("attempts"))
+                .and_then(|a| a.get_mut(&id))
         } else {
             id.parse::<usize>().ok().and_then(|index| {
                 value
@@ -243,7 +274,12 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             }
             text.push_str(&chunk);
         }
-        record.insert(field, Value::String(text));
+        let data = if prefix == "practice_payload" {
+            serde_json::from_str(&text).map_err(serialization)?
+        } else {
+            Value::String(text)
+        };
+        record.insert(field, data);
     }
     let app: App = serde_json::from_value(value).map_err(serialization)?;
     if app.schema != SCHEMA {
@@ -266,7 +302,15 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if app.spend.iter().any(|s| s.purpose.is_some()) {
+    if !app.practice.is_empty()
+        || app.operations.values().any(|r| {
+            r.path
+                .as_deref()
+                .is_some_and(|p| p.starts_with("/practice/"))
+        })
+    {
+        "scry-rust-durable-sqlite-study-v1"
+    } else if app.spend.iter().any(|s| s.purpose.is_some()) {
         "scry-rust-durable-sqlite-attributed-spend-v1"
     } else if !app.library.is_empty()
         || !app.study_version_refs.is_empty()

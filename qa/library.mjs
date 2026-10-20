@@ -143,7 +143,14 @@ export async function libraryJourney() {
    await ok(['work','delete',wid,'--revision','3']);assert.notEqual((await cli(['work','show',wid])).code,0);
    const another=await ok(['version','add','--title','Whole unused Work','--kind','text','--text-file',path]);const w=await ok(['version','show',another.result.entity_id]);
    await ok(['work','delete',w.work.id,'--revision','1']);assert.notEqual((await cli(['version','show',w.version.id])).code,0);
-   transcript.push({observation:'Unused Version and Work deletion passed through CLI/Worker/SQLite.',used_study:'Unit reference-seam proof only in supersede_retains_original_and_study_reference_refuses_deletion; real Study/Attempt journey waits for #317.'});
+   const study=(await ok(['learn',oldId])).practice.study;
+   const prompt=(await ok(['next','--study',study.id])).practice.prompt;
+   assert.equal((await cli(['answer',prompt.id,'--text-stdin'],original.sections[0].units[0].text)).code,0);
+   for(const status of ['pause','resume','drop']) {
+    await ok(['study',status,study.id]);const revision=(await show()).work.revision;
+    for(const args of [['version','delete',oldId,'--revision',String(revision)],['work','delete',workId,'--revision',String(revision)]]) {const before=await rows();assert.notEqual((await cli(args)).code,0);assert.deepEqual(await rows(),before);}
+   }
+   transcript.push({observation:'Unused deletion and real Study/Attempt used-Version/Work refusal pass through CLI/Worker/SQLite, including after drop.'});
   },
   async()=>{
    const exported=await lib();assert.deepEqual(Object.keys(exported).sort(),['relations','versions','works']);
