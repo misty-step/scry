@@ -1,0 +1,130 @@
+{
+  "source": {
+    "head": "ad7529ddec6adacc5a0d68cb48e134004f453e83",
+    "tree": "aaad07114a7733d1e546ecd15238c0fc5b5deb77",
+    "source_tar_sha256": "e2f069942245c8e75081a246e07304d65c63e0d16c915f327d1959fc14caccd5",
+    "master": "69435af34fe7a8be7b5683f8b5d3e6b27852e177",
+    "source_state": "committed"
+  },
+  "wasm_sha256": "a0839b68895bcf30a5b871c5efa417bb5d540249a87a384cd9933b8ff876852c",
+  "mixed": [
+    {
+      "noJS": false,
+      "status": "pass",
+      "evidence": [
+        "mixed-js-held-result.png",
+        "mixed-js-409.png",
+        "mixed-js-override.png",
+        "mixed-js-self-check.png",
+        "mixed-js-learner-result.png",
+        "mixed-js-exact-unchanged.png"
+      ],
+      "error": {
+        "status": 409,
+        "legacy_context": true
+      },
+      "observed": {
+        "held_refresh": true,
+        "override": true,
+        "self_check": true,
+        "deliberate_next": true,
+        "exact_practice_unchanged": true
+      }
+    },
+    {
+      "noJS": true,
+      "status": "pass",
+      "evidence": [
+        "mixed-native-held-result.png",
+        "mixed-native-409.png",
+        "mixed-native-override.png",
+        "mixed-native-self-check.png",
+        "mixed-native-learner-result.png",
+        "mixed-native-exact-unchanged.png"
+      ],
+      "error": {
+        "status": 409,
+        "legacy_context": true
+      },
+      "observed": {
+        "held_refresh": true,
+        "override": true,
+        "self_check": true,
+        "deliberate_next": true,
+        "exact_practice_unchanged": true
+      }
+    }
+  ],
+  "legacy": [
+    {
+      "name": "native forms with JavaScript disabled",
+      "status": "pass",
+      "evidence": [
+        "recovery-1-pass.png"
+      ]
+    },
+    {
+      "name": "keyboard choice and held result",
+      "status": "pass",
+      "evidence": [
+        "recovery-2-pass.png"
+      ]
+    },
+    {
+      "name": "response loss after commit reconciles exact attempt",
+      "status": "pass",
+      "evidence": [
+        "recovery-3-pass.png"
+      ]
+    },
+    {
+      "name": "offline pauses without automatic writes",
+      "status": "pass",
+      "evidence": [
+        "recovery-4-pass.png"
+      ]
+    },
+    {
+      "name": "competing tabs reject stale answer",
+      "status": "pass",
+      "evidence": [
+        "recovery-5-pass.png"
+      ]
+    },
+    {
+      "name": "notes require durable assistance",
+      "status": "pass",
+      "evidence": [
+        "recovery-6-pass.png"
+      ]
+    },
+    {
+      "name": "private access loss conceals current page",
+      "status": "pass",
+      "evidence": [
+        "recovery-7-pass.png"
+      ]
+    },
+    {
+      "name": "320px, desktop and dark layouts",
+      "status": "pass",
+      "evidence": [
+        "recovery-8-pass.png"
+      ]
+    },
+    {
+      "name": "stopped preparation offers recovery instead of false progress",
+      "status": "pass",
+      "evidence": [
+        "recovery-9-pass.png"
+      ]
+    },
+    {
+      "name": "restored meaning check resumes through native Settings without JavaScript",
+      "status": "pass",
+      "evidence": [
+        "recovery-10-pass.png"
+      ]
+    }
+  ]
+}

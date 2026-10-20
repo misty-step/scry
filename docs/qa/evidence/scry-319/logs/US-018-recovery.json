@@ -1,0 +1,49 @@
+[
+  {
+    "name": "unknown response reconciles one frozen answer",
+    "status": "pass",
+    "observed": {
+      "sends": 2,
+      "new_attempts": 1,
+      "frozen_payload_equal": true
+    },
+    "evidence": "screens/phone-recovery-1.png"
+  },
+  {
+    "name": "competing stale tabs keep one Attempt",
+    "status": "pass",
+    "observed": {
+      "new_attempts": 1,
+      "stale_refusal": 409
+    },
+    "evidence": "screens/phone-recovery-2.png"
+  },
+  {
+    "name": "offline pauses and reconnect sends nothing",
+    "status": "pass",
+    "observed": {
+      "offline_sends": 0,
+      "reconnect_sends": 0,
+      "deliberate_sends": 1
+    },
+    "evidence": "screens/phone-recovery-3.png"
+  },
+  {
+    "name": "automatic Good offers immutable Count as a miss",
+    "status": "pass",
+    "observed": {
+      "original_verdict": "Good",
+      "owner_verdict": "Again",
+      "held_attempt_unchanged": true
+    },
+    "evidence": "screens/phone-recovery-4.png"
+  },
+  {
+    "name": "access loss removes private DOM",
+    "status": "pass",
+    "observed": {
+      "private_main_present": false
+    },
+    "evidence": "screens/phone-recovery-5.png"
+  }
+]

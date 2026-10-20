@@ -1,0 +1,563 @@
+{
+  "schema": "foundation-walk-receipt/1",
+  "check": "scry-story-walk",
+  "run": "local-1792520509378",
+  "head": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+  "tree": "98c644fd73718c27321550d250494eed626bf0bd",
+  "base": null,
+  "source_state": "committed",
+  "source_sha256": "dfb8cf2dd957f6b88bf5a1b4eadd499eba4870de4958c38b40b859d372c40f1a",
+  "artifact_sha256": "43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5",
+  "started_at": "2026-10-20T18:21:49.381Z",
+  "finished_at": "2026-10-20T18:23:14.651Z",
+  "exit": 0,
+  "stories": [
+    {
+      "id": "US-018",
+      "status": "pass",
+      "criteria": [
+        {
+          "n": 1,
+          "status": "pass",
+          "target": "rust-worker-phone-cli-sqlite-r2",
+          "source_revision": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+          "evidence": [
+            "logs/US-018-phone.json",
+            "logs/US-018-recovery.json",
+            "screens/phone-320-light-prompt.png",
+            "screens/phone-320-light-diff.png",
+            "screens/phone-320-light-caught-up.png",
+            "screens/phone-320-light-shown.png",
+            "screens/phone-320-dark-prompt.png",
+            "screens/phone-320-dark-diff.png",
+            "screens/phone-320-dark-caught-up.png",
+            "screens/phone-320-dark-shown.png",
+            "screens/phone-390-light-prompt.png",
+            "screens/phone-390-light-diff.png",
+            "screens/phone-390-light-caught-up.png",
+            "screens/phone-390-light-shown.png",
+            "screens/phone-390-dark-prompt.png",
+            "screens/phone-390-dark-diff.png",
+            "screens/phone-390-dark-caught-up.png",
+            "screens/phone-390-dark-shown.png",
+            "screens/phone-1280-light-prompt.png",
+            "screens/phone-1280-light-diff.png",
+            "screens/phone-1280-light-caught-up.png",
+            "screens/phone-1280-light-shown.png",
+            "screens/phone-1280-dark-prompt.png",
+            "screens/phone-1280-dark-diff.png",
+            "screens/phone-1280-dark-caught-up.png",
+            "screens/phone-1280-dark-shown.png",
+            "screens/phone-recovery-1.png",
+            "screens/phone-recovery-2.png",
+            "screens/phone-recovery-3.png",
+            "screens/phone-recovery-4.png",
+            "screens/phone-recovery-5.png"
+          ]
+        },
+        {
+          "n": 2,
+          "status": "pass",
+          "target": "rust-worker-phone-cli-sqlite-r2",
+          "source_revision": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+          "evidence": [
+            "logs/US-018-phone.json",
+            "logs/US-018-recovery.json",
+            "screens/phone-320-light-prompt.png",
+            "screens/phone-320-light-diff.png",
+            "screens/phone-320-light-caught-up.png",
+            "screens/phone-320-light-shown.png",
+            "screens/phone-320-dark-prompt.png",
+            "screens/phone-320-dark-diff.png",
+            "screens/phone-320-dark-caught-up.png",
+            "screens/phone-320-dark-shown.png",
+            "screens/phone-390-light-prompt.png",
+            "screens/phone-390-light-diff.png",
+            "screens/phone-390-light-caught-up.png",
+            "screens/phone-390-light-shown.png",
+            "screens/phone-390-dark-prompt.png",
+            "screens/phone-390-dark-diff.png",
+            "screens/phone-390-dark-caught-up.png",
+            "screens/phone-390-dark-shown.png",
+            "screens/phone-1280-light-prompt.png",
+            "screens/phone-1280-light-diff.png",
+            "screens/phone-1280-light-caught-up.png",
+            "screens/phone-1280-light-shown.png",
+            "screens/phone-1280-dark-prompt.png",
+            "screens/phone-1280-dark-diff.png",
+            "screens/phone-1280-dark-caught-up.png",
+            "screens/phone-1280-dark-shown.png",
+            "screens/phone-recovery-1.png",
+            "screens/phone-recovery-2.png",
+            "screens/phone-recovery-3.png",
+            "screens/phone-recovery-4.png",
+            "screens/phone-recovery-5.png"
+          ]
+        },
+        {
+          "n": 3,
+          "status": "pass",
+          "target": "rust-worker-phone-cli-sqlite-r2",
+          "source_revision": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+          "evidence": [
+            "logs/US-018-phone.json",
+            "logs/US-018-recovery.json",
+            "screens/phone-320-light-prompt.png",
+            "screens/phone-320-light-diff.png",
+            "screens/phone-320-light-caught-up.png",
+            "screens/phone-320-light-shown.png",
+            "screens/phone-320-dark-prompt.png",
+            "screens/phone-320-dark-diff.png",
+            "screens/phone-320-dark-caught-up.png",
+            "screens/phone-320-dark-shown.png",
+            "screens/phone-390-light-prompt.png",
+            "screens/phone-390-light-diff.png",
+            "screens/phone-390-light-caught-up.png",
+            "screens/phone-390-light-shown.png",
+            "screens/phone-390-dark-prompt.png",
+            "screens/phone-390-dark-diff.png",
+            "screens/phone-390-dark-caught-up.png",
+            "screens/phone-390-dark-shown.png",
+            "screens/phone-1280-light-prompt.png",
+            "screens/phone-1280-light-diff.png",
+            "screens/phone-1280-light-caught-up.png",
+            "screens/phone-1280-light-shown.png",
+            "screens/phone-1280-dark-prompt.png",
+            "screens/phone-1280-dark-diff.png",
+            "screens/phone-1280-dark-caught-up.png",
+            "screens/phone-1280-dark-shown.png",
+            "screens/phone-recovery-1.png",
+            "screens/phone-recovery-2.png",
+            "screens/phone-recovery-3.png",
+            "screens/phone-recovery-4.png",
+            "screens/phone-recovery-5.png"
+          ]
+        },
+        {
+          "n": 4,
+          "status": "pass",
+          "target": "rust-worker-phone-cli-sqlite-r2",
+          "source_revision": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+          "evidence": [
+            "logs/US-018-phone.json",
+            "logs/US-018-recovery.json",
+            "screens/phone-320-light-prompt.png",
+            "screens/phone-320-light-diff.png",
+            "screens/phone-320-light-caught-up.png",
+            "screens/phone-320-light-shown.png",
+            "screens/phone-320-dark-prompt.png",
+            "screens/phone-320-dark-diff.png",
+            "screens/phone-320-dark-caught-up.png",
+            "screens/phone-320-dark-shown.png",
+            "screens/phone-390-light-prompt.png",
+            "screens/phone-390-light-diff.png",
+            "screens/phone-390-light-caught-up.png",
+            "screens/phone-390-light-shown.png",
+            "screens/phone-390-dark-prompt.png",
+            "screens/phone-390-dark-diff.png",
+            "screens/phone-390-dark-caught-up.png",
+            "screens/phone-390-dark-shown.png",
+            "screens/phone-1280-light-prompt.png",
+            "screens/phone-1280-light-diff.png",
+            "screens/phone-1280-light-caught-up.png",
+            "screens/phone-1280-light-shown.png",
+            "screens/phone-1280-dark-prompt.png",
+            "screens/phone-1280-dark-diff.png",
+            "screens/phone-1280-dark-caught-up.png",
+            "screens/phone-1280-dark-shown.png",
+            "screens/phone-recovery-1.png",
+            "screens/phone-recovery-2.png",
+            "screens/phone-recovery-3.png",
+            "screens/phone-recovery-4.png",
+            "screens/phone-recovery-5.png"
+          ]
+        },
+        {
+          "n": 5,
+          "status": "pass",
+          "target": "rust-worker-phone-cli-sqlite-r2",
+          "source_revision": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+          "evidence": [
+            "logs/US-018-phone.json",
+            "logs/US-018-recovery.json",
+            "screens/phone-320-light-prompt.png",
+            "screens/phone-320-light-diff.png",
+            "screens/phone-320-light-caught-up.png",
+            "screens/phone-320-light-shown.png",
+            "screens/phone-320-dark-prompt.png",
+            "screens/phone-320-dark-diff.png",
+            "screens/phone-320-dark-caught-up.png",
+            "screens/phone-320-dark-shown.png",
+            "screens/phone-390-light-prompt.png",
+            "screens/phone-390-light-diff.png",
+            "screens/phone-390-light-caught-up.png",
+            "screens/phone-390-light-shown.png",
+            "screens/phone-390-dark-prompt.png",
+            "screens/phone-390-dark-diff.png",
+            "screens/phone-390-dark-caught-up.png",
+            "screens/phone-390-dark-shown.png",
+            "screens/phone-1280-light-prompt.png",
+            "screens/phone-1280-light-diff.png",
+            "screens/phone-1280-light-caught-up.png",
+            "screens/phone-1280-light-shown.png",
+            "screens/phone-1280-dark-prompt.png",
+            "screens/phone-1280-dark-diff.png",
+            "screens/phone-1280-dark-caught-up.png",
+            "screens/phone-1280-dark-shown.png",
+            "screens/phone-recovery-1.png",
+            "screens/phone-recovery-2.png",
+            "screens/phone-recovery-3.png",
+            "screens/phone-recovery-4.png",
+            "screens/phone-recovery-5.png"
+          ]
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "logs/rust-tests.txt",
+      "sha256": "54e6c6b0aed0543c77ca4efcbd30d7d86a620c7d960568b506b376df1bb741a9"
+    },
+    {
+      "path": "screens/phone-320-light-prompt.png",
+      "sha256": "fb5db9f2fda87ce4c5902317c8217a6cc024202057f2fd47f49a88f3e2c8b73d"
+    },
+    {
+      "path": "screens/phone-320-light-diff.png",
+      "sha256": "dd0c658cb98e174c0ffb5447a637e02ed0633c8216d3eda99d5f8b10d536491e"
+    },
+    {
+      "path": "screens/phone-320-light-caught-up.png",
+      "sha256": "7a21af1d282d2c958272b81992751be19e911823fb89d1da785baae5f309f86a"
+    },
+    {
+      "path": "screens/phone-320-light-shown.png",
+      "sha256": "cf600eadb52251690b6e60bb107465664739f7697f710696e5365fe1ec7525ce"
+    },
+    {
+      "path": "screens/phone-320-dark-prompt.png",
+      "sha256": "cd395efffcc74effac4f46831f73122015d465deeef9e84e9217ae9fb120881d"
+    },
+    {
+      "path": "screens/phone-320-dark-diff.png",
+      "sha256": "1f0ed06e719dfa5ff17e3a0fb0b5a48009a7746ad3930b0174eaccdd1d60c00e"
+    },
+    {
+      "path": "screens/phone-320-dark-caught-up.png",
+      "sha256": "6031f64b4354da52a99e1c9e080362111a2a6442e55923035ac8a0955b7b7328"
+    },
+    {
+      "path": "screens/phone-320-dark-shown.png",
+      "sha256": "2a7c7a6122d20bbadfafffe228856a59b565c973125946fa4ecb648201a62ee3"
+    },
+    {
+      "path": "screens/phone-390-light-prompt.png",
+      "sha256": "f0f88be337b8bf9a3ad3f12147eafe0927abe2067298754fef2f9ff485d3933f"
+    },
+    {
+      "path": "screens/phone-390-light-diff.png",
+      "sha256": "39c720295c29d18aea6b1f3e0e8ce251937375b78685ce273720969b4e9626b4"
+    },
+    {
+      "path": "screens/phone-390-light-caught-up.png",
+      "sha256": "b73d00129e6d706f3aa7e2eea6f28d17abeacbb8e940b11dbb6525e849fde2c5"
+    },
+    {
+      "path": "screens/phone-390-light-shown.png",
+      "sha256": "6d5730902388146f9c481289fbb253b22487f7cafaa3712dce8d7b313819827a"
+    },
+    {
+      "path": "screens/phone-390-dark-prompt.png",
+      "sha256": "56274a67d91af06bd13a125fb89d2e6d9d8f5b3389a81f6497a33a2f014b85bb"
+    },
+    {
+      "path": "screens/phone-390-dark-diff.png",
+      "sha256": "3fb30c7ea917381ab9704b084e65b000df9005f91cb88fbdb97248c3768954a3"
+    },
+    {
+      "path": "screens/phone-390-dark-caught-up.png",
+      "sha256": "752352be545f480f5870665cf6affef4e08f96aba5b6936c7f98e1bd321d5791"
+    },
+    {
+      "path": "screens/phone-390-dark-shown.png",
+      "sha256": "c419444e2d8a6d4629d661fc5f59c5292fb51d86f5f99ac0074e3a280d61ffdb"
+    },
+    {
+      "path": "screens/phone-1280-light-prompt.png",
+      "sha256": "28e89b2321e0bd4579e1ddc2654223b453e3504269609c678c94a7ea4bb936df"
+    },
+    {
+      "path": "screens/phone-1280-light-diff.png",
+      "sha256": "a988b49a5620642978a204d0d2ba488ebdb2046cc1895f6fb79205ca5853264d"
+    },
+    {
+      "path": "screens/phone-1280-light-caught-up.png",
+      "sha256": "59258f0f1bfadf0ee37fa62b205b6eee966e89ae136cc099b8b951b1e06dc135"
+    },
+    {
+      "path": "screens/phone-1280-light-shown.png",
+      "sha256": "88ec5710460f791a10c43740d2990e74c082da24b95a55216bade26af12ec935"
+    },
+    {
+      "path": "screens/phone-1280-dark-prompt.png",
+      "sha256": "68f2e0c614ff127b950ca23a363ff818a880c3ce9129964f5ed1c424ef6436b4"
+    },
+    {
+      "path": "screens/phone-1280-dark-diff.png",
+      "sha256": "e90b5eb1479ea4b6f73cc2066bfe9487128805ba6b130df13023cc921f6fd0d0"
+    },
+    {
+      "path": "screens/phone-1280-dark-caught-up.png",
+      "sha256": "11e7f09569f651d907b6395273a5f7948272993b87d2bb761605ce942e76e250"
+    },
+    {
+      "path": "screens/phone-1280-dark-shown.png",
+      "sha256": "891e5861e9ce72e303fda143de6125545ca01fe74b14429996f1bec849b70873"
+    },
+    {
+      "path": "screens/phone-recovery-1.png",
+      "sha256": "dd7ec36c30f809b73bcb527887a965963bae8641b15ac1086d6683871c26311d"
+    },
+    {
+      "path": "screens/phone-recovery-2.png",
+      "sha256": "da5a933b8501d861a2d311a36a84828ef250a6edee7ee309e399517e645092fc"
+    },
+    {
+      "path": "screens/phone-recovery-3.png",
+      "sha256": "3eb928749a60088d08d4ec5bdebc609d4bbc8f102a3052d9d24fb7fc82e37d93"
+    },
+    {
+      "path": "screens/phone-recovery-4.png",
+      "sha256": "4225cea8f7478b7ccc5070fad31afcfc364d48e24ca35bae14df3d5c14aaf81e"
+    },
+    {
+      "path": "screens/phone-recovery-5.png",
+      "sha256": "981973d4883927d916e120bd89970b77f3ccc163339abb29bade26bd742bc526"
+    },
+    {
+      "path": "logs/US-018-recovery.json",
+      "sha256": "edcb3e542a50cbf696dfd34ba4cc43f7c08e0d1d7284a2ca782890da3eea46f0"
+    },
+    {
+      "path": "logs/US-018-phone.json",
+      "sha256": "6c0972695716c39570f10a9bb705bc659cf7c5368554ae33f4dfef77c88143dc"
+    },
+    {
+      "path": "screens/recovery-1-pass.png",
+      "sha256": "9a284f6411ad6f8e906d5fd5598bd704ca65441439b626afd1b8112b0b7e99f8"
+    },
+    {
+      "path": "screens/recovery-2-pass.png",
+      "sha256": "9a284f6411ad6f8e906d5fd5598bd704ca65441439b626afd1b8112b0b7e99f8"
+    },
+    {
+      "path": "screens/recovery-3-pass.png",
+      "sha256": "89a95b01262e1c947d9b4a545d18d024db8de4fb7f8dbe6a7d757baeebfae4f4"
+    },
+    {
+      "path": "screens/recovery-4-pass.png",
+      "sha256": "8f03380fbf49a7b7191b837ec48f86f243f858bedf892524ecad10183ccadf1b"
+    },
+    {
+      "path": "screens/recovery-5-pass.png",
+      "sha256": "da601ec5522919371c7dc7beab04ed93ad09b0313bf7de2fb8a8cbcb3080e5be"
+    },
+    {
+      "path": "screens/recovery-6-pass.png",
+      "sha256": "696e10c8efd2631dcdf67b3896c5a189431fead900c8bea16acb609b25446207"
+    },
+    {
+      "path": "screens/recovery-7-pass.png",
+      "sha256": "981973d4883927d916e120bd89970b77f3ccc163339abb29bade26bd742bc526"
+    },
+    {
+      "path": "screens/layout-320.png",
+      "sha256": "aab9536fdc70c9db0eaaf4b32505313decf94b49cd725c60d0a535803e0db513"
+    },
+    {
+      "path": "screens/layout-1280.png",
+      "sha256": "7918451082c85a77b373b23507d6a9987ee75b352df81f43f19ade1da86da014"
+    },
+    {
+      "path": "screens/recovery-8-pass.png",
+      "sha256": "1ab9b1794cea3574765fbc80ed53dffc428765e800b29a9db836817757da2ad8"
+    },
+    {
+      "path": "screens/stopped-preparation-stream.png",
+      "sha256": "9f68d6f421aa9bfe2e7a8db9f951f76b1deb5aef73552a94b3fd3e0b53254e9e"
+    },
+    {
+      "path": "screens/recovery-9-pass.png",
+      "sha256": "cad6419ffe704a67b93f742ad1ce386f7e5acfd622682cba2c4fbb88cc8be561"
+    },
+    {
+      "path": "screens/paused-meaning-check.png",
+      "sha256": "193436f3300420ae12e12814cc151e619ac9b7b80529e110717543a6a3afd8b1"
+    },
+    {
+      "path": "screens/resumed-meaning-self-check.png",
+      "sha256": "76faaabe6e757cfffe7f9c28754096f287709065361d6a7549ec0348093ba6cc"
+    },
+    {
+      "path": "screens/recovery-10-pass.png",
+      "sha256": "dc76e841ad8035e3dbd1ffe49879def994c63967c5726759986ff900306a2a2c"
+    },
+    {
+      "path": "screens/paused-settings.png",
+      "sha256": "e4321a579ef87328eab7e2e9587f0fc37698be0107978c3f1ace61b848645539"
+    },
+    {
+      "path": "screens/paused-saved-request.png",
+      "sha256": "c234e868cf9e7b0641c3a199f251f5709e3007f9c484cdb7162e032ff3e107ec"
+    },
+    {
+      "path": "screens/paused-stream.png",
+      "sha256": "9a0c0036be0f4a00be07e4bdcb93e87072bdb7eaba0e796277a7a7bd9a465b00"
+    },
+    {
+      "path": "screens/create-generated-reference.png",
+      "sha256": "8b950a3c67c1c59e7a21d180162c0860927060e9b8255094c181b06bc8380e67"
+    },
+    {
+      "path": "screens/create-generated-practice.png",
+      "sha256": "6213dfcc16f1d743c318eb39398410cce6a418c85f2283bf3d6bbe2e760947ce"
+    },
+    {
+      "path": "screens/create-refined-reference.png",
+      "sha256": "8e4b42c8833ce2186218958634237c938774d12177e66103e416705b89ce78cb"
+    },
+    {
+      "path": "screens/release-320-light.png",
+      "sha256": "b8d98a6d522f648bdad3c5b4af01fdce0ab2926c7b545221599659631bcd0024"
+    },
+    {
+      "path": "screens/release-390-dark.png",
+      "sha256": "2082e34f77aa1f160dfd7828934fffe52ed62f7785e6eb25f6b03606202b619f"
+    },
+    {
+      "path": "screens/release-1280-light.png",
+      "sha256": "f2038fae27774d709800cf7a80914e1ace0c85689cf06dac85124e3f4161fb81"
+    },
+    {
+      "path": "screens/release-1280-dark.png",
+      "sha256": "5a656d87e6472884cd91240501b91de4db387c131f523a1c0e6cc4edbed44097"
+    }
+  ],
+  "limits": [
+    "Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.",
+    "US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.",
+    "Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery."
+  ],
+  "browser_recovery": [
+    {
+      "name": "native forms with JavaScript disabled",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-1-pass.png"
+      ]
+    },
+    {
+      "name": "keyboard choice and held result",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-2-pass.png"
+      ]
+    },
+    {
+      "name": "response loss after commit reconciles exact attempt",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-3-pass.png"
+      ]
+    },
+    {
+      "name": "offline pauses without automatic writes",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-4-pass.png"
+      ]
+    },
+    {
+      "name": "competing tabs reject stale answer",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-5-pass.png"
+      ]
+    },
+    {
+      "name": "notes require durable assistance",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-6-pass.png"
+      ]
+    },
+    {
+      "name": "private access loss conceals current page",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-7-pass.png"
+      ]
+    },
+    {
+      "name": "320px, desktop and dark layouts",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-8-pass.png"
+      ]
+    },
+    {
+      "name": "stopped preparation offers recovery instead of false progress",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-9-pass.png"
+      ]
+    },
+    {
+      "name": "restored meaning check resumes through native Settings without JavaScript",
+      "status": "pass",
+      "evidence": [
+        "screens/recovery-10-pass.png"
+      ]
+    }
+  ],
+  "create_journey": {
+    "name": "Restored pause → Create → Settings Resume → useful reference → meaning check → refinement",
+    "status": "pass",
+    "evidence": [
+      "screens/paused-settings.png",
+      "screens/paused-saved-request.png",
+      "screens/paused-stream.png",
+      "screens/create-generated-reference.png",
+      "screens/create-generated-practice.png",
+      "screens/create-refined-reference.png"
+    ],
+    "scope": "Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated."
+  },
+  "release_journey": [
+    {
+      "width": 320,
+      "scheme": "light",
+      "status": "pass",
+      "version": "0.1.3"
+    },
+    {
+      "width": 390,
+      "scheme": "dark",
+      "status": "pass",
+      "version": "0.1.3"
+    },
+    {
+      "width": 1280,
+      "scheme": "light",
+      "status": "pass",
+      "version": "0.1.3"
+    },
+    {
+      "width": 1280,
+      "scheme": "dark",
+      "status": "pass",
+      "version": "0.1.3"
+    }
+  ]
+}

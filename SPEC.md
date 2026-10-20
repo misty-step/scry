@@ -660,7 +660,7 @@ verification commands live outside this behavioral reference.
 | US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
 | US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (see criterion walks) |
 | US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (see criterion walks) |
-| US-018 | S01, S02, UX4 | Exact recall on the phone (evidence pending) |
+| US-018 | S01, S02, UX4 | Exact recall on the phone (see criterion walks) |
 | US-019 | S04, S06, D5 | Exact recall: generation agent (evidence pending) |
 | US-020 | S02, S08 | Exact recall: ordered lists (evidence pending) |
 | US-021 | S02, S08 | Exact recall: keyed mappings (evidence pending) |
@@ -982,7 +982,7 @@ Criteria:
 No-gos: no new masthead destination, no web-only exact-recall action, no
 microphone integration, no swipe grading.
 
-Evidence: pending
+Evidence: `qa/walk --stories "US-018"`, `qa/phone-stream.mjs`, and `tests/study.rs` cover the phone Stream, shared CLI Verdict and Diff, held results, assistance, next due time, and Corrections using authored synthetic wording in light and dark. Emulation is not physical-phone acceptance. Private canonical wording, deployed ingress, and owner acceptance remain unverified.
 
 ## US-019 Create a Version with the generation agent
 

@@ -1,0 +1,61 @@
+{
+  "source": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+  "kind": "T3 collaborative preview; synthetic compiled Worker",
+  "phone_prompt": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nEXACT RECALL\n\nApostles' Creed\n\nPREVIOUS UNIT\n\nThe path begins in our synthetic notebook.\n\n\nYour answer\nCheck my answer\nMore\nUnderstanding practice →\nA little understanding, kept.\nHistory\nSettings\nChangelog",
+  "held_after_keyboard_submit_and_refresh": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nEXACT RECALL\n\nApostles' Creed\n\nPREVIOUS UNIT\n\nThe path begins in our synthetic notebook.\n\n\nAgain.\n\nexact-v2 · 1;unicode=17.0.0\n\nYou answered\n\nWe concieved a tired garden the water extra.\n\nExpected text\n\nWe conceived a patient garden by the water.\n\n\nWord by word\nCorrect\nWe\nSlipped\nconcieved → conceived\nCorrect\na\nWrong\ntired → patient\nCorrect\ngarden\nMissing\nby\nCorrect\nthe\nCorrect\nwater\nExtra\nextra\nNext\nI was right\nUnderstanding practice →\nA little understanding, kept.\nHistory\nSettings\nChangelog",
+  "caught_up_after_pointer_correction_and_next": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nEXACT RECALL\n\nA good place to pause.\n\nNo Unit is due. Next due at Oct 20, 2026 · 18:31 UTC (UTC).\n\nUnderstanding practice →\nA little understanding, kept.\nHistory\nSettings\nChangelog",
+  "actions": [
+    {
+      "id": "8db3c9b7-e1b7-4aff-bffe-635d7894f7ab",
+      "action": "navigate",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:21:17.246Z",
+      "completedAt": "2026-10-20T18:21:17.655Z"
+    },
+    {
+      "id": "28972c01-c41a-4ebe-8122-756c8782ccd2",
+      "action": "navigate",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:21:49.330Z",
+      "completedAt": "2026-10-20T18:21:51.692Z"
+    },
+    {
+      "id": "090faa6b-be8c-4e17-83d0-ede4e8b30298",
+      "action": "type",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:22:08.407Z",
+      "completedAt": "2026-10-20T18:22:08.429Z"
+    },
+    {
+      "id": "b79ed717-fd91-4c29-984f-9efe51c8ec26",
+      "action": "press",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:22:08.447Z",
+      "completedAt": "2026-10-20T18:22:08.451Z"
+    },
+    {
+      "id": "71c157af-9f0e-486f-809f-5dcba95b6985",
+      "action": "press",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:22:08.504Z",
+      "completedAt": "2026-10-20T18:22:08.510Z"
+    },
+    {
+      "id": "ff91acc6-d9ba-470f-9a2e-6baea88b1846",
+      "action": "navigate",
+      "status": "succeeded",
+      "startedAt": "2026-10-20T18:22:08.751Z",
+      "completedAt": "2026-10-20T18:22:08.798Z"
+    }
+  ],
+  "observations": [
+    "320 CSS px doubled computed text size before keyboard submission, no horizontal overflow.",
+    "Held result after refresh: exact-v2 Again; correct, slip, wrong, missing and extra marks.",
+    "390 CSS px dark: pointer Correction then deliberate Next showed actual UTC next due and no answer field.",
+    "1280 CSS px light: More then Show me disclosed Unit after persisted assistance."
+  ],
+  "limits": [
+    "No physical phone or software keyboard observation.",
+    "Parent historical replay-assistance fence remains unresolved."
+  ]
+}

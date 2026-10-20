@@ -1,0 +1,58 @@
+   Compiling scry v0.3.0 (/home/phaedrus/.t3/worktrees/scry/t3-33a6681f)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.01s
+     Running tests/study.rs (target/debug/deps/study-2adc93f532b39247)
+
+running 1 test
+no-Study question /notebook f9fbdaa236fe79c4fd7a5602821c939a8eea2244fc3f91cedd2343bfed9d9028
+no-Study question /gate 8e1c4ac9ae95278d568a1f4d495eb7009581140fbfce55ec24fd62971b7ae02d
+no-Study question /concepts/9f444c835a9b6c3eab58453b79750cb0 5e2f0f241fb22bb35cf003f0f66e9eadd8d5d188541d4883d56b1fd688b7e5ce
+no-Study question /goals/fixture-http f3d7fb6479f2fbc2d4111547277b78f1b683f9765a42a2ebc2ee47c60a005827
+no-Study question /questions/bdc3e8bc969e468381fd41c379d5fdf2/edit aa3b3def5ad931eb2df297cce765f621a699106671d6ddffbebe17282d5aa25a
+no-Study question /missing f8112554db618d1e08b422fa0d7f14e6080b96bbfc54af864c15bb5213e8316d
+no-Study checking /notebook 334c707717c758823f7b267c7e39247514dcd1c6f78e7ce14a3e89d40855004a
+no-Study checking /gate daef0c7d30dd0f68de8363bd5fbfe3416acd12811e53dd39dfccecc10c763425
+no-Study checking /concepts/9f444c835a9b6c3eab58453b79750cb0 daef0c7d30dd0f68de8363bd5fbfe3416acd12811e53dd39dfccecc10c763425
+no-Study checking /goals/fixture-http daef0c7d30dd0f68de8363bd5fbfe3416acd12811e53dd39dfccecc10c763425
+no-Study checking /questions/25b598e36be7a6f38cee89e222cee4a0/edit daef0c7d30dd0f68de8363bd5fbfe3416acd12811e53dd39dfccecc10c763425
+no-Study checking /missing 530c6b4a044d087e98df2468da2ec5f698e57e6b3d9aeb4e213536a6627bff54
+no-Study result /notebook 9de9da103da9a480965bfca2b116d9c2b2c5bcd7e52630a93dd4cefc706cc3e6
+no-Study result /gate e28a741f648421a142b79f480cf4d005963910f41d1090292b7085f0ceb6f400
+no-Study result /concepts/9f444c835a9b6c3eab58453b79750cb0 a93ea2f3b8d0f3a1a2ad71360525e88e4bfc3ecbb0c74b242bbdeef40ea61547
+no-Study result /goals/fixture-http 14cb5dd606336b92fc3fde3167112165b6db7af12165556fdafc5ac3aa4e4144
+no-Study result /questions/bdc3e8bc969e468381fd41c379d5fdf2/edit 6fa0589d02cb3518c8c1285754481bb520c448bf456f9e5a1dd075872372ba25
+no-Study result /missing f8112554db618d1e08b422fa0d7f14e6080b96bbfc54af864c15bb5213e8316d
+
+thread 'mixed_notebook_recovery_links_follow_legacy_home' (866844) panicked at tests/study.rs:1124:5:
+Wrong recovery destinations: [
+    "prompt question /gate: Keep trying -> /",
+    "prompt question /concepts/9f444c835a9b6c3eab58453b79750cb0: Keep trying -> /",
+    "prompt question /goals/fixture-http: Keep trying -> /",
+    "prompt question /questions/bdc3e8bc969e468381fd41c379d5fdf2/edit: Keep trying -> /",
+    "prompt checking /notebook: Check again -> /",
+    "prompt checking /gate: Return to your saved answer → -> /",
+    "prompt checking /concepts/9f444c835a9b6c3eab58453b79750cb0: Return to your saved answer → -> /",
+    "prompt checking /goals/fixture-http: Return to your saved answer → -> /",
+    "prompt checking /questions/25b598e36be7a6f38cee89e222cee4a0/edit: Return to your saved answer → -> /",
+    "prompt result /gate: Keep trying -> /",
+    "caught-up question /gate: Keep trying -> /",
+    "caught-up question /concepts/9f444c835a9b6c3eab58453b79750cb0: Keep trying -> /",
+    "caught-up question /goals/fixture-http: Keep trying -> /",
+    "caught-up question /questions/bdc3e8bc969e468381fd41c379d5fdf2/edit: Keep trying -> /",
+    "caught-up checking /notebook: Check again -> /",
+    "caught-up checking /gate: Return to your saved answer → -> /",
+    "caught-up checking /concepts/9f444c835a9b6c3eab58453b79750cb0: Return to your saved answer → -> /",
+    "caught-up checking /goals/fixture-http: Return to your saved answer → -> /",
+    "caught-up checking /questions/25b598e36be7a6f38cee89e222cee4a0/edit: Return to your saved answer → -> /",
+    "caught-up result /gate: Keep trying -> /",
+]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mixed_notebook_recovery_links_follow_legacy_home ... FAILED
+
+failures:
+
+failures:
+    mixed_notebook_recovery_links_follow_legacy_home
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.08s
+
+error: test failed, to rerun pass `--test study`

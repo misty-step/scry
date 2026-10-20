@@ -1,0 +1,28 @@
+{
+  "source": {
+    "head": "9fb49a3ec49c47ea4fa8537f98db98478338b55d",
+    "tree": "7148fe66445339bda945f370cb52a49037615089",
+    "source_tar_sha256": "2ef2794fa5d79439b9ad72a549e1423b105e46ab909f3dd48484db9f1a05a917",
+    "master": "69435af34fe7a8be7b5683f8b5d3e6b27852e177",
+    "source_state": "committed"
+  },
+  "wasm_sha256": "b117cdeb33f9513717d802515fd0bdea033ee93e41f3dc76f0db0202dc7dd750",
+  "mixed_nojs": {
+    "noJS": true,
+    "status": "fail",
+    "evidence": [
+      "mixed-native-held-result.png",
+      "mixed-native-409.png",
+      "mixed-native-override.png",
+      "mixed-native-self-check.png",
+      "mixed-native-learner-result.png",
+      "mixed-native-failure.png"
+    ],
+    "error": {
+      "status": 409,
+      "legacy_context": true
+    },
+    "reason": "page.goto: net::ERR_ABORTED at http://127.0.0.1:37145/\nCall log:\n  - navigating to \"http://127.0.0.1:37145/\", waiting until \"load\"\n"
+  },
+  "resolution": "Wait for the held result to detach after native Next before page.goto. No application change."
+}

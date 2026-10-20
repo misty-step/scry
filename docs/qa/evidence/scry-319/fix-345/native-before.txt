@@ -1,0 +1,35 @@
+   Compiling scry v0.2.0 (/home/phaedrus/.t3/worktrees/scry/t3-33a6681f)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.75s
+     Running tests/study.rs (target/debug/deps/study-8bb0203aab82001c)
+
+running 3 tests
+
+thread 'mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt' (3290244) panicked at tests/study.rs:950:13:
+assertion `left == right` failed
+  left: "/"
+ right: "/notebook"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt ... FAILED
+
+thread 'mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context' (3290246) panicked at tests/study.rs:918:9:
+assertion `left == right` failed
+  left: "/"
+ right: "/notebook"
+test mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context ... FAILED
+
+thread 'mixed_notebook_holds_legacy_feedback_self_check_override_and_next' (3290245) panicked at tests/study.rs:876:9:
+assertion `left == right` failed
+  left: "/"
+ right: "/notebook"
+test mixed_notebook_holds_legacy_feedback_self_check_override_and_next ... FAILED
+
+failures:
+
+failures:
+    mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt
+    mixed_notebook_holds_legacy_feedback_self_check_override_and_next
+    mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test study`

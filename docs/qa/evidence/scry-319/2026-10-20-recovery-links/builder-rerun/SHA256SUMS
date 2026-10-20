@@ -1,0 +1,15 @@
+256a8ee4313b8d9e611d12813c806c3fd7d9346c2410df8e3dd1e93b0d9f0fda  ./browser-results.json
+206f6cf28c4fe0a13e225416e556f0ba3a021b1d8888cfdf01bcc497e0bd087b  ./mutants/mutant-1.diff
+e0d69aa68893a9d3c227fab08064746459a0e8f25277062f82baf33165922846  ./mutants/mutant-1.txt
+647a460d989c9e42699c7693dc7f4c317642a219f91d74f83b5d183eb0e0ad9b  ./mutants/mutant-2.diff
+01d77e4784e5793f6d7860a6a867bdea75bcf1fefbea76d08fe11e723c83ca11  ./mutants/mutant-2.txt
+1299dd74b709596656ddf317831c73c08bd039b652363614e13a226b7603f188  ./mutants/mutant-3.diff
+df6fb035fc2d6e8ceb40f07d8e821b5983a09f1045f7afbf407f99775dcf7d13  ./mutants/mutant-3.txt
+2f1cf3a24dcba5d5411f3e1612b0efc3b3b93d7060cc228691b6a2e6fb9f9ba1  ./mutants/unmutated.txt
+d9a0ca53f3146f668bd9355f86e2b99010a549456e3b785349d68f7249be8891  ./README.md
+79345de12e433713d390323b424d70449cfd3698588082910634d0354a8b9b42  ./screens/legacy-home-js-checking-after.png
+3a5052d2af412e7cc57e57c41ca2e1e57b9c98d985a0b18e0d61e24628c2f486  ./screens/legacy-home-js-kept-question.png
+79345de12e433713d390323b424d70449cfd3698588082910634d0354a8b9b42  ./screens/legacy-home-native-checking-after.png
+6b624c01b079feccfb72ba416fa6ac782d156e9722533b8ad5e84e82fe7cdda9  ./screens/legacy-home-native-exact-unchanged.png
+3062a06893342eb6183c196611a323857141d3fc416640db579c0855611e2dcb  ./screens/legacy-home-native-gate.png
+3a5052d2af412e7cc57e57c41ca2e1e57b9c98d985a0b18e0d61e24628c2f486  ./screens/legacy-home-native-kept-question.png

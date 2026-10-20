@@ -1,0 +1,17 @@
+TAP version 13
+# {"status":"PASS","checks":1,"failures":0,"artifact_sha256":"43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5","limits":"Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof."}
+# Subtest: preview: QA keeps local study and learner self-check without inheriting paid Jev
+ok 1 - preview: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 4996.036496
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8700.408981

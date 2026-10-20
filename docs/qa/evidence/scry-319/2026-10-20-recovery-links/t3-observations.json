@@ -1,0 +1,58 @@
+{
+  "source": "b8155fab94740813e7e8530a45887d7701216bb1",
+  "wasm_sha256": "a55d8e5050152fda4b0ea96ecd9631dd17b8f2a43d30701b6029812943dc9773",
+  "steps": [
+    {
+      "step": "question",
+      "url": "http://127.0.0.1:45919/notebook",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n✦\nCurrent idea\nA stored response has passed its freshness lifetime. What does that tell you?\nChoose an answer\n1\nIt may need validation before reuse\n2\nThe origin content definitely changed\n3\nThe browser must delete it forever\n\nChoose one answer.\n\nMore\n＋\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "reference gate",
+      "url": "http://127.0.0.1:45919/gate?concept=9f444c835a9b6c3eab58453b79750cb0",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nA LITTLE HELP IS PART OF LEARNING\n\nOpen your reference?\n\nYour notes may contain the answer. Opening them records this attempt as helped practice.\n\nLook it up\nKeep trying\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "saved checking before Check again",
+      "url": "http://127.0.0.1:45919/notebook",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n✦\nCache freshness\nWhich response directive sets how long a cached response may be reused without validation?\n\nYOUR ANSWER IS SAVED\n\nChecking your meaning.\n\nYou can leave and come back. Your question will stay here.\n\nYou answered\n\nMy saved uncertain freshness answer\n\nCheck again\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "Check again returned to saved checking answer",
+      "url": "http://127.0.0.1:45919/notebook",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n✦\nCache freshness\nWhich response directive sets how long a cached response may be reused without validation?\n\nYOUR ANSWER IS SAVED\n\nChecking your meaning.\n\nYou can leave and come back. Your question will stay here.\n\nYou answered\n\nMy saved uncertain freshness answer\n\nCheck again\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "root after Check again",
+      "url": "http://127.0.0.1:45919/",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nEXACT RECALL\n\nSeparate exact Stream\n\nREAD THE UNIT\n\nCopper lanterns shelter quiet gardens.\n\nAssisted practice · the schedule stays unchanged.\n\nYour answer\nCheck my answer\nMore\nUnderstanding practice →\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "Keep trying returned to question",
+      "url": "http://127.0.0.1:38855/notebook",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n✦\nCurrent idea\nA stored response has passed its freshness lifetime. What does that tell you?\nChoose an answer\n1\nIt may need validation before reuse\n2\nThe origin content definitely changed\n3\nThe browser must delete it forever\n\nChoose one answer.\n\nMore\n＋\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    },
+    {
+      "step": "root after successful Keep trying",
+      "url": "http://127.0.0.1:38855/",
+      "text": "Skip to the page\nscry.\nCreate\nMap\nSynthetic notebook · isolated preview\n\nEXACT RECALL\n\nSeparate exact Stream\n\nREAD THE UNIT\n\nCopper lanterns shelter quiet gardens.\n\nAssisted practice · the schedule stays unchanged.\n\nYour answer\nCheck my answer\nMore\nUnderstanding practice →\nA little understanding, kept.\nHistory\nSettings\nChangelog"
+    }
+  ],
+  "tool_failures": [
+    {
+      "step": "Keep trying first click",
+      "error": "This element ref is stale. Navigation, dialogs, and new snapshots replace refs; take a fresh snapshot and use its refs.",
+      "cause": "Saved screenshot refreshed refs after the gate snapshot.",
+      "resolution": "Repeat with the observed role locator on a fresh fixture; do not count the refused click as a completed step."
+    },
+    {
+      "step": "Open root after Check again by wordmark",
+      "error": "Preview automation click failed: locator.scrollIntoViewIfNeeded: Element is not attached to the DOM",
+      "resolution": "Use native browser navigation to inspect root; the required Check again link itself was already followed with a real pointer."
+    }
+  ],
+  "not_acceptance": [
+    "The raw after-keep-trying-root snapshot followed the refused stale-ref click and is not Keep trying proof.",
+    "The raw root-after-check-again snapshot preceded successful explicit root navigation. Only verified-root-after-check-again and verified-root-after-keep-trying count as root observations."
+  ]
+}

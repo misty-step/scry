@@ -1,0 +1,9 @@
+   Compiling scry v0.3.0 (/home/phaedrus/.t3/worktrees/scry/t3-4a84bd47)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.99s
+     Running tests/study.rs (/home/phaedrus/.cache/tmp/scry-345-opus-target/debug/deps/study-2adc93f532b39247)
+
+running 1 test
+test mixed_notebook_recovery_links_follow_legacy_home ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.08s
+

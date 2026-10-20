@@ -188,3 +188,17 @@ o-JavaScript forms, held feedback, assistance, competing tabs, offline pauses,
 response loss, preparation recovery, and access loss. A rendered screenshot or
 synthetic pass establishes appearance or mechanics, not usefulness, physical
 phone acceptance, production activation, or learning gains.
+
+## Exact recall in the Stream
+
+The Work title uses the existing serif h1. Previous Unit context sits behind a
+quiet hairline; the allowed cue has a small uppercase label and ordinary
+reading type. Show me opens the Unit behind a violet rule. The answer field
+and primary control use the existing writing surface and cobalt action.
+
+The held Diff wraps into word groups at narrow widths. Every group carries a
+written label: Correct, Slipped, Wrong, Missing, or Extra. Correct uses the
+recall green, Slipped uses the helped violet, and the remaining marks use red
+pencil. Typed and expected words appear together when they differ. The palette
+changes with the existing night scheme. Next and the quiet Correction controls
+follow the Diff and use the existing phone action area.

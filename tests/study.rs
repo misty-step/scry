@@ -40,12 +40,13 @@ impl Owner {
     fn operation(&mut self, path: &str, data: Value) -> AppResult<Value> {
         let fields = api::library_fields(data)?;
         let t = self.app.owner_tokens.values().next().unwrap().info.clone();
+        let operation_seed = format!("seed-{}", fields.get("operation_id").unwrap());
         let r = engine::mutate_as(
             &mut self.app,
             api::mutation_path(path).unwrap(),
             &fields,
             self.now,
-            &format!("seed-{}", self.op),
+            &operation_seed,
             MutationActor::Token(&t),
         )?;
         engine::validate_app(&self.app)?;
@@ -262,7 +263,19 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     let sid = o.learn(&v, "steady");
     let cid = o.fade_to_free("We conceived a patient garden.");
     let p = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let before = o.app.practice.cards[&cid].state.clone();
+    let shown = o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
+    let aid = shown["disclosure_attempt_id"].as_str().unwrap();
+    assert!(o.app.practice.attempts[aid].disclosure);
+    assert!(o.app.practice.attempts[aid].assisted);
+    assert_eq!(o.app.practice.cards[&cid].state, before);
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap(),
+        o.app
+    );
+    let attempts = o.app.practice.attempts.len();
     o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
+    assert_eq!(o.app.practice.attempts.len(), attempts);
     let a = o.answer("We conceived a patient garden.");
     assert_eq!(a["attempt"]["assisted"], true);
     assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 0);
@@ -291,8 +304,56 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     assert_eq!(o.app.study_version_refs[&sid], v);
     assert_eq!(o.learn(&v, "steady"), sid);
     assert_eq!(o.next(None)["prompt"], Value::Null);
-    assert_eq!(o.app.practice.attempts.len(), 7);
+    assert_eq!(o.app.practice.attempts.len(), 8);
     assert_eq!(o.app.spend, vec![]);
+}
+#[test]
+fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
+    let mut o = Owner::new();
+    let text = "We conceived a patient garden by the water.";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    let cid = o.fade_to_free(text);
+    let p = o.app.practice.current.as_ref().unwrap().prompt.clone();
+    let query = [("__nonce".into(), "synthetic-render-nonce".into())].into();
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("data-state=\"exact-prompt\""));
+    assert!(!page.contains(text));
+    assert_eq!(page.matches("<textarea").count(), 1);
+    assert_eq!(page.matches(">Check my answer<").count(), 1);
+    let a = o.answer("We concieved a tired garden the water extra.");
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("data-verdict=\"Again\""));
+    for d in a["attempt"]["grade"]["diff"].as_array().unwrap() {
+        assert!(page.contains(&format!(
+            "data-diff-kind=\"{}\"",
+            d["kind"].as_str().unwrap()
+        )));
+    }
+    assert!(page.contains(text));
+    assert!(page.contains("I was right"));
+    let held = o.app.clone();
+    study::ensure_stream(&mut o.app, NOW, "refresh").unwrap();
+    assert_eq!(o.app, held);
+    let aid = a["attempt"]["id"].as_str().unwrap();
+    let corrected = o
+        .call(
+            "/api/v1/correct",
+            json!({"prompt_id":p.id,"attempt_id":aid,"verdict":"Good"}),
+        )
+        .unwrap();
+    assert!(corrected["correction"].is_object());
+    assert_eq!(o.app.practice.attempts[aid].grade.verdict, Verdict::Again);
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("Owner Correction · Good"));
+    assert!(page.contains("data-state=\"exact-result\""));
+    assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 1);
+    o.next(None);
+    assert!(o.app.practice.current.is_none());
+    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(page.contains("Next due at"));
+    assert!(!page.contains("<textarea"));
+    assert!(page.contains("Understanding practice"));
 }
 #[test]
 fn study_recitation_grades_each_unit_and_strict_slips() {
@@ -462,6 +523,29 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
     assert_eq!(error.status, 422);
     assert!(error.message.contains("capacity"));
     assert_eq!(o.app, before);
+}
+
+#[test]
+fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
+    let mut o = Owner::new();
+    let text = "Expected <svg onload=alert(1)> text.";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    o.fade_to_free(text);
+    let query = [("__nonce".into(), "one-render".into())].into();
+    let other = [("__nonce".into(), "another-render".into())].into();
+    let first = scry::web::render(&o.app, "/", &query, NOW, None);
+    let second = scry::web::render(&o.app, "/", &other, NOW, None);
+    assert!(!first.contains(text));
+    assert!(first.contains("method=\"post\" action=\"/practice/answer\""));
+    assert!(first.contains("name=\"csrf\""));
+    assert_ne!(first, second);
+    o.answer("<script>alert(2)</script>");
+    let held = scry::web::render(&o.app, "/", &query, NOW, None);
+    assert!(!held.contains("<script>alert"));
+    assert!(!held.contains("<svg onload"));
+    assert!(held.contains("&lt;script&gt;alert(2)&lt;/script&gt;"));
+    assert!(held.contains("Expected &lt;svg onload=alert(1)&gt; text."));
 }
 
 #[test]
@@ -742,4 +826,369 @@ fn study_archive_diagnosis_refuses_missing_version_and_malformed_targets() {
         }
         assert_diagnostic_refusal(missing);
     }
+}
+
+fn mixed_notebook(exact: bool) -> Owner {
+    let mut o = Owner::new();
+    engine::seed_fixture(&mut o.app, NOW).unwrap();
+    if exact {
+        let v = o.add("A separate authored exact Unit.", false);
+        o.learn(&v, "steady");
+        o.next(None);
+    }
+    o
+}
+
+fn notebook_action(o: &mut Owner, path: &str, extra: &[(&str, &str)]) -> String {
+    o.op += 1;
+    let operation = format!("notebook-operation-{:06}", o.op);
+    let mut fields = std::collections::BTreeMap::from([
+        ("csrf".into(), o.app.csrf.clone()),
+        ("operation_id".into(), operation.clone()),
+    ]);
+    if let Some(current) = &o.app.occurrence {
+        fields.insert("occurrence_id".into(), current.id.clone());
+    }
+    fields.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    let result = engine::mutate(&mut o.app, path, &fields, NOW, &operation).unwrap();
+    assert_eq!(
+        result.redirect, "/",
+        "Shared receipt remains transport neutral"
+    );
+    let saved = o.app.clone();
+    assert_eq!(
+        engine::mutate(&mut o.app, path, &fields, NOW + 1, "replayed").unwrap(),
+        result
+    );
+    assert_eq!(o.app, saved, "Lost-response replay changes no records");
+    engine::validate_app(&o.app).unwrap();
+    scry::web::mutation_redirect(&o.app, path, &result.redirect).into()
+}
+
+fn notebook_page(o: &Owner, path: &str) -> String {
+    scry::web::render(&o.app, path, &Default::default(), NOW, None)
+}
+
+#[test]
+fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        let practice = o.app.practice.clone();
+        let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
+        assert_eq!(
+            notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]),
+            destination
+        );
+        let page = notebook_page(&o, destination);
+        assert!(page.contains("data-state=\"result\""));
+        assert!(page.contains("I was right"));
+        assert!(page.contains(&wrong));
+        assert_eq!(
+            notebook_action(&mut o, "/review/override", &[("correct", "true")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("You corrected this grade"));
+        assert_eq!(o.app.events.len(), 1);
+        assert_eq!(o.app.overrides.len(), 1);
+        assert_eq!(o.app.events[0].result.outcome, "wrong");
+        assert_eq!(notebook_action(&mut o, "/review/next", &[]), destination);
+        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "question");
+        assert_eq!(
+            o.app.occurrence.as_ref().unwrap().presentation.kind,
+            "recall"
+        );
+        assert_eq!(
+            notebook_action(
+                &mut o,
+                "/review/answer",
+                &[("answer", "my own uncertain answer")]
+            ),
+            destination
+        );
+        let config = engine::WorkConfig {
+            generation: false,
+            jev: false,
+            critic: false,
+            model: "disabled".into(),
+            jev_model: "disabled".into(),
+        };
+        engine::claim_work(&mut o.app, NOW, "missing-model", &config).unwrap();
+        assert!(notebook_page(&o, destination).contains("data-state=\"self-check\""));
+        assert_eq!(notebook_action(&mut o, "/review/retry", &[]), destination);
+        engine::claim_work(&mut o.app, NOW, "still-missing-model", &config).unwrap();
+        assert_eq!(
+            notebook_action(&mut o, "/review/self", &[("correct", "true")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
+        assert_eq!(o.app.events.last().unwrap().result.authority, "learner");
+        assert_eq!(
+            o.app.practice, practice,
+            "Legacy practice never advances exact practice"
+        );
+        if exact {
+            assert!(notebook_page(&o, "/").contains("data-state=\"exact-prompt\""));
+        }
+    }
+}
+
+#[test]
+fn mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        let practice = o.app.practice.clone();
+        for c in o.app.concepts.values_mut() {
+            c.introduced_ms = None;
+        }
+        o.app.occurrence = None;
+        engine::ensure_occurrence(&mut o.app, NOW, "new-concept").unwrap();
+        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "intro");
+        assert_eq!(
+            notebook_action(&mut o, "/review/intro", &[("known", "false")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
+        assert_eq!(notebook_action(&mut o, "/review/reveal", &[]), destination);
+        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
+        let concept = o.app.occurrence.as_ref().unwrap().concept_id.clone();
+        o.app.occurrence = None;
+        assert_eq!(
+            notebook_action(&mut o, &format!("/concepts/{concept}/practice"), &[]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
+        o.app.restored_paused = true;
+        assert_eq!(
+            notebook_action(&mut o, "/settings/resume", &[]),
+            destination
+        );
+        assert!(!o.app.restored_paused);
+        assert_eq!(o.app.practice, practice);
+    }
+}
+
+#[test]
+fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        for (occurrence, answer, status) in [("stale", "", 409), ("current", "", 422)] {
+            let before = o.app.clone();
+            let fields = [
+                ("csrf".into(), o.app.csrf.clone()),
+                ("operation_id".into(), format!("rejected-notebook-{status}")),
+                (
+                    "occurrence_id".into(),
+                    if occurrence == "current" {
+                        o.app.occurrence.as_ref().unwrap().id.clone()
+                    } else {
+                        occurrence.into()
+                    },
+                ),
+                ("answer".into(), answer.into()),
+            ]
+            .into();
+            let error =
+                engine::mutate(&mut o.app, "/review/answer", &fields, NOW, "rejected").unwrap_err();
+            assert_eq!(error.status, status);
+            assert_eq!(o.app, before);
+            let path = scry::web::mutation_error_path(&o.app, "/review/answer");
+            assert_eq!(path, destination);
+            let page = scry::web::render(&o.app, path, &fields, NOW, Some(&error.message));
+            assert!(page.contains("data-state=\"question\""));
+            assert!(!page.contains("data-state=\"exact-"));
+            assert!(page.contains(&error.message));
+        }
+        if exact {
+            let paths = [
+                "/review/intro",
+                "/review/answer",
+                "/review/reveal",
+                "/review/self",
+                "/review/retry",
+                "/review/override",
+                "/review/next",
+                "/review/help",
+                "/settings/resume",
+                "/concepts/synthetic/practice",
+            ];
+            for path in paths {
+                assert_eq!(
+                    scry::web::mutation_error_path(&o.app, path),
+                    "/notebook",
+                    "{path}"
+                );
+            }
+            assert_eq!(
+                scry::web::mutation_redirect(&o.app, "/review/help", "/concepts/synthetic"),
+                "/concepts/synthetic"
+            );
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/practice/answer"),
+                "/"
+            );
+            assert_eq!(
+                scry::web::mutation_redirect(&o.app, "/practice/answer", "/practice/held"),
+                "/"
+            );
+            assert_eq!(scry::web::mutation_error_path(&o.app, "/create"), "/create");
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/questions/synthetic/edit"),
+                "/questions/synthetic/edit"
+            );
+            o.app.practice.current = None;
+            assert!(notebook_page(&o, "/").contains("data-state=\"exact-caught-up\""));
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/review/answer"),
+                "/notebook"
+            );
+        }
+    }
+}
+
+fn rendered_links(html: &str) -> Vec<(String, String)> {
+    html.split("<a ")
+        .skip(1)
+        .map(|anchor| {
+            let (attributes, content) = anchor.split_once('>').unwrap();
+            let attribute = |name: &str| {
+                attributes
+                    .split_once(&format!("{name}=\""))
+                    .map(|(_, value)| value.split('"').next().unwrap().to_string())
+            };
+            let href = attribute("href").unwrap();
+            let label = attribute("aria-label").unwrap_or_else(|| {
+                let mut in_tag = false;
+                content
+                    .split("</a>")
+                    .next()
+                    .unwrap()
+                    .chars()
+                    .filter(|ch| match ch {
+                        '<' => {
+                            in_tag = true;
+                            false
+                        }
+                        '>' => {
+                            in_tag = false;
+                            false
+                        }
+                        _ => !in_tag,
+                    })
+                    .collect::<String>()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
+            (href, label)
+        })
+        .collect()
+}
+
+#[test]
+fn mixed_notebook_recovery_links_follow_legacy_home() {
+    use sha2::{Digest, Sha256};
+    let recovery = [
+        "Check again",
+        "Keep trying",
+        "Return to your saved answer →",
+    ];
+    // Four intentional root-link sites; preparation and not-found share a label.
+    let practice = [
+        "Scry, return to practice",
+        "Go to practice →",
+        "Return to practice →",
+    ];
+    let mut wrong = Vec::new();
+    let mut observed = std::collections::BTreeSet::new();
+    for exact in ["none", "prompt", "caught-up"] {
+        for phase in ["question", "checking", "result"] {
+            let mut o = mixed_notebook(exact != "none");
+            if exact == "caught-up" {
+                let text = "A separate authored exact Unit.";
+                o.fade_to_free(text);
+                o.answer(text);
+                o.next(None);
+                assert!(o.app.practice.current.is_none());
+            }
+            if phase == "checking" {
+                o.app.occurrence = None;
+                for q in o
+                    .app
+                    .questions
+                    .values_mut()
+                    .filter(|q| q.content().kind == "choice")
+                {
+                    q.card.due_ms = NOW + DAY_MS;
+                }
+                engine::ensure_occurrence(&mut o.app, NOW, "unassisted-recall").unwrap();
+                notebook_action(
+                    &mut o,
+                    "/review/answer",
+                    &[("answer", "My uncertain freshness answer")],
+                );
+                assert!(!o.app.occurrence.as_ref().unwrap().assisted);
+            } else if phase == "result" {
+                let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
+                notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]);
+            }
+            assert_eq!(o.app.occurrence.as_ref().unwrap().phase, phase);
+            let occurrence = o.app.occurrence.as_ref().unwrap();
+            let routes = [
+                "/notebook".to_string(),
+                "/gate".into(),
+                format!("/concepts/{}", occurrence.concept_id),
+                format!(
+                    "/goals/{}",
+                    o.app.questions[&occurrence.question_id].goal_id
+                ),
+                format!("/questions/{}/edit", occurrence.question_id),
+                "/missing".into(),
+            ];
+            let root = notebook_page(&o, "/");
+            let expected = if exact == "none" { "/" } else { "/notebook" };
+            if exact != "none" {
+                assert!(root.contains(if exact == "prompt" {
+                    "data-state=\"exact-prompt\""
+                } else {
+                    "data-state=\"exact-caught-up\""
+                }));
+            }
+            let before = o.app.clone();
+            for route in routes {
+                let page = notebook_page(&o, &route);
+                if exact == "none" {
+                    println!(
+                        "no-Study {phase} {route} {}",
+                        hex::encode(Sha256::digest(page.as_bytes()))
+                    );
+                }
+                for (href, label) in rendered_links(&page) {
+                    if recovery.contains(&label.as_str()) {
+                        observed.insert(label.clone());
+                        if href != expected {
+                            wrong.push(format!("{exact} {phase} {route}: {label} -> {href}"));
+                        }
+                    } else if href == "/" && !practice.contains(&label.as_str()) {
+                        wrong.push(format!(
+                            "Unexpected root link: {exact} {phase} {route}: {label}"
+                        ));
+                    }
+                }
+            }
+            assert_eq!(
+                o.app, before,
+                "Rendering recovery links does not mutate either practice"
+            );
+            assert_eq!(
+                notebook_page(&o, "/"),
+                root,
+                "Root retains its identical exact Prompt/caught-up view"
+            );
+        }
+    }
+    assert_eq!(observed, recovery.into_iter().map(String::from).collect());
+    assert!(wrong.is_empty(), "Wrong recovery destinations: {wrong:#?}");
 }

@@ -253,8 +253,9 @@ impl View<'_> {
                 );
             }
             return format!(
-                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"/\">Return to your saved answer →</a></div></section>",
-                emblem("large")
+                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"{}\">Return to your saved answer →</a></div></section>",
+                emblem("large"),
+                legacy_home(self.app)
             );
         }
         let action = self.review_form(
@@ -268,8 +269,9 @@ impl View<'_> {
             ),
         );
         format!(
-            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"/\">Keep trying</a></div></section>",
-            emblem("large")
+            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"{}\">Keep trying</a></div></section>",
+            emblem("large"),
+            legacy_home(self.app)
         )
     }
     fn pending(&self) -> String {
@@ -332,6 +334,239 @@ impl View<'_> {
         } else {
             format!("<aside class=\"preparations\" aria-label=\"Saved preparations\">{out}</aside>")
         }
+    }
+    fn practice_form(&self, action: &str, suffix: &str, extra: &str, body: &str) -> String {
+        let id = self
+            .app
+            .practice
+            .current
+            .as_ref()
+            .map_or("", |p| p.prompt.id.as_str());
+        self.form(
+            &format!("/practice/{action}"),
+            suffix,
+            "exact-form",
+            extra,
+            &format!("{}{body}", hidden("prompt_id", id)),
+        )
+    }
+    fn exact_stream(&self) -> String {
+        use crate::study::{Cue, Status};
+        let Some(p) = &self.app.practice.current else {
+            let due = crate::study::due(self.app, self.now);
+            let next = due["next_due_ms"].as_i64();
+            let message = next.map_or_else(
+                || "No next due time is scheduled. Resume a Study to introduce more Units.".into(),
+                |at| format!("Next due at {} (UTC).", date(at)),
+            );
+            return format!(
+                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"text-link\" href=\"/notebook\">Understanding practice →</a></section>",
+                escape(&message)
+            );
+        };
+        let prompt = &p.prompt;
+        let attempt = p
+            .attempt_id
+            .as_ref()
+            .and_then(|id| self.app.practice.attempts.get(id));
+        let state = if attempt.is_some() {
+            "exact-result"
+        } else {
+            "exact-prompt"
+        };
+        let mut out = format!(
+            "<section class=\"study exact-study\" data-state=\"{state}\" data-prompt-id=\"{}\"><p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
+            escape(&prompt.id),
+            escape(&prompt.title)
+        );
+        if let Some(context) = &prompt.context {
+            let _ = write!(
+                out,
+                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous Unit</p><p class=\"reading\">{}</p></div>",
+                escape(context)
+            );
+        }
+        if !prompt.cue.is_empty() {
+            let label = match prompt.cue_level {
+                Cue::Read => "Read the Unit",
+                Cue::FirstLetters => "First letters",
+                Cue::FirstLetter => "First letter",
+                Cue::PreviousLine => "Cue",
+                Cue::SectionHeading => "Section",
+                Cue::WholeTitle => "Title",
+            };
+            let _ = write!(
+                out,
+                "<div class=\"exact-cue\"><p class=\"eyebrow\">{label}</p><p class=\"reading\">{}</p></div>",
+                escape(&prompt.cue)
+            );
+        }
+        if let Some(a) = attempt {
+            out.push_str(&self.exact_result(a));
+        } else {
+            if prompt.assisted || p.revealed {
+                out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
+            }
+            if p.revealed {
+                out.push_str("<section class=\"exact-disclosure\"><h2>The Unit</h2><p class=\"fineprint\">Assistance is recorded.</p>");
+                out.push_str(&self.exact_expected());
+                out.push_str("</section>");
+            }
+            out.push_str(&self.form("/practice/answer", "exact-answer", "answer-form exact-answer-form", "data-answer-limit=\"32768\"",
+                &format!("{}<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"></textarea><button class=\"button primary\">Check my answer</button>",hidden("prompt_id",&prompt.id))));
+            if !p.revealed {
+                out.push_str("<details class=\"overflow\"><summary>More</summary>");
+                out.push_str(&self.practice_form(
+                    "reveal",
+                    "exact-reveal",
+                    "",
+                    "<button class=\"text-button\">Show me</button>",
+                ));
+                out.push_str("</details>");
+            }
+        }
+        if self
+            .app
+            .practice
+            .studies
+            .values()
+            .any(|s| s.status != Status::Dropped)
+        {
+            out.push_str("<a class=\"text-link exact-notebook\" href=\"/notebook\">Understanding practice →</a>");
+        }
+        out.push_str("</section>");
+        out
+    }
+    fn exact_expected(&self) -> String {
+        let Some(p) = &self.app.practice.current else {
+            return String::new();
+        };
+        self.app.library.versions[&p.prompt.version_id]
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .filter(|u| p.prompt.unit_ids.contains(&u.id))
+            .map(|u| {
+                format!(
+                    "<p class=\"reading exact-expected\">{}</p>",
+                    escape(&u.text)
+                )
+            })
+            .collect()
+    }
+    fn exact_result(&self, a: &crate::study::Attempt) -> String {
+        use crate::grading::{Change, Verdict};
+        let good = a.grade.verdict == Verdict::Good;
+        let verdict = if good { "Good" } else { "Again" };
+        let mut out = format!(
+            "<div class=\"feedback feedback-{}\" role=\"status\"><div><h2 data-verdict=\"{verdict}\">{verdict}.</h2><p>{} · {}</p></div></div><div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><h2>Expected text</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            if good { "correct" } else { "miss" },
+            escape(&a.grade.authority.name),
+            escape(&a.grade.authority.grader_version),
+            escape(&a.raw_answer),
+            self.exact_expected()
+        );
+        for d in &a.grade.diff {
+            let (kind, label, text) = match &d.change {
+                Change::Correct { expected, .. } => ("correct", "Correct", escape(&expected.text)),
+                Change::Slip { expected, typed } => (
+                    "slip",
+                    "Slipped",
+                    format!("{} → {}", escape(&typed.text), escape(&expected.text)),
+                ),
+                Change::Wrong {
+                    expected,
+                    typed,
+                    out_of_order,
+                } => (
+                    "wrong",
+                    if *out_of_order {
+                        "Wrong · out of order"
+                    } else {
+                        "Wrong"
+                    },
+                    format!("{} → {}", escape(&typed.text), escape(&expected.text)),
+                ),
+                Change::Missing { expected } => ("missing", "Missing", escape(&expected.text)),
+                Change::Extra { typed } => ("extra", "Extra", escape(&typed.text)),
+            };
+            let _ = write!(
+                out,
+                "<li data-diff-kind=\"{kind}\" data-unit-index=\"{}\"><span class=\"diff-label\">{label}</span><span>{text}</span></li>",
+                d.unit_index
+            );
+        }
+        out.push_str("</ol>");
+        if let Some(hint) = &a.grade.wrong_version_hint {
+            let _ = write!(
+                out,
+                "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                escape(&hint.name)
+            );
+        }
+        if a.assisted {
+            out.push_str(
+                "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
+            );
+        } else if a.effects.iter().all(|e| e.extra_practice) {
+            out.push_str("<p class=\"fineprint\">Extra practice · already scheduled today.</p>");
+        }
+        out.push_str("<div class=\"result-actions\">");
+        out.push_str(&self.form(
+            "/practice/next",
+            "exact-next",
+            "exact-form",
+            "data-next",
+            &format!(
+                "{}<button class=\"button primary\">Next</button>",
+                hidden("after", &a.prompt.id)
+            ),
+        ));
+        for e in &a.effects {
+            let corrected = self
+                .app
+                .practice
+                .corrections
+                .values()
+                .find(|c| c.attempt_id == a.id && c.unit_id == e.unit_id);
+            if let Some(c) = corrected {
+                let _ = write!(
+                    out,
+                    "<p class=\"fineprint\">Unit {}: Owner Correction · {}. Original Verdict retained.</p>",
+                    e.unit_index + 1,
+                    if c.verdict == Verdict::Good {
+                        "Good"
+                    } else {
+                        "Again"
+                    }
+                );
+                continue;
+            }
+            let missed = e.verdict == Verdict::Again;
+            let body = format!(
+                "{}{}{}<button class=\"text-button\">{}</button>",
+                hidden("attempt_id", &a.id),
+                hidden("unit_id", &e.unit_id),
+                hidden("verdict", if missed { "Good" } else { "Again" }),
+                if missed {
+                    "I was right"
+                } else {
+                    "Count as a miss"
+                }
+            );
+            if a.effects.len() > 1 {
+                let _ = write!(out, "<p class=\"fineprint\">Unit {}</p>", e.unit_index + 1);
+            }
+            if !missed {
+                out.push_str("<details class=\"overflow\"><summary>More</summary>");
+            }
+            out.push_str(&self.practice_form("correct", &e.unit_id, "", &body));
+            if !missed {
+                out.push_str("</details>");
+            }
+        }
+        out.push_str("</div>");
+        out
     }
     fn study(&self) -> String {
         let Some(o) = self.app.occurrence.as_ref() else {
@@ -401,11 +636,15 @@ impl View<'_> {
                         escape(answer)
                     );
                 }
-                out.push_str(if self.check_paused(o) {
-                    self.resume_link()
+                if self.check_paused(o) {
+                    out.push_str(self.resume_link());
                 } else {
-                    "<a class=\"text-link\" href=\"/\">Check again</a>"
-                });
+                    let _ = write!(
+                        out,
+                        "<a class=\"text-link\" href=\"{}\">Check again</a>",
+                        legacy_home(self.app)
+                    );
+                }
             }
             _ => out.push_str(&self.question(o)),
         }
@@ -1493,6 +1732,47 @@ fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
     assert!(!changelog().contains("style=\""));
 }
 
+fn exact_stream_active(app: &App) -> bool {
+    app.practice.current.is_some()
+        || app
+            .practice
+            .studies
+            .values()
+            .any(|s| s.status != crate::study::Status::Dropped)
+}
+
+fn legacy_home(app: &App) -> &'static str {
+    if exact_stream_active(app) {
+        "/notebook"
+    } else {
+        "/"
+    }
+}
+
+pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
+    if path.starts_with("/practice/") {
+        "/"
+    } else if redirect == "/"
+        && (path.starts_with("/review/")
+            || path == "/settings/resume"
+            || path
+                .strip_prefix("/concepts/")
+                .is_some_and(|p| p.ends_with("/practice")))
+    {
+        legacy_home(app)
+    } else {
+        redirect
+    }
+}
+
+pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
+    if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
+        path
+    } else {
+        mutation_redirect(app, path, "/")
+    }
+}
+
 pub fn render(
     app: &App,
     path: &str,
@@ -1507,7 +1787,8 @@ pub fn render(
         now: now_ms,
     };
     let content = match path {
-        "/" => view.study(),
+        "/" if exact_stream_active(app) => view.exact_stream(),
+        "/" | "/notebook" => view.study(),
         "/create" | "/add" => view.create(),
         "/map" => view.map(),
         "/history" => view.history(),
@@ -1595,7 +1876,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" content=\"#f5f2ea\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/create\" {}>Create</a><a href=\"/map\" {}>Map</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><span class=\"footer-motto\">A little understanding, kept.</span><div><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/create\" {}>Create</a><a href=\"/map\" {}>Map</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><span class=\"footer-motto\">A little understanding, kept.</span><div><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if matches!(path, "/create" | "/add") {

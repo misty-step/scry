@@ -83,4 +83,9 @@ export const specs={
  }),
  'US-016':Array.from({length:11},(_,i)=>async c=>c.practice.studyCriteria[i]()),
  'US-017':Array.from({length:10},(_,i)=>async c=>c.practice.graderCriteria[i]()),
+ 'US-018':Array.from({length:5},(_,i)=>async c=>{
+   c.policy('phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts');
+   assert.equal(c.phone.length,6);
+   for(const row of c.phone){assert.equal(row.status,'pass',row.reason);assert.ok(row.criteria.includes(i+1),`US-018.${i+1}: missing ${row.width}px ${row.scheme} observation`);}
+ }),
 };
