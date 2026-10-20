@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const TEXT_BYTES: usize = 256 * 1024;
+const MAX_SECTIONS: usize = 4096;
+const MAX_UNITS: usize = 8192;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
@@ -211,20 +213,33 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
         .sections
         .clone()
         .unwrap_or_else(|| segment(&input.text));
+    if sections.len() > MAX_SECTIONS {
+        return Err(AppError::new(
+            422,
+            "A Version supports at most 4096 Sections.",
+        ));
+    }
+    if sections.iter().map(|s| s.units.len()).sum::<usize>() > MAX_UNITS {
+        return Err(AppError::new(422, "A Version supports at most 8192 Units."));
+    }
     if sections.is_empty()
-        || sections.len() > 4096
         || sections.iter().any(|s| {
             s.heading.len() > 240 || s.units.is_empty() || s.units.iter().any(String::is_empty)
         })
-        || sections.iter().map(|s| s.units.len()).sum::<usize>() > 8192
-        || sections
-            .iter()
-            .flat_map(|s| &s.units)
-            .map(String::as_str)
-            .collect::<String>()
-            != input.text
     {
         return Err(invalid());
+    }
+    if sections
+        .iter()
+        .flat_map(|s| &s.units)
+        .map(String::as_str)
+        .collect::<String>()
+        != input.text
+    {
+        return Err(AppError::new(
+            422,
+            "Version Units must join to the submitted text exactly.",
+        ));
     }
     Ok(sections)
 }

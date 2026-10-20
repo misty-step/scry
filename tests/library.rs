@@ -333,3 +333,60 @@ fn empty_library_preserves_legacy_application_rows_and_archive_shape() {
         bytes
     );
 }
+
+#[test]
+fn segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_boundaries() {
+    for explicit in [false, true] {
+        for (limit, separator, message) in [
+            (4096, "\n", "A Version supports at most 4096 Sections."),
+            (8192, ",", "A Version supports at most 8192 Units."),
+        ] {
+            let data = |count: usize| {
+                let unit = format!("x{separator}");
+                let mut data = draft("Capacity boundary", &unit.repeat(count));
+                if explicit {
+                    data["sections"] = if separator == "\n" {
+                        json!(vec![json!({"heading":"","units":[unit]}); count])
+                    } else {
+                        json!([{"heading":"","units":vec![unit; count]}])
+                    };
+                }
+                data
+            };
+            let mut app = app();
+            let id = add(&mut app, "library-capacity-boundary", data(limit));
+            let version = &app.library.versions[&id];
+            assert_eq!(
+                version
+                    .sections
+                    .iter()
+                    .map(|s| s.units.len())
+                    .sum::<usize>(),
+                limit
+            );
+            assert_eq!(
+                version
+                    .sections
+                    .iter()
+                    .flat_map(|s| &s.units)
+                    .map(|u| u.text.as_str())
+                    .collect::<String>(),
+                version.text
+            );
+            let before = app.clone();
+            let error = mutate(
+                &mut app,
+                "/api/v1/library/versions",
+                "library-over-capacity",
+                json!({"data":data(limit + 1)}),
+            )
+            .unwrap_err();
+            assert_eq!(error.status, 422);
+            assert_eq!(error.message, message);
+            assert_eq!(
+                app, before,
+                "Capacity refusal preserves every record and receipt."
+            );
+        }
+    }
+}

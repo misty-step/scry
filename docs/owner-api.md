@@ -116,7 +116,10 @@ Version flags include `--rights private_only|public_domain|licensed`,
 and Provenance is always supplied. Sources are optional and never fetched.
 `--kind` accepts `text`, `ordered_list`, and `keyed_mapping`; this slice stores
 them and adds no practice behavior. Text files must be UTF-8, at most 256 KiB.
-Default Sections follow lines, with clauses as Units. To name articles or stanzas,
+Each Version also allows at most 4,096 Sections and 8,192 Units in total,
+including caller-supplied Sections. Default Sections follow lines, with clauses
+as Units, so text below the byte limit can still exceed either count limit.
+To name articles or stanzas,
 pass a JSON file such as:
 
 ```json
@@ -124,7 +127,13 @@ pass a JSON file such as:
 ```
 
 Every byte must match the text file when Units are joined, including line endings
-and final whitespace. A mismatch refuses the whole add. Case, punctuation,
+and final whitespace. A mismatch refuses the whole add. The API returns HTTP 422
+with `Version Units must join to the submitted text exactly.` for a join mismatch,
+`A Version supports at most 4096 Sections.` for excess Sections, or
+`A Version supports at most 8192 Units.` for excess Units. These refusals store
+nothing. Supplied Sections must satisfy the same limits and exact byte join;
+they do not bypass capacity checks. The CLI reports these refusals as
+`API request failed.` with a nonzero exit. Case, punctuation,
 and spacing differences return the existing Version, preserving its original
 bytes and metadata. Titles and aliases resolve one Work; ambiguous names conflict.
 Search matches titles, aliases, and the first 240 characters of each Version.

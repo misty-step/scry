@@ -81,8 +81,34 @@ export async function libraryJourney() {
   },
   async()=>{
    const bad=await file('bad-sections.json',JSON.stringify([{heading:'Article',units:['Missing exact bytes.']}]));
-   const before=await rows();const refused=await cli([...addArgs(),'--title','Must never be stored','--sections-file',bad]);
-   assert.notEqual(refused.code,0);assert.deepEqual(await rows(),before,'Refusal changes no SQLite row, operation receipt or last-use time.');
+   const before=await rows();const refused=await cli([...addArgs(originalFile,'Must never be stored'),'--sections-file',bad]);
+   assert.equal(refused.code,1);assert.equal(refused.value.error,'API request failed.');
+   assert.deepEqual(await rows(),before,'CLI refusal changes no SQLite row, operation receipt or last-use time.');
+   const refusal=async(data,error)=>{
+    const before=await rows();
+    const response=await request('/api/v1/library/versions',{operation_id:randomUUID(),data});
+    const body=await response.json();assert.equal(response.status,422);assert.deepEqual(body,{error});
+    assert.deepEqual(await rows(),before,'Worker refusal changes no SQLite row, operation receipt or last-use time.');
+    transcript.push({observation:'Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use',status:response.status,body,text_bytes:Buffer.byteLength(data.text),supplied_sections:data.sections?.length??null,supplied_units:data.sections?.reduce((n,s)=>n+s.units.length,0)??null});
+   };
+   await refusal({title:'Must never be stored',kind:'text',text,sections:[{heading:'Article',units:['Missing exact bytes.']}]},'Version Units must join to the submitted text exactly.');
+   for(const explicit of [false,true])for(const [limit,separator,error]of [[4096,'\n','A Version supports at most 4096 Sections.'],[8192,',','A Version supports at most 8192 Units.']]) {
+    const draft=count=>{
+     const unit='x'+separator;
+     return {title:'Boundary '+limit,kind:'text',text:unit.repeat(count),...(explicit?{sections:separator==='\n'?Array.from({length:count},()=>({heading:'',units:[unit]})):[{heading:'',units:Array(count).fill(unit)}]}:{})};
+    };
+    const data=draft(limit),response=await request('/api/v1/library/versions',{operation_id:randomUUID(),data});
+    assert.equal(response.status,200);const added=await response.json();
+    const version=await(await request('/api/v1/library/versions/'+added.result.entity_id)).json();
+    assert.equal(version.version.sections.flatMap(s=>s.units).map(u=>u.text).join(''),data.text);
+    assert.equal(version.version.sections.flatMap(s=>s.units).length,limit);
+    transcript.push({observation:'Built Worker accepts exact capacity with byte join preserved',status:response.status,limit,explicit});
+    await refusal(draft(limit+1),error);
+   }
+   const manyLines='x\n'.repeat(5000),manyFile=await file('5000-lines.txt',manyLines),beforeCapacity=await rows();
+   const capacity=await cli(addArgs(manyFile,'5000 supplied lines'));assert.equal(capacity.code,1);assert.equal(capacity.value.error,'API request failed.');
+   assert.deepEqual(await rows(),beforeCapacity);
+   await refusal({title:'5000 supplied lines',kind:'text',text:manyLines},'A Version supports at most 4096 Sections.');
    const valid=await file('sections.json',JSON.stringify([{heading:'Synthetic article one',units:['Supplied first clause,',' second clause.\n']} ]));
    const path=await file('explicit.txt','Supplied first clause, second clause.\n');
    const accepted=await ok([...addArgs(path,'Explicit Sections'),'--alias','Explicit alias','--sections-file',valid]);
