@@ -27,6 +27,12 @@ credentials. A login redirect is denial evidence, not a completed learner
 journey. Do not borrow a protected human session or spend on generation to
 qualify this documentation.
 
+For an origin change, start with the runbook's
+[dated preparation and remaining proof](../../../docs/runbook.md#canonical-origin-change--prepared-2026-10-20)
+and the [backup handoff](../../../docs/rust-cloudflare.md#canonical-origin-promotion).
+Retain separate local and deployed ingress observations; an isolated story walk
+does not prove that the serving origin changed.
+
 ## Walk as Phaedrus
 
 Treat this as a short learning break on his phone, not an admin inspection.

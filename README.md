@@ -21,6 +21,10 @@ at `c6ba395`; historical Rust/Postgres/Worker stores and
 backups remain separate recovery material. This rewrite does not import,
 reactivate, rename, or erase those stores.
 
+For an origin change, follow the runbook's
+[dated preparation and remaining proof](docs/runbook.md#canonical-origin-change--prepared-2026-10-20)
+and the [promotion/backup handoff](docs/rust-cloudflare.md#canonical-origin-promotion).
+
 [Product intent](VISION.md) · [Stories and specification](SPEC.md) ·
 [Design](DESIGN.md) · [Features](features/README.md) ·
 [Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
