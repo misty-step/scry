@@ -1,0 +1,193 @@
+exact-v2 #315 development evidence
+Base: 64e013feedc05cf4742c4639e1c6f9050ce11a59
+Behavior authority: SPEC US-017.1-.9 (pure grading portion), issue #315, parent #313.
+Environment: isolated checkout, Rust 1.98.1, worker-build 0.8.7, authored synthetic text.
+Source commit: bound by the owning PR; implementation bytes are identified below.
+
+Implementation SHA-256:
+32aa8933c7c5b91dab196301d859fc05756f48a639334be6ca8e862b83ad771b  src/lib.rs
+d1924674bf9dd08ce3a056a00c6f8c4558f8d16a4e70039443fd97c43b98fb65  tests/exact_v2.rs
+f50b9cf10ee180947c8ae67423a851783bd26668d433d0ad3cd451e91958b695  scripts/generate-exact-unicode.py
+6dd2c57671f4e3b38e8e4c855b187b140d8de8940a57040ab6e8f925450a6072  src/grading/README.md
+e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96  src/grading/UNICODE-LICENSE.txt
+4a2a26ed51b592264dbf965ada5f8558c44593bcc5c3a3393ea0440c984152ad  src/grading/mod.rs
+7107c1d38a259b6bf197a398a90d7a2333ec35479d8e4bb4b25e2551ec8941a2  src/grading/unicode.rs
+f323fc9683770e603b6b6c282adaf05e79693ac2de17189bc704ad70c4ef15e3  src/grading/unicode_tables.rs
+
+BEFORE: temporary consumer regression against the unchanged legacy exact_grade seam.
+Command: cargo test --locked --test exact_v2
+This initial test was replaced by the new grading::grade consumer suite; legacy behavior is retained.
+   Compiling serde_derive v1.0.229
+   Compiling chrono v0.4.45
+   Compiling scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.73s
+     Running tests/exact_v2.rs (target/debug/deps/exact_v2-0a4a0986ab0f4e15)
+
+running 1 test
+test conceived_slip_is_good_before_practice_integration ... FAILED
+
+failures:
+
+---- conceived_slip_is_good_before_practice_integration stdout ----
+
+thread 'conceived_slip_is_good_before_practice_integration' (3413453) panicked at tests/exact_v2.rs:3:5:
+assertion `left == right` failed: US-017.3: a recalled long word with one swapped letter is Good
+  left: None
+ right: Some(true)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    conceived_slip_is_good_before_practice_integration
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--test exact_v2`
+
+AFTER: new pure grading::grade seam.
+Command: cargo test --locked --test exact_v2 -- --nocapture
+   Compiling scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.58s
+     Running tests/exact_v2.rs (target/debug/deps/exact_v2-0a4a0986ab0f4e15)
+
+running 14 tests
+ordinary: {"authority":{"name":"exact-v2","grader_version":"1;unicode=17.0.0"},"verdict":"Good","units":[{"unit_index":0,"verdict":"Good"}],"diff":[{"unit_index":0,"kind":"slip","expected":{"text":"conceived","span":{"start":0,"end":9}},"typed":{"text":"concieved","span":{"start":0,"end":9}}}],"wrong_version_hint":null}
+Spelling-strict: {"authority":{"name":"exact-v2","grader_version":"1;unicode=17.0.0"},"verdict":"Again","units":[{"unit_index":0,"verdict":"Again"}],"diff":[{"unit_index":0,"kind":"slip","expected":{"text":"conceived","span":{"start":0,"end":9}},"typed":{"text":"concieved","span":{"start":0,"end":9}}}],"wrong_version_hint":null}
+test invalid_unit_ranges_are_refused_without_panicking ... ok
+test conceived_slip_is_visible_and_spelling_strict_changes_the_verdict ... ok
+test closer_sibling_need_not_match_exactly_and_ties_are_stable_by_id ... ok
+test original_words_and_utf8_spans_survive_expansion_composition_and_case_folding ... ok
+test slip_length_distance_and_version_vocabulary_boundaries ... ok
+test digits_symbols_apostrophes_and_meaning_are_not_extra_tolerances ... ok
+test wrong_version_hint_names_the_closer_sibling_without_accepting_its_wording ... ok
+test all_four_single_letter_slips_are_visible_and_good ... ok
+test multilingual_nfkc_and_full_case_folding_are_used_in_both_directions ... ok
+test missing_extra_substituted_and_swapped_words_are_marked_and_again ... ok
+test normalization_ignores_only_the_declared_differences ... ok
+test missing_extra_and_cross_unit_transposition_each_keep_unit_attribution ... ok
+test synthetic_creed_recitation_attributes_one_wrong_word_to_clause_four ... ok
+test random_answers_produce_identical_serialized_bytes_and_cover_every_word ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+
+
+NEGATIVE CONTROL: temporarily replace !version.spelling_strict with true.
+Command: cargo test --locked --test exact_v2 conceived_slip_is_visible_and_spelling_strict_changes_the_verdict
+
+running 1 test
+test conceived_slip_is_visible_and_spelling_strict_changes_the_verdict ... FAILED
+
+failures:
+
+---- conceived_slip_is_visible_and_spelling_strict_changes_the_verdict stdout ----
+
+thread 'conceived_slip_is_visible_and_spelling_strict_changes_the_verdict' (3894814) panicked at tests/exact_v2.rs:23:5:
+assertion `left == right` failed
+  left: Good
+ right: Again
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    conceived_slip_is_visible_and_spelling_strict_changes_the_verdict
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+   Compiling scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.90s
+     Running tests/exact_v2.rs (target/debug/deps/exact_v2-0a4a0986ab0f4e15)
+error: test failed, to rerun pass `--test exact_v2`
+
+Observed: test fails with Good where Again is required. Original source bytes restored.
+
+UNICODE: official pinned Unicode 17 files downloaded into a disposable /tmp directory.
+Command: python3 scripts/generate-exact-unicode.py /tmp/scry-exact-v2-unicode --check
+Observed: Unicode 17 tables: byte-identical
+Command: SCRY_UNICODE_DATA=/tmp/scry-exact-v2-unicode cargo test --locked --lib unicode_17_conformance -- --ignored --nocapture
+   Compiling scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.13s
+     Running unittests src/lib.rs (target/debug/deps/scry-a6c0baebb0634d94)
+
+running 1 test
+Unicode 17 NFKC: 20034 rows, all five columns conform
+Unicode 17 default full case-fold mappings conform
+test grading::unicode::tests::unicode_17_conformance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.18s
+
+
+
+NATIVE: cargo test --locked --all-targets
+     Running unittests src/lib.rs (target/debug/deps/scry-a6c0baebb0634d94)
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s
+     Running tests/application.rs (target/debug/deps/application-c0be6c3a3a300b75)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/archive_integrity.rs (target/debug/deps/archive_integrity-2a3e544db1e0879e)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/backup_health.rs (target/debug/deps/backup_health-a1757013c44957bc)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/concept_policy.rs (target/debug/deps/concept_policy-2e9856643b77f2cb)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/critic_reuse.rs (target/debug/deps/critic_reuse-0d4474fc7388e310)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/exact_v2.rs (target/debug/deps/exact_v2-0a4a0986ab0f4e15)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+     Running tests/fsrs_golden.rs (target/debug/deps/fsrs_golden-d63a45bda868cc56)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/generation_policy.rs (target/debug/deps/generation_policy-fb58b7faa50c31c6)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/learning_policy.rs (target/debug/deps/learning_policy-ecec3f118a28cde1)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/refinement_graph.rs (target/debug/deps/refinement_graph-83379859c2785f39)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/revival_custody.rs (target/debug/deps/revival_custody-330d529260bba88c)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+     Running tests/revival_receipts.rs (target/debug/deps/revival_receipts-3c5db8a8c15b6b6d)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/schedule_history.rs (target/debug/deps/schedule_history-c153b5b018836728)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/web_render.rs (target/debug/deps/web_render-9159212f142f6812)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/work_outcomes.rs (target/debug/deps/work_outcomes-5dd0917fa0f069fd)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Total passed: 116. No failures. The external Unicode conformance test is ignored here and passed separately above.
+
+PASS: cargo clippy --locked --all-targets -- -D warnings
+    Checking scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.27s
+
+PASS: cargo check --locked --target wasm32-unknown-unknown
+    Checking serde-wasm-bindgen v0.6.5
+    Checking chrono v0.4.45
+   Compiling worker-sys v0.8.7
+   Compiling worker-macros v0.8.7
+    Checking wasm-streams v0.7.0
+    Checking worker v0.8.7
+    Checking scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.48s
+
+PASS: cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
+    Checking scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-97dfdf61)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.05s
+
+PASS: worker-build --release --locked
+    Finished `release` profile [optimized] target(s) in 23.95s
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: ✨  Done in 25.70s
+[INFO]: 📦   Your wasm pkg is ready to publish at /home/phaedrus/.t3/worktrees/scry/t3-97dfdf61/build/.tmp.
+
+  index.js  32.3kb
+
+⚡ Done in 4ms
+
+PASS: cargo fmt --all -- --check; git diff --check.
+
+Limits:
+The synthetic twelve-clause Recitation changes one word in clause four; only that Unit is Again.
+The sibling fixture names English, 1662 BCP for the short Spirit/Ghost contrast.
+No complete supplied Roman Missal Version or live copyrighted text was retrieved.
+No HTTP/CLI Attempt integration, held UI, real phone, deployed ingress, provider, recovery, or release smoke claim.
+No provider call, paid work, private env read, production operation, or new runtime dependency.
+Existing exact-v1, schedules and history are unchanged. US-017 Evidence: pending remains for #317.
+Independent QA/review and protected exact-head CI belong to the parent and remain pending.
