@@ -93,8 +93,10 @@ questions. It is authored data, not a provider call, real cold recall, or an AI
 quality result. Requests made without model configuration remain saved with
 honest zero-cost configuration failure. No production store is imported.
 
-For browser work in T3 Code, first inspect the collaborative preview status and
-open it if needed. Use its native pointer/keyboard tools and snapshots. If those
+From any shell, [verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s
+Playwright helpers drive the owner sign-in, production breaking states and
+local write flows. In T3 Code, the collaborative preview is an alternative:
+inspect its status and open it if needed. Use its native pointer/keyboard tools and snapshots. If those
 tools are unavailable, run browser QA on the isolated exe.dev VM as the
 repository browser/story runner instructs. Do not silently replace a stalled
 harness with DOM `.click()` or mark unobserved cases passed. The Worker story

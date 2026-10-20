@@ -1,0 +1,4 @@
+302 https://scry.mistystep.io/create
+200 https://misty-step-pantry.cloudflareaccess.com/cdn-cgi/access/login/scry.mistystep.io?<redacted>
+302 https://auth-canary.mistystep.io/api/auth/oauth2/authorize?<redacted>
+200 https://auth-canary.mistystep.io/sign-in?<redacted>

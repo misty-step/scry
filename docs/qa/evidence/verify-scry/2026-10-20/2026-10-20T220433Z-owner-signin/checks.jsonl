@@ -1,0 +1,1 @@
+{"id":"signin.owner","status":"FAIL","observed":"page.goto: net::ERR_NETWORK_CHANGED at https://scry.mistystep.io/create\nCall log:\n\u001b[2m  - navigating to \"https://scry.mistystep.io/create\", waiting until \"load\"\u001b[22m\n","evidence":"signin-failure-1280.png","at":"2026-10-20T22:04:34.035Z"}

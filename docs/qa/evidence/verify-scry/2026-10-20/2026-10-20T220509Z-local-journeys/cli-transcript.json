@@ -1,0 +1,446 @@
+[
+ {
+  "cmd": "scry login --url http://127.0.0.1:41581 --token-stdin --json",
+  "stdin": "<redacted>",
+  "exit": 0,
+  "stdout": {
+   "owner": true,
+   "token": {
+    "created_ms": 1792533926603,
+    "expires_ms": null,
+    "id": "1726266409229e59c7a5c37c0c641667",
+    "last_used_ms": 1792533927145,
+    "name": "verify-scry local CLI",
+    "paid": false,
+    "revoked_ms": null
+   }
+  }
+ },
+ {
+  "cmd": "scry whoami --json",
+  "exit": 0,
+  "stdout": {
+   "owner": true,
+   "token": {
+    "created_ms": 1792533926603,
+    "expires_ms": null,
+    "id": "1726266409229e59c7a5c37c0c641667",
+    "last_used_ms": 1792533927176,
+    "name": "verify-scry local CLI",
+    "paid": false,
+    "revoked_ms": null
+   }
+  }
+ },
+ {
+  "cmd": "scry search synthetic creed --json",
+  "exit": 0,
+  "stdout": {
+   "empty": true,
+   "matches": [],
+   "message": "Nothing matches."
+  }
+ },
+ {
+  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file /home/phaedrus/.cache/tmp/verify-scry-local-Yp4Zq6/text.txt --sections-file /home/phaedrus/.cache/tmp/verify-scry-local-Yp4Zq6/sections.json --json",
+  "exit": 0,
+  "stdout": {
+   "replayed": false,
+   "result": {
+    "entity_id": "9d619bbd41de8c6195e5dcb1f9983cf3",
+    "message": null,
+    "redirect": "/api/v1/library/versions/9d619bbd41de8c6195e5dcb1f9983cf3"
+   }
+  }
+ },
+ {
+  "cmd": "scry search symbolum syntheticum --json",
+  "exit": 0,
+  "stdout": {
+   "empty": false,
+   "matches": [
+    {
+     "relations": [
+      {
+       "kind": "version_of",
+       "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3",
+       "work_id": "aa9f5eb62eaa3cdf4524b09524b8862f"
+      }
+     ],
+     "versions": [
+      {
+       "id": "9d619bbd41de8c6195e5dcb1f9983cf3",
+       "kind": "text",
+       "name": "verify-scry synthetic wording",
+       "normalized_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+       "provenance": "supplied",
+       "rights": "private_only",
+       "sections": [
+        {
+         "heading": "Synthetic first article",
+         "id": "f2a05c2418274159169f20c577fe6fc3",
+         "units": [
+          {
+           "id": "5a6d7224bcef05f03a4d0d42ae52c073",
+           "text": "The path begins in our synthetic notebook.\n"
+          },
+          {
+           "id": "a8f855371a2dadb8036e086af9b2f87f",
+           "text": "We conceived a patient garden by the water.\n"
+          }
+         ]
+        }
+       ],
+       "sources": [
+        "Authored synthetic text, not canonical"
+       ],
+       "spelling_strict": false,
+       "text": "The path begins in our synthetic notebook.\nWe conceived a patient garden by the water.\n",
+       "work_id": "aa9f5eb62eaa3cdf4524b09524b8862f"
+      }
+     ],
+     "work": {
+      "aliases": [
+       "Symbolum Syntheticum"
+      ],
+      "context": "",
+      "id": "aa9f5eb62eaa3cdf4524b09524b8862f",
+      "kind": "text",
+      "revision": 1,
+      "title": "Synthetic Creed"
+     }
+    }
+   ],
+   "message": "Matching Works."
+  }
+ },
+ {
+  "cmd": "scry version add --title Synthetic Creed --kind text --name verify-scry synthetic wording --alias Symbolum Syntheticum --source Authored synthetic text, not canonical --text-file /home/phaedrus/.cache/tmp/verify-scry-local-Yp4Zq6/text.txt --sections-file /home/phaedrus/.cache/tmp/verify-scry-local-Yp4Zq6/sections.json --json",
+  "exit": 0,
+  "stdout": {
+   "replayed": false,
+   "result": {
+    "entity_id": "9d619bbd41de8c6195e5dcb1f9983cf3",
+    "message": null,
+    "redirect": "/api/v1/library/versions/9d619bbd41de8c6195e5dcb1f9983cf3"
+   }
+  }
+ },
+ {
+  "cmd": "scry learn 9d619bbd41de8c6195e5dcb1f9983cf3 --json",
+  "exit": 0,
+  "stdout": {
+   "practice": {
+    "study": {
+     "created_ms": 1792533927328,
+     "id": "1e14554cea52ad8a6b681fc1f7af2239",
+     "pace": "steady",
+     "status": "active",
+     "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+     "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+    }
+   },
+   "replayed": false,
+   "result": {
+    "data": {
+     "study": {
+      "created_ms": 1792533927328,
+      "id": "1e14554cea52ad8a6b681fc1f7af2239",
+      "pace": "steady",
+      "status": "active",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+     }
+    },
+    "entity_id": "1e14554cea52ad8a6b681fc1f7af2239",
+    "message": null,
+    "redirect": "/api/v1/practice"
+   }
+  }
+ },
+ {
+  "cmd": "scry next --json",
+  "exit": 0,
+  "stdout": {
+   "practice": {
+    "attempt": {
+     "acting_token": null,
+     "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1",
+     "assisted": true,
+     "created_ms": 1792533927692,
+     "effects": [
+      {
+       "after": {
+        "cue": "read",
+        "schedule": {
+         "difficulty": 0,
+         "due_ms": 1792533927357,
+         "lapses": 0,
+         "last_review_ms": null,
+         "remaining_steps": 0,
+         "reps": 0,
+         "scheduled_days": 0,
+         "stability": 0,
+         "state": "new"
+        },
+        "successes": 0
+       },
+       "assisted": true,
+       "before": {
+        "cue": "read",
+        "schedule": {
+         "difficulty": 0,
+         "due_ms": 1792533927357,
+         "lapses": 0,
+         "last_review_ms": null,
+         "remaining_steps": 0,
+         "reps": 0,
+         "scheduled_days": 0,
+         "stability": 0,
+         "state": "new"
+        },
+        "successes": 0
+       },
+       "card_id": "f50f17945045d5045c5b3317c89d3fb8",
+       "cue_level": "read",
+       "extra_practice": false,
+       "revision_before": 0,
+       "scheduled": false,
+       "unit_id": "5a6d7224bcef05f03a4d0d42ae52c073",
+       "unit_index": 0,
+       "verdict": "Again"
+      }
+     ],
+     "grade": {
+      "authority": {
+       "grader_version": "1;unicode=17.0.0",
+       "name": "exact-v2"
+      },
+      "diff": [
+       {
+        "expected": {
+         "span": {
+          "end": 3,
+          "start": 0
+         },
+         "text": "The"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 3,
+          "start": 0
+         },
+         "text": "The"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 8,
+          "start": 4
+         },
+         "text": "path"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 8,
+          "start": 4
+         },
+         "text": "path"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 15,
+          "start": 9
+         },
+         "text": "begins"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 15,
+          "start": 9
+         },
+         "text": "begins"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 18,
+          "start": 16
+         },
+         "text": "in"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 18,
+          "start": 16
+         },
+         "text": "in"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 22,
+          "start": 19
+         },
+         "text": "our"
+        },
+        "kind": "wrong",
+        "out_of_order": false,
+        "typed": {
+         "span": {
+          "end": 20,
+          "start": 19
+         },
+         "text": "a"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 32,
+          "start": 23
+         },
+         "text": "synthetic"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 30,
+          "start": 21
+         },
+         "text": "synthetic"
+        },
+        "unit_index": 0
+       },
+       {
+        "expected": {
+         "span": {
+          "end": 41,
+          "start": 33
+         },
+         "text": "notebook"
+        },
+        "kind": "correct",
+        "typed": {
+         "span": {
+          "end": 39,
+          "start": 31
+         },
+         "text": "notebook"
+        },
+        "unit_index": 0
+       }
+      ],
+      "units": [
+       {
+        "unit_index": 0,
+        "verdict": "Again"
+       }
+      ],
+      "verdict": "Again",
+      "wrong_version_hint": null
+     },
+     "id": "f9285dd660d20422890e91cf1c8c2530",
+     "prompt": {
+      "assisted": true,
+      "context": null,
+      "cue": "The path begins in our synthetic notebook.\n",
+      "cue_level": "read",
+      "id": "0a1ef0cc5f995b26688bb9f799c6c5b6",
+      "scope": {
+       "kind": "unit",
+       "position": 1,
+       "unit_id": "5a6d7224bcef05f03a4d0d42ae52c073"
+      },
+      "study_id": "1e14554cea52ad8a6b681fc1f7af2239",
+      "title": "Synthetic Creed",
+      "unit_ids": [
+       "5a6d7224bcef05f03a4d0d42ae52c073"
+      ],
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+     },
+     "raw_answer": "The path begins in a synthetic notebook.",
+     "revealed": false,
+     "sequence": 16,
+     "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+     "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+    },
+    "attempt_id": "f9285dd660d20422890e91cf1c8c2530",
+    "correction_ids": [],
+    "corrections": [],
+    "prompt": {
+     "assisted": true,
+     "context": null,
+     "cue": "The path begins in our synthetic notebook.\n",
+     "cue_level": "read",
+     "id": "0a1ef0cc5f995b26688bb9f799c6c5b6",
+     "scope": {
+      "kind": "unit",
+      "position": 1,
+      "unit_id": "5a6d7224bcef05f03a4d0d42ae52c073"
+     },
+     "study_id": "1e14554cea52ad8a6b681fc1f7af2239",
+     "title": "Synthetic Creed",
+     "unit_ids": [
+      "5a6d7224bcef05f03a4d0d42ae52c073"
+     ],
+     "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+     "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+    },
+    "revealed": false
+   },
+   "replayed": false,
+   "result": {
+    "data": {
+     "attempt_id": "f9285dd660d20422890e91cf1c8c2530",
+     "correction_ids": [],
+     "prompt": {
+      "assisted": true,
+      "context": null,
+      "cue": "The path begins in our synthetic notebook.\n",
+      "cue_level": "read",
+      "id": "0a1ef0cc5f995b26688bb9f799c6c5b6",
+      "scope": {
+       "kind": "unit",
+       "position": 1,
+       "unit_id": "5a6d7224bcef05f03a4d0d42ae52c073"
+      },
+      "study_id": "1e14554cea52ad8a6b681fc1f7af2239",
+      "title": "Synthetic Creed",
+      "unit_ids": [
+       "5a6d7224bcef05f03a4d0d42ae52c073"
+      ],
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "version_id": "9d619bbd41de8c6195e5dcb1f9983cf3"
+     },
+     "revealed": false
+    },
+    "entity_id": null,
+    "message": null,
+    "redirect": "/api/v1/practice"
+   }
+  }
+ },
+ {
+  "cmd": "scry whoami --json",
+  "exit": 1,
+  "stdout": {
+   "error": "Owner authorization required."
+  }
+ }
+]

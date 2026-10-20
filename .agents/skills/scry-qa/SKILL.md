@@ -47,10 +47,10 @@ The script never loads repository private env files. The explicit authored-demo
 action works only in an empty synthetic notebook. Fixtures never prove real
 provider quality, unaided recall, production ingress, or remote recovery.
 
-Prefer the T3 collaborative browser: inspect preview status, open it if needed,
-and use snapshot locators with actual pointer/keyboard actions. If unavailable,
-use the isolated VM browser/story walk described in docs/qa/system. Do not start
-workstation headless Chromium or substitute DOM `.click()` for touch evidence.
+From a shell, use the [verify-scry](../verify-scry/SKILL.md) Playwright helpers
+or `qa/walk` on Mirrodin. In T3 the collaborative browser is an alternative:
+inspect preview status, open it if needed, and use snapshot locators with
+actual pointer/keyboard actions. Do not substitute DOM `.click()` for touch evidence.
 A stalled harness is a diagnosis or acceptance gap, never a passing walk.
 
 ## Drive
