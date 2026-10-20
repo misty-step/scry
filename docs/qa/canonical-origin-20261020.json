@@ -1,0 +1,185 @@
+{
+  "status": "PASS",
+  "source": "96a4efa1c2a58a82d29a3b48d8b4ba488f79c3d6",
+  "source_state": "worktree",
+  "config_sha256": "41c448895d053337266f45fd4d758c1f1a56020d3b87584f9d676b45390e4873",
+  "wasm_sha256": "17e3a4427e010987adf36071f59a70c1ee4fc5dbb2a9eee120775cb457e9eda1",
+  "node": "v22.22.0",
+  "environment": "real local workerd, production mode, config origin vars, synthetic RSA owner and isolated SQLite/local R2",
+  "spec": [
+    "S09.1",
+    "S09.2",
+    "S09.3",
+    "S10.2",
+    "Alternate hostnames may redirect reads only, never replay mutations"
+  ],
+  "observations": [
+    {
+      "action": "anonymous GET /",
+      "status": 401
+    },
+    {
+      "action": "anonymous GET /create",
+      "status": 401
+    },
+    {
+      "action": "anonymous GET /export",
+      "status": 401
+    },
+    {
+      "action": "anonymous GET /changelog",
+      "status": 401
+    },
+    {
+      "action": "owner GET /create",
+      "status": 200
+    },
+    {
+      "action": "owner GET https://scry.study/create",
+      "status": 303,
+      "location": "https://scry.mistystep.io/create?text=synthetic%20only"
+    },
+    {
+      "action": "owner HEAD https://scry.study/create",
+      "status": 303,
+      "location": "https://scry.mistystep.io/create?text=synthetic%20only"
+    },
+    {
+      "action": "POST https://scry.study/create",
+      "status": 421
+    },
+    {
+      "action": "POST https://scry.study/internal/backup",
+      "status": 421
+    },
+    {
+      "action": "owner GET https://www.scry.study/create",
+      "status": 303,
+      "location": "https://scry.mistystep.io/create?text=synthetic%20only"
+    },
+    {
+      "action": "owner HEAD https://www.scry.study/create",
+      "status": 303,
+      "location": "https://scry.mistystep.io/create?text=synthetic%20only"
+    },
+    {
+      "action": "POST https://www.scry.study/create",
+      "status": 421
+    },
+    {
+      "action": "POST https://www.scry.study/internal/backup",
+      "status": 421
+    },
+    {
+      "action": "canonical write Origin \"https://scry.study\"",
+      "status": 403
+    },
+    {
+      "action": "canonical write Origin \"https://www.scry.study\"",
+      "status": 403
+    },
+    {
+      "action": "canonical write Origin \"https://foreign.invalid\"",
+      "status": 403
+    },
+    {
+      "action": "canonical write Origin \"null\"",
+      "status": 403
+    },
+    {
+      "action": "canonical write Origin \"\"",
+      "status": 403
+    },
+    {
+      "action": "canonical write invalid CSRF",
+      "status": 403
+    },
+    {
+      "action": "canonical write invalid CSRF",
+      "status": 403
+    },
+    {
+      "action": "canonical cross-site write",
+      "status": 403
+    },
+    {
+      "action": "foreign Host",
+      "status": 421
+    },
+    {
+      "action": "all rejected writes preserve exported state",
+      "status": "PASS"
+    },
+    {
+      "action": "canonical write with valid Origin/CSRF",
+      "status": 303
+    },
+    {
+      "action": "canonical exact replay",
+      "status": 303
+    },
+    {
+      "action": "canonical synthetic machine backup",
+      "status": 200
+    },
+    {
+      "action": "local R2 full-byte archive readback",
+      "status": "PASS",
+      "bytes": 1770
+    },
+    {
+      "action": "local backup-fresh health",
+      "status": 200
+    },
+    {
+      "action": "egress limited to synthetic JWKS",
+      "status": "PASS",
+      "requests": 1
+    }
+  ],
+  "limits": [
+    "No live DNS/Access/owner session/provider/production store or remote bucket exercised.",
+    "Not deployment, physical-phone acceptance, independent hosted recovery, or next daily production backup proof.",
+    "SPACE_NAME and Access identity replaced with synthetic values; no production capability inherited."
+  ],
+  "check": "canonical-origin-301",
+  "date": "2026-10-20",
+  "source_note": "Compiled runtime source is unchanged from 64e013f; source includes normal merge of master fd7e51f (#310). Origin config hash identifies candidate vars. Development bytes only, not a release artifact.",
+  "commands": [
+    {
+      "command": "worker-build --release --locked",
+      "result": "PASS; Rust 1.98.1, worker-build 0.8.7"
+    },
+    {
+      "command": "node --test qa/runtime.test.mjs",
+      "result": "PASS; 35 tests, 0 failures"
+    },
+    {
+      "command": "python3 qa/daily-backup.test.py",
+      "result": "PASS; 21 tests"
+    },
+    {
+      "command": "python3 qa/promote.test.py",
+      "result": "PASS; 7 tests"
+    },
+    {
+      "command": "node target/canonical-origin-proof/journey.mjs",
+      "result": "PASS; 29 observations through existing qa/runtime-helper.mjs; probe retained in PR How to review"
+    },
+    {
+      "command": "node target/canonical-origin-proof/journey.mjs target/canonical-origin-proof/base-vars.json",
+      "result": "EXPECTED FAIL with 64e013f origin vars: anonymous GET on the requested new canonical origin returns 303 instead of 401"
+    },
+    {
+      "command": "scripts/scry-daily-backup.py canonical_origin() and run() with pass/HTTP intercepted",
+      "result": "PASS; actual candidate config selects POST https://scry.mistystep.io/internal/backup; no credential lookup or network"
+    },
+    {
+      "command": "TOML structural comparison against 64e013f",
+      "result": "PASS; only CANONICAL_ORIGIN and ALTERNATE_HOSTS differ"
+    }
+  ],
+  "execution": "Node 22.22.0; build/runtime commands under env -i with HOME and pinned tool PATH only; no private env files read. Python offline checks intercept credentials and HTTP.",
+  "qa_walk": "UNVERIFIED: no browser story walk run for this config-only change; existing qa/walk creates local synthetic targets, not production. Deployed new-origin journey remains conductor proof.",
+  "artifact_note": "Built before the normal master merge; src/, Cargo files and build.rs are identical at the receipt source. No rebuild or activation follows this proof."
+}

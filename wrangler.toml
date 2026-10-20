@@ -44,7 +44,7 @@ binding = "SCRY_BACKUPS"
 bucket_name = "scry-rust-backups-unprovisioned"
 
 [triggers]
-# Daily snapshots are driven by the existing chief no-agent minute job.
+# Daily snapshot delivery follows docs/rust-cloudflare.md's Mirrodin procedure.
 crons = []
 
 # A preview requires its own new Durable Object namespace, private Access app,

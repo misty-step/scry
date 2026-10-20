@@ -14,6 +14,50 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Canonical-origin change — prepared 2026-10-20
+
+The owner approved **https://scry.mistystep.io** as Scry's canonical origin in
+[#297](https://github.com/misty-step/scry/issues/297), with `scry.study` to lapse
+at its 2027-04-13 expiry. [#301](https://github.com/misty-step/scry/issues/301)
+changes the source configuration in
+[`deploy/rust-production.toml`](../deploy/rust-production.toml). The two
+`scry.study` hosts redirect reads to the canonical origin. The Worker, accepted
+space, DO/R2 bindings, Access issuer/audience, and serving domain assignments
+are unchanged by this source change. Central Host/Origin/CSRF enforcement stays
+in `src/runtime.rs`.
+
+Preparation reported by the conductor on 2026-10-20, not independently repeated
+by this implementation run:
+
+- Production guards #298/#303, #305 and #311 are merged.
+- The #304 daily timer and #330 alerting are merged and installed. The normal
+  15:20Z backup has a verified fresh R2 snapshot. Sentry accepted the check-in;
+  its monitor is active and the existing owner-alert workflow is enabled.
+- Historical Hermes job `37ca5bbdd570` is absent from the active
+  `cloud-home-agents` home, executable, crontab, system units and user units.
+  The historical archive remains untouched.
+- #300's machine Access destinations include the new host. Both hosts returned
+  health 200 to the machine and 401 anonymously with unchanged policy.
+
+This is preparation, not a promotion receipt. The earlier
+[serving observation](#rust-production-serving--observed-2026-10-20) remains
+dated evidence with its original origin values. After independent review and
+protected exact-head CI, the conductor follows the
+[origin promotion and backup handoff](rust-cloudflare.md#canonical-origin-promotion).
+Retain the promotion's new vars and unchanged serving edges, authenticated
+alternate GET redirects and canonical app access, anonymous denial, rejected
+alternate writes, and the new-origin story journey. `qa/walk` currently creates
+an isolated local target; its receipt alone cannot prove a deployed-origin walk.
+Verify an immediate backup after the checkout handoff and the next natural
+daily backup at the new origin. Owner sign-in and phone acceptance there remain
+separate observations. The conductor owns any cosmetic owner Access primary
+destination change. No deployment, credential or Access-policy change,
+historical-store action, live mutation, or provider call occurred in this run.
+
+[The synthetic development receipt](qa/canonical-origin-20261020.json) records
+the local production-mode Worker journey for S09/S10. It uses the new origin
+vars with synthetic identity and isolated SQLite/R2. It is not serving evidence.
+
 ## Rust production serving — observed 2026-10-20
 
 Since 2026-10-16 the Rust Worker, not the Go Container, serves the production

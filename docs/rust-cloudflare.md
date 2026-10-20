@@ -212,6 +212,36 @@ exe.dev VM scripts, and old data tooling remain specific to their corresponding
 historical/live-Go environment, except the shared Sentry envelope transport
 described above.
 
+### Canonical-origin promotion
+
+For an origin change, first read the runbook's
+[dated preparation and outstanding proof](runbook.md#canonical-origin-change--prepared-2026-10-20).
+Use the release procedure above with the reviewed production configuration.
+Require its unchanged bindings and serving-edge readback. No domain attachment,
+Access-policy change, or new capability follows from changing origin vars.
+
+The daily trigger uses a separate checkout. Keep that checkout on the serving
+origin until promotion succeeds. Pulling the new origin before promotion sends
+backup POSTs to an alternate host, which returns 421. Leaving the old checkout
+after promotion has the same result. Immediately after successful promotion,
+run on Mirrodin as the existing timer user:
+
+```sh
+git -C "$HOME/.local/share/scry-backup" pull --ff-only origin master
+systemctl --user start scry-daily-backup.service
+systemctl --user show scry-daily-backup.service -p Result -p ExecMainStatus
+journalctl --user -u scry-daily-backup.service -n 10 --no-pager
+```
+
+Require `Result=success`, `ExecMainStatus=0`, and
+`Scry production snapshot verified.` Independently confirm the new private R2
+snapshot and Sentry `ok` check-in. Observe the next natural timer execution too;
+a manual run does not prove scheduled delivery. Record the serving origin,
+checkout revision and both backup observations in the runbook. If a compatible
+rollout changes the origin again, align the trigger checkout with the serving
+configuration and repeat this verification. Never replay a rejected POST through
+an alternate-host redirect.
+
 ## Independent fresh-space restore
 
 ### Mirrodin-triggered daily snapshot
@@ -222,9 +252,11 @@ Its [service](../deploy/mirrodin/scry-daily-backup.service) runs
 [`scripts/scry-daily-backup.py`](../scripts/scry-daily-backup.py) from the dedicated
 checkout `~/.local/share/scry-backup` on Mirrodin. Keeping the script and
 `deploy/rust-production.toml` in one checkout avoids separate copies drifting;
-each run derives its destination from `[vars].CANONICAL_ORIGIN`, including after
-the #297 origin flip. Update this checkout from master when production's origin
-changes. No Cloudflare Cron Trigger is used.
+each run derives its destination from that checkout's `[vars].CANONICAL_ORIGIN`.
+An origin promotion does not update the checkout. Pull it immediately after
+successful promotion and verify a snapshot through the
+[canonical-origin handoff](#canonical-origin-promotion). No Cloudflare Cron
+Trigger is used.
 
 The script needs Python 3.11 or newer and local `pass` with noninteractive GPG
 access for the timer's user. It reads `misty-step/SCRY_ACCESS_CLIENT_ID` and
