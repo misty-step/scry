@@ -1,0 +1,118 @@
+{
+  "schema": "foundation-walk-receipt/1",
+  "check": "scry-story-walk",
+  "run": "local-1792513338784",
+  "head": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+  "tree": "50e0fdeeb87cbd112b3a66cef0dabe7880b133f0",
+  "base": "a0fd5d0306b4a6d39b7a45496b29380d0c968503",
+  "source_state": "committed",
+  "source_sha256": "7fc941c0cc2234bbdca0b249eef231ae0e32edd61e3202b22771a57b855c29e4",
+  "artifact_sha256": "9badb840d62872ba55b3d661eeb1bb80a0e1a4c17f357bb375f9ee8be39de77f",
+  "started_at": "2026-10-20T16:22:18.787Z",
+  "finished_at": "2026-10-20T16:22:40.023Z",
+  "exit": 0,
+  "stories": [
+    {
+      "id": "US-015",
+      "status": "pass",
+      "criteria": [
+        {
+          "n": 1,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 2,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 3,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 4,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 5,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 6,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        },
+        {
+          "n": 7,
+          "status": "pass",
+          "target": "rust-worker-and-native-reference-seam",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ],
+          "limit": "Used Study refusal is native reference-seam proof; real Study/Attempt journey waits for #317."
+        },
+        {
+          "n": 8,
+          "status": "pass",
+          "target": "rust-worker-cli",
+          "source_revision": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+          "evidence": [
+            "logs/rust-tests.txt",
+            "logs/US-015-cli.json"
+          ]
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "logs/rust-tests.txt",
+      "sha256": "30b866b5cdf8a5be2e7adffb0fca7c865788db7fe35d8e87110dfa65176f195a"
+    },
+    {
+      "path": "logs/US-015-cli.json",
+      "sha256": "c358df8ed1782b51caad6effba5755789dc0f8882cf98a82a75178a4f8ebd203"
+    }
+  ],
+  "limits": [
+    "Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.",
+    "US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.",
+    "Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery."
+  ]
+}

@@ -19,6 +19,11 @@ pub struct MutationResponse {
 }
 pub fn mutation_path(path: &str) -> Option<&str> {
     match path {
+        "/api/v1/library/versions" => Some("/library/version/add"),
+        "/api/v1/library/versions/supersede" => Some("/library/version/supersede"),
+        "/api/v1/library/versions/delete" => Some("/library/version/delete"),
+        "/api/v1/library/works/edit" => Some("/library/work/edit"),
+        "/api/v1/library/works/delete" => Some("/library/work/delete"),
         "/api/v1/tokens" => Some("/tokens/create"),
         "/api/v1/tokens/revoke" => Some("/tokens/revoke"),
         "/api/v1/settings" => Some("/settings"),
@@ -45,4 +50,31 @@ pub fn fields(value: serde_json::Value) -> AppResult<BTreeMap<String, String>> {
             Ok((key.clone(), value))
         })
         .collect()
+}
+
+/// Only Library draft metadata is nested. Other API field rules stay unchanged.
+pub fn library_fields(mut value: serde_json::Value) -> AppResult<BTreeMap<String, String>> {
+    if let Some(data) = value.get_mut("data") {
+        if !data.is_object() {
+            return Err(AppError::new(422, "Use a Library data object."));
+        }
+        *data = serde_json::Value::String(data.to_string());
+    }
+    fields(value)
+}
+
+pub fn library_read(app: &App, path: &str, query: &str) -> AppResult<serde_json::Value> {
+    let library = &app.library;
+    let value = if path == "/api/v1/library/search" {
+        serde_json::to_value(library.search(query))
+    } else if path == "/api/v1/library/export" {
+        serde_json::to_value(library)
+    } else if let Some(id) = path.strip_prefix("/api/v1/library/works/") {
+        serde_json::to_value(library.show_work(id)?)
+    } else if let Some(id) = path.strip_prefix("/api/v1/library/versions/") {
+        serde_json::to_value(library.show_version(id)?)
+    } else {
+        return Err(AppError::new(404, "Library action not found."));
+    };
+    value.map_err(|_| AppError::new(500, "Cannot encode Library."))
 }

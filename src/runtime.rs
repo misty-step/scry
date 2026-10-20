@@ -1296,7 +1296,12 @@ impl LearningSpace {
                 Ok(value) => value,
                 Err(_) => return api_error(AppError::new(422, "Invalid JSON.")),
             };
-            match api::fields(value) {
+            let parsed = if path.starts_with("/api/v1/library/") {
+                api::library_fields(value)
+            } else {
+                api::fields(value)
+            };
+            match parsed {
                 Ok(fields) => fields,
                 Err(e) => return api_error(e),
             }
@@ -1348,6 +1353,18 @@ impl LearningSpace {
                         return api_error(AppError::new(409, "Record assistance before export."));
                     }
                     return api_json(&archive, 200);
+                }
+                _ if path.starts_with("/api/v1/library/") => {
+                    let url = req.url()?;
+                    let query = url
+                        .query_pairs()
+                        .find(|(key, _)| key == "q")
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default();
+                    match api::library_read(&app, &path, &query) {
+                        Ok(value) => api_json(&value, 200),
+                        Err(error) => return api_error(error),
+                    }
                 }
                 _ => return api_error(AppError::new(404, "API action not found.")),
             };

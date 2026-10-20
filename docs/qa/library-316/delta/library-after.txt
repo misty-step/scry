@@ -1,0 +1,60 @@
+TAP version 13
+# Subtest: US-015.1: private Library CLI → built Worker → SQLite/R2
+ok 1 - US-015.1: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 33.100869
+  type: 'test'
+  ...
+# Subtest: US-015.2: private Library CLI → built Worker → SQLite/R2
+ok 2 - US-015.2: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 368.369106
+  type: 'test'
+  ...
+# Subtest: US-015.3: private Library CLI → built Worker → SQLite/R2
+ok 3 - US-015.3: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 144.682021
+  type: 'test'
+  ...
+# Subtest: US-015.4: private Library CLI → built Worker → SQLite/R2
+ok 4 - US-015.4: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 48.835967
+  type: 'test'
+  ...
+# Subtest: US-015.5: private Library CLI → built Worker → SQLite/R2
+ok 5 - US-015.5: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 947.791063
+  type: 'test'
+  ...
+# Subtest: US-015.6: private Library CLI → built Worker → SQLite/R2
+ok 6 - US-015.6: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 698.786701
+  type: 'test'
+  ...
+# Subtest: US-015.7: private Library CLI → built Worker → SQLite/R2
+ok 7 - US-015.7: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 1009.759425
+  type: 'test'
+  ...
+# Subtest: US-015.8: private Library CLI → built Worker → SQLite/R2
+ok 8 - US-015.8: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 846.255464
+  type: 'test'
+  ...
+# An RPC stub was not disposed properly. You must call dispose() on all stubs in order to let the other side know that you are no longer using them. You cannot rely on the garbage collector for this because it may take arbitrarily long before actually collecting unreachable objects. As a shortcut, calling dispose() on the result of an RPC call disposes all stubs within it.
+# Sanitized Library CLI transcript: target/library-cli.json
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12266.51827

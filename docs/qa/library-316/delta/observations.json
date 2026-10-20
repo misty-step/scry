@@ -1,0 +1,141 @@
+[
+  {
+    "probe": "original",
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --title Must never be stored --sections-file <fixture>/bad-sections.json --json",
+    "exit": 1,
+    "output": {
+      "error": "Unexpected Version arguments."
+    }
+  },
+  {
+    "probe": "duplicate-flag",
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --title Must never be stored --sections-file <fixture>/bad-sections.json --json",
+    "exit": 1,
+    "output": {
+      "error": "Unexpected Version arguments."
+    }
+  },
+  {
+    "probe": "missing-join-guard",
+    "command": "scry version add --title Must never be stored --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --sections-file <fixture>/bad-sections.json --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "cc69df41bbf49389e956b77ca0c279b9",
+        "message": null,
+        "redirect": "/api/v1/library/versions/cc69df41bbf49389e956b77ca0c279b9"
+      }
+    }
+  },
+  {
+    "probe": "candidate",
+    "command": "scry version add --title Must never be stored --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --sections-file <fixture>/bad-sections.json --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "Version Units must join to the submitted text exactly."
+    },
+    "text_bytes": 81,
+    "supplied_sections": 1,
+    "supplied_units": 1
+  },
+  {
+    "probe": "candidate",
+    "observation": "Built Worker accepts exact capacity with byte join preserved",
+    "status": 200,
+    "limit": 4096,
+    "explicit": false
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "A Version supports at most 4096 Sections."
+    },
+    "text_bytes": 8194,
+    "supplied_sections": null,
+    "supplied_units": null
+  },
+  {
+    "probe": "candidate",
+    "observation": "Built Worker accepts exact capacity with byte join preserved",
+    "status": 200,
+    "limit": 8192,
+    "explicit": false
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "A Version supports at most 8192 Units."
+    },
+    "text_bytes": 16386,
+    "supplied_sections": null,
+    "supplied_units": null
+  },
+  {
+    "probe": "candidate",
+    "observation": "Built Worker accepts exact capacity with byte join preserved",
+    "status": 200,
+    "limit": 4096,
+    "explicit": true
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "A Version supports at most 4096 Sections."
+    },
+    "text_bytes": 8194,
+    "supplied_sections": 4097,
+    "supplied_units": 4097
+  },
+  {
+    "probe": "candidate",
+    "observation": "Built Worker accepts exact capacity with byte join preserved",
+    "status": 200,
+    "limit": 8192,
+    "explicit": true
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "A Version supports at most 8192 Units."
+    },
+    "text_bytes": 16386,
+    "supplied_sections": 1,
+    "supplied_units": 8193
+  },
+  {
+    "probe": "candidate",
+    "command": "scry version add --title 5000 supplied lines --kind text --text-file <fixture>/5000-lines.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "probe": "candidate",
+    "observation": "Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use",
+    "status": 422,
+    "body": {
+      "error": "A Version supports at most 4096 Sections."
+    },
+    "text_bytes": 10000,
+    "supplied_sections": null,
+    "supplied_units": null
+  }
+]

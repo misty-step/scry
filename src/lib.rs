@@ -3,6 +3,7 @@ pub mod engine;
 pub mod generation;
 pub mod grading;
 pub mod learning;
+pub mod library;
 pub mod model;
 pub mod owner_token;
 pub mod persistence;

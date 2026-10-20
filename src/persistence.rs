@@ -19,6 +19,7 @@ const REVIVAL_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-custody-v1";
 const PROJECTION_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-go-projection-v1";
 const MAPS: &[&str] = &[
     "owner_tokens",
+    "study_version_refs",
     "goals",
     "concepts",
     "questions",
@@ -79,6 +80,19 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     object
         .entry("owner_tokens")
         .or_insert_with(|| serde_json::json!({}));
+    if let Some(library) = object.remove("library") {
+        for field in ["works", "versions", "relations"] {
+            for (id, record) in library[field]
+                .as_object()
+                .ok_or_else(|| serialization("Library"))?
+            {
+                result.insert(format!("library_{field}/{id}"), bounded_json(record)?);
+            }
+        }
+    }
+    object
+        .entry("study_version_refs")
+        .or_insert_with(|| serde_json::json!({}));
     for field in MAPS {
         let entries = object
             .get_mut(*field)
@@ -121,6 +135,7 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
         }
     }
     object.remove("owner_tokens");
+    object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
     Ok(result)
 }
@@ -133,6 +148,8 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     if value.get("owner_tokens").is_none() {
         value["owner_tokens"] = serde_json::json!({});
     }
+    value["study_version_refs"] = serde_json::json!({});
+    value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
     for (key, data) in rows {
         if key == "meta" {
             continue;
@@ -144,7 +161,13 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             continue;
         }
         let record: Value = serde_json::from_str(data).map_err(serialization)?;
-        if MAPS.contains(&field) {
+        if let Some(field) = field.strip_prefix("library_") {
+            let entries = value["library"]
+                .get_mut(field)
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| serialization("Library rows"))?;
+            entries.insert(id.into(), record);
+        } else if MAPS.contains(&field) {
             value
                 .get_mut(field)
                 .and_then(Value::as_object_mut)
@@ -243,7 +266,16 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if !app.revival_schedule_origins.is_empty() {
+    if !app.library.is_empty()
+        || !app.study_version_refs.is_empty()
+        || app.operations.values().any(|r| {
+            r.path
+                .as_deref()
+                .is_some_and(|p| p.starts_with("/library/"))
+        })
+    {
+        "scry-rust-durable-sqlite-library-v1"
+    } else if !app.revival_schedule_origins.is_empty() {
         PROJECTION_ARCHIVE_FORMAT
     } else if app.revival_go.is_empty() {
         ARCHIVE_FORMAT

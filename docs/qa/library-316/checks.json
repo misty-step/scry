@@ -1,0 +1,102 @@
+{
+  "implementation_source": "afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb",
+  "implementation_tree": "50e0fdeeb87cbd112b3a66cef0dabe7880b133f0",
+  "fixed_source_base": "a0fd5d0306b4a6d39b7a45496b29380d0c968503",
+  "master_integration": "36e103bf6b0843f40208a4bb984cc742106b1622",
+  "master_base": "28db32deda37488740cacc699adab0068a38dfd4",
+  "integration_tree_unchanged": true,
+  "source_inventory_sha256": "7fc941c0cc2234bbdca0b249eef231ae0e32edd61e3202b22771a57b855c29e4",
+  "environment": {
+    "rustc": "1.98.1",
+    "node": "22.22.0",
+    "worker_build": "0.8.7",
+    "runtime": "built WASM in isolated workerd, loopback, SQLite and local R2; synthetic identity/tokens/data"
+  },
+  "artifacts": {
+    "build/index_bg.wasm": "9badb840d62872ba55b3d661eeb1bb80a0e1a4c17f357bb375f9ee8be39de77f",
+    "build/index.js": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f",
+    "target/debug/scry": "9cfea35026d9c72ccda167b93c76bb69f519658803972fe51df7c95d07c75019"
+  },
+  "checks": [
+    {
+      "command": "cargo test --locked --all-targets",
+      "status": "PASS",
+      "passed": 124,
+      "ignored": 1,
+      "limit": "Existing Unicode conformance test requires separately supplied pinned Unicode files.",
+      "evidence": "logs/rust-tests.txt"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "status": "PASS"
+    },
+    {
+      "command": "cargo clippy --locked --all-targets -- -D warnings",
+      "status": "PASS",
+      "evidence": "logs/native-clippy.txt"
+    },
+    {
+      "command": "cargo check --locked --target wasm32-unknown-unknown",
+      "status": "PASS",
+      "evidence": "logs/wasm-check.txt"
+    },
+    {
+      "command": "cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings",
+      "status": "PASS",
+      "evidence": "logs/wasm-clippy.txt"
+    },
+    {
+      "command": "worker-build --release --locked",
+      "status": "PASS",
+      "evidence": "logs/worker-build.txt"
+    },
+    {
+      "command": "node --test qa/library.test.mjs qa/owner-api.test.mjs qa/runtime.test.mjs qa/walk-cli.test.mjs",
+      "status": "FAIL_THEN_FOCUSED_RETEST_PASS",
+      "passed": 76,
+      "failed": 1,
+      "failure": "Existing listener-allocation contention test: fetch failed on an identical /create retry at qa/runtime.test.mjs:814. Every Library criterion passed.",
+      "evidence": "logs/pinned-runtime.txt"
+    },
+    {
+      "command": "node --test --test-name-pattern='listener allocation' qa/runtime.test.mjs",
+      "status": "PASS",
+      "passed": 1,
+      "failed": 0,
+      "evidence": "logs/listener-retest.txt",
+      "limit": "Targeted rerun resolves the observed transient; the combined run was not a clean 77/77."
+    },
+    {
+      "command": "qa/walk --stories US-015",
+      "status": "PASS",
+      "criteria": 8,
+      "evidence": "walk-receipt.json"
+    },
+    {
+      "command": "gitleaks dir frozen-source --redact --no-banner",
+      "status": "PASS",
+      "evidence": "logs/source-scan.txt"
+    }
+  ],
+  "limits": [
+    "US-015.7 used Study refusal is native durable-reference proof only until #317.",
+    "Old Version and Unit identities are unchanged; real Attempts need #317.",
+    "Caller-authored synthetic text and Creed/Missal metadata do not prove the owner's full private Roman Missal 2011 input.",
+    "Hosted ingress #335, real phone, providers, independent hosted recovery, and full browser/release CI are unverified.",
+    "No live credential, private env, provider call, production or historical-store action, merge, force push, or deployment."
+  ],
+  "evidence_sha256": {
+    "README.md": "839cf3536705fc29d9cf835df237d51144aa224902831e664cbb516d91c1b731",
+    "before.json": "be7f193b5877ec6c868fb1d9f2320d1192e5d20caab9f3e3c0ad4157c6b3ae07",
+    "logs/US-015-cli.json": "c358df8ed1782b51caad6effba5755789dc0f8882cf98a82a75178a4f8ebd203",
+    "logs/listener-retest.txt": "2c1c25c81d3a804ecdbca488313284fe95e8ccda6986aa8cf2cacdf178a7bf9a",
+    "logs/native-clippy.txt": "44f7d8fd79b8b2dcddb69c4a1a46a638e6d84dd6b4996ec812cd716afd62557e",
+    "logs/pinned-runtime.txt": "fb7539e6afc9c9fb3a543dddfcf20db86e33417f901944a2c9501dc5f835cf6b",
+    "logs/rust-tests.txt": "30b866b5cdf8a5be2e7adffb0fca7c865788db7fe35d8e87110dfa65176f195a",
+    "logs/source-scan.txt": "03b1499b6cdc522e0817380e20b596a633e7ef8c827168399ffdb22d3c7efc5b",
+    "logs/wasm-check.txt": "fbacc3b9d5bef430f18f02faf02e70af723862933868e8928022019e43011963",
+    "logs/wasm-clippy.txt": "a5823c4a6a9b2c15e4961606d7769ac29dc7b1aa3408f2c8e80e0f3d129236fb",
+    "logs/worker-build.txt": "59a6e6c5f3824fb0a4f1f4e89f71ab67720d3b0ca65d6fde8e80ef11c6627438",
+    "walk-receipt.json": "dddf903648febec7bcaa58657ee2513bc93e396564f0ec6cf1934dabe19c98ca"
+  }
+}

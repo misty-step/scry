@@ -911,7 +911,12 @@ Criteria:
 No-gos: no public or anonymous reading, no sharing yet, no meaning-based
 (embedding) search, no editing a Version in place.
 
-Evidence: pending
+Evidence: `qa/walk --stories "US-015"` (eight criterion walks),
+`qa/library.test.mjs` (compiled CLI → built isolated Worker → SQLite/local R2),
+`tests/library.rs` (invariants, receipts, archive compatibility and Study-reference refusal).
+US-015.7's used-Study case is native reference-seam proof only, as #316 permits;
+real Study/Attempt preservation and refusal need #317. Supplied text is synthetic;
+the owner's full Roman Missal 2011 input, hosted ingress and recovery remain unverified.
 
 ## US-016 Learn a Version unit by unit
 

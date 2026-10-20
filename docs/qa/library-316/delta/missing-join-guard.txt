@@ -1,0 +1,18 @@
+journey step 1: PASS
+journey step 2: PASS
+journey step 3: PASS
+journey step 4: PASS
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+0 !== 1
+
+    at Array.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-27d5d79a/qa/library.mjs:85:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///home/phaedrus/.cache/tmp/scry-library-delta.9CfenB6R/run-join.mjs:5:23 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 0,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

@@ -12,5 +12,4 @@ through stdin, never an argument or URL. See [CLI/API usage](../docs/owner-api.m
 native CLI walks are shared with `node --test qa/owner-api.test.mjs`.
 
 Source: `src/owner_token.rs`, `src/api.rs`, `src/engine.rs`, `src/runtime.rs`,
-`src/web.rs`, `src/bin/scry.rs`. Later Library and Study slices add their actions
-to this API boundary. Synthetic proofs do not establish deployed ingress.
+`src/web.rs`, `src/bin/scry.rs`. The [Library](library.md) uses this API boundary; Study actions follow in #317. Synthetic proofs do not establish deployed ingress.

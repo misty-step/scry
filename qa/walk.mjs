@@ -8,6 +8,7 @@ import {createRequire} from 'node:module';
 import {resolve,join} from 'node:path';
 import {specs} from './walk-specs.mjs';
 import {ownerJourney,buildCli} from './owner-api.mjs';
+import {libraryJourney} from './library.mjs';
 import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
@@ -24,7 +25,7 @@ for(const id of live){const i=sections.findIndex(m=>m[1]===id);const block=sourc
 if(process.env.SCRY_SKIP_BUILD!=='1')execFileSync('worker-build',['--release','--locked'],{stdio:'inherit',env:process.env});
 const require=createRequire(import.meta.url);
 let playwright;
-try{playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');}catch{throw Error('Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.');}
+try{if(selected.some(id=>id!=='US-015'))playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');}catch{throw Error('Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.');}
 const output=join(repo,'target/walk'),marker=join(output,'.scry-walk-owned');
 if(existsSync(output)&&!existsSync(marker))throw Error('Refusing non-owned story-walk output.');
 if(existsSync(marker))await rm(output,{recursive:true});
@@ -32,7 +33,7 @@ await mkdir(join(output,'screens'),{recursive:true});await mkdir(join(output,'lo
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const metadata=process.env.SCRY_SOURCE_META?JSON.parse(readFileSync(process.env.SCRY_SOURCE_META)):null;
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2 and authored HTTP-caching material; actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
+const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
 const register=async path=>{receipt.artifacts.push({path,sha256:sha(await readFile(join(output,path)))});};
 const native=execFileSync('cargo',['test','--locked','--all-targets'],{encoding:'utf8',env:process.env});await writeFile(join(output,'logs/rust-tests.txt'),native);await register('logs/rust-tests.txt');
 const policy=(...names)=>{for(const name of names)assert.ok(native.includes(`test ${name} ... ok`),`Native test did not pass: ${name}`);};
@@ -43,11 +44,24 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
-if(selected.includes('US-014'))buildCli();
+if(selected.some(id=>['US-014','US-015'].includes(id)))buildCli();
 let browser;
 try{
- browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
+ if(playwright)browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
+  if(id==='US-015'){
+   const library=await libraryJourney();
+   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
+   try{
+    for(let i=0;i<specs[id].length;i++){
+     const criterion={n:i+1,status:'pass',target:i===6?'rust-worker-and-native-reference-seam':'rust-worker-cli',source_revision:receipt.head,evidence:['logs/rust-tests.txt','logs/US-015-cli.json']};result.criteria.push(criterion);
+     if(i===6)criterion.limit='Used Study refusal is native reference-seam proof; real Study/Attempt journey waits for #317.';
+     try{await specs[id][i]({library,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+    }
+    const path='logs/US-015-cli.json';await writeFile(join(output,path),JSON.stringify(library.transcript,null,2)+'\n');await register(path);
+   }finally{await library.close();}
+   continue;
+  }
   const owner=id==='US-014'?await ownerJourney():null;
   const runtime=await createSyntheticRuntime({name:`walk-${id.toLowerCase()}`});
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
@@ -69,10 +83,12 @@ try{
   }catch(error){result.status='fail';result.error=error.message;console.error(`${id}: ${error.message}`);}
   finally{await context.close();await runtime.mf.dispose();await owner?.close();}
  }
+ if(browser){
  receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.create_journey=await createWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.release_journey=await releaseWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
- receipt.exit=receipt.stories.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass')?0:1;
+ }
+ receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
 finally{await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
 process.exitCode=receipt.exit;

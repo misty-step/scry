@@ -1,0 +1,236 @@
+{
+  "schema": "scry-library-focused-delta/2",
+  "created_at": "2026-10-20T16:46:59.637499+00:00",
+  "source_commit": "3f0963c6364d8296a9e099072a0723a3863efc78",
+  "source_tree": "0290f48ba247856a489aec7d7ffe1f237545c0b6",
+  "starting_head": "b81247d1d13922a945c8f7f909037f5b74092ef5",
+  "fixed_base": "28db32deda37488740cacc699adab0068a38dfd4",
+  "source_state_at_passing_run": "clean committed implementation; evidence added afterwards",
+  "runtimes": {
+    "node": "22.22.0",
+    "rust": "1.98.1",
+    "worker-build": "0.8.7",
+    "npm": "lockfile-pinned dependencies installed with --ignore-scripts --no-audit --no-fund"
+  },
+  "checks": [
+    {
+      "command": "cargo test --locked --test library segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_boundaries",
+      "source": "starting Worker/library source with candidate regression test",
+      "exit": 101,
+      "expected": "FAIL: generic error instead of specific Section limit",
+      "log": "native-before.txt"
+    },
+    {
+      "command": "node probe-runner.mjs <starting-head-qa/library.mjs> <transcript.json>",
+      "source": "b81247d1d13922a945c8f7f909037f5b74092ef5",
+      "exit": 0,
+      "expected": "Original weak journey incorrectly passes on local parser rejection",
+      "log": "original-join.txt"
+    },
+    {
+      "command": "node probe-runner.mjs <candidate-plus-duplicate-flag.patch> <transcript.json>",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 1,
+      "expected": "Improved assertion rejects local syntax failure",
+      "log": "duplicate-flag.txt"
+    },
+    {
+      "command": "SCRY_WORKER_ARTIFACT=<mutant-worker> node probe-runner.mjs <candidate-qa/library.mjs> <transcript.json>",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 1,
+      "expected": "Improved assertion rejects Worker acceptance when join guard is removed",
+      "log": "missing-join-guard.txt"
+    },
+    {
+      "command": "cargo test --locked --test library",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 0,
+      "tests_passed": 5,
+      "log": "native-after.txt"
+    },
+    {
+      "command": "cargo clippy --locked --all-targets -- -D warnings",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 0,
+      "log": "native-clippy.txt"
+    },
+    {
+      "command": "worker-build --release --locked",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 0,
+      "log": "worker-after-build.txt"
+    },
+    {
+      "command": "node --test qa/library.test.mjs",
+      "source": "3f0963c6364d8296a9e099072a0723a3863efc78",
+      "exit": 0,
+      "tests_passed": 8,
+      "log": "library-after.txt"
+    }
+  ],
+  "negative_controls": {
+    "starting_worker_compiled_sources": "b81247d1d13922a945c8f7f909037f5b74092ef5; only test/docs were edited when built",
+    "starting_worker_sha256": {
+      "index_bg.wasm": "9badb840d62872ba55b3d661eeb1bb80a0e1a4c17f357bb375f9ee8be39de77f",
+      "index.js": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    "mutant_patch": "missing-join-guard.patch",
+    "mutant_source_sha256": "8d71f5df5950e51582f150ebbda0cba9b623bb425b926f79baa7c8a9ed16cc26",
+    "mutant_worker_sha256": {
+      "index_bg.wasm": "8c6067cb1889864c5f201659773ab9036704a698dbfa29788924f4bfd42afb0b",
+      "index.js": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    "restoration": "Candidate library source was restored byte for byte before commit and passing build."
+  },
+  "retained_independent_reports": [
+    {
+      "url": "https://github.com/misty-step/scry/pull/340#issuecomment-6296126221",
+      "source": "87954f249158b3c94e4b4cba4c8e126a3626ad57",
+      "result": "QA PASS; 124 native, eight walks, 12 independent groups, 77/77 combined. Inspected evidence-only b812. Applies to unchanged behavior, not delta approval."
+    },
+    {
+      "url": "https://github.com/misty-step/scry/pull/340#pullrequestreview-5588389462",
+      "source": "87954f249158b3c94e4b4cba4c8e126a3626ad57",
+      "result": "Independent storage review: no blockers; inspected evidence-only b812. Not a judge SHIP or delta approval."
+    }
+  ],
+  "limits": [
+    "Builder focused verification; independent delta QA/review and fresh judge remain parent-owned.",
+    "No full-scope/native/story selector/combined/browser/release gate rerun on this delta.",
+    "Synthetic supplied text and local workerd SQLite/R2 only; default runtime egress is denied. No private env, live application credentials, provider sends/spend, production/historical data or deployment.",
+    "Used-Study refusal is native reference-contract proof only until #317. Real Study/Attempt integration, complete private Roman Missal wording, hosted CLI ingress #335, physical phone and independent hosted recovery remain UNVERIFIED.",
+    "Prior 76/77 combined result remains failed. Independent pinned 77/77 and isolated listener passes found no persistent listener defect; no reclassification or redundant listener rerun.",
+    "Passing runtime log retains a non-failing Miniflare RPC-stub disposal diagnostic.",
+    "Populated Library rows require a compatible build; pre-Library binaries cannot read them."
+  ],
+  "inputs": [
+    {
+      "path": "src/library.rs",
+      "sha256": "c54cefef46bbeea71592e8fb76bb35387214ee78950513615b9fdb1e9d3997af"
+    },
+    {
+      "path": "tests/library.rs",
+      "sha256": "878b1e157b11c374840a782b8393959510980d543601279b9f4b6c3a98e4518b"
+    },
+    {
+      "path": "qa/library.mjs",
+      "sha256": "83e59875b81adf8cb95bdae7a5edb9cbcf8e55c9933f5a6a25edd96ef0200595"
+    },
+    {
+      "path": "qa/library.test.mjs",
+      "sha256": "3407aae46213c49c580d35d5ad02f264b7ab0681f5ca9b25e5af6aa31a9e3103"
+    },
+    {
+      "path": "qa/runtime-helper.mjs",
+      "sha256": "7b52312605689145ffcdc2c1c3bac5e43296f36405eb1bfd73aaa61a8a104db7"
+    },
+    {
+      "path": "src/bin/scry.rs",
+      "sha256": "42bb90b68fc083280eefed52af015205dad4833e6ee3e45099e59bccfe7d333f"
+    },
+    {
+      "path": "src/runtime.rs",
+      "sha256": "00219ffc0b6ff4e51dc2ece932a7d843c479ab122b9e840b715f179c6043e46b"
+    },
+    {
+      "path": "src/engine.rs",
+      "sha256": "b7a8505a58bb2e461a309cb284931d7487189b9f313efeb642b0802ede8636b5"
+    },
+    {
+      "path": "src/persistence.rs",
+      "sha256": "b72e11ff106596a5f798f5ffcbc91434f295deb50b32f62cf98041b01813c88d"
+    },
+    {
+      "path": "src/api.rs",
+      "sha256": "d55e2f0616291a2af5df28f44f3f54c48efac52048bac87e0d29773793008b64"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "9d952551719267044be79d48d6ebfad174c67fe174cff3fef0712d68f2047d2a"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "ebf7c2627788070c4e5905e776a9f7a18918d250e592dac48b70773a75ec06f4"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "e59e54f494831c886540444d5bc14fc04924294ab7cd25b724b78b61127036af"
+    },
+    {
+      "path": "docs/owner-api.md",
+      "sha256": "1885a5c8b3e4aeb5655ed7427e906f6c653ae0ad932a4c9b6ac23da364682cc3"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "build/index_bg.wasm",
+      "sha256": "d4df13392a196de19045b56fe68218ef77901cd36e2394ef079e875cec2a8cdb"
+    },
+    {
+      "path": "build/index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "build/worker/shim.mjs",
+      "sha256": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    {
+      "path": "target/debug/scry",
+      "sha256": "7173264330990273cfde6a9be11a975071f0121b8fd6bf9574c3f338e815b749"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "duplicate-flag.patch",
+      "sha256": "fc8197a99199ac67187012df0d0e65346b903ac7ee3b50723747e8a233ec4377"
+    },
+    {
+      "path": "duplicate-flag.txt",
+      "sha256": "31559548bb9f22e2fef1974a0fe7b4eb057f61fc71742eda160980f5d6f1d00b"
+    },
+    {
+      "path": "library-after.txt",
+      "sha256": "9b21fcc842169a419c739f291b5d7cb5e28860f967e571e4d4cb288bb614a3f4"
+    },
+    {
+      "path": "missing-join-guard.patch",
+      "sha256": "54ec6dcb68ff8cf0cbe278a37bc3c58dffcccdf066fdeb4237a48e692d57f049"
+    },
+    {
+      "path": "missing-join-guard.txt",
+      "sha256": "c615f8430759f0e505673991a146560c5d24c32829e3495a409c5050f3223e21"
+    },
+    {
+      "path": "native-after.txt",
+      "sha256": "2600a3dcdc4e9bbd9340b25b5a06661532055227c1ff048e651e59c777088533"
+    },
+    {
+      "path": "native-before.txt",
+      "sha256": "ff54b31f415994816519bd7e10cb3a343516c1755a45d1019c00b7412de98884"
+    },
+    {
+      "path": "native-clippy.txt",
+      "sha256": "216e748796e2b717d4e23fbfc899a631684098313e933b2943fd09f72d2f3a94"
+    },
+    {
+      "path": "observations.json",
+      "sha256": "aa1d52946d9a5db650c09985ede82eb917d089ee3e86fce51656501403ba1c76"
+    },
+    {
+      "path": "original-join.txt",
+      "sha256": "5e3a04aa1284619c6d44cfe114d54492de029073414241d1fef7decac91dd2f5"
+    },
+    {
+      "path": "probe-runner.mjs",
+      "sha256": "fa982ebd6561fc5a87220bebf2274ebc3a07fc99feff660d55c11548bc4b3cef"
+    },
+    {
+      "path": "worker-after-build.txt",
+      "sha256": "b09d6b67dcc9802f46c2e5f569081f5729347ef8b828cacb3f68dfb176f4af00"
+    },
+    {
+      "path": "README.md",
+      "sha256": "4cb70f8bb8b14f0e5a0db01b4d4925234975ceca9a33b6f26686fea60786ee51"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-27d5d79a)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.27s
+     Running tests/library.rs (target/debug/deps/library-786cd2f4b245bf52)
+
+running 5 tests
+test empty_library_preserves_legacy_application_rows_and_archive_shape ... ok
+test library_search_dedupe_segmentation_and_shared_receipts ... ok
+test unused_crud_fences_names_unicode_and_library_export ... ok
+test supersede_retains_original_and_study_reference_refuses_deletion ... ok
+test segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_boundaries ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+

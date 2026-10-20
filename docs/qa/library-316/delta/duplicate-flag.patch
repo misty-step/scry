@@ -1,0 +1,11 @@
+--- a/qa/library.mjs
++++ b/qa/library.mjs
+@@ -81,7 +81,7 @@
+   },
+   async()=>{
+    const bad=await file('bad-sections.json',JSON.stringify([{heading:'Article',units:['Missing exact bytes.']}]));
+-   const before=await rows();const refused=await cli([...addArgs(originalFile,'Must never be stored'),'--sections-file',bad]);
++   const before=await rows();const refused=await cli([...addArgs(),'--title','Must never be stored','--sections-file',bad]);
+    assert.equal(refused.code,1);assert.equal(refused.value.error,'API request failed.');
+    assert.deepEqual(await rows(),before,'CLI refusal changes no SQLite row, operation receipt or last-use time.');
+    const refusal=async(data,error)=>{

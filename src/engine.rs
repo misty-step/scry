@@ -260,6 +260,9 @@ fn apply(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    if path.starts_with("/library/") {
+        return crate::library::mutate(app, path, fields, seed);
+    }
     if matches!(path, "/create" | "/add") {
         let intent = field(fields, "intent");
         let photo = if field(fields, "__photo").is_empty() {
@@ -2298,6 +2301,15 @@ impl ArchiveChecks {
 }
 
 fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
+    checks.record();
+    if app.library.validate().is_err()
+        || app
+            .study_version_refs
+            .values()
+            .any(|id| !app.library.versions.contains_key(id))
+    {
+        checks.reject("invalid Library records or Study references")?;
+    }
     for (id, token) in &app.owner_tokens {
         checks.record();
         let t = &token.info;
@@ -2922,6 +2934,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                     && !app.questions.contains_key(id)
                     && !app.jobs.contains_key(id)
                     && !app.owner_tokens.contains_key(id)
+                    && !crate::library::receipt_entity(receipt, id)
             })
         {
             checks.reject("an invalid exact-operation receipt")?;

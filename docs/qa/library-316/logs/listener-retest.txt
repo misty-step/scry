@@ -1,0 +1,20 @@
+TAP version 13
+# {"status":"PASS","checks":0,"failures":0,"artifact_sha256":"9badb840d62872ba55b3d661eeb1bb80a0e1a4c17f357bb375f9ee8be39de77f","limits":"Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof."}
+# *** Fatal uncaught kj::Exception: kj/async-io-unix.c++:941: failed: ::bind(sockfd, &addr.generic, addrlen): Address already in use; toString() = 127.0.0.1:36215
+# stack: /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56880d6 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5687ea9 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56861fc /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2475dcc /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2476721 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247724d /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247881a /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@23ada69 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50965 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50eb6 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e8ee /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e6ee /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394d6c /usr/lib/libc.so.6@27780 /usr/lib/libc.so.6@278b8 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394024
+# {"listener_allocation":"PASS","reclaimed_probe_port":36215,"concurrent_origins":["http://127.0.0.1:39321","http://127.0.0.1:36911","http://127.0.0.1:44215","http://127.0.0.1:43167"],"isolated_goals_per_runtime":1,"foreign_origin_status":403,"foreign_host_status":421,"canonical_write_and_replay_status":303}
+# Subtest: listener allocation survives deterministic contention and concurrent isolated starts
+ok 1 - listener allocation survives deterministic contention and concurrent isolated starts
+  ---
+  duration_ms: 21144.563211
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35023.546759

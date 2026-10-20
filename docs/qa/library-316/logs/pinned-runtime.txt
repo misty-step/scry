@@ -1,0 +1,517 @@
+TAP version 13
+# Subtest: US-015.1: private Library CLI → built Worker → SQLite/R2
+ok 1 - US-015.1: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 41.116871
+  type: 'test'
+  ...
+# Subtest: US-015.2: private Library CLI → built Worker → SQLite/R2
+ok 2 - US-015.2: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 1058.035939
+  type: 'test'
+  ...
+# Subtest: US-015.3: private Library CLI → built Worker → SQLite/R2
+ok 3 - US-015.3: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 1590.510219
+  type: 'test'
+  ...
+# Subtest: US-015.4: private Library CLI → built Worker → SQLite/R2
+ok 4 - US-015.4: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 2837.141003
+  type: 'test'
+  ...
+# Subtest: US-015.5: private Library CLI → built Worker → SQLite/R2
+ok 5 - US-015.5: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 661.467589
+  type: 'test'
+  ...
+# Subtest: US-015.6: private Library CLI → built Worker → SQLite/R2
+ok 6 - US-015.6: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 1546.498683
+  type: 'test'
+  ...
+# Subtest: US-015.7: private Library CLI → built Worker → SQLite/R2
+ok 7 - US-015.7: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 1345.650757
+  type: 'test'
+  ...
+# Subtest: US-015.8: private Library CLI → built Worker → SQLite/R2
+ok 8 - US-015.8: private Library CLI → built Worker → SQLite/R2
+  ---
+  duration_ms: 926.51022
+  type: 'test'
+  ...
+# Sanitized Library CLI transcript: target/library-cli.json
+# Subtest: US-014.1: built Worker and Owner token / CLI journey
+ok 9 - US-014.1: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 3068.695469
+  type: 'test'
+  ...
+# Subtest: US-014.2: built Worker and Owner token / CLI journey
+ok 10 - US-014.2: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 1645.975364
+  type: 'test'
+  ...
+# Subtest: US-014.3: built Worker and Owner token / CLI journey
+ok 11 - US-014.3: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 691.834151
+  type: 'test'
+  ...
+# Subtest: US-014.4: built Worker and Owner token / CLI journey
+ok 12 - US-014.4: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 2200.314662
+  type: 'test'
+  ...
+# Subtest: US-014.5: built Worker and Owner token / CLI journey
+ok 13 - US-014.5: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 1761.455788
+  type: 'test'
+  ...
+# Subtest: US-014.6: built Worker and Owner token / CLI journey
+ok 14 - US-014.6: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 140.642863
+  type: 'test'
+  ...
+# Subtest: US-014.7: built Worker and Owner token / CLI journey
+ok 15 - US-014.7: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 739.663664
+  type: 'test'
+  ...
+# Sanitized CLI transcript: [{"command":"scry login --url http://127.0.0.1:43549 --token-stdin --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792513350293,"expires_ms":null,"id":"3d7410b6ea2b38c632f65d799d74f6e4","last_used_ms":1792513358340,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry whoami --json","exit":0,"output":{"owner":true,"token":{"created_ms":1792513350293,"expires_ms":null,"id":"3d7410b6ea2b38c632f65d799d74f6e4","last_used_ms":1792513358363,"name":"builder","paid":false,"revoked_ms":null}}},{"command":"scry token create forbidden paid cli child --paid --json","exit":1,"output":{"error":"Request refused."}},{"command":"scry token create cli agent --operation-id 9feedf97-df6c-4607-9834-45c8f571010e --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"17fd793752f21a3aa305be1c2e630600","message":null,"redirect":"/settings"},"token":{"created_ms":1792513358402,"expires_ms":null,"id":"17fd793752f21a3aa305be1c2e630600","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create cli agent --operation-id 9feedf97-df6c-4607-9834-45c8f571010e --json","exit":0,"output":{"replayed":true,"result":{"entity_id":"17fd793752f21a3aa305be1c2e630600","message":null,"redirect":"/settings"},"token":{"created_ms":1792513358402,"expires_ms":null,"id":"17fd793752f21a3aa305be1c2e630600","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null}}},{"command":"scry token create changed payload --operation-id 9feedf97-df6c-4607-9834-45c8f571010e --json","exit":1,"output":{"error":"Operation conflict."}},{"command":"scry token list --json","exit":0,"output":{"tokens":[{"created_ms":1792513357355,"expires_ms":null,"id":"091c6ef71197a31a3fb3cd473e5983e4","last_used_ms":1792513357373,"name":"paid delegated agent","paid":true,"revoked_ms":null},{"created_ms":1792513352101,"expires_ms":null,"id":"1003497a5275b749a6cfef3464be5977","last_used_ms":null,"name":"revoked probe","paid":false,"revoked_ms":1792513352262},{"created_ms":1792513358402,"expires_ms":null,"id":"17fd793752f21a3aa305be1c2e630600","last_used_ms":null,"name":"cli agent","paid":false,"revoked_ms":null},{"created_ms":1792513350293,"expires_ms":null,"id":"3d7410b6ea2b38c632f65d799d74f6e4","last_used_ms":1792513360466,"name":"builder","paid":false,"revoked_ms":null},{"created_ms":1792513356982,"expires_ms":null,"id":"484639f365241e99be83da2ab2d1b8d6","last_used_ms":1792513357355,"name":"owner-authorized paid agent","paid":true,"revoked_ms":null},{"created_ms":1792513351002,"expires_ms":null,"id":"565804f2f286190a62e875a705aa385b","last_used_ms":null,"name":"rotation","paid":false,"revoked_ms":1792513351175},{"created_ms":1792513350482,"expires_ms":1792513950477,"id":"9907f3ab6516274b1528a00ab520087e","last_used_ms":1792513351175,"name":"delegated agent","paid":false,"revoked_ms":null},{"created_ms":1792513352790,"expires_ms":null,"id":"b491a720b3eb00c0fa191a07237beaa2","last_used_ms":1792513353007,"name":"immediate revocation","paid":false,"revoked_ms":1792513353585},{"created_ms":1792513352466,"expires_ms":1792513352528,"id":"bc91d23e3b2875466303e8e9d7048128","last_used_ms":null,"name":"expiry probe","paid":false,"revoked_ms":null},{"created_ms":1792513356670,"expires_ms":null,"id":"f2c7d89413c7d7701c81bba1b57126c5","last_used_ms":null,"name":"lost response","paid":false,"revoked_ms":null}]}},{"command":"scry token revoke 17fd793752f21a3aa305be1c2e630600 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"17fd793752f21a3aa305be1c2e630600","message":null,"redirect":"/settings"}}},{"command":"scry login --url http://127.0.0.1:43549 --token-stdin --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry token revoke 3d7410b6ea2b38c632f65d799d74f6e4 --json","exit":0,"output":{"replayed":false,"result":{"entity_id":"3d7410b6ea2b38c632f65d799d74f6e4","message":null,"redirect":"/settings"}}},{"command":"scry whoami --json","exit":1,"output":{"error":"Owner authorization required."}},{"command":"scry unknown --json","exit":1,"output":{"error":"Usage: scry login|whoami|token|search|work|version|export --library [--json] [--config PATH]"}},{"command":"scry login --url http://external.invalid --token-stdin --json","exit":1,"output":{"error":"Use an HTTPS origin (HTTP is allowed only on loopback)."}}]
+# Subtest: US-014.8: built Worker and Owner token / CLI journey
+ok 16 - US-014.8: built Worker and Owner token / CLI journey
+  ---
+  duration_ms: 3118.345098
+  type: 'test'
+  ...
+# Subtest: health fails closed before the first snapshot without initializing learner state
+ok 17 - health fails closed before the first snapshot without initializing learner state
+  ---
+  duration_ms: 2899.738132
+  type: 'test'
+  ...
+# Subtest: real RS256 owner signature and private response headers
+ok 18 - real RS256 owner signature and private response headers
+  ---
+  duration_ms: 63.596765
+  type: 'test'
+  ...
+# Subtest: private build-bound changelog is read-only, with health version and revision
+ok 19 - private build-bound changelog is read-only, with health version and revision
+  ---
+  duration_ms: 41.36998
+  type: 'test'
+  ...
+# Subtest: cached issuer keys still require every token signature
+ok 20 - cached issuer keys still require every token signature
+  ---
+  duration_ms: 70.355836
+  type: 'test'
+  ...
+# Subtest: forged signature with valid owner claims is denied
+ok 21 - forged signature with valid owner claims is denied
+  ---
+  duration_ms: 28.626426
+  type: 'test'
+  ...
+# Subtest: anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+ok 22 - anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+  ---
+  duration_ms: 20.259149
+  type: 'test'
+  ...
+# Subtest: forged identity headers cannot replace owner authorization
+ok 23 - forged identity headers cannot replace owner authorization
+  ---
+  duration_ms: 24.930836
+  type: 'test'
+  ...
+# Subtest: canonical Host and alternate read-only redirect
+ok 24 - canonical Host and alternate read-only redirect
+  ---
+  duration_ms: 9.598929
+  type: 'test'
+  ...
+# Subtest: cross-site Origin, forged CSRF and body-length bounds
+ok 25 - cross-site Origin, forged CSRF and body-length bounds
+  ---
+  duration_ms: 44.073601
+  type: 'test'
+  ...
+# Subtest: atomic durable capture and exact operation replay
+ok 26 - atomic durable capture and exact operation replay
+  ---
+  duration_ms: 1148.17871
+  type: 'test'
+  ...
+# Subtest: no implicit paid request or synthetic fallback without model configuration
+ok 27 - no implicit paid request or synthetic fallback without model configuration
+  ---
+  duration_ms: 1584.629451
+  type: 'test'
+  ...
+# Subtest: 422 retains escaped no-JavaScript Create draft
+ok 28 - 422 retains escaped no-JavaScript Create draft
+  ---
+  duration_ms: 8.599667
+  type: 'test'
+  ...
+# Subtest: photo type fence, durable exact capture and complete asset export
+ok 29 - photo type fence, durable exact capture and complete asset export
+  ---
+  duration_ms: 3064.849036
+  type: 'test'
+  ...
+# Subtest: failed scheduled photo archive reaches the scheduler without hiding retained work
+ok 30 - failed scheduled photo archive reaches the scheduler without hiding retained work
+  ---
+  duration_ms: 502.551488
+  type: 'test'
+  ...
+# Subtest: complete R2 backup acknowledged only after exact checksum readback
+ok 31 - complete R2 backup acknowledged only after exact checksum readback
+  ---
+  duration_ms: 77.967352
+  type: 'test'
+  ...
+# Subtest: chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+ok 32 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+  ---
+  duration_ms: 22549.245118
+  type: 'test'
+  ...
+# Subtest: restore authorization and archive checksum fail before writes
+ok 33 - restore authorization and archive checksum fail before writes
+  ---
+  duration_ms: 1453.618041
+  type: 'test'
+  ...
+# Subtest: independent complete restore is paused and refuses overwrite
+ok 34 - independent complete restore is paused and refuses overwrite
+  ---
+  duration_ms: 119.584118
+  type: 'test'
+  ...
+# Subtest: learner Settings resume refuses CSRF, replays safely and preserves historical work
+ok 35 - learner Settings resume refuses CSRF, replays safely and preserves historical work
+  ---
+  duration_ms: 9668.945022
+  type: 'test'
+  ...
+# Subtest: complete asset capacity rejects capture atomically and removes its orphan
+ok 36 - complete asset capacity rejects capture atomically and removes its orphan
+  ---
+  duration_ms: 14242.097514
+  type: 'test'
+  ...
+# Subtest: allowed reference reads mark future exposure while checking stays unaided and protected
+ok 37 - allowed reference reads mark future exposure while checking stays unaided and protected
+  ---
+  duration_ms: 28728.628855
+  type: 'test'
+  ...
+# Subtest: bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+ok 38 - bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+  ---
+  duration_ms: 56837.76244
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: verified snapshot
+ok 39 - scheduled snapshots: verified snapshot
+  ---
+  duration_ms: 19041.080945
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: missing internal authorization
+ok 40 - scheduled snapshots: missing internal authorization
+  ---
+  duration_ms: 7830.949281
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: invalid namespace
+ok 41 - scheduled snapshots: invalid namespace
+  ---
+  duration_ms: 7914.792159
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: paused restore
+ok 42 - scheduled snapshots: paused restore
+  ---
+  duration_ms: 6959.024828
+  type: 'test'
+  ...
+# Subtest: named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+ok 43 - named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+  ---
+  duration_ms: 6566.948317
+  type: 'test'
+  ...
+# Subtest: preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 44 - preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 20922.533873
+  type: 'test'
+  ...
+# Subtest: production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 45 - production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 31594.936988
+  type: 'test'
+  ...
+# {"qa_spend_boundary":"PASS","mode":"preview","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 46 - preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 17345.598065
+  type: 'test'
+  ...
+# Subtest: preview: QA keeps local study and learner self-check without inheriting paid Jev
+ok 47 - preview: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 19823.471378
+  type: 'test'
+  ...
+# {"qa_spend_boundary":"PASS","mode":"production","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: production: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 48 - production: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 32143.910622
+  type: 'test'
+  ...
+# Subtest: production: QA keeps local study and learner self-check without inheriting paid Jev
+ok 49 - production: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 15485.883131
+  type: 'test'
+  ...
+# {"status":"PASS","checks":34,"failures":0,"artifact_sha256":"9badb840d62872ba55b3d661eeb1bb80a0e1a4c17f357bb375f9ee8be39de77f","limits":"Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof."}
+# Subtest: revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+ok 50 - revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+  ---
+  duration_ms: 22943.282038
+  type: 'test'
+  ...
+# *** Fatal uncaught kj::Exception: kj/async-io-unix.c++:941: failed: ::bind(sockfd, &addr.generic, addrlen): Address already in use; toString() = 127.0.0.1:34475
+# stack: /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56880d6 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5687ea9 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56861fc /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2475dcc /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2476721 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247724d /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247881a /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@23ada69 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50965 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50eb6 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e8ee /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e6ee /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394d6c /usr/lib/libc.so.6@27780 /usr/lib/libc.so.6@278b8 /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394024
+# Subtest: listener allocation survives deterministic contention and concurrent isolated starts
+not ok 51 - listener allocation survives deterministic contention and concurrent isolated starts
+  ---
+  duration_ms: 19232.870596
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-f2eed112/qa/runtime.test.mjs:779:7'
+  failureType: 'testCodeFailure'
+  error: 'fetch failed'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    node:internal/deps/undici/undici:14902:13
+    async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-f2eed112/qa/runtime.test.mjs:814:19)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+    async file:///home/phaedrus/.t3/worktrees/scry/t3-f2eed112/qa/runtime.test.mjs:779:1
+  ...
+# {"argv":["--stories",""],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"," "],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","\\t\\n\\r "],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories",""],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"preserved"}
+# {"argv":[],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all","extra"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-005"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-012"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-016"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-999"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002 US-999"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002 US-013"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories"," US-004\\tUS-004\\n "],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"Install lockfile-pinned Playwright or set SCRY_CRITICS_PLAYWRIGHT_PATH.","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-998"],"error":"usage: qa/walk --all | --stories \\"US-002 US-003\\"","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-016] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-999] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015, US-999] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--all"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-011] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# {"argv":["--stories","US-002"],"error":"story discovery drift: SPEC live IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-011] do not match walk-specs IDs [US-001, US-002, US-003, US-004, US-006, US-007, US-008, US-009, US-010, US-011, US-013, US-014, US-015]","status":1,"build_invoked":false,"proof_output":"absent"}
+# Subtest: reject empty selection "" before build/proof
+ok 52 - reject empty selection "" before build/proof
+  ---
+  duration_ms: 201.889608
+  type: 'test'
+  ...
+# Subtest: reject empty selection " " before build/proof
+ok 53 - reject empty selection " " before build/proof
+  ---
+  duration_ms: 170.743741
+  type: 'test'
+  ...
+# Subtest: reject empty selection "\\t\\n\\r " before build/proof
+ok 54 - reject empty selection "\\t\\n\\r " before build/proof
+  ---
+  duration_ms: 166.847011
+  type: 'test'
+  ...
+# Subtest: invalid selection preserves prior owned proof
+ok 55 - invalid selection preserves prior owned proof
+  ---
+  duration_ms: 158.838063
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI []
+ok 56 - reject invalid CLI []
+  ---
+  duration_ms: 145.654906
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories"]
+ok 57 - reject invalid CLI ["--stories"]
+  ---
+  duration_ms: 155.701323
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--all","extra"]
+ok 58 - reject invalid CLI ["--all","extra"]
+  ---
+  duration_ms: 143.563935
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-005"]
+ok 59 - reject invalid CLI ["--stories","US-005"]
+  ---
+  duration_ms: 143.944005
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-012"]
+ok 60 - reject invalid CLI ["--stories","US-012"]
+  ---
+  duration_ms: 146.883121
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-016"]
+ok 61 - reject invalid CLI ["--stories","US-016"]
+  ---
+  duration_ms: 154.998591
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-999"]
+ok 62 - reject invalid CLI ["--stories","US-999"]
+  ---
+  duration_ms: 177.732096
+  type: 'test'
+  ...
+# Subtest: reject invalid CLI ["--stories","US-002 US-999"]
+ok 63 - reject invalid CLI ["--stories","US-002 US-999"]
+  ---
+  duration_ms: 155.283971
+  type: 'test'
+  ...
+# Subtest: accept selector ["--all"] (guard-only)
+ok 64 - accept selector ["--all"] (guard-only)
+  ---
+  duration_ms: 173.454525
+  type: 'test'
+  ...
+# Subtest: accept selector ["--stories","US-002 US-013"] (guard-only)
+ok 65 - accept selector ["--stories","US-002 US-013"] (guard-only)
+  ---
+  duration_ms: 179.799171
+  type: 'test'
+  ...
+# Subtest: accept selector ["--stories"," US-004\\tUS-004\\n "] (guard-only)
+ok 66 - accept selector ["--stories"," US-004\\tUS-004\\n "] (guard-only)
+  ---
+  duration_ms: 162.171496
+  type: 'test'
+  ...
+# Subtest: pending stories are not walked until their ticket replaces Evidence: pending
+ok 67 - pending stories are not walked until their ticket replaces Evidence: pending
+  ---
+  duration_ms: 311.464261
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: no story headings --all
+ok 68 - reject discovery drift: no story headings --all
+  ---
+  duration_ms: 169.220116
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: no story headings --stories
+ok 69 - reject discovery drift: no story headings --stories
+  ---
+  duration_ms: 160.869531
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: trailing retirement wording --all
+ok 70 - reject discovery drift: trailing retirement wording --all
+  ---
+  duration_ms: 158.606555
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: trailing retirement wording --stories
+ok 71 - reject discovery drift: trailing retirement wording --stories
+  ---
+  duration_ms: 147.27339
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: pending marker removed without walks --all
+ok 72 - reject discovery drift: pending marker removed without walks --all
+  ---
+  duration_ms: 143.264629
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: pending marker removed without walks --stories
+ok 73 - reject discovery drift: pending marker removed without walks --stories
+  ---
+  duration_ms: 137.248164
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: unknown active story --all
+ok 74 - reject discovery drift: unknown active story --all
+  ---
+  duration_ms: 137.081278
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: unknown active story --stories
+ok 75 - reject discovery drift: unknown active story --stories
+  ---
+  duration_ms: 138.37609
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: duplicate replacing a live story --all
+ok 76 - reject discovery drift: duplicate replacing a live story --all
+  ---
+  duration_ms: 141.684907
+  type: 'test'
+  ...
+# Subtest: reject discovery drift: duplicate replacing a live story --stories
+ok 77 - reject discovery drift: duplicate replacing a live story --stories
+  ---
+  duration_ms: 137.414168
+  type: 'test'
+  ...
+1..77
+# tests 77
+# suites 0
+# pass 76
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 380501.455836
