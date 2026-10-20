@@ -164,6 +164,7 @@ export async function studyJourney(){
    const advancing=['next','--after',current.prompt.id,'--card',caseCard];const advanced=await Promise.all([cli(advancing),cli(advancing)]);assert.deepEqual(advanced.map(r=>r.code).sort(),[0,1],'Only one competing deliberate Next can advance.');current=advanced.find(r=>r.code===0).value.practice;const newPrompt=current.prompt.id,op='study-answer-parallel-replay-id';
    const before=(await rows()).filter(r=>r.key.startsWith('practice_attempts/')).length;
    const args=['answer',newPrompt,'--text-stdin','--operation-id',op];
+   const lost=await req('/api/v1/answer',{operation_id:op,prompt_id:newPrompt,answer:'We concieved a patient garden.'});assert.equal(lost.status,200);assert.ok(lost.body);await lost.body.cancel(); // Discard the committed response body, then reconcile through the CLI.
    const [a,b]=await Promise.all([cli(args,'We concieved a patient garden.'),cli(args,'We concieved a patient garden.')]);assert.equal(a.code,0);assert.equal(b.code,0);assert.deepEqual(a.value.practice,b.value.practice);assert.equal((await rows()).filter(r=>r.key.startsWith('practice_attempts/')).length,before+1);
    current.attempt_id=a.value.practice.attempt.id;
    const replayed=await ok(args,'We concieved a patient garden.');assert.deepEqual(replayed.practice,a.value.practice);assert.equal(replayed.replayed,true);
