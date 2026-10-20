@@ -8,8 +8,8 @@ real generated material, efficacy, private production ingress, physical phone
 acceptance, or hosted recovery.
 
 [QA system](system.md) owns current proof entrypoints.
-[The runbook](../runbook.md) remains the deployed Go Container's operational
-authority. The rewrite candidate is described in
+[The runbook's dated serving observation](../runbook.md#rust-production-serving--observed-2026-10-20)
+owns production serving state. The rewrite candidate is described in
 [Rust/Cloudflare](../rust-cloudflare.md). September Go receipts remain historical.
 
 ## Prepare an isolated VM

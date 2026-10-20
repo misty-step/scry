@@ -13,11 +13,11 @@ learning, immutable history, generation, and recovery; server-rendered HTML,
 self-hosted fonts, and a small vanilla controller deliver the notebook. There
 is no Container or frontend framework in the replacement architecture.
 
-**Production has not been replaced by source changes.** The documented live
-application remains the Go/SQLite Container behind `scry-app-host` at
-https://scry.study. [The operational runbook](docs/runbook.md) alone owns its
-activation, origins, recovery, and retirement evidence. The old Go source is
-retained exactly in Git at `c6ba395`; historical Rust/Postgres/Worker stores and
+Source changes alone do not establish production serving state. Consult
+[the runbook's dated serving observation](docs/runbook.md#rust-production-serving--observed-2026-10-20).
+[The operational runbook](docs/runbook.md) alone owns activation, origins,
+recovery, and retirement evidence. The old Go source is retained exactly in Git
+at `c6ba395`; historical Rust/Postgres/Worker stores and
 backups remain separate recovery material. This rewrite does not import,
 reactivate, rename, or erase those stores.
 
@@ -106,7 +106,8 @@ remain UNVERIFIED; old Go/Worker receipts do not transfer to this rewrite.
 
 The replacement's [operator procedure](docs/rust-cloudflare.md#independent-fresh-space-restore)
 documents isolated restore and separately authorized future-work resumption.
-These candidate endpoints do not replace the deployed Go recovery runbook.
+Use [the runbook](docs/runbook.md) to select compatible recovery procedures;
+source endpoints alone do not establish deployed recovery support.
 
 ## Durable boundaries
 
@@ -128,6 +129,7 @@ cutover conditions. Routine activation needs no separate operator approval
 once those conditions pass.
 
 Changed private-data, credential, spend or irreversible-action scope still
-requires its own authorization. The existing [runbook](docs/runbook.md) and
-[Container hosting notes](deploy/cloudflare-hosting/README.md) remain the
-operational authority for production until the verified replacement occurs.
+requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#rust-production-serving--observed-2026-10-20)
+owns production serving state. The retained
+[Container hosting notes](deploy/cloudflare-hosting/README.md) describe the
+retired Go configuration.

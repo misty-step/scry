@@ -41,12 +41,10 @@
         "SCRY_GENERATION_RESERVATION_MICROS": "500000"
       }
     },
-    // First real-data pre-cutover attach. Do not deploy until the retained
-    // origin is write-paused and a fresh, independently verified snapshot exists.
+    // Retained pre-cutover Go configuration, without production hostname routes.
     "mistystep-prod": {
       "name": "scry-app-host",
       "workers_dev": false,
-      "routes": [{ "pattern": "scry.mistystep.io", "custom_domain": true }],
       "durable_objects": {
         "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
       },
@@ -73,18 +71,13 @@
         "SCRY_GENERATION_RESERVATION_MICROS": "500000"
       }
     },
-    // Final production. The two alternate hosts redirect reads only; Scry's
-    // canonical-host guard rejects mutation replay across origins.
+    // Retired Go production configuration. Production hostnames belong to the
+    // Rust Worker; see docs/runbook.md's 2026-10-20 serving observation.
     "production": {
       "name": "scry-app-host",
       "version_metadata": { "binding": "SCRY_VERSION" },
       "workers_dev": false,
       "triggers": { "crons": ["0 */12 * * *"] },
-      "routes": [
-        { "pattern": "scry.study", "custom_domain": true },
-        { "pattern": "www.scry.study", "custom_domain": true },
-        { "pattern": "scry.mistystep.io", "custom_domain": true }
-      ],
       "durable_objects": {
         "bindings": [{ "name": "SCRY_CONTAINER", "class_name": "ScryContainer" }]
       },
