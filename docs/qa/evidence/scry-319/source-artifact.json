@@ -1,0 +1,59 @@
+{
+  "source": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+  "fixed_review_base": "f10e170d2967c9a7c3f5860a020a673c5cd05bb5",
+  "artifact_kind": "synthetic development, not release",
+  "hashes": [
+    {
+      "path": "src/study.rs",
+      "sha256": "0c80c635d9a1cfaaca57eb149601bcc471b260f22514444ac34279975375c7d8"
+    },
+    {
+      "path": "src/web.rs",
+      "sha256": "94072495e2a5278e7880f99a506b26998e44d828713587143a198ac6b4feedd6"
+    },
+    {
+      "path": "src/runtime.rs",
+      "sha256": "001e9befe958674d000301a2a708f8a6c669b0379f04d2fea3c676343433bfa2"
+    },
+    {
+      "path": "assets/app.css",
+      "sha256": "4629906482e1f9e2794ed7def35089c788102bb61ace533802d561e87ba8e996"
+    },
+    {
+      "path": "assets/app.js",
+      "sha256": "e5409095efbdab3bac55b14fad7b4352fb2fd65a35d8600fd6b1c5555bf8cbee"
+    },
+    {
+      "path": "qa/phone-stream.mjs",
+      "sha256": "3331047472a0446887f2b03903f50d89b630e83a47523a375e462136e46f9f43"
+    },
+    {
+      "path": "qa/walk.mjs",
+      "sha256": "ad0ef482bf0e148c27031122b0225bafa748ca9a6a8711c69ac6d9a8b868a286"
+    },
+    {
+      "path": "SPEC.md",
+      "sha256": "7b644696d85cb06581da5e8fea939ef119b8476852b1c43df1f055eff101536f"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "9d952551719267044be79d48d6ebfad174c67fe174cff3fef0712d68f2047d2a"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "ebf7c2627788070c4e5905e776a9f7a18918d250e592dac48b70773a75ec06f4"
+    },
+    {
+      "path": "build/index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "build/index_bg.wasm",
+      "sha256": "43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5"
+    },
+    {
+      "path": "target/debug/scry",
+      "sha256": "cfb75b144bacf53e366b5a8fd705eb3ad642ad18404dd9ce172bfd63a8ed27e4"
+    }
+  ]
+}

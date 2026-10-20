@@ -1,0 +1,240 @@
+TAP version 13
+# Subtest: health fails closed before the first snapshot without initializing learner state
+ok 1 - health fails closed before the first snapshot without initializing learner state
+  ---
+  duration_ms: 181.870368
+  type: 'test'
+  ...
+# Subtest: real RS256 owner signature and private response headers
+ok 2 - real RS256 owner signature and private response headers
+  ---
+  duration_ms: 41.920363
+  type: 'test'
+  ...
+# Subtest: private build-bound changelog is read-only, with health version and revision
+ok 3 - private build-bound changelog is read-only, with health version and revision
+  ---
+  duration_ms: 29.770672
+  type: 'test'
+  ...
+# Subtest: cached issuer keys still require every token signature
+ok 4 - cached issuer keys still require every token signature
+  ---
+  duration_ms: 23.124635
+  type: 'test'
+  ...
+# Subtest: forged signature with valid owner claims is denied
+ok 5 - forged signature with valid owner claims is denied
+  ---
+  duration_ms: 9.99209
+  type: 'test'
+  ...
+# Subtest: anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+ok 6 - anonymous, algorithm, issuer, audience, subject, expiry and not-before fences
+  ---
+  duration_ms: 15.322244
+  type: 'test'
+  ...
+# Subtest: forged identity headers cannot replace owner authorization
+ok 7 - forged identity headers cannot replace owner authorization
+  ---
+  duration_ms: 18.822239
+  type: 'test'
+  ...
+# Subtest: canonical Host and alternate read-only redirect
+ok 8 - canonical Host and alternate read-only redirect
+  ---
+  duration_ms: 8.926952
+  type: 'test'
+  ...
+# Subtest: cross-site Origin, forged CSRF and body-length bounds
+ok 9 - cross-site Origin, forged CSRF and body-length bounds
+  ---
+  duration_ms: 47.512894
+  type: 'test'
+  ...
+# Subtest: atomic durable capture and exact operation replay
+ok 10 - atomic durable capture and exact operation replay
+  ---
+  duration_ms: 3782.764603
+  type: 'test'
+  ...
+# Subtest: no implicit paid request or synthetic fallback without model configuration
+ok 11 - no implicit paid request or synthetic fallback without model configuration
+  ---
+  duration_ms: 1306.827663
+  type: 'test'
+  ...
+# Subtest: 422 retains escaped no-JavaScript Create draft
+ok 12 - 422 retains escaped no-JavaScript Create draft
+  ---
+  duration_ms: 9.85989
+  type: 'test'
+  ...
+# Subtest: photo type fence, durable exact capture and complete asset export
+ok 13 - photo type fence, durable exact capture and complete asset export
+  ---
+  duration_ms: 7873.526092
+  type: 'test'
+  ...
+# Subtest: failed scheduled photo archive reaches the scheduler without hiding retained work
+ok 14 - failed scheduled photo archive reaches the scheduler without hiding retained work
+  ---
+  duration_ms: 129.750316
+  type: 'test'
+  ...
+# Subtest: complete R2 backup acknowledged only after exact checksum readback
+ok 15 - complete R2 backup acknowledged only after exact checksum readback
+  ---
+  duration_ms: 142.397889
+  type: 'test'
+  ...
+# Subtest: chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback
+  ---
+  duration_ms: 11731.161609
+  type: 'test'
+  ...
+# Subtest: restore authorization and archive checksum fail before writes
+ok 17 - restore authorization and archive checksum fail before writes
+  ---
+  duration_ms: 298.478534
+  type: 'test'
+  ...
+# Subtest: independent complete restore is paused and refuses overwrite
+ok 18 - independent complete restore is paused and refuses overwrite
+  ---
+  duration_ms: 88.32512
+  type: 'test'
+  ...
+# Subtest: learner Settings resume refuses CSRF, replays safely and preserves historical work
+ok 19 - learner Settings resume refuses CSRF, replays safely and preserves historical work
+  ---
+  duration_ms: 4632.493442
+  type: 'test'
+  ...
+# Subtest: complete asset capacity rejects capture atomically and removes its orphan
+ok 20 - complete asset capacity rejects capture atomically and removes its orphan
+  ---
+  duration_ms: 2930.952017
+  type: 'test'
+  ...
+# Subtest: allowed reference reads mark future exposure while checking stays unaided and protected
+ok 21 - allowed reference reads mark future exposure while checking stays unaided and protected
+  ---
+  duration_ms: 5121.657307
+  type: 'test'
+  ...
+# {"controlled_spend":"PASS","purposes":[{"purpose":"critic","totals":{"entries":2,"unknown_entries":0,"reserved_micros":1000000,"known_cost_micros":468,"unknown_held_micros":0}},{"purpose":"generate.concepts","totals":{"entries":9,"unknown_entries":4,"reserved_micros":4500000,"known_cost_micros":2000000828,"unknown_held_micros":2000000}},{"purpose":"grade.jev","totals":{"entries":1,"unknown_entries":0,"reserved_micros":500000,"known_cost_micros":345,"unknown_held_micros":0}},{"purpose":"transcribe.photo","totals":{"entries":1,"unknown_entries":0,"reserved_micros":500000,"known_cost_micros":124,"unknown_held_micros":0}}],"entries":[{"id":"3708accd3eeb33f7746de6f48c97ffde2d338c82141ad102","work_id":"f70c270164d3c1a04a8ac46dc8545453","work_kind":"concept_job","goal_id":"85c0aa71f2ba26cabe7c210d14112949","created_ms":1792520421077,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"bc0adf48a6de755a4b6238c5a109b052803ae3b52d2a116c","work_id":"f70c270164d3c1a04a8ac46dc8545453","work_kind":"concept_job","goal_id":"85c0aa71f2ba26cabe7c210d14112949","created_ms":1792520422114,"day":"2026-10-20","purpose":"critic","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":234,"unknown_held_micros":0},{"id":"86b612d3da51b2ae2d3ae1b3c31242c8e525d1d83f7f2f12","work_id":"90afa342344b253c60af690e4325773f","work_kind":"assessment","goal_id":"85c0aa71f2ba26cabe7c210d14112949","created_ms":1792520423813,"day":"2026-10-20","purpose":"grade.jev","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":345,"unknown_held_micros":0},{"id":"43717c0a1cf83e8f3bf31f6bef87bf3c14c8d68162e3f95b","work_id":"5a3f4a2d8bda69cb2bb9f9cbfce894a8","work_kind":"concept_job","goal_id":"7796a41df6eda0a86ee8ad5b2c7f01e4","created_ms":1792520425211,"day":"2026-10-20","purpose":"transcribe.photo","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"3321f7d767f91c449f5d4e3c0b7985ce5eaf6d1d01361b86","work_id":"5a3f4a2d8bda69cb2bb9f9cbfce894a8","work_kind":"concept_job","goal_id":"7796a41df6eda0a86ee8ad5b2c7f01e4","created_ms":1792520426248,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"dc74e0c68f54d5a78cf87f38f99d3a1a66a6d522421b5000","work_id":"5a3f4a2d8bda69cb2bb9f9cbfce894a8","work_kind":"concept_job","goal_id":"7796a41df6eda0a86ee8ad5b2c7f01e4","created_ms":1792520427293,"day":"2026-10-20","purpose":"critic","model":"synthetic-jev","status":"known","reserved_micros":500000,"cost_micros":234,"unknown_held_micros":0},{"id":"38ef4c389693ecaf848b560b8dec4fa29734a725ed576134","work_id":"09d9ee0e3cd21eab17354f6c33633b70","work_kind":"concept_job","goal_id":"045a41e60ffcc7c51a7b61dda59aea45","created_ms":1792520428387,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":124,"unknown_held_micros":0},{"id":"f60f4f4e8cbfbd71ae49301514bfd30727a170180c237f2e","work_id":"571495188648f59b76c4bbca952a5469","work_kind":"concept_job","goal_id":"eb8272d12727821fb3ff11d21dd23290","created_ms":1792520429962,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"9d790952285cfb50037742607a769951d6bea0ba5cb2155f","work_id":"21c8d7bf1af5af6bab325129f0a4bd86","work_kind":"concept_job","goal_id":"b83eb327be891cbf063e0d39487aeeb2","created_ms":1792520432524,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"b1235d4c53ad29d1bb726773aa5f4695c67493054ffc531b","work_id":"f490f4dfa17f2507830fffc36bd20783","work_kind":"concept_job","goal_id":"213962c1dd67c30d297c81022c8f3c13","created_ms":1792520434856,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"a00638ee5b5a8a21b651014e10eead257dd28ce356200c3d","work_id":"5e8e37ef3dfe8f085260a452383527f9","work_kind":"concept_job","goal_id":"1beaba43f5846962f29b1633cfcd1bb2","created_ms":1792520437147,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"unknown","reserved_micros":500000,"cost_micros":null,"unknown_held_micros":500000},{"id":"bdae89a03c0079beab44c75032a79e54673c4d5f19200d7e","work_id":"dfa9bdd5efd673723945e3766c1fa4bd","work_kind":"concept_job","goal_id":"549541b17a062cc72fe7c8f7a2280805","created_ms":1792520440252,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":456,"unknown_held_micros":0},{"id":"f2b223768589298357cbd61ac570213bcc7a696ffbe9e69e","work_id":"4fa56315f6d9a7827c483bb616c4123d","work_kind":"concept_job","goal_id":"806498eb3680ea047dab8ef66e5ed942","created_ms":1792520443163,"day":"2026-10-20","purpose":"generate.concepts","model":"synthetic-generator","status":"known","reserved_micros":500000,"cost_micros":2000000000,"unknown_held_micros":0}]}
+# Subtest: bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+ok 22 - bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle
+  ---
+  duration_ms: 27388.019137
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: verified snapshot
+ok 23 - scheduled snapshots: verified snapshot
+  ---
+  duration_ms: 1618.823516
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: missing internal authorization
+ok 24 - scheduled snapshots: missing internal authorization
+  ---
+  duration_ms: 463.924916
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: invalid namespace
+ok 25 - scheduled snapshots: invalid namespace
+  ---
+  duration_ms: 1062.360678
+  type: 'test'
+  ...
+# Subtest: scheduled snapshots: paused restore
+ok 26 - scheduled snapshots: paused restore
+  ---
+  duration_ms: 1869.447429
+  type: 'test'
+  ...
+# Subtest: named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+ok 27 - named Access service principal is synthetic-only and retains cryptographic and CSRF fences
+  ---
+  duration_ms: 2873.338274
+  type: 'test'
+  ...
+# Subtest: preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 28 - preview: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 9393.797626
+  type: 'test'
+  ...
+# Subtest: production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+ok 29 - production: exact QA principal owns isolated SQLite, photos, backups and restarted alarms
+  ---
+  duration_ms: 11522.757909
+  type: 'test'
+  ...
+# {"qa_spend_boundary":"PASS","mode":"preview","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 30 - preview: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 11286.681308
+  type: 'test'
+  ...
+# Subtest: preview: QA keeps local study and learner self-check without inheriting paid Jev
+not ok 31 - preview: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 11693.845874
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-33a6681f/qa/runtime.test.mjs:38:27'
+  failureType: 'testCodeFailure'
+  error: 'fetch failed'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    Object.processResponse (/home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/undici/lib/web/fetch/index.js:237:16)
+    /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/undici/lib/web/fetch/index.js:1081:19
+    node:internal/process/task_queues:151:7
+    AsyncResource.runInAsyncScope (node:async_hooks:214:14)
+    AsyncResource.runMicrotask (node:internal/process/task_queues:148:8)
+    /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/undici/index.js:157:7
+    async MessagePort.<anonymous> ([worker eval]:32:22)
+  ...
+# {"qa_spend_boundary":"PASS","mode":"production","provider_sends":1,"owner_micros":3500000,"qa_micros":0}
+# Subtest: production: QA cannot acquire a second paid allowance before or after owner exhaustion
+ok 32 - production: QA cannot acquire a second paid allowance before or after owner exhaustion
+  ---
+  duration_ms: 16156.185449
+  type: 'test'
+  ...
+# Subtest: production: QA keeps local study and learner self-check without inheriting paid Jev
+ok 33 - production: QA keeps local study and learner self-check without inheriting paid Jev
+  ---
+  duration_ms: 11579.292408
+  type: 'test'
+  ...
+# {"status":"FAIL","checks":33,"failures":1,"artifact_sha256":"43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5","limits":"Synthetic workerd mechanics and cryptography only; no live ingress, provider quality, physical phone, remote R2 or activation proof."}
+# Subtest: revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+ok 34 - revival custody survives isolated restore, accepted writes, runtime restart and independently retrieved complete backup
+  ---
+  duration_ms: 4239.720205
+  type: 'test'
+  ...
+# *** Fatal uncaught kj::Exception: kj/async-io-unix.c++:941: failed: ::bind(sockfd, &addr.generic, addrlen): Address already in use; toString() = 127.0.0.1:39919
+# stack: /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56880d6 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5687ea9 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@56861fc /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2475dcc /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2476721 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247724d /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@247881a /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@23ada69 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50965 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a50eb6 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e8ee /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@5a4e6ee /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394d6c /usr/lib/libc.so.6@27780 /usr/lib/libc.so.6@278b8 /home/phaedrus/.t3/worktrees/scry/t3-33a6681f/node_modules/@cloudflare/workerd-linux-64/bin/workerd@2394024
+# {"listener_allocation":"PASS","reclaimed_probe_port":39919,"concurrent_origins":["http://127.0.0.1:35395","http://127.0.0.1:39461","http://127.0.0.1:41555","http://127.0.0.1:39283"],"isolated_goals_per_runtime":1,"foreign_origin_status":403,"foreign_host_status":421,"canonical_write_and_replay_status":303}
+# Subtest: listener allocation survives deterministic contention and concurrent isolated starts
+ok 35 - listener allocation survives deterministic contention and concurrent isolated starts
+  ---
+  duration_ms: 5146.425107
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 34
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 156363.830827

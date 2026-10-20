@@ -1,0 +1,4 @@
+    Checking scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-33a6681f)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.19s
+    Checking scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-33a6681f)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.20s

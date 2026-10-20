@@ -51,3 +51,46 @@ private canonical wording quality, deployed private ingress, production
 activation or learning efficacy. Those remain UNVERIFIED. No cold filesystem
 nonallocation claim is made. Populated rollback needs a compatible forward
 writer that retains disclosure Attempts and their effects.
+
+## Retained observations at `32cba95`
+
+The [source/artifact receipt](walk-receipt.json) binds implementation
+`32cba9550ab9710ab2bc26b55fd7e0b9a35e7348` to the exact Worker WASM
+`43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5`.
+The isolated VM extracted `git archive` of that commit and used Node 22.22.0,
+Rust 1.98.1, pinned dependencies and Chromium on cloud-home-agents.exe.xyz.
+Mirrodin refused SSH. T3 preview separately drove native keyboard and pointer
+actions against loopback workerd on the workstation. No workstation headless
+Chromium was launched.
+
+- PASS: all five US-018 criterion walks in six viewport/theme variants.
+  [Phone/CLI Grades and exact frozen Prompts](logs/US-018-phone.json) retain the
+  full word marks and local R2 snapshot digest for each comparison.
+- PASS: [five exact-route recovery cases](logs/US-018-recovery.json), including
+  one frozen operation after response loss, stale tabs, offline pause,
+  automatic Good Correction and private DOM removal. These cases do not
+  exercise or settle the inherited historical-replay blocker above.
+- PASS: unchanged legacy browser recovery, Create and release journeys, as
+  recorded in the receipt. [Native tests](logs/rust-tests.txt),
+  [native/WASM lint](logs/lint.txt), [WASM build](logs/wasm-build.txt),
+  [all 21 Study runtime criteria](logs/study-runtime.txt), and
+  [26 discovery/CLI guards](logs/discovery.txt).
+- FAIL: [the broader runtime suite](logs/runtime-full.txt) passed 34/35.
+  `preview: QA keeps local study and learner self-check without inheriting paid
+  Jev` returned `fetch failed`. Its [focused rerun](logs/runtime-focused.txt)
+  passed 1/1. The first failure remains retained and unclassified. It is not
+  claimed to be backup issue #344, and no gate was weakened or skipped.
+- PASS: [T3 keyboard, refresh and pointer transcript](t3-actions.json).
+  Screenshots were inspected for wrapping, labels and controls at narrow and
+  desktop widths in both themes. The 200% check doubles computed text sizes;
+  it does not simulate a physical software keyboard or certify phone hardware.
+
+The screenshots below are synthetic and contain no canonical private wording.
+The [complete screen set](screens/) includes no-JavaScript forms and 200% text
+sizing. At 200%, the wrapped masthead initially overlapped the synthetic badge;
+placing that badge in ordinary flow fixed the overlap before this receipt.
+
+![320 CSS px Prompt](t3-320-prompt.png)
+![320 CSS px dark, 200% text, Diff](screens/phone-320-dark-diff.png)
+![390 CSS px dark, honest next due](t3-390-dark-due.png)
+![1280 CSS px, Show me](t3-1280-shown.png)

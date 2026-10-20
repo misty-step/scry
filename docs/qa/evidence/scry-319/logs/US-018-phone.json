@@ -1,0 +1,2276 @@
+[
+  {
+    "width": 320,
+    "scheme": "light",
+    "noJS": false,
+    "text_zoom": "200%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-320-light-prompt.png",
+      "screens/phone-320-light-diff.png",
+      "screens/phone-320-light-caught-up.png",
+      "screens/phone-320-light-shown.png"
+    ],
+    "parity": {
+      "version": "6bc834b52642a2024f1afc726e60f8a1",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "07ca492b2d872629fd966f91abbcb21c"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "b28e6cd4ed19dec0cb8821c91bc5bef5",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "07ca492b2d872629fd966f91abbcb21c"
+        },
+        "study_id": "9220c5b991b0772a0006bc8433beae03",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "07ca492b2d872629fd966f91abbcb21c"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "6bc834b52642a2024f1afc726e60f8a1"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "bb3d7f96d296ddad653a9dd6462752cd26697046c4543207f0460b10b3faae75",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  },
+  {
+    "width": 320,
+    "scheme": "dark",
+    "noJS": true,
+    "text_zoom": "200%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-320-dark-prompt.png",
+      "screens/phone-320-dark-diff.png",
+      "screens/phone-320-dark-caught-up.png",
+      "screens/phone-320-dark-shown.png"
+    ],
+    "parity": {
+      "version": "81e7502a309cf35fb8aaf8a1d910b262",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "dafdd0568082d82f27691670dc167eb1"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "34888ad4b21f0aa377f99af0aab5f0e6",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "dafdd0568082d82f27691670dc167eb1"
+        },
+        "study_id": "4372c38a350911ef269480a3acbd5724",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "dafdd0568082d82f27691670dc167eb1"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "81e7502a309cf35fb8aaf8a1d910b262"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "3a8e74371369b735cf294aa3445a2af99996d79e3ec29f98204817e34f54dfc6",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  },
+  {
+    "width": 390,
+    "scheme": "light",
+    "noJS": false,
+    "text_zoom": "100%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-390-light-prompt.png",
+      "screens/phone-390-light-diff.png",
+      "screens/phone-390-light-caught-up.png",
+      "screens/phone-390-light-shown.png"
+    ],
+    "parity": {
+      "version": "d58be3081812288c078fce29b60f9daf",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "29a9edfb58990b05ce906e88e4ed58a1"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "316b1242f3f9a917ab9bc03b5be10a49",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "29a9edfb58990b05ce906e88e4ed58a1"
+        },
+        "study_id": "8f2b09a6c67422b3e9cdeddc8b3cc185",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "29a9edfb58990b05ce906e88e4ed58a1"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "d58be3081812288c078fce29b60f9daf"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "67c55f600365111192594e0e34f09cf4af0fb74c2c7bb16df160604c2c494770",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  },
+  {
+    "width": 390,
+    "scheme": "dark",
+    "noJS": false,
+    "text_zoom": "100%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-390-dark-prompt.png",
+      "screens/phone-390-dark-diff.png",
+      "screens/phone-390-dark-caught-up.png",
+      "screens/phone-390-dark-shown.png"
+    ],
+    "parity": {
+      "version": "7fcff53e34940b7d6c30307ea30446ab",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "e4e13456e25f4fd947386ce62f4c40e6"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "7e8f445ec5796f448e59f0f67541563d",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "e4e13456e25f4fd947386ce62f4c40e6"
+        },
+        "study_id": "5906df9b358e79229d466c9781c5c734",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "e4e13456e25f4fd947386ce62f4c40e6"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "7fcff53e34940b7d6c30307ea30446ab"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "b1950fec897a9b6a70254e0b88a202dc4d5e62f5d3f0a369a01ee0a7b12b64fa",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  },
+  {
+    "width": 1280,
+    "scheme": "light",
+    "noJS": false,
+    "text_zoom": "100%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-1280-light-prompt.png",
+      "screens/phone-1280-light-diff.png",
+      "screens/phone-1280-light-caught-up.png",
+      "screens/phone-1280-light-shown.png"
+    ],
+    "parity": {
+      "version": "eab0ef23f6286d3c8b616d5e6f9536bf",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "c9ab29c876d124bbb287b29d38271ce6"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "38ccaad94fa904dbff1a60354451bb17",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "c9ab29c876d124bbb287b29d38271ce6"
+        },
+        "study_id": "4983895663373d74a2a3367ea79c80a7",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "c9ab29c876d124bbb287b29d38271ce6"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "eab0ef23f6286d3c8b616d5e6f9536bf"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "9b722a65422a04b5bcf1e569e2702bad1b78443b6715e1d1b37c453143c1b542",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  },
+  {
+    "width": 1280,
+    "scheme": "dark",
+    "noJS": true,
+    "text_zoom": "100%",
+    "status": "pass",
+    "criteria": [
+      1,
+      2,
+      5,
+      4,
+      3
+    ],
+    "evidence": [
+      "screens/phone-1280-dark-prompt.png",
+      "screens/phone-1280-dark-diff.png",
+      "screens/phone-1280-dark-caught-up.png",
+      "screens/phone-1280-dark-shown.png"
+    ],
+    "parity": {
+      "version": "c9a492df3685bc721348a909ea4145e4",
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "unit_ids": [
+        "98f514df1ddd9dc89d29df652ba48c37"
+      ],
+      "prompt": {
+        "assisted": false,
+        "context": "The path begins in our synthetic notebook.\n",
+        "cue": "",
+        "cue_level": "previous_line",
+        "id": "8dc15b0b3bcc497e27aaa68077175582",
+        "scope": {
+          "kind": "unit",
+          "position": 2,
+          "unit_id": "98f514df1ddd9dc89d29df652ba48c37"
+        },
+        "study_id": "6057066f64c1972fc90aab207422d793",
+        "title": "Apostles' Creed",
+        "unit_ids": [
+          "98f514df1ddd9dc89d29df652ba48c37"
+        ],
+        "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+        "version_id": "c9a492df3685bc721348a909ea4145e4"
+      },
+      "answer": "We concieved a tired garden the water extra.",
+      "phone_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "cli_grade": {
+        "authority": {
+          "grader_version": "1;unicode=17.0.0",
+          "name": "exact-v2"
+        },
+        "diff": [
+          {
+            "expected": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "text": "We"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "conceived"
+            },
+            "kind": "slip",
+            "typed": {
+              "span": {
+                "end": 12,
+                "start": 3
+              },
+              "text": "concieved"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 14,
+                "start": 13
+              },
+              "text": "a"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 22,
+                "start": 15
+              },
+              "text": "patient"
+            },
+            "kind": "wrong",
+            "out_of_order": false,
+            "typed": {
+              "span": {
+                "end": 20,
+                "start": 15
+              },
+              "text": "tired"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 29,
+                "start": 23
+              },
+              "text": "garden"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 27,
+                "start": 21
+              },
+              "text": "garden"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 32,
+                "start": 30
+              },
+              "text": "by"
+            },
+            "kind": "missing",
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 36,
+                "start": 33
+              },
+              "text": "the"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 31,
+                "start": 28
+              },
+              "text": "the"
+            },
+            "unit_index": 1
+          },
+          {
+            "expected": {
+              "span": {
+                "end": 42,
+                "start": 37
+              },
+              "text": "water"
+            },
+            "kind": "correct",
+            "typed": {
+              "span": {
+                "end": 37,
+                "start": 32
+              },
+              "text": "water"
+            },
+            "unit_index": 1
+          },
+          {
+            "kind": "extra",
+            "typed": {
+              "span": {
+                "end": 43,
+                "start": 38
+              },
+              "text": "extra"
+            },
+            "unit_index": 1
+          }
+        ],
+        "units": [
+          {
+            "unit_index": 1,
+            "verdict": "Again"
+          }
+        ],
+        "verdict": "Again",
+        "wrong_version_hint": null
+      },
+      "snapshot_sha256": "cf2fe6e6123bb36e3be433ceb5b703ca39e14268f1f80f30bd8d2cc0c8e119e7",
+      "method": "Exact frozen Prompt restored from complete local R2 archive into isolated clone; compiled scry answer --json."
+    }
+  }
+]
