@@ -1,0 +1,11 @@
+   Compiling scry v0.1.2 (/home/phaedrus/.t3/worktrees/scry/t3-61502778)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.36s
+     Running tests/owner_api.rs (target/debug/deps/owner_api-9026afda2bfce43f)
+
+running 3 tests
+test web_and_api_share_receipts_and_cookie_csrf ... ok
+test token_expiry_and_paid_refusal_precede_reservation_and_transmission ... ok
+test owner_tokens_show_once_replay_conflict_revoke_and_old_archives ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

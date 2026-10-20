@@ -1,7 +1,8 @@
 # Owner token / API / CLI foundation (#314)
 
 Fixed stack base: `4ea47e6331a626842bddac9fca5eeeafc02a89bd`
-(PR #312, `docs/exact-recall-spec`). Behavior: SPEC US-014.1–8,
+(PR #312, initially `docs/exact-recall-spec`; requester changed the target to
+`master` after #312 merged). Behavior: SPEC US-014.1–8,
 AG1, S06.1–4, S09.1–3, S10 and D5. Content APIs follow in #316/#317.
 
 Interface sketch (before implementation):
