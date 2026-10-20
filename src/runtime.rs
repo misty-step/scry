@@ -183,11 +183,7 @@ fn render_error(
     fields: &BTreeMap<String, String>,
     e: AppError,
 ) -> Result<Response> {
-    let view_path = if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
-        path
-    } else {
-        "/"
-    };
+    let view_path = web::mutation_error_path(app, path);
     let query = view_query(env, fields)?;
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
@@ -1210,11 +1206,7 @@ impl DurableObject for LearningSpace {
                     ))?);
                 }
                 self.arm().await?;
-                redirect(if path.starts_with("/practice/") {
-                    "/"
-                } else {
-                    &result.redirect
-                })
+                redirect(web::mutation_redirect(&app, &path, &result.redirect))
             }
         }
     }

@@ -1726,6 +1726,40 @@ fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
     assert!(!changelog().contains("style=\""));
 }
 
+fn exact_stream_active(app: &App) -> bool {
+    app.practice.current.is_some()
+        || app
+            .practice
+            .studies
+            .values()
+            .any(|s| s.status != crate::study::Status::Dropped)
+}
+
+pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
+    if path.starts_with("/practice/") {
+        "/"
+    } else if redirect == "/"
+        && exact_stream_active(app)
+        && (path.starts_with("/review/")
+            || path == "/settings/resume"
+            || path
+                .strip_prefix("/concepts/")
+                .is_some_and(|p| p.ends_with("/practice")))
+    {
+        "/notebook"
+    } else {
+        redirect
+    }
+}
+
+pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
+    if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
+        path
+    } else {
+        mutation_redirect(app, path, "/")
+    }
+}
+
 pub fn render(
     app: &App,
     path: &str,
@@ -1740,15 +1774,7 @@ pub fn render(
         now: now_ms,
     };
     let content = match path {
-        "/" if app.practice.current.is_some()
-            || app
-                .practice
-                .studies
-                .values()
-                .any(|s| s.status != crate::study::Status::Dropped) =>
-        {
-            view.exact_stream()
-        }
+        "/" if exact_stream_active(app) => view.exact_stream(),
         "/" | "/notebook" => view.study(),
         "/create" | "/add" => view.create(),
         "/map" => view.map(),

@@ -827,3 +827,223 @@ fn study_archive_diagnosis_refuses_missing_version_and_malformed_targets() {
         assert_diagnostic_refusal(missing);
     }
 }
+
+fn mixed_notebook(exact: bool) -> Owner {
+    let mut o = Owner::new();
+    engine::seed_fixture(&mut o.app, NOW).unwrap();
+    if exact {
+        let v = o.add("A separate authored exact Unit.", false);
+        o.learn(&v, "steady");
+        o.next(None);
+    }
+    o
+}
+
+fn notebook_action(o: &mut Owner, path: &str, extra: &[(&str, &str)]) -> String {
+    o.op += 1;
+    let operation = format!("notebook-operation-{:06}", o.op);
+    let mut fields = std::collections::BTreeMap::from([
+        ("csrf".into(), o.app.csrf.clone()),
+        ("operation_id".into(), operation.clone()),
+    ]);
+    if let Some(current) = &o.app.occurrence {
+        fields.insert("occurrence_id".into(), current.id.clone());
+    }
+    fields.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    let result = engine::mutate(&mut o.app, path, &fields, NOW, &operation).unwrap();
+    assert_eq!(
+        result.redirect, "/",
+        "Shared receipt remains transport neutral"
+    );
+    let saved = o.app.clone();
+    assert_eq!(
+        engine::mutate(&mut o.app, path, &fields, NOW + 1, "replayed").unwrap(),
+        result
+    );
+    assert_eq!(o.app, saved, "Lost-response replay changes no records");
+    engine::validate_app(&o.app).unwrap();
+    scry::web::mutation_redirect(&o.app, path, &result.redirect).into()
+}
+
+fn notebook_page(o: &Owner, path: &str) -> String {
+    scry::web::render(&o.app, path, &Default::default(), NOW, None)
+}
+
+#[test]
+fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        let practice = o.app.practice.clone();
+        let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
+        assert_eq!(
+            notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]),
+            destination
+        );
+        let page = notebook_page(&o, destination);
+        assert!(page.contains("data-state=\"result\""));
+        assert!(page.contains("I was right"));
+        assert!(page.contains(&wrong));
+        assert_eq!(
+            notebook_action(&mut o, "/review/override", &[("correct", "true")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("You corrected this grade"));
+        assert_eq!(o.app.events.len(), 1);
+        assert_eq!(o.app.overrides.len(), 1);
+        assert_eq!(o.app.events[0].result.outcome, "wrong");
+        assert_eq!(notebook_action(&mut o, "/review/next", &[]), destination);
+        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "question");
+        assert_eq!(
+            o.app.occurrence.as_ref().unwrap().presentation.kind,
+            "recall"
+        );
+        assert_eq!(
+            notebook_action(
+                &mut o,
+                "/review/answer",
+                &[("answer", "my own uncertain answer")]
+            ),
+            destination
+        );
+        let config = engine::WorkConfig {
+            generation: false,
+            jev: false,
+            critic: false,
+            model: "disabled".into(),
+            jev_model: "disabled".into(),
+        };
+        engine::claim_work(&mut o.app, NOW, "missing-model", &config).unwrap();
+        assert!(notebook_page(&o, destination).contains("data-state=\"self-check\""));
+        assert_eq!(notebook_action(&mut o, "/review/retry", &[]), destination);
+        engine::claim_work(&mut o.app, NOW, "still-missing-model", &config).unwrap();
+        assert_eq!(
+            notebook_action(&mut o, "/review/self", &[("correct", "true")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
+        assert_eq!(o.app.events.last().unwrap().result.authority, "learner");
+        assert_eq!(
+            o.app.practice, practice,
+            "Legacy practice never advances exact practice"
+        );
+        if exact {
+            assert!(notebook_page(&o, "/").contains("data-state=\"exact-prompt\""));
+        }
+    }
+}
+
+#[test]
+fn mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        let practice = o.app.practice.clone();
+        for c in o.app.concepts.values_mut() {
+            c.introduced_ms = None;
+        }
+        o.app.occurrence = None;
+        engine::ensure_occurrence(&mut o.app, NOW, "new-concept").unwrap();
+        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "intro");
+        assert_eq!(
+            notebook_action(&mut o, "/review/intro", &[("known", "false")]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
+        assert_eq!(notebook_action(&mut o, "/review/reveal", &[]), destination);
+        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
+        let concept = o.app.occurrence.as_ref().unwrap().concept_id.clone();
+        o.app.occurrence = None;
+        assert_eq!(
+            notebook_action(&mut o, &format!("/concepts/{concept}/practice"), &[]),
+            destination
+        );
+        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
+        o.app.restored_paused = true;
+        assert_eq!(
+            notebook_action(&mut o, "/settings/resume", &[]),
+            destination
+        );
+        assert!(!o.app.restored_paused);
+        assert_eq!(o.app.practice, practice);
+    }
+}
+
+#[test]
+fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
+    for exact in [true, false] {
+        let mut o = mixed_notebook(exact);
+        let destination = if exact { "/notebook" } else { "/" };
+        for (occurrence, answer, status) in [("stale", "", 409), ("current", "", 422)] {
+            let before = o.app.clone();
+            let fields = [
+                ("csrf".into(), o.app.csrf.clone()),
+                ("operation_id".into(), format!("rejected-notebook-{status}")),
+                (
+                    "occurrence_id".into(),
+                    if occurrence == "current" {
+                        o.app.occurrence.as_ref().unwrap().id.clone()
+                    } else {
+                        occurrence.into()
+                    },
+                ),
+                ("answer".into(), answer.into()),
+            ]
+            .into();
+            let error =
+                engine::mutate(&mut o.app, "/review/answer", &fields, NOW, "rejected").unwrap_err();
+            assert_eq!(error.status, status);
+            assert_eq!(o.app, before);
+            let path = scry::web::mutation_error_path(&o.app, "/review/answer");
+            assert_eq!(path, destination);
+            let page = scry::web::render(&o.app, path, &fields, NOW, Some(&error.message));
+            assert!(page.contains("data-state=\"question\""));
+            assert!(!page.contains("data-state=\"exact-"));
+            assert!(page.contains(&error.message));
+        }
+        if exact {
+            let paths = [
+                "/review/intro",
+                "/review/answer",
+                "/review/reveal",
+                "/review/self",
+                "/review/retry",
+                "/review/override",
+                "/review/next",
+                "/review/help",
+                "/settings/resume",
+                "/concepts/synthetic/practice",
+            ];
+            for path in paths {
+                assert_eq!(
+                    scry::web::mutation_error_path(&o.app, path),
+                    "/notebook",
+                    "{path}"
+                );
+            }
+            assert_eq!(
+                scry::web::mutation_redirect(&o.app, "/review/help", "/concepts/synthetic"),
+                "/concepts/synthetic"
+            );
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/practice/answer"),
+                "/"
+            );
+            assert_eq!(
+                scry::web::mutation_redirect(&o.app, "/practice/answer", "/practice/held"),
+                "/"
+            );
+            assert_eq!(scry::web::mutation_error_path(&o.app, "/create"), "/create");
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/questions/synthetic/edit"),
+                "/questions/synthetic/edit"
+            );
+            o.app.practice.current = None;
+            assert!(notebook_page(&o, "/").contains("data-state=\"exact-caught-up\""));
+            assert_eq!(
+                scry::web::mutation_error_path(&o.app, "/review/answer"),
+                "/notebook"
+            );
+        }
+    }
+}
