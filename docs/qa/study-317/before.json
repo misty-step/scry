@@ -1,0 +1,21 @@
+{
+  "source": "17ae38bf07f5d062e06ba3065642f149e5b323a0",
+  "data": "Synthetic, syntactically valid local credential fixture. No HTTP or live credential used.",
+  "status": "expected refusal",
+  "command": "scry learn <synthetic-version-id> --json --config <synthetic-fixture>",
+  "exit": 1,
+  "output": {
+    "error": "Usage: scry login|whoami|token|search|work|version|export --library|spend --by day|purpose|model [--json] [--config PATH]"
+  },
+  "artifacts": [
+    {
+      "path": "/home/phaedrus/.cache/tmp/scry-study-parent-17ae.fGnXOH7z/target/debug/scry",
+      "sha256": "f7d088b739d58e31bcc7d9cf26d7177c213dfd51032022fc7d0fee33a9c2fc67"
+    },
+    {
+      "path": "/home/phaedrus/.cache/tmp/scry-study-parent-17ae.fGnXOH7z/build/index_bg.wasm",
+      "sha256": "d949d867444b163779f42e74ce4b5f78456d2b1a7b5c1830a0efee9bb33d80ba"
+    }
+  ],
+  "limit": "Parent Worker baseline probe stalled before fixture setup and was stopped. CLI absence is observed; no parent Worker journey pass is claimed."
+}

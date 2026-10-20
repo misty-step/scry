@@ -1,0 +1,11 @@
+[INFO]: Checking for the Wasm target...
+[INFO]: Compiling to Wasm...
+   Compiling scry v0.1.3 (/home/phaedrus/.t3/worktrees/scry/t3-213f40fd)
+    Finished `release` profile [optimized] target(s) in 24.28s
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: :-)Done in 27.96s
+[INFO]: :-) Your wasm pkg is ready to publish at /home/phaedrus/.t3/worktrees/scry/t3-213f40fd/build/.tmp.
+
+  index.js  33.0kb
+
+⚡ Done in 4ms
