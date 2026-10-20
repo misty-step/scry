@@ -2,6 +2,7 @@
 """Exercise the daily production trigger offline, without pass or network access."""
 import importlib.util
 import io
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -38,6 +39,9 @@ class DailyBackup(unittest.TestCase):
         http = mock.patch.object(BACKUP, 'urlopen')
         self.http = http.start()
         self.addCleanup(http.stop)
+        checkins = mock.patch.object(BACKUP, 'send_checkin', create=True)
+        self.checkins = checkins.start()
+        self.addCleanup(checkins.stop)
         self.response = self.http.return_value.__enter__.return_value
         self.response.status = 200
         self.response.read.return_value = b'Snapshot verified.'
@@ -139,6 +143,108 @@ class DailyBackup(unittest.TestCase):
     def test_unexpected_error_never_exposes_details(self):
         self.http.side_effect = RuntimeError('private-error')
         self.assertEqual(self.run_main(), (1, 'Scry backup failed: unexpected failure.\n'))
+
+    def test_success_reports_start_then_ok_with_one_execution_id(self):
+        self.assertEqual(self.run_main()[0], 0)
+        calls = self.checkins.call_args_list
+        self.assertEqual(len(calls), 2)
+        checkin_id = calls[0].args[0]
+        self.assertRegex(checkin_id, r'^[0-9a-f]{32}$')
+        self.assertEqual(calls[0], mock.call(checkin_id, 'in_progress'))
+        self.assertEqual(calls[1].args, (checkin_id, 'ok'))
+        self.assertGreaterEqual(calls[1].kwargs['duration'], 0)
+
+    def test_failure_reports_error_even_before_backup_network_is_available(self):
+        self.credentials.side_effect = FileNotFoundError('private-path')
+        self.assertEqual(self.run_main()[0], 1)
+        self.assertEqual([c.args[1] for c in self.checkins.call_args_list], ['in_progress', 'error'])
+        self.assertEqual(self.checkins.call_args_list[0].args[0], self.checkins.call_args.args[0])
+        self.http.assert_not_called()
+
+    def test_wrong_origin_response_reports_error(self):
+        self.response.status = 421
+        self.assertEqual(self.run_main()[0], 1)
+        self.assertEqual([c.args[1] for c in self.checkins.call_args_list], ['in_progress', 'error'])
+
+    def test_start_checkin_precedes_config_and_credentials(self):
+        self.config.unlink()
+        self.checkins.side_effect = lambda *a, **kw: self.credentials.assert_not_called()
+        self.assertEqual(self.run_main()[0], 1)
+        self.assertEqual([c.args[1] for c in self.checkins.call_args_list], ['in_progress', 'error'])
+
+    def test_sink_failure_preserves_backup_and_fails_install_verification(self):
+        for failures in ([RuntimeError('private-sink'), None], [None, RuntimeError('private-sink')]):
+            with self.subTest(failures=failures):
+                self.credentials.side_effect = [v + b'\n' for v in VALUES]
+                self.checkins.reset_mock(side_effect=True)
+                self.checkins.side_effect = failures
+                result, output = self.run_main()
+                self.assertEqual(result, 1)
+                self.assertIn('Scry production snapshot verified.', output)
+                self.assertIn('Scry backup monitoring unavailable.', output)
+                self.assertNotIn('private-sink', output)
+                self.assertEqual(self.checkins.call_count, 2)
+                self.assertEqual(self.checkins.call_args.args[1], 'ok')
+
+
+class SentryTransport(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        transport = Path(directory.name) / 'telemetry.mjs'
+        transport.write_text('const DSN = "https://synthetic-public-key@ingest.example/12345";\n')
+        patch = mock.patch.object(BACKUP, 'SENTRY_TRANSPORT', transport, create=True)
+        patch.start()
+        self.addCleanup(patch.stop)
+        http = mock.patch.object(BACKUP, 'urlopen')
+        self.http = http.start()
+        self.addCleanup(http.stop)
+        self.response = self.http.return_value.__enter__.return_value
+        self.response.status = 200
+
+    def payload(self, status):
+        BACKUP.send_checkin('a' * 32, status, **({'duration': 0.5} if status != 'in_progress' else {}))
+        request = self.http.call_args.args[0]
+        envelope, item, payload = [json.loads(line) for line in request.data.decode().splitlines()]
+        self.assertEqual(request.full_url, 'https://ingest.example/api/12345/envelope/')
+        self.assertEqual(request.get_method(), 'POST')
+        self.assertEqual(item, {'type': 'check_in'})
+        self.assertEqual(envelope, {'dsn': 'https://synthetic-public-key@ingest.example/12345'})
+        self.assertEqual({k.lower() for k, _ in request.header_items()}, {'content-type', 'user-agent'})
+        self.assertEqual(self.http.call_args.kwargs, {'timeout': 2})
+        return payload
+
+    def test_upsert_detects_one_missed_or_failed_daily_run(self):
+        payload = self.payload('in_progress')
+        self.assertEqual(payload['monitor_slug'], 'scry-mirrodin-daily-backup')
+        self.assertEqual(payload['environment'], 'production')
+        self.assertRegex(payload['release'], r'^scry-daily-backup@[0-9a-f]{64}$')
+        self.assertEqual(payload['monitor_config'], {
+            'schedule': {'type': 'crontab', 'value': '30 9 * * *'},
+            'timezone': 'UTC', 'checkin_margin': 15, 'max_runtime': 3,
+            'failure_issue_threshold': 1, 'recovery_threshold': 1,
+        })
+        self.assertEqual(set(payload), {'check_in_id', 'monitor_slug', 'environment', 'release',
+                                        'status', 'monitor_config'})
+
+    def test_terminal_checkins_only_contain_safe_execution_metadata(self):
+        for status in ('ok', 'error'):
+            with self.subTest(status=status):
+                payload = self.payload(status)
+                self.assertEqual(payload['status'], status)
+                self.assertEqual(payload['check_in_id'], 'a' * 32)
+                self.assertEqual(payload['duration'], 0.5)
+                self.assertEqual(set(payload), {'check_in_id', 'monitor_slug', 'environment', 'release',
+                                                'status', 'duration'})
+
+    def test_rejected_checkin_is_not_success_or_retried(self):
+        for status in (302, 400, 429, 503):
+            with self.subTest(status=status):
+                self.http.reset_mock()
+                self.response.status = status
+                with self.assertRaises(Exception):
+                    BACKUP.send_checkin('a' * 32, 'error', duration=0.5)
+                self.http.assert_called_once()
 
 
 class Redirects(unittest.TestCase):

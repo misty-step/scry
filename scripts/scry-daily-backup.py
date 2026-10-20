@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Request and verify the daily production snapshot from Mirrodin."""
+import hashlib
+import json
 from pathlib import Path
+import re
 import subprocess
 import sys
+import time
 import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 CONFIG = Path(__file__).resolve().parents[1] / 'deploy/rust-production.toml'
+SENTRY_TRANSPORT = Path(__file__).resolve().parents[1] / 'deploy/cloudflare-hosting/telemetry.mjs'
 PASS_HEADERS = {
     'CF-Access-Client-Id': 'misty-step/SCRY_ACCESS_CLIENT_ID',
     'CF-Access-Client-Secret': 'misty-step/SCRY_ACCESS_CLIENT_SECRET',
@@ -70,7 +76,50 @@ def run():
             raise BackupError('verification response missing')
 
 
+def send_checkin(checkin_id, status, *, duration=None):
+    # Reuse the Worker's public ingest identifier without a second credential or copy.
+    dsn = re.search(r'^const DSN = "([^"]+)";$', SENTRY_TRANSPORT.read_text(), re.MULTILINE)[1]
+    parsed = urllib.parse.urlsplit(dsn)
+    payload = {
+        'check_in_id': checkin_id,
+        'monitor_slug': 'scry-mirrodin-daily-backup',
+        'status': status,
+        'environment': 'production',
+        'release': 'scry-daily-backup@' + hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    }
+    if status == 'in_progress':
+        payload['monitor_config'] = {
+            'schedule': {'type': 'crontab', 'value': '30 9 * * *'},
+            'timezone': 'UTC', 'checkin_margin': 15, 'max_runtime': 3,
+            'failure_issue_threshold': 1, 'recovery_threshold': 1,
+        }
+    else:
+        payload['duration'] = duration
+    body = '\n'.join(json.dumps(item) for item in ({'dsn': dsn}, {'type': 'check_in'}, payload)) + '\n'
+    request = urllib.request.Request(f'https://{parsed.hostname}/api{parsed.path}/envelope/',
+        data=body.encode(), method='POST',
+        headers={'Content-Type': 'application/x-sentry-envelope', 'User-Agent': 'ScryDailyBackup/1.0'})
+    with urlopen(request, timeout=2) as response:
+        if response.status != 200:
+            raise BackupError('monitoring check-in rejected')
+
+
+def report_checkin(*args, **kwargs):
+    try:
+        send_checkin(*args, **kwargs)
+        return True
+    except Exception as error:
+        if isinstance(error, urllib.error.HTTPError):
+            error.close()
+        print('Scry backup monitoring unavailable.', file=sys.stderr)
+        return False
+
+
 def main():
+    checkin_id = uuid.uuid4().hex
+    started = time.monotonic()
+    monitoring_ok = report_checkin(checkin_id, 'in_progress')
+    result = 0
     try:
         run()
     except Exception as error:
@@ -84,9 +133,12 @@ def main():
         else:
             reason = 'unexpected failure'
         print('Scry backup failed: ' + reason + '.', file=sys.stderr)
-        return 1
-    print('Scry production snapshot verified.')
-    return 0
+        result = 1
+    else:
+        print('Scry production snapshot verified.')
+    monitoring_ok = report_checkin(checkin_id, 'error' if result else 'ok',
+        duration=time.monotonic() - started) and monitoring_ok
+    return result or int(not monitoring_ok)
 
 
 if __name__ == '__main__':
