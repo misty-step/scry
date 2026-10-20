@@ -23,9 +23,10 @@ helper = (root / 'qa/runtime-helper.mjs').read_text()
 helper = helper.replace("require('miniflare')", f'require({json.dumps(str(root / "node_modules/miniflare"))})')
 helper = helper.replace('this.inner=new RustLearningSpace(ctx,env);',
                         'this.probeCtx=ctx;this.inner=new RustLearningSpace(ctx,env);')
-needle = 'fetch(request){return this.inner.fetch(request);}alarm(){return this.inner.alarm();}'
+clock = "${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}"
+needle = 'fetch(request){' + clock + 'return this.inner.fetch(request);}alarm(){return this.inner.alarm();}'
 assert needle in helper, 'Inspection wrapper changed; inspect before adapting the probe.'
-helper = helper.replace(needle, '''async fetch(request){
+helper = helper.replace(needle, '''async fetch(request){''' + clock + '''
   if(new URL(request.url).pathname==='/__probe')return Response.json({alarm_ms:await this.probeCtx.storage.getAlarm()});
   if(new URL(request.url).pathname==='/__probe/recover'){
     this.alarmDone=Promise.withResolvers();await this.probeCtx.storage.setAlarm(Date.now());
