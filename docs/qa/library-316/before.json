@@ -1,0 +1,10 @@
+{
+  "source": "a0fd5d0306b4a6d39b7a45496b29380d0c968503",
+  "command": "scry search \"apostles creed\" --json",
+  "exit": 1,
+  "output": {
+    "error": "Usage: scry login|whoami|token create|list|revoke [--json] [--config PATH]"
+  },
+  "limit": "The fixed-base CLI refuses the unsupported command before HTTP. The synthetic credential has no server authority.",
+  "binary_sha256": "81cbfd1e11bb4b4b5fe6933f25a993ef8974ad8c260ae066a265e7fb119a9e94"
+}

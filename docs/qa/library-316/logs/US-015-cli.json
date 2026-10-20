@@ -1,0 +1,2083 @@
+[
+  {
+    "command": "scry login --url http://127.0.0.1:33059 --token-stdin --json",
+    "exit": 0,
+    "output": {
+      "owner": true,
+      "token": {
+        "created_ms": 1792513349287,
+        "expires_ms": null,
+        "id": "5de1e09ad1223384185f8d3fc9c2bd7d",
+        "last_used_ms": 1792513350171,
+        "name": "Library synthetic unpaid agent",
+        "paid": false,
+        "revoked_ms": null
+      }
+    }
+  },
+  {
+    "command": "scry search apostles creed --json",
+    "exit": 0,
+    "output": {
+      "empty": true,
+      "matches": [],
+      "message": "Nothing matches."
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --operation-id library-initial-add-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry version show 23f85fef77a73b8309b5ed567ab01133 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "version": {
+        "id": "23f85fef77a73b8309b5ed567ab01133",
+        "kind": "text",
+        "name": "English, Roman Missal 2011 (synthetic fixture)",
+        "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "3c016388b6087884aa35a9b57747806a",
+            "units": [
+              {
+                "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                "text": "Synthetic opening clause,"
+              },
+              {
+                "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                "text": " next clause.\r\n"
+              }
+            ]
+          },
+          {
+            "heading": "Section 2",
+            "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+            "units": [
+              {
+                "id": "a414223095a2cdb2a9d88436076f204d",
+                "text": "A second authored article;"
+              },
+              {
+                "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                "text": " final clause.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [
+          "Caller-authored synthetic excerpt; no canonical wording claimed"
+        ],
+        "spelling_strict": false,
+        "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+        "work_id": "12820a904a9e0a234598036a3cc83fc1"
+      },
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 1,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 1,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry search apostles creed --json",
+    "exit": 0,
+    "output": {
+      "empty": false,
+      "matches": [
+        {
+          "relations": [
+            {
+              "kind": "version_of",
+              "version_id": "23f85fef77a73b8309b5ed567ab01133",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "versions": [
+            {
+              "id": "23f85fef77a73b8309b5ed567ab01133",
+              "kind": "text",
+              "name": "English, Roman Missal 2011 (synthetic fixture)",
+              "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+              "provenance": "supplied",
+              "rights": "private_only",
+              "sections": [
+                {
+                  "heading": "Section 1",
+                  "id": "3c016388b6087884aa35a9b57747806a",
+                  "units": [
+                    {
+                      "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                      "text": "Synthetic opening clause,"
+                    },
+                    {
+                      "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                      "text": " next clause.\r\n"
+                    }
+                  ]
+                },
+                {
+                  "heading": "Section 2",
+                  "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+                  "units": [
+                    {
+                      "id": "a414223095a2cdb2a9d88436076f204d",
+                      "text": "A second authored article;"
+                    },
+                    {
+                      "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                      "text": " final clause.\n"
+                    }
+                  ]
+                }
+              ],
+              "sources": [
+                "Caller-authored synthetic excerpt; no canonical wording claimed"
+              ],
+              "spelling_strict": false,
+              "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "work": {
+            "aliases": [
+              "Symbolum Apostolorum"
+            ],
+            "context": "",
+            "id": "12820a904a9e0a234598036a3cc83fc1",
+            "kind": "text",
+            "revision": 1,
+            "title": "Apostles' Creed"
+          }
+        }
+      ],
+      "message": "Matching Works."
+    }
+  },
+  {
+    "command": "scry search Symbolum Apostolorum --json",
+    "exit": 0,
+    "output": {
+      "empty": false,
+      "matches": [
+        {
+          "relations": [
+            {
+              "kind": "version_of",
+              "version_id": "23f85fef77a73b8309b5ed567ab01133",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "versions": [
+            {
+              "id": "23f85fef77a73b8309b5ed567ab01133",
+              "kind": "text",
+              "name": "English, Roman Missal 2011 (synthetic fixture)",
+              "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+              "provenance": "supplied",
+              "rights": "private_only",
+              "sections": [
+                {
+                  "heading": "Section 1",
+                  "id": "3c016388b6087884aa35a9b57747806a",
+                  "units": [
+                    {
+                      "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                      "text": "Synthetic opening clause,"
+                    },
+                    {
+                      "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                      "text": " next clause.\r\n"
+                    }
+                  ]
+                },
+                {
+                  "heading": "Section 2",
+                  "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+                  "units": [
+                    {
+                      "id": "a414223095a2cdb2a9d88436076f204d",
+                      "text": "A second authored article;"
+                    },
+                    {
+                      "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                      "text": " final clause.\n"
+                    }
+                  ]
+                }
+              ],
+              "sources": [
+                "Caller-authored synthetic excerpt; no canonical wording claimed"
+              ],
+              "spelling_strict": false,
+              "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "work": {
+            "aliases": [
+              "Symbolum Apostolorum"
+            ],
+            "context": "",
+            "id": "12820a904a9e0a234598036a3cc83fc1",
+            "kind": "text",
+            "revision": 1,
+            "title": "Apostles' Creed"
+          }
+        }
+      ],
+      "message": "Matching Works."
+    }
+  },
+  {
+    "command": "scry search synthetic opening clause --json",
+    "exit": 0,
+    "output": {
+      "empty": false,
+      "matches": [
+        {
+          "relations": [
+            {
+              "kind": "version_of",
+              "version_id": "23f85fef77a73b8309b5ed567ab01133",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "versions": [
+            {
+              "id": "23f85fef77a73b8309b5ed567ab01133",
+              "kind": "text",
+              "name": "English, Roman Missal 2011 (synthetic fixture)",
+              "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+              "provenance": "supplied",
+              "rights": "private_only",
+              "sections": [
+                {
+                  "heading": "Section 1",
+                  "id": "3c016388b6087884aa35a9b57747806a",
+                  "units": [
+                    {
+                      "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                      "text": "Synthetic opening clause,"
+                    },
+                    {
+                      "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                      "text": " next clause.\r\n"
+                    }
+                  ]
+                },
+                {
+                  "heading": "Section 2",
+                  "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+                  "units": [
+                    {
+                      "id": "a414223095a2cdb2a9d88436076f204d",
+                      "text": "A second authored article;"
+                    },
+                    {
+                      "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                      "text": " final clause.\n"
+                    }
+                  ]
+                }
+              ],
+              "sources": [
+                "Caller-authored synthetic excerpt; no canonical wording claimed"
+              ],
+              "spelling_strict": false,
+              "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+              "work_id": "12820a904a9e0a234598036a3cc83fc1"
+            }
+          ],
+          "work": {
+            "aliases": [
+              "Symbolum Apostolorum"
+            ],
+            "context": "",
+            "id": "12820a904a9e0a234598036a3cc83fc1",
+            "kind": "text",
+            "revision": 1,
+            "title": "Apostles' Creed"
+          }
+        }
+      ],
+      "message": "Matching Works."
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 1,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --operation-id library-initial-add-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": true,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/punctuation.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 1,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --context changed payload --operation-id library-initial-add-operation --json",
+    "exit": 1,
+    "output": {
+      "error": "Operation conflict."
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --operation-id library-concurrent-add-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --operation-id library-concurrent-add-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": true,
+      "result": {
+        "entity_id": "23f85fef77a73b8309b5ed567ab01133",
+        "message": null,
+        "redirect": "/api/v1/library/versions/23f85fef77a73b8309b5ed567ab01133"
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Symbolum Apostolorum --kind text --text-file <fixture>/second.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "023025debbdee47bcb4b3fd308152983",
+        "message": null,
+        "redirect": "/api/v1/library/versions/023025debbdee47bcb4b3fd308152983"
+      }
+    }
+  },
+  {
+    "command": "scry work show 12820a904a9e0a234598036a3cc83fc1 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "versions": [
+        {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 2,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "version-of-023025debbdee47bcb4b3fd308152983": {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "023025debbdee47bcb4b3fd308152983": {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 2,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry version add --title Apostles' Creed --kind text --text-file <fixture>/supplied.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --title Must never be stored --sections-file <fixture>/bad-sections.json --json",
+    "exit": 1,
+    "output": {
+      "error": "Unexpected Version arguments."
+    }
+  },
+  {
+    "command": "scry version add --title Explicit Sections --kind text --text-file <fixture>/explicit.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --alias Explicit alias --sections-file <fixture>/sections.json --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "733f4b13e62baec06f7429c006659e43",
+        "message": null,
+        "redirect": "/api/v1/library/versions/733f4b13e62baec06f7429c006659e43"
+      }
+    }
+  },
+  {
+    "command": "scry version show 733f4b13e62baec06f7429c006659e43 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "733f4b13e62baec06f7429c006659e43",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "version": {
+        "id": "733f4b13e62baec06f7429c006659e43",
+        "kind": "text",
+        "name": "English, Roman Missal 2011 (synthetic fixture)",
+        "normalized_hash": "2d4b81ac35f7d5258255c098889a6c18288450138d7c351e1888d3caf1b503c2",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Synthetic article one",
+            "id": "dccb3462b92c9a514dcc0dfbbdbe42c4",
+            "units": [
+              {
+                "id": "898314a8319b9c56f59217508d72b25b",
+                "text": "Supplied first clause,"
+              },
+              {
+                "id": "5d60daea72b53fa5976092174150cae6",
+                "text": " second clause.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [
+          "Caller-authored synthetic excerpt; no canonical wording claimed"
+        ],
+        "spelling_strict": false,
+        "text": "Supplied first clause, second clause.\n",
+        "work_id": "12820a904a9e0a234598036a3cc83fc1"
+      },
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 3,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry work show 12820a904a9e0a234598036a3cc83fc1 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "733f4b13e62baec06f7429c006659e43",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "versions": [
+        {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        {
+          "id": "733f4b13e62baec06f7429c006659e43",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "2d4b81ac35f7d5258255c098889a6c18288450138d7c351e1888d3caf1b503c2",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Synthetic article one",
+              "id": "dccb3462b92c9a514dcc0dfbbdbe42c4",
+              "units": [
+                {
+                  "id": "898314a8319b9c56f59217508d72b25b",
+                  "text": "Supplied first clause,"
+                },
+                {
+                  "id": "5d60daea72b53fa5976092174150cae6",
+                  "text": " second clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Supplied first clause, second clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 3,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry version supersede 23f85fef77a73b8309b5ed567ab01133 --title Apostles' Creed --kind text --text-file <fixture>/corrected.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --revision 3 --operation-id library-supersede-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "d6e6146de881e0c3b24fb79a6a050046",
+        "message": null,
+        "redirect": "/api/v1/library/versions/d6e6146de881e0c3b24fb79a6a050046"
+      }
+    }
+  },
+  {
+    "command": "scry version show 23f85fef77a73b8309b5ed567ab01133 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "version": {
+        "id": "23f85fef77a73b8309b5ed567ab01133",
+        "kind": "text",
+        "name": "English, Roman Missal 2011 (synthetic fixture)",
+        "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "3c016388b6087884aa35a9b57747806a",
+            "units": [
+              {
+                "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                "text": "Synthetic opening clause,"
+              },
+              {
+                "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                "text": " next clause.\r\n"
+              }
+            ]
+          },
+          {
+            "heading": "Section 2",
+            "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+            "units": [
+              {
+                "id": "a414223095a2cdb2a9d88436076f204d",
+                "text": "A second authored article;"
+              },
+              {
+                "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                "text": " final clause.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [
+          "Caller-authored synthetic excerpt; no canonical wording claimed"
+        ],
+        "spelling_strict": false,
+        "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+        "work_id": "12820a904a9e0a234598036a3cc83fc1"
+      },
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 4,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry version show 23f85fef77a73b8309b5ed567ab01133 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "version": {
+        "id": "23f85fef77a73b8309b5ed567ab01133",
+        "kind": "text",
+        "name": "English, Roman Missal 2011 (synthetic fixture)",
+        "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "3c016388b6087884aa35a9b57747806a",
+            "units": [
+              {
+                "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                "text": "Synthetic opening clause,"
+              },
+              {
+                "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                "text": " next clause.\r\n"
+              }
+            ]
+          },
+          {
+            "heading": "Section 2",
+            "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+            "units": [
+              {
+                "id": "a414223095a2cdb2a9d88436076f204d",
+                "text": "A second authored article;"
+              },
+              {
+                "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                "text": " final clause.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [
+          "Caller-authored synthetic excerpt; no canonical wording claimed"
+        ],
+        "spelling_strict": false,
+        "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+        "work_id": "12820a904a9e0a234598036a3cc83fc1"
+      },
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 4,
+        "title": "Apostles' Creed"
+      }
+    }
+  },
+  {
+    "command": "scry version supersede 23f85fef77a73b8309b5ed567ab01133 --title Apostles' Creed --kind text --text-file <fixture>/corrected.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --revision 3 --operation-id library-supersede-operation --json",
+    "exit": 0,
+    "output": {
+      "replayed": true,
+      "result": {
+        "entity_id": "d6e6146de881e0c3b24fb79a6a050046",
+        "message": null,
+        "redirect": "/api/v1/library/versions/d6e6146de881e0c3b24fb79a6a050046"
+      }
+    }
+  },
+  {
+    "command": "scry version supersede 23f85fef77a73b8309b5ed567ab01133 --title Apostles' Creed --kind text --text-file <fixture>/corrected.txt --name English, Roman Missal 2011 (synthetic fixture) --alias Symbolum Apostolorum --source Caller-authored synthetic excerpt; no canonical wording claimed --revision 3 --operation-id library-stale-supersede-op --json",
+    "exit": 1,
+    "output": {
+      "error": "Operation conflict."
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "supersedes-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        "version-of-023025debbdee47bcb4b3fd308152983": {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-733f4b13e62baec06f7429c006659e43": {
+          "kind": "version_of",
+          "version_id": "733f4b13e62baec06f7429c006659e43",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-d6e6146de881e0c3b24fb79a6a050046": {
+          "kind": "version_of",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "023025debbdee47bcb4b3fd308152983": {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "733f4b13e62baec06f7429c006659e43": {
+          "id": "733f4b13e62baec06f7429c006659e43",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "2d4b81ac35f7d5258255c098889a6c18288450138d7c351e1888d3caf1b503c2",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Synthetic article one",
+              "id": "dccb3462b92c9a514dcc0dfbbdbe42c4",
+              "units": [
+                {
+                  "id": "898314a8319b9c56f59217508d72b25b",
+                  "text": "Supplied first clause,"
+                },
+                {
+                  "id": "5d60daea72b53fa5976092174150cae6",
+                  "text": " second clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Supplied first clause, second clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "d6e6146de881e0c3b24fb79a6a050046": {
+          "id": "d6e6146de881e0c3b24fb79a6a050046",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "8db2223eca3d590a47f68833f56937fe9e2d87e1f3d42a65ddd52018e37bdc07",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "0c4b24cf8cf266876a3dcce9ecfcdbc9",
+              "units": [
+                {
+                  "id": "d58e8039ef4f4b3553c41653a1af1550",
+                  "text": "Synthetic corrected opening clause,"
+                },
+                {
+                  "id": "a860343faa19991adf8cd0ae8d133ad5",
+                  "text": " next clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic corrected opening clause, next clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 4,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "observation": "Built Worker complete local R2 readback",
+    "archive_sha256": "f6266e3a587648a70c867d6c9c4b41168f0b02062d305f3c7358deb97fb08eeb",
+    "versions": 4,
+    "limit": "Local emulator; no independent hosted recovery."
+  },
+  {
+    "command": "scry version add --title Unused Work --kind text --text-file <fixture>/unused.txt --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "88da345342eb656e089fb67f625d84e3",
+        "message": null,
+        "redirect": "/api/v1/library/versions/88da345342eb656e089fb67f625d84e3"
+      }
+    }
+  },
+  {
+    "command": "scry version show 88da345342eb656e089fb67f625d84e3 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "88da345342eb656e089fb67f625d84e3",
+          "work_id": "145bff7247564ce8efe7d12bc573a1cc"
+        }
+      ],
+      "version": {
+        "id": "88da345342eb656e089fb67f625d84e3",
+        "kind": "text",
+        "name": "",
+        "normalized_hash": "44a68dd2b4fd2a335461f0ca4ba040839f2b6d3b477006edd81e7fd1d689d87b",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "bf3b5c2ae25b983fc0bd0d57db8c863e",
+            "units": [
+              {
+                "id": "927441952dda5d0e1c8042e28ab4d1f3",
+                "text": "A separate unused synthetic text.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "spelling_strict": false,
+        "text": "A separate unused synthetic text.\n",
+        "work_id": "145bff7247564ce8efe7d12bc573a1cc"
+      },
+      "work": {
+        "aliases": [],
+        "context": "",
+        "id": "145bff7247564ce8efe7d12bc573a1cc",
+        "kind": "text",
+        "revision": 1,
+        "title": "Unused Work"
+      }
+    }
+  },
+  {
+    "command": "scry work edit 145bff7247564ce8efe7d12bc573a1cc --revision 1 --title Renamed unused Work --alias Unused alias --context Caller-supplied context --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "145bff7247564ce8efe7d12bc573a1cc",
+        "message": null,
+        "redirect": "/api/v1/library/works/145bff7247564ce8efe7d12bc573a1cc"
+      }
+    }
+  },
+  {
+    "command": "scry work show 145bff7247564ce8efe7d12bc573a1cc --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "88da345342eb656e089fb67f625d84e3",
+          "work_id": "145bff7247564ce8efe7d12bc573a1cc"
+        }
+      ],
+      "versions": [
+        {
+          "id": "88da345342eb656e089fb67f625d84e3",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "44a68dd2b4fd2a335461f0ca4ba040839f2b6d3b477006edd81e7fd1d689d87b",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "bf3b5c2ae25b983fc0bd0d57db8c863e",
+              "units": [
+                {
+                  "id": "927441952dda5d0e1c8042e28ab4d1f3",
+                  "text": "A separate unused synthetic text.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "A separate unused synthetic text.\n",
+          "work_id": "145bff7247564ce8efe7d12bc573a1cc"
+        }
+      ],
+      "work": {
+        "aliases": [
+          "Unused alias"
+        ],
+        "context": "Caller-supplied context",
+        "id": "145bff7247564ce8efe7d12bc573a1cc",
+        "kind": "text",
+        "revision": 2,
+        "title": "Renamed unused Work"
+      }
+    }
+  },
+  {
+    "command": "scry version delete 88da345342eb656e089fb67f625d84e3 --revision 1 --json",
+    "exit": 1,
+    "output": {
+      "error": "Operation conflict."
+    }
+  },
+  {
+    "command": "scry version delete 88da345342eb656e089fb67f625d84e3 --revision 2 --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "88da345342eb656e089fb67f625d84e3",
+        "message": null,
+        "redirect": "/api/v1/library/versions/88da345342eb656e089fb67f625d84e3"
+      }
+    }
+  },
+  {
+    "command": "scry version show 88da345342eb656e089fb67f625d84e3 --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "command": "scry work delete 145bff7247564ce8efe7d12bc573a1cc --revision 3 --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "145bff7247564ce8efe7d12bc573a1cc",
+        "message": null,
+        "redirect": "/api/v1/library/works/145bff7247564ce8efe7d12bc573a1cc"
+      }
+    }
+  },
+  {
+    "command": "scry work show 145bff7247564ce8efe7d12bc573a1cc --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "command": "scry version add --title Whole unused Work --kind text --text-file <fixture>/unused.txt --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "484700d8b737b78049043740d1bf33b9",
+        "message": null,
+        "redirect": "/api/v1/library/versions/484700d8b737b78049043740d1bf33b9"
+      }
+    }
+  },
+  {
+    "command": "scry version show 484700d8b737b78049043740d1bf33b9 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "version_of",
+          "version_id": "484700d8b737b78049043740d1bf33b9",
+          "work_id": "11835bdf25bc9f4aefdb8306b0fb7b10"
+        }
+      ],
+      "version": {
+        "id": "484700d8b737b78049043740d1bf33b9",
+        "kind": "text",
+        "name": "",
+        "normalized_hash": "44a68dd2b4fd2a335461f0ca4ba040839f2b6d3b477006edd81e7fd1d689d87b",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "463a579dd0783f8e24c55db9e131c465",
+            "units": [
+              {
+                "id": "a910821ecb14e3fa422c46e8cb152b48",
+                "text": "A separate unused synthetic text.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [],
+        "spelling_strict": false,
+        "text": "A separate unused synthetic text.\n",
+        "work_id": "11835bdf25bc9f4aefdb8306b0fb7b10"
+      },
+      "work": {
+        "aliases": [],
+        "context": "",
+        "id": "11835bdf25bc9f4aefdb8306b0fb7b10",
+        "kind": "text",
+        "revision": 1,
+        "title": "Whole unused Work"
+      }
+    }
+  },
+  {
+    "command": "scry work delete 11835bdf25bc9f4aefdb8306b0fb7b10 --revision 1 --json",
+    "exit": 0,
+    "output": {
+      "replayed": false,
+      "result": {
+        "entity_id": "11835bdf25bc9f4aefdb8306b0fb7b10",
+        "message": null,
+        "redirect": "/api/v1/library/works/11835bdf25bc9f4aefdb8306b0fb7b10"
+      }
+    }
+  },
+  {
+    "command": "scry version show 484700d8b737b78049043740d1bf33b9 --json",
+    "exit": 1,
+    "output": {
+      "error": "API request failed."
+    }
+  },
+  {
+    "observation": "Unused Version and Work deletion passed through CLI/Worker/SQLite.",
+    "used_study": "Unit reference-seam proof only in supersede_retains_original_and_study_reference_refuses_deletion; real Study/Attempt journey waits for #317."
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "supersedes-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        "version-of-023025debbdee47bcb4b3fd308152983": {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-733f4b13e62baec06f7429c006659e43": {
+          "kind": "version_of",
+          "version_id": "733f4b13e62baec06f7429c006659e43",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-d6e6146de881e0c3b24fb79a6a050046": {
+          "kind": "version_of",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "023025debbdee47bcb4b3fd308152983": {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "733f4b13e62baec06f7429c006659e43": {
+          "id": "733f4b13e62baec06f7429c006659e43",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "2d4b81ac35f7d5258255c098889a6c18288450138d7c351e1888d3caf1b503c2",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Synthetic article one",
+              "id": "dccb3462b92c9a514dcc0dfbbdbe42c4",
+              "units": [
+                {
+                  "id": "898314a8319b9c56f59217508d72b25b",
+                  "text": "Supplied first clause,"
+                },
+                {
+                  "id": "5d60daea72b53fa5976092174150cae6",
+                  "text": " second clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Supplied first clause, second clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "d6e6146de881e0c3b24fb79a6a050046": {
+          "id": "d6e6146de881e0c3b24fb79a6a050046",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "8db2223eca3d590a47f68833f56937fe9e2d87e1f3d42a65ddd52018e37bdc07",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "0c4b24cf8cf266876a3dcce9ecfcdbc9",
+              "units": [
+                {
+                  "id": "d58e8039ef4f4b3553c41653a1af1550",
+                  "text": "Synthetic corrected opening clause,"
+                },
+                {
+                  "id": "a860343faa19991adf8cd0ae8d133ad5",
+                  "text": " next clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic corrected opening clause, next clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 4,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry export --library --json",
+    "exit": 0,
+    "output": {
+      "relations": {
+        "supersedes-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        "version-of-023025debbdee47bcb4b3fd308152983": {
+          "kind": "version_of",
+          "version_id": "023025debbdee47bcb4b3fd308152983",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-23f85fef77a73b8309b5ed567ab01133": {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-733f4b13e62baec06f7429c006659e43": {
+          "kind": "version_of",
+          "version_id": "733f4b13e62baec06f7429c006659e43",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "version-of-d6e6146de881e0c3b24fb79a6a050046": {
+          "kind": "version_of",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "versions": {
+        "023025debbdee47bcb4b3fd308152983": {
+          "id": "023025debbdee47bcb4b3fd308152983",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "4741f4a92123016aa14b86b38424402af45b04f10ff602712b5fb90973076813",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "8525c913e2ca85669b049e937ce7ea3c",
+              "units": [
+                {
+                  "id": "166ba8e829157b0145f70a555b9d620f",
+                  "text": "Synthetic alternate opening,"
+                },
+                {
+                  "id": "6bb8368cc2492eaa3bb35fedf9342291",
+                  "text": " a second wording.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic alternate opening, a second wording.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "23f85fef77a73b8309b5ed567ab01133": {
+          "id": "23f85fef77a73b8309b5ed567ab01133",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "3c016388b6087884aa35a9b57747806a",
+              "units": [
+                {
+                  "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                  "text": "Synthetic opening clause,"
+                },
+                {
+                  "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                  "text": " next clause.\r\n"
+                }
+              ]
+            },
+            {
+              "heading": "Section 2",
+              "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+              "units": [
+                {
+                  "id": "a414223095a2cdb2a9d88436076f204d",
+                  "text": "A second authored article;"
+                },
+                {
+                  "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                  "text": " final clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "733f4b13e62baec06f7429c006659e43": {
+          "id": "733f4b13e62baec06f7429c006659e43",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "2d4b81ac35f7d5258255c098889a6c18288450138d7c351e1888d3caf1b503c2",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Synthetic article one",
+              "id": "dccb3462b92c9a514dcc0dfbbdbe42c4",
+              "units": [
+                {
+                  "id": "898314a8319b9c56f59217508d72b25b",
+                  "text": "Supplied first clause,"
+                },
+                {
+                  "id": "5d60daea72b53fa5976092174150cae6",
+                  "text": " second clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Supplied first clause, second clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        },
+        "d6e6146de881e0c3b24fb79a6a050046": {
+          "id": "d6e6146de881e0c3b24fb79a6a050046",
+          "kind": "text",
+          "name": "English, Roman Missal 2011 (synthetic fixture)",
+          "normalized_hash": "8db2223eca3d590a47f68833f56937fe9e2d87e1f3d42a65ddd52018e37bdc07",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "0c4b24cf8cf266876a3dcce9ecfcdbc9",
+              "units": [
+                {
+                  "id": "d58e8039ef4f4b3553c41653a1af1550",
+                  "text": "Synthetic corrected opening clause,"
+                },
+                {
+                  "id": "a860343faa19991adf8cd0ae8d133ad5",
+                  "text": " next clause.\n"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            "Caller-authored synthetic excerpt; no canonical wording claimed"
+          ],
+          "spelling_strict": false,
+          "text": "Synthetic corrected opening clause, next clause.\n",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      },
+      "works": {
+        "12820a904a9e0a234598036a3cc83fc1": {
+          "aliases": [
+            "Symbolum Apostolorum"
+          ],
+          "context": "",
+          "id": "12820a904a9e0a234598036a3cc83fc1",
+          "kind": "text",
+          "revision": 4,
+          "title": "Apostles' Creed"
+        }
+      }
+    }
+  },
+  {
+    "command": "scry version show 23f85fef77a73b8309b5ed567ab01133 --json",
+    "exit": 0,
+    "output": {
+      "relations": [
+        {
+          "kind": "supersedes",
+          "previous_id": "23f85fef77a73b8309b5ed567ab01133",
+          "version_id": "d6e6146de881e0c3b24fb79a6a050046"
+        },
+        {
+          "kind": "version_of",
+          "version_id": "23f85fef77a73b8309b5ed567ab01133",
+          "work_id": "12820a904a9e0a234598036a3cc83fc1"
+        }
+      ],
+      "version": {
+        "id": "23f85fef77a73b8309b5ed567ab01133",
+        "kind": "text",
+        "name": "English, Roman Missal 2011 (synthetic fixture)",
+        "normalized_hash": "a5cb19e738c50b22ebdc367ca223472090577c73a4d82364100df4bdc424f9fa",
+        "provenance": "supplied",
+        "rights": "private_only",
+        "sections": [
+          {
+            "heading": "Section 1",
+            "id": "3c016388b6087884aa35a9b57747806a",
+            "units": [
+              {
+                "id": "57f8b7a4fa9d70ae03aa33d932adce57",
+                "text": "Synthetic opening clause,"
+              },
+              {
+                "id": "6d7fdf5dcd6062f392e3ea9d5946cf0e",
+                "text": " next clause.\r\n"
+              }
+            ]
+          },
+          {
+            "heading": "Section 2",
+            "id": "7a38bc1edd3dbda1fcea121ee5db42e8",
+            "units": [
+              {
+                "id": "a414223095a2cdb2a9d88436076f204d",
+                "text": "A second authored article;"
+              },
+              {
+                "id": "ca8c0b5fc8093f36bf2a20ff09a06c18",
+                "text": " final clause.\n"
+              }
+            ]
+          }
+        ],
+        "sources": [
+          "Caller-authored synthetic excerpt; no canonical wording claimed"
+        ],
+        "spelling_strict": false,
+        "text": "Synthetic opening clause, next clause.\r\nA second authored article; final clause.\n",
+        "work_id": "12820a904a9e0a234598036a3cc83fc1"
+      },
+      "work": {
+        "aliases": [
+          "Symbolum Apostolorum"
+        ],
+        "context": "",
+        "id": "12820a904a9e0a234598036a3cc83fc1",
+        "kind": "text",
+        "revision": 4,
+        "title": "Apostles' Creed"
+      }
+    }
+  }
+]

@@ -1,0 +1,10 @@
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+    Finished `release` profile [optimized] target(s) in 0.07s
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: ✨  Done in 4.79s
+[INFO]: 📦   Your wasm pkg is ready to publish at /home/phaedrus/.t3/worktrees/scry/t3-f2eed112/build/.tmp.
+
+  index.js  33.0kb
+
+⚡ Done in 7ms
