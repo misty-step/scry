@@ -14,15 +14,15 @@ self-hosted fonts, and a small vanilla controller deliver the notebook. There
 is no Container or frontend framework in the replacement architecture.
 
 Source changes alone do not establish production serving state. Consult
-[the runbook's dated serving observation](docs/runbook.md#rust-production-serving--observed-2026-10-20).
+[the runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20).
 [The operational runbook](docs/runbook.md) alone owns activation, origins,
 recovery, and retirement evidence. The old Go source is retained exactly in Git
 at `c6ba395`; historical Rust/Postgres/Worker stores and
 backups remain separate recovery material. This rewrite does not import,
 reactivate, rename, or erase those stores.
 
-For an origin change, follow the runbook's
-[dated preparation and remaining proof](docs/runbook.md#canonical-origin-change--prepared-2026-10-20)
+For the current origin and remaining proof, read the runbook's
+[dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 and the [promotion/backup handoff](docs/rust-cloudflare.md#canonical-origin-promotion).
 
 [Product intent](VISION.md) · [Stories and specification](SPEC.md) ·
@@ -133,7 +133,7 @@ cutover conditions. Routine activation needs no separate operator approval
 once those conditions pass.
 
 Changed private-data, credential, spend or irreversible-action scope still
-requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#rust-production-serving--observed-2026-10-20)
+requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 owns production serving state. The retained
 [Container hosting notes](deploy/cloudflare-hosting/README.md) describe the
 retired Go configuration.

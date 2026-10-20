@@ -14,6 +14,56 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Canonical origin serving at 16:35 UTC, 2026-10-20
+
+The release watcher observed **https://scry.mistystep.io** as the canonical
+origin after [production promotion](https://github.com/misty-step/scry/actions/runs/39454063543)
+at 16:04:09 UTC. This observation supersedes the origin and version values in
+the earlier dated sections below. It preserves their original evidence.
+
+The [release-watch receipt](https://github.com/misty-step/scry/pull/329#issuecomment-6295965552)
+records the artifact identity and readbacks:
+
+- Serving source `79d0f8b17e1d0c8fcc23d939d049eee3908935ef`, version `0.1.3`,
+  Worker version `98a44043-2bbf-4537-bae2-98ca70a3f6d3`.
+- Deployed ZIP SHA-256
+  `218784e96d8819d257b6ad1985b6f417eef164fa421c9ae516d7580d479a552a`,
+  from [successful master CI](https://github.com/misty-step/scry/actions/runs/39451991976),
+  artifact `12278959284`. All 86 file checksums and live JavaScript and WASM
+  hashes match. Promotion used those tested bytes without a rebuild.
+- `CANONICAL_ORIGIN = https://scry.mistystep.io` and
+  `ALTERNATE_HOSTS = scry.study,www.scry.study`. The three existing Custom
+  Domain assignments, Durable Object namespace, `revival-production-20261016`
+  space, private R2 buckets and secret binding names remain unchanged.
+  Generation remains off. Workers.dev and preview URLs remain disabled.
+- From 16:04:46 to 16:35:14 UTC, all 28 machine-health samples returned
+  `200 ok`. Anonymous and forged requests were denied. Machine credentials
+  did not admit private routes. No new or increased production Sentry issue
+  appeared during that window.
+- The Mirrodin backup checkout now uses the new origin. The service exited 0,
+  the timer remained active and Sentry reported the monitor as `ok`. The
+  immediate snapshot passed independent complete R2 readback and photo
+  checksum checks. The next natural daily backup remains a separate observation.
+
+The [published v0.1.3 ZIP](https://github.com/misty-step/scry/releases/tag/v0.1.3)
+retains its original tested bytes. Its SHA-256 is
+`f89c219fec9cfb074896c21a3cbf3f44108fafc24d10dba4cf5b8f72494cbfe0`.
+It differs from the deployed descendant artifact above. The first promotion
+safely refused the older configuration before upload. The forward promotion
+used the repository pipeline. [Release automation follow-up](https://github.com/misty-step/scry/issues/337)
+tracks that handoff.
+
+Owner-authenticated alternate-host redirects, the private app journey,
+physical-phone acceptance, real-provider usefulness and an independent
+fresh-space restore remain unverified. [Canonical-origin acceptance](https://github.com/misty-step/scry/issues/301)
+stays open for its remaining observations. The isolated `qa/walk` receipt does
+not establish a deployed-origin journey.
+
+[Owner tokens and CLI source](https://github.com/misty-step/scry/pull/332)
+merged after this serving source. This observation does not establish their
+production deployment or [hosted API admission](https://github.com/misty-step/scry/issues/335).
+Once token rows exist, a pre-token binary is not a compatible rollback.
+
 ## Canonical-origin change — prepared 2026-10-20
 
 The owner approved **https://scry.mistystep.io** as Scry's canonical origin in
