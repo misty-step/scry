@@ -148,38 +148,56 @@ try {
   });
   let recoverySends=0;
   await check('chief backup capability is route-scoped, fails safely and recovers stale health only after full readback',async()=>{
-    const trigger=(key=backupKey,init={})=>request('/internal/backup','',{method:'POST',...init,headers:{'x-scry-backup-key':key,...init.headers}});
-    assert.equal((await request('/healthz','')).status,200);
-    for(const key of ['', 'wrong',internalKey,operatorKey])assert.equal((await trigger(key)).status,403);
-    assert.equal((await trigger(backupKey,{method:'GET'})).status,405);
-    assert.equal((await trigger(backupKey,{headers:{'X-Scry-Test-Host':'wrong.invalid'}})).status,421);
-    assert.equal((await worker.fetch('https://alternate-synthetic.invalid/internal/backup',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,421);
-    assert.equal((await request('/','',{headers:{'x-scry-backup-key':backupKey}})).status,401);
-    assert.equal((await request('/__internal/daily','',{method:'POST',headers:{'x-scry-backup-key':backupKey,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,404);
-    const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
-    const meta=JSON.parse((await storage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
-    meta.backup.completed_ms=Date.now()-27*60*60*1000;
-    await storage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
-    const stale=await request('/healthz','');assert.equal(stale.status,503);assert.equal(await stale.text(),'backup_stale');
-    const before=await(await request('/export')).json();
-    const assets=await preview.getR2Bucket('SCRY_ASSETS');const key=(await assets.list()).objects[0].key;
-    const photo=Buffer.from(await(await assets.get(key)).arrayBuffer());await assets.delete(key);
+    // Earlier captures own one-second work alarms. Restore into a separate,
+    // paused notebook so only this check can refresh its stale backup fixture.
+    const name='scry-chief-backup-smoke';
+    const fixture=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:baseBindings.SPACE_NAME,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name,artifact,egress,inspect:true});
     try {
-      const failed=await trigger();assert.equal(failed.status,503);assert.equal(await failed.text(),'backup_failed');
-      assert.equal((await request('/healthz','')).status,503);
-    } finally {await assets.put(key,photo);}
-    const recovered=await trigger();assert.equal(recovered.status,200);assert.equal(await recovered.text(),'Snapshot verified.');
-    assert.equal((await request('/healthz','')).status,200);
-    const after=await(await request('/export')).json();
-    assert.deepEqual(after.app.goals,before.app.goals);assert.deepEqual(after.app.events,before.app.events);assert.deepEqual(after.photos,before.photos);
-    const bucket=await preview.getR2Bucket('SCRY_BACKUPS');const bytes=Buffer.from(await(await bucket.get(after.app.backup.key)).arrayBuffer());
-    assert.equal(createHash('sha256').update(bytes).digest('hex'),after.app.backup.sha256);
-    const snapshot=JSON.parse(bytes);assert.deepEqual(snapshot.app.goals,before.app.goals);assert.deepEqual(snapshot.photos,before.photos);
-    for(const changes of [{BACKUP_TRIGGER_KEY:''},{BACKUP_TRIGGER_KEY:'short'},{INTERNAL_KEY:''},{SPACE_NAME:'invalid/name'},{SCRY_ENV:'restore'},{SCRY_ENV:'unconfigured'}]){
-      const fixture=await createRuntime({bindings:{...baseBindings,...changes},name:'scry-trigger-closed',artifact});
-      try {assert.notEqual((await fixture.worker.fetch(`${origin}/internal/backup`,{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);assert.equal((await(await fixture.mf.getR2Bucket('SCRY_BACKUPS')).list()).objects.length,0);}
-      finally {await fixture.mf.dispose();}
-    }
+      const restored=await fixture.worker.fetch(`${origin}/operator/restore`,{method:'POST',body:archiveBytes,
+        headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash}});
+      assert.equal(restored.status,200);
+      const {worker}=await fixture.rebind(baseBindings);
+      const request=(path,token=jwt(),init={})=>worker.fetch(`${origin}${path}`,{...init,redirect:'manual',
+        headers:{'Cf-Access-Jwt-Assertion':token,...init.headers}});
+      assert.equal((await(await request('/export')).json()).app.restored_paused,true);
+      const trigger=(key=backupKey,init={})=>request('/internal/backup','',{method:'POST',...init,headers:{'x-scry-backup-key':key,...init.headers}});
+      assert.equal((await trigger()).status,200);
+      assert.equal((await request('/healthz','')).status,200);
+      for(const key of ['', 'wrong',internalKey,operatorKey])assert.equal((await trigger(key)).status,403);
+      assert.equal((await trigger(backupKey,{method:'GET'})).status,405);
+      assert.equal((await trigger(backupKey,{headers:{'X-Scry-Test-Host':'wrong.invalid'}})).status,421);
+      assert.equal((await worker.fetch('https://alternate-synthetic.invalid/internal/backup',{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,421);
+      assert.equal((await request('/','',{headers:{'x-scry-backup-key':backupKey}})).status,401);
+      assert.equal((await request('/__internal/daily','',{method:'POST',headers:{'x-scry-backup-key':backupKey,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,404);
+      const storage=await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:baseBindings.SPACE_NAME});
+      const meta=JSON.parse((await storage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+      meta.backup.completed_ms=Date.now()-27*60*60*1000;
+      await storage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+      const stale=await request('/healthz','');assert.equal(stale.status,503);assert.equal(await stale.text(),'backup_stale');
+      const before=await(await request('/export')).json();
+      assert.equal(before.app.backup.completed_ms,meta.backup.completed_ms);
+      const assets=await fixture.mf.getR2Bucket('SCRY_ASSETS');const key=(await assets.list()).objects[0].key;
+      const photo=Buffer.from(await(await assets.get(key)).arrayBuffer());await assets.delete(key);
+      try {
+        const failed=await trigger();assert.equal(failed.status,503);assert.equal(await failed.text(),'backup_failed');
+        assert.equal((await request('/healthz','')).status,503);
+        const failedMeta=JSON.parse((await storage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+        assert.equal(failedMeta.backup.completed_ms,meta.backup.completed_ms,'An incomplete archive cannot refresh health.');
+      } finally {await assets.put(key,photo);}
+      const recovered=await trigger();assert.equal(recovered.status,200);assert.equal(await recovered.text(),'Snapshot verified.');
+      assert.equal((await request('/healthz','')).status,200);
+      const after=await(await request('/export')).json();
+      assert.ok(after.app.backup.completed_ms>meta.backup.completed_ms);
+      assert.deepEqual(after.app.goals,before.app.goals);assert.deepEqual(after.app.events,before.app.events);assert.deepEqual(after.photos,before.photos);
+      const bucket=await fixture.mf.getR2Bucket('SCRY_BACKUPS');const bytes=Buffer.from(await(await bucket.get(after.app.backup.key)).arrayBuffer());
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),after.app.backup.sha256);
+      const snapshot=JSON.parse(bytes);assert.deepEqual(snapshot.app.goals,before.app.goals);assert.deepEqual(snapshot.photos,before.photos);
+      for(const changes of [{BACKUP_TRIGGER_KEY:''},{BACKUP_TRIGGER_KEY:'short'},{INTERNAL_KEY:''},{SPACE_NAME:'invalid/name'},{SCRY_ENV:'restore'},{SCRY_ENV:'unconfigured'}]){
+        const fixture=await createRuntime({bindings:{...baseBindings,...changes},name:'scry-trigger-closed',artifact});
+        try {assert.notEqual((await fixture.worker.fetch(`${origin}/internal/backup`,{method:'POST',headers:{'x-scry-backup-key':backupKey}})).status,200);assert.equal((await(await fixture.mf.getR2Bucket('SCRY_BACKUPS')).list()).objects.length,0);}
+        finally {await fixture.mf.dispose();}
+      }
+    } finally {await fixture.mf.dispose();}
   });
   const recoveryEgress=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');recoverySends++;return new Response('Controlled malformed recovery response',{status:200});};
   const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress});
