@@ -1,0 +1,242 @@
+{
+  "scope": {
+    "issue": "https://github.com/misty-step/scry/issues/350",
+    "plan": "https://github.com/misty-step/scry/issues/313",
+    "story": "none",
+    "production_changes": false
+  },
+  "source_artifact": {
+    "original_build_source": "99415ae0336aa38fe08ae9532c8be82bc3b4024f",
+    "source_archive_sha256": "30215dfb8cb751cf84c6ba7fc62a3143ab493198394321301c265226a1aaf2ea",
+    "build_env_revision": "99415ae0336aa38fe08ae9532c8be82bc3b4024f",
+    "identity": {
+      "status": 503,
+      "reason": "backup_stale",
+      "version": "0.2.0",
+      "revision": "99415ae0336aa38fe08ae9532c8be82bc3b4024f"
+    },
+    "compile_input_equivalence": true,
+    "cli_sha256": "9b259ea4e4d7cc194a04311857ccfc93a556c5438d3349a941eb4e17cd6ae24a",
+    "build_log_sha256": "1d88214fdb8726187fa89de1c0c891fb62396be9e608c6ceeb7c28d6f6d8906b",
+    "cli_build_log_sha256": "d705b25a3a9670456d798c9f3be2446b7ffd02f008a33a75446c50e4c9762db0",
+    "worker_build_command": "worker-build --release --locked",
+    "cli_build_command": "cargo build --locked --bin scry",
+    "compile_input_count": 59,
+    "full_manifest_sha256": "c40c124543c434e9e98be7d6496631a7478c77050ae84f90f0597618aa57dd94"
+  },
+  "environment": {
+    "environment": {
+      "PATH": "/home/phaedrus/.local/share/mise/installs/node/22.22.0/bin:/home/phaedrus/.cargo/bin:/home/phaedrus/.local/bin:/usr/local/bin:/usr/bin:/bin",
+      "HOME": "/home/phaedrus",
+      "TMPDIR": "/home/phaedrus/.cache/tmp/scry-350-builder",
+      "CARGO_BUILD_JOBS": "4",
+      "CARGO_TARGET_DIR": "/home/phaedrus/.cache/tmp/scry-350-builder/target",
+      "WRANGLER_SEND_METRICS": "false",
+      "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV": "false",
+      "SCRY_SOURCE_REVISION": "99415ae0336aa38fe08ae9532c8be82bc3b4024f",
+      "LC_CTYPE": "C.UTF-8"
+    },
+    "tools": {
+      "rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "worker_build": "0.8.7",
+      "node": "v22.22.0",
+      "gitleaks": "8.30.1",
+      "deps": "{\n  \"version\": \"0.2.0\",\n  \"name\": \"scry\",\n  \"dependencies\": {\n    \"miniflare\": {\n      \"version\": \"5.20260903.0-alpha\",\n      \"resolved\": \"https://registry.npmjs.org/miniflare/-/miniflare-5.20260903.0-alpha.tgz\",\n      \"overridden\": false,\n      \"dependencies\": {\n        \"workerd\": {\n          \"version\": \"1.20260903.1\",\n          \"resolved\": \"https://registry.npmjs.org/workerd/-/workerd-1.20260903.1.tgz\",\n          \"overridden\": false\n        }\n      }\n    },\n    \"wrangler\": {\n      \"version\": \"4.129.0\",\n      \"resolved\": \"https://registry.npmjs.org/wrangler/-/wrangler-4.129.0.tgz\",\n      \"overridden\": false,\n      \"dependencies\": {\n        \"@cloudflare/unenv-preset\": {\n          \"version\": \"2.16.1\",\n          \"resolved\": \"https://registry.npmjs.org/@cloudflare/unenv-preset/-/unenv-preset-2.16.1.tgz\",\n          \"overridden\": false,\n          \"dependencies\": {\n            \"workerd\": {\n              \"version\": \"1.20260903.1\"\n            }\n          }\n        },\n        \"miniflare\": {\n          \"version\": \"5.20260903.0-alpha\"\n        },\n        \"workerd\": {\n          \"version\": \"1.20260903.1\"\n        }\n      }\n    }\n  }\n}"
+    }
+  },
+  "before": {
+    "test_revision": "99415ae0336aa38fe08ae9532c8be82bc3b4024f",
+    "test_sha256": "5257e1ecb6fabc320873dcaae6a237c7450fedd6bc177cd12d6c38da80e182ca",
+    "helper_sha256": "947b0fb6e428e1551128d745ab9ee7d9c2ec01da3cb22fb491ff75dfdf1fd052",
+    "probe_sha256": "83ca70fd83f2d71c3527d9b6467ac19e8eb0278844951b0e745ef68c0f2f6b69",
+    "log_sha256": "905b85aad9f18a293f707d5546775207eb578af99e73b0aa0b5366c8429cfdd4",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=same-isolate",
+      "/home/phaedrus/.cache/tmp/scry-350-builder/before/probe.mjs"
+    ],
+    "exit_code": 1,
+    "artifacts": {
+      ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "index.js": "d6d6829cc919130848aec487306cf2e579305a7a9d26ba78c758d9056da52dd1",
+      "index_bg.wasm": "8ec041f8612a2ad158f234a61087fa14a17de3525e5c3fb52d1108d4330e819f",
+      "package.json": "a9d87f7324cc5ebaf33ac57f0ace6b3eb6f8c6b8fbf2c60add601663e912e5af",
+      "worker/shim.mjs": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    "events": [
+      {
+        "event": "legacy_anchor",
+        "ms": 1792525141248
+      },
+      {
+        "event": "before_startup_delay",
+        "ms": 1792525141248
+      },
+      {
+        "event": "first_request",
+        "ms": 1792525143449
+      },
+      {
+        "event": "sink_receipt",
+        "ms": 1792525143513
+      },
+      {
+        "event": "bridge_response_received",
+        "ms": 1792525143517
+      },
+      {
+        "event": "bridge_response_returned",
+        "ms": 1792525144317
+      },
+      {
+        "event": "drop_observed",
+        "ms": 1792525144321
+      },
+      {
+        "event": "second_request",
+        "ms": 1792525202749
+      },
+      {
+        "event": "second_assertion",
+        "ms": 1792525205122
+      }
+    ],
+    "since_drop_ms": 58428
+  },
+  "after": {
+    "test_revision": "worktree",
+    "test_sha256": "1bc027438aad2659a4cef4ac7d160537f79f955d8429c1c1a4329ee1c5abc718",
+    "helper_sha256": "947b0fb6e428e1551128d745ab9ee7d9c2ec01da3cb22fb491ff75dfdf1fd052",
+    "probe_sha256": "af338f114a032a476d50f93f453fd3d44d8dfffe46ac244bbdd00e1dc911a4ed",
+    "log_sha256": "581bfb25b6731fdf0135cfa6e5055dfdfe504d2c7b8fc82d8bd369cfdaf889dd",
+    "command": [
+      "node",
+      "--test",
+      "--test-name-pattern=same-isolate",
+      "/home/phaedrus/.cache/tmp/scry-350-builder/after/probe.mjs"
+    ],
+    "environment": {
+      "PATH": "/home/phaedrus/.local/share/mise/installs/node/22.22.0/bin:/home/phaedrus/.cargo/bin:/home/phaedrus/.local/bin:/usr/local/bin:/usr/bin:/bin",
+      "HOME": "/home/phaedrus",
+      "TMPDIR": "/home/phaedrus/.cache/tmp/scry-350-builder",
+      "SCRY_WORKER_ARTIFACT": "/home/phaedrus/.cache/tmp/scry-350-builder/worker",
+      "WRANGLER_SEND_METRICS": "false",
+      "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV": "false"
+    },
+    "exit_code": 0,
+    "artifacts": {
+      ".gitignore": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+      "index.js": "d6d6829cc919130848aec487306cf2e579305a7a9d26ba78c758d9056da52dd1",
+      "index_bg.wasm": "8ec041f8612a2ad158f234a61087fa14a17de3525e5c3fb52d1108d4330e819f",
+      "package.json": "a9d87f7324cc5ebaf33ac57f0ace6b3eb6f8c6b8fbf2c60add601663e912e5af",
+      "worker/shim.mjs": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    "events": [
+      {
+        "event": "before_startup_delay",
+        "ms": 1792525238176
+      },
+      {
+        "event": "first_request",
+        "ms": 1792525240379
+      },
+      {
+        "event": "sink_receipt",
+        "ms": 1792525241053
+      },
+      {
+        "event": "bridge_response_received",
+        "ms": 1792525241056
+      },
+      {
+        "event": "bridge_response_returned",
+        "ms": 1792525241856
+      },
+      {
+        "event": "drop_observed",
+        "ms": 1792525241860
+      },
+      {
+        "event": "second_request",
+        "ms": 1792525301865
+      },
+      {
+        "event": "sink_receipt",
+        "ms": 1792525301874
+      },
+      {
+        "event": "second_assertion",
+        "ms": 1792525304173
+      }
+    ],
+    "since_drop_ms": 60005
+  },
+  "shared_group": {
+    "command": "node --test qa/runtime.test.mjs qa/owner-api.test.mjs qa/library.test.mjs qa/study.test.mjs qa/study-integrity.test.mjs qa/spend.test.mjs qa/revival-preserve.test.mjs qa/rust-telemetry.test.mjs",
+    "artifact": "/home/phaedrus/.cache/tmp/scry-350-builder/worker",
+    "totals": {
+      "tests": 103,
+      "pass": 103,
+      "fail": 0,
+      "skipped": 0
+    },
+    "exit_code": 0,
+    "attempts": 1,
+    "log": "/home/phaedrus/.cache/tmp/scry-350-builder/runtime-group.log",
+    "sha256": "880fa0abad7596be25a3d2fc2101e3692cbcb2abe9ebec8d4aba2398efe450a9"
+  },
+  "other_checks": {
+    "walk-cli": {
+      "result": "PASS",
+      "log": "/home/phaedrus/.cache/tmp/scry-350-builder/walk-cli.log",
+      "sha256": "6a79698539921a59a072db4117798635201ac32327f193e615ee4e9c8dc5244c"
+    },
+    "release-publish": {
+      "result": "PASS",
+      "log": "/home/phaedrus/.cache/tmp/scry-350-builder/release-publish.log",
+      "sha256": "0fdc5a091488397736cf41a7f9de12296ea0e98ea063ee7e5ce74dd1d4faa4ff"
+    },
+    "promote": {
+      "result": "PASS",
+      "log": "/home/phaedrus/.cache/tmp/scry-350-builder/promote.log",
+      "sha256": "21c7e48d0b1ec908feef784bbce1fa55f2c9a7acf76382fa7578754a78bd1ed8"
+    },
+    "daily-backup": {
+      "result": "PASS",
+      "log": "/home/phaedrus/.cache/tmp/scry-350-builder/daily-backup.log",
+      "sha256": "4b51c9c683dda4b7de938d63c9b0be7a6ea77d99e58515afc5d75ef87b837b55"
+    },
+    "recovery": {
+      "result": "PASS",
+      "log": "/home/phaedrus/.cache/tmp/scry-350-builder/recovery.log",
+      "sha256": "65560fbf016dc8a8abaafcb630469ceaee14bd8e459174d8f0126548d27dc577"
+    }
+  },
+  "retained_failures": [
+    {
+      "kind": "historical uninstrumented shared group",
+      "result": "72/73 FAIL; expected 2 / actual 1",
+      "path": "/home/phaedrus/.cache/tmp/scry-344/runtime-group.log",
+      "sha256": "9bc44a6e31bb0bd2ec54d9a649d4741c525caaf02a477e861898e53b885b1764",
+      "cause": "UNVERIFIED; no actual send timestamps"
+    },
+    {
+      "kind": "prior independent delayed-first control",
+      "path": "/home/phaedrus/.cache/tmp/scry-348-qa-lugbrywn/telemetry-delayed-first.log",
+      "sha256": "0c06686a81684899f80284b4b6e3e6cf1189bb5bf21bd520cc7328e3c6aabd48",
+      "first_sink_ms": 1792523599635,
+      "second_request_ms": 1792523658850,
+      "gap_ms": 59215,
+      "result": "expected 2 / actual 1"
+    }
+  ],
+  "limits": [
+    "The frozen artifact was freshly built from the merged base, then reused; it is not a build of the final PR revision.",
+    "Only synthetic local SQLite/R2 and controlled telemetry egress were exercised.",
+    "Native Rust suites and full source/build/browser gate were not rerun; root owns fresh exact-head protected CI and independent QA/review/judge.",
+    "No remote owned alert delivery, phone, deployed private ingress, provider usefulness, remote recovery or deployment is certified.",
+    "Passing controls and group do not diagnose or erase the historical group red."
+  ],
+  "scratch": "/home/phaedrus/.cache/tmp/scry-350-builder"
+}

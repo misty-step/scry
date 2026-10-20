@@ -2,7 +2,7 @@
 // HTTP telemetry sink. No owner, learner store or production capability.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {once} from 'node:events';
+import {EventEmitter,once} from 'node:events';
 import {performance} from 'node:perf_hooks';
 import test from 'node:test';
 import {createRuntime,Response,internalKey} from './runtime-helper.mjs';
@@ -20,10 +20,10 @@ const sink=createServer(async(request,response)=>{
   response.end('{}');
 });
 sink.listen(0,'127.0.0.1');await once(sink,'listening');
-async function instance(changes={}) {
+async function instance(changes={},handleStructuredLogs) {
   received.length=0;
   const bindings=Object.fromEntries(Object.entries({...base,...changes}).filter(([,value])=>value!==undefined));
-  return createRuntime({bindings,name:'scry-rust-telemetry',egress:async request=>{
+  return createRuntime({bindings,handleStructuredLogs,name:'scry-rust-telemetry',egress:async request=>{
     assert.equal(request.url,'https://o4510313803677696.ingest.us.sentry.io/api/4510313841426432/envelope/');
     assert.equal(request.method,'POST');
     assert.equal(request.headers.get('content-type'),'application/x-sentry-envelope');
@@ -111,12 +111,18 @@ try {
       await settle();assert.equal(received.length,0);
     }finally{await local.mf.dispose();}
   });
-  await test('same-isolate reporting recovers after sink rejection and the real one-minute bound',async()=>{
-    mode='reject';const local=await instance();
+  await test('same-isolate reporting recovers after sink rejection and the real one-minute bound',{timeout:120000},async t=>{
+    const reports=new EventEmitter();
+    mode='reject';const local=await instance({},log=>{
+      if(log.message==='[scry-rust] telemetry unavailable; report dropped')reports.emit('rejected');
+    });
     try {
-      const started=Date.now();
-      assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);await settle();envelope('upstream_5xx');
-      mode='ok';await new Promise(resolve=>setTimeout(resolve,Math.max(0,started+61500-Date.now())));
+      const rejected=once(reports,'rejected',{signal:t.signal});
+      assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);
+      // The drop warning follows 429 backoff processing and response-body cancellation.
+      await rejected;envelope('upstream_5xx');
+      mode='ok';await new Promise(resolve=>setTimeout(resolve,60000));
+      assert.equal(received.length,1,'No automatic retry follows a rejected send');
       assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);await settle();assert.equal(received.length,2);
       assert.equal((await local.worker.fetch(origin+'/create')).status,200);
     }finally{await local.mf.dispose();mode='ok';}
