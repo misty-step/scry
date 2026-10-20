@@ -91,8 +91,10 @@ allocation and implementation; Access admission alone never authorizes spend.
 
 Complete versioned JSON archives include referenced photo bytes and metadata in
 private R2. After two account-level Cron Trigger drills went unobserved on
-2026-10-15, the existing chief no-agent minute job is the daily trigger instead;
-no new job or scheduler is added. A separately scoped secret admits only the
+2026-10-15, daily delivery moved outside Cloudflare. The repo-owned Mirrodin
+systemd user timer `scry-daily-backup.timer` replaces the archived Hermes job
+at 09:30 UTC; [the installation procedure](../rust-cloudflare.md#mirrodin-triggered-daily-snapshot)
+owns its post-merge handoff and verification. A separately scoped secret admits only the
 canonical `POST /internal/backup`, behind the existing Access perimeter, without
 granting browser-owner identity. Cron Triggers are disabled in the template;
 Durable Object alarms remain a backup/work recovery path, not daily delivery
