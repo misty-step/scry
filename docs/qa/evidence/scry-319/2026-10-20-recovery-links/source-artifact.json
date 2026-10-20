@@ -1,0 +1,143 @@
+{
+  "head": "b8155fab94740813e7e8530a45887d7701216bb1",
+  "tree": "a9f6c0352e55b80061838a366ef70add9f0e9b4d",
+  "source_tar_sha256": "9202c5ebb079be8c9be6121abad112365acc0b44620116817cec224b308256d6",
+  "master": "6b8ebeeb58ef9797b594d7ec4a005a2d5b37ba16",
+  "source_state": "committed",
+  "wasm_sha256": "a55d8e5050152fda4b0ea96ecd9631dd17b8f2a43d30701b6029812943dc9773",
+  "loader_sha256": "08a0e0b5782f80a534aad9bdbf2a14eb98ab8cbf6bc34a52fb952194baee8990",
+  "version": "0.3.0",
+  "tool_versions": {
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "worker-build": "0.8.7",
+    "node": "v22.22.0",
+    "gitleaks": "8.30.1"
+  },
+  "environment_allowlist": [
+    "HOME",
+    "PATH",
+    "TMPDIR",
+    "SCRY_SOURCE_REVISION",
+    "SCRY_WORKER_ARTIFACT"
+  ],
+  "data": "Authored synthetic notebook, fresh isolated SQLite/local R2, egress denied. QA clock holds unpaused checking by scheduling its alarm one real day ahead.",
+  "raw_evidence": "/home/phaedrus/.cache/tmp/scry-345-links-e71rr8jw",
+  "gates": {
+    "native_affected": "34/34 PASS",
+    "link_census": "FAIL before / PASS after",
+    "no_study_html": "18/18 before/after byte-identical",
+    "browser_recovery_links": "2/2 PASS, JS and no-JS 390px dark",
+    "legacy_browser": "10/10 PASS",
+    "fmt": "PASS",
+    "native_clippy": "PASS",
+    "wasm_clippy": "PASS",
+    "wasm_check": "PASS",
+    "worker_build": "PASS",
+    "normal_gitleaks_implementation": "PASS"
+  },
+  "raw_logs": [
+    {
+      "path": "logs/clippy-native.txt",
+      "sha256": "211caf5e531cacdca3ed9ce0839bd7345477fc3b1f64efcfa790d8ed57029a1e"
+    },
+    {
+      "path": "logs/clippy-wasm.txt",
+      "sha256": "4cee008b612233ff29c98b97343f4a21546a4bfc7e12ff66b1f21c6a37f61f53"
+    },
+    {
+      "path": "logs/fmt-write.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "logs/fmt.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "logs/gitleaks-implementation.txt",
+      "sha256": "51fc67a6842d57c4e4f46fa40cd6368c884cfcaccd7141514481123a1ba5ca61"
+    },
+    {
+      "path": "logs/native-affected.txt",
+      "sha256": "b5fe3dcc0a4eb5b7bc6016b76ec4e7df663e4605a3ad3824b15f27710111fae7"
+    },
+    {
+      "path": "logs/native-after.txt",
+      "sha256": "e6701cfbaddabc3189a827f995501257eac48fa3283127c5138d6113017bf57b"
+    },
+    {
+      "path": "logs/native-before.txt",
+      "sha256": "088fd20e04553441da86cd8cab6cf2ffe3ca7506c3b392de3fafbebec8c34296"
+    },
+    {
+      "path": "logs/t3-1-reference-gate.json",
+      "sha256": "a7e35470e583c955def6662410f0b5aeb266301f9ad5f6465a9f4b101fa5994b"
+    },
+    {
+      "path": "logs/t3-1-verified-root-after-keep-trying.json",
+      "sha256": "78108622ffcea830f7018b5e6dfd5fba0eaaccf05023556358f9f82eb97f02ab"
+    },
+    {
+      "path": "logs/t3-2-after-keep-trying-root.json",
+      "sha256": "aa711d05a4dda89f53797438c0417fda89fe2f5e66b20f60bef562428f88797b"
+    },
+    {
+      "path": "logs/t3-3-after-check-again.json",
+      "sha256": "002ca7ad7da8b7b0db635f2cc4f6fdab2ac795a6eade91cd1f1fd87590043262"
+    },
+    {
+      "path": "logs/t3-4-root-after-check-again.json",
+      "sha256": "eabeb867cc6317f5b47d02d9f24791d0cf4e583ab17437f67d3fc42efbf17e13"
+    },
+    {
+      "path": "logs/t3-5-verified-root-after-check-again.json",
+      "sha256": "81ca234faf43259befbfea1eeaef7fb867ec27553daa7130470e3cd7a131b87f"
+    },
+    {
+      "path": "logs/wasm-build.txt",
+      "sha256": "d746753dedc75ff3da6df056f0ae6b102741e8801ff0e3593aa2bfc9365d297c"
+    },
+    {
+      "path": "logs/wasm-check.txt",
+      "sha256": "de423a01acdf47da39d1b79bdd4f90f7358bab54c984e691b345609f1b4515f9"
+    }
+  ],
+  "unchanged_core_from_5ea6": [
+    {
+      "path": "src/runtime.rs",
+      "sha256": "f3811a2980f3aaa581f73edab0b812e1aad1aeff96121806300e93aa10b5b363"
+    },
+    {
+      "path": "src/engine.rs",
+      "sha256": "a3dfb20f67519b9f47fc30c2e96c677a2626eb669df04393ad5ecbd212e00ca0"
+    },
+    {
+      "path": "src/study.rs",
+      "sha256": "d7cdc08c05d04a333e81dcc7bebca6630b259bad553a6f1b5050defc8de6e21d"
+    },
+    {
+      "path": "src/model.rs",
+      "sha256": "ac0aa5d044718c1ff30accf35975afaed60c58083e669db005d462a1255351dc"
+    },
+    {
+      "path": "src/api.rs",
+      "sha256": "59399b27a9381b203a5fd66383ae60ceb8064b48bc18e54cc08c640b86b900fe"
+    },
+    {
+      "path": "src/persistence.rs",
+      "sha256": "e1cf749d62efa0a289c44e3c4516af9d86fbd1f8454484b5f74b13189dc791f9"
+    },
+    {
+      "path": "src/bin/scry.rs",
+      "sha256": "104108d7fb51aa3c8263f4c72779aee7e3f6a500beffe869fe1e215b08685fed"
+    },
+    {
+      "path": "assets/app.js",
+      "sha256": "e5409095efbdab3bac55b14fad7b4352fb2fd65a35d8600fd6b1c5555bf8cbee"
+    },
+    {
+      "path": "assets/app.css",
+      "sha256": "4629906482e1f9e2794ed7def35089c788102bb61ace533802d561e87ba8e996"
+    }
+  ],
+  "retained_receipts_manifest_sha256": "4521dbc317fb5242941a34547d3c638e8f41df921dd217b39c3d54c8984a9ec0"
+}
