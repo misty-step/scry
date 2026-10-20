@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/misty-step/scry/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* add exact text Study and practice loop ([83136a4](https://github.com/misty-step/scry/commit/83136a4fb9967f7a547821de50f6d4e625751b37))
+
 ## [0.2.0](https://github.com/misty-step/scry/compare/v0.1.3...v0.2.0) (2026-10-20)
 
 
