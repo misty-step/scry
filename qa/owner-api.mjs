@@ -164,6 +164,8 @@ export async function ownerJourney() {
       const cli=(args,input='')=>new Promise((resolveResult,reject)=>{
         const proc=spawn(binary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
         let out='',err='';proc.stdout.on('data',data=>out+=data);proc.stderr.on('data',data=>err+=data);proc.on('error',reject);
+        // A CLI may exit before reading stdin (a refused --url); its exit code and JSON stay the result.
+        proc.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});
         proc.on('exit',code=>{assert.ok(!out.includes(root.secret)&&!err.includes(root.secret),'CLI never echoes login secret.');try{const value=JSON.parse(out);const safe=structuredClone(value);delete safe.secret;transcript.push({command:['scry',...args,'--json'].join(' '),exit:code,output:safe});resolveResult({code,value,err});}catch{reject(Error('CLI must return JSON.'));}});proc.stdin.end(input);
       });
       assert.equal((await cli(['login','--url',local,'--token-stdin'],root.secret+'\n')).code,0);
@@ -183,6 +185,8 @@ export async function ownerJourney() {
       assert.notEqual((await cli(['whoami'])).code,0);
       assert.notEqual((await cli(['unknown'])).code,0);
       assert.notEqual((await cli(['login','--url','http://external.invalid','--token-stdin'],root.secret)).code,0);
+      // Larger than the pipe buffer, so the refused login always exits before the write completes.
+      assert.notEqual((await cli(['login','--url','http://external.invalid','--token-stdin'],'x'.repeat(1<<22))).code,0);
       const stored=JSON.parse(await readFile(config,'utf8'));assert.ok(stored.token===root.secret,'Login persists exactly the supplied token privately.');
     }
   ];
