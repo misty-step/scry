@@ -3,6 +3,12 @@
 [Issue #316](https://github.com/misty-step/scry/issues/316) implements
 [SPEC US-015](../../../SPEC.md#us-015-find-a-work-before-creating-it).
 
+The original committed join-refusal walk below rejected duplicate CLI flags
+before HTTP, so its unchanged-row assertion is not Worker refusal proof.
+The [focused delta receipt](delta/README.md) corrects that walk, retains failing
+negative controls and passing real-Worker observations, and links the separate
+independent full QA and storage-review reports. Original logs retain their bytes.
+
 The implementation source is `afd1d0b8e852e12f8fa6cf9aec693ea3c8ec0cbb`,
 stacked on fixed API base `a0fd5d0306b4a6d39b7a45496b29380d0c968503`.
 Integration merge `07ab0adf504753d3f09d86e41fecd3c3f82c32dd` separately brings

@@ -1,0 +1,21 @@
+--- a/src/library.rs
++++ b/src/library.rs
+@@ -228,18 +228,6 @@
+         })
+     {
+         return Err(invalid());
+-    }
+-    if sections
+-        .iter()
+-        .flat_map(|s| &s.units)
+-        .map(String::as_str)
+-        .collect::<String>()
+-        != input.text
+-    {
+-        return Err(AppError::new(
+-            422,
+-            "Version Units must join to the submitted text exactly.",
+-        ));
+     }
+     Ok(sections)
+ }
