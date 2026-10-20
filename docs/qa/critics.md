@@ -115,8 +115,9 @@ v2 handles.
 Exit codes are 0 for selected checks passing with evidence, 1 for findings,
 2 for blocked environment/usage/budget, and 3 for unresolved observation.
 A blocked run writes walk-execution: unverified when a receipt can be created.
-Production scry.study and www.scry.study are always refused. An explicitly
-authorized synthetic non-loopback target requires exact --allow-origin;
+Production scry.study, www.scry.study, and scry.mistystep.io are always refused,
+even with a matching --allow-origin. An explicitly authorized synthetic
+non-loopback target requires exact --allow-origin;
 it has no local process attestation and cannot inherit local Worker proof.
 
 Default limits are 24 steps, 120 seconds and 12 screenshots, configurable via
