@@ -12,6 +12,11 @@ production activation. US-012 is retired and its identifier remains reserved.
   follow the footer's Changelog link to `/changelog`, then return through the
   header. Source: `src/web.rs`, `src/runtime.rs`. The existing `qa/walk --all`
   includes `qa/browser-release.mjs` for phone/desktop and light/dark navigation.
+- [Private ingress and origin changes](../docs/runbook.md#canonical-origin-change--prepared-2026-10-20):
+  S09, alternate-host reads/writes, and S10 backup handoff. Drive
+  `qa/runtime-helper.mjs` with synthetic identity and the candidate origin vars;
+  `qa/runtime.test.mjs` covers the broader runtime boundary. Deployed
+  observations stay in the runbook.
 
 This is the shared navigation inventory for verification and fitness. Intent
 stays in SPEC; feature pages add only reach/drive instructions and source hints.

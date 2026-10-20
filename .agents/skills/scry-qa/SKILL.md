@@ -15,6 +15,12 @@ Object, and private R2. Before selecting proof, read
 The runbook owns production serving state; source changes alone do not
 establish it.
 
+For origin changes, read the runbook's
+[dated preparation and remaining proof](../../../docs/runbook.md#canonical-origin-change--prepared-2026-10-20)
+and the [backup handoff](../../../docs/rust-cloudflare.md#canonical-origin-promotion).
+Use the configured origin vars in isolated runtime proof; retain separate
+post-promotion ingress and natural daily-backup observations.
+
 ## Doctor — choose meaningful proof
 
 | Surface | Existing check | Separate real observation |
