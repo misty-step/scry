@@ -3,17 +3,20 @@ import { strictEqual } from 'node:assert';
 import { classifyOrigin, Budget } from '../lib/guards.mjs';
 
 describe('guards', () => {
-  it('classifyOrigin rejects production origins for mutating modes', () => {
-    const r = classifyOrigin('https://scry.study', { mutating: true });
-    strictEqual(r.ok, false);
-    strictEqual(r.kind, 'production');
-  });
-
-  it('classifyOrigin rejects scry.mistystep.io for mutating modes', () => {
-    const r = classifyOrigin('https://scry.mistystep.io', { mutating: true });
-    strictEqual(r.ok, false);
-    strictEqual(r.kind, 'production');
-  });
+  for (const host of ['scry.study', 'www.scry.study', 'scry.mistystep.io']) {
+    for (const hostname of [host, host.toUpperCase()]) {
+      for (const suffix of ['', '.']) {
+        const origin = `https://${hostname}${suffix}`;
+        for (const allowOrigin of [null, new URL(origin).origin]) {
+          it(`classifyOrigin refuses ${origin} for mutating modes with allowOrigin=${allowOrigin}`, () => {
+            const r = classifyOrigin(origin, { mutating: true, allowOrigin });
+            strictEqual(r.ok, false);
+            strictEqual(r.kind, 'production');
+          });
+        }
+      }
+    }
+  }
 
   it('classifyOrigin accepts loopback', () => {
     const r = classifyOrigin('http://127.0.0.1:18080');
@@ -36,18 +39,6 @@ describe('guards', () => {
     const r = classifyOrigin('http://example.com', { mutating: true, allowOrigin: 'http://other.example' });
     strictEqual(r.ok, false);
     strictEqual(r.kind, 'non-loopback');
-  });
-
-  it('classifyOrigin still refuses production origins with a matching --allow-origin', () => {
-    const r = classifyOrigin('https://scry.study', { mutating: true, allowOrigin: 'https://scry.study' });
-    strictEqual(r.ok, false);
-    strictEqual(r.kind, 'production');
-  });
-
-  it('classifyOrigin refuses scry.mistystep.io with a matching --allow-origin', () => {
-    const r = classifyOrigin('https://scry.mistystep.io', { mutating: true, allowOrigin: 'https://scry.mistystep.io' });
-    strictEqual(r.ok, false);
-    strictEqual(r.kind, 'production');
   });
 
   it('Budget reports configured limits and used counters', () => {
