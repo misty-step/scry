@@ -11,12 +11,12 @@ argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 The active rewrite is Rust/WASM on a plain Cloudflare Worker, one SQLite Durable
 Object, and private R2. Before selecting proof, read
 [QA](../../../docs/qa/system.md) and
-[the runbook's dated serving observation](../../../docs/runbook.md#rust-production-serving--observed-2026-10-20).
+[the runbook's dated serving observation](../../../docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20).
 The runbook owns production serving state; source changes alone do not
 establish it.
 
 For origin changes, read the runbook's
-[dated preparation and remaining proof](../../../docs/runbook.md#canonical-origin-change--prepared-2026-10-20)
+[dated promotion observation and remaining proof](../../../docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 and the [backup handoff](../../../docs/rust-cloudflare.md#canonical-origin-promotion).
 Use the configured origin vars in isolated runtime proof; retain separate
 post-promotion ingress and natural daily-backup observations.
