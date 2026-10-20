@@ -1,0 +1,463 @@
+{
+  "source": "32cba9550ab9710ab2bc26b55fd7e0b9a35e7348",
+  "worker_sha256": "43dc1f2e2bbedc8e8a7b41dc1bc7872412b871c6c35b3131ad2692de73afb9a5",
+  "method": "Native form POST against compiled Worker; inspect actual SQLite before rendering, then same-operation replay and compiled CLI answer",
+  "prompt": {
+    "assisted": false,
+    "context": "The path begins in our synthetic notebook.\n",
+    "cue": "",
+    "cue_level": "previous_line",
+    "id": "2317ec1501ee5a42ff93436a3bf2a563",
+    "scope": {
+      "kind": "unit",
+      "position": 2,
+      "unit_id": "e73d86aff5910941cb6f405ee06f5906"
+    },
+    "study_id": "91c0d7bc88d09b703607934161c201e3",
+    "title": "Apostles' Creed",
+    "unit_ids": [
+      "e73d86aff5910941cb6f405ee06f5906"
+    ],
+    "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+    "version_id": "7b6c0eaecc334618bdcec02817744f60"
+  },
+  "before_card": {
+    "direction": "forward",
+    "id": "382201cb468fcaec93012d1622eb0010",
+    "introduced_ms": 1792520806598,
+    "revision": 6,
+    "state": {
+      "cue": "previous_line",
+      "schedule": {
+        "difficulty": 0,
+        "due_ms": 1792520806598,
+        "lapses": 0,
+        "last_review_ms": null,
+        "remaining_steps": 0,
+        "reps": 0,
+        "scheduled_days": 0,
+        "stability": 0,
+        "state": "new"
+      },
+      "successes": 0
+    },
+    "study_id": "91c0d7bc88d09b703607934161c201e3",
+    "unit_id": "e73d86aff5910941cb6f405ee06f5906",
+    "unit_index": 1
+  },
+  "after_disclosure_card": {
+    "direction": "forward",
+    "id": "382201cb468fcaec93012d1622eb0010",
+    "introduced_ms": 1792520806598,
+    "revision": 7,
+    "state": {
+      "cue": "previous_line",
+      "schedule": {
+        "difficulty": 0,
+        "due_ms": 1792520806598,
+        "lapses": 0,
+        "last_review_ms": null,
+        "remaining_steps": 0,
+        "reps": 0,
+        "scheduled_days": 0,
+        "stability": 0,
+        "state": "new"
+      },
+      "successes": 0
+    },
+    "study_id": "91c0d7bc88d09b703607934161c201e3",
+    "unit_id": "e73d86aff5910941cb6f405ee06f5906",
+    "unit_index": 1
+  },
+  "disclosure_attempt": {
+    "id": "b245a568e8020fdaf10acd33c77a3cc0",
+    "prompt": {
+      "assisted": false,
+      "context": "The path begins in our synthetic notebook.\n",
+      "cue": "",
+      "cue_level": "previous_line",
+      "id": "2317ec1501ee5a42ff93436a3bf2a563",
+      "scope": {
+        "kind": "unit",
+        "position": 2,
+        "unit_id": "e73d86aff5910941cb6f405ee06f5906"
+      },
+      "study_id": "91c0d7bc88d09b703607934161c201e3",
+      "title": "Apostles' Creed",
+      "unit_ids": [
+        "e73d86aff5910941cb6f405ee06f5906"
+      ],
+      "version_hash": "abf23692225656779edd087ec2438f3e8d8d7021d688cb3705f27e0b5a7b92d4",
+      "version_id": "7b6c0eaecc334618bdcec02817744f60"
+    },
+    "raw_answer": "",
+    "disclosure": true,
+    "assisted": true,
+    "grade": {
+      "authority": {
+        "grader_version": "1;unicode=17.0.0",
+        "name": "exact-v2"
+      },
+      "diff": [
+        {
+          "expected": {
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "text": "We"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 12,
+              "start": 3
+            },
+            "text": "conceived"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 14,
+              "start": 13
+            },
+            "text": "a"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 22,
+              "start": 15
+            },
+            "text": "patient"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 29,
+              "start": 23
+            },
+            "text": "garden"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 32,
+              "start": 30
+            },
+            "text": "by"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 36,
+              "start": 33
+            },
+            "text": "the"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 42,
+              "start": 37
+            },
+            "text": "water"
+          },
+          "kind": "missing",
+          "unit_index": 1
+        }
+      ],
+      "units": [
+        {
+          "unit_index": 1,
+          "verdict": "Again"
+        }
+      ],
+      "verdict": "Again",
+      "wrong_version_hint": null
+    },
+    "effects": [
+      {
+        "after": {
+          "cue": "previous_line",
+          "schedule": {
+            "difficulty": 0,
+            "due_ms": 1792520806598,
+            "lapses": 0,
+            "last_review_ms": null,
+            "remaining_steps": 0,
+            "reps": 0,
+            "scheduled_days": 0,
+            "stability": 0,
+            "state": "new"
+          },
+          "successes": 0
+        },
+        "assisted": true,
+        "before": {
+          "cue": "previous_line",
+          "schedule": {
+            "difficulty": 0,
+            "due_ms": 1792520806598,
+            "lapses": 0,
+            "last_review_ms": null,
+            "remaining_steps": 0,
+            "reps": 0,
+            "scheduled_days": 0,
+            "stability": 0,
+            "state": "new"
+          },
+          "successes": 0
+        },
+        "card_id": "382201cb468fcaec93012d1622eb0010",
+        "cue_level": "previous_line",
+        "extra_practice": false,
+        "revision_before": 6,
+        "scheduled": false,
+        "unit_id": "e73d86aff5910941cb6f405ee06f5906",
+        "unit_index": 1,
+        "verdict": "Again"
+      }
+    ]
+  },
+  "following_answer": {
+    "id": "96aff471db45c6668076804f984dc69d",
+    "assisted": true,
+    "grade": {
+      "authority": {
+        "grader_version": "1;unicode=17.0.0",
+        "name": "exact-v2"
+      },
+      "diff": [
+        {
+          "expected": {
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "text": "We"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "text": "We"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 12,
+              "start": 3
+            },
+            "text": "conceived"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 12,
+              "start": 3
+            },
+            "text": "conceived"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 14,
+              "start": 13
+            },
+            "text": "a"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 14,
+              "start": 13
+            },
+            "text": "a"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 22,
+              "start": 15
+            },
+            "text": "patient"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 22,
+              "start": 15
+            },
+            "text": "patient"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 29,
+              "start": 23
+            },
+            "text": "garden"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 29,
+              "start": 23
+            },
+            "text": "garden"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 32,
+              "start": 30
+            },
+            "text": "by"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 32,
+              "start": 30
+            },
+            "text": "by"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 36,
+              "start": 33
+            },
+            "text": "the"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 36,
+              "start": 33
+            },
+            "text": "the"
+          },
+          "unit_index": 1
+        },
+        {
+          "expected": {
+            "span": {
+              "end": 42,
+              "start": 37
+            },
+            "text": "water"
+          },
+          "kind": "correct",
+          "typed": {
+            "span": {
+              "end": 42,
+              "start": 37
+            },
+            "text": "water"
+          },
+          "unit_index": 1
+        }
+      ],
+      "units": [
+        {
+          "unit_index": 1,
+          "verdict": "Good"
+        }
+      ],
+      "verdict": "Good",
+      "wrong_version_hint": null
+    },
+    "effects": [
+      {
+        "after": {
+          "cue": "previous_line",
+          "schedule": {
+            "difficulty": 0,
+            "due_ms": 1792520806598,
+            "lapses": 0,
+            "last_review_ms": null,
+            "remaining_steps": 0,
+            "reps": 0,
+            "scheduled_days": 0,
+            "stability": 0,
+            "state": "new"
+          },
+          "successes": 1
+        },
+        "assisted": true,
+        "before": {
+          "cue": "previous_line",
+          "schedule": {
+            "difficulty": 0,
+            "due_ms": 1792520806598,
+            "lapses": 0,
+            "last_review_ms": null,
+            "remaining_steps": 0,
+            "reps": 0,
+            "scheduled_days": 0,
+            "stability": 0,
+            "state": "new"
+          },
+          "successes": 0
+        },
+        "card_id": "382201cb468fcaec93012d1622eb0010",
+        "cue_level": "previous_line",
+        "extra_practice": false,
+        "revision_before": 7,
+        "scheduled": false,
+        "unit_id": "e73d86aff5910941cb6f405ee06f5906",
+        "unit_index": 1,
+        "verdict": "Good"
+      }
+    ]
+  },
+  "html": {
+    "before_sha256": "b2955744e9b8ddecbb7bf765e1452d395d8c1731fe86ec044491333a5933a2e0",
+    "after_sha256": "71993d34679b27374542f78b1655a9b4983762dd27b453801b6946b6a5592c18",
+    "target_absent_before": true,
+    "target_present_after": true
+  },
+  "replay_attempts_unchanged": true,
+  "egress": 0,
+  "limits": [
+    "Synthetic supplied text, local SQLite/R2 only.",
+    "Historical replay to a newer Free recall Prompt remains an inherited blocker."
+  ]
+}

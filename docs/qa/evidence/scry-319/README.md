@@ -94,3 +94,36 @@ placing that badge in ordinary flow fixed the overlap before this receipt.
 ![320 CSS px dark, 200% text, Diff](screens/phone-320-dark-diff.png)
 ![390 CSS px dark, honest next due](t3-390-dark-due.png)
 ![1280 CSS px, Show me](t3-1280-shown.png)
+
+The [SQLite disclosure observation](logs/disclosure-state.json) retains the
+actual frozen Prompt, before/after Card state, disclosure Attempt and following
+assisted answer. The full immutable Attempt and effect records are synthetic.
+The same native operation replay creates no second disclosure Attempt.
+
+## Secret scan
+
+Gitleaks 8.30.1 scanned the complete committed snapshot, including this evidence,
+with default rules, no baseline or ignore file, and allow comments disabled.
+The supplemental command used `--ignore-gitleaks-allow`,
+`--config` with default rules only, and an absent `--gitleaks-ignore-path`.
+It found one unchanged prerequisite match: `generic-api-key` at
+`deploy/rust-production.toml:22`, the public `ACCESS_AUDIENCE` binding introduced
+before this task. No value is retained here. This stricter diagnostic is **FAIL**. No new
+allowance, suppression, baseline, parent configuration edit or credential action
+was added.
+
+The unchanged normal source gate in `scripts/scry-ci:290` invokes
+`gitleaks dir SOURCE --redact --no-banner` and respects the existing inline
+`gitleaks:allow` on that prerequisite line. That normal scanner command is
+**PASS** on the committed snapshot, as recorded in
+[its output](logs/gitleaks-normal.txt). This is scanner evidence, not a claim
+that the full exact-head CI gate ran here.
+
+`validate_access` in `src/runtime.rs:543` reads `ACCESS_AUDIENCE` as public
+application configuration and compares it with the presented JWT's `aud`
+claim. It separately requires a signed `Cf-Access-Jwt-Assertion`, the expected
+issuer, a valid time interval and the exact Owner subject, then verifies RS256
+against the issuer's key. The audience identifies the application for which a
+JWT was issued. Knowing that identifier alone cannot produce a signed Owner
+JWT or authenticate a request. It is not the bearer credential. The raw
+identifier, token, headers and separate Owner secret are omitted here.
