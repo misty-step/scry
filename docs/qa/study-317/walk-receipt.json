@@ -324,7 +324,7 @@
   "artifacts": [
     {
       "path": "cli.jsonl",
-      "sha256": "33a89e5cd7fac4bd01f7cdb01106e2870a9b3aa37634a11bdc19440dc0c16e12"
+      "sha256": "6833aa120ab3b53e399f71955ec92ade4d29cd39c7ac5cae80f42e8a3f57d9f1"
     },
     {
       "path": "native.txt",
@@ -354,5 +354,5 @@
       "sha256": "c2c64cf424dd82f1089c1ec62b9aa59ea6f04b3aeb4b4027cdf5bf0e735699e4"
     }
   ],
-  "retention_note": "All command/result records retained as JSONL. Large Library read outputs use explicit hash/size summaries. Original per-story capture hashes are retained; Study output is complete."
+  "retention_note": "All command/result records retained as JSONL. Large Library read outputs use explicit hash/size summaries. Original per-story capture hashes are retained; Study output is complete. Synthetic Owner token identifiers are consistently pseudonymized as owner-1/owner-2 after runtime attribution assertions. No grader, schedule or operation outcome is changed."
 }

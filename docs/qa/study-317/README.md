@@ -14,7 +14,10 @@ exact Worker and CLI paths with SHA-256, checks and limits.
 [walk-receipt.json](walk-receipt.json) retains every numbered criterion and
 original capture hashes. [cli.jsonl](cli.jsonl) contains command/result records.
 Large Library read outputs have explicit hash/size summaries; Study prompts,
-answers, Corrections and refusals retain their complete captured output.
+answers, Corrections and refusals retain their captured output. Synthetic Owner
+token identifiers use consistent `owner-1` and `owner-2` labels. The journey
+asserts the real acting-token identity before capture; original capture hashes
+remain in the receipt.
 [SHA256SUMS](SHA256SUMS) checks the retained files.
 
 The local run uses authored synthetic text with Apostles' Creed and Roman Missal
