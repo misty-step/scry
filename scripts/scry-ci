@@ -211,6 +211,7 @@ def gate(args):
         ["node", "--check", "assets/app.js"],
         ["node", "--test", "qa/walk-cli.test.mjs"],
         [sys.executable, "qa/release-publish.test.py"],
+        [sys.executable, "qa/promote.test.py"],
         ["bash", "-n", "scripts/rust-dev"],
     ):
         run(command, cwd=source, env=env, log=log)
