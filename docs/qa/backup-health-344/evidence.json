@@ -1,0 +1,555 @@
+{
+  "format": "scry-backup-health-gate-diagnosis-v1",
+  "story": "none",
+  "fixed_base": "294f99808a352e066ca6a59cfaa8320eb37d2ee7",
+  "test_sha256": "4c298add6993b35cdf1e4c4b743a1a2975cee936d39cc2bd8ba76792ff446425",
+  "helper_sha256": "d4076d039ca361e2f5a2f929e53db5e236ee1c886e12b441987f471c7f292039",
+  "environment": {
+    "node": "22.22.0",
+    "rust": "1.98.1",
+    "worker_build": "0.8.7",
+    "miniflare": "5.20260903.0-alpha",
+    "workerd": "1.20260903.1",
+    "authority": "env -i; synthetic SQLite/R2 and identity only"
+  },
+  "artifact": {
+    "index.js": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f",
+    "index_bg.wasm": "d949d867444b163779f42e74ce4b5f78456d2b1a7b5c1830a0efee9bb33d80ba",
+    "target/debug/scry": "94954821882d194f02e67a8d4b548879d734e2cc6c5708197d33d2a8e4e0f341"
+  },
+  "controlled_base": {
+    "transcript": "/home/phaedrus/.cache/tmp/scry-344/paired-base/runtime.log",
+    "sha256": "f30f0fc1f8d70872039c10cf0d226f46f2c684e71330a1a454a1b13a44bc6266",
+    "events": [
+      {
+        "label": "alarm-start",
+        "timestamp_ms": 1792521286972
+      },
+      {
+        "label": "alarm-end",
+        "timestamp_ms": 1792521287830,
+        "alarm_ms": 1792607687823
+      },
+      {
+        "label": "after-update",
+        "timestamp_ms": 1792521288445,
+        "revision": 9,
+        "backup": {
+          "completed_ms": 1792424088422,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521288349-pre-release-88eeecc28212a0c665b1c006c282af3a07806da7d62f1e66.json",
+          "sha256": "305287848e36176480a4fd4dbb4407ff7f56470d0007bf92275a74a3c26da0d8"
+        },
+        "alarm_ms": 1792521289365
+      },
+      {
+        "label": "alarm-start",
+        "timestamp_ms": 1792521288509
+      },
+      {
+        "label": "alarm-end",
+        "timestamp_ms": 1792521288526,
+        "alarm_ms": 1792607688518
+      },
+      {
+        "label": "after-shared-alarm",
+        "timestamp_ms": 1792521288556,
+        "revision": 11,
+        "backup": {
+          "completed_ms": 1792521288518,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521288511-daily-bdb4dad4c025da3d84d604b33c4de7bf6628eacd098ab42a.json",
+          "sha256": "99ffba83c2c657cc5e5502fa397a382d918ce2e6cdd5df9d4ee0128399c9cf18"
+        },
+        "alarm_ms": 1792607688518
+      },
+      {
+        "label": "health",
+        "timestamp_ms": 1792521288558,
+        "status": 200,
+        "body": "ok"
+      },
+      {
+        "label": "after-health",
+        "timestamp_ms": 1792521288569,
+        "revision": 11,
+        "backup": {
+          "completed_ms": 1792521288518,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521288511-daily-bdb4dad4c025da3d84d604b33c4de7bf6628eacd098ab42a.json",
+          "sha256": "99ffba83c2c657cc5e5502fa397a382d918ce2e6cdd5df9d4ee0128399c9cf18"
+        },
+        "alarm_ms": 1792607688518
+      }
+    ],
+    "summary": [
+      "not ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback",
+      "# pass 15",
+      "# fail 1"
+    ],
+    "failure_locations": [
+      "file:///home/phaedrus/.cache/tmp/scry-344/paired-base/probe.mjs:175:38",
+      "file:///home/phaedrus/.cache/tmp/scry-344/paired-base/probe.mjs:38:52)",
+      "file:///home/phaedrus/.cache/tmp/scry-344/paired-base/probe.mjs:150:3"
+    ]
+  },
+  "controlled_candidate": {
+    "transcript": "/home/phaedrus/.cache/tmp/scry-344/paired-fixed/runtime.log",
+    "sha256": "6838bcc256ac462256ef62737bf4ac021b9ba5b9fce7bc93aa398344c02f7611",
+    "events": [
+      {
+        "label": "alarm-start",
+        "timestamp_ms": 1792521288827
+      },
+      {
+        "label": "alarm-end",
+        "timestamp_ms": 1792521288939,
+        "alarm_ms": 1792607688930
+      },
+      {
+        "label": "alarm-start",
+        "timestamp_ms": 1792521290467
+      },
+      {
+        "label": "alarm-end",
+        "timestamp_ms": 1792521290468,
+        "alarm_ms": 1792607689460
+      },
+      {
+        "label": "after-update",
+        "timestamp_ms": 1792521290501,
+        "revision": 2,
+        "backup": {
+          "completed_ms": 1792424090473,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521290335-daily-81e39cc1009b393e99b69e7c7298ffde8071c93f4e369422.json",
+          "sha256": "b3b824501331419cade6699a89209d97781f75e4b81b50c6edb5cbb19a770a6a"
+        },
+        "alarm_ms": 1792607690422
+      },
+      {
+        "label": "alarm-start",
+        "timestamp_ms": 1792521290524
+      },
+      {
+        "label": "alarm-end",
+        "timestamp_ms": 1792521290525,
+        "alarm_ms": 1792607689460
+      },
+      {
+        "label": "after-shared-alarm",
+        "timestamp_ms": 1792521290561,
+        "revision": 2,
+        "backup": {
+          "completed_ms": 1792424090473,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521290335-daily-81e39cc1009b393e99b69e7c7298ffde8071c93f4e369422.json",
+          "sha256": "b3b824501331419cade6699a89209d97781f75e4b81b50c6edb5cbb19a770a6a"
+        },
+        "alarm_ms": 1792607690422
+      },
+      {
+        "label": "health",
+        "timestamp_ms": 1792521290563,
+        "status": 503,
+        "body": "backup_stale"
+      },
+      {
+        "label": "after-health",
+        "timestamp_ms": 1792521290573,
+        "revision": 2,
+        "backup": {
+          "completed_ms": 1792424090473,
+          "error": null,
+          "key": "snapshots/synthetic-only/1792521290335-daily-81e39cc1009b393e99b69e7c7298ffde8071c93f4e369422.json",
+          "sha256": "b3b824501331419cade6699a89209d97781f75e4b81b50c6edb5cbb19a770a6a"
+        },
+        "alarm_ms": 1792607690422
+      }
+    ],
+    "summary": [
+      "# pass 16",
+      "# fail 0"
+    ],
+    "failure_locations": []
+  },
+  "natural_failures": [
+    {
+      "transcript": "/home/phaedrus/.cache/tmp/scry-344/observed-cpu-3.log",
+      "sha256": "7ffda2a8f8b20b9f962649ad7ba4d680076cb857fcd85d3ea7cb1bfc3e68e0b7",
+      "events": [
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521173085,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521173270,
+          "alarm_ms": 1792607573233
+        },
+        {
+          "label": "before-update",
+          "timestamp_ms": 1792521175419,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792521174791,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521174757-pre-release-c91467dbf9e026c127a4e9612b91060082dcb490b72bb61e.json",
+            "sha256": "024a609e40c17e33dcd025570460cf35f0dc8560a4fa54e2df52b6737f0c6e67"
+          },
+          "alarm_ms": 1792521175842
+        },
+        {
+          "label": "after-update",
+          "timestamp_ms": 1792521175560,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423975528,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521174757-pre-release-c91467dbf9e026c127a4e9612b91060082dcb490b72bb61e.json",
+            "sha256": "024a609e40c17e33dcd025570460cf35f0dc8560a4fa54e2df52b6737f0c6e67"
+          },
+          "alarm_ms": 1792521175842
+        },
+        {
+          "label": "health",
+          "timestamp_ms": 1792521175659,
+          "status": 503,
+          "body": "backup_stale"
+        },
+        {
+          "label": "after-health",
+          "timestamp_ms": 1792521175670,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423975528,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521174757-pre-release-c91467dbf9e026c127a4e9612b91060082dcb490b72bb61e.json",
+            "sha256": "024a609e40c17e33dcd025570460cf35f0dc8560a4fa54e2df52b6737f0c6e67"
+          },
+          "alarm_ms": 1792521175842
+        },
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521175848,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521175981,
+          "alarm_ms": 1792607575961
+        }
+      ],
+      "summary": [
+        "not ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback",
+        "# pass 15",
+        "# fail 1"
+      ],
+      "failure_locations": [
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:178:14",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:38:52)",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:150:3"
+      ]
+    },
+    {
+      "transcript": "/home/phaedrus/.cache/tmp/scry-344/observed-cpu-4.log",
+      "sha256": "868d6454b441e02f540383df2a8d4e7a952189bab056c0156f1e7deee8b07c4e",
+      "events": [
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521182174,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521182547,
+          "alarm_ms": 1792607582517
+        },
+        {
+          "label": "before-update",
+          "timestamp_ms": 1792521184807,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792521184344,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184028-pre-release-d4e80885f96e1f64788fa268bf6aaa8d519a35d446079b87.json",
+            "sha256": "4707405054d043d88f668f28696e7e08a12f45baaad2aa17a638c9367cc24f82"
+          },
+          "alarm_ms": 1792521185360
+        },
+        {
+          "label": "after-update",
+          "timestamp_ms": 1792521184939,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423984855,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184028-pre-release-d4e80885f96e1f64788fa268bf6aaa8d519a35d446079b87.json",
+            "sha256": "4707405054d043d88f668f28696e7e08a12f45baaad2aa17a638c9367cc24f82"
+          },
+          "alarm_ms": 1792521185360
+        },
+        {
+          "label": "health",
+          "timestamp_ms": 1792521185026,
+          "status": 503,
+          "body": "backup_stale"
+        },
+        {
+          "label": "after-health",
+          "timestamp_ms": 1792521185047,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423984855,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184028-pre-release-d4e80885f96e1f64788fa268bf6aaa8d519a35d446079b87.json",
+            "sha256": "4707405054d043d88f668f28696e7e08a12f45baaad2aa17a638c9367cc24f82"
+          },
+          "alarm_ms": 1792521185360
+        },
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521185492,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521185494,
+          "alarm_ms": 1792522985494
+        }
+      ],
+      "summary": [
+        "not ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback",
+        "# pass 15",
+        "# fail 1"
+      ],
+      "failure_locations": [
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:183:12",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:38:52)",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:150:3"
+      ]
+    },
+    {
+      "transcript": "/home/phaedrus/.cache/tmp/scry-344/contention-2.log",
+      "sha256": "2f3a53b723ddabae6d77430678d9781339d6b4078fe41312e8f672bc432677a5",
+      "events": [
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521181986,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521182108,
+          "alarm_ms": 1792607582087
+        },
+        {
+          "label": "before-update",
+          "timestamp_ms": 1792521184816,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792521184379,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184357-pre-release-82ea4b3b095c007cb56463ed602274ec59f987a0f96b7481.json",
+            "sha256": "4994e629257545dede599afffa8e18d3a29ec29a70ed7d58624bea3a61c608ba"
+          },
+          "alarm_ms": 1792521185413
+        },
+        {
+          "label": "after-update",
+          "timestamp_ms": 1792521184939,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423984861,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184357-pre-release-82ea4b3b095c007cb56463ed602274ec59f987a0f96b7481.json",
+            "sha256": "4994e629257545dede599afffa8e18d3a29ec29a70ed7d58624bea3a61c608ba"
+          },
+          "alarm_ms": 1792521185413
+        },
+        {
+          "label": "health",
+          "timestamp_ms": 1792521185007,
+          "status": 503,
+          "body": "backup_stale"
+        },
+        {
+          "label": "after-health",
+          "timestamp_ms": 1792521185026,
+          "revision": 9,
+          "backup": {
+            "completed_ms": 1792423984861,
+            "error": null,
+            "key": "snapshots/synthetic-only/1792521184357-pre-release-82ea4b3b095c007cb56463ed602274ec59f987a0f96b7481.json",
+            "sha256": "4994e629257545dede599afffa8e18d3a29ec29a70ed7d58624bea3a61c608ba"
+          },
+          "alarm_ms": 1792521185413
+        },
+        {
+          "label": "alarm-start",
+          "timestamp_ms": 1792521185495,
+          "alarm_ms": null
+        },
+        {
+          "label": "alarm-end",
+          "timestamp_ms": 1792521185550,
+          "alarm_ms": 1792607585528
+        }
+      ],
+      "summary": [
+        "not ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback",
+        "# pass 15",
+        "# fail 1"
+      ],
+      "failure_locations": [
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:183:12",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:38:52)",
+        "file:///home/phaedrus/.cache/tmp/scry-344/probe.mjs:150:3"
+      ]
+    }
+  ],
+  "corrupt_readback": {
+    "transcript": "/home/phaedrus/.cache/tmp/scry-344/readback-recovery-control-v2.log",
+    "sha256": "453ff2e54376997362b5198758999f971182dce299128927e17c1032720d6a26",
+    "events": [
+      {
+        "label": "corrupt-readback",
+        "trigger_status": 503,
+        "health_status": 503,
+        "backup": {
+          "completed_ms": 1792424548903,
+          "error": "The complete snapshot could not be verified. Review remains available; inspect operator recovery configuration.",
+          "key": "snapshots/synthetic-only/1792521748663-daily-3a1439d70f6f0b2b5bd2fb569a3487ea69011af658ac657b.json",
+          "sha256": "a04b6c068dabe054b9fd26aebc2943a9266795c6db5c62b9165afca9c5c97dbe"
+        }
+      }
+    ],
+    "summary": [
+      "not ok 16 - chief backup capability is route-scoped, fails safely and recovers stale health only after full readback",
+      "# pass 15",
+      "# fail 1"
+    ],
+    "failure_locations": [
+      "file:///home/phaedrus/.cache/tmp/scry-344/readback-recovery-control-v2.mjs:187:303",
+      "file:///home/phaedrus/.cache/tmp/scry-344/readback-recovery-control-v2.mjs:38:52)",
+      "file:///home/phaedrus/.cache/tmp/scry-344/readback-recovery-control-v2.mjs:150:3"
+    ]
+  },
+  "bounded_candidate": {
+    "normal": "5/5, each 16/16",
+    "one_cpu": "5/5, each 16/16",
+    "six_concurrent_on_one_cpu": "6/6, each 16/16"
+  },
+  "commands": [
+    "env -i worker-build --release --locked (allowlisted PATH/HOME/LANG)",
+    "run python docs/qa/backup-health-344/reproduce.py --revision 294f99808a352e066ca6a59cfaa8320eb37d2ee7 --out paired-base",
+    "run python docs/qa/backup-health-344/reproduce.py --out paired-fixed",
+    "python repeat.py fixed fixed.mjs 5",
+    "python repeat.py fixed-cpu fixed.mjs 5",
+    "python fixed-contention.py",
+    "run cargo test --locked --lib --test backup_health --test application",
+    "run cargo build --locked --bin scry",
+    "run cargo check --locked --target wasm32-unknown-unknown",
+    "run node --test qa/runtime.test.mjs qa/owner-api.test.mjs qa/library.test.mjs qa/spend.test.mjs qa/revival-preserve.test.mjs qa/rust-telemetry.test.mjs",
+    "run cargo clippy --locked --all-targets -- -D warnings",
+    "run cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings",
+    "run node --check qa/runtime.test.mjs",
+    "git diff --check",
+    "run cargo fmt --all -- --check",
+    "run node --test qa/rust-telemetry.test.mjs (one isolated diagnostic run, not replacement for failed group)"
+  ],
+  "limits": [
+    "Development artifact; no release build identity",
+    "Original older uninstrumented failure retained, not reconstructed",
+    "Full protected CI and independent reviews owned by conductor",
+    "No real providers, physical phone, deployed private ingress, independent hosted recovery or activation"
+  ],
+  "native_results": {
+    "lib": "5 passed, 1 pre-existing ignored test",
+    "application": "18 passed",
+    "backup_health": "2 passed",
+    "wasm_target_check": "PASS",
+    "native_clippy": "PASS",
+    "wasm_clippy": "PASS",
+    "worker_build_release": "PASS",
+    "rustfmt": "PASS"
+  },
+  "transcripts": {
+    "alarm-control.log": "e92736a1268a2f57d937d3a8c63411d11dc8d653cd67a14ddb2f3563525266e0",
+    "cli-build.log": "ee1d3fffa2022e962e63e0dbe4d35c9c198450a20c29fc09030f635dbb38bfcd",
+    "clippy-native.log": "2bd9d1218310bba621e7ba44f04c6afa4a2ffe57a9f232bf73c0c7d38d423bd9",
+    "clippy-target.log": "e12ed29d5fc74389c121668382caa321e92528502d606a41f18b9c5d39fb3a0b",
+    "contention-1.log": "6efbb7301ab108974a3edd0094292dcc2c94017d840e7696f20a29a52007a079",
+    "contention-2.log": "2f3a53b723ddabae6d77430678d9781339d6b4078fe41312e8f672bc432677a5",
+    "contention-3.log": "08bf7c0d7901289ae5fa1d2bdf42336798309731bec710de798b853e21927825",
+    "contention-4.log": "5f495f56cb927b8c2b8d7446e860d86bdd256988828d34f92e4267af3067d842",
+    "contention-5.log": "af066bfff91f3eb5e6a2969945102f7b936459d80839e3afef495175aa27590d",
+    "contention-6.log": "29dc5c7e2c08bfe8e89b01543917f23c91b4a2125fd0446205bc2fb23a41e15e",
+    "contention.log": "3ad8c384f98669cb706e5544390cfc163f22191378ea360c9648204dd8898f80",
+    "fixed-1.log": "a57f8327cf091b33530cd416a92bfcd414a0f6d00a31af7d39f04a4e16d37b53",
+    "fixed-2.log": "fc1834cf01ccd320afaaa46ccbddf9e4b26013752596712dae1bb6acf8d1f0ef",
+    "fixed-3.log": "1d540ca7a43d2a03ba3bdd46746574337ca5960b6c2e921190eaf7a46c8ad346",
+    "fixed-4.log": "8cff925c90f13c41ac998c62c7fbb56abff22b19a761f3158dd93abf88100551",
+    "fixed-5.log": "8cb0b57475248d48b08676726d77a113e80654e4f64ea0eb3c8a390932f444de",
+    "fixed-contention-1.log": "e23cc793ea37174ff7eedd0ff43f62ae07fcb000a94709475d32ef8420143072",
+    "fixed-contention-2.log": "2192c8b97c9c0dec4158f820d8a163bdaceb5c3f4e40bc20f3b1f6fed02e7d82",
+    "fixed-contention-3.log": "cdd6c6c41bbdffc1c5d4fd3a1a4876257e1c31c46eea25e16fe5e77b4485f975",
+    "fixed-contention-4.log": "675ec481b19dae1731bb4cabe5abed5107d2080ef14d4b68de31bdee755ae254",
+    "fixed-contention-5.log": "e740cd7ebdc1d0522b94658d804ba937ce22251a6ceb88d880b57a545dfa8b20",
+    "fixed-contention-6.log": "26dd14d5ee2525e25a57a4db381b77f0d963c75a73f0cd180a23545e53ced3f2",
+    "fixed-contention.log": "78c89ddd01a754eb86a216b95e062c5c2758ae9afe2f6edccc5bec793f502787",
+    "fixed-cpu-1.log": "2cd57bdfe4c4f4cff486b57dc111ed322eaa6f1620701a5921da978e241c4427",
+    "fixed-cpu-2.log": "f5c940edf40f618f17e063cd2b05f94fff91715d547d378905fa066e1e83db65",
+    "fixed-cpu-3.log": "811745f0494df16e61d274bedbeb2a4fdd11ffe07c636f7a78bdc5154674a396",
+    "fixed-cpu-4.log": "318af5fc846d530315158f1e63cc6330a7d39082b80beb91182fcd100f1a6715",
+    "fixed-cpu-5.log": "ffe9890eaea64cce1425aed7855bf60baaf8fefc73da5022cb213d0f48f1f434",
+    "fixed-cpu.log": "60fe77165ce530fe500cc44127cf755da5e875050de2be9fa1a2b721e13138f0",
+    "fixed.log": "1d31514dc5644fb666c9e14fc85b08670ab425e476765de66ad5e71d4dd728bd",
+    "native.log": "9a4dddedc426ecde4bc5615efdaf22e351991e767177a28ba70b3f1fe6df8215",
+    "npm-ci.log": "d2c482f2be6a770ae29f10f46bca08ee7fd31dced46c97cc4ec2b4178a1e0e3a",
+    "observed-1.log": "b289b3ab08df3a8bf53a7f31b0e68ec9883697a784e084276f55b133b9a48aca",
+    "observed-2.log": "add610db29e2677b3263c94973497429a3252518d70f72a74bfc358bcfb98bde",
+    "observed-3.log": "ddee8ce9da15b8ef1e5fb1693fcf03df2fc3b22b52b764c8114a87bf13193c41",
+    "observed-4.log": "e2a80fd77b28880539905b2bb64bf365749ed9110a4bb6670773f8c87f9f4659",
+    "observed-5.log": "389ef3501d59150686707feb5302b43af104944b20593d6abc0456614771a9f6",
+    "observed-cpu-1.log": "f34da9ff91d5c8a5b6aebbc2ed8c5cdae14538f8f218e64fbc438086aa57968f",
+    "observed-cpu-2.log": "cd3dee0e03c3205b17d0d73693cc54972a7382f7582ec8e4d5edf22d51ba323a",
+    "observed-cpu-3.log": "7ffda2a8f8b20b9f962649ad7ba4d680076cb857fcd85d3ea7cb1bfc3e68e0b7",
+    "observed-cpu-4.log": "868d6454b441e02f540383df2a8d4e7a952189bab056c0156f1e7deee8b07c4e",
+    "observed-cpu-5.log": "cb7724d1d95fd5df728d3f1e63961d626e162c02f3576715eaa344944e9e83b1",
+    "observed-cpu.log": "662dc78d31593a3021019506dbfa9e6bebcbecdefb41b1d9916e3a7f960d8eb6",
+    "observed.log": "32ad6be61853b3b77c0a974685d37638d4c56e0c321b54335008edac9b4e4936",
+    "paired-base.log": "a9c286a6beb84c067d0ef0932c4d431f530f21fb21a4aa5fb5b18872c9c52f6f",
+    "paired-fixed.log": "4510d5d4fb4329fcd42dfa0b1d9fb4708e0e9c4e7266e0f2fc2496d760ec9c33",
+    "readback-control.log": "7d66667c9e2e3241a2be2293bcf8dd7c18e6c36f2ed428b1eed8039e43380124",
+    "readback-recovery-control-v2.log": "453ff2e54376997362b5198758999f971182dce299128927e17c1032720d6a26",
+    "readback-recovery-control.log": "1e3f34127d3cf83827db94ab94bf859dc64ef310f5646f04ba2d368857a3fce9",
+    "runtime-after.log": "ec6a1739045769fea5e340beefde3b74fdb89eaadbf9e85b5843cc61eab5599b",
+    "runtime-group.log": "9bc44a6e31bb0bd2ec54d9a649d4741c525caaf02a477e861898e53b885b1764",
+    "target.log": "d386af9728cae25647ca564b2c3f01769cc2393135134317b57451db0fc4615f",
+    "worker-build.log": "cbcc68b8c59731b057edc80f0c414a64252c22e33c545efd2dc1419ba76f460f",
+    "rustfmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "telemetry-isolated.log": "8636831c0ee1e012da217f5addca898e7ca4a97233f33b3e8c50b2ec5ede9e4d",
+    "final-repro-candidate.log": "d74b73ee7479d53c74468e34b93fa9a0dacdf5992abc69411dda81a72a947a28"
+  },
+  "runtime_group": {
+    "result": "72/73; FAIL",
+    "affected_file": "qa/runtime.test.mjs: 35/35 PASS",
+    "failure": "qa/rust-telemetry.test.mjs:120: same-isolate reporting recovers after sink rejection and the real one-minute bound; received.length actual 1, expected 2",
+    "log": "/home/phaedrus/.cache/tmp/scry-344/runtime-group.log",
+    "sha256": "9bc44a6e31bb0bd2ec54d9a649d4741c525caaf02a477e861898e53b885b1764",
+    "classification": "Distinct telemetry assertion, not classified as #344; no telemetry source change"
+  },
+  "final_repro_candidate": {
+    "result": "16/16 PASS",
+    "transcript": "/home/phaedrus/.cache/tmp/scry-344/final-repro-candidate/runtime.log",
+    "sha256": "717aef51495139c3ebc46bc476fd2e48dcf9b7b403f494b992fd3430d9ac29e9"
+  },
+  "telemetry_isolated_diagnostic": {
+    "result": "11/11 PASS, one diagnostic run",
+    "transcript": "/home/phaedrus/.cache/tmp/scry-344/telemetry-isolated.log",
+    "sha256": "8636831c0ee1e012da217f5addca898e7ca4a97233f33b3e8c50b2ec5ede9e4d",
+    "limits": "Does not replace or make green the failed 72/73 full group; cause remains unclassified."
+  }
+}
