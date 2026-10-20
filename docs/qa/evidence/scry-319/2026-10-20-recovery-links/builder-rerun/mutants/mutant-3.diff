@@ -1,0 +1,7 @@
+diff --git i/src/web.rs w/src/web.rs
+index 2b166be..2b9e073 100644
+--- i/src/web.rs
++++ w/src/web.rs
+@@ -645 +645 @@ impl View<'_> {
+-                        legacy_home(self.app)
++                        "/"

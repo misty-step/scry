@@ -1,0 +1,122 @@
+{
+  "source": {
+    "head": "b8155fab94740813e7e8530a45887d7701216bb1",
+    "tree": "a9f6c0352e55b80061838a366ef70add9f0e9b4d",
+    "source_tar_sha256": "9202c5ebb079be8c9be6121abad112365acc0b44620116817cec224b308256d6",
+    "master": "6b8ebeeb58ef9797b594d7ec4a005a2d5b37ba16",
+    "source_state": "committed"
+  },
+  "wasm_sha256": "a55d8e5050152fda4b0ea96ecd9631dd17b8f2a43d30701b6029812943dc9773",
+  "recovery_links": [
+    {
+      "noJS": false,
+      "nowMs": 1792615976467,
+      "status": "pass",
+      "evidence": [
+        "legacy-home-js-gate.png",
+        "legacy-home-js-kept-question.png",
+        "legacy-home-js-checking-before.png",
+        "legacy-home-js-checking-after.png",
+        "legacy-home-js-exact-unchanged.png"
+      ],
+      "keep_trying_href": "/notebook",
+      "check_again_href": "/notebook",
+      "observed": {
+        "keep_trying": "legacy question",
+        "check_again": "saved checking answer",
+        "exact_practice_unchanged": true
+      }
+    },
+    {
+      "noJS": true,
+      "nowMs": 1792615980559,
+      "status": "pass",
+      "evidence": [
+        "legacy-home-native-gate.png",
+        "legacy-home-native-kept-question.png",
+        "legacy-home-native-checking-before.png",
+        "legacy-home-native-checking-after.png",
+        "legacy-home-native-exact-unchanged.png"
+      ],
+      "keep_trying_href": "/notebook",
+      "check_again_href": "/notebook",
+      "observed": {
+        "keep_trying": "legacy question",
+        "check_again": "saved checking answer",
+        "exact_practice_unchanged": true
+      }
+    }
+  ],
+  "no_study": [
+    {
+      "name": "native forms with JavaScript disabled",
+      "status": "pass",
+      "evidence": [
+        "recovery-1-pass.png"
+      ]
+    },
+    {
+      "name": "keyboard choice and held result",
+      "status": "pass",
+      "evidence": [
+        "recovery-2-pass.png"
+      ]
+    },
+    {
+      "name": "response loss after commit reconciles exact attempt",
+      "status": "pass",
+      "evidence": [
+        "recovery-3-pass.png"
+      ]
+    },
+    {
+      "name": "offline pauses without automatic writes",
+      "status": "pass",
+      "evidence": [
+        "recovery-4-pass.png"
+      ]
+    },
+    {
+      "name": "competing tabs reject stale answer",
+      "status": "pass",
+      "evidence": [
+        "recovery-5-pass.png"
+      ]
+    },
+    {
+      "name": "notes require durable assistance",
+      "status": "pass",
+      "evidence": [
+        "recovery-6-pass.png"
+      ]
+    },
+    {
+      "name": "private access loss conceals current page",
+      "status": "pass",
+      "evidence": [
+        "recovery-7-pass.png"
+      ]
+    },
+    {
+      "name": "320px, desktop and dark layouts",
+      "status": "pass",
+      "evidence": [
+        "recovery-8-pass.png"
+      ]
+    },
+    {
+      "name": "stopped preparation offers recovery instead of false progress",
+      "status": "pass",
+      "evidence": [
+        "recovery-9-pass.png"
+      ]
+    },
+    {
+      "name": "restored meaning check resumes through native Settings without JavaScript",
+      "status": "pass",
+      "evidence": [
+        "recovery-10-pass.png"
+      ]
+    }
+  ]
+}
