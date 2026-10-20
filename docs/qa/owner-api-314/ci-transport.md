@@ -107,6 +107,7 @@ one-CPU constraint is inherited by Node and workerd. This loop stops at the
 first failed assertion; it accepts no fetch exception.
 
 ```sh
+mkdir -p "$HOME/.cache/tmp"
 scry_probe=$(mktemp "$HOME/.cache/tmp/scry-owner-refusal.XXXXXXXX.mjs")
 cat > "$scry_probe" <<'JS'
 import {resolve} from 'node:path';

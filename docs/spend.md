@@ -28,7 +28,8 @@ including midnight, with no rolling-day filter. Reporting rejects arithmetic
 overflow instead of silently truncating a sum.
 
 Entries expose only cost metadata: ledger `id` (send lease), existing `work_id`,
-`work_kind` (`concept_job` or `assessment`), optional `goal_id`, `created_ms`,
+`work_kind` (`concept_job`, `assessment`, or `unattributed` when `work_id`
+matches neither), optional `goal_id` (`null` when unattributed), `created_ms`,
 `day`, `purpose`, `model`, `status`, and the entry monetary fields above.
 Use `work_id` to sum the calls for one existing job or assessment; `goal_id`
 connects generation, transcription and critic jobs to the saved request.
