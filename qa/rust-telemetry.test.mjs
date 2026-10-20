@@ -96,8 +96,8 @@ try {
       assert.equal(response.status,503);assert.equal(await response.text(),'backup_stale');
       const study=await local.worker.fetch(origin+'/create');assert.equal(study.status,200);assert.match(await study.text(),/Create/);
       const elapsed=performance.now()-start;
-      assert(elapsed<1000,'Telemetry stalled study');
       console.log(JSON.stringify({sink:outage,native_failure_and_next_study_ms:elapsed}));
+      assert(elapsed<1000,'Telemetry stalled study');
       await settle();envelope('upstream_5xx');
       assert.equal((await local.worker.fetch(origin+'/healthz')).status,503);
       await settle();assert.equal(received.length,1,'No retry or redirect follows a failed send');
