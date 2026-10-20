@@ -27,6 +27,21 @@ def ancestor(old, new):
     assert re.fullmatch('[a-f0-9]{40}', old) and re.fullmatch('[a-f0-9]{40}', new), 'Invalid source revision for ancestry check'
     subprocess.run(['git', 'merge-base', '--is-ancestor', old, new], cwd=ROOT, check=True)
 
+def live_release(deployments, version):
+    """Source of the live code and whether its own version names it. A secret-only change keeps the
+    script, so it resolves to the release it re-deployed only when every step has the same script etag."""
+    etag = None
+    for deployment in deployments:
+        current = version(deployment['versions'][0]['version_id'])
+        script = current.get('resources', {}).get('script', {}).get('etag')
+        if etag is not None and script != etag: return None
+        annotations = current.get('annotations', {})
+        prior = re.fullmatch('scry-rust ([a-f0-9]{40})', annotations.get('workers/message', ''))
+        if prior: return prior[1], etag is None
+        if annotations.get('workers/triggered_by') != 'secret' or not script: return None
+        etag = script
+    return None
+
 def save(value):
     RECEIPT.write_text(json.dumps(value, indent=2) + '\n')
 
@@ -99,16 +114,16 @@ def deploy():
     # complete readback is the authority; presence alone is not restore proof.
     snapshots = request('/r2/buckets/' + mutable['SCRY_BACKUPS'] + '/objects?per_page=1000&prefix=snapshots%2F' + config['vars']['SPACE_NAME'] + '%2F')
     assert snapshots, 'Import and canonically verify the unused space before activation'
-    previous = request(script + '/deployments')['deployments'][0]
-    previous_version = request(script + '/versions/' + previous['versions'][0]['version_id'])
-    message = previous_version.get('annotations', {}).get('workers/message', '')
-    prior = re.fullmatch('scry-rust ([a-f0-9]{40})', message)
-    if prior: ancestor(prior[1], receipt['source'])
+    deployments = request(script + '/deployments')['deployments']
+    previous = deployments[0]
+    prior = live_release(deployments, lambda version: request(script + '/versions/' + version))
+    if prior: ancestor(prior[0], receipt['source'])
     else: assert bindings['SCRY_ENV']['text'] == 'restore', 'Unrecognized live release'
     assert request(script + '/deployments')['deployments'][0]['id'] == previous['id'], 'Live deployment changed before upload'
     observe = lambda: edges(request('/workers/domains?service=' + config['name']), request(script + '/routes'), config['name'])
     serving = observe()
-    if not prior or prior[1] != receipt['source']:
+    # A secret-only version of the same source still lacks the release annotation verified below.
+    if prior != (receipt['source'], True):
         subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
     after = request(script + '/settings')
     exact = {b['name']: b for b in after['bindings']}
