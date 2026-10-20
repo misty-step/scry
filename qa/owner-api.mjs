@@ -80,6 +80,7 @@ export async function ownerJourney() {
       const malformed=await runtime.worker.fetch(origin+'/api/v1/whoami',{headers:{Authorization:'Basic invalid','Cf-Access-Jwt-Assertion':jwt}});
       assert.deepEqual({status:malformed.status,body:await malformed.text()},refusal,'Malformed bearer cannot fall back to an Access session.');
       const oversized=await runtime.worker.fetch(origin+'/api/v1/settings',{method:'POST',headers:{Authorization:'Bearer '+unknown,'Content-Type':'application/json'},body:'x'.repeat(5*1024*1024)});
+      assert.equal(oversized.headers.get('X-Scry-Test-Body-Used'),'false','Rust refuses before reading the body; only the QA transport drains it afterwards.');
       assert.deepEqual({status:oversized.status,body:await oversized.text()},refusal,'Authentication precedes body buffering and parsing.');
       assert.deepEqual(await rows(),before);
       // Learner records are unreadable while verifier lookup still works: a bad
