@@ -35,7 +35,13 @@ def check_head():
     skip = head != expected
     if skip:
         subprocess.run(['git', 'merge-base', '--is-ancestor', expected, head], check=True)
-        print(f'::notice::Skipping release: master advanced from {expected} to {head}; the newer head\'s own CI completion will trigger its release run.')
+        repo = os.environ['GITHUB_REPOSITORY']
+        runs = json.loads(gh('api', f'repos/{repo}/actions/workflows/ci.yml/runs?head_sha={head}&branch=master&event=push&status=success'))['workflow_runs']
+        skip = not runs
+        if runs:
+            gate(runs[0], head)
+        else:
+            print(f'::notice::Skipping release: master advanced from {expected} to {head}; the newer head\'s own CI will trigger its release run if it succeeds.')
     with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
         print('skip=' + str(skip).lower(), file=output)
 

@@ -21,6 +21,7 @@ class ReleaseRefusals(unittest.TestCase):
         blocks = WORKFLOW.split('\n      - ')
         head = next(i for i, block in enumerate(blocks) if '\n          EXPECTED_HEAD:' in block)
         self.assertIn('\n        id: head\n', blocks[head])
+        self.assertIn('\n          GH_TOKEN: ${{ github.token }}\n', blocks[head])
         for block in blocks[head + 1:-1]:
             with self.subTest(step=block.splitlines()[0]):
                 self.assertIn("\n        if: steps.head.outputs.skip == 'false'", block)
@@ -35,7 +36,7 @@ class ReleaseRefusals(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'successful exact-source'):
                 PUBLISH['gate'](good | change, source)
 
-    def test_real_preflight_allows_equal_skips_ancestor_and_refuses_other_mismatches(self):
+    def test_real_head_check_uses_current_ci_before_skipping_and_refuses_invalid_history(self):
         block = next(block for block in WORKFLOW.split('\n      - ') if '\n          EXPECTED_HEAD:' in block)
         shell = '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())
         with tempfile.TemporaryDirectory() as directory:
@@ -54,26 +55,63 @@ class ReleaseRefusals(unittest.TestCase):
             path = Path(directory) / 'release-please-config.json'
             path.write_text(json.dumps(config))
             output = Path(directory) / 'output'
-            def run(expected):
+            calls = Path(directory) / 'gh-calls'
+            query = f'repos/synthetic/scry/actions/workflows/ci.yml/runs?head_sha={head}&branch=master&event=push&status=success'
+            bin_path = Path(directory) / 'bin'
+            bin_path.mkdir()
+            stub = bin_path / 'gh'
+            stub.write_text('''#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+assert sys.argv[1:] == ['api', os.environ['GH_QUERY']], sys.argv
+Path(os.environ['GH_CALLS']).write_text('called')
+if os.environ['GH_API_ERROR'] == 'true':
+    sys.exit('synthetic GitHub API failure')
+print(os.environ['GH_RESPONSE'])
+''')
+            stub.chmod(0o755)
+            good = dict(head_sha=head, head_branch='master', event='push', conclusion='success', path='.github/workflows/ci.yml')
+            def run(expected, ci_runs=(), api_error=False):
                 output.write_text('')
-                return subprocess.run(['bash', '-e', '-c', shell], cwd=directory, env={'PATH': os.environ['PATH'], 'EXPECTED_HEAD': expected, 'GITHUB_OUTPUT': str(output)}, capture_output=True, text=True)
+                calls.write_text('')
+                env = {'PATH': str(bin_path) + os.pathsep + os.environ['PATH'], 'EXPECTED_HEAD': expected,
+                       'GITHUB_OUTPUT': str(output), 'GITHUB_REPOSITORY': 'synthetic/scry', 'GH_TOKEN': 'synthetic-only',
+                       'GH_QUERY': query, 'GH_CALLS': str(calls), 'GH_API_ERROR': str(api_error).lower(),
+                       'GH_RESPONSE': json.dumps({'workflow_runs': ci_runs})}
+                return subprocess.run(['bash', '-e', '-c', shell], cwd=directory, env=env, capture_output=True, text=True)
+            allowed = run(baseline, ci_runs=[good])
+            self.assertEqual(allowed.returncode, 0, allowed.stderr)
+            self.assertEqual(output.read_text(), 'skip=false\n')
+            self.assertNotIn('::notice::Skipping release', allowed.stdout)
+            self.assertEqual(calls.read_text(), 'called')
             skipped = run(baseline)
             self.assertEqual(skipped.returncode, 0, skipped.stderr)
             self.assertIn('::notice::Skipping release', skipped.stdout)
             self.assertIn(baseline, skipped.stdout)
             self.assertIn(head, skipped.stdout)
+            self.assertIn('if it succeeds', skipped.stdout)
             self.assertEqual(output.read_text(), 'skip=true\n')
+            self.assertEqual(calls.read_text(), 'called')
+            refused = run(baseline, api_error=True)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn('synthetic GitHub API failure', refused.stderr)
+            self.assertEqual(output.read_text(), '')
             allowed = run(head)
             self.assertEqual(allowed.returncode, 0, allowed.stderr)
             self.assertEqual(output.read_text(), 'skip=false\n')
+            self.assertEqual(calls.read_text(), '')
             for expected in [divergent, 'f' * 40]:
                 with self.subTest(expected=expected):
                     refused = run(expected)
                     self.assertNotEqual(refused.returncode, 0)
                     self.assertTrue(refused.stderr)
                     self.assertEqual(output.read_text(), '')
-            for bootstrap in [divergent, 'f' * 40]:
-                config['bootstrap-sha'] = bootstrap
+                    self.assertEqual(calls.read_text(), '')
+            for bootstrap in [divergent, 'f' * 40, None]:
+                if bootstrap is None:
+                    del config['bootstrap-sha']
+                else:
+                    config['bootstrap-sha'] = bootstrap
                 path.write_text(json.dumps(config))
                 for expected in [head, baseline]:
                     with self.subTest(bootstrap=bootstrap, expected=expected):
@@ -81,6 +119,7 @@ class ReleaseRefusals(unittest.TestCase):
                         self.assertNotEqual(refused.returncode, 0)
                         self.assertTrue(refused.stderr)
                         self.assertEqual(output.read_text(), '')
+                        self.assertEqual(calls.read_text(), '')
 
     def test_title_is_data_not_shell_code(self):
         shell = next(line.strip() for line in WORKFLOW.splitlines() if line.strip().startswith("python3 -c 'import os,re;"))
