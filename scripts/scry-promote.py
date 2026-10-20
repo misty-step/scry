@@ -56,6 +56,22 @@ def prepare():
         assert (ROOT / name).read_bytes() == expected, 'Promotion configuration differs from tested source'
     save({'artifact_id': int(identity), 'artifact_zip_sha256': checksum, 'source': proof['revision'], 'stage': 'artifact_verified'})
 
+def storage(bindings):
+    """Durable identity Wrangler would rebind: DO class (and foreign script) or R2 bucket, by binding name."""
+    return {b['name']: [b['type'], b.get('class_name') or b.get('bucket_name'), b.get('script_name')]
+            for b in bindings if b['type'] in ('durable_object_namespace', 'r2_bucket')}
+
+def declared(config):
+    objects = config['durable_objects']['bindings']
+    assert all(b.get('script_name', config['name']) == config['name'] for b in objects)
+    return storage([{'name': b['name'], 'class_name': b['class_name'], 'type': 'durable_object_namespace'} for b in objects]
+                   + [{'name': b['binding'], 'bucket_name': b['bucket_name'], 'type': 'r2_bucket'} for b in config['r2_buckets']])
+
+def edges(domains, routes, service):
+    """Everything that sends traffic to the Worker: Custom Domains and the script's own routes on any zone."""
+    return {'custom_domains': sorted([d['hostname'], d['zone_name'], d['zone_id'], d['environment'], d['enabled']] for d in domains if d['service'] == service),
+            'routes': sorted(r['pattern'] for r in routes)}
+
 def deploy():
     config = tomllib.loads(CONFIG.read_text())
     base = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
@@ -70,6 +86,7 @@ def deploy():
     receipt = json.loads(RECEIPT.read_text())
     before = request(script + '/settings')
     bindings = {b['name']: b for b in before['bindings']}
+    assert storage(before['bindings']) == declared(config), 'Configured storage bindings differ from live; refusing before upload'
     mutable = {k: bindings[k][field] for k, field in [('LEARNING_SPACE', 'namespace_id'), ('SCRY_ASSETS', 'bucket_name'), ('SCRY_BACKUPS', 'bucket_name')]}
     assert bindings['SPACE_NAME']['text'] == config['vars']['SPACE_NAME']
     assert {b['name'] for b in before['bindings'] if b['type'] == 'secret_text'} >= {'INTERNAL_KEY', 'OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY'}
@@ -89,10 +106,13 @@ def deploy():
     if prior: ancestor(prior[1], receipt['source'])
     else: assert bindings['SCRY_ENV']['text'] == 'restore', 'Unrecognized live release'
     assert request(script + '/deployments')['deployments'][0]['id'] == previous['id']
+    observe = lambda: edges(request('/workers/domains?service=' + config['name']), request(script + '/routes'), config['name'])
+    serving = observe()
     if not prior or prior[1] != receipt['source']:
         subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
     after = request(script + '/settings')
     exact = {b['name']: b for b in after['bindings']}
+    assert observe() == serving, 'Custom domains or routes changed during promotion'
     assert {k: exact[k][field] for k, field in [('LEARNING_SPACE', 'namespace_id'), ('SCRY_ASSETS', 'bucket_name'), ('SCRY_BACKUPS', 'bucket_name')]} == mutable
     assert exact['SPACE_NAME']['text'] == config['vars']['SPACE_NAME'] and exact['SCRY_ENV']['text'] == 'production'
     assert not ({'RESTORE_TOKEN', 'SYNTHETIC_ACCESS_CLIENT_ID'} & set(exact))
@@ -112,7 +132,7 @@ def deploy():
     version = request(script + '/versions/' + deployed['versions'][0]['version_id'])
     assert version.get('annotations', {}).get('workers/message') == 'scry-rust ' + receipt['source']
     receipt.update(stage='exact_artifact_promoted', worker=config['name'], deployment=deployed, mutable_bindings_unchanged=True,
-                   module_sha256=actual, routes_changed=False, learner_bodies_requested=False)
+                   module_sha256=actual, routes_changed=False, serving_edges=serving, learner_bodies_requested=False)
     save(receipt)
     print(json.dumps(receipt))
 

@@ -197,8 +197,10 @@ gh workflow run ci.yml -R misty-step/scry --ref master \
 [`scripts/scry-promote.py`](../scripts/scry-promote.py) owns provenance and native
 Wrangler invocation; [`deploy/rust-production.toml`](../deploy/rust-production.toml)
 owns the recovered production binding configuration. Promotion preserves that
-namespace, space and private R2, refuses an empty/uncommissioned target, verifies
-the uploaded module bytes, and emits `target/promotion.json`. Domain cutover and
+namespace, space and private R2 (refusing config/live drift before upload),
+refuses an empty/uncommissioned target, verifies the uploaded module bytes,
+asserts the Worker's Custom Domains and script routes are unchanged, and emits
+`target/promotion.json` with that observed serving set. Domain cutover and
 live-owner verification remain the separate operator steps above. Compatible
 code rollback uses a retained custody/history-compatible artifact on these same
 bindings, never an old Go snapshot. Versions/notes remain the existing release
