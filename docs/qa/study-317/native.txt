@@ -1,0 +1,241 @@
+
+running 6 tests
+test grading::unicode::tests::unicode_17_conformance ... ignored, requires pinned Unicode 17 NormalizationTest.txt and CaseFolding.txt; see module README
+test persistence::tests::checks_image_bytes_instead_of_a_declared_mime ... ok
+test web::generated_markdown_cannot_activate_raw_html_or_untrusted_urls ... ok
+test persistence::tests::checks_complete_asset_capacity_without_loading_photo_bodies ... ok
+test persistence::tests::row_roundtrip_and_archive_checksum ... ok
+test persistence::tests::paid_payloads_roundtrip_in_separate_bounded_sql_records ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 18 tests
+test missing_generation_never_fabricates_content ... ok
+test allowance_is_shared_and_unknown_cost_is_never_free ... ok
+test capture_word_phrase_dictated_and_url_stay_private_and_exact ... ok
+test competing_occurrences_and_archive_cannot_publish_stale_answer ... ok
+test content_edits_leave_historical_presentations_immutable ... ok
+test assessment_send_once_timeout_unknown_reservation_and_explicit_retry ... ok
+test missing_assessor_keeps_answer_and_learner_authority ... ok
+test reveal_is_held_and_next_is_deliberate ... ok
+test refinement_uses_real_feedback_and_never_rewrites_attempts ... ok
+test restored_state_keeps_paid_work_paused_and_held_feedback ... ok
+test semantic_verdict_fenced_and_grade_override_keeps_original ... ok
+test failures_do_not_partially_capture_and_csrf_is_required ... ok
+test look_up_is_durable_and_cannot_become_unaided_success ... ok
+test exact_answer_event_schedule_and_receipt_are_one_transition ... ok
+test export_readback_roundtrip_preserves_complete_schedule_and_evidence ... ok
+test candidates_are_saved_before_critic_and_critic_retry_reuses_generation ... ok
+test new_practice_follows_authored_order_without_overriding_due_time ... ok
+test full_text_refinement_keeps_existing_material_when_generation_or_critic_is_partial ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test corrections_are_unique_eligible_and_replay_the_original_attempt ... ok
+test broken_references_and_evidence_do_not_become_recovery_authority ... ok
+test historical_schedule_policy_and_assistance_cannot_be_forged ... ok
+test valid_history_corrections_warm_attempts_and_paused_work_roundtrip ... ok
+test paid_leases_and_saved_checking_answers_have_complete_ownership ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test a_failed_attempt_does_not_refresh_the_last_verified_snapshot ... ok
+test health_requires_a_verified_snapshot_within_26_hours ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test levels_weight_estimates_and_tally_caps_observations_without_losing_counts ... ok
+test observations_distinguish_exposure_help_and_cold_recall_without_mutations ... ok
+test solid_and_fading_are_recall_estimates_and_latest_help_prevents_solid ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test a_rejected_success_shaped_assessment_stays_ungraded_and_preserves_the_saved_answer ... ok
+test rejected_http_response_keeps_paid_receipt_but_never_interprets_success_shaped_body ... ok
+test absent_critic_records_skipped_check_and_publishes_without_an_extra_reservation ... ok
+test huge_known_cost_saturates_the_allowance_and_blocks_a_later_claim ... ok
+test fully_judged_rejection_is_reused_without_new_spend_or_score_fishing ... ok
+test photo_transcription_generation_and_critic_keep_each_exact_paid_response ... ok
+test explicit_critic_retry_sends_only_unfinished_batteries_and_preserves_attempts ... ok
+test a_late_parent_response_cannot_change_a_retry_snapshot_or_break_archive_integrity ... ok
+test paid_completion_receipts_are_immutable_including_unknown_cost_and_oversize ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 14 tests
+test invalid_unit_ranges_are_refused_without_panicking ... ok
+test wrong_version_hint_names_the_closer_sibling_without_accepting_its_wording ... ok
+test missing_extra_and_cross_unit_transposition_each_keep_unit_attribution ... ok
+test original_words_and_utf8_spans_survive_expansion_composition_and_case_folding ... ok
+test multilingual_nfkc_and_full_case_folding_are_used_in_both_directions ... ok
+test all_four_single_letter_slips_are_visible_and_good ... ok
+test closer_sibling_need_not_match_exactly_and_ties_are_stable_by_id ... ok
+test synthetic_creed_recitation_attributes_one_wrong_word_to_clause_four ... ok
+test digits_symbols_apostrophes_and_meaning_are_not_extra_tolerances ... ok
+test slip_length_distance_and_version_vocabulary_boundaries ... ok
+test normalization_ignores_only_the_declared_differences ... ok
+test conceived_slip_is_visible_and_spelling_strict_changes_the_verdict ... ok
+test missing_extra_substituted_and_swapped_words_are_marked_and_again ... ok
+test random_answers_produce_identical_serialized_bytes_and_cover_every_word ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+
+running 4 tests
+test invalid_and_unearned_transitions_are_rejected ... ok
+test utc_calendar_scheduling_and_elapsed_day_estimate_keep_distinct_conventions ... ok
+test published_trajectory_and_algorithm_identity_remain_exact ... ok
+test all_persisted_fields_match_pinned_go_scheduler ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test evidence_quotes_must_match_saved_input_exactly_and_general_claims_have_no_quotes ... ok
+test refinement_keeps_existing_prerequisites_and_rejects_combined_cycles ... ok
+test normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails ... ok
+test provider_requests_use_string_instructions_and_supported_decision_heads ... ok
+test critic_uses_independent_applicable_defects_and_teaching_only_ranks ... ok
+test complete_and_verbatim_requests_never_publish_partial_material ... ok
+test critic_cache_reuses_only_whole_batteries_and_never_overwrites_a_saved_veto ... ok
+test critic_missing_extra_mixed_or_invalid_judgments_cannot_publish ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test local_grading_accepts_only_authored_forms_and_choice_identity ... ok
+test critic_requires_whole_applicable_battery_and_never_vetoes_teaching_score ... ok
+test required_idea_policy_and_shadow_classes_keep_honest_authority ... ok
+test short_answer_thresholds_and_risks_fail_closed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test empty_library_preserves_legacy_application_rows_and_archive_shape ... ok
+test library_search_dedupe_segmentation_and_shared_receipts ... ok
+test unused_crud_fences_names_unicode_and_library_export ... ok
+test supersede_retains_original_and_study_reference_refuses_deletion ... ok
+test segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_boundaries ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+
+running 4 tests
+test web_and_api_share_receipts_and_cookie_csrf ... ok
+test token_expiry_and_paid_refusal_precede_reservation_and_transmission ... ok
+test paid_token_grants_require_paid_authority_at_the_shared_engine_boundary ... ok
+test owner_tokens_show_once_replay_conflict_revoke_and_old_archives ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test lifecycle_failure_in_a_later_concept_cannot_partially_publish_earlier_material ... ok
+test publication_links_unchanged_saved_ideas_and_updates_edges_without_rewriting_notes_or_questions ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test ordinary_old_archives_and_rows_remain_compatible_without_custody ... ok
+test historical_ungraded_attempts_are_not_grades_and_keep_their_original_epoch ... ok
+test original_go_schedule_epoch_is_explicit_preserved_and_fail_closed ... ok
+test imported_helped_observations_do_not_invent_scheduler_writes ... ok
+test malformed_or_changed_retained_bytes_fail_before_restore ... ok
+test retained_go_bytes_survive_rows_and_complete_archives_without_becoming_learning ... ok
+test retained_custody_counts_toward_existing_complete_archive_capacity ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+
+running 3 tests
+test imported_receipt_shape_never_allows_a_new_non_native_request_identity ... ok
+test imported_receipt_allowance_requires_custody_exact_marker_and_valid_hash ... ok
+test retained_receipt_keys_and_hashes_roundtrip_without_rekeying ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+test stale_reset_cannot_erase_a_newer_review_or_content_revision ... ok
+test pausing_excludes_unseen_questions_even_after_the_concept_intro ... ok
+test revealing_records_future_help_instead_of_an_immediate_cold_success ... ok
+test due_reviews_remain_available_while_paused_and_another_goal_is_focused ... ok
+test leaving_held_feedback_does_not_help_an_unrelated_concept ... ok
+test self_check_preserves_original_attempt_and_records_exposure_for_later_occurrences ... ok
+test assistance_is_pinned_to_occurrence_even_when_24_hours_elapse_before_answer ... ok
+test dismissed_feedback_keeps_the_existing_one_day_exposure_window ... ok
+test reset_history_is_immutable_atomic_exactly_replayed_and_self_contained ... ok
+test missing_or_tampered_schedule_history_cannot_become_restore_authority ... ok
+test leaving_held_feedback_refreshes_exposure_without_changing_the_saved_attempt ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 3 tests
+test reporting_never_saturates_totals_or_changes_the_rolling_allowance ... ok
+test attributed_archives_require_compatible_reader_and_preserve_all_cost_states ... ok
+test historical_attribution_and_custody_roundtrip_without_invention ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 7 tests
+test populated_study_archive_requires_compatible_format_and_intact_payload_chunks ... ok
+test study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes ... ok
+test study_answer_replay_conflict_and_correction_keep_original ... ok
+test study_recitation_grades_each_unit_and_strict_slips ... ok
+test study_receipts_assistance_fading_free_recall_once_daily_and_lapse ... ok
+test study_oversized_alignment_refuses_without_consuming_prompt_or_receipt ... ok
+test study_paces_are_rolling_caps_and_recitation_never_introduces_units ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.43s
+
+
+running 16 tests
+test synthetic_fixture_is_never_advertised_in_the_private_application ... ok
+test stream_transitions_from_preparing_to_honest_stopped_recovery ... ok
+test edits_carry_content_identity_and_preserve_rejected_drafts ... ok
+test author_and_model_text_is_escaped_in_every_context ... ok
+test repair_dispute_form_fences_a_deliberate_schedule_reset ... ok
+test held_result_names_authority_and_requires_deliberate_next ... ok
+test stream_distinguishes_stopped_partial_archived_and_mixed_preparations ... ok
+test assisted_results_do_not_offer_automatic_grade_overrides ... ok
+test pending_check_keeps_reference_private_without_offering_an_invalid_help_mutation ... ok
+test restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answers ... ok
+test answer_and_related_reference_are_absent_before_assistance ... ok
+test every_form_has_a_unique_nonce_bound_operation_and_native_fallback ... ok
+test restored_pause_is_truthful_across_preparation_views_without_retries ... ok
+test unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rules ... ok
+test imported_material_shows_its_own_words_not_import_labels_or_identifiers ... ok
+test ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 5 tests
+test changed_question_blocks_fix_before_paid_send ... ok
+test rejected_transport_never_claims_a_free_paid_outcome ... ok
+test refinement_retry_is_bounded_but_new_feedback_starts_fresh_attempt ... ok
+test skipped_critic_publishes_saved_candidates_without_a_second_reservation ... ok
+test stale_paid_assessment_retains_exact_raw_and_known_cost_without_learning_write ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

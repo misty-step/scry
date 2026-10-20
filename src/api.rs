@@ -11,6 +11,8 @@ pub struct Identity {
 #[derive(Serialize, Deserialize)]
 pub struct MutationResponse {
     pub result: MutationResult,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub practice: Option<serde_json::Value>,
     pub replayed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<TokenInfo>,
@@ -19,6 +21,14 @@ pub struct MutationResponse {
 }
 pub fn mutation_path(path: &str) -> Option<&str> {
     match path {
+        "/api/v1/learn" => Some("/practice/learn"),
+        "/api/v1/studies/pause" => Some("/practice/pause"),
+        "/api/v1/studies/resume" => Some("/practice/resume"),
+        "/api/v1/studies/drop" => Some("/practice/drop"),
+        "/api/v1/next" => Some("/practice/next"),
+        "/api/v1/answer" => Some("/practice/answer"),
+        "/api/v1/reveal" => Some("/practice/reveal"),
+        "/api/v1/correct" => Some("/practice/correct"),
         "/api/v1/library/versions" => Some("/library/version/add"),
         "/api/v1/library/versions/supersede" => Some("/library/version/supersede"),
         "/api/v1/library/versions/delete" => Some("/library/version/delete"),

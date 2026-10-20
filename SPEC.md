@@ -658,8 +658,8 @@ verification commands live outside this behavioral reference.
 | US-013 | S11, S04, S06, S09, S10 | Create and refinement for the understanding notebook |
 | US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (see criterion walks) |
 | US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
-| US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (evidence pending) |
-| US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (evidence pending) |
+| US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (see criterion walks) |
+| US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (see criterion walks) |
 | US-018 | S01, S02, UX4 | Exact recall on the phone (evidence pending) |
 | US-019 | S04, S06, D5 | Exact recall: generation agent (evidence pending) |
 | US-020 | S02, S08 | Exact recall: ordered lists (evidence pending) |
@@ -940,7 +940,7 @@ Criteria:
 No-gos: no separate Cards per Cue level, no prerequisite ordering, no
 concept selection, no streaks or due-count chrome.
 
-Evidence: pending
+Evidence: `qa/walk --stories "US-016"`, `qa/study.test.mjs`, and `tests/study.rs` exercise the compiled CLI, built Worker, SQLite, and local R2 with authored synthetic text. Phone, private canonical wording, hosted admission, and independent hosted recovery remain unverified.
 
 ## US-017 Get an exact verdict and a word-by-word diff
 
@@ -964,7 +964,7 @@ No-gos: no model judge, no tolerance beyond the Slip, no grading of punctuation
 or case, no voice-specific tolerance yet, no meaning-level variants inside a
 Version ("Holy Ghost" and "Holy Spirit" are different Versions).
 
-Evidence: pending
+Evidence: `qa/walk --stories "US-017"`, `qa/study.test.mjs`, and `tests/study.rs` exercise the compiled CLI, built Worker, SQLite, and local R2 with authored synthetic text. Phone, private canonical wording, hosted admission, and independent hosted recovery remain unverified.
 
 ## US-018 Practise exact recall on my phone
 

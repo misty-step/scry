@@ -1,0 +1,46 @@
+{
+  "fixed_base": "17ae38bf07f5d062e06ba3065642f149e5b323a0",
+  "parent_pr": "https://github.com/misty-step/scry/pull/342",
+  "application_source": "9119257757fd7db7de0cb60fb95940840c056f35",
+  "verified_source": "f8a0122f8ced6cbecb63d7dee47b6ce8e7ba567f",
+  "integrations": [],
+  "artifact": [
+    {
+      "path": "build/index_bg.wasm",
+      "sha256": "4245b91c88862be1a585f23e2e9511ca32316ac5bc0909ea90a1ba85e1224eb9"
+    },
+    {
+      "path": "build/index.js",
+      "sha256": "33e54df305c388a6e0a1ebac3d1c9974a3a278b36247bff8b394e72f6d0fb37f"
+    },
+    {
+      "path": "build/worker/shim.mjs",
+      "sha256": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+    },
+    {
+      "path": "target/debug/scry",
+      "sha256": "b2ef2af50920ee254029ba9ef856924b7880c48391653e5bbc8c43a414a04661"
+    }
+  ],
+  "checks": {
+    "native_tests": "PASS 135, including 7 Study tests and all 260 pinned FSRS trajectories",
+    "fmt": "PASS cargo fmt --all -- --check",
+    "clippy_native": "PASS",
+    "clippy_wasm": "PASS",
+    "worker_build": "PASS Rust 1.98.1 / worker-build 0.8.7, locked",
+    "node": "22.22.0",
+    "cli_runtime": "PASS 31 tests: Library 8, Study 11, grader 10, spend 2",
+    "story_walk": "PASS US-015 8/8, US-016 11/11, US-017 10/10",
+    "existing_runtime": "FAIL 1 of 63; 62 pass. Known frozen-parent US-014.3 qa/owner-api.mjs:82 fetch failed. Root owns 1ed9158 parent fix/integration.",
+    "full_gate": "BLOCKED at application source 9119257 by Docker registry DNS resolving pinned Node image; Mirrodin hostname unavailable. No gate change.",
+    "story_discovery_guards": "PASS 26/26, pending-US018 and drift refusals retained"
+  },
+  "limits": [
+    "Source-only synthetic supplied text under Creed/Missal metadata; no canonical private wording acceptance.",
+    "Physical phone, hosted API #335, independent hosted restore, production activation UNVERIFIED.",
+    "Initialized SQLite/WAL/SHM bytes and all application rows are stable on due/history/export/list/spend. Literal cold-filesystem guarantee FAIL per parent ruling; framework activation can allocate files.",
+    "Populated practice requires study-v1-compatible writer/archive/restore. Empty old rows/archives round-trip unchanged.",
+    "Local edit alignment is capped at 1,000,000 cells per comparison; oversized operations refuse without mutation.",
+    "Baseline compiled parent CLI refusal observed. Parent Worker negative-control setup stalled and was stopped; no claim of a completed parent Worker baseline journey."
+  ]
+}

@@ -1,0 +1,200 @@
++ dagger -m /home/phaedrus/.cache/tmp/scry-ci-15mx75lo/module call check --source /home/phaedrus/.cache/tmp/scry-ci-15mx75lo/input export --path /home/phaedrus/.cache/tmp/scry-study-9119257-gate
+1   : connect
+1   : [0.0s] | cloud url=https://dagger.cloud/traces/setup
+2   : ┆ starting engine
+3   : ┆ ┆ create container
+4   : ┆ ┆ ┆ exec docker ps -a --format {{.Names}}
+4   : ┆ ┆ ┆ [0.1s] | supabase_pg_meta_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_habitat-qa-0291d60f083547e4e4a3fde61910e
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-c5dfbda273ae
+4   : ┆ ┆ ┆ [0.1s] | habitat-ha825-f1f2-ci-20261020
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-fsync-cold-01
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-original-library-01
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-original-sequence-01
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-faithful-cold-01
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-exact-cold-01
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-exact-package
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-package
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-native-02
+4   : ┆ ┆ ┆ [0.1s] | overmind-314-native-01
+4   : ┆ ┆ ┆ [0.1s] | habitat-native-schema-20261020
+4   : ┆ ┆ ┆ [0.1s] | habitat-native-ci-20261020
+4   : ┆ ┆ ┆ [0.1s] | supabase_pg_meta_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_habitat-bce3c987-15f6-4676-ae57-ba902a09
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-qa-d55fe132793b54bc71a1a371a36da
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-qa-d55fe132793b54bc71a1a371a36da
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-qa-d55fe132793b54bc71a1a371a36da
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-47a330332a9b
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-7100406be931
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_habitat-qa-d55fe132793b54bc71a1a371a36da
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-3e5b63f83422
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-43425dc6787d
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-73b5faf6a573
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-33a50834c86b
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-e6554778fc09
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-c4ac4ade83c2
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-4eade69cf6fc
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-81b0675a1e3c
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-625d15114764
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-26865b18c289
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-fd065dc40204
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-8949cc777ced
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-70eccd99219f
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-705ac6c0e471
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-45ebc44c51f7
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-01bfafd110ff
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-97098e3ba7dc
+4   : ┆ ┆ ┆ [0.1s] | tach-us040-16c61674cf60
+4   : ┆ ┆ ┆ [0.1s] | stupefied_mcclintock
+4   : ┆ ┆ ┆ [0.1s] | factory-executor-test-t_c4877494
+4   : ┆ ┆ ┆ [0.1s] | factory-executor-test-t_ec974f9e
+4   : ┆ ┆ ┆ [0.1s] | fleet-t_f7ee2d10
+4   : ┆ ┆ ┆ [0.1s] | recursing_lamport
+4   : ┆ ┆ ┆ [0.1s] | magical_bhaskara
+4   : ┆ ┆ ┆ [0.1s] | native-habitat-release-t9a88631b
+4   : ┆ ┆ ┆ [0.1s] | eager_feistel
+4   : ┆ ┆ ┆ [0.1s] | quizzical_hellman
+4   : ┆ ┆ ┆ [0.1s] | supabase_pg_meta_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-qa-48e4fd4a9fe0d14141664ea94cb97
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_habitat-qa-169c2e2c4d971909ee8dcdd1b8698
+4   : ┆ ┆ ┆ [0.1s] | native-habitat-t9a88631b
+4   : ┆ ┆ ┆ [0.1s] | native-tach-t9a88631b
+4   : ┆ ┆ ┆ [0.1s] | workerd-sploot-rs-video-preview-VideoDecoder-7e2bf223a906a1abd7deb5b40414718d518b49817475191d804d748ec3661562-proxy
+4   : ┆ ┆ ┆ [0.1s] | k20261012-public-final-pg-restore
+4   : ┆ ┆ ┆ [0.1s] | k20261012-scry-pg16-bAlyJUXo-restore
+4   : ┆ ┆ ┆ [0.1s] | household-opengym-web-1
+4   : ┆ ┆ ┆ [0.1s] | household-opengym-tailnet-1
+4   : ┆ ┆ ┆ [0.1s] | household-opengym-media-1
+4   : ┆ ┆ ┆ [0.1s] | household-opengym-api-1
+4   : ┆ ┆ ┆ [0.1s] | sploot-full-test
+4   : ┆ ┆ ┆ [0.1s] | sploot-serve-test
+4   : ┆ ┆ ┆ [0.1s] | ha470-probe
+4   : ┆ ┆ ┆ [0.1s] | ha470-postgrest
+4   : ┆ ┆ ┆ [0.1s] | supabase_studio_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_pg_meta_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_habitat-6eb909b0-fec0-4018-b435-a964f597
+4   : ┆ ┆ ┆ [0.1s] | r90-simple-host-smoke
+4   : ┆ ┆ ┆ [0.1s] | r90-host-proof
+4   : ┆ ┆ ┆ [0.1s] | buildx_buildkit_no-tach-cohort-202609110
+4   : ┆ ┆ ┆ [0.1s] | linejam-local-playtest-convex-watch-1
+4   : ┆ ┆ ┆ [0.1s] | linejam-local-playtest-app-1
+4   : ┆ ┆ ┆ [0.1s] | sploot-mis45-artifact
+4   : ┆ ┆ ┆ [0.1s] | linejam-local-playtest-convex-1
+4   : ┆ ┆ ┆ [0.1s] | dagger-engine-v0.21.6
+4   : ┆ ┆ ┆ [0.1s] | supabase_studio_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_pg_meta_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_edge_runtime_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_storage_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_rest_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_realtime_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_inbucket_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_auth_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_kong_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_vector_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_analytics_teams-doc-bot
+4   : ┆ ┆ ┆ [0.1s] | supabase_db_teams-doc-bot
+4   : ┆ ┆ ┆ exec docker ps -a --format {{.Names}} DONE [0.1s]
+5   : ┆ ┆ ┆ exec docker start dagger-engine-v0.21.6
+5   : ┆ ┆ ┆ [0.0s] | dagger-engine-v0.21.6
+5   : ┆ ┆ ┆ exec docker start dagger-engine-v0.21.6 DONE [0.0s]
+3   : ┆ ┆ create container DONE [0.1s]
+2   : ┆ starting engine DONE [0.1s]
+6   : ┆ connecting to engine
+6   : ┆ [0.0s] | 12:52:20 INF connected name=defcd50cb8b1 client-version=v0.21.6 server-version=v0.21.6
+6   : ┆ connecting to engine DONE [0.0s]
+7   : ┆ starting session
+7   : ┆ starting session DONE [0.8s]
+1   : connect DONE [1.0s]
+
+8   : load workspace: .
+9   : ┆ loading type definitions
+9   : ┆ loading type definitions DONE [0.5s]
+8   : load workspace: . DONE [0.5s]
+
+10  : parsing command line arguments
+10  : parsing command line arguments DONE [0.2s]
+
+11  : scry: Scry!
+11  : scry CACHED [0.0s]
+
+12  : Scry.check(
+12  : ┆ source: Address.directory(exclude: [".git", "**/.git"]): Directory!
+12  : ): Directory!
+13  : ┆ Directory.directory(path: "source"): Directory!
+13  : ┆ Directory.directory DONE [0.0s]
+14  : ┆ container: Container!
+14  : ┆ container CACHED [0.0s]
+15  : ┆ Container.from(address: "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"): Container!
+15  : ┆ Container.from CACHED [0.0s]
+16  : ┆ Container.withDirectory(
+16  : ┆ ┆ path: "/src"
+16  : ┆ ┆ source: Directory.directory(path: "source"): Directory!
+16  : ┆ ): Container!
+17  : ┆ withWorkdir /src
+17  : ┆ Container.withWorkdir DONE [0.0s]
+18  : ┆ withExec gitleaks dir /src --redact --no-banner
+18  : ┆ Container.withExec DONE [0.0s]
+19  : ┆ Container.stdout: String!
+16  : ┆ Container.withDirectory DONE [0.0s]
+18  : ┆ Container.withExec DONE [1.4s]
+18  : ┆ [1.3s] | 5:52PM INF scanned ~7882600 bytes (7.88 MB) in 1.13s
+18  : ┆ [1.3s] | 5:52PM INF no leaks found
+19  : ┆ Container.stdout DONE [1.3s]
+20  : ┆ Container.stderr: String!
+20  : ┆ Container.stderr DONE [0.0s]
+21  : ┆ container(platform: "linux/amd64"): Container!
+21  : ┆ container CACHED [0.0s]
+22  : ┆ Container.from(address: "node:22.22.0-bookworm-slim"): Container!
+23  : ┆ ┆ resolving docker.io/library/node:22.22.0-bookworm-slim
+24  : ┆ ┆ remotes.docker.resolver.HTTPRequest
+25  : ┆ ┆ HTTP HEAD
+25  : ┆ ┆ HTTP HEAD ERROR [20.0s]
+25  : ┆ ┆ ! dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout
+24  : ┆ ┆ remotes.docker.resolver.HTTPRequest ERROR [20.0s]
+24  : ┆ ┆ ! dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout
+23  : ┆ ┆ resolving docker.io/library/node:22.22.0-bookworm-slim ERROR [20.0s]
+23  : ┆ ┆ ! failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/22.22.0-bookworm-slim": dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout
+22  : ┆ Container.from ERROR [20.0s]
+22  : ┆ ! failed to resolve image "docker.io/library/node:22.22.0-bookworm-slim" (platform: "linux/amd64"): failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/22.22.0-bookworm-slim": dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout
+12  : Scry.check ERROR [23.5s]
+12  : ! failed to resolve image "docker.io/library/node:22.22.0-bookworm-slim" (platform: "linux/amd64"): failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/22.22.0-bookworm-slim": dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout
+
+
+Setup tracing at https://dagger.cloud/traces/setup. To hide set DAGGER_NO_NAG=1
+
+
+Error: failed to resolve image "docker.io/library/node:22.22.0-bookworm-slim" (platform: "linux/amd64"): failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/22.22.0-bookworm-slim": dial tcp: lookup registry-1.docker.io on 10.87.0.1:53: read udp 10.87.0.1:45265->10.87.0.1:53: i/o timeout [traceparent:99c4237e4fe433fab9e5667404721d71-a891997e1ad00ee7]
+
+A new release of dagger is available: v0.21.6 → v0.21.10
+To upgrade, see https://docs.dagger.io/install
+https://github.com/dagger/dagger/releases/tag/v0.21.10
+scry-ci: command failed (1): dagger

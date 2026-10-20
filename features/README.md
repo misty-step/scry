@@ -10,6 +10,7 @@ production activation. US-012 is retired and its identifier remains reserved.
 - [Concepts, references, and goals](concepts.md): US-001, US-006, US-009, US-010.
 - [Owner tokens, API and CLI](owner-tokens.md): US-014 / AG1.
 - [Private Library](library.md): US-015 / AG1.
+- [Exact text practice](exact-study.md): US-016, US-017 / AG1.
 - [Changes in this build](../SPEC.md#s12--inspect-the-changes-in-this-build):
   follow the footer's Changelog link to `/changelog`, then return through the
   header. Source: `src/web.rs`, `src/runtime.rs`. The existing `qa/walk --all`

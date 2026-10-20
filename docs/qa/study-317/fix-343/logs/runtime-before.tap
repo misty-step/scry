@@ -1,0 +1,175 @@
+TAP version 13
+# Subtest: Old disclosure replay refuses through CLI/API under a protected unit Prompt
+not ok 1 - Old disclosure replay refuses through CLI/API under a protected unit Prompt
+  ---
+  duration_ms: 4744.360286
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:72:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"result":{"data":{"attempt_id":null,"correction_ids":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.","cue_level":"read","id":"c0702e87bfdf89cb9c3c7dc0e05ca177","scope":{"kind":"unit","position":1,"unit_id":"12cab6b70d360b7cdea850883ac8ea3d"},"study_id":"5b33e28261a5af85943ddebbd9b94cac","title":"Authored copper stanza","unit_ids":["12cab6b70d360b7cdea850883ac8ea3d"],"version_hash":"bdd076761ae56e9c0f0e1bac40d19ddf5039f8ac0ecca54818c9070f45fca04f","version_id":"ed0a868a6c33d84cddf25f671350f7f4"},"revealed":false},"redirect":"/api/v1/practice","entity_id":null,"message":null},"practice":{"attempt_id":null,"correction_ids":[],"corrections":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.","cue_level":"read","id":"c0702e87bfdf89cb9c3c7dc0e05ca177","scope":{"kind":"unit","position":1,"unit_id":"12cab6b70d360b7cdea850883ac8ea3d"},"study_id":"5b33e28261a5af85943ddebbd9b94cac","title":"Authored copper stanza","unit_ids":["12cab6b70d360b7cdea850883ac8ea3d"],"version_hash":"bdd076761ae56e9c0f0e1bac40d19ddf5039f8ac0ecca54818c9070f45fca04f","version_id":"ed0a868a6c33d84cddf25f671350f7f4"},"revealed":false},"replayed":true}
+    
+    200 !== 409
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 409
+  actual: 200
+  operator: 'strictEqual'
+  stack: |-
+    Object.api (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:37:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:114:23)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: Old disclosure replay refuses through CLI/API under a protected section Prompt
+not ok 2 - Old disclosure replay refuses through CLI/API under a protected section Prompt
+  ---
+  duration_ms: 2686.444793
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:72:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"result":{"data":{"attempt_id":null,"correction_ids":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.\n","cue_level":"read","id":"4e68651860868bbe0d8aad62b06fc347","scope":{"kind":"unit","position":1,"unit_id":"ca462a109bb66d47ddbaf1e7e3be2150"},"study_id":"e9e2294941c3bc22ce408c8625af4e82","title":"Authored copper stanza","unit_ids":["ca462a109bb66d47ddbaf1e7e3be2150"],"version_hash":"9e5575226a13372bebcf62132cc9532d3812a141e092eb3f68444f2d306279f8","version_id":"bb9860044ae95928fc2d9046689561b4"},"revealed":false},"redirect":"/api/v1/practice","entity_id":null,"message":null},"practice":{"attempt_id":null,"correction_ids":[],"corrections":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.\n","cue_level":"read","id":"4e68651860868bbe0d8aad62b06fc347","scope":{"kind":"unit","position":1,"unit_id":"ca462a109bb66d47ddbaf1e7e3be2150"},"study_id":"e9e2294941c3bc22ce408c8625af4e82","title":"Authored copper stanza","unit_ids":["ca462a109bb66d47ddbaf1e7e3be2150"],"version_hash":"9e5575226a13372bebcf62132cc9532d3812a141e092eb3f68444f2d306279f8","version_id":"bb9860044ae95928fc2d9046689561b4"},"revealed":false},"replayed":true}
+    
+    200 !== 409
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 409
+  actual: 200
+  operator: 'strictEqual'
+  stack: |-
+    Object.api (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:37:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:114:23)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: Old disclosure replay refuses through CLI/API under a protected whole Prompt
+not ok 3 - Old disclosure replay refuses through CLI/API under a protected whole Prompt
+  ---
+  duration_ms: 1564.033514
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:72:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"result":{"data":{"attempt_id":null,"correction_ids":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.\n","cue_level":"read","id":"790de6615041f2f5d256e9a5cb342f44","scope":{"kind":"unit","position":1,"unit_id":"d6bd52b4615601238851ad9e18126355"},"study_id":"15b353798df767001eb81e737eea2c4c","title":"Authored copper stanza","unit_ids":["d6bd52b4615601238851ad9e18126355"],"version_hash":"9e5575226a13372bebcf62132cc9532d3812a141e092eb3f68444f2d306279f8","version_id":"cb7434e7e83ef5a75bba43ec1fd0c1fc"},"revealed":false},"redirect":"/api/v1/practice","entity_id":null,"message":null},"practice":{"attempt_id":null,"correction_ids":[],"corrections":[],"prompt":{"assisted":true,"context":null,"cue":"Copper lanterns shelter quiet gardens.\n","cue_level":"read","id":"790de6615041f2f5d256e9a5cb342f44","scope":{"kind":"unit","position":1,"unit_id":"d6bd52b4615601238851ad9e18126355"},"study_id":"15b353798df767001eb81e737eea2c4c","title":"Authored copper stanza","unit_ids":["d6bd52b4615601238851ad9e18126355"],"version_hash":"9e5575226a13372bebcf62132cc9532d3812a141e092eb3f68444f2d306279f8","version_id":"cb7434e7e83ef5a75bba43ec1fd0c1fc"},"revealed":false},"replayed":true}
+    
+    200 !== 409
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 409
+  actual: 200
+  operator: 'strictEqual'
+  stack: |-
+    Object.api (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:37:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:114:23)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: Explicit reveal breaks the cue success run at all rungs through the compiled CLI
+not ok 4 - Explicit reveal breaks the cue success run at all rungs through the compiled CLI
+  ---
+  duration_ms: 1214.810458
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:145:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    A copied Good does not fade the cue.
+    + actual - expected
+    
+    + 'first_letters'
+    - 'read'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'read'
+  actual: 'first_letters'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:157:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Critical Error: Rust panic: panicked at src/study.rs:391:37:
+# no entry found for key
+#     at __wbg_new_343a093a3c2ffb4e (file:///home/phaedrus/.cache/tmp/scry-343-qa/evidence/artifact/index.js:4:19115)
+#     at scry.wasm.<js_sys[25d882bea44402e7]::Error>::new::__wbg_new_343a093a3c2ffb4e externref shim (wasm://wasm/scry.wasm-00d85722:wasm-function[2990]:0x1fd313)
+#     at scry.wasm.worker[ea03cb10ca21b792]::init::init::{closure\#0} (wasm://wasm/scry.wasm-00d85722:wasm-function[997]:0x159755)
+#     at scry.wasm.std[5a6270b673d0c64d]::panicking::panic_with_hook (wasm://wasm/scry.wasm-00d85722:wasm-function[1148]:0x16cf13)
+#     at scry.wasm.core[ed718c3d60ebd546]::panicking::panic_fmt (wasm://wasm/scry.wasm-00d85722:wasm-function[2567]:0x1f794d)
+#     at scry.wasm.core[ed718c3d60ebd546]::option::expect_failed (wasm://wasm/scry.wasm-00d85722:wasm-function[2568]:0x1f7989)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::study::make_prompt (wasm://wasm/scry.wasm-00d85722:wasm-function[237]:0x6987d)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::study::validate_targets (wasm://wasm/scry.wasm-00d85722:wasm-function[251]:0x73da2)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::engine::validate_app_checks (wasm://wasm/scry.wasm-00d85722:wasm-function[176]:0x65d4)
+#     at scry.wasm.js_sys[25d882bea44402e7]::futures::future_to_promise::<<scry[fc4aceff81e7f58d]::runtime::LearningSpace>::fetch::{closure\#0}::_::__wasm_bindgen_generated_LearningSpace_fetch::{closure\#0}>::{closure\#0}::{closure\#0} (wasm://wasm/scry.wasm-00d85722:wasm-function[544]:0xf14b5)
+#     at scry.wasm.<js_sys[25d882bea44402e7]::futures::queue::Queue>::new::{closure\#0} (wasm://wasm/scry.wasm-00d85722:wasm-function[706]:0x131161)
+#     at scry.wasm.wasm_bindgen[aa50da02252d0a0c]::convert::closures::_::invoke::<wasm_bindgen[aa50da02252d0a0c]::JsValue, core[ed718c3d60ebd546]::result::Result<(), wasm_bindgen[aa50da02252d0a0c]::JsError>, true> (wasm://wasm/scry.wasm-00d85722:wasm-function[2278]:0x1ea8c8)
+#     at scry.wasm.wasm_bindgen[aa50da02252d0a0c]::convert::closures::_::invoke::<wasm_bindgen[aa50da02252d0a0c]::JsValue, core[ed718c3d60ebd546]::result::Result<(), wasm_bindgen[aa50da02252d0a0c]::JsError>, true> externref shim multivalue shim (wasm://wasm/scry.wasm-00d85722:wasm-function[2762]:0x1fa71a)
+#     at ye (file:///home/phaedrus/.cache/tmp/scry-343-qa/evidence/artifact/index.js:4:26063)
+#     at r (file:///home/phaedrus/.cache/tmp/scry-343-qa/evidence/artifact/index.js:5:832)
+# Critical RuntimeError: unreachable
+#     at scry.wasm.std[5a6270b673d0c64d]::panicking::panic_with_hook (wasm://wasm/scry.wasm-00d85722:wasm-function[1148]:0x16cf77)
+#     at scry.wasm.core[ed718c3d60ebd546]::panicking::panic_fmt (wasm://wasm/scry.wasm-00d85722:wasm-function[2567]:0x1f794d)
+#     at scry.wasm.core[ed718c3d60ebd546]::option::expect_failed (wasm://wasm/scry.wasm-00d85722:wasm-function[2568]:0x1f7989)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::study::make_prompt (wasm://wasm/scry.wasm-00d85722:wasm-function[237]:0x6987d)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::study::validate_targets (wasm://wasm/scry.wasm-00d85722:wasm-function[251]:0x73da2)
+#     at scry.wasm.scry[fc4aceff81e7f58d]::engine::validate_app_checks (wasm://wasm/scry.wasm-00d85722:wasm-function[176]:0x65d4)
+#     at scry.wasm.js_sys[25d882bea44402e7]::futures::future_to_promise::<<scry[fc4aceff81e7f58d]::runtime::LearningSpace>::fetch::{closure\#0}::_::__wasm_bindgen_generated_LearningSpace_fetch::{closure\#0}>::{closure\#0}::{closure\#0} (wasm://wasm/scry.wasm-00d85722:wasm-function[544]:0xf14b5)
+#     at scry.wasm.<js_sys[25d882bea44402e7]::futures::queue::Queue>::new::{closure\#0} (wasm://wasm/scry.wasm-00d85722:wasm-function[706]:0x131161)
+#     at scry.wasm.wasm_bindgen[aa50da02252d0a0c]::convert::closures::_::invoke::<wasm_bindgen[aa50da02252d0a0c]::JsValue, core[ed718c3d60ebd546]::result::Result<(), wasm_bindgen[aa50da02252d0a0c]::JsError>, true> (wasm://wasm/scry.wasm-00d85722:wasm-function[2278]:0x1ea8c8)
+#     at scry.wasm.wasm_bindgen[aa50da02252d0a0c]::convert::closures::_::invoke::<wasm_bindgen[aa50da02252d0a0c]::JsValue, core[ed718c3d60ebd546]::result::Result<(), wasm_bindgen[aa50da02252d0a0c]::JsError>, true> externref shim multivalue shim (wasm://wasm/scry.wasm-00d85722:wasm-function[2762]:0x1fa71a)
+#     at ye (file:///home/phaedrus/.cache/tmp/scry-343-qa/evidence/artifact/index.js:4:26063)
+#     at r (file:///home/phaedrus/.cache/tmp/scry-343-qa/evidence/artifact/index.js:5:832)
+# Subtest: Restore dry-run completes a refusal for a missing work reference and writes zero rows
+not ok 5 - Restore dry-run completes a refusal for a missing work reference and writes zero rows
+  ---
+  duration_ms: 6736.009021
+  type: 'test'
+  location: '/home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:203:3'
+  failureType: 'testCodeFailure'
+  error: 'Restore request did not complete within 5000ms.'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Timeout.<anonymous> (file:///home/phaedrus/.t3/worktrees/scry/t3-355a0a56/qa/study-integrity.test.mjs:196:67)
+    listOnTimeout (node:internal/timers:588:17)
+    process.processTimers (node:internal/timers:523:7)
+  ...
+# Subtest: Restore dry-run completes a refusal for a missing version reference and writes zero rows
+ok 6 - Restore dry-run completes a refusal for a missing version reference and writes zero rows
+  ---
+  duration_ms: 3776.407084
+  type: 'test'
+  ...
+# Subtest: Restore dry-run completes a refusal for a missing section reference and writes zero rows
+ok 7 - Restore dry-run completes a refusal for a missing section reference and writes zero rows
+  ---
+  duration_ms: 4409.458172
+  type: 'test'
+  ...
+# Subtest: Restore dry-run completes a refusal for a missing unit reference and writes zero rows
+ok 8 - Restore dry-run completes a refusal for a missing unit reference and writes zero rows
+  ---
+  duration_ms: 1926.312249
+  type: 'test'
+  ...
+# Subtest: Restore dry-run completes a refusal for a missing target reference and writes zero rows
+ok 9 - Restore dry-run completes a refusal for a missing target reference and writes zero rows
+  ---
+  duration_ms: 5176.994172
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 4
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32392.814977

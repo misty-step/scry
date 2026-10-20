@@ -1,0 +1,182 @@
+[
+  {
+    "scope": "unit",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "unit",
+    "path": "/api/v1/reveal",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "unit",
+    "path": "/api/v1/answer",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "unit",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "section",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "section",
+    "path": "/api/v1/reveal",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "section",
+    "path": "/api/v1/answer",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "section",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "section",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "whole",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "whole",
+    "path": "/api/v1/reveal",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "whole",
+    "path": "/api/v1/answer",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "whole",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "scope": "whole",
+    "path": "/api/v1/next",
+    "status": 409,
+    "rows_unchanged": true
+  },
+  {
+    "cue": "read",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "first_letters"
+  },
+  {
+    "cue": "first_letters",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "first_letter"
+  },
+  {
+    "cue": "first_letter",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "previous_line"
+  },
+  {
+    "cue": "previous_line",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "section_heading"
+  },
+  {
+    "cue": "section_heading",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "whole_title"
+  },
+  {
+    "cue": "whole_title",
+    "revealed_good_successes": 0,
+    "revealed_again_corrected_successes": 0,
+    "next_cue": "whole_title"
+  },
+  {
+    "missing": "work",
+    "path": "/operator/restore",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "work",
+    "path": "/operator/restore-dry-run",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "version",
+    "path": "/operator/restore",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "version",
+    "path": "/operator/restore-dry-run",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "section",
+    "path": "/operator/restore",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "section",
+    "path": "/operator/restore-dry-run",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "unit",
+    "path": "/operator/restore",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "unit",
+    "path": "/operator/restore-dry-run",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "target",
+    "path": "/operator/restore",
+    "status": 422,
+    "rows": 0
+  },
+  {
+    "missing": "target",
+    "path": "/operator/restore-dry-run",
+    "status": 422,
+    "rows": 0
+  }
+]
