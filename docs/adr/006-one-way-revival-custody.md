@@ -4,6 +4,13 @@ Status: accepted revival scope, 2026-10-15. Import implementation, learner-data
 reconciliation and production cutover remain unverified. This decision is not
 an import receipt or a declaration that the Rust replacement is live.
 
+Status note, 2026-10-20: since 2026-10-16T23:35Z, `scry.study`, `www.scry.study`
+and `scry.mistystep.io` have been served by `scry-rust-production` (space
+`revival-production-20261016`, generation unbound). See the
+[runbook observation](../runbook.md#rust-production-serving--observed-2026-10-20).
+That records serving facts only. It does not supply the import, reconciliation,
+cutover or rollback proof this decision requires.
+
 ## Context
 
 The original D6 fresh-start policy did not authorize importing historical
@@ -12,8 +19,10 @@ on 2026-10-15 supersedes that restriction for one revival: Rust plus a reviewed,
 one-way import of the final Go dataset. It does not revive the historical API,
 permit general uploads, merge unrelated stores, or accept the whole rewrite.
 
-Production route metadata still identifies `scry-app-host`, the Go Container
-predecessor, on `scry.study`, `www.scry.study` and `scry.mistystep.io`. The retained
+When this decision was recorded (2026-10-15), production route metadata
+identified `scry-app-host`, the Go Container predecessor, on `scry.study`,
+`www.scry.study` and `scry.mistystep.io`; the status note above records the
+later move. The retained
 Go source is `c6ba395a63814c1f973d8cda5057d54fbb587e9b`; source/deployment metadata
 alone does not prove the running container image's bytes. The exe.dev VM,
 October 9 Rust preview and archived Convex predecessor are separate custody
