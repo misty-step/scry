@@ -4,7 +4,7 @@
 
 import { URL } from 'node:url';
 
-// production origins per spec
+// Production hosts recorded in docs/runbook.md
 const PRODUCTION_ORIGINS = new Set(['scry.study', 'www.scry.study', 'scry.mistystep.io']);
 
 export function classifyOrigin(rawUrl, { mutating = false, allowOrigin = null } = {}) {
@@ -22,7 +22,7 @@ export function classifyOrigin(rawUrl, { mutating = false, allowOrigin = null } 
     return { ok: false, kind: 'invalid', reason: 'protocol must be http or https' };
   }
 
-  if (PRODUCTION_ORIGINS.has(hostname)) {
+  if (PRODUCTION_ORIGINS.has(hostname.replace(/\.$/, ''))) {
     if (mutating) {
       return { ok: false, kind: 'production', reason: 'production origins are forbidden for mutating modes' };
     }
