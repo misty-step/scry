@@ -185,6 +185,117 @@ fn token_expiry_and_paid_refusal_precede_reservation_and_transmission() {
     assert!(app.spend.is_empty());
 }
 #[test]
+fn paid_token_grants_require_paid_authority_at_the_shared_engine_boundary() {
+    let mut app = App::new("synthetic-csrf-at-least-24-chars".into());
+    let unpaid = OwnerToken::issue("practice", Some(NOW + 100), false, NOW, SEED).unwrap();
+    app.owner_tokens
+        .insert(unpaid.info.id.clone(), unpaid.clone());
+    let ordinary_request = fields(&[
+        ("operation_id", "ordinary-child-operation"),
+        ("name", "ordinary child"),
+    ]);
+    let ordinary = engine::mutate_as(
+        &mut app,
+        "/tokens/create",
+        &ordinary_request,
+        NOW,
+        "111111111111111111111111111111111111111111111111",
+        MutationActor::Token(&unpaid.info),
+    )
+    .unwrap();
+    let ordinary = app.owner_tokens[&ordinary.entity_id.unwrap()].clone();
+    assert!(!ordinary.info.paid);
+    assert_eq!(ordinary.info.expires_ms, None);
+    let paid_request = fields(&[
+        ("operation_id", "paid-child-grant-operation"),
+        ("name", "paid child"),
+        ("paid", "true"),
+    ]);
+    let before = persistence::rows(&app).unwrap();
+    for actor in [&unpaid, &ordinary] {
+        let error = engine::mutate_as(
+            &mut app,
+            "/tokens/create",
+            &paid_request,
+            NOW,
+            "222222222222222222222222222222222222222222222222",
+            MutationActor::Token(&actor.info),
+        )
+        .unwrap_err();
+        assert_eq!(error.status, 403);
+        assert_eq!(persistence::rows(&app).unwrap(), before);
+    }
+    let config = engine::WorkConfig {
+        generation: true,
+        jev: false,
+        critic: false,
+        model: "synthetic".into(),
+        jev_model: String::new(),
+    };
+    assert!(
+        engine::claim_work(&mut app, NOW, "refused-grant-lease", &config)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(persistence::rows(&app).unwrap(), before);
+    assert!(app.spend.is_empty());
+
+    let mut owner_request = paid_request.clone();
+    owner_request.insert("csrf".into(), app.csrf.clone());
+    let paid = engine::mutate(
+        &mut app,
+        "/tokens/create",
+        &owner_request,
+        NOW,
+        "333333333333333333333333333333333333333333333333",
+    )
+    .unwrap();
+    let paid = app.owner_tokens[&paid.entity_id.unwrap()].clone();
+    assert!(paid.info.paid);
+    let mut delegated_request = paid_request;
+    delegated_request.insert(
+        "operation_id".into(),
+        "paid-delegated-grant-operation".into(),
+    );
+    let seed = "444444444444444444444444444444444444444444444444";
+    let delegated = engine::mutate_as(
+        &mut app,
+        "/tokens/create",
+        &delegated_request,
+        NOW,
+        seed,
+        MutationActor::Token(&paid.info),
+    )
+    .unwrap();
+    let delegated = app.owner_tokens[&delegated.entity_id.unwrap()].clone();
+    assert!(delegated.info.paid);
+    let persisted = serde_json::to_string(&persistence::rows(&app).unwrap()).unwrap();
+    assert!(!persisted.contains(seed));
+    assert!(!persisted.contains(&owner_token::issuance_secret(seed)));
+    engine::mutate_as(
+        &mut app,
+        "/create",
+        &fields(&[
+            ("operation_id", "paid-delegated-work-operation"),
+            ("intent", "synthetic authorized paid request"),
+        ]),
+        NOW,
+        SEED,
+        MutationActor::Token(&delegated.info),
+    )
+    .unwrap();
+    let work = engine::claim_work(&mut app, NOW, "authorized-lease", &config)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        app.jobs[&work.id].acting_token.as_deref(),
+        Some(delegated.info.id.as_str())
+    );
+    assert_eq!(app.spend.len(), 1);
+    assert_eq!(app.spend[0].reserved_micros, 500_000);
+    engine::authorize_work(&app, &work.id, NOW).unwrap();
+}
+#[test]
 fn web_and_api_share_receipts_and_cookie_csrf() {
     let mut app = App::new("synthetic-csrf-at-least-24-chars".into());
     let token = OwnerToken::issue("agent", None, false, NOW, SEED).unwrap();

@@ -104,6 +104,9 @@ pub fn mutate_as(
             Err(AppError::conflict())
         };
     }
+    if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
+        return Err(owner_token::paid_refusal());
+    }
     let mut next = app.clone();
     let response = apply(&mut next, path, fields, now, seed)?;
     let acting_token = actor.token_id();

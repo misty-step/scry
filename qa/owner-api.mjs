@@ -21,7 +21,7 @@ export async function ownerJourney() {
     assert.equal(req.url,`https://${team}/cdn-cgi/access/certs`,'No provider or other egress permitted.');
     return new Response(JSON.stringify({keys:[{...publicKey.export({format:'jwk'}),kid:'synthetic',alg:'RS256',use:'sig'}]}));
   }});
-  const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+  let storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
   const temp=await mkdtemp(join(tmpdir(),'scry-owner-cli-'));
   const transcript=[];
   let root,child,revoked,expired,csrf,formFields,creationResponse;
@@ -29,8 +29,8 @@ export async function ownerJourney() {
   const bearer=(path,token=root?.secret,payload)=>runtime.worker.fetch(origin+path,{redirect:'manual',...(payload?{method:'POST',body:JSON.stringify(payload)}:{}),headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'}});
   const rows=()=>storage.exec('SELECT key,value FROM records ORDER BY key');
   const postForm=(path,fields)=>access(path,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
-  const create=async(name,extra={})=>{
-    const response=await bearer('/api/v1/tokens',root.secret,{operation_id:randomUUID(),name,...extra});assert.equal(response.status,200);
+  const create=async(name,extra={},token=root.secret)=>{
+    const response=await bearer('/api/v1/tokens',token,{operation_id:randomUUID(),name,...extra});assert.equal(response.status,200);
     const value=await response.json();assert.ok(typeof value.secret==='string','First issuance returns a secret.');return value;
   };
   const criteria=[
@@ -51,7 +51,7 @@ export async function ownerJourney() {
     },
     async()=>{
       const who=await(await bearer('/api/v1/whoami')).json();assert.equal(who.token.name,'builder');
-      child=await create('delegated agent',{expires_ms:Date.now()+600000,paid:true});assert.equal(child.token.paid,true);
+      child=await create('delegated agent',{expires_ms:Date.now()+600000});assert.equal(child.token.paid,false);
       const response=await bearer('/api/v1/tokens',child.secret);assert.equal(response.status,200);
       assert.equal((await response.json()).tokens.length,2);
       const other=await create('rotation');
@@ -125,6 +125,25 @@ export async function ownerJourney() {
       const response=await bearer('/api/v1/create',root.secret,{operation_id:randomUUID(),intent:'synthetic paid request'});assert.equal(response.status,403);
       assert.match((await response.json()).error,/paid permission/);assert.deepEqual(await rows(),before,'No learner write or allowance reservation on paid refusal.');
       const exported=await(await bearer('/api/v1/export')).json();assert.deepEqual(exported.app.spend,[]);assert.deepEqual(exported.app.jobs,{});
+      for(const token of [root.secret,child.secret]) {
+        const before=await rows();
+        const grant=await bearer('/api/v1/tokens',token,{operation_id:randomUUID(),name:'forbidden paid child',paid:true});
+        assert.equal(grant.status,403,'Unpaid tokens cannot grant paid permission.');
+        assert.match((await grant.json()).error,/paid permission/);
+        assert.deepEqual(await rows(),before,'Refused grant persists no token, receipt, last-use update or reservation.');
+      }
+      const ownerGrant=await access('/api/v1/tokens',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),name:'owner-authorized paid agent',paid:true,csrf})});
+      assert.equal(ownerGrant.status,200);const paid=await ownerGrant.json();assert.equal(paid.token.paid,true);
+      const delegated=await create('paid delegated agent',{paid:true},paid.secret);assert.equal(delegated.token.paid,true);
+      const queued=await bearer('/api/v1/create',delegated.secret,{operation_id:randomUUID(),intent:'synthetic authorized paid request'});assert.equal(queued.status,200);
+      const after=await(await bearer('/api/v1/export')).json();
+      assert.ok(Object.values(after.app.jobs).some(job=>job.acting_token===delegated.token.id));
+      assert.deepEqual(after.app.spend,[],'Credential-free Worker never reserves or transmits provider work.');
+      const persisted=JSON.stringify(await rows());
+      for(const token of [paid.secret,delegated.secret]) {
+        assert.ok(!persisted.includes(token),'Issuance secret is never persisted.');
+        assert.ok(!persisted.includes(token.split('_').at(-1)),'Issuance seed is never persisted.');
+      }
     },
     async()=>{
       for(const path of ['/tokens/create','/tokens/revoke','/settings','/create']) {
@@ -139,6 +158,7 @@ export async function ownerJourney() {
       // so the native client drives the real TCP Worker without a proxy/stub.
       const local=(await runtime.mf.ready).origin;
       const next=await runtime.rebind({SCRY_ENV:'development',CANONICAL_ORIGIN:local,SPACE_NAME:space,INTERNAL_KEY:internalKey});runtime={...runtime,...next};
+      storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
       const binary=resolve('target/debug/scry'),config=join(temp,'login.json');
       const cli=(args,input='')=>new Promise((resolveResult,reject)=>{
         const proc=spawn(binary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
@@ -148,6 +168,10 @@ export async function ownerJourney() {
       assert.equal((await cli(['login','--url',local,'--token-stdin'],root.secret+'\n')).code,0);
       assert.equal((await stat(config)).mode&0o777,0o600);
       const identity=await cli(['whoami']);assert.equal(identity.code,0);assert.equal(identity.value.token.name,'builder');
+      const beforeGrant=await rows();
+      const deniedGrant=await cli(['token','create','forbidden paid cli child','--paid']);
+      assert.notEqual(deniedGrant.code,0);assert.deepEqual(deniedGrant.value,{error:'Request refused.'});
+      assert.deepEqual(await rows(),beforeGrant,'CLI shares the grant refusal without a write.');
       const op=randomUUID();const issued=await cli(['token','create','cli agent','--operation-id',op]);assert.equal(issued.code,0);assert.equal(issued.value.token.paid,false);
       const replay=await cli(['token','create','cli agent','--operation-id',op]);assert.equal(replay.code,0);assert.ok(!('secret' in replay.value));
       assert.notEqual((await cli(['token','create','changed payload','--operation-id',op])).code,0);

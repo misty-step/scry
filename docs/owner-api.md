@@ -4,7 +4,10 @@ The one Owner signs into Settings through Access to mint the first named
 Owner token. Save its secret on creation: lists, history, export and replay
 cannot recover it. An optional expiry is a Unix timestamp in milliseconds.
 Paid permission defaults to off. Any Owner token holder can mint, list and
-revoke tokens. Owner tokens do not authorize operator backup or restore.
+revoke ordinary tokens. Granting paid permission requires the Access owner or
+an Owner token that already has paid permission; an unpaid grant attempt is
+refused before creating a token or operation receipt. Owner tokens do not
+authorize operator backup or restore.
 
 ## Use the CLI
 
@@ -63,3 +66,19 @@ These are the #314 foundation routes. Library and Study actions belong to
 #316/#317; they must adapt to this shared engine and durable boundary. This
 change does not switch canonical origin, archive a live space, enable providers,
 change Access deployment configuration, or activate an API in production.
+
+## Hosted admission follow-up
+
+A Scry bearer does **not** bypass the upstream Cloudflare Access policy. The
+Worker can verify it only after Access admits the request; the CLI supplies
+only that bearer and cannot satisfy an owner browser login policy by itself.
+
+Before claiming hosted CLI/API access, the parent of [#314](https://github.com/misty-step/scry/issues/314),
+[#313](https://github.com/misty-step/scry/issues/313), must arrange reviewed
+route-specific Access admission/provisioning and retain hosted positive and
+negative proof: an admitted Owner token reaches the canonical API and works,
+missing/invalid/revoked tokens are refused, and browser routes retain their
+owner Access protection. That policy work and its independent verification are
+parent-owned follow-up. Local synthetic Worker checks do not establish hosted
+admission; it remains unverified. This change does not alter live Access policy
+or expose the application.
