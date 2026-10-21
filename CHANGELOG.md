@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/misty-step/scry/compare/v0.3.0...v0.4.0) (2026-10-20)
+
+
+### Features
+
+* practise exact recall in the phone Stream ([#345](https://github.com/misty-step/scry/issues/345)) ([4358124](https://github.com/misty-step/scry/commit/43581242803bc9adfc4ef514e7aa65aaaf2f02fa))
+
+
+### Bug Fixes
+
+* **qa:** anchor telemetry recovery to completed rejection ([#352](https://github.com/misty-step/scry/issues/352)) ([6b8ebee](https://github.com/misty-step/scry/commit/6b8ebeeb58ef9797b594d7ec4a005a2d5b37ba16))
+
 ## [0.3.0](https://github.com/misty-step/scry/compare/v0.2.0...v0.3.0) (2026-10-20)
 
 
