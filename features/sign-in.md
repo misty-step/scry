@@ -2,7 +2,10 @@
 
 The owner, phaedrus@mistystep.io, opens https://scry.mistystep.io on phone or
 computer, signs in once through Cloudflare Access with his Misty Step password,
-and lands in his own notebook. Everyone else is refused before any content.
+and lands in his own notebook. Every other identity is refused before any
+content. The one exception is the dedicated QA identities: the AgentMail
+account below and the QA service token. They reach only the isolated `scry-qa`
+space, never the owner's notebook.
 Agents never use his account. They sign in through the same production flow as
 the dedicated AgentMail QA account `scry-qa@agentmail.to`, which phaedrus
 authorized via Home on 2026-10-21. The Worker gives that identity the isolated

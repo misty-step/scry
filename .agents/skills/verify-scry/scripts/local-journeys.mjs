@@ -139,9 +139,13 @@ try{
  });
  await step('token.revoke',async()=>{
   await page.goto(origin+'/settings#owner-tokens');
-  const revoked=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/tokens/revoke');
-  await page.locator('#owner-tokens').getByRole('button',{name:/Revoke/}).first().click();
-  if((await revoked).status()>=400)throw Error('revoke request refused');
+  // Awaited together: a failed click becomes this step's FAIL, and the pending
+  // wait can never reject unhandled.
+  const [revoked]=await Promise.all([
+   page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/tokens/revoke'),
+   page.locator('#owner-tokens').getByRole('button',{name:/Revoke/}).first().click(),
+  ]);
+  if(revoked.status()>=400)throw Error('revoke request refused');
   await page.waitForLoadState();
   const who=await run(['whoami']);
   if(who.code===0)throw Error('revoked token still admitted');
