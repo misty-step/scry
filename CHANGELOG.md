@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/misty-step/scry/compare/v0.4.0...v0.4.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **promote:** trace a secret-only live version to its release ([#361](https://github.com/misty-step/scry/issues/361)) ([29a0edb](https://github.com/misty-step/scry/commit/29a0edb4b2b72cb11d3efb754596776e82ea66e3))
+* **qa:** keep a closed CLI stdin from crashing the owner journey ([#364](https://github.com/misty-step/scry/issues/364)) ([30813e5](https://github.com/misty-step/scry/commit/30813e556a546fb8586cd0ac0ecab907f64030bd))
+
 ## [0.4.0](https://github.com/misty-step/scry/compare/v0.3.0...v0.4.0) (2026-10-20)
 
 
