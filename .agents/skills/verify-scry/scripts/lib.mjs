@@ -9,8 +9,6 @@ import {createRequire} from 'node:module';
 export const repo=resolve(import.meta.dirname,'../../../..');
 export const ACCOUNT='b069014f6a46558ea9146fb6c4ff8f6c';
 export const ORIGIN=process.env.SCRY_ORIGIN||'https://scry.mistystep.io';
-// The owner's address is checked in configuration only; agents never sign in as it.
-export const OWNER_EMAIL='phaedrus@mistystep.io';
 // The dedicated AgentMail QA account, authorized for Scry on 2026-10-21. Never
 // derive it from pass or live policy: both must match this independently.
 export const QA_EMAIL='scry-qa@agentmail.to';
@@ -97,7 +95,9 @@ export async function qaPrerequisites(){
  // The database id is printed only as a fingerprint.
  steps.push({step:'enrollment',ok:!row?false:enrolled||null,observed:!row?`${AUTH_WORKER} has ${d1.length} d1 bindings${d1.length===1?' without an id':''}; expected exactly one auth database, so enrollment cannot be read`:`auth account for ${QA_EMAIL} in database fp:${createHash('sha256').update(db).digest('hex').slice(0,12)}: ${row.users} user, verified ${row.verified}, ${row.passwords} password credential (counts only)${enrolled?'':'; run enroll-qa.mjs once household and /recover are live'}`});
  const vars=Object.fromEntries((await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result.bindings.map(b=>[b.name,b.type==='plain_text'?b.text:`<${b.type}>`]));
- steps.push({step:'Worker QA_EMAIL',ok:vars.QA_EMAIL===QA_EMAIL?true:vars.QA_EMAIL===undefined?null:false,observed:vars.QA_EMAIL===undefined?`${WORKER} has no QA_EMAIL var: not deployed (promotion blocked by #359)`:`${WORKER} QA_EMAIL ${vars.QA_EMAIL===QA_EMAIL?'=':'≠'} ${QA_EMAIL}`});
+ // The var arrives with PR #365's QA principal mapping; only qa-signin's role
+ // steps prove that mapping.
+ steps.push({step:'Worker QA_EMAIL',ok:vars.QA_EMAIL===QA_EMAIL?true:vars.QA_EMAIL===undefined?null:false,observed:vars.QA_EMAIL===undefined?`${WORKER} has no QA_EMAIL var: PR #365 (QA_EMAIL → isolated QA principal) is not promoted; its promotion needs PR #361 (fixes #359) merged first`:`${WORKER} QA_EMAIL ${vars.QA_EMAIL===QA_EMAIL?'=':'≠'} ${QA_EMAIL}`});
  return steps;
 }
 export const missing=steps=>steps.filter(s=>s.ok!==true).map(s=>s.step);

@@ -4,7 +4,7 @@
 //   doctor.mjs local <url>     a run-owned loopback Worker (bun run dev)
 // Exit 0 all PASS, 1 any FAIL, 2 usage, 3 only UNPROVEN left.
 import {createHash} from 'node:crypto';
-import {ACCOUNT,ACCESS_TEAM,ORIGIN,OWNER_EMAIL,QA_EMAIL,OWNER_APP,OWNER_IDP,AUTH_ORIGIN,WORKER,ENTRIES,cf,secret,qaCredentials,mail,qaPrerequisites,outDir,reporter} from './lib.mjs';
+import {ACCOUNT,ACCESS_TEAM,ORIGIN,QA_EMAIL,OWNER_APP,OWNER_IDP,AUTH_ORIGIN,WORKER,ENTRIES,cf,secret,qaCredentials,mail,qaPrerequisites,outDir,reporter} from './lib.mjs';
 
 const [mode='prod',target]=process.argv.slice(2);
 if(!['prod','local'].includes(mode)){console.error('usage: doctor.mjs prod | doctor.mjs local <url>');process.exit(2);}
@@ -36,7 +36,7 @@ if(mode==='local'){
 }
 
 const host=new URL(ORIGIN).host;
-let vars={},app,apps,idp,user,lastSecretWrite;
+let vars={},app,apps,idp,ownerEmails=[],owners=[],lastSecretWrite;
 await check('worker.config',async()=>{
  const s=(await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result;
  for(const b of s.bindings)vars[b.name]=b.type==='plain_text'?b.text:`<${b.type}>`;
@@ -75,16 +75,20 @@ await check('access.idp',async()=>{
 });
 await check('access.policies',async()=>{
  const emails=p=>p.include.map(r=>r.email?.email?.toLowerCase());
- const owner=app.policies.filter(p=>p.decision==='allow'&&emails(p).includes(OWNER_EMAIL));
- const qa=app.policies.filter(p=>p.decision==='allow'&&emails(p).includes(QA_EMAIL));
+ const allow=app.policies.filter(p=>p.decision==='allow');
+ const qa=allow.filter(p=>emails(p).includes(QA_EMAIL));
+ // The owner policy is the other allow policy. Its addresses are checked, never printed.
+ const owner=allow.filter(p=>!emails(p).includes(QA_EMAIL));
+ const exact=e=>/^[^\s@*]+@[^\s@*]+\.[^\s@*]+$/.test(e??'');
  const problems=[];
  // Include rules are ORed: any selector other than an exact email could admit someone else.
- for(const p of app.policies.filter(p=>p.decision==='allow'))if(p.include.some(r=>Object.keys(r).join()!=='email'))problems.push(`"${p.name}" includes non-email selectors`);
+ for(const p of allow)if(p.include.some(r=>Object.keys(r).join()!=='email'||!exact(r.email?.email)))problems.push(`"${p.name}" includes a non-email, wildcard or domain selector`);
  for(const p of app.policies.filter(p=>p.decision==='non_identity'))if(p.include.some(r=>Object.keys(r).join()!=='service_token'))problems.push(`"${p.name}" admits more than service tokens`);
- if(owner.length!==1||emails(owner[0]).includes(QA_EMAIL)||emails(owner[0]).some(e=>e?.endsWith('@agentmail.to')))problems.push(`owner policy must be one exact-email policy without QA addresses (found ${owner.length})`);
+ if(owner.length!==1||!owner[0].include.length||emails(owner[0]).some(e=>e?.endsWith('@agentmail.to')))problems.push(`owner policy must be one exact-email policy without QA addresses (found ${owner.length})`);
  if(qa.length!==1||emails(qa[0]).length!==1)problems.push(`QA policy must be one allow policy whose only include is ${QA_EMAIL} (found ${qa.map(p=>`"${p.name}" with ${p.include.length} includes`).join(', ')||'none'})`);
  if(problems.length)throw Error(problems.join('; '));
- log('access.policies','PASS',`owner policy "${owner[0].name}": ${owner[0].include.length} exact emails incl. ${OWNER_EMAIL}; QA policy "${qa[0].name}": exactly ${QA_EMAIL}; non-identity: ${app.policies.filter(p=>p.decision==='non_identity').map(p=>`"${p.name}" (service tokens)`).join(', ')||'none'}`);
+ ownerEmails=emails(owner[0]);
+ log('access.policies','PASS',`owner policy "${owner[0].name}": ${ownerEmails.length} exact emails, no wildcard, domain, everyone or QA address; QA policy "${qa[0].name}": exactly ${QA_EMAIL}; non-identity: ${app.policies.filter(p=>p.decision==='non_identity').map(p=>`"${p.name}" (service tokens)`).join(', ')||'none'}`);
 });
 await check('access.bypass',async()=>{
  const hosts=app.self_hosted_domains;
@@ -95,17 +99,27 @@ await check('access.bypass',async()=>{
  log('access.bypass','PASS',`${covering.length} Access apps cover Scry hosts (${covering.map(a=>`"${a.name}"`).join(', ')}); every policy is allow or non_identity, none bypass or everyone`);
 });
 await check('owner.identity',async()=>{
- user=(await cf(`/accounts/${ACCOUNT}/access/users?per_page=100`,ENTRIES.ACCESS_READ)).result.find(u=>u.email===OWNER_EMAIL);
- if(!user)throw Error(`no Access user for ${OWNER_EMAIL}; the owner has never signed in through Access`);
- log('owner.identity','PASS',`${OWNER_EMAIL} has Access user_uuid fp:${fp(user.id)} (JWT sub), created ${user.created_at}`,{user_uuid_fp:fp(user.id)});
+ owners=(await cf(`/accounts/${ACCOUNT}/access/users?per_page=100`,ENTRIES.ACCESS_READ)).result.filter(u=>ownerEmails.includes(u.email.toLowerCase())).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+ if(!owners.length)throw Error('no Access user for any owner-policy email; the owner has never signed in through Access');
+ log('owner.identity','PASS',`${owners.length} Access users for owner-policy emails: ${owners.map(u=>`fp:${fp(u.id)} created ${u.created_at}`).join(', ')} (user_uuid is the JWT sub)`,{user_uuid_fps:owners.map(u=>fp(u.id))});
 });
 await check('owner.subject-age',async()=>{
- // OWNER_SUBJECT is unreadable, but a value written before the owner's Access
- // user existed cannot be that user's uuid. Secrets are written with
- // `wrangler secret put` (triggered_by secret); promotion keeps them.
- if(!lastSecretWrite)return log('owner.subject-age','UNPROVEN','no secret write in the listed deployments; OWNER_SUBJECT cannot be dated');
- if(Date.parse(lastSecretWrite)<Date.parse(user.created_at))throw Error(`last secret write ${lastSecretWrite} predates the owner Access user (created ${user.created_at}): OWNER_SUBJECT cannot be fp:${fp(user.id)}`);
- log('owner.subject-age','PASS',`last secret write ${lastSecretWrite} follows the owner Access user's creation ${user.created_at}; this rules out a stale subject only, equality stays unreadable`);
+ // OWNER_SUBJECT is unreadable. The account audit log names the secret on
+ // each put, so its newest put can be dated. A value put before every
+ // owner-policy Access user existed cannot be any of their uuids.
+ const first=owners[0].created_at,last=owners.at(-1).created_at;
+ const puts=[];let cursor;
+ for(let page=0;page<20;page++){
+  const q=new URLSearchParams({since:new Date(Date.parse(first)-90*86400e3).toISOString(),before:new Date().toISOString(),limit:'1000',resource_type:'scripts.secrets',resource_id:WORKER,...(cursor?{cursor}:{})});
+  const body=await cf(`/accounts/${ACCOUNT}/logs/audit?${q}`,ENTRIES.ACCESS_READ);
+  puts.push(...body.result.filter(e=>e.resource?.id===WORKER&&e.resource?.request?.name==='OWNER_SUBJECT'&&e.raw?.method==='PUT'&&e.action?.result==='success').map(e=>e.action.time));
+  cursor=body.result_info?.cursor;if(!cursor||!body.result.length)break;
+ }
+ const put=puts.sort((a,b)=>Date.parse(a)-Date.parse(b)).at(-1);
+ if(!put)return log('owner.subject-age','UNPROVEN',`no OWNER_SUBJECT put on ${WORKER} in the audit log since 90 days before the first owner Access user; its write time is unknown`);
+ if(Date.parse(put)<Date.parse(first))throw Error(`newest OWNER_SUBJECT put ${put} predates every owner-policy Access user (first created ${first}): it cannot be any of their uuids`);
+ if(Date.parse(put)<Date.parse(last))return log('owner.subject-age','UNPROVEN',`newest OWNER_SUBJECT put ${put} falls between the owner-policy Access users' creation (${first}, ${last}); which one Access issues for the owner is not readable here`);
+ log('owner.subject-age','PASS',`newest OWNER_SUBJECT put ${put} (audit log) follows every owner-policy Access user's creation (latest ${last}); this rules out only a subject written before those users existed, and equality stays unreadable`);
 });
 await check('qa.credentials',async()=>{
  const qa=qaCredentials({optional:true});

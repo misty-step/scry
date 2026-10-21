@@ -1,12 +1,12 @@
 # Sign in with the QA account
 
-The owner, phaedrus@mistystep.io, opens https://scry.mistystep.io on phone or
-computer, signs in once through Cloudflare Access with his Misty Step password,
-and lands in his own notebook. Every other identity is refused before any
+The owner opens https://scry.mistystep.io on phone or computer, signs in once
+through Cloudflare Access with the owner's Misty Step password, and lands in
+the owner's notebook. Every other identity is refused before any
 content. The one exception is the dedicated QA identities: the AgentMail
 account below and the QA service token. They reach only the isolated `scry-qa`
 space, never the owner's notebook.
-Agents never use his account. They sign in through the same production flow as
+Agents never use the owner's account. They sign in through the same production flow as
 the dedicated AgentMail QA account `scry-qa@agentmail.to`, which phaedrus
 authorized via Home on 2026-10-21. The Worker gives that identity the isolated
 QA principal: owner capabilities inside the `scry-qa` space, and no owner
@@ -86,15 +86,16 @@ from `doctor.mjs prod` (its checks are listed in
   1. Process adds the address to misty-step/auth `HOUSEHOLD_MEMBERS`.
   2. Process adds it to the `/recover` allow policy.
   3. `enroll-qa.mjs` enrolls the account.
-  4. The Worker `QA_EMAIL` var deploys. Promotion is blocked by #359.
+  4. PR #365 (Worker `QA_EMAIL` → isolated QA principal) is merged and
+     promoted. Promotion first needs PR #361, the fix for #359, merged.
 
   Until step 4, a QA login that Access admits gets the Worker's 401 "Owner
   authorization required", which `role.create` reports as UNPROVEN. The
   helpers name whichever step is missing. Never weaken the journey or
   substitute another identity.
 - This proves the QA identity's role, never an owner session. No helper loads
-  an owner page as the owner, tests a password against his account, or reads
-  his mail.
+  an owner page as the owner, tests a password against the owner's account, or
+  reads the owner's mail.
 - `enroll-qa.mjs` resets only the QA password and revokes only QA auth
   sessions. Run it for enrollment or recovery, not on every walk. A received
   PIN alone is partial proof; the saved password and a fresh login must follow.
@@ -102,7 +103,8 @@ from `doctor.mjs prod` (its checks are listed in
   only from an enrolled account, and `qa-signin.mjs` proves it currently holds.
 - The JWT `sub` is the Access `user_uuid`, one per email and not per IdP. The
   owner's subject equality cannot be read back. `owner.subject-age` catches
-  only a subject written before his Access user existed.
+  only an `OWNER_SUBJECT` put, per the audit log, made before every owner-policy
+  Access user existed. A PASS does not show the subject is the right user.
 - Every page GET may freeze the next question in the space it renders; `/`
   also freezes the next exact Prompt. The QA journey's GETs therefore write
   only to `scry-qa`.

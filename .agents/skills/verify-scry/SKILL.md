@@ -41,7 +41,7 @@ does, and the QA principal's only space is `scry-qa`.
 | Access app "Scry production owner", policy "scry-qa AgentMail identity" | done | live |
 | misty-step/auth `HOUSEHOLD_MEMBERS` (secret on `misty-step-auth-canary`) | Process only | pending |
 | Access app "Misty Step auth pilot recovery (OTP only)" (`/recover`) allow policy | Process only | pending |
-| Worker var `QA_EMAIL` on `scry-rust-production` | separate Scry PR | not deployed; #359 blocks promotion |
+| Worker `QA_EMAIL` var and its mapping to the QA principal on `scry-rust-production` | Scry PR #365 | open; its promotion needs PR #361 (fixes #359) merged first |
 
 Never write the household list or the `/recover` policy yourself. Ask Process
 for the exact address.
@@ -55,7 +55,7 @@ stored trailing newline and Access then treats service tokens as absent.
 | Use | Entry |
 | --- | --- |
 | QA address, inbox, AgentMail API key, password | `workstation/SCRY_QA_EMAIL`, `_INBOX`, `_AGENTMAIL_KEY`, `_PASSWORD` |
-| Access apps, IdPs, users, auth D1 counts (read) | `workstation/CLOUDFLARE_API_TOKEN` |
+| Access apps, IdPs, users, audit log, auth D1 counts (read) | `workstation/CLOUDFLARE_API_TOKEN` |
 | Worker settings and deployments (read) | `workstation/SCRY_CLOUDFLARE_DEPLOY_TOKEN` |
 | Isolated QA service token (`scry-qa` space) | `misty-step/SCRY_QA_ACCESS_CLIENT_{ID,SECRET}` |
 | Machine health `/healthz` | `misty-step/SCRY_ACCESS_CLIENT_{ID,SECRET}` |
@@ -100,12 +100,15 @@ machine health. It checks:
 - the Worker vars, and that the account's Access team equals `ACCESS_TEAM`;
 - the app AUD equals `ACCESS_AUDIENCE`, and "Misty Step password" is its only
   IdP (password-only);
-- the owner policy is exact emails only, without QA addresses;
+- the owner policy is exact emails only, with no wildcard, domain, everyone
+  or QA address, checked without printing the addresses;
 - the QA policy is exactly `scry-qa@agentmail.to`, and service-token
   policies admit only service tokens;
 - no bypass or everyone rule on any app covering a Scry host;
-- `owner.subject-age` FAILs if the last secret write predates the owner's
-  Access user, because then `OWNER_SUBJECT` cannot be that user's uuid;
+- `owner.subject-age` dates the newest `OWNER_SUBJECT` put from the account
+  audit log. It FAILs if that put predates every Access user in the owner
+  policy, because then `OWNER_SUBJECT` cannot be any of their uuids. With no
+  audit entry, or a put between those users' creation times, it is UNPROVEN;
 - the QA pass entries and inbox are readable;
 - `qa.household`, `qa.recover-policy`, `qa.enrollment` and
   `qa.worker-qa-email` each report the allowlist step above. A step not yet
@@ -149,9 +152,10 @@ On production, never write beyond what sign-in creates and never load an
 owner page as the owner. Every page GET can freeze the next question; the QA
 journey's GETs touch only the `scry-qa` space.
 
-## Walk as Phaedrus
+## Judge usability as a learner in the QA space
 
-After the scripts pass, judge as a learner on a short phone break. Ask whether
+After the scripts pass, walk the QA space or the local synthetic notebook
+yourself and judge usability as a learner on a short phone break. Ask whether
 you know what to do next, can read and type comfortably, learn anything from
 feedback, and understand a failure without knowing the backend. Record the
 moment you hesitated and the exact screen or action. Inspect screenshots for

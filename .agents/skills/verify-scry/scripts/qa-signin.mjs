@@ -10,7 +10,7 @@
 // Exit 0 PROVEN, 1 FAIL, 2 usage, 3 QA sign-in UNPROVEN (missing step named).
 import {join} from 'node:path';
 import {writeFileSync} from 'node:fs';
-import {ACCESS_TEAM,AUTH_ORIGIN,ORIGIN,OWNER_EMAIL,QA_EMAIL,qaCredentials,qaPrerequisites,missing,outDir,reporter,launch,scrub,settle} from './lib.mjs';
+import {ACCESS_TEAM,AUTH_ORIGIN,ORIGIN,QA_EMAIL,qaCredentials,qaPrerequisites,missing,outDir,reporter,launch,scrub,settle} from './lib.mjs';
 
 const at=process.argv.indexOf('--width');
 const width=at<0?390:Number(process.argv[at+1]);
@@ -62,7 +62,7 @@ try{
 
  await step('signin.identity',async()=>{
   const email=await page.evaluate(async()=>{const r=await fetch('/cdn-cgi/access/get-identity',{credentials:'include'});return r.ok?(await r.json()).email??null:`HTTP ${r.status}`;});
-  if(email!==QA_EMAIL||email===OWNER_EMAIL)throw Error(`Access identity is ${email??'absent'}, not ${QA_EMAIL}`);
+  if(email!==QA_EMAIL)throw Error(`Access identity is ${email??'absent'}, not ${QA_EMAIL}`);
   log('signin.identity','PASS',`/cdn-cgi/access/get-identity email = ${QA_EMAIL} (not the owner)`);
  });
 
@@ -71,7 +71,7 @@ try{
   if(new URL(page.url()).pathname!=='/create')await page.goto(ORIGIN+'/create');
   if(/Owner authorization required/.test(await page.content())){
    const worker=steps.find(s=>s.step==='Worker QA_EMAIL');
-   if(!worker.ok)unproven('role.create',`Access admitted ${QA_EMAIL}, but the Worker answered 401 "Owner authorization required": missing Worker QA_EMAIL deployment. ${worker.observed}`);
+   if(!worker.ok)unproven('role.create',`Access admitted ${QA_EMAIL}, but the Worker answered 401 "Owner authorization required": missing PR #365 promotion. ${worker.observed}`);
    throw Error(`Worker refused ${QA_EMAIL} with QA_EMAIL deployed`);
   }
   const title=await page.title();

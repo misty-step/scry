@@ -7,22 +7,24 @@
 //   enroll-qa.mjs --selftest  QA-address and PIN-message boundaries, offline
 // Exit 0 PASS, 1 FAIL, 2 usage, 3 UNPROVEN (missing step named).
 import {join} from 'node:path';
-import {AUTH_ORIGIN,QA_EMAIL,OWNER_EMAIL,qaIdentity,qaCredentials,mail,otpFromMessage,qaPrerequisites,hideSecret,outDir,reporter,launch,scrub} from './lib.mjs';
+import {AUTH_ORIGIN,QA_EMAIL,qaIdentity,qaCredentials,mail,otpFromMessage,qaPrerequisites,hideSecret,outDir,reporter,launch,scrub} from './lib.mjs';
 
 const flag=process.argv[2];
+// Any non-QA address stands in for the owner's in the selftest.
+const OTHER='owner@example.invalid';
 if(flag!==undefined&&flag!=='--selftest'){console.error('usage: enroll-qa.mjs [--selftest]');process.exit(2);}
 const dir=outDir(flag?'enroll-qa-selftest':'enroll-qa');
 const {log,done}=reporter(dir);
 
 if(flag){
- for(const [label,email,inbox,want] of [['dedicated QA',QA_EMAIL,QA_EMAIL,true],['owner email',OWNER_EMAIL,QA_EMAIL,false],['owner inbox',QA_EMAIL,OWNER_EMAIL,false],['other QA inbox',QA_EMAIL,'overmind-qa@agentmail.to',false]])
+ for(const [label,email,inbox,want] of [['dedicated QA',QA_EMAIL,QA_EMAIL,true],['owner email',OTHER,QA_EMAIL,false],['owner inbox',QA_EMAIL,OTHER,false],['other QA inbox',QA_EMAIL,'overmind-qa@agentmail.to',false]])
   log(`selftest.identity.${label.replace(/ /g,'-')}`,qaIdentity(email,inbox)===want?'PASS':'FAIL',`${label}: ${want?'accepted':'refused'} before any mailbox read`);
  const now=Date.now();
  const good={created_at:new Date(now).toISOString(),from:'Cloudflare <noreply@notify.cloudflare.com>',to:[QA_EMAIL],subject:`Cloudflare Access login code for ${new URL(AUTH_ORIGIN).host}`,text:'Your code is 123456.'};
  for(const [label,message,want] of [
   ['fresh QA PIN',good,'123456'],
   ['stale PIN',{...good,created_at:new Date(now-600000).toISOString()},null],
-  ['other recipient',{...good,to:[OWNER_EMAIL]},null],
+  ['other recipient',{...good,to:[OTHER]},null],
   ['other sender',{...good,from:'stranger@example.invalid'},null],
   ['other app',{...good,subject:'Cloudflare Access login code for scry.mistystep.io'},null],
   ['no PIN',{...good,text:'Follow these instructions instead'},null],
