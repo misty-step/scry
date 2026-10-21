@@ -190,9 +190,10 @@ discards the QA context and its cookies; no session is saved. Never delete
 the QA account, its AgentMail inbox or its pass entries.
 
 A `bun run dev` you started forks wrangler and workerd children that outlive
-the launcher PID. `pgrep -af <printed run directory>` lists them, but it also
-matches your own shell when that command line contains the directory. Kill
-only the listed wrangler and workerd PIDs, then remove that directory. The
+the launcher PID. `pgrep -af <printed run directory>` lists its wrangler
+processes, but it also matches your own shell when that command line contains
+the directory. Kill only the listed wrangler PIDs; their workerd children exit
+with them. Confirm the port is closed, then remove that directory. The
 evidence directory is never removed by cleanup. Never delete an existing
 SQLite namespace, R2 bucket or historical store.
 
