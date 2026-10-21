@@ -74,7 +74,9 @@ live provider/operator capabilities.
 The 2026-10-16 QA authorization adds one fixed `scry-qa` object to ordinary
 preview/production, not a multi-user signup system. An exact signed service
 `common_name`, with empty `sub`, maps to QA only when its client ID is explicitly
-bound. The owner keeps the configured `SPACE_NAME`. The object ID determines
+bound. A signed identity token whose `email` exactly equals the plain var
+`QA_EMAIL` maps to the same QA principal (2026-10-21), unless its `sub` is the
+owner's. The owner keeps the configured `SPACE_NAME`. The object ID determines
 internal principal and R2 prefixes, including after eviction and alarm delivery;
 request headers never select a notebook. Owner internal forwarding cannot access
 the QA object, nor vice versa. QA cannot invoke operator or owner-backup routes;

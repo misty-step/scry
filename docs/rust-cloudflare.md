@@ -116,6 +116,14 @@ only in a dedicated QA browser/request context, never in a URL, capture or
 shared browser. The existing `synthetic-preview` principal is different and
 does not authorize ordinary preview or production.
 
+The dedicated QA account may also sign in as a person. Plain var `QA_EMAIL`
+(`scry-qa@agentmail.to` in `deploy/rust-production.toml`, empty elsewhere) maps
+a signed Access identity token, with non-empty `sub` and exactly that `email`,
+to the same QA principal. The match is byte for byte, and the var must be one
+lowercase address; anything else maps nothing. The owner subject wins over the
+email, and a `scry-qa` owner space refuses it like the service token. The QA
+account's Access policy membership is a separate Access/auth change.
+
 QA requests verify the same signature, issuer, audience, time and CSRF fences.
 The signed service identity selects only SQLite object `scry-qa`, photo prefix
 `photos/scry-qa/`, and backup prefix `snapshots/scry-qa/`. QA has its own durable

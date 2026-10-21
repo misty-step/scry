@@ -22,6 +22,8 @@ ACCESS_TEAM = "misty-step-pantry.cloudflareaccess.com"
 ACCESS_AUDIENCE = "f298e34f9f499a33915bcaac46029df6b027008716a45c739e62485afe652a9b" # Public app identifier, not a credential. gitleaks:allow
 ALTERNATE_HOSTS = "scry.study,www.scry.study"
 SENTRY_ENVIRONMENT = "production"
+# Signed Access identity with this exact email gets only the isolated scry-qa notebook.
+QA_EMAIL = "scry-qa@agentmail.to"
 
 [version_metadata]
 binding = "SCRY_VERSION"

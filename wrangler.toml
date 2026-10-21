@@ -24,6 +24,7 @@ OPENROUTER_MODEL = ""
 JEV_MODEL = ""
 JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 SENTRY_ENVIRONMENT = ""
+QA_EMAIL = ""
 
 [[durable_objects.bindings]]
 name = "LEARNING_SPACE"
@@ -69,6 +70,7 @@ OPENROUTER_MODEL = ""
 JEV_MODEL = ""
 JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 SENTRY_ENVIRONMENT = "synthetic-staging"
+QA_EMAIL = ""
 
 [[env.preview.durable_objects.bindings]]
 name = "LEARNING_SPACE"

@@ -106,6 +106,33 @@ fn space_name(env: &Env) -> Result<String> {
     }
     Ok(name)
 }
+/// The configured QA sign-in email, only when it is one plain lowercase
+/// `local@domain.tld` address. Anything else maps no identity to QA.
+fn qa_email(env: &Env) -> Option<String> {
+    let email = variable(env, "QA_EMAIL");
+    let (local, domain) = email.split_once('@')?;
+    let labels: Vec<_> = domain.split('.').collect();
+    (email.len() <= 254
+        && !local.is_empty()
+        && local.len() <= 64
+        && !local.starts_with('.')
+        && !local.ends_with('.')
+        && !local.contains("..")
+        && local
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "._+-".contains(c))
+        && labels.len() >= 2
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        }))
+    .then_some(email)
+}
 fn provider_secrets_present(env: &Env) -> bool {
     ["OPENROUTER_API_KEY", "JEV_API_KEY", "OPERATOR_KEY"]
         .iter()
@@ -582,6 +609,14 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
     // Decide the principal from signed claims, never client routing headers.
     // Service identities cannot become the owner. Absent QA configuration is inert.
     let qa_client = secret(env, "SCRY_QA_ACCESS_CLIENT_ID");
+    // A signed person is QA only by the exact configured email, byte for byte:
+    // differently cased claims fail closed.
+    let qa_person = claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .is_some_and(|sub| !sub.is_empty())
+        && qa_email(env)
+            .is_some_and(|qa| claims.get("email").and_then(Value::as_str) == Some(qa.as_str()));
     let principal = if variable(env, "SCRY_ENV") == "synthetic-preview" {
         (claims.get("sub").and_then(Value::as_str) == Some("")
             && claims.get("common_name").and_then(Value::as_str)
@@ -590,9 +625,10 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
     } else if claims.get("sub").and_then(Value::as_str) == Some(owner.as_str()) {
         Some(AccessPrincipal::Owner)
     } else if matches!(variable(env, "SCRY_ENV").as_str(), "preview" | "production")
-        && !qa_client.is_empty()
-        && claims.get("sub").and_then(Value::as_str) == Some("")
-        && claims.get("common_name").and_then(Value::as_str) == Some(qa_client.as_str())
+        && ((!qa_client.is_empty()
+            && claims.get("sub").and_then(Value::as_str) == Some("")
+            && claims.get("common_name").and_then(Value::as_str) == Some(qa_client.as_str()))
+            || qa_person)
         && space_name(env)? != QA_SPACE_NAME
     {
         Some(AccessPrincipal::Qa)
