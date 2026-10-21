@@ -30,6 +30,11 @@ DOMAIN = {'zone_id': 'f7be06f7426d5532921cc4348746a2b8', 'zone_name': 'scry.stud
           'service': NAME, 'environment': 'production', 'enabled': True}
 
 
+def version(etag=None, message=None, trigger=None):
+    annotations = {k: v for k, v in [('workers/message', message), ('workers/triggered_by', trigger)] if v}
+    return {'annotations': annotations, 'resources': {'script': {'etag': etag}} if etag else {}}
+
+
 def drift(name, **change):
     return [dict(b, **change) if b['name'] == name else b for b in LIVE]
 
@@ -63,9 +68,11 @@ class Promotion(unittest.TestCase):
             PROMOTE.declared(config)
 
     @contextmanager
-    def deployment(self, domains, routes):
+    def deployment(self, domains, routes, env='restore', history=None):
         requested = []
-        bindings = drift('SCRY_ENV', text='restore') + [
+        # Newest first, as the deployments endpoint returns them: (deployment id, version id, version body).
+        history = history or [('previous', 'previous', {})]
+        bindings = drift('SCRY_ENV', text=env) + [
             {'name': name, 'type': 'secret_text'} for name in ('OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY')]
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / 'promotion.json'
@@ -81,8 +88,9 @@ class Promotion(unittest.TestCase):
                     elif path.endswith('/domains/custom'): result = {'domains': []}
                     elif '/objects?' in path: result = [{'key': 'synthetic-snapshot'}]
                     elif path == script + '/deployments':
-                        result = {'deployments': [{'id': 'previous', 'versions': [{'version_id': 'previous'}]}]}
-                    elif path == script + '/versions/previous': result = {}
+                        result = {'deployments': [{'id': d, 'versions': [{'version_id': v}]} for d, v, _ in history]}
+                    elif path.startswith(script + '/versions/') and path.rsplit('/', 1)[1] in {v for _, v, _ in history}:
+                        result = next(body for _, v, body in history if v == path.rsplit('/', 1)[1])
                     elif path == '/workers/domains?service=' + NAME: result = domains if run.called else [DOMAIN]
                     elif path == script + '/routes': result = routes if run.called else []
                     else: self.fail('Unexpected request: ' + path)
@@ -110,6 +118,66 @@ class Promotion(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '^wrangler intercepted$'):
                 PROMOTE.deploy()
             run.assert_called_once()
+
+    def test_deploy_promotes_over_a_secret_only_change_to_a_known_release(self):
+        # 2026-10-20: rotating OWNER_SUBJECT made an unannotated version with the release's exact script.
+        released = 'b' * 40
+        history = [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+                   ('release', 'released', version(etag='same', message='scry-rust ' + released))]
+        with self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
+            run.side_effect = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('stop at ' + args[0][1]))
+            with self.assertRaisesRegex(RuntimeError, '^stop at merge-base$'):
+                PROMOTE.deploy()
+            self.assertEqual(run.call_args.args[0], ['git', 'merge-base', '--is-ancestor', released, 'a' * 40])
+
+    def test_deploy_uploads_unless_the_live_version_itself_names_the_source(self):
+        # Re-promoting an annotated release is idempotent; a secret-only version of the same
+        # source still lacks the annotation the final check requires, so it uploads.
+        source = 'a' * 40
+        for label, history, uploads in [
+                ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
+                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+                                 ('release', 'released', version(etag='same', message='scry-rust ' + source))], True)]:
+            with self.subTest(label), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
+                def command(args, **kwargs):
+                    if args[0] != 'git': raise RuntimeError('upload ' + args[1])
+                run.side_effect = command
+                if uploads:
+                    with self.assertRaisesRegex(RuntimeError, '^upload deploy$'):
+                        PROMOTE.deploy()
+                else:
+                    # Without an upload, promotion continues to its post-checks; this fixture stops there.
+                    with self.assertRaisesRegex(AssertionError, 'Unexpected request: .*/subdomain$'):
+                        PROMOTE.deploy()
+                self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
+
+    def test_deploy_refuses_an_untraceable_live_version(self):
+        for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret')),
+                         ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))],
+                        [('secret-change', 'secret-only', version(etag='same', trigger='secret'))],
+                        [('manual', 'manual', version(etag='same', trigger='version_upload')),
+                         ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))]]:
+            with self.subTest(history=history), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
+                with self.assertRaisesRegex(AssertionError, '^Unrecognized live release$'):
+                    PROMOTE.deploy()
+                run.assert_not_called()
+
+    def test_live_release_resolves_only_secret_changes_with_the_same_script(self):
+        versions = {'released': version(etag='same', message='scry-rust ' + 'b' * 40),
+                    'secret': version(etag='same', trigger='secret'),
+                    'secret-again': version(etag='same', trigger='secret'),
+                    'other-script': version(etag='other', trigger='secret'),
+                    'upload': version(etag='same', trigger='version_upload'),
+                    'no-etag': version(trigger='secret'),
+                    'malformed': version(etag='same', message='scry-rust ' + 'b' * 39)}
+        live = lambda *ids: PROMOTE.live_release([{'versions': [{'version_id': i}]} for i in ids], versions.__getitem__)
+        self.assertEqual(live('released'), ('b' * 40, True))
+        self.assertEqual(live('secret', 'released'), ('b' * 40, False))
+        self.assertEqual(live('secret-again', 'secret', 'released'), ('b' * 40, False))
+        for ids in [('secret',), ('other-script', 'released'), ('upload', 'released'), ('no-etag', 'released'),
+                    ('malformed',), ('secret', 'malformed'), ('secret', 'upload', 'released'), ()]:
+            with self.subTest(ids=ids):
+                self.assertIsNone(live(*ids))
 
     def test_deploy_refuses_config_drift_before_any_upload(self):
         def urlopen(request, timeout):

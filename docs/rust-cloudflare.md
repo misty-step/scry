@@ -200,7 +200,11 @@ owns the recovered production binding configuration. Promotion preserves that
 namespace, space and private R2 (refusing config/live drift before upload),
 refuses an empty/uncommissioned target, verifies the uploaded module bytes,
 asserts the Worker's Custom Domains and script routes are unchanged, and emits
-`target/promotion.json` with that observed serving set. Domain cutover and
+`target/promotion.json` with that observed serving set. The live release must be
+an ancestor of the promoted source. A live version made by a secret-only change
+carries no release annotation, so promotion traces it to the nearest annotated
+release only when every step keeps the same script etag, and then re-uploads.
+Domain cutover and
 live-owner verification remain the separate operator steps above. Compatible
 code rollback uses a retained custody/history-compatible artifact on these same
 bindings, never an old Go snapshot. Versions/notes remain the existing release
