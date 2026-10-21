@@ -74,7 +74,7 @@ stories. These existing contracts are retired or narrowed as of that date:
 | US-004 critic-v1 gate and 60-candidate bound | Narrowed: concept generation only. Library Versions publish on deterministic Self-checks (US-019), whatever their Unit count. |
 | Prerequisite-first concepts and 3/6/12 new concepts (S08.2, US-010.3, US-011) | Narrowed: concept goals only. Studies introduce Units in reading order at the same Pace numbers (US-016). |
 | Owner identity (S09.1) | Extended: an unexpired, unrevoked Owner token is owner identity (US-014). |
-| Bespoke QA identity (S09.4) | Retired: machine access uses Owner tokens (S09.3, US-014) or synthetic environments; removal of the QA object is a ticket. |
+| Bespoke QA identity (S09.4) | Retired: machine access uses Owner tokens (S09.3, US-014) or synthetic environments; removal of the QA service identity is a ticket. A verification-only QA sign-in to the isolated `scry-qa` space remains (2026-10-21, S09.4). |
 | One-way revival (D6, revival dry-run boundary) | Retired for new work: the revived notebook is archived read-only, nothing deleted, and exact recall starts in a fresh space. |
 | Two masthead destinations (US-002.4) | Unchanged: exact-recall Prompts open in the Stream (US-018), so no new destination is needed. |
 | `exact-v1` trim equality | Narrowed: history keeps its attribution; new exact-recall Attempts use `exact-v2`. |
@@ -419,7 +419,13 @@ maintaining a signup product or exposing my learning material.
 - **S09.4:** Retired 2026-10-20; the identifier stays reserved. The bespoke QA
   service identity and notebook are no longer a contract: machine access uses
   Owner tokens without paid work (US-014) or synthetic environments (S09.3).
-  The former text is at Git `cb93333`.
+  The former text is at Git `cb93333`. On 2026-10-21 (harness verification
+  policy, phaedrus 2026-10-21) a verification-only QA sign-in remains: the
+  dedicated AgentMail account (`QA_EMAIL`), admitted by an exact-email Access
+  policy and signed in through the Owner's identity provider, reaches only the
+  isolated `scry-qa` space, with Owner capabilities there. It never reaches the
+  Owner's notebook, operator routes or backup. It is a verification access
+  rule, not a learner-facing contract.
 
 Proof: actual private HTTPS access, negative ingress/CSRF/content tests, and
 inspection of the deployed capability boundary. A local auth stub is not proof.

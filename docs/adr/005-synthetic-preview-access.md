@@ -18,7 +18,9 @@ Add an explicit `SCRY_ENV=synthetic-preview` mode. It admits only the exact
 an empty subject. Existing RS256 signature, issuer, audience, expiry/not-before,
 canonical origin, internal capability, CSRF and operation fences still apply.
 Ordinary `preview` and `production` continue to require the exact owner subject;
-setting the synthetic client ID does not broaden either mode.
+setting the synthetic client ID does not broaden either mode. (2026-10-21: they
+also admit the verification-only QA sign-in of SPEC S09.4, which reaches only
+the isolated `scry-qa` space.)
 
 Synthetic mode fails closed unless `SPACE_NAME` begins `synthetic-`,
 `OWNER_SUBJECT` is the literal non-human marker `synthetic-preview-owner`, and
