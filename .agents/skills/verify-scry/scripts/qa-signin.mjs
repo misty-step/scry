@@ -71,7 +71,7 @@ try{
   if(new URL(page.url()).pathname!=='/create')await page.goto(ORIGIN+'/create');
   if(/Owner authorization required/.test(await page.content())){
    const worker=steps.find(s=>s.step==='Worker QA_EMAIL');
-   if(!worker.ok)unproven('role.create',`Access admitted ${QA_EMAIL}, but the Worker answered 401 "Owner authorization required": missing PR #365 promotion. ${worker.observed}`);
+   if(!worker.ok)unproven('role.create',`Access admitted ${QA_EMAIL}, but the Worker answered 401 "Owner authorization required": the deployed Worker's QA_EMAIL mapping is missing or differs. ${worker.observed}`);
    throw Error(`Worker refused ${QA_EMAIL} with QA_EMAIL deployed`);
   }
   const title=await page.title();

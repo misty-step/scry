@@ -81,20 +81,18 @@ from `doctor.mjs prod` (its checks are listed in
 
 ## Gotchas
 
-- **QA sign-in reaches Access but the role is UNPROVEN as of 2026-10-21 19:01Z.**
-  Done, in order:
+- **QA role is proven on production as of 2026-10-21 20:12Z.** Setup, in order:
   1. Process added the address to misty-step/auth `HOUSEHOLD_MEMBERS`.
   2. Process added it to the `/recover` allow policy.
   3. `enroll-qa.mjs` enrolled the account at 19:01Z.
+  4. Release v0.5.0 deployed PR #365 (Worker `QA_EMAIL` → isolated QA
+     principal) at 20:11Z.
 
-  `signin.qa` and `signin.identity` then passed. Still missing:
-  4. PR #365 (Worker `QA_EMAIL` → isolated QA principal) is merged and
-     promoted. Promotion first needs PR #361, the fix for #359, merged.
-
-  Until step 4, a QA login that Access admits gets the Worker's 401 "Owner
-  authorization required", which `role.create` reports as UNPROVEN. The
-  helpers name whichever step is missing. Never weaken the journey or
-  substitute another identity.
+  `qa-signin.mjs` then passed every check at 390 and 1280. If a QA login that
+  Access admits ever gets the Worker's 401 "Owner authorization required"
+  again, the deployed Worker has lost or changed `QA_EMAIL`. `role.create`
+  reports that as UNPROVEN and Doctor's `qa.worker-qa-email` shows it. Never
+  weaken the journey or substitute another identity.
 - This proves the QA identity's role, never an owner session. No helper loads
   an owner page as the owner, tests a password against the owner's account, or
   reads the owner's mail.

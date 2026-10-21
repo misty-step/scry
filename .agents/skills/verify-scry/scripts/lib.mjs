@@ -97,7 +97,7 @@ export async function qaPrerequisites(){
  const vars=Object.fromEntries((await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result.bindings.map(b=>[b.name,b.type==='plain_text'?b.text:`<${b.type}>`]));
  // The var arrives with PR #365's QA principal mapping; only qa-signin's role
  // steps prove that mapping.
- steps.push({step:'Worker QA_EMAIL',ok:vars.QA_EMAIL===QA_EMAIL?true:vars.QA_EMAIL===undefined?null:false,observed:vars.QA_EMAIL===undefined?`${WORKER} has no QA_EMAIL var: PR #365 (QA_EMAIL → isolated QA principal) is not promoted; its promotion needs PR #361 (fixes #359) merged first`:`${WORKER} QA_EMAIL ${vars.QA_EMAIL===QA_EMAIL?'=':'≠'} ${QA_EMAIL}`});
+ steps.push({step:'Worker QA_EMAIL',ok:vars.QA_EMAIL===QA_EMAIL?true:vars.QA_EMAIL===undefined?null:false,observed:vars.QA_EMAIL===undefined?`${WORKER} has no QA_EMAIL var: the deployed Worker lacks the QA_EMAIL → isolated QA principal mapping (added by PR #365, live since v0.5.0); redeploy a release that carries it`:`${WORKER} QA_EMAIL ${vars.QA_EMAIL===QA_EMAIL?'=':'≠'} ${QA_EMAIL}`});
  return steps;
 }
 export const missing=steps=>steps.filter(s=>s.ok!==true).map(s=>s.step);

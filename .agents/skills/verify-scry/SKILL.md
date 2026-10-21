@@ -41,7 +41,7 @@ does, and the QA principal's only space is `scry-qa`.
 | Access app "Scry production owner", policy "scry-qa AgentMail identity" | done | live |
 | misty-step/auth `HOUSEHOLD_MEMBERS` (secret on `misty-step-auth-canary`) | Process only | live; Process confirmed 19:00Z |
 | Access app "Misty Step auth pilot recovery (OTP only)" (`/recover`) allow policy | Process only | live; Process confirmed 19:00Z |
-| Worker `QA_EMAIL` var and its mapping to the QA principal on `scry-rust-production` | Scry PR #365 | open; its promotion needs PR #361 (fixes #359) merged first |
+| Worker `QA_EMAIL` var and its mapping to the QA principal on `scry-rust-production` | Scry PR #365 | live since v0.5.0 (deployed 2026-10-21 20:11Z) |
 
 Never write the household list or the `/recover` policy yourself. Ask Process
 for the exact address.
