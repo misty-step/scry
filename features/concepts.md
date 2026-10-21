@@ -1,22 +1,42 @@
 # Concepts, references, and goals
 
-Stories: US-001, US-006, US-009, US-010
-
-Source: src/learning.rs, src/model.rs, src/engine.rs, src/web.rs, assets/*
-
-## Reach and drive
-
-Read [SPEC S07](../SPEC.md#s07--manage-what-i-am-learning-us-001us-009us-010),
+The Map shows what the owner is learning as goals and concepts. Reference sits
+behind a visible assistance gate, and he can focus, pause, resume and pace his
+material. Stories: US-001, US-006, US-009, US-010. Intent:
+[S07](../SPEC.md#s07--manage-what-i-am-learning-us-001us-009us-010),
 [S08](../SPEC.md#s08--return-to-worthwhile-practice-us-009us-011) and
-[US-006](../SPEC.md#us-006-understand-a-questions-concept) for intent.
-Open Map (`/map`), choose a displayed goal, then a concept in its ordinary
-concept list. Follow the supplied `/goals/{id}` and `/concepts/{id}` links,
-not invented IDs. Use the visible Look it up gate before protected reference;
-return to study. In isolated state, try focus/pause/resume, Settings pace, and
-Practice; inspect the resulting visible status and reference.
+[US-006](../SPEC.md#us-006-understand-a-questions-concept).
 
-[scry-qa](../.agents/skills/scry-qa/SKILL.md) owns setup and cleanup.
-`qa/walk --stories "US-001 US-006 US-009 US-010"` selects the existing walk;
-US-001 also requires the documented retained-Go migration check. Do not use
-historical live stores as fixtures. Inspect desktop/phone navigation, not just
-the decorative constellation or a passing process exit.
+## Sub-features
+
+- `map-list` shows goals and their concepts at `/map`, in an accessible list.
+- `map-goal` opens a goal (`/goals/{id}`) with focus, pause, resume and Practice.
+- `map-concept` opens a concept (`/concepts/{id}`) with its reference.
+- `map-gate` puts "Look it up" before reference for the current question's concept.
+- `map-pace` sets Settings → "How many new ideas in a day?" (3/6/12).
+
+## How to get to it (user POV)
+
+- Masthead Map → a goal → a concept from its ordinary list. Follow displayed
+  links, never invented IDs. More → Look it up from a question reaches the gate.
+
+## Driving it with verify-scry helpers
+
+Preconditions:
+
+- A run-owned synthetic notebook seeded with the authored demo ([study.md](study.md)).
+
+- **Journey.** `.agents/skills/verify-scry/scripts/local-journeys.mjs` →
+  `notebook.concept` opens Map, then `a[href^="/goals/"]`, then the first
+  `main a[href^="/concepts/"]`, and accepts `[data-state="concept"]` or
+  `[data-state="gate"]`. Evidence: `notebook-concept-390.png`.
+- **Story walk.** `qa/walk --stories "US-001 US-006 US-009 US-010"`. US-001 also
+  runs the retained-Go migration check described in [QA](../docs/qa/system.md).
+- **Proof.** Inspect desktop and phone navigation, not the decorative constellation or a process exit.
+
+## Gotchas
+
+- Opening `/history`, `/goals/*` or `/concepts/*` marks exposure for future
+  presentations. It is a write, so never browse the owner's concepts on production.
+- Do not use historical live stores as fixtures.
+- Source: `src/learning.rs`, `src/model.rs`, `src/engine.rs`, `src/web.rs`, `assets/*`.

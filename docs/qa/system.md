@@ -93,10 +93,13 @@ questions. It is authored data, not a provider call, real cold recall, or an AI
 quality result. Requests made without model configuration remain saved with
 honest zero-cost configuration failure. No production store is imported.
 
-For browser work in T3 Code, first inspect the collaborative preview status and
-open it if needed. Use its native pointer/keyboard tools and snapshots. If those
-tools are unavailable, run browser QA on the isolated exe.dev VM as the
-repository browser/story runner instructs. Do not silently replace a stalled
+Browser QA runs from a shell first:
+[verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s Playwright helpers
+drive the QA account's production sign-in, production breaking states and
+local write flows, and `qa/walk` drives the story walks (on Mirrodin for Hermes
+workers). In T3 Code, the collaborative preview is an alternative: inspect its
+status, open it if needed, and use its native pointer/keyboard tools and
+snapshots. The exe.dev VM scripts are historical. Do not silently replace a stalled
 harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
 Go walks and their selectors are not rewrite proof. `qa/walk --all` discovers
@@ -168,8 +171,9 @@ and feedback; valid JSON or an LLM critic alone cannot establish usefulness.
 US-004 controls report false accepts/rejects/abstentions separately from broad
 publication quality. Unknown paid usage remains reserved and inspectable.
 
-Use only the approved Cloudflare Access owner login for deployed private
-browser proof. Never substitute VM/root authority or copied browser tokens for
+Agents use only the dedicated QA account's Cloudflare Access login
+([verify-scry](../../.agents/skills/verify-scry/SKILL.md#qa-account)) for
+deployed private browser proof, never the owner's. Never substitute VM/root authority or copied browser tokens for
 that boundary. Verify anonymous and forged denial, exact owner access,
 cross-site/stale writes, read-only alternate-host redirects, and private content
 on logout/account/history return. Keep credentials out of URLs, argv, logs,
