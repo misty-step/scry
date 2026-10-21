@@ -1,6 +1,7 @@
 // Shared verify-scry helpers. Secrets come from pass by entry name and never
 // reach argv, stdout, evidence or URLs.
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {mkdirSync,writeFileSync,appendFileSync,readdirSync,readFileSync,statSync,rmSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {createRequire} from 'node:module';
@@ -18,7 +19,6 @@ export const OWNER_IDP='Misty Step password';
 export const WORKER='scry-rust-production';
 export const AUTH_ORIGIN='https://auth-canary.mistystep.io';
 export const AUTH_WORKER='misty-step-auth-canary';
-export const AUTH_D1='df29fa0f-d9ef-45d0-be29-7dc833a424fe';
 export const RECOVER_DOMAIN='auth-canary.mistystep.io/recover';
 // doctor.mjs checks this against the Worker's ACCESS_TEAM and the account's Access team.
 export const ACCESS_TEAM=process.env.SCRY_ACCESS_TEAM||'misty-step-pantry.cloudflareaccess.com';
@@ -79,7 +79,7 @@ export function otpFromMessage(message,email,since){
 
 // The QA steps that must be live before QA sign-in can prove anything, in
 // order. Read-only: Access and Worker settings GETs and one counting SELECT on
-// the auth D1 database. Each entry is {step,ok,observed}: ok true is live,
+// the auth D1 database, whose id comes from the auth Worker's own binding. Each entry is {step,ok,observed}: ok true is live,
 // null is not live yet or unreadable (UNPROVEN), false is wrong (FAIL).
 export async function qaPrerequisites(){
  const steps=[];
@@ -87,12 +87,15 @@ export async function qaPrerequisites(){
  const recover=apps.find(a=>[a.domain,...(a.self_hosted_domains??[])].includes(RECOVER_DOMAIN));
  const recoverAllows=recover?.policies?.some(p=>p.decision==='allow'&&p.include.length===1&&p.include[0].email?.email?.toLowerCase()===QA_EMAIL);
  const sql='select count(*) as users, coalesce(max(u."emailVerified"),0) as verified, (select count(*) from account a join "user" v on a."userId"=v.id where lower(v.email)=?1 and a."providerId"=\'credential\' and a.password is not null) as passwords from "user" u where lower(u.email)=?1';
- const row=(await cf(`/accounts/${ACCOUNT}/d1/database/${AUTH_D1}/query`,ENTRIES.ACCESS_READ,{method:'POST',body:JSON.stringify({sql,params:[QA_EMAIL]})})).result[0].results[0];
- const enrolled=row.users===1&&row.verified===1&&row.passwords===1;
+ const d1=(await cf(`/accounts/${ACCOUNT}/workers/scripts/${AUTH_WORKER}/settings`,ENTRIES.ACCESS_READ)).result.bindings.filter(b=>b.type==='d1');
+ const db=d1.length===1?(d1[0].id||d1[0].database_id):null;
+ const row=db?(await cf(`/accounts/${ACCOUNT}/d1/database/${db}/query`,ENTRIES.ACCESS_READ,{method:'POST',body:JSON.stringify({sql,params:[QA_EMAIL]})})).result[0].results[0]:null;
+ const enrolled=!!row&&row.users===1&&row.verified===1&&row.passwords===1;
  // HOUSEHOLD_MEMBERS is a secret binding: only enrollment shows it was granted.
  steps.push({step:'household',ok:enrolled||null,observed:enrolled?`enrolled, so ${AUTH_WORKER} HOUSEHOLD_MEMBERS admitted ${QA_EMAIL}; qa-signin proves it still does`:`${AUTH_WORKER} HOUSEHOLD_MEMBERS is a secret and unreadable here; Process adds ${QA_EMAIL} (no account exists yet)`});
  steps.push({step:'/recover policy',ok:recover?(recoverAllows||null):false,observed:recover?`"${recover.name}" ${recoverAllows?'has':'has no'} exact-email allow policy for ${QA_EMAIL}${recoverAllows?'':'; Process adds it'}`:`no Access app covers ${RECOVER_DOMAIN}`});
- steps.push({step:'enrollment',ok:enrolled||null,observed:`auth account for ${QA_EMAIL}: ${row.users} user, verified ${row.verified}, ${row.passwords} password credential (counts only)${enrolled?'':'; run enroll-qa.mjs once household and /recover are live'}`});
+ // The database id is printed only as a fingerprint.
+ steps.push({step:'enrollment',ok:!row?false:enrolled||null,observed:!row?`${AUTH_WORKER} has ${d1.length} d1 bindings${d1.length===1?' without an id':''}; expected exactly one auth database, so enrollment cannot be read`:`auth account for ${QA_EMAIL} in database fp:${createHash('sha256').update(db).digest('hex').slice(0,12)}: ${row.users} user, verified ${row.verified}, ${row.passwords} password credential (counts only)${enrolled?'':'; run enroll-qa.mjs once household and /recover are live'}`});
  const vars=Object.fromEntries((await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result.bindings.map(b=>[b.name,b.type==='plain_text'?b.text:`<${b.type}>`]));
  steps.push({step:'Worker QA_EMAIL',ok:vars.QA_EMAIL===QA_EMAIL?true:vars.QA_EMAIL===undefined?null:false,observed:vars.QA_EMAIL===undefined?`${WORKER} has no QA_EMAIL var: not deployed (promotion blocked by #359)`:`${WORKER} QA_EMAIL ${vars.QA_EMAIL===QA_EMAIL?'=':'≠'} ${QA_EMAIL}`});
  return steps;
