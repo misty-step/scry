@@ -566,6 +566,85 @@ try {
     });
   }
   for (const mode of ['preview', 'production']) {
+    await check(`${mode}: the exact QA_EMAIL identity signs in only to the isolated QA notebook`, async () => {
+      const qaEmail = 'scry-qa@agentmail.to';
+      const client = 'identity-scry-qa.access';
+      const identityClaims = {sub:'synthetic-qa-person', email:qaEmail};
+      const identity = jwt(identityClaims);
+      const service = jwt({sub:'',common_name:client});
+      const bindings = {...baseBindings, SCRY_ENV:mode, QA_EMAIL:qaEmail, SCRY_QA_ACCESS_CLIENT_ID:client};
+      const name = `scry-qa-identity-${mode}`;
+      const fixture = await createRuntime({bindings, name, artifact, egress, inspect:true});
+      let active = fixture;
+      const req = (path='/', token=identity, init={}) => active.worker.fetch(`${origin}${path}`, {
+        ...init, redirect:'manual', headers:{'Cf-Access-Jwt-Assertion':token, ...init.headers},
+      });
+      const fields = html => Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m => [m[1],m[2]]));
+      const post = (path, values, token=identity, headers={}) => req(path, token, {
+        method:'POST', body:new URLSearchParams(values),
+        headers:{'X-Scry-Test-Origin':origin, 'Content-Type':'application/x-www-form-urlencoded', ...headers},
+      });
+      const exported = async token => {
+        const response = await req('/export', token);
+        assert.equal(response.status, 200);
+        return (await response.json()).app;
+      };
+      const notebook = app => JSON.stringify([app.csrf, Object.keys(app.goals).sort()]);
+      try {
+        const home = await req('/');
+        assert.equal(home.status, 200);
+        assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
+        const qaSaved = await post('/create', {...fields(await (await req('/create')).text()), intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
+        assert.equal(qaSaved.status, 303);
+        const ownerSaved = await post('/create', {...fields(await (await req('/create',jwt())).text()), intent:'OWNER_ONLY_NOTEBOOK_CANARY'}, jwt());
+        assert.equal(ownerSaved.status, 303);
+        const qaRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:'scry-qa'})).exec('SELECT value FROM records'));
+        const ownerRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:baseBindings.SPACE_NAME})).exec('SELECT value FROM records'));
+        assert.match(qaRows, /QA_IDENTITY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(qaRows, /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.match(ownerRows, /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(ownerRows, /QA_IDENTITY_NOTEBOOK_CANARY/);
+        const qaArchive = await exported(identity);
+        assert.match(JSON.stringify(qaArchive), /QA_IDENTITY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(JSON.stringify(qaArchive), /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.equal(notebook(await exported(service)), notebook(qaArchive), 'The service token and the QA identity share one QA principal.');
+        assert.doesNotMatch(await (await req(ownerSaved.headers.get('Location'))).text(), /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.equal((await req('/api/v1/works')).status, 401, 'QA has no owner API.');
+        for (const path of ['/operator/backup','/operator/resume-work','/operator/restore','/operator/restore-dry-run','/internal/backup']) {
+          assert.equal((await post(path,{},identity,{'x-scry-operator-key':operatorKey,
+            'x-scry-restore-token':restoreToken,'x-scry-backup-key':backupKey})).status,403,path);
+        }
+        // The owner subject takes precedence over the QA email.
+        const ownerWithQaEmail = JSON.stringify(await exported(jwt({email:qaEmail})));
+        assert.match(ownerWithQaEmail, /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(ownerWithQaEmail, /QA_IDENTITY_NOTEBOOK_CANARY/);
+        const forgedKey = generateKeyPairSync('rsa',{modulusLength:2048}).privateKey;
+        for (const token of [jwt({...identityClaims,email:'other@agentmail.to'}), jwt({...identityClaims,email:'SCRY-QA@agentmail.to'}),
+          jwt({...identityClaims,email:` ${qaEmail}`}), jwt({...identityClaims,email:[qaEmail]}), jwt({sub:'synthetic-qa-person'}),
+          jwt({...identityClaims,sub:''}), jwt({...identityClaims,sub:'',common_name:'other.access'}), jwt({...identityClaims,sub:null}),
+          jwt({...identityClaims,aud:['wrong']}), jwt({...identityClaims,iss:'https://wrong.invalid'}),
+          jwt({...identityClaims,exp:epoch-1}), jwt({...identityClaims,nbf:epoch+600}),
+          jwt(identityClaims,{alg:'HS256'}), jwt(identityClaims,{},forgedKey)]) {
+          assert.equal((await req('/',token)).status,401);
+        }
+        const [h,,s] = identity.split('.');
+        assert.equal((await req('/',`${h}.${b64({...claims,...identityClaims,sub:'attacker'})}.${s}`)).status,401);
+        assert.equal((await req('/','',{headers:{'Cf-Access-Authenticated-User-Email':qaEmail,'x-scry-owner':'private-qa'}})).status,401);
+        for (const value of ['', 'SCRY-QA@agentmail.to', ` ${qaEmail}`, 'scry-qa@agentmail', 'scry-qa@@agentmail.to', '@agentmail.to', 'scry-qa@agentmail..to', 'scry..qa@agentmail.to']) {
+          active = await fixture.rebind({...bindings, QA_EMAIL:value});
+          assert.equal((await req('/',value ? jwt({...identityClaims,email:value}) : identity)).status,401,`QA_EMAIL ${JSON.stringify(value)} maps nothing.`);
+          assert.equal((await req('/',service)).status,200,'The service-token QA path is independent of QA_EMAIL.');
+        }
+        active = await fixture.rebind({...bindings, SCRY_QA_ACCESS_CLIENT_ID:''});
+        assert.equal(notebook(await exported(identity)), notebook(qaArchive), 'The QA identity does not depend on the service-token binding.');
+        assert.equal((await req('/',service)).status,401);
+        active = await fixture.rebind({...bindings, SPACE_NAME:'scry-qa'});
+        assert.equal((await req('/')).status,401,'A colliding owner space must never admit the QA identity as owner.');
+        assert.equal((await req('/',jwt())).status,200);
+      } finally {await fixture.mf.dispose();}
+    });
+  }
+  for (const mode of ['preview', 'production']) {
     await check(`${mode}: QA cannot acquire a second paid allowance before or after owner exhaustion`, async () => {
       const client = 'no-paid-scry-qa.access';
       const service = jwt({sub:'',common_name:client});
