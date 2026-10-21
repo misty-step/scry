@@ -130,6 +130,27 @@ class Promotion(unittest.TestCase):
                 PROMOTE.deploy()
             self.assertEqual(run.call_args.args[0], ['git', 'merge-base', '--is-ancestor', released, 'a' * 40])
 
+    def test_deploy_uploads_unless_the_live_version_itself_names_the_source(self):
+        # Re-promoting an annotated release is idempotent; a secret-only version of the same
+        # source still lacks the annotation the final check requires, so it uploads.
+        source = 'a' * 40
+        for label, history, uploads in [
+                ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
+                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+                                 ('release', 'released', version(etag='same', message='scry-rust ' + source))], True)]:
+            with self.subTest(label), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
+                def command(args, **kwargs):
+                    if args[0] != 'git': raise RuntimeError('upload ' + args[1])
+                run.side_effect = command
+                if uploads:
+                    with self.assertRaisesRegex(RuntimeError, '^upload deploy$'):
+                        PROMOTE.deploy()
+                else:
+                    # Without an upload, promotion continues to its post-checks; this fixture stops there.
+                    with self.assertRaisesRegex(AssertionError, 'Unexpected request: .*/subdomain$'):
+                        PROMOTE.deploy()
+                self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
+
     def test_deploy_refuses_an_untraceable_live_version(self):
         for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret')),
                          ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))],
