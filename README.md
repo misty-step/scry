@@ -101,8 +101,9 @@ the exact WASM Worker assets exercised, lockfiles, and smoke results. Use
 is development evidence. Never rebuild between proof and activation. Retained
 historical recovery tools have their own `bun run test:recovery` contract.
 
-Browser QA uses the product-native collaborative preview when available and
-isolated VM browser/story walks for release receipts. Exercise real pointer and
+Browser QA runs from a shell first: verify-scry's Playwright helpers and the
+`qa/walk` story walks, which also produce release receipts. The T3
+collaborative preview is an alternative. Exercise real pointer and
 keyboard events, held results, no-JavaScript forms, both color schemes, narrow
 screens, offline drafts, access loss, and identical-operation reconciliation.
 Read [Scry QA](.agents/skills/scry-qa/SKILL.md) before verification. Unrun cases

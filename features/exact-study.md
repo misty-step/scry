@@ -49,7 +49,7 @@ Preconditions:
   offline pause and private DOM removal. `node --test qa/study.test.mjs` reuses
   the CLI journey. See the [builder receipt](../docs/qa/evidence/scry-319/2026-10-20-recovery-links/README.md).
 - **Proof.** `study-prompt-390.png`, `study-diff-390.png`, `study-next-390.png`
-  and `cli-transcript.json` under `target/verify-scry/<stamp>-local-journeys/`.
+  and `cli-transcript.json` under the `<stamp>-local-journeys` evidence directory.
 
 ## Gotchas
 

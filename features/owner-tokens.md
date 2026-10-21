@@ -43,7 +43,7 @@ Preconditions:
   `tests/owner_api.rs` cover refusal parity, replay, paid refusal, history and
   export attribution.
 - **Proof.** `token-shown-once-390.png` (secret masked), `token-list-390.png`
-  and `cli-transcript.json` under `target/verify-scry/<stamp>-local-journeys/`.
+  and `cli-transcript.json` under the `<stamp>-local-journeys` evidence directory.
 
 ## Gotchas
 

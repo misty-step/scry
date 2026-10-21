@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Read-only production breaking states: signed out, forged/expired session,
 // wrong identity, alternate host, and 390px phone. No owner data is read and
-// nothing is written: every request is a refused or isolated-QA read.
+// nothing in the owner space is written: every request is refused or an
+// isolated-QA read, which may freeze a question in the scry-qa space only.
 //   prod-states.mjs
+// Exit 0 PASS, 1 FAIL, 3 UNPROVEN left.
 import {join} from 'node:path';
 import {writeFileSync} from 'node:fs';
 import {ACCESS_TEAM,ORIGIN,ENTRIES,secret,outDir,reporter,launch,settle} from './lib.mjs';
@@ -58,9 +60,9 @@ await check('state.phone-390',async()=>{
   const r=await page.goto(ORIGIN+'/create');
   await page.locator('[data-state="create"]').waitFor();
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
-  if(r.status()!==200||overflow)throw Error(`390px QA /create → ${r.status()}, horizontal overflow ${overflow}`);
+  if(r.status()!==200||overflow)throw Error(`390px QA service identity /create → ${r.status()}, horizontal overflow ${overflow}`);
   await settle(page);await page.screenshot({path:join(dir,'qa-identity-create-390.png'),fullPage:true});
-  log('state.phone-390','PASS','QA identity /create at 390px touch: 200, no horizontal overflow',{evidence:'qa-identity-create-390.png'});
+  log('state.phone-390','PASS','QA service identity /create at 390px touch: 200, no horizontal overflow',{evidence:'qa-identity-create-390.png'});
  }finally{await browser.close();}
 });
 await check('cli.hosted-admission',async()=>{
@@ -71,5 +73,4 @@ await check('cli.hosted-admission',async()=>{
 });
 log('state.backend-down','UNPROVEN','not inducible on production read-only; local-journeys.mjs stops its own Worker');
 writeFileSync(join(dir,'README.txt'),'Production breaking states. QA identity reads its isolated scry-qa space; no owner data.\n');
-console.log(`evidence: ${dir}`);
 process.exit(done());

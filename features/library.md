@@ -40,7 +40,7 @@ Preconditions:
   the Study-reference refusal. The [exact Study journey](exact-study.md) proves
   real deletion refusal after active, paused and dropped Studies.
 - **Proof.** `cli-transcript.json` (stdin redacted) under
-  `target/verify-scry/<stamp>-local-journeys/`.
+  the `<stamp>-local-journeys` evidence directory.
 
 ## Gotchas
 

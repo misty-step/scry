@@ -40,7 +40,7 @@ Preconditions:
   covers each criterion. `qa/browser-recovery.mjs` (inside `qa/walk`) covers no-JS forms,
   keyboard, response loss, offline, competing tabs, access loss and layouts.
 - **Proof.** Screenshots `notebook-*-390.png` and `checks.jsonl` under
-  `target/verify-scry/<stamp>-local-journeys/`.
+  the `<stamp>-local-journeys` evidence directory.
 
 ## Gotchas
 

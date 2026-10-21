@@ -1,7 +1,0 @@
-{
- "checks": 10,
- "fail": 0,
- "unproven": [
-  "owner.subject"
- ]
-}

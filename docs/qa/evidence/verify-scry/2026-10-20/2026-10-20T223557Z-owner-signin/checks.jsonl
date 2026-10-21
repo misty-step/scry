@@ -1,2 +1,0 @@
-{"id":"signin.redirect","status":"PASS","observed":"signed-out GET /create → Access → auth-canary.mistystep.io \"Welcome back\"","evidence":"signin-idp-1280.png","at":"2026-10-20T22:35:58.264Z"}
-{"id":"signin.owner","status":"UNPROVEN","observed":"needs pass entry workstation/MISTY_STEP_OWNER_PASSWORD holding the phaedrus@mistystep.io Misty Step password (normal sign-in has no email code or link)","at":"2026-10-20T22:35:58.270Z"}

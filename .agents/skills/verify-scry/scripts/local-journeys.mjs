@@ -5,7 +5,8 @@
 // keep → exact Study on the 390px phone Stream → token revocation → backend down.
 //   local-journeys.mjs [--width 390]
 // Needs `worker-build --release --locked` (build/) and
-// `cargo build --locked --bin scry` (target/debug/scry). Exit 0 PASS, 1 FAIL.
+// `cargo build --locked --bin scry` (target/debug/scry). Exit 0 PASS, 1 FAIL,
+// 2 usage or missing build.
 import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -38,17 +39,19 @@ const cli=(args,input='')=>new Promise((ok,fail)=>{
 const transcript=[];
 const run=async(args,input)=>{const r=await cli(args,input);transcript.push({cmd:['scry',...args,'--json'].join(' ').replaceAll(temp,'<temp>'),stdin:input?'<redacted>':undefined,exit:r.code,stdout:r.value});return r;};
 
-const runtime=await createSyntheticRuntime({name:'verify-scry-local'});
-const origin=runtime.url;
-const browser=await launch();
-const context=await browser.newContext({viewport:{width,height:844},...(width<768?{isMobile:true,hasTouch:true}:{})});
-const page=await context.newPage();page.setDefaultTimeout(15000);
+let runtime,browser,page,origin;
 // Full-page captures paint the sticky result actions at the first viewport's
 // bottom, over later content. `at` captures the viewport around one element.
 const shot=async(name,mask=[],at=null)=>{await settle(page);if(at)await at.evaluate(e=>e.scrollIntoView({block:'center'}));await page.screenshot({path:join(dir,`${name}-${width}.png`),fullPage:!at,mask});return `${name}-${width}.png`;};
 const step=async(id,fn)=>{try{await fn();}catch(e){log(id,'FAIL',e.message.split('\n')[0],{evidence:await shot(`${id}-failure`).catch(()=>null)});}};
-let alive=true;
+let alive=false;
 try{
+ // Inside try: a failed Worker or Chromium launch still cleans up below.
+ runtime=await createSyntheticRuntime({name:'verify-scry-local'});alive=true;
+ origin=runtime.url;
+ browser=await launch();
+ const context=await browser.newContext({viewport:{width,height:844},...(width<768?{isMobile:true,hasTouch:true}:{})});
+ page=await context.newPage();page.setDefaultTimeout(15000);
  await step('notebook.empty',async()=>{
   await page.goto(origin+'/');
   const h1=await page.getByRole('heading',{level:1}).innerText();
@@ -159,11 +162,12 @@ try{
   await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
   log('state.backend-down','PASS',`Worker stopped, then ${choices?'choice tap':'typed answer'} → no result; "The response did not arrive. Your draft is still here." with Reconcile this attempt`,{evidence:await shot('backend-down')});
  });
+}catch(e){
+ log('local.launch','FAIL',e.message.split('\n')[0]);
 }finally{
  await writeFile(join(dir,'cli-transcript.json'),JSON.stringify(transcript,null,1)+'\n');
- await context.close();await browser.close();
+ await browser?.close();
  if(alive)await runtime.mf.dispose();
  await rm(temp,{recursive:true,force:true});
 }
-console.log(`evidence: ${dir}`);
 process.exit(done());

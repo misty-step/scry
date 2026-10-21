@@ -1,8 +1,0 @@
-{
- "checks": 7,
- "fail": 0,
- "unproven": [
-  "cli.hosted-admission",
-  "state.backend-down"
- ]
-}

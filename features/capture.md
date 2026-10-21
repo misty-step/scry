@@ -30,8 +30,8 @@ Preconditions:
   `qa/browser-recovery.mjs` (inside `qa/walk --all`) cover stopped preparation,
   Resume preparation and recovery with authored inputs. [QA](../docs/qa/system.md#core-journeys)
   owns the setup, invalid-input and recovery recipes.
-- **Production.** `/create` is the read-only owner page used by
-  [owner-signin.mjs](sign-in.md). Never submit it on production.
+- **Production.** [qa-signin.mjs](sign-in.md) loads `/create` in the QA
+  account's `scry-qa` space. Never submit it on production.
 - **Proof.** Capture the real missing-provider state in the credential-free runtime.
 
 ## Gotchas

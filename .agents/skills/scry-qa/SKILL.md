@@ -48,7 +48,7 @@ action works only in an empty synthetic notebook. Fixtures never prove real
 provider quality, unaided recall, production ingress, or remote recovery.
 
 From a shell, use the [verify-scry](../verify-scry/SKILL.md) Playwright helpers
-or `qa/walk` on Mirrodin. In T3 the collaborative browser is an alternative:
+or `qa/walk` (on Mirrodin for Hermes workers). In T3 the collaborative browser is an alternative:
 inspect preview status, open it if needed, and use snapshot locators with
 actual pointer/keyboard actions. Do not substitute DOM `.click()` for touch evidence.
 A stalled harness is a diagnosis or acceptance gap, never a passing walk.
@@ -63,7 +63,8 @@ Answers, explanations, current notes/names, and goal title/intent remain absent
 before durable assistance/self-check/result. Offline work pauses and the same
 frozen operation reconciles an unknown response; no mutation queue.
 
-For private production use only the approved Cloudflare Access owner login.
+For private production, agents use only the dedicated QA account's Cloudflare
+Access login ([verify-scry](../verify-scry/SKILL.md#qa-account)), never the owner's.
 Verify signature/issuer/audience/exact owner, anonymous/forged denial,
 Host/origin/CSRF, alternate-host write rejection, and history after access loss.
 Never copy tokens into URLs/argv/logs/captures or substitute a VM credential.

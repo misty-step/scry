@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Read-only: is this Scry worth driving, and would the real owner be admitted?
-//   doctor.mjs prod            deployed owner identity and private ingress
+// Read-only: is this Scry worth driving, and can the QA account sign in?
+//   doctor.mjs prod            deployed Access, identity and QA configuration
 //   doctor.mjs local <url>     a run-owned loopback Worker (bun run dev)
-// Exit 0 all PASS, 1 any FAIL, 3 only UNPROVEN left.
+// Exit 0 all PASS, 1 any FAIL, 2 usage, 3 only UNPROVEN left.
 import {createHash} from 'node:crypto';
-import {ACCOUNT,ACCESS_TEAM,ORIGIN,OWNER_EMAIL,OWNER_APP,OWNER_IDP,WORKER,ENTRIES,cf,secret,outDir,reporter} from './lib.mjs';
+import {ACCOUNT,ACCESS_TEAM,ORIGIN,OWNER_EMAIL,QA_EMAIL,OWNER_APP,OWNER_IDP,AUTH_ORIGIN,WORKER,ENTRIES,cf,secret,qaCredentials,mail,qaPrerequisites,outDir,reporter} from './lib.mjs';
 
 const [mode='prod',target]=process.argv.slice(2);
+if(!['prod','local'].includes(mode)){console.error('usage: doctor.mjs prod | doctor.mjs local <url>');process.exit(2);}
 const dir=outDir(`doctor-${mode}`);
 const {log,done}=reporter(dir);
 const check=async(id,fn)=>{try{await fn();}catch(e){log(id,'FAIL',e.message);}};
@@ -14,10 +15,12 @@ const fp=v=>createHash('sha256').update(v).digest('hex').slice(0,12);
 
 if(mode==='local'){
  const url=new URL(target||'http://127.0.0.1:8787');
- await check('local.loopback',async()=>{
-  if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname))throw Error(`${url.host} is not loopback; drive production only through doctor prod`);
-  log('local.loopback','PASS',url.origin);
- });
+ // Never send a request to a host that is not loopback.
+ if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)){
+  log('local.loopback','FAIL',`${url.host} is not loopback; use doctor.mjs prod for production`);
+  process.exit(done());
+ }
+ log('local.loopback','PASS',url.origin);
  await check('local.page',async()=>{
   const r=await fetch(url.origin+'/',{redirect:'manual'});const html=await r.text();
   const title=/<title>([^<]*)<\/title>/.exec(html)?.[1];
@@ -31,10 +34,9 @@ if(mode==='local'){
  });
  process.exit(done());
 }
-if(mode!=='prod'){console.error('usage: doctor.mjs prod | doctor.mjs local <url>');process.exit(2);}
 
 const host=new URL(ORIGIN).host;
-let vars={},app,idp,user;
+let vars={},app,apps,idp,user,lastSecretWrite;
 await check('worker.config',async()=>{
  const s=(await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/settings`,ENTRIES.WORKER_READ)).result;
  for(const b of s.bindings)vars[b.name]=b.type==='plain_text'?b.text:`<${b.type}>`;
@@ -47,8 +49,8 @@ await check('worker.config',async()=>{
 await check('worker.version',async()=>{
  const d=(await cf(`/accounts/${ACCOUNT}/workers/scripts/${WORKER}/deployments`,ENTRIES.WORKER_READ)).result.deployments;
  const code=d.find(x=>x.annotations?.['workers/triggered_by']==='deployment');
- const subject=d.find(x=>x.annotations?.['workers/triggered_by']==='secret');
- log('worker.version','PASS',`serving deployment ${d[0].id} at ${d[0].created_on} (${d[0].annotations?.['workers/triggered_by']}); code ${code?.annotations?.['workers/message']||'unknown'}; last secret write ${subject?.created_on||'none listed'}`,{last_secret_write:subject?.created_on||null});
+ lastSecretWrite=d.find(x=>x.annotations?.['workers/triggered_by']==='secret')?.created_on;
+ log('worker.version','PASS',`serving deployment ${d[0].id} at ${d[0].created_on} (${d[0].annotations?.['workers/triggered_by']}); code ${code?.annotations?.['workers/message']||'unknown'}; last secret write ${lastSecretWrite||'none listed'}`);
 });
 await check('access.team',async()=>{
  const org=(await cf(`/accounts/${ACCOUNT}/access/organizations`,ENTRIES.ACCESS_READ)).result;
@@ -56,7 +58,8 @@ await check('access.team',async()=>{
  log('access.team','PASS',`Access team ${org.auth_domain} = ACCESS_TEAM`);
 });
 await check('access.app',async()=>{
- app=(await cf(`/accounts/${ACCOUNT}/access/apps?per_page=100`,ENTRIES.ACCESS_READ)).result.find(a=>a.name===OWNER_APP);
+ apps=(await cf(`/accounts/${ACCOUNT}/access/apps?per_page=200`,ENTRIES.ACCESS_READ)).result;
+ app=apps.find(a=>a.name===OWNER_APP);
  if(!app)throw Error(`no Access app named "${OWNER_APP}"`);
  if(app.aud!==vars.ACCESS_AUDIENCE)throw Error(`app AUD ${app.aud.slice(0,12)}… ≠ ACCESS_AUDIENCE ${String(vars.ACCESS_AUDIENCE).slice(0,12)}…`);
  if(!app.self_hosted_domains.includes(host))throw Error(`${host} not covered by "${OWNER_APP}"`);
@@ -65,35 +68,55 @@ await check('access.app',async()=>{
 await check('access.idp',async()=>{
  const idps=(await cf(`/accounts/${ACCOUNT}/access/identity_providers`,ENTRIES.ACCESS_READ)).result;
  idp=idps.find(i=>i.name===OWNER_IDP);
- if(!idp)throw Error(`no identity provider named "${OWNER_IDP}"`);
- const allowed=app.allowed_idps.map(id=>idps.find(i=>i.id===id)?.name||id);
- if(!app.allowed_idps.includes(idp.id))throw Error(`"${OWNER_APP}" does not allow "${OWNER_IDP}" (allows ${allowed.join(', ')})`);
- log('access.idp','PASS',`allowed IdPs: ${allowed.join(', ')} (${idp.type} at ${new URL(idp.config.auth_url).host}); auto-redirect ${app.auto_redirect_to_identity}`);
+ const allowed=(app.allowed_idps??[]).map(id=>idps.find(i=>i.id===id)?.name||id);
+ // Password-only: exactly this OIDC provider, so no PIN or other IdP can sign in.
+ if(!idp||app.allowed_idps?.length!==1||app.allowed_idps[0]!==idp.id||idp.type!=='oidc'||!idp.config?.auth_url?.startsWith(AUTH_ORIGIN+'/'))throw Error(`"${OWNER_APP}" allows ${allowed.join(', ')||'every configured IdP'}; want only "${OWNER_IDP}" (oidc at ${AUTH_ORIGIN})`);
+ log('access.idp','PASS',`password-only: the one allowed IdP is "${OWNER_IDP}" (oidc at ${new URL(idp.config.auth_url).host}); auto-redirect ${app.auto_redirect_to_identity}`);
 });
-await check('access.policy',async()=>{
- const allow=app.policies.filter(p=>p.decision==='allow');
- if(!allow.some(p=>p.include.some(r=>r.email?.email===OWNER_EMAIL)))throw Error(`no allow policy includes ${OWNER_EMAIL}`);
+await check('access.policies',async()=>{
+ const emails=p=>p.include.map(r=>r.email?.email?.toLowerCase());
+ const owner=app.policies.filter(p=>p.decision==='allow'&&emails(p).includes(OWNER_EMAIL));
+ const qa=app.policies.filter(p=>p.decision==='allow'&&emails(p).includes(QA_EMAIL));
+ const problems=[];
  // Include rules are ORed: any selector other than an exact email could admit someone else.
- const wide=allow.flatMap(p=>p.include).filter(r=>Object.keys(r).join()!=='email');
- if(wide.length)throw Error(`allow policy includes non-email selectors: ${JSON.stringify(wide.map(Object.keys))}`);
- log('access.policy','PASS',`allow policy includes ${OWNER_EMAIL} (exact emails only); non-identity policies: ${app.policies.filter(p=>p.decision==='non_identity').map(p=>p.name).join(', ')||'none'}`);
+ for(const p of app.policies.filter(p=>p.decision==='allow'))if(p.include.some(r=>Object.keys(r).join()!=='email'))problems.push(`"${p.name}" includes non-email selectors`);
+ for(const p of app.policies.filter(p=>p.decision==='non_identity'))if(p.include.some(r=>Object.keys(r).join()!=='service_token'))problems.push(`"${p.name}" admits more than service tokens`);
+ if(owner.length!==1||emails(owner[0]).includes(QA_EMAIL)||emails(owner[0]).some(e=>e?.endsWith('@agentmail.to')))problems.push(`owner policy must be one exact-email policy without QA addresses (found ${owner.length})`);
+ if(qa.length!==1||emails(qa[0]).length!==1)problems.push(`QA policy must be one allow policy whose only include is ${QA_EMAIL} (found ${qa.map(p=>`"${p.name}" with ${p.include.length} includes`).join(', ')||'none'})`);
+ if(problems.length)throw Error(problems.join('; '));
+ log('access.policies','PASS',`owner policy "${owner[0].name}": ${owner[0].include.length} exact emails incl. ${OWNER_EMAIL}; QA policy "${qa[0].name}": exactly ${QA_EMAIL}; non-identity: ${app.policies.filter(p=>p.decision==='non_identity').map(p=>`"${p.name}" (service tokens)`).join(', ')||'none'}`);
+});
+await check('access.bypass',async()=>{
+ const hosts=app.self_hosted_domains;
+ const domains=a=>[a.domain,...(a.self_hosted_domains??[])].filter(Boolean);
+ const covering=apps.filter(a=>domains(a).some(d=>hosts.some(h=>d===h||d.startsWith(h+'/'))));
+ const bad=covering.flatMap(a=>a.policies.filter(p=>!['allow','non_identity'].includes(p.decision)||[...p.include,...(p.require??[])].some(r=>'everyone' in r)).map(p=>`"${a.name}"/"${p.name}" (${p.decision})`));
+ if(bad.length)throw Error(`bypass or everyone rules on Scry hosts: ${bad.join(', ')}`);
+ log('access.bypass','PASS',`${covering.length} Access apps cover Scry hosts (${covering.map(a=>`"${a.name}"`).join(', ')}); every policy is allow or non_identity, none bypass or everyone`);
 });
 await check('owner.identity',async()=>{
  user=(await cf(`/accounts/${ACCOUNT}/access/users?per_page=100`,ENTRIES.ACCESS_READ)).result.find(u=>u.email===OWNER_EMAIL);
  if(!user)throw Error(`no Access user for ${OWNER_EMAIL}; the owner has never signed in through Access`);
- const seen=(await cf(`/accounts/${ACCOUNT}/access/users/${user.id}/last_seen_identity`,ENTRIES.ACCESS_READ)).result;
- // The JWT sub is this user_uuid. It is per email, not per IdP, and the
- // last-seen identity is account-wide: any app's login (OTP included) updates it.
- if(seen.user_uuid!==user.id)throw Error('last-seen identity user_uuid differs from the Access user id');
- log('owner.identity','PASS',`${OWNER_EMAIL} has Access user_uuid fp:${fp(user.id)} (JWT sub), created ${user.created_at}; account-wide last login ${user.last_successful_login} via ${seen.idp?.id===idp.id?`"${OWNER_IDP}"`:seen.idp?.type}`,{user_uuid_fp:fp(user.id)});
+ log('owner.identity','PASS',`${OWNER_EMAIL} has Access user_uuid fp:${fp(user.id)} (JWT sub), created ${user.created_at}`,{user_uuid_fp:fp(user.id)});
 });
-await check('owner.subject',async()=>{
- const since=new Date(Date.now()-30*86400e3).toISOString().slice(0,19)+'Z';
- const logs=(await cf(`/accounts/${ACCOUNT}/access/logs/access_requests?limit=1000&since=${since}&email=${encodeURIComponent(OWNER_EMAIL)}`,ENTRIES.ACCESS_READ)).result.filter(l=>l.app_uid===app.uid||l.app_uid===app.id);
- const last=logs.sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
- // OWNER_SUBJECT is a secret and cannot be read back. Config alone cannot
- // prove equality; only an owner page rendered for this identity can.
- log('owner.subject','UNPROVEN',`OWNER_SUBJECT is unreadable; admission of fp:${fp(user.id)} is proven only by owner-signin.mjs reaching an owner page. Owner's last Access login to this app: ${last?`${last.created_at} via ${last.connection}, allowed=${last.allowed}`:'none in 30 days'}`);
+await check('owner.subject-age',async()=>{
+ // OWNER_SUBJECT is unreadable, but a value written before the owner's Access
+ // user existed cannot be that user's uuid. Secrets are written with
+ // `wrangler secret put` (triggered_by secret); promotion keeps them.
+ if(!lastSecretWrite)return log('owner.subject-age','UNPROVEN','no secret write in the listed deployments; OWNER_SUBJECT cannot be dated');
+ if(Date.parse(lastSecretWrite)<Date.parse(user.created_at))throw Error(`last secret write ${lastSecretWrite} predates the owner Access user (created ${user.created_at}): OWNER_SUBJECT cannot be fp:${fp(user.id)}`);
+ log('owner.subject-age','PASS',`last secret write ${lastSecretWrite} follows the owner Access user's creation ${user.created_at}; this rules out a stale subject only, equality stays unreadable`);
+});
+await check('qa.credentials',async()=>{
+ const qa=qaCredentials({optional:true});
+ if(!qa)return log('qa.credentials','UNPROVEN',`QA sign-in UNPROVEN: needs ${ENTRIES.QA_EMAIL}, _INBOX, _AGENTMAIL_KEY and _PASSWORD`);
+ const box=await mail(qa,'?limit=1');
+ if(!Array.isArray(box.messages))throw Error('AgentMail QA inbox answered without a message list');
+ log('qa.credentials','PASS',`QA pass entries readable; address and inbox are ${QA_EMAIL}; AgentMail inbox readable (no message content read)`);
+});
+await check('qa.prerequisites',async()=>{
+ const steps=await qaPrerequisites();
+ for(const s of steps)log(`qa.${s.step.replace(/[^a-z]+/gi,'-').replace(/^-|-$/g,'').toLowerCase()}`,s.ok===true?'PASS':s.ok===false?'FAIL':'UNPROVEN',s.observed);
 });
 await check('ingress.anonymous',async()=>{
  const r=await fetch(ORIGIN+'/create',{redirect:'manual'});const loc=r.headers.get('location')||'';
@@ -107,5 +130,4 @@ await check('ingress.health',async()=>{
  if(r.status!==200)throw Error(`machine GET /healthz → ${r.status} ${body}`);
  log('ingress.health','PASS',`machine GET /healthz → 200 ${body}`);
 });
-console.log(`evidence: ${dir}`);
 process.exit(done());

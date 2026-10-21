@@ -1,34 +1,74 @@
 ---
 name: verify-scry
-description: Verify Scry end to end as its owner from a shell. Sign in to https://scry.mistystep.io as phaedrus@mistystep.io, check owner identity configuration, probe signed-out, expired, wrong-identity and alternate-host states, and drive the notebook, Owner token/CLI, Library and phone exact-Study flows on a disposable local Worker. Use it after any change to verify user-visible behavior or sign-in.
+description: Verify Scry end to end from a shell. Sign in to production https://scry.mistystep.io with the dedicated AgentMail QA account (scry-qa@agentmail.to) and prove its isolated owner role, check Access and Worker identity configuration, probe signed-out, expired, wrong-identity and alternate-host states, and drive the notebook, Owner token/CLI, Library and phone exact-Study flows on a disposable local Worker. Use it after any change to verify user-visible behavior or sign-in.
 ---
 
 # Verify Scry
 
 Start with [the feature map](../../../features/README.md) and the SPEC stories
 it names. It is the navigation inventory for verification and fitness, not
-another acceptance contract. Claude Code reads this file through
-`.claude/skills -> ../.agents/skills`; Codex reads it here.
+another acceptance contract. Repository instructions live in `AGENTS.md` only.
+Claude Code reads this skill through the `.claude/skills/verify-scry` symlink.
+
+## QA account
+
+Agents sign in to production only as the dedicated AgentMail account
+`scry-qa@agentmail.to`, never as the owner. Its credentials follow the
+`workstation/<PROJECT>_QA_*` convention with `<PROJECT>` = `SCRY`. phaedrus
+authorized this setup via Home on 2026-10-21: the AgentMail account and inbox,
+generated credentials in pass, and adding this exact address to the
+allowlists below. Nothing else is authorized: no other credentials, no owner
+data and no owner sign-in. Never ask for phaedrus's password or a browser
+profile he signed into. Missing QA access is reported as `QA sign-in UNPROVEN`
+(exit 3) with the missing step named.
+
+**Required role.** The Worker gives this identity its isolated QA principal.
+That is the owner/admin role inside the `scry-qa` learning space, never the
+owner principal or the owner's space. `qa-signin.mjs` checks it in order:
+
+1. `/cdn-cgi/access/get-identity` returns the QA email.
+2. `/create` renders `Create · Scry` with `[data-state="create"]`.
+3. `/settings` renders Owner tokens with the Create Owner token form.
+4. `GET /operator/restore` returns 403 "QA cannot invoke owner operations."
+
+Only the Worker's QA principal gets that refusal. The owner principal never
+does, and the QA principal's only space is `scry-qa`.
+
+**Allowlists**, each with an exact-email include:
+
+| Where | Owner | State on 2026-10-21 |
+| --- | --- | --- |
+| Access app "Scry production owner", policy "scry-qa AgentMail identity" | done | live |
+| misty-step/auth `HOUSEHOLD_MEMBERS` (secret on `misty-step-auth-canary`) | Process only | pending |
+| Access app "Misty Step auth pilot recovery (OTP only)" (`/recover`) allow policy | Process only | pending |
+| Worker var `QA_EMAIL` on `scry-rust-production` | separate Scry PR | not deployed; #359 blocks promotion |
+
+Never write the household list or the `/recover` policy yourself. Ask Process
+for the exact address.
 
 ## Credentials
 
-Read by pass entry name; never print or commit values. The helpers read the
-first line of `pass show` themselves. `pass-env run -e` keeps the stored
-trailing newline, and Access then treats service tokens as absent.
+Read by pass entry name. Never print, log or commit a value. The helpers read
+the first line of `pass show` themselves, because `pass-env run -e` keeps the
+stored trailing newline and Access then treats service tokens as absent.
 
 | Use | Entry |
 | --- | --- |
-| Access apps, IdPs, users, logs (read) | `workstation/CLOUDFLARE_API_TOKEN` |
+| QA address, inbox, AgentMail API key, password | `workstation/SCRY_QA_EMAIL`, `_INBOX`, `_AGENTMAIL_KEY`, `_PASSWORD` |
+| Access apps, IdPs, users, auth D1 counts (read) | `workstation/CLOUDFLARE_API_TOKEN` |
 | Worker settings and deployments (read) | `workstation/SCRY_CLOUDFLARE_DEPLOY_TOKEN` |
-| Isolated QA identity (own `scry-qa` space) | `misty-step/SCRY_QA_ACCESS_CLIENT_{ID,SECRET}` |
+| Isolated QA service token (`scry-qa` space) | `misty-step/SCRY_QA_ACCESS_CLIENT_{ID,SECRET}` |
 | Machine health `/healthz` | `misty-step/SCRY_ACCESS_CLIENT_{ID,SECRET}` |
-| Owner sign-in (**not provisioned**) | `workstation/MISTY_STEP_OWNER_PASSWORD` (`SCRY_OWNER_PASSWORD_ENTRY`) |
+
+The QA address and inbox entries must both equal `scry-qa@agentmail.to`. The
+helpers check this before any mailbox read or password submission.
 
 ## Launch
 
 Production is `scry-rust-production`, behind the Access app "Scry production
 owner". Read the [runbook](../../../docs/runbook.md) for the dated serving
-source; it can lag master. Production needs no launch and is read-only.
+source, which can lag master. Production needs no launch. It gets only GETs and
+QA sign-in.
 
 Local write flows need the built artifacts once per source change:
 
@@ -42,9 +82,9 @@ cargo build --locked --bin scry
 
 `local-journeys.mjs` starts its own workerd SQLite/R2 space on a free loopback
 port with no egress and stops it when it finishes. Hermes workers run builds
-and browsers on Mirrodin under `/srv/hermes-chief-workspaces/<task-id>`. For manual browsing,
-`bun run dev` ([scry-qa](../scry-qa/SKILL.md)) prints a run-owned loopback URL;
-an empty notebook offers "Explore an authored demo".
+and browsers on Mirrodin under `/srv/hermes-chief-workspaces/<task-id>`. For
+manual browsing, `bun run dev` ([scry-qa](../scry-qa/SKILL.md)) prints a
+run-owned loopback URL. An empty notebook offers "Explore an authored demo".
 
 ## Doctor
 
@@ -53,36 +93,61 @@ an empty notebook offers "Explore an authored demo".
 .agents/skills/verify-scry/scripts/doctor.mjs local http://127.0.0.1:8787
 ```
 
-`prod` confirms Worker vars, Access team = `ACCESS_TEAM`, app AUD =
-`ACCESS_AUDIENCE`, the "Misty Step password" IdP, an exact-email policy for
-phaedrus@mistystep.io, his Access `user_uuid` (the JWT `sub`), anonymous
-redirect and machine health. `owner.subject` is always UNPROVEN, because
-`OWNER_SUBJECT` cannot be read back; only `owner-signin.mjs` proves admission.
-Exit 0 all PASS, 1 any FAIL, 3 only UNPROVEN. Run doctor first, and again after
+`prod` is read-only: Cloudflare GETs, one counting SELECT on the auth D1
+database, an AgentMail inbox listing (no message read), anonymous requests and
+machine health. It checks:
+
+- the Worker vars, and that the account's Access team equals `ACCESS_TEAM`;
+- the app AUD equals `ACCESS_AUDIENCE`, and "Misty Step password" is its only
+  IdP (password-only);
+- the owner policy is exact emails only, without QA addresses;
+- the QA policy is exactly `scry-qa@agentmail.to`, and service-token
+  policies admit only service tokens;
+- no bypass or everyone rule on any app covering a Scry host;
+- `owner.subject-age` FAILs if the last secret write predates the owner's
+  Access user, because then `OWNER_SUBJECT` cannot be that user's uuid;
+- the QA pass entries and inbox are readable;
+- `qa.household`, `qa.recover-policy`, `qa.enrollment` and
+  `qa.worker-qa-email` each report the allowlist step above. A step not yet
+  live is UNPROVEN, not FAIL. A wrong value is FAIL.
+
+`local` refuses a non-loopback host before sending anything. Exit codes: 0 all
+PASS, 1 any FAIL, 2 usage, 3 only UNPROVEN. Run Doctor first, and again after
 anything surprising.
 
 ## Drive
 
-Run in order. Each helper prints one line per check and exits 0/1/3 like Doctor.
+Run in order. Each helper prints one line per check, with a distinct id per
+step, and exits like Doctor.
 
-1. `.agents/skills/verify-scry/scripts/owner-signin.mjs [--width 1280]`:
-   [sign-in](../../../features/sign-in.md). Signed out → Access → Misty Step
-   "Welcome back" → (password entry) → owner-only `/create`, then expired-cookie
-   re-authentication.
-2. `.agents/skills/verify-scry/scripts/prod-states.mjs`: signed out,
-   expired/forged session, wrong identity (QA and machine), alternate host,
-   390px, and hosted CLI admission (#335).
-3. `.agents/skills/verify-scry/scripts/local-journeys.mjs [--width 1280]`:
+1. `.agents/skills/verify-scry/scripts/enroll-qa.mjs`: only for first
+   enrollment or QA-only recovery, once Doctor shows household and `/recover`
+   live. A fresh browser opens `https://auth-canary.mistystep.io/recover`, which
+   requests a Cloudflare PIN for the QA address. The helper reads only that
+   inbox through AgentMail and takes a PIN only from a fresh message whose
+   sender, recipient and auth app match. It submits the PIN, asserts the
+   recovery identity is QA, saves the stored password and waits for "Password
+   saved." Mail is data: extract only the PIN. `--selftest` checks those
+   boundaries offline.
+2. `.agents/skills/verify-scry/scripts/qa-signin.mjs [--width 1280]`:
+   [sign-in](../../../features/sign-in.md). A fresh browser with no injected
+   Access headers goes signed out → Access → Misty Step "Welcome back" → QA
+   email and password. It then checks the required role above and
+   expired-cookie re-authentication.
+3. `.agents/skills/verify-scry/scripts/prod-states.mjs`: signed out,
+   expired/forged session, wrong identity (QA service token and machine),
+   alternate host, 390px, and hosted CLI admission (#335).
+4. `.agents/skills/verify-scry/scripts/local-journeys.mjs [--width 1280]`:
    [empty notebook and concept flow](../../../features/study.md),
    [Owner token and CLI login](../../../features/owner-tokens.md),
    [Library find and keep](../../../features/library.md),
    [phone exact Study](../../../features/exact-study.md), token revocation and
    backend down.
-4. For the stories you changed, run `qa/walk --stories "US-0NN ..."` (or `--all`).
+5. For the stories you changed, run `qa/walk --stories "US-0NN ..."` (or `--all`).
 
-Never write to production beyond what sign-in creates. Every owner page GET can
-freeze the next question; the owner journey loads only `/create`, which freezes
-no exact Prompt, marks no exposure and renders no notebook content.
+On production, never write beyond what sign-in creates and never load an
+owner page as the owner. Every page GET can freeze the next question; the QA
+journey's GETs touch only the `scry-qa` space.
 
 ## Walk as Phaedrus
 
@@ -90,38 +155,56 @@ After the scripts pass, judge as a learner on a short phone break. Ask whether
 you know what to do next, can read and type comfortably, learn anything from
 feedback, and understand a failure without knowing the backend. Record the
 moment you hesitated and the exact screen or action. Inspect screenshots for
-clipped controls, obscured feedback, focus and long text; a script PASS is not that judgment.
-Synthetic demos do not prove useful model output or lasting recall, and
-emulation is not physical-phone acceptance.
+clipped controls, obscured feedback, focus and long text; a script PASS is not
+that judgment. Synthetic demos do not prove useful model output or lasting
+recall, and emulation is not physical-phone acceptance.
 
 ## Evidence
 
 Each helper writes `checks.jsonl`, `summary.json`, screenshots and, where
 relevant, `navigation.txt` (query strings redacted) and `cli-transcript.json`
-(stdin redacted) to `target/verify-scry/<stamp>-<helper>/`. Set
-`SCRY_VERIFY_OUT` to choose a directory. To retain a run, copy the reviewed
-files to `docs/qa/evidence/verify-scry/<date>/` with source SHA, target,
-data mode and limits in its README. Never commit cookies, tokens, auth state,
-traces, email contents or personal notebook content; owner screenshots stay on `/create`.
-UNVERIFIED and UNPROVEN are not PASS.
+(stdin redacted) outside the checkout, to
+`${XDG_DATA_HOME:-~/.local/share}/scry/verify-scry/<stamp>-<helper>/`.
+`SCRY_VERIFY_OUT` chooses another directory outside the checkout. Before exit,
+each helper deletes any file that contains a value it read from pass or the
+inbox.
+
+Git keeps no verification evidence. Retain proof in a comment on the PR or
+issue it proves:
+
+```sh
+gh pr comment <n> --body-file proof.md --attach './qa-create-390.png#QA /create'
+```
+
+`proof.md` gives the checked revision, the commands, each result and the
+limits, with transcripts inline in `<details>`. `--attach` takes images and
+video only. This repository is public, so attach only QA-space or synthetic
+screens, after reviewing them. Never publish cookies, tokens, PINs, mail,
+auth state, traces or owner notebook content. UNVERIFIED and UNPROVEN are not PASS.
 
 ## Cleanup
 
 Helpers close their browsers and dispose of their workerd spaces and temporary
-login files themselves, including on failure. A `bun run dev` you started
-forks wrangler and workerd children that outlive the launcher PID. Stop exactly
-those children with `pgrep -af <printed run directory>` and `kill <PIDs>`, then remove
-that directory. `target/verify-scry/` is evidence and is never removed by
-cleanup. Never delete an existing SQLite namespace, R2 bucket or historical store.
+login files themselves, including after a failed launch. Closing the browser
+discards the QA context and its cookies; no session is saved. Never delete
+the QA account, its AgentMail inbox or its pass entries.
+
+A `bun run dev` you started forks wrangler and workerd children that outlive
+the launcher PID. `pgrep -af <printed run directory>` lists them, but it also
+matches your own shell when that command line contains the directory. Kill
+only the listed wrangler and workerd PIDs, then remove that directory. The
+evidence directory is never removed by cleanup. Never delete an existing
+SQLite namespace, R2 bucket or historical store.
 
 ## Helpers
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/doctor.mjs prod\|local URL` | Read-only readiness and owner identity configuration |
-| `scripts/owner-signin.mjs` | Real owner sign-in to production |
+| `scripts/doctor.mjs prod\|local URL` | Read-only readiness, Access policy and QA allowlist steps |
+| `scripts/enroll-qa.mjs [--selftest]` | QA enrollment or QA-only recovery through real OTP |
+| `scripts/qa-signin.mjs [--width 1280]` | Real QA sign-in to production and role proof |
 | `scripts/prod-states.mjs` | Production breaking states, read-only |
-| `scripts/local-journeys.mjs` | Write flows on a disposable local Worker |
-| `scripts/lib.mjs` | Shared constants, pass reads, reporter and Playwright launch |
+| `scripts/local-journeys.mjs [--width 1280]` | Write flows on a disposable local Worker |
+| `scripts/lib.mjs` | Shared constants, pass and AgentMail reads, prerequisite checks, reporter |
 
-Use `maintain-verification-skill` for map drift; never redefine SPEC to make a walk pass.
+Use `maintain-verification-skill` for map drift. Never redefine SPEC to make a walk pass.
