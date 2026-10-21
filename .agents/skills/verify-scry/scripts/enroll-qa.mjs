@@ -7,6 +7,7 @@
 //   enroll-qa.mjs --selftest  QA-address and PIN-message boundaries, offline
 // Exit 0 PASS, 1 FAIL, 2 usage, 3 UNPROVEN (missing step named).
 import {join} from 'node:path';
+import {writeFileSync} from 'node:fs';
 import {AUTH_ORIGIN,QA_EMAIL,qaIdentity,qaCredentials,mail,otpFromMessage,qaPrerequisites,hideSecret,outDir,reporter,launch,scrub} from './lib.mjs';
 
 const flag=process.argv[2];
@@ -32,7 +33,7 @@ if(flag){
  process.exit(done());
 }
 
-let browser;
+let browser,page;
 try{
  const qa=qaCredentials({optional:true});
  if(!qa){log('enroll.credentials','UNPROVEN','QA sign-in UNPROVEN: needs workstation/SCRY_QA_EMAIL, _INBOX, _AGENTMAIL_KEY and _PASSWORD');process.exit(done());}
@@ -41,13 +42,16 @@ try{
  if(!recover.ok){log('enroll.recover-policy','UNPROVEN',`QA sign-in UNPROVEN: missing /recover policy. ${recover.observed}`);process.exit(done());}
  log('enroll.recover-policy','PASS',recover.observed);
  browser=await launch();
- const page=await (await browser.newContext({viewport:{width:1280,height:900}})).newPage();page.setDefaultTimeout(20000);
+ page=await (await browser.newContext({viewport:{width:1280,height:900}})).newPage();page.setDefaultTimeout(20000);
  await page.goto(`${AUTH_ORIGIN}/recover`,{waitUntil:'networkidle'});
  if(!new URL(page.url()).hostname.endsWith('.cloudflareaccess.com'))throw Error(`fresh /recover reached ${scrub(page.url())}, not Cloudflare OTP`);
  // Cloudflare can re-send the current PIN inside its ten-minute window.
  const since=Date.now()-10*60*1000;
  await page.getByRole('textbox',{name:'Email'}).fill(qa.email);
  await page.getByRole('button',{name:'Send login code'}).click();
+ // Poll mail only once Cloudflare shows the code form the PIN goes into.
+ await page.getByRole('heading',{name:'Enter your code'}).waitFor();
+ await page.getByRole('textbox',{name:'Code'}).waitFor();
  let code;
  for(let attempt=0;attempt<30&&!code;attempt++){
   for(const m of (await mail(qa,'?limit=50')).messages){
@@ -73,7 +77,15 @@ try{
  await page.getByText('Password saved. Use it to sign in to your account.',{exact:true}).waitFor();
  log('enroll.saved','PASS','"Password saved." rendered; the stored QA password is enrolled; no session kept');
 }catch(e){
- log('enroll.run','FAIL',e.message.split('\n')[0]);
+ // Failure capture: URL without query, body ARIA snapshot with digits
+ // scrubbed, and a screenshot with every input masked. No PIN or password.
+ let at='no page';
+ if(page){
+  at=scrub(page.url()).replace('?<redacted>','');
+  await page.locator('body').ariaSnapshot().then(t=>writeFileSync(join(dir,'failure.aria.txt'),t.replace(/[0-9]/g,'#')+'\n')).catch(()=>null);
+  await page.screenshot({path:join(dir,'failure.png'),fullPage:true,mask:[page.locator('input')]}).catch(()=>null);
+ }
+ log('enroll.run','FAIL',`${e.message.split('\n')[0]} (at ${at})`,{evidence:page?['failure.aria.txt','failure.png']:[]});
 }finally{
  await browser?.close();
 }

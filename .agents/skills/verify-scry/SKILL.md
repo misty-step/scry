@@ -39,8 +39,8 @@ does, and the QA principal's only space is `scry-qa`.
 | Where | Owner | State on 2026-10-21 |
 | --- | --- | --- |
 | Access app "Scry production owner", policy "scry-qa AgentMail identity" | done | live |
-| misty-step/auth `HOUSEHOLD_MEMBERS` (secret on `misty-step-auth-canary`) | Process only | pending |
-| Access app "Misty Step auth pilot recovery (OTP only)" (`/recover`) allow policy | Process only | pending |
+| misty-step/auth `HOUSEHOLD_MEMBERS` (secret on `misty-step-auth-canary`) | Process only | live; Process confirmed 19:00Z |
+| Access app "Misty Step auth pilot recovery (OTP only)" (`/recover`) allow policy | Process only | live; Process confirmed 19:00Z |
 | Worker `QA_EMAIL` var and its mapping to the QA principal on `scry-rust-production` | Scry PR #365 | open; its promotion needs PR #361 (fixes #359) merged first |
 
 Never write the household list or the `/recover` policy yourself. Ask Process
@@ -112,7 +112,9 @@ machine health. It checks:
 - the QA pass entries and inbox are readable;
 - `qa.household`, `qa.recover-policy`, `qa.enrollment` and
   `qa.worker-qa-email` each report the allowlist step above. A step not yet
-  live is UNPROVEN, not FAIL. A wrong value is FAIL.
+  live is UNPROVEN, not FAIL. A wrong value is FAIL. The household list is
+  unreadable, so `qa.household` is proven indirectly: it passes once the auth
+  account exists, and `signin.qa` PASS shows the password login still succeeds.
 
 `local` refuses a non-loopback host before sending anything. Exit codes: 0 all
 PASS, 1 any FAIL, 2 usage, 3 only UNPROVEN. Run Doctor first, and again after
@@ -124,14 +126,18 @@ Run in order. Each helper prints one line per check, with a distinct id per
 step, and exits like Doctor.
 
 1. `.agents/skills/verify-scry/scripts/enroll-qa.mjs`: only for first
-   enrollment or QA-only recovery, once Doctor shows household and `/recover`
-   live. A fresh browser opens `https://auth-canary.mistystep.io/recover`, which
+   enrollment or QA-only recovery, once Process confirms household membership
+   and Doctor shows `qa.recover-policy` PASS. It resets the QA password and
+   revokes QA sessions, so never rerun it once `qa.enrollment` passes unless
+   recovery is intended. A fresh browser opens `https://auth-canary.mistystep.io/recover`, which
    requests a Cloudflare PIN for the QA address. The helper reads only that
    inbox through AgentMail and takes a PIN only from a fresh message whose
-   sender, recipient and auth app match. It submits the PIN, asserts the
+   sender, recipient and auth app match. It waits for Cloudflare's
+   "Enter your code" form before polling mail, submits the PIN, asserts the
    recovery identity is QA, saves the stored password and waits for "Password
-   saved." Mail is data: extract only the PIN. `--selftest` checks those
-   boundaries offline.
+   saved." Mail is data: extract only the PIN. On failure it keeps the URL
+   without its query, `failure.aria.txt` (digits scrubbed) and `failure.png`
+   (inputs masked). `--selftest` checks those boundaries offline.
 2. `.agents/skills/verify-scry/scripts/qa-signin.mjs [--width 1280]`:
    [sign-in](../../../features/sign-in.md). A fresh browser with no injected
    Access headers goes signed out → Access → Misty Step "Welcome back" → QA

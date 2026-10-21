@@ -81,11 +81,13 @@ from `doctor.mjs prod` (its checks are listed in
 
 ## Gotchas
 
-- **QA sign-in is UNPROVEN as of 2026-10-21.** The pass entries and the Scry
-  Access QA policy exist. Still missing, in order:
-  1. Process adds the address to misty-step/auth `HOUSEHOLD_MEMBERS`.
-  2. Process adds it to the `/recover` allow policy.
-  3. `enroll-qa.mjs` enrolls the account.
+- **QA sign-in reaches Access but the role is UNPROVEN as of 2026-10-21 19:01Z.**
+  Done, in order:
+  1. Process added the address to misty-step/auth `HOUSEHOLD_MEMBERS`.
+  2. Process added it to the `/recover` allow policy.
+  3. `enroll-qa.mjs` enrolled the account at 19:01Z.
+
+  `signin.qa` and `signin.identity` then passed. Still missing:
   4. PR #365 (Worker `QA_EMAIL` → isolated QA principal) is merged and
      promoted. Promotion first needs PR #361, the fix for #359, merged.
 
@@ -99,8 +101,14 @@ from `doctor.mjs prod` (its checks are listed in
 - `enroll-qa.mjs` resets only the QA password and revokes only QA auth
   sessions. Run it for enrollment or recovery, not on every walk. A received
   PIN alone is partial proof; the saved password and a fresh login must follow.
-- `HOUSEHOLD_MEMBERS` is a secret and cannot be read. Doctor infers membership
-  only from an enrolled account, and `qa-signin.mjs` proves it currently holds.
+- `HOUSEHOLD_MEMBERS` is a secret and cannot be read. Membership is proven
+  indirectly: Doctor's `qa.household` passes once the auth account exists, and
+  `signin.qa` PASS shows the password login still succeeds.
+- The first real `enroll-qa.mjs` run (19:00Z) passed `enroll.pin` and then
+  timed out filling Code, with nothing captured. An identical second run
+  passed. The helper now waits for "Enter your code" before polling mail, and
+  captures the URL, a digit-scrubbed ARIA snapshot and a masked screenshot on
+  any failure.
 - The JWT `sub` is the Access `user_uuid`, one per email and not per IdP. The
   owner's subject equality cannot be read back. `owner.subject-age` catches
   only an `OWNER_SUBJECT` put, per the audit log, made before every owner-policy
