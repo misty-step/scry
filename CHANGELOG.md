@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/misty-step/scry/compare/v0.4.1...v0.5.0) (2026-10-21)
+
+
+### Features
+
+* **access:** sign the QA account in to the isolated QA notebook ([#365](https://github.com/misty-step/scry/issues/365)) ([ed09c05](https://github.com/misty-step/scry/commit/ed09c05c8d16585cc067e4787b38572ce4efd76a))
+
 ## [0.4.1](https://github.com/misty-step/scry/compare/v0.4.0...v0.4.1) (2026-10-21)
 
 
