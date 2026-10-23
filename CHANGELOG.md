@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/misty-step/scry/compare/v0.5.0...v0.6.0) (2026-10-23)
+
+
+### Features
+
+* **verify-scry:** QA-account sign-in journey, Doctor and shell helpers ([#360](https://github.com/misty-step/scry/issues/360)) ([58fd004](https://github.com/misty-step/scry/commit/58fd00480a29ec623e2655490dc81d61df0aac64))
+
+
+### Bug Fixes
+
+* **study:** refuse ungradeable Recitations up front ([#373](https://github.com/misty-step/scry/issues/373)) ([079aa47](https://github.com/misty-step/scry/commit/079aa4725bbeaac515abf007d957c8d29624d3cf))
+
 ## [0.5.0](https://github.com/misty-step/scry/compare/v0.4.1...v0.5.0) (2026-10-21)
 
 
