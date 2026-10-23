@@ -526,6 +526,159 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
 }
 
 #[test]
+fn recitation_admission_checks_exact_answer_and_normalized_word_boundary() {
+    for (text, admitted) in [
+        ("orchard ".repeat(999), true),
+        ("orchard ".repeat(1000), false),
+        ("orchard—garden ".repeat(500), false),
+    ] {
+        for scope in ["whole", "section"] {
+            let mut o = Owner::new();
+            let v = o.add(&text, false);
+            let sid = o.learn(&v, "steady");
+            o.next(None);
+            o.answer("");
+            let before = o.app.clone();
+            let before_rows = persistence::rows(&before).unwrap();
+            let mut request = json!({"after":before.practice.current.as_ref().unwrap().prompt.id,
+                "study_id":sid,"recite":scope});
+            if scope == "section" {
+                request["section_id"] = json!(before.library.versions[&v].sections[0].id);
+            }
+            let result = o.call("/api/v1/next", request);
+            if admitted {
+                result.unwrap();
+                assert_eq!(o.answer(&text)["attempt"]["grade"]["verdict"], "Good");
+                assert!(persistence::rows(&o.app).is_ok());
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.status, 422);
+                assert!(error.message.contains("1,000,000"));
+                assert_eq!(o.app, before);
+                assert_eq!(persistence::rows(&o.app).unwrap(), before_rows);
+            }
+        }
+    }
+}
+
+#[test]
+fn recitation_admission_includes_matching_sibling_scope() {
+    for scope in ["whole", "section"] {
+        for (sibling_words, admitted) in [(1999, true), (2000, false)] {
+            let mut o = Owner::new();
+            let text = "orchard ".repeat(499);
+            let v = o.add(&text, false);
+            let sid = o.learn(&v, "steady");
+            o.next(None);
+            o.answer("");
+            o.add(&"cedar ".repeat(sibling_words), false);
+            let before = o.app.clone();
+            let mut request = json!({"after":before.practice.current.as_ref().unwrap().prompt.id,
+                "study_id":sid,"recite":scope});
+            if scope == "section" {
+                request["section_id"] = json!(before.library.versions[&v].sections[0].id);
+            }
+            let result = o.call("/api/v1/next", request);
+            if admitted {
+                result.unwrap();
+                assert_eq!(o.answer(&text)["attempt"]["grade"]["verdict"], "Good");
+            } else {
+                assert_eq!(result.unwrap_err().status, 422);
+                assert_eq!(o.app, before);
+            }
+        }
+    }
+}
+
+// Large scopes need introduced Cards, not thousands of unrelated Ladder walks.
+// Keep all fixtures synthetic and validate their actual persisted representation.
+fn recitation_storage_fixture(count: usize) -> (Owner, Value) {
+    let mut o = Owner::new();
+    let units: Vec<_> = std::iter::once("orchard\n")
+        .chain(std::iter::repeat_n(".\n", count - 1))
+        .collect();
+    let v = o
+        .call(
+            "/api/v1/library/versions",
+            json!({"data":{
+        "title":"Synthetic storage boundary","name":"Authored punctuation","kind":"text",
+        "text":units.concat(),"sections":[{"heading":"Authored scope","units":units}]}}),
+        )
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let sid = o.learn(&v, "steady");
+    o.next(None);
+    o.answer("");
+    let card = o.app.practice.cards.values().next().unwrap().clone();
+    for (i, unit) in o.app.library.versions[&v].sections[0]
+        .units
+        .iter()
+        .enumerate()
+        .skip(1)
+    {
+        let mut next = card.clone();
+        next.id = format!("{:032x}", i + 10000);
+        next.unit_id = unit.id.clone();
+        next.unit_index = i;
+        next.revision = 0;
+        o.app.practice.cards.insert(next.id.clone(), next);
+    }
+    engine::validate_app(&o.app).unwrap();
+    let request = json!({"after":o.app.practice.current.as_ref().unwrap().prompt.id,
+        "study_id":sid,"recite":"whole"});
+    (o, request)
+}
+
+#[test]
+fn recitation_admission_refuses_oversized_presentation_atomically() {
+    let (mut o, request) = recitation_storage_fixture(4000);
+    let before = o.app.clone();
+    let rows = persistence::rows(&before).unwrap();
+    let error = o.call("/api/v1/next", request).unwrap_err();
+    assert_eq!(error.status, 413);
+    assert!(error.message.contains("1,048,576"));
+    assert_eq!(o.app, before);
+    assert_eq!(persistence::rows(&o.app).unwrap(), rows);
+}
+
+#[test]
+fn recitation_admission_uses_exact_serialized_row_boundary() {
+    for extra in [0, 1] {
+        let (mut o, request) = recitation_storage_fixture(2);
+        let mut candidate = o.app.clone();
+        study::mutate(
+            &mut candidate,
+            "/practice/next",
+            &api::library_fields(request.clone()).unwrap(),
+            NOW,
+            "boundary",
+        )
+        .unwrap();
+        candidate.revision += 1;
+        let size = persistence::rows(&candidate).unwrap()["meta"].len();
+        o.app
+            .csrf
+            .push_str(&"x".repeat(persistence::MAX_RECORD_BYTES - size + extra));
+        let before = o.app.clone();
+        let before_rows = persistence::rows(&before).unwrap();
+        let result = o.call("/api/v1/next", request);
+        if extra == 0 {
+            result.unwrap();
+            assert_eq!(
+                persistence::rows(&o.app).unwrap()["meta"].len(),
+                persistence::MAX_RECORD_BYTES
+            );
+        } else {
+            assert_eq!(result.unwrap_err().status, 413);
+            assert_eq!(o.app, before);
+            assert_eq!(persistence::rows(&o.app).unwrap(), before_rows);
+        }
+    }
+}
+
+#[test]
 fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
     let mut o = Owner::new();
     let text = "Expected <svg onload=alert(1)> text.";
