@@ -540,7 +540,19 @@ fn next(
                     })
             })
             .collect::<AppResult<Vec<_>>>()?;
-        app.practice.current = Some(make_prompt(app, study, cards, scope, cue, now, seed));
+        let presentation = make_prompt(app, study, cards, scope, cue, now, seed);
+        let expected_words = prompt_words(app, &presentation);
+        if !fits_grading_capacity(
+            expected_words,
+            expected_words,
+            &matching_siblings(app, &presentation, true),
+        ) {
+            return Err(AppError::new(
+                422,
+                "This Recitation exceeds the 1,000,000-cell local grading capacity. Choose a smaller Section.",
+            ));
+        }
+        app.practice.current = Some(presentation);
     } else {
         let explicit = field(fields, "card_id");
         let chosen = if !explicit.is_empty() {
@@ -653,16 +665,23 @@ fn next(
         },
     ))
 }
-fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
+fn prompt_words(app: &App, p: &Presentation) -> usize {
+    let all = units(&app.library.versions[&p.prompt.version_id]);
+    p.targets
+        .iter()
+        .map(|t| grading::normalized_words(&all[t.unit_index].text).len())
+        .sum()
+}
+fn matching_siblings<'a>(
+    app: &'a App,
+    p: &Presentation,
+    include_siblings: bool,
+) -> Vec<(&'a Version, String)> {
     let v = &app.library.versions[&p.prompt.version_id];
-    let all = units(v);
-    let texts = all.iter().map(|u| u.text.as_str()).collect::<Vec<_>>();
     let start = p.targets[0].unit_index;
-    let end = p.targets.last().unwrap().unit_index + 1;
     // Match sibling scope by ordinal for a Unit, by Section position for a
     // Section, and full text for whole recitation. Different boundaries are legal.
-    let siblings = app
-        .library
+    app.library
         .versions
         .values()
         .filter(|s| include_siblings && s.work_id == v.work_id && s.id != v.id)
@@ -682,7 +701,35 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
             };
             Some((s, expected))
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
+fn fits_grading_capacity(
+    expected_words: usize,
+    typed_words: usize,
+    siblings: &[(&Version, String)],
+) -> bool {
+    let fits = |expected: usize| {
+        expected
+            .checked_add(1)
+            .and_then(|n| {
+                typed_words
+                    .checked_add(1)
+                    .and_then(|typed| n.checked_mul(typed))
+            })
+            .is_some_and(|cells| cells <= 1_000_000)
+    };
+    fits(expected_words)
+        && siblings
+            .iter()
+            .all(|(_, text)| fits(grading::normalized_words(text).len()))
+}
+fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
+    let v = &app.library.versions[&p.prompt.version_id];
+    let all = units(v);
+    let texts = all.iter().map(|u| u.text.as_str()).collect::<Vec<_>>();
+    let start = p.targets[0].unit_index;
+    let end = p.targets.last().unwrap().unit_index + 1;
+    let siblings = matching_siblings(app, p, include_siblings);
     let refs = siblings
         .iter()
         .map(|(s, text)| grading::SiblingVersion {
@@ -693,25 +740,14 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
         .collect::<Vec<_>>();
     // The shared grader's edit grid is quadratic. Refuse a bounded request
     // before allocating it; the saved Prompt and answer operation stay intact.
-    let typed_words = grading::normalized_words(answer).len() + 1;
-    let fits = |expected: usize| {
-        expected
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(typed_words))
-            .is_some_and(|cells| cells <= 1_000_000)
-    };
-    let expected_words = texts[start..end]
-        .iter()
-        .map(|text| grading::normalized_words(text).len())
-        .sum();
-    if !fits(expected_words)
-        || siblings
-            .iter()
-            .any(|(_, text)| !fits(grading::normalized_words(text).len()))
-    {
+    if !fits_grading_capacity(
+        prompt_words(app, p),
+        grading::normalized_words(answer).len(),
+        &siblings,
+    ) {
         return Err(AppError::new(
             422,
-            "This answer exceeds local grading capacity. Use a smaller Section or a shorter answer.",
+            "This answer exceeds the 1,000,000-cell local grading capacity. Use a smaller Section or a shorter answer.",
         ));
     }
     grading::grade(

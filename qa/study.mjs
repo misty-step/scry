@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {join,resolve,relative} from 'node:path';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {recitationAdmission} from './recitation-admission.mjs';
 const DAY=86400000,START=Math.floor(Date.now()/DAY)*DAY+12*60*60*1000;
 const lines=['We conceived a patient garden,','with gentle silver branches.','The lantern guards our quiet path,','and keeps the morning bright.','We carry woven baskets,','beside the tranquil stream.','The orchard welcomes every guest,','and shelters every seed.'];
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -99,6 +100,7 @@ export async function studyJourney(){
    const a=await answer(lines.slice(0,4).join(' '));assert.ok(a.grade.units.every(u=>u.verdict==='Good'));assert.equal(a.effects.length,4);
    await next(['--study',sid,'--recite','whole']);assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);assert.equal(current.prompt.unit_ids.length,8);
    const bad=await answer(lines.join(' ').replace('lantern','mountain'));assert.equal(bad.grade.units.filter(u=>u.verdict==='Again').length,1);assert.equal(bad.grade.units[2].verdict,'Again');assert.ok(bad.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===2));
+   await recitationAdmission({add,ok,cli,next,answer,stopCurrent,rows,record,req,transcript});
   },
   async()=>{
    await next(['--card',cards[4]]);const cid=cards[4],before=(await card(cid)).state.schedule;assert.equal(current.prompt.assisted,false);

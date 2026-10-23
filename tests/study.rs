@@ -526,6 +526,71 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
 }
 
 #[test]
+fn recitation_admission_checks_exact_answer_and_normalized_word_boundary() {
+    for (text, admitted) in [
+        ("orchard ".repeat(999), true),
+        ("orchard ".repeat(1000), false),
+        ("orchard—garden ".repeat(500), false),
+    ] {
+        for scope in ["whole", "section"] {
+            let mut o = Owner::new();
+            let v = o.add(&text, false);
+            let sid = o.learn(&v, "steady");
+            o.next(None);
+            o.answer("");
+            let before = o.app.clone();
+            let before_rows = persistence::rows(&before).unwrap();
+            let mut request = json!({"after":before.practice.current.as_ref().unwrap().prompt.id,
+                "study_id":sid,"recite":scope});
+            if scope == "section" {
+                request["section_id"] = json!(before.library.versions[&v].sections[0].id);
+            }
+            let result = o.call("/api/v1/next", request);
+            if admitted {
+                result.unwrap();
+                assert_eq!(o.answer(&text)["attempt"]["grade"]["verdict"], "Good");
+                assert!(persistence::rows(&o.app).is_ok());
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(error.status, 422);
+                assert!(error.message.contains("1,000,000"));
+                assert_eq!(o.app, before);
+                assert_eq!(persistence::rows(&o.app).unwrap(), before_rows);
+            }
+        }
+    }
+}
+
+#[test]
+fn recitation_admission_includes_matching_sibling_scope() {
+    for scope in ["whole", "section"] {
+        for (sibling_words, admitted) in [(1999, true), (2000, false)] {
+            let mut o = Owner::new();
+            let text = "orchard ".repeat(499);
+            let v = o.add(&text, false);
+            let sid = o.learn(&v, "steady");
+            o.next(None);
+            o.answer("");
+            o.add(&"cedar ".repeat(sibling_words), false);
+            let before = o.app.clone();
+            let mut request = json!({"after":before.practice.current.as_ref().unwrap().prompt.id,
+                "study_id":sid,"recite":scope});
+            if scope == "section" {
+                request["section_id"] = json!(before.library.versions[&v].sections[0].id);
+            }
+            let result = o.call("/api/v1/next", request);
+            if admitted {
+                result.unwrap();
+                assert_eq!(o.answer(&text)["attempt"]["grade"]["verdict"], "Good");
+            } else {
+                assert_eq!(result.unwrap_err().status, 422);
+                assert_eq!(o.app, before);
+            }
+        }
+    }
+}
+
+#[test]
 fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
     let mut o = Owner::new();
     let text = "Expected <svg onload=alert(1)> text.";
