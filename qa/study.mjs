@@ -100,7 +100,7 @@ export async function studyJourney(){
    const a=await answer(lines.slice(0,4).join(' '));assert.ok(a.grade.units.every(u=>u.verdict==='Good'));assert.equal(a.effects.length,4);
    await next(['--study',sid,'--recite','whole']);assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);assert.equal(current.prompt.unit_ids.length,8);
    const bad=await answer(lines.join(' ').replace('lantern','mountain'));assert.equal(bad.grade.units.filter(u=>u.verdict==='Again').length,1);assert.equal(bad.grade.units[2].verdict,'Again');assert.ok(bad.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===2));
-   await recitationAdmission({add,ok,cli,next,answer,stopCurrent,rows,record,req,sql:(...args)=>storage.exec(...args),transcript});
+   await recitationAdmission({add,ok,cli,next,answer,stopCurrent,rows,record,req,transcript});
   },
   async()=>{
    await next(['--card',cards[4]]);const cid=cards[4],before=(await card(cid)).state.schedule;assert.equal(current.prompt.assisted,false);

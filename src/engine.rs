@@ -139,11 +139,6 @@ pub fn mutate_as(
         },
     );
     next.revision += 1;
-    // Exact practice must fit the actual storage representation, including its
-    // receipt and final revision, before replacing any acknowledged state.
-    if path.starts_with("/practice/") {
-        crate::study::admit_storage(&next, seed)?;
-    }
     *app = next;
     Ok(response)
 }
@@ -3482,3 +3477,4 @@ pub fn pause_for_restore(app: &mut App, now: i64) {
     ));
     app.revision += 1;
 }
+

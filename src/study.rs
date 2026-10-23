@@ -1015,37 +1015,14 @@ pub fn due(app: &App, now: i64) -> Value {
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
     json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
 }
-/// Check both the saved Prompt and its completed held-result shape. Attempts,
-/// effects and receipts live in separate rows; the completion marker and next
-/// revision are the metadata growth that answering this Prompt must persist.
-pub(crate) fn admit_storage(app: &App, seed: &str) -> AppResult<()> {
-    crate::persistence::rows(app)?;
-    if app
-        .practice
-        .current
-        .as_ref()
-        .is_some_and(|p| p.attempt_id.is_none())
-    {
-        let mut completed = app.clone();
-        completed.practice.current.as_mut().unwrap().attempt_id = Some(id(seed, "attempt"));
-        completed.revision = completed
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| AppError::new(500, "State revision exhausted."))?;
-        crate::persistence::rows(&completed)?;
-    }
-    Ok(())
-}
 /// The Stream presents through the same selection policy as API `next`.
 /// Reads retain an existing Prompt/result and never advance it.
 pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
     if app.practice.current.is_none() {
-        let mut candidate = app.clone();
-        next(&mut candidate, &BTreeMap::new(), now, seed)?;
-        if candidate.practice != app.practice {
-            candidate.revision += 1;
-            admit_storage(&candidate, seed)?;
-            *app = candidate;
+        let previous = app.practice.clone();
+        next(app, &BTreeMap::new(), now, seed)?;
+        if app.practice != previous {
+            app.revision += 1;
         }
     }
     Ok(())
