@@ -290,7 +290,10 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
 fn bounded_json(value: &Value) -> AppResult<String> {
     let text = serde_json::to_string(value).map_err(serialization)?;
     if text.len() > MAX_RECORD_BYTES {
-        return Err(AppError::new(413, "This record exceeds the storage limit."));
+        return Err(AppError::new(
+            413,
+            "This record exceeds the 1,048,576-byte storage limit.",
+        ));
     }
     Ok(text)
 }

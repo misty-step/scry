@@ -1232,6 +1232,11 @@ impl DurableObject for LearningSpace {
                     }
                     return render_error(&self.env, &retained, &path, &fields, e);
                 }
+                if path.starts_with("/practice/")
+                    && let Err(error) = Self::save_rows(&mut app, Some(before))
+                {
+                    return render_error(&self.env, &self.load()?, &path, &fields, error);
+                }
                 self.save(&mut app, Some(before))?;
                 if path == "/settings/backup" {
                     self.backup(false).await?;
@@ -1481,6 +1486,13 @@ impl LearningSpace {
         if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
         }
+        // Replays bypass engine mutation but still persist a final revision.
+        // Check exactly what save will encode before losing the HTTP error type.
+        if canonical_path.starts_with("/practice/")
+            && let Err(error) = Self::save_rows(&mut app, Some(before))
+        {
+            return api_error(error);
+        }
         self.save(&mut app, Some(before))?;
         // Token creation is the only response containing a secret. Its receipt never does.
         let created = canonical_path == "/tokens/create";
@@ -1559,12 +1571,15 @@ impl LearningSpace {
         }
         persistence::app_from_rows(&rows).map_err(to_worker_error)
     }
-    fn save(&self, app: &mut App, expected: Option<u64>) -> Result<()> {
+    fn save_rows(app: &mut App, expected: Option<u64>) -> AppResult<BTreeMap<String, String>> {
         app.revision = expected
             .unwrap_or(0)
             .checked_add(1)
-            .ok_or_else(|| Error::RustError("State revision exhausted.".into()))?;
-        let next = persistence::rows(app).map_err(to_worker_error)?;
+            .ok_or_else(|| AppError::new(500, "State revision exhausted."))?;
+        persistence::rows(app)
+    }
+    fn save(&self, app: &mut App, expected: Option<u64>) -> Result<()> {
+        let next = Self::save_rows(app, expected).map_err(to_worker_error)?;
         let previous = self.stored_rows()?;
         let actual = previous
             .get("meta")

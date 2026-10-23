@@ -186,4 +186,3 @@ export async function studyJourney(){
  });
  return {studyCriteria,graderCriteria,transcript,close:async()=>{await mkdir('target',{recursive:true});await writeFile('target/study-cli-full.json',JSON.stringify(fullTranscript,null,2)+'\n');await runtime.mf.dispose();await rm(temp,{recursive:true});}};
 }
-

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
 // Run inside the existing compiled CLI → Worker → isolated SQLite journey.
-// Only the large-card fixture seeds rows; all admission and answers use the API.
+// Storage fixtures seed synthetic rows; admission and answers use the real API.
 export async function recitationAdmission({add, ok, cli, next, answer, stopCurrent, rows, record, req, sql, transcript}) {
   const refuse = async (study, scope, section, status, bound) => {
     const held = (await record('meta')).practice.current;

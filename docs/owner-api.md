@@ -119,6 +119,20 @@ them and adds no practice behavior. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
 including caller-supplied Sections. Default Sections follow lines, with clauses
 as Units, so text below the byte limit can still exceed either count limit.
+Recitation has a separate admission bound: its exact answer must fit the
+1,000,000-cell local grader, `(expected normalized words + 1) × (answer
+normalized words + 1)`, also for each matching sibling Version scope. Without
+longer siblings, that admits up to 999 normalized words, not 1,000. Section
+siblings match by Section position; whole Recitations compare whole Versions.
+The actual serialized records, including the saved Prompt and its completed
+held-result metadata at the next revision, must each fit 1,048,576 bytes (1 MiB). This is not a Unit-count estimate: punctuation-only
+Units and JSON escaping still cost storage. `next --recite whole|section`
+refuses before replacing the current Prompt with JSON HTTP 422 naming the
+grading bound or 413 naming the storage bound; the CLI exits nonzero. Refusal
+preserves the held Prompt, Cards, history and operation receipts. No smaller
+scope is selected automatically. Answers longer than the admitted exact text
+remain subject to the same grading bound at submission.
+
 To name articles or stanzas,
 pass a JSON file such as:
 
