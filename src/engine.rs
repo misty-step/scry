@@ -3477,4 +3477,3 @@ pub fn pause_for_restore(app: &mut App, now: i64) {
     ));
     app.revision += 1;
 }
-

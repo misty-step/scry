@@ -710,4 +710,3 @@ mod tests {
         assert!(app_from_rows(&incomplete).is_err());
     }
 }
-
