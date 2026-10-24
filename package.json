@@ -1,6 +1,6 @@
 {
   "name": "scry",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Private prompt-first learning: Rust Cloudflare Worker, SQLite Durable Object, and R2 recovery.",
   "license": "MIT",
   "private": true,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/misty-step/scry/compare/v0.7.0...v0.7.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **study:** teach the correction before the next answer ([#379](https://github.com/misty-step/scry/issues/379)) ([7bfbba1](https://github.com/misty-step/scry/commit/7bfbba195215ef2b492b32d1dce2a8b037835da0))
+
 ## [0.7.0](https://github.com/misty-step/scry/compare/v0.6.0...v0.7.0) (2026-10-24)
 
 
