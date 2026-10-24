@@ -18,7 +18,7 @@ owns storage and rollback.
 
 ## How to get to it (user POV)
 
-- Phone or desktop: Library in the masthead, or `/` before starting a Study.
+- Phone or desktop: footer Text practice (`/recall`), then Library; before a Study, Text practice opens Library entry.
   Search → choose a Version → Learn. Add a text accepts supplied wording with
   optional edition/source. Protected practice requires deliberate help before
   Library content is shown.

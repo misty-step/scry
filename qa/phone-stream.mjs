@@ -85,9 +85,9 @@ export async function phoneWalk(browser,capture) {
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow');
   };
   try{
-   await page.goto(f.origin+'/');await page.locator('[data-state="exact-prompt"]').waitFor();
+   await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Library']);
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Concepts','Add material']);
    assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
@@ -147,7 +147,7 @@ export async function phoneRecovery(browser,capture) {
  const check=async(name,run)=>{
   const f=await phoneFixture(),context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();page.setDefaultTimeout(12000);
   const row={name,status:'pass'};results.push(row);
-  try{await page.goto(f.origin+'/');await run({f,context,page,row});assert.equal(f.egress,0);}
+  try{await page.goto(f.origin+'/recall');await run({f,context,page,row});assert.equal(f.egress,0);}
   catch(e){row.status='fail';row.reason=e.message;}
   finally{row.evidence=await capture(page,`phone-recovery-${results.length}.png`);await context.close();await f.close();}
  };
@@ -165,7 +165,7 @@ export async function phoneRecovery(browser,capture) {
   assert.equal(await count(f),before+1);row.observed={sends:payloads.length,new_attempts:1,frozen_payload_equal:true};
  });
  await check('competing stale tabs keep one Attempt',async({f,context,page,row})=>{
-  const before=await count(f),other=await context.newPage();await other.goto(f.origin+'/');await answer(page);await page.locator('[data-state="exact-result"]').waitFor();
+  const before=await count(f),other=await context.newPage();await other.goto(f.origin+'/recall');await answer(page);await page.locator('[data-state="exact-result"]').waitFor();
   await answer(other);await other.getByText('This changed in another tab. Your draft is still here.',{exact:true}).waitFor();assert.equal(await count(f),before+1);row.observed={new_attempts:1,stale_refusal:409};await other.close();
  });
  await check('offline pauses and reconnect sends nothing',async({f,context,page,row})=>{

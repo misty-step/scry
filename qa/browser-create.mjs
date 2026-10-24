@@ -40,9 +40,18 @@ export async function createWalk(browser,capture){
   critics++;return new Response(JSON.stringify({model:'authored-browser-critic',usage:{cost:0.00003},answers:Object.fromEntries(Object.keys(body.questions).map(key=>[key,{type:'noul',noul:0.01}]))}),{headers:{'Content-Type':'application/json'}});
  };
  const bindings={SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'browser-provider-isolated',ACCESS_TEAM:team,ACCESS_AUDIENCE:'browser-synthetic',OWNER_SUBJECT:'browser-owner-synthetic',INTERNAL_KEY:internalKey,OPENROUTER_API_KEY:'synthetic-no-live-provider-key',OPENROUTER_MODEL:'authored-browser-generator',JEV_API_KEY:'synthetic-no-live-jev-key',JEV_MODEL:'authored-browser-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
- let context,page;const result={name:'Restored pause → Create → Settings Resume → useful reference → meaning check → refinement',status:'pass',evidence:[],scope:'Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated.'};
+ let context,page;const result={name:'Restored pause → unavailable Add material → Settings Resume → native ready Create → reference → meaning check → refinement',status:'pass',evidence:[],scope:'Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated.'};
  try{
- runtime=await createRuntime({bindings:{...bindings,SPACE_NAME:'browser-before-restore'},name:'scry-browser-create',egress:provider});
+ runtime=await createRuntime({bindings:{...bindings,SPACE_NAME:'browser-before-restore',OPENROUTER_API_KEY:'',OPENROUTER_MODEL:''},name:'scry-browser-create',egress:provider});
+ // Retain a real earlier saved request through the existing POST contract.
+ // This is explicit historical setup, not a claim that unavailable Create submits.
+ const settings=await(await runtime.worker.fetch(origin+'/settings',{headers:{'Cf-Access-Jwt-Assertion':jwt}})).text();
+ const savedFields=Object.fromEntries([...settings.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+ const saved=await runtime.worker.fetch(origin+'/create',{method:'POST',redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt,'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...savedFields,operation_id:'earlier-stopped-browser-request',intent:'Understand an earlier cache question.'})});
+ assert.equal(saved.status,303);const savedPath=saved.headers.get('Location');
+ const deadline=Date.now()+5000;let stopped=false;
+ do{stopped=(await(await runtime.worker.fetch(origin+savedPath,{headers:{'Cf-Access-Jwt-Assertion':jwt}})).text()).includes('Preparation stopped.');if(!stopped)await new Promise(done=>setTimeout(done,100));}while(!stopped&&Date.now()<deadline);
+ assert.ok(stopped,'The earlier saved request must stop without a configured provider');assert.equal(preparations,0);
  const archive=Buffer.from(await(await runtime.worker.fetch(origin+'/export',{headers:{'Cf-Access-Jwt-Assertion':jwt}})).arrayBuffer());
  const restoreToken='browser-synthetic-restore-token-at-least-32chars';
  let active=await runtime.rebind({SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:bindings.SPACE_NAME,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken});
@@ -55,11 +64,18 @@ export async function createWalk(browser,capture){
   // Native HTTPS requests/redirects traverse Rust ingress with a synthetic
   // owner assertion. The self-signed loopback certificate is test-only.
   await page.goto(origin+'/settings');await page.getByRole('button',{name:'Resume preparation',exact:true}).waitFor();result.evidence.push(await capture(page,'paused-settings.png'));
-  await page.getByRole('link',{name:'Understanding',exact:true}).tap();await page.getByRole('link',{name:'Create',exact:true}).tap();await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');await page.getByRole('button',{name:'Make it understandable'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
-  await page.getByRole('heading',{name:'Preparation is paused.',exact:true}).waitFor();assert.equal(preparations,0);assert.equal(await page.getByRole('button',{name:'Try preparation again'}).count(),0);result.evidence.push(await capture(page,'paused-saved-request.png'));
-  await page.goto(origin+'/notebook');await page.locator('[data-state="preparation-paused"]').waitFor();assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-stream.png'));
-  await page.locator('.empty-stage').getByRole('link',{name:'Resume preparation'}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();await page.locator('[data-state="preparing"]').waitFor();assert.equal((await readState()).restored_paused,false);
-  await page.goto(goalUrl);
+  await page.locator('.masthead').getByRole('link',{name:'Add material',exact:true}).tap();
+  await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();
+  assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-add-material-unavailable.png'));
+  await page.goto(origin+savedPath);await page.getByRole('heading',{name:'Preparation is paused.',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Try preparation again'}).count(),0);result.evidence.push(await capture(page,'paused-saved-request.png'));
+  await page.goto(origin+'/notebook');await page.locator('[data-state="preparation-paused"]').waitFor();result.evidence.push(await capture(page,'paused-stream.png'));
+  await page.locator('.empty-stage').getByRole('link',{name:'Resume preparation'}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();
+  await page.locator('[data-state="preparation-stopped"]').waitFor();assert.equal((await readState()).restored_paused,false);assert.equal(preparations,0,'Resume must not retry historical stopped work');
+  await page.locator('.masthead').getByRole('link',{name:'Add material',exact:true}).tap();
+  await page.getByRole('button',{name:'Prepare material'}).waitFor();assert.match(await page.locator('#intent-hint').innerText(),/paid AI/);assert.equal(await page.locator('input[type="file"]').count(),1);
+  await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');result.evidence.push(await capture(page,'ready-add-material.png'));
+  await page.getByRole('button',{name:'Prepare material'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
   await page.locator('.preparation-panel').waitFor();
   const draft='Show how a changed image affects the next conditional request.';
   await page.locator('#feedback').fill(draft);const operation=await page.locator('form[action$="/refine"] input[name="operation_id"]').inputValue();

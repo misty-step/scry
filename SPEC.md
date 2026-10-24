@@ -1,18 +1,19 @@
-# Scry specification: exact recall first
+# Scry specification: concepts first
 
 ## What it does
 
-Scry gets fixed texts and sets into Phaedrus's head word for word and keeps them
-there. He names something; Scry finds it in his private Library or creates it,
-then has him recite it unit by unit with fading cues, an exact verdict and diff
-for every word, and a memory model deciding when each unit returns.
+Scry helps its owner understand concepts, study reference material, and practise
+what he knows. Concepts are the primary learning destination. Exact text
+memorization remains a distinct activity with its existing Library, Studies,
+fading cues, word-by-word verdicts, and memory schedule.
 
 ## What it enables
 
-Phaedrus can recite the creeds, prayers, poems, lists and mappings he cares
-about, in a few minutes a day on his phone, and an agent can drive all of it
-from a terminal. Understanding (concepts and explanations) comes later on the
-same Library.
+The owner can move from a concept to its explanation, saved questions, original
+material, and related concepts, or resume practice without losing an answer.
+The longer-term direction includes many independent materials and quizzes per
+concept, varied source formats, and evidence-based transfer between related
+concepts. Those capabilities are not implied by the current interface.
 
 This is the single behavioral reference for Scry, for one owner. Words follow
 [GLOSSARY](GLOSSARY.md). QA runs against this file's US,
@@ -28,11 +29,24 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+On 2026-10-24 the owner made concepts the primary primitive and rejected an
+empty saved-text Library as the front door ([#388](https://github.com/misty-step/scry/issues/388)).
+Home (`/`) now introduces concepts and offers Add material. It does not select
+or consume either practice stream. Resume practice opens the existing concept
+occurrence at `/notebook`; Text practice opens exact recall at `/recall`, with
+Library secondary there. Both streams retain their current questions, protected
+answers, held results, and histories. Concept pages organize existing facts as
+Study, Practice, Resources, and Related (Builds on / Used by). This priority
+amendment does not import or rewrite data, activate paid work, add source
+formats, create independent material/quiz collections, or infer mastery across
+relationships. Preparation readiness is not spend authorization or a hard
+monthly budget guarantee; production paid generation stays off.
+
 On 2026-10-20 the owner made exact recall Scry's first purpose
 ([#296](https://github.com/misty-step/scry/issues/296)); see
 [Exact recall first](#exact-recall-first-2026-10-20) for what that retired and
-narrowed. Prompt-first Create (2026-10-02) now governs the understanding
-notebook, which is deferred, not the front door. The 2026-10-07 rewrite uses
+narrowed. The 2026-10-24 amendment supersedes that navigation priority, not its
+exact-recall behavior. Prompt-first Create (2026-10-02) governs concept preparation. The 2026-10-07 rewrite uses
 these contracts without inheriting historical runtime acceptance. The revived
 notebook from D6 is archived read-only and exact recall starts fresh. US-001.1's Go schema 4→5 preservation and
 US-005/S03's explicit-mode capture remain historical Go obligations at Git
@@ -57,6 +71,9 @@ integration; it is graded as typed. A mandatory activity ladder is excluded;
 the exact-recall Ladder is a cue scaffold, not a required activity sequence.
 
 ### Exact recall first (2026-10-20)
+
+Historical priority decision: navigation priority is amended above on 2026-10-24;
+the exact-recall behavior and the other dated decisions below remain binding.
 
 The owner confirmed this direction on 2026-10-20 (#296, with his changes: a
 generation agent with tools, one owner, Roman Missal 2011 wording, the slip
@@ -89,7 +106,7 @@ belong in ADRs, not this table.
 | D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
 | D2 | Honest grading and uncertainty follow S02 and US-003/US-008 outside exact recall; exact-recall answers follow US-017's deterministic `exact-v2`. |
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
-| D4 | One question, one answer action, held feedback and deliberate Next; Library navigation and quiet Understanding access. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
+| D4 | One question, one answer action, held feedback and deliberate Next; concept-first navigation and explicit Text practice access. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
 | D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. Exact-recall practice makes no provider call. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
 | D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
@@ -121,10 +138,12 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-The exact-recall Stream opens into the current Prompt or held result, an honest
-caught-up state, or Library entry when no Study remains active (US-018). The
-Understanding notebook retains its concept question, introduction, preparing
-receipt and first-run states. Neither opens an administration dashboard.
+Home introduces concepts, with a clear learning purpose and Add material rather
+than an empty text search. It offers Resume practice when an occurrence exists,
+without showing its answer or selecting another one. The concept Stream at
+`/notebook` retains its question, introduction, preparing receipt and first-run
+states. The exact-recall Stream at `/recall` opens into the current Prompt or held result, an honest
+caught-up state, or Library entry when no Study remains active (US-018). Neither practice stream opens an administration dashboard.
 Concepts are teachable ideas, goals express intent, and notes are durable
 reference material, one current note per concept. The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
@@ -137,7 +156,7 @@ continue retrieval-led study directly. “Quiz-first” is not a compulsory pret
 material-import workflow, or mastery profile before generation.
 
 ```text
-scry                                    Create   Map
+scry                                    Concepts   Add material
 concept chip (inert before grading)
 One question or first-time concept introduction
 One answer control OR Start practicing / I know this already
@@ -168,12 +187,15 @@ I was right (quiet, automatic miss only)
   its capture but never carries the capture's text. Navigate to a concept page
   without consuming a review occurrence.
 - Create has one private intent field and optional photo (US-013/S11). It
-  serves the understanding notebook; exact-recall Works are found or created
+  prepares concepts; exact-recall Works are found or created
   through US-015/US-019. Text,
   including URLs, never infers public search or link reading; photos transcribe
   before preparation. Saved goals expose captured intent, useful reference,
   practice, refinement, and honest failure. `/add` is an alias; text/URL prefill
-  remains editable and private. Historical explicit Topic/Link callers belong
+  remains editable and private when preparation is available. When preparation
+  is unavailable, say so before submission, omit preparation controls, and retain
+  any unsent text visibly. Do not imply saving a free draft or support for URL
+  fetching or videos. Readiness does not authorize paid work. Historical explicit Topic/Link callers belong
   to the archived Go revision, not a replacement public API.
 
 - Map shows goal sections and an accessible concept list
@@ -460,9 +482,10 @@ real fresh-environment restore. Persistent disk or VM cloning is insufficient.
 ### S11 — Create useful material from intent (US-013)
 
 Approved product acceptance, reaffirmed 2026-10-02; not an implementation receipt.
-Narrowed 2026-10-20: S11 governs the understanding notebook's Create, which is
-deferred behind exact recall. It no longer defines Scry's front door, and
-S11.3's search boundary does not restrict US-019.
+Amended 2026-10-24: S11 governs concept preparation, reached through Add material
+from concept Home. S11.3's search boundary does not restrict US-019.
+If preparation is unavailable, the interface states that before accepting a
+request; it never enables a provider or claims a free save-only draft.
 As the learner, I want to express what I want to learn and receive useful
 tailored material first, then improve it through use rather than setup.
 
@@ -639,7 +662,7 @@ S criteria above, as narrowed in [Exact recall first](#exact-recall-first-2026-1
 A story whose evidence line reads `Evidence: pending` is accepted intent not yet
 built; the ticket that implements it replaces that line with its walks and tests.
 
-US-014 to US-021, added 2026-10-20, make Scry exact-recall-first for its owner
+US-014 to US-021, added 2026-10-20, govern the exact-recall activity for its owner
 ([#296](https://github.com/misty-step/scry/issues/296)). In them "I" is the
 owner, whether he acts on his phone or through an agent holding an Owner token.
 Every criterion holds through the API and the `scry` CLI (AG1); US-018 adds the
@@ -678,7 +701,7 @@ Statement: When I explore what I am learning, I want saved concepts and notes re
 
 Criteria:
 1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
-2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes, questions, prerequisites, and linked sources while preserving old presented wording and review history.
+2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes under Study, saved questions and actions under Practice, original material under Resources, and prerequisite links in both directions under Related (Builds on and Used by) while preserving old presented wording and review history.
 
 Criterion 1 remains binding on the retained Go/SQLite runtime and its schema
 4→5 migration, preserved at Git `c6ba395` with compatible recovery artifacts.
@@ -696,7 +719,7 @@ Criteria:
 1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
 2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
 3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
-4. THE SYSTEM SHALL keep Library as the primary masthead destination and the wordmark as the return to practice, while retaining the understanding notebook and its Create/Map actions behind quiet Understanding access; maintenance SHALL NOT become an always-visible inspection dashboard.
+4. THE SYSTEM SHALL keep Concepts and Add material in the masthead, with the wordmark returning to concept Home. Home SHALL NOT select either practice stream or reveal a protected answer; it SHALL offer Resume practice for a saved concept occurrence at `/notebook`. Quiet Text practice SHALL retain the exact stream at `/recall` and its Library access, including current Prompts and held results. Maintenance SHALL NOT become an always-visible inspection dashboard.
 5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Create or an honest next-time indication, not an invented due question or foundation detour.
 
 No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
@@ -850,8 +873,9 @@ I want Create to produce useful tailored study/reference and practice material
 without a setup questionnaire, so I can start learning and refine it through
 actual practice and feedback.
 
-Narrowed 2026-10-20: US-013 is the understanding notebook's Create, deferred
-behind exact recall; it no longer defines Scry's front door.
+Amended 2026-10-24: US-013 is concept preparation, reached through Add material
+from concept Home. When unavailable, the page explains that honestly and
+omits submission controls; no free draft or unsupported format is promised.
 
 Acceptance: [S11.1–S11.7](#s11--create-useful-material-from-intent-us-013)
 bind the approved Create journey, including useful first material, honest
@@ -868,7 +892,7 @@ Criteria:
    an identical operation.
 2. WHEN I paste or share text containing a URL, THE SYSTEM SHALL keep it
    private text and SHALL NOT start web research by inference; invalid input
-   SHALL leave a usable Create field without creating a source.
+   SHALL leave a usable Create field without creating a source when preparation is ready, or visibly retain unsent text when it is unavailable.
 
 No-gos: mandatory import, onboarding questionnaire or diagnostic quiz before
 useful material; inferred public search; assumed speech engine or recording
@@ -980,12 +1004,12 @@ straight into my current practice, and to find or add a text and begin learning
 it there, so practice fits into my day without a terminal.
 
 Criteria:
-1. WHEN I open Scry on my phone with exact-recall Cards due, THE SYSTEM SHALL show the next Prompt in the Stream with one answer field and one submit control.
+1. WHEN I open Text practice on my phone with exact-recall Cards due, THE SYSTEM SHALL show the next Prompt in the Stream with one answer field and one submit control.
 2. WHEN I submit, THE SYSTEM SHALL show the Verdict and Diff the API gives for that Attempt and hold them until I choose Next.
 3. WHEN I ask for a cue or to see the Unit before answering, THE SYSTEM SHALL record the Attempt as assisted before showing it.
 4. WHEN no exact-recall Card is due, THE SYSTEM SHALL say when the next one is due instead of inventing practice.
 5. WHEN an automatic Verdict is shown, THE SYSTEM SHALL offer the US-007 corrections without auto-advancing.
-6. WHEN I have no current exact-recall Study, THE SYSTEM SHALL offer Library entry on my phone: search by title, alias or opening words with an honest miss, inspect matching Work/Version metadata, add supplied text with optional edition/source, and Learn a chosen Version. Supplied text SHALL retain US-015 segmentation, deduplication and private rights by default; repeated Learn SHALL return the same Study (US-016.1). Current Prompts and held results SHALL remain directly reachable. Library content SHALL remain behind the deliberate assistance boundary while a protected Prompt is unanswered, and the supplied-text path SHALL call no provider.
+6. WHEN I open Text practice with no current exact-recall Study, THE SYSTEM SHALL offer Library entry on my phone: search by title, alias or opening words with an honest miss, inspect matching Work/Version metadata, add supplied text with optional edition/source, and Learn a chosen Version. Supplied text SHALL retain US-015 segmentation, deduplication and private rights by default; repeated Learn SHALL return the same Study (US-016.1). Current Prompts and held results SHALL remain directly reachable. Library content SHALL remain behind the deliberate assistance boundary while a protected Prompt is unanswered, and the supplied-text path SHALL call no provider.
 
 No-gos: no web-only exact-recall action, no
 microphone integration, no swipe grading.

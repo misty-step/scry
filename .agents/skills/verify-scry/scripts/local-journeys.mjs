@@ -111,7 +111,7 @@ try{
  await step('study.phone',async()=>{
   const learn=await run(['learn',vid]);
   if(learn.code)throw Error(`learn ${learn.err}`);
-  await page.goto(origin+'/');await page.locator('[data-state="exact-prompt"]').waitFor();
+  await page.goto(origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
   if(await page.locator('textarea').count()!==1)throw Error('phone Stream must show one answer field');
   const prompt=await shot('study-prompt');
   await page.getByLabel('Your answer',{exact:true}).fill('The path begins in a synthetic notebook.');

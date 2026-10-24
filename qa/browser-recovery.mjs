@@ -40,9 +40,14 @@ export async function recoveryWalk(browser,capture){
  await check('stopped preparation offers recovery instead of false progress',{isMobile:true,hasTouch:true},async({page,context,url})=>{
   assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Follow your curiosity.');
   await page.goto(url+'/create');const intent='How do Durable Objects serialize writes across an external API await?';
-  await page.getByLabel('What do you want to learn?',{exact:true}).fill(intent);
-  await page.getByRole('button',{name:'Make it understandable'}).tap();
-  await page.getByText('Preparation stopped.',{exact:true}).waitFor();const saved=page.url();
+  await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
+  // Replay an earlier saved request through the existing POST contract. The
+  // unavailable page above offers no new submission or misleading progress.
+  const settings=await(await context.request.get(url+'/settings')).text();
+  const fields=Object.fromEntries([...settings.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+  const response=await context.request.post(url+'/create',{form:{...fields,operation_id:'earlier-stopped-recovery-request',intent},headers:{Origin:url},maxRedirects:0});assert.equal(response.status(),303);
+  const saved=url+response.headers().location;await page.goto(saved);
+  await page.getByText('Preparation stopped.',{exact:true}).waitFor();
   await page.goto(url+'/notebook');await page.locator('[data-state="preparation-stopped"]').waitFor();
   assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Your request needs attention.');
   assert.doesNotMatch(await page.locator('main').innerText(),/taking shape|while Scry prepares/);

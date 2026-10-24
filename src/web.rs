@@ -366,7 +366,7 @@ impl View<'_> {
             ),
         );
         format!(
-            "<section class=\"empty-stage gate\" data-state=\"library-gate\"><h1>Open your Library?</h1><p class=\"lede\">It contains the words you are recalling. Opening it records help for your current Prompt, without changing its schedule.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"/\">Keep trying</a></div></section>"
+            "<section class=\"empty-stage gate\" data-state=\"library-gate\"><h1>Open your Library?</h1><p class=\"lede\">It contains the words you are recalling. Opening it records help for your current Prompt, without changing its schedule.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"/recall\">Keep trying</a></div></section>"
         )
     }
     fn library(&self) -> String {
@@ -500,7 +500,7 @@ impl View<'_> {
             .find(|s| s.version_id == id)
         {
             out.push_str(&self.study_status(id));
-            out.push_str("<div class=\"actions\"><a class=\"button primary\" href=\"/\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new Units; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">");
+            out.push_str("<div class=\"actions\"><a class=\"button primary\" href=\"/recall\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new Units; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">");
             let (action, label) = if study.status == crate::study::Status::Active {
                 ("pause", "Pause")
             } else {
@@ -614,7 +614,9 @@ impl View<'_> {
             .values()
             .any(|s| s.status != Status::Dropped)
         {
-            out.push_str("<a class=\"text-link exact-notebook\" href=\"/notebook\">Understanding practice →</a>");
+            out.push_str(
+                "<a class=\"text-link exact-notebook\" href=\"/notebook\">Concept practice →</a>",
+            );
         }
         out.push_str("</section>");
         out
@@ -1223,6 +1225,51 @@ impl View<'_> {
             }
         )
     }
+    fn home(&self) -> String {
+        let concepts: Vec<_> = self.app.concepts.values().filter(|c| !c.archived).collect();
+        let mut out = format!(
+            "<section class=\"concept-home\" data-state=\"concept-home\"><h1>{}</h1>",
+            if concepts.is_empty() {
+                "What do you want to learn?"
+            } else {
+                "Your concepts"
+            }
+        );
+        if concepts.is_empty() {
+            out.push_str("<p class=\"lede\">Explore a concept, study its explanation, and practise what you understand.</p>");
+        }
+        out.push_str("<div class=\"actions\">");
+        if self.app.occurrence.is_some() {
+            out.push_str("<a class=\"button primary\" href=\"/notebook\">Resume practice</a>");
+        } else if !concepts.is_empty() {
+            out.push_str("<a class=\"button primary\" href=\"/notebook\">Start practice</a>");
+        }
+        let _ = write!(
+            out,
+            "<a class=\"button {}\" href=\"/create\">Add material</a></div>",
+            if concepts.is_empty() && self.app.occurrence.is_none() {
+                "primary"
+            } else {
+                "secondary"
+            }
+        );
+        out.push_str(&self.pending());
+        if !concepts.is_empty() {
+            out.push_str("<ul class=\"concept-list home-concepts\">");
+            for c in concepts {
+                let _ = write!(
+                    out,
+                    "<li><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
+                    escape(&c.id),
+                    self.concept_name(c),
+                    concept_state(self.app, c, self.now)
+                );
+            }
+            out.push_str("</ul><a class=\"text-link\" href=\"/map\">View connections</a>");
+        }
+        out.push_str("</section>");
+        out
+    }
     fn create(&self) -> String {
         let prefill = self
             .query
@@ -1231,12 +1278,30 @@ impl View<'_> {
             .or_else(|| self.query.get("url"))
             .map(String::as_str)
             .unwrap_or("");
+        if self.app.restored_paused
+            || !self
+                .query
+                .get("__preparation_ready")
+                .is_some_and(|v| v == "true")
+        {
+            let draft = if prefill.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<label for=\"unsent-material\">Your unsent material</label><textarea id=\"unsent-material\" rows=\"7\" readonly>{}</textarea>",
+                    escape(prefill)
+                )
+            };
+            return format!(
+                "<section class=\"create-page\" data-state=\"create\"><h1>Add material</h1><p class=\"lede\">Preparation is unavailable right now.</p><p>Scry cannot prepare new concepts and practice here yet. Your saved concepts and text practice are still available.</p>{draft}<div class=\"actions\"><a class=\"button primary\" href=\"/\">Your concepts</a><a class=\"text-link\" href=\"/recall\">Text practice</a></div></section>"
+            );
+        }
         let body = format!(
-            "<label for=\"intent\" class=\"sr-only\">What do you want to learn?</label><div class=\"writing-area\"><textarea id=\"intent\" name=\"intent\" rows=\"7\" maxlength=\"32768\" placeholder=\"Why do we forget things?\n\nA word is enough. Or tell me everything on your mind.\" aria-describedby=\"intent-hint\">{}</textarea><span class=\"writing-mark\" aria-hidden=\"true\">✦</span></div><p class=\"control-hint\" id=\"intent-hint\">A topic, your own words, or a dictated ramble. No setup needed.</p><details class=\"optional-material\"><summary>Add a photo for context <span aria-hidden=\"true\">＋</span></summary><label for=\"photo\">Optional photo</label><input type=\"file\" id=\"photo\" name=\"photo\" accept=\"image/jpeg,image/png,image/webp\" aria-describedby=\"photo-hint\"><p class=\"fineprint\" id=\"photo-hint\">JPEG, PNG or WebP, up to 4 MB, with a caption up to 1 KB. Scry reads the words; your prompt guides the result.</p></details><div class=\"thumb-actions\"><button class=\"button primary\">Make it understandable <span aria-hidden=\"true\">→</span></button></div>",
+            "<label for=\"intent\" class=\"sr-only\">What do you want to learn?</label><div class=\"writing-area\"><textarea id=\"intent\" name=\"intent\" rows=\"7\" maxlength=\"32768\" placeholder=\"Why do we forget things?\n\nA word is enough. Or tell me everything on your mind.\" aria-describedby=\"intent-hint\">{}</textarea><span class=\"writing-mark\" aria-hidden=\"true\">✦</span></div><p class=\"control-hint\" id=\"intent-hint\">Text or one photo. Preparation uses paid AI and your existing allowance.</p><details class=\"optional-material\"><summary>Add a photo for context <span aria-hidden=\"true\">＋</span></summary><label for=\"photo\">Optional photo</label><input type=\"file\" id=\"photo\" name=\"photo\" accept=\"image/jpeg,image/png,image/webp\" aria-describedby=\"photo-hint\"><p class=\"fineprint\" id=\"photo-hint\">JPEG, PNG or WebP, up to 4 MB, with a caption up to 1 KB. Scry reads the words; your prompt guides the result.</p></details><div class=\"thumb-actions\"><button class=\"button primary\">Prepare material <span aria-hidden=\"true\">→</span></button></div>",
             escape(prefill)
         );
         format!(
-            "<section class=\"create-page\" data-state=\"create\"><div class=\"page-heading\"><p class=\"eyebrow\">From curiosity to understanding</p><h1>What do you want<br class=\"desktop-break\"> to learn?</h1><p class=\"lede\">Start with what is on your mind. Get a clear explanation and a little practice. Shape it as you go.</p></div>{}<p class=\"privacy-note\">{}<span>Private by default. Your words are used to prepare your material; pasted links do not trigger web browsing.</span></p><div class=\"notebook-margin\"><span>Write freely</span><span>Your first result is a beginning, not a test.</span></div></section>",
+            "<section class=\"create-page\" data-state=\"create\"><div class=\"page-heading\"><h1>Add material</h1><p class=\"lede\">What do you want to understand?</p></div>{}<p class=\"privacy-note\">{}<span>Private by default. Your words are used to prepare your material; pasted links are not opened. Video is not supported yet.</span></p></section>",
             self.form(
                 "/create",
                 "capture",
@@ -1536,10 +1601,10 @@ impl View<'_> {
         let helped = state.helped;
         let missed = state.missed;
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><p class=\"eyebrow\">{} · One connected idea</p><h1>{}</h1>{}</div><section class=\"practice-evidence\" aria-label=\"Your practice record\"><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
-            concept_state(self.app, c, self.now),
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Study</h2>{}</section><section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
             self.concept_name(c),
             self.lede("lede", c),
+            self.notes(c),
             recall_label(self.app, c, self.now),
             if c.archived {
                 "<p>Archived: retained for reference.</p>".into()
@@ -1552,23 +1617,9 @@ impl View<'_> {
                     "<button class=\"button primary\">Practice this idea →</button>",
                 )
             },
-            format_args!("{}{}", tally(&state), self.notes(c))
+            tally(&state)
         );
-        if !c.prerequisites.is_empty() {
-            out.push_str("<section class=\"connected\"><h2>Builds on</h2>");
-            for prerequisite in &c.prerequisites {
-                if let Some(p) = self.app.concepts.get(prerequisite) {
-                    let _ = write!(
-                        out,
-                        "<a class=\"concept-chip\" href=\"/concepts/{}\">✦ {}</a>",
-                        escape(&p.id),
-                        self.concept_name(p)
-                    );
-                }
-            }
-            out.push_str("</section>");
-        }
-        out.push_str("<section class=\"saved-questions\"><h2>Practice, in different ways.</h2>");
+        out.push_str("<section class=\"saved-questions\"><h3>Saved questions</h3>");
         for q in self
             .app
             .questions
@@ -1601,6 +1652,50 @@ impl View<'_> {
             );
         }
         out.push_str("</section>");
+        if let Some(g) = self.app.goals.get(&c.goal_id) {
+            let _ = write!(
+                out,
+                "<section class=\"concept-resources\"><h2>Resources</h2><a class=\"text-link\" href=\"/goals/{}\">Original material &amp; preparation</a></section>",
+                escape(&g.id)
+            );
+        }
+        let dependents: Vec<_> = self
+            .app
+            .concepts
+            .values()
+            .filter(|other| !other.archived && other.prerequisites.contains(&c.id))
+            .collect();
+        if !c.prerequisites.is_empty() || !dependents.is_empty() {
+            out.push_str("<section class=\"connected\"><h2>Related</h2>");
+            if !c.prerequisites.is_empty() {
+                out.push_str("<h3>Builds on</h3>");
+                for p in c
+                    .prerequisites
+                    .iter()
+                    .filter_map(|id| self.app.concepts.get(id))
+                    .filter(|p| !p.archived)
+                {
+                    let _ = write!(
+                        out,
+                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
+                        escape(&p.id),
+                        self.concept_name(p)
+                    );
+                }
+            }
+            if !dependents.is_empty() {
+                out.push_str("<h3>Used by</h3>");
+                for p in dependents {
+                    let _ = write!(
+                        out,
+                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
+                        escape(&p.id),
+                        self.concept_name(p)
+                    );
+                }
+            }
+            out.push_str("</section>");
+        }
         let body = "<label for=\"feedback\">What is still unclear?</label><textarea id=\"feedback\" name=\"text\" rows=\"3\" maxlength=\"4000\" required placeholder=\"Tell Scry what you need from this idea…\"></textarea><button class=\"button secondary\">Save feedback</button>";
         out.push_str(&format!("<section class=\"refinement\"><h2>Keep the conversation with your learning.</h2>{}</section>",self.form(&format!("/concepts/{id}/feedback"),"feedback","","",body)));
         if !c.archived {
@@ -1612,13 +1707,6 @@ impl View<'_> {
                 "<button class=\"text-button danger\">Archive this idea</button>",
             ));
         }
-        if let Some(g) = self.app.goals.get(&c.goal_id) {
-            let _ = write!(
-                out,
-                "<a class=\"text-link\" href=\"/goals/{}\">Original request &amp; preparation ↗</a>",
-                escape(&g.id)
-            );
-        }
         out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
         out.push_str("</article>");
         out
@@ -1626,7 +1714,7 @@ impl View<'_> {
     fn history(&self) -> String {
         if self.app.practice.protected() {
             return String::from(
-                "<section class=\"empty-stage gate\" data-state=\"history\"><h1>History</h1><p class=\"lede\">History is hidden while you answer from memory.</p><a class=\"button primary\" href=\"/\">Return to practice</a></section>",
+                "<section class=\"empty-stage gate\" data-state=\"history\"><h1>History</h1><p class=\"lede\">History is hidden while you answer from memory.</p><a class=\"button primary\" href=\"/recall\">Return to practice</a></section>",
             );
         }
         let mut out = String::from(
@@ -2124,7 +2212,7 @@ impl View<'_> {
     }
     fn not_found(&self) -> String {
         format!(
-            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Return to practice →</a></section>",
+            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Your concepts →</a></section>",
             emblem("large")
         )
     }
@@ -2228,7 +2316,7 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
     if path == "/library/version/add" {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
     } else if path.starts_with("/practice/") {
-        "/"
+        "/recall"
     } else if redirect == "/"
         && (path.starts_with("/review/")
             || path == "/settings/resume"
@@ -2266,8 +2354,9 @@ pub fn render(
         now: now_ms,
     };
     let content = match path {
-        "/" if exact_stream_active(app) => view.exact_stream(),
-        "/" | "/library" => view.library(),
+        "/" => view.home(),
+        "/recall" if exact_stream_active(app) => view.exact_stream(),
+        "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
         "/notebook" => format!(
             "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/create\">Create</a><a href=\"/map\">Map</a></nav>{}",
@@ -2307,7 +2396,8 @@ pub fn render(
     };
     let title = match path {
         "/library/add" => "Add a text",
-        "/" if !exact_stream_active(app) => "Your Library",
+        "/" => "Your concepts",
+        "/recall" => "Text practice",
         p if p.starts_with("/library") => "Your Library",
         "/create" | "/add" => "Create",
         "/map" => "Your map",
@@ -2345,7 +2435,7 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         "A moment to pause."
     };
     let content = format!(
-        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Return to your notebook →</a></section>",
+        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Your concepts →</a></section>",
         emblem("large"),
         escape(message)
     );
@@ -2364,10 +2454,10 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/library\" {}>Library</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/notebook\">Understanding</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Concepts</a><a href=\"/create\">Add material</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Text practice</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
-        if path.starts_with("/library") {
+        if path == "/" || path == "/map" || path.starts_with("/concepts/") {
             "aria-current=\"page\""
         } else {
             ""

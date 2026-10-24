@@ -183,7 +183,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     const page=await context.newPage(); page.setDefaultTimeout(12000);
     const row={name,status:'pass',evidence:[]}; results.push(row);
     const shot=async suffix=>row.evidence.push(await capture(page,`phone-history-${results.length}-${suffix}.png`));
-    try {await page.goto(f.origin+'/'); await run({f,page,context,row,shot}); assert.equal(f.egress,0);}
+    try {await page.goto(f.origin+'/recall'); await run({f,page,context,row,shot}); assert.equal(f.egress,0);}
     catch(error) {row.status='fail'; row.reason=error.message;}
     finally {await shot(row.status); await context.close(); await f.close();}
   };

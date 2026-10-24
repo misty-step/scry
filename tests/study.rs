@@ -344,13 +344,13 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     let cid = o.fade_to_free(text);
     let p = o.app.practice.current.as_ref().unwrap().prompt.clone();
     let query = [("__nonce".into(), "synthetic-render-nonce".into())].into();
-    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(page.contains("data-state=\"exact-prompt\""));
     assert!(!page.contains(text));
     assert_eq!(page.matches("<textarea").count(), 1);
     assert_eq!(page.matches(">Check my answer<").count(), 1);
     let a = o.answer("We concieved a tired garden the water extra.");
-    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(page.contains("data-verdict=\"Again\""));
     for d in a["attempt"]["grade"]["diff"].as_array().unwrap() {
         assert!(page.contains(&format!(
@@ -372,17 +372,18 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
         .unwrap();
     assert!(corrected["correction"].is_object());
     assert_eq!(o.app.practice.attempts[aid].grade.verdict, Verdict::Again);
-    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(page.contains("Owner Correction · Good"));
     assert!(page.contains("data-state=\"exact-result\""));
     assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 1);
     o.next(None);
     assert!(o.app.practice.current.is_none());
-    let page = scry::web::render(&o.app, "/", &query, NOW, None);
+    let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(page.contains("Next due at"));
     assert!(!page.contains("<textarea"));
     assert!(page.contains("Open Library"));
-    assert!(page.contains("href=\"/notebook\">Understanding</a>"));
+    assert!(page.contains("href=\"/recall\">Text practice</a>"));
+    assert!(page.contains(">Concepts</a>"));
 }
 #[test]
 fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
@@ -410,7 +411,7 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
         o.next(None);
         let a = o.answer(answer)["attempt"].clone();
         let before = o.app.clone();
-        let page = notebook_page(&o, "/");
+        let page = notebook_page(&o, "/recall");
         assert_eq!(o.app, before, "Rendering cannot mutate a held Attempt");
         assert!(page.contains(&format!("data-verdict=\"{verdict}\"")));
         assert_eq!(page.matches("<h1").count(), 1);
@@ -471,7 +472,7 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
         assert!(actions.contains("name=\"operation_id\""));
         study::ensure_stream(&mut o.app, NOW, "held-feedback-refresh").unwrap();
         assert_eq!(o.app, before);
-        assert_eq!(notebook_page(&o, "/"), page);
+        assert_eq!(notebook_page(&o, "/recall"), page);
     }
 }
 
@@ -504,7 +505,7 @@ fn study_recitation_grades_each_unit_and_strict_slips() {
     assert_eq!(a["grade"]["units"][1]["verdict"], "Again");
     assert_eq!(a["effects"].as_array().unwrap().len(), 2);
     assert!(o.app.practice.attempts.values().last().is_some());
-    let rendered = notebook_page(&o, "/");
+    let rendered = notebook_page(&o, "/recall");
     let (summary, full) = rendered
         .split_once("<details class=\"exact-full-answer\">")
         .unwrap();
@@ -730,14 +731,14 @@ fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
     o.fade_to_free(text);
     let query = [("__nonce".into(), "one-render".into())].into();
     let other = [("__nonce".into(), "another-render".into())].into();
-    let first = scry::web::render(&o.app, "/", &query, NOW, None);
-    let second = scry::web::render(&o.app, "/", &other, NOW, None);
+    let first = scry::web::render(&o.app, "/recall", &query, NOW, None);
+    let second = scry::web::render(&o.app, "/recall", &other, NOW, None);
     assert!(!first.contains(text));
     assert!(first.contains("method=\"post\" action=\"/practice/answer\""));
     assert!(first.contains("name=\"csrf\""));
     assert_ne!(first, second);
     o.answer("<script>alert(2)</script>");
-    let held = scry::web::render(&o.app, "/", &query, NOW, None);
+    let held = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(!held.contains("<script>alert"));
     assert!(!held.contains("<svg onload"));
     assert!(held.contains("&lt;script&gt;alert(2)&lt;/script&gt;"));
@@ -1124,7 +1125,7 @@ fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
             "Legacy practice never advances exact practice"
         );
         if exact {
-            assert!(notebook_page(&o, "/").contains("data-state=\"exact-prompt\""));
+            assert!(notebook_page(&o, "/recall").contains("data-state=\"exact-prompt\""));
         }
     }
 }
@@ -1223,11 +1224,11 @@ fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
             );
             assert_eq!(
                 scry::web::mutation_error_path(&o.app, "/practice/answer"),
-                "/"
+                "/recall"
             );
             assert_eq!(
                 scry::web::mutation_redirect(&o.app, "/practice/answer", "/practice/held"),
-                "/"
+                "/recall"
             );
             assert_eq!(scry::web::mutation_error_path(&o.app, "/create"), "/create");
             assert_eq!(
@@ -1235,7 +1236,7 @@ fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
                 "/questions/synthetic/edit"
             );
             o.app.practice.current = None;
-            assert!(notebook_page(&o, "/").contains("data-state=\"exact-caught-up\""));
+            assert!(notebook_page(&o, "/recall").contains("data-state=\"exact-caught-up\""));
             assert_eq!(
                 scry::web::mutation_error_path(&o.app, "/review/answer"),
                 "/notebook"
@@ -1291,9 +1292,12 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
         "Keep trying",
         "Return to your saved answer →",
     ];
-    // Four intentional root-link sites; preparation and not-found share a label.
+    // Home navigation is distinct from explicit recovery of concept practice.
     let practice = [
-        "Scry, return to practice",
+        "Scry, home",
+        "Concepts",
+        "← Your concepts",
+        "Your concepts →",
         "Go to practice →",
         "Return to practice →",
     ];
@@ -1343,7 +1347,7 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 format!("/questions/{}/edit", occurrence.question_id),
                 "/missing".into(),
             ];
-            let root = notebook_page(&o, "/");
+            let root = notebook_page(&o, "/recall");
             let expected = "/notebook";
             if exact != "none" {
                 assert!(root.contains(if exact == "prompt" {
@@ -1379,9 +1383,9 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 "Rendering recovery links does not mutate either practice"
             );
             assert_eq!(
-                notebook_page(&o, "/"),
+                notebook_page(&o, "/recall"),
                 root,
-                "Root retains its identical exact Prompt/caught-up view"
+                "Text practice retains its identical exact Prompt/caught-up view"
             );
         }
     }

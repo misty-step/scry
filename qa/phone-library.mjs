@@ -139,11 +139,11 @@ export async function phoneLibraryWalk(browser, capture) {
       await page.locator('form[action="/practice/learn"]').waitFor({state:'visible'});
     };
     try {
-      await page.goto(f.origin + '/');
+      await page.goto(f.origin + '/recall');
       await page.getByLabel('Find a text',{exact:true}).waitFor();
-      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['Library']);
-      assert.equal(await page.locator('.masthead nav a').first().getAttribute('href'), '/library');
-      assert.equal(await page.getByRole('link',{name:'Understanding',exact:true}).getAttribute('href'), '/notebook');
+      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['Concepts', 'Add material']);
+      assert.equal(await page.locator('.masthead nav a').first().getAttribute('href'), '/');
+      assert.equal(await page.getByRole('link',{name:'Text practice',exact:true}).getAttribute('href'), '/recall');
       assert.equal(await count(f,'library_versions/'), 0);
       assert.equal(await count(f,'practice_studies/'), 0);
       await shot('empty');
@@ -206,11 +206,11 @@ export async function phoneLibraryWalk(browser, capture) {
       await search(page,alias); await selectVersion(vid);
       const learnFields = await fields(page.locator('form[action="/practice/learn"]'));
       await Promise.all([
-        page.waitForURL(f.origin + '/',{waitUntil:'domcontentloaded'}),
+        page.waitForURL(f.origin + '/recall',{waitUntil:'domcontentloaded'}),
         activate(page.getByRole('button',{name:'Learn',exact:true}))
       ]);
       await page.locator('[data-state="exact-prompt"]').waitFor();
-      assert.equal(new URL(page.url()).pathname,'/');
+      assert.equal(new URL(page.url()).pathname,'/recall');
       assert.equal(await page.getByLabel('Your answer',{exact:true}).count(),1);
       assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
       assert.equal(await count(f,'practice_studies/'),1);
@@ -218,7 +218,7 @@ export async function phoneLibraryWalk(browser, capture) {
       const study = (await f.cli(['learn',vid])).practice.study;
       const replay = await f.post('/practice/learn',learnFields);
       assert.equal(replay.status,303);
-      assert.equal(new URL(replay.headers.get('location'),f.origin).pathname,'/');
+      assert.equal(new URL(replay.headers.get('location'),f.origin).pathname,'/recall');
       assert.equal(await count(f,'practice_studies/'),1);
       assert.deepEqual((await f.record('meta')).practice.current.prompt,prompt);
       await shot('first-prompt');
@@ -252,7 +252,7 @@ export async function phoneLibraryWalk(browser, capture) {
         await page.goto(f.origin + versionPath(vid));
         await activate(page.getByText('Manage Study',{exact:true}));
         await Promise.all([
-          page.waitForURL(f.origin + '/',{waitUntil:'domcontentloaded'}),
+          page.waitForURL(f.origin + '/recall',{waitUntil:'domcontentloaded'}),
           activate(page.getByRole('button',{name:action,exact:true}))
         ]);
         await page.locator(status==='dropped'?'[data-state="library"]':'[data-state="exact-prompt"]').waitFor();
@@ -344,7 +344,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     const longWord='counterrevolutionary'.repeat(4), longAnswer='misremembered'.repeat(6);
     const added=await f.cli(['version','add','--title',longTitle,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('long.txt',longWord+'.')]);
     await f.cli(['learn',added.result.entity_id]);
-    await page.goto(f.origin+'/');
+    await page.goto(f.origin+'/recall');
     await page.getByLabel('Your answer',{exact:true}).fill(longAnswer);
     await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
     await page.locator('[data-state="exact-result"]').waitFor();
@@ -369,7 +369,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     await f.cli(['learn',vid]);
     await page.goto(f.origin+versionPath(vid));
     assert.ok((await page.locator('main').innerText()).includes(firstUnit));
-    await page.goto(f.origin+'/'); await page.locator('[data-state="exact-prompt"]').waitFor();
+    await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     let current=(await f.cli(['next'])).practice;
     const cid=(await f.record('meta')).practice.current.targets[0].card_id;
     for(let i=0;i<6;i++) {await f.cli(['answer',current.prompt.id,'--text-stdin'],firstUnit); current=(await f.cli(['next','--after',current.prompt.id,'--card',cid])).practice;}
@@ -418,7 +418,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     for(const returnTo of invalidReturns) {
       const response=await f.post('/practice/reveal',{...revealFields,operation_id:randomUUID(),revision:String((await f.record('meta')).revision),return_to:returnTo});
       assert.equal(response.status,303);
-      assert.equal(new URL(response.headers.get('location'),f.origin).href,f.origin+'/','Unsupported assistance destinations return only to practice.');
+      assert.equal(new URL(response.headers.get('location'),f.origin).href,f.origin+'/recall','Unsupported assistance destinations return only to practice.');
     }
     assert.equal(await count(f,'practice_attempts/'),priorAttempts+1,'Repeated disclosure does not create another Attempt.');
     row.observed={noJS,html_routes:paths,json_refusals:4,export_refusal:409,back_revalidated:true,durable_before_redirect:true,disclosure_attempts_added:1,schedule_unchanged:true,validated_return:destination,invalid_returns_refused:invalidReturns.length};
