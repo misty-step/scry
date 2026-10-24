@@ -1,5 +1,6 @@
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
+import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -69,15 +70,15 @@ export async function phoneFixture({port=0}={}) {
 
 export async function phoneWalk(browser,capture) {
  const results=[];
- for(const [width,scheme,noJS,zoom] of [[320,'light',false,true],[320,'dark',true,true],[390,'light',false,false],[390,'dark',false,false],[1280,'light',false,false],[1280,'dark',true,false]]){
+ for(const [width,scheme,noJS,zoom] of feedbackVariants){
   const f=await phoneFixture();
   const context=await browser.newContext({viewport:{width,height:900},colorScheme:scheme,javaScriptEnabled:!noJS,...(width<768?{isMobile:true,hasTouch:true}:{})});
   const page=await context.newPage();page.setDefaultTimeout(12000);
   let clone;
   const row={width,scheme,noJS,text_zoom:zoom?'200%':'100%',status:'pass',criteria:[],evidence:[]};results.push(row);
-  const record=async(name)=>row.evidence.push(await capture(page,`phone-${width}-${scheme}-${name}.png`));
+  const record=async(name)=>row.evidence.push(await capture(page,`phone-${width}-${scheme}-${zoom?200:100}-${name}.png`));
   const typography=async()=>{
-   if(zoom)await page.evaluate(()=>{for(const el of document.querySelectorAll('body,body *')){const size=parseFloat(getComputedStyle(el).fontSize);el.dataset.qaTextSize=String(size*2);}for(const el of document.querySelectorAll('[data-qa-text-size]'))el.style.fontSize=el.dataset.qaTextSize+'px';});
+   if(zoom)await page.evaluate(()=>{for(const node of document.querySelectorAll('[data-qa-text-size]')){node.style.removeProperty('font-size');delete node.dataset.qaTextSize;}for(const el of document.querySelectorAll('body,body *')){const size=parseFloat(getComputedStyle(el).fontSize);el.dataset.qaTextSize=String(size*2);}for(const el of document.querySelectorAll('[data-qa-text-size]'))el.style.fontSize=el.dataset.qaTextSize+'px';});
    await page.evaluate(()=>document.fonts.ready);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow');
   };
@@ -88,10 +89,15 @@ export async function phoneWalk(browser,capture) {
    assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
+   await page.setViewportSize({width,height:844});
    await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);
    // Submit with a real keyboard, including the no-JavaScript path.
    await page.getByRole('button',{name:'Check my answer',exact:true}).focus();await page.keyboard.press('Enter');
    await page.locator('[data-state="exact-result"]').waitFor();
+   row.arrival=await feedbackArrival(page,capture,`phone-${width}-${scheme}-${zoom?200:100}-arrival.png`,zoom);
+   row.evidence.push(row.arrival.evidence);
+   assertFeedbackArrival(row.arrival);
+   await page.setViewportSize({width,height:900});
    const held=(await f.record('meta')).practice.current;
    const a=(await f.cli(['next'])).practice.attempt;
    assert.equal(a.id,held.attempt_id);assert.equal(a.prompt.version_id,f.vid);assert.deepEqual(a.prompt,f.prompt);
@@ -106,7 +112,9 @@ export async function phoneWalk(browser,capture) {
    await clone.close();clone=null;
    await page.reload();await page.locator('[data-state="exact-result"]').waitFor();
    assert.equal((await f.record('meta')).practice.current.attempt_id,a.id);
-   await typography();await record('diff');row.criteria.push(2);
+   await typography();
+   const closeFull=await fullAnswer(page,f,a,phoneText);
+   await record('diff');await closeFull();row.criteria.push(2);
    await page.getByRole('button',{name:'I was right',exact:true}).click();await page.getByText('Owner Correction',{exact:false}).waitFor();
    assert.deepEqual((await f.cli(['next'])).practice.attempt,a,'Original Attempt stays immutable.');
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_corrections/')).length,1);row.criteria.push(5);

@@ -55,9 +55,9 @@ try{
  for(const id of selected){
   if(id==='US-018'){
    const paths=[];
-   const phone=await phoneWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const phone=await phoneWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});
    const recovery=await phoneRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
-   const library=await phoneLibraryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const library=await phoneLibraryWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});
    const libraryRecovery=await phoneLibraryRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
    const libraryPath='logs/US-018-library.json';await writeFile(join(output,libraryPath),JSON.stringify({journey:library,recovery:libraryRecovery},null,2)+'\n');await register(libraryPath);
    const recoveryPath='logs/US-018-recovery.json';await writeFile(join(output,recoveryPath),JSON.stringify(recovery,null,2)+'\n');await register(recoveryPath);

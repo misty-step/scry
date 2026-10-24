@@ -36,8 +36,8 @@ Preconditions:
 - **Phone journey.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`.
   `study.phone` runs `scry learn` and opens `/` at 390px touch. It requires
   `[data-state="exact-prompt"]` with one textarea, fills "Your answer", and
-  chooses Check my answer. It waits for `[data-state="exact-result"]`, reloads,
-  and requires the same held result. `[data-verdict]` and every
+  chooses Check my answer. It captures `[data-state="exact-result"]` on arrival
+  before scrolling or reloading, then requires the same held result on reload. `[data-verdict]` and every
   `[data-diff-kind]` must equal `scry next --json`'s Attempt grade. Next then
   advances, with no horizontal overflow.
 - **Interactive fixture.** `node qa/phone-serve.mjs PORT` prints a loopback URL
@@ -48,7 +48,8 @@ Preconditions:
   forms and interruption checks under US-018.6.
 - **Story walk.** `qa/walk --stories "US-016 US-017 US-018"` covers every
   criterion. The CLI-only US-016/017 walks need no browser. US-018 retains light
-  and dark at 320/390/1280px, 200% text, keyboard and no-JS forms. It checks
+  and dark at 320/390/1280px, 100/200% text at 320/390px, keyboard and no-JS forms. Native Full answer
+  retains complete wording and ordered Diff without a learning event. It checks
   phone/CLI parity on a restored frozen Prompt, response loss, stale tabs,
   offline pause and private DOM removal. `node --test qa/study.test.mjs` reuses
   the CLI journey. See the [builder receipt](../docs/qa/evidence/scry-319/2026-10-20-recovery-links/README.md).
@@ -60,9 +61,11 @@ Preconditions:
 - A new Card starts with an answer-bearing cue, so its first typed Attempt is
   assisted and leaves the schedule unchanged ("Assisted practice · the schedule
   stayed unchanged"). Free recall needs the fading in `qa/phone-stream.mjs`.
-- The result actions (Next, I was right) are sticky at the bottom by design.
-  A full-page screenshot paints them over the Diff; capture the Diff in the
-  viewport after scrolling it into view, as `local-journeys.mjs` does.
+- Capture the result arrival before scrolling or reloading: verdict and the
+  first changed word/replacement must be unobscured. Native Full answer holds
+  the complete ordered Diff; the actions follow in ordinary flow.
+  `qa/feedback-arrival.mjs` retains viewport geometry and hit-test evidence,
+  while the existing full-page captures retain expanded completeness.
 - The fixture is authored synthetic wording under Creed metadata. It establishes
   no private canonical wording or physical-phone acceptance; emulation is not hardware.
 - On production, `/` freezes the next Prompt. Never drive exact practice there;

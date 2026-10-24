@@ -357,6 +357,97 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     assert!(page.contains("href=\"/notebook\">Understanding</a>"));
 }
 #[test]
+fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
+    let expected = "We conceived a patient garden by the water.";
+    for (answer, strict, verdict) in [
+        (expected, false, "Good"),
+        ("We concieved a patient garden by the water.", false, "Good"),
+        ("We concieved a patient garden by the water.", true, "Again"),
+        (
+            "We concieved a tired garden the water extra.",
+            false,
+            "Again",
+        ),
+        (
+            "We conceived patient a garden by the water.",
+            false,
+            "Again",
+        ),
+        ("We imagined a patient garden by the water.", false, "Again"),
+    ] {
+        let mut o = Owner::new();
+        let v = o.add(expected, strict);
+        o.add("We imagined a patient garden by the water.", false);
+        o.learn(&v, "steady");
+        o.next(None);
+        let a = o.answer(answer)["attempt"].clone();
+        let before = o.app.clone();
+        let page = notebook_page(&o, "/");
+        assert_eq!(o.app, before, "Rendering cannot mutate a held Attempt");
+        assert!(page.contains(&format!("data-verdict=\"{verdict}\"")));
+        assert_eq!(page.matches("<h1").count(), 1);
+        let (summary, full) = page
+            .split_once("<details class=\"exact-full-answer\">")
+            .unwrap();
+        let (full, actions) = full.split_once("</details>").unwrap();
+        assert!(summary.contains("Assisted practice · the schedule stayed unchanged."));
+        assert!(summary.find("data-verdict").unwrap() < summary.find("Assisted practice").unwrap());
+        assert!(!summary.contains("You answered"));
+        assert!(!summary.contains("data-diff-kind"));
+        assert!(!summary.contains("data-feedback-kind=\"correct\""));
+        assert!(full.contains("<summary>Full answer</summary>"));
+        assert!(full.contains("Synthetic Creed"));
+        assert!(full.contains("Read the Unit"));
+        assert!(full.contains(answer));
+        assert!(full.contains(expected));
+        assert!(full.contains(a["grade"]["authority"]["name"].as_str().unwrap()));
+        assert!(full.contains(a["grade"]["authority"]["grader_version"].as_str().unwrap()));
+        let diff = a["grade"]["diff"].as_array().unwrap();
+        assert_eq!(
+            summary.matches("data-feedback-kind=").count(),
+            diff.iter().filter(|d| d["kind"] != "correct").count()
+        );
+        let mut remaining = full;
+        for d in diff {
+            let kind = d["kind"].as_str().unwrap();
+            let marker = format!(
+                "data-diff-kind=\"{kind}\" data-unit-index=\"{}\"",
+                d["unit_index"]
+            );
+            let (_, tail) = remaining
+                .split_once(&marker)
+                .expect("Full Diff stays in saved order");
+            let (word, rest) = tail.split_once("</li>").unwrap();
+            for value in [d["expected"]["text"].as_str(), d["typed"]["text"].as_str()]
+                .into_iter()
+                .flatten()
+            {
+                assert!(
+                    word.contains(value),
+                    "Saved word remains visible in the full Diff"
+                );
+            }
+            if kind == "correct" {
+                assert!(word.contains("diff-label sr-only\">Correct</span>"));
+            }
+            remaining = rest;
+        }
+        if let Some(hint) = a["grade"]["wrong_version_hint"]["name"].as_str() {
+            assert!(summary.contains(&format!("Your answer is closer to Version {hint}.")));
+        }
+        if answer == "We conceived patient a garden by the water." {
+            assert!(summary.contains("Wrong · out of order"));
+        }
+        assert!(actions.contains("action=\"/practice/next\""));
+        assert!(actions.contains("action=\"/practice/correct\""));
+        assert!(actions.contains("name=\"operation_id\""));
+        study::ensure_stream(&mut o.app, NOW, "held-feedback-refresh").unwrap();
+        assert_eq!(o.app, before);
+        assert_eq!(notebook_page(&o, "/"), page);
+    }
+}
+
+#[test]
 fn study_recitation_grades_each_unit_and_strict_slips() {
     let mut o = Owner::new();
     let v = o.add(
@@ -385,6 +476,17 @@ fn study_recitation_grades_each_unit_and_strict_slips() {
     assert_eq!(a["grade"]["units"][1]["verdict"], "Again");
     assert_eq!(a["effects"].as_array().unwrap().len(), 2);
     assert!(o.app.practice.attempts.values().last().is_some());
+    let rendered = notebook_page(&o, "/");
+    let (summary, full) = rendered
+        .split_once("<details class=\"exact-full-answer\">")
+        .unwrap();
+    for index in [0, 1] {
+        assert!(summary.contains(&format!("data-unit-index=\"{index}\"")));
+        assert!(summary.contains(&format!("Unit {}", index + 1)));
+    }
+    assert!(full.contains("We conceived a patient garden,"));
+    assert!(full.contains("a gentle silver orchard."));
+
     let mut strict = Owner::new();
     let v = strict.add("We conceived a patient garden.\n", true);
     strict.learn(&v, "steady");
