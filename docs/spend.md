@@ -3,7 +3,7 @@
 `scry spend --by day|purpose|model --json` reads the same projection as
 `GET /api/v1/spend?by=day|purpose|model`. The selector is required. An Owner
 token (including an unpaid token) or authenticated Access owner may read it.
-Reconciliation is a separate paid-permission mutation described below. CLI errors remain JSON with a nonzero exit;
+There is no caller-write or hold-release endpoint. CLI errors remain JSON with a nonzero exit;
 the client retains its private login file, origin check and redirect refusal.
 
 The response contains `by`, `currency: "USD"`, `day_basis: "UTC"`, `totals`,
@@ -16,7 +16,7 @@ its key; global totals are the sums across every entry and every group.
 | --- | --- |
 | `entries` / `unknown_entries` in totals | Entry count / count with no reported cost |
 | `reserved_micros` | Original reservation bound, including entries subsequently measured; this is not a bill or an outstanding balance |
-| Entry `cost_micros` | Provider-reported or separately reconciled amount, or `null` when unknown; zero remains zero; a conflicting late provider charge is never hidden |
+| Entry `cost_micros` | Provider-reported amount, or `null` when unknown; a reported zero remains zero |
 | `known_cost_micros` in totals | Sum of reported amounts only; unknown entries contribute no measured amount and remain counted separately |
 | `unknown_held_micros` | Original reservations for entries whose cost remains unknown; zero for known entries |
 
@@ -32,7 +32,7 @@ Entries expose only cost metadata: ledger `id` (send lease), existing `work_id`,
 `work_kind` (`concept_job`, `assessment`, or `unattributed` when `work_id`
 matches neither), optional `goal_id` (`null` when unattributed), `created_ms`,
 `day`, `purpose`, `model`, `status`, and the entry monetary fields above. New
-entries can also include their non-secret `quote`, `reconciliation`, and an
+entries can also include their non-secret `quote` and an
 `enforcement_breach: true` marker.
 Use `work_id` to sum the calls for one existing job or assessment; `goal_id`
 connects generation, transcription and critic jobs to the saved request.
@@ -57,8 +57,8 @@ revision, operation receipt, recovery, reservation, alarm or provider effect.
 
 Missing attribution fields deserialize as absent and remain omitted on write.
 Existing model strings and explicit empty strings round-trip; amounts, statuses,
-provider receipts and retained Go custody bytes are unchanged. Budget-aware archives use `scry-rust-durable-sqlite-budget-v1` when quote,
-reconciliation or settlement-time metadata is present. Optional fields missing
+provider receipts and retained Go custody bytes are unchanged. Budget-aware archives use `scry-rust-durable-sqlite-budget-v1` when quote or
+settlement-time metadata is present. Optional fields missing
 from old records remain absent; old writers must not attach to a populated
 budget-aware SQLite store. New complete archives containing only a purpose use
 `scry-rust-durable-sqlite-attributed-spend-v1`, including Library/custody state
@@ -111,9 +111,8 @@ Primary contract sources, reviewed 2026-10-24:
 These documented controls are not proof that any current key has a cap.
 
 Admission sums measured costs in the UTC reservation month, plus costs settled
-or reconciled in the current month, plus every unresolved reservation from all
-months. Arithmetic overflow, a charge above its quote, or a provider receipt
-contradicting reconciliation blocks further paid work. The full measured charge
+in the current month, plus every unresolved reservation from all
+months. Arithmetic overflow or a charge above its quote blocks further paid work. The full measured charge
 is retained, never clamped to its quote. A blocked job keeps its input and
 explicit error; exact practice continues without a provider.
 
@@ -121,39 +120,39 @@ The runtime commits the exact request hash, contract, monthly/per-request caps,
 period and reservation in the existing Spend row before its first await.
 Concurrent claims share the singleton's synchronous revision-fenced SQLite
 transaction. Immediately before send it rechecks the current policy, month,
-lease, source and paid-token authority. No automatic retry follows an unknown
+lease, source, paid-token authority and both the retained rolling-day and
+monthly limits. The exact quote must fit every limit, not the legacy provisional
+$0.50 reserve. No automatic retry follows an unknown
 outcome. Cancellation, timeout, missing usage, malformed responses and HTTP
 errors do not prove a free request and therefore cannot erase a saved hold.
 
-## Authoritative reconciliation
+## Unknown outcomes are not caller-releasable
 
-After checking the actual provider billing record, an authenticated owner or
-paid Owner token can record the exact final USD charge:
+This unit has no reconciliation API, CLI command or caller-supplied billing
+metadata. A paid token permits bounded work, not permission to declare its
+unknown charge zero. Browser owners cannot assert away a hold either.
+Archiving a Goal changes learning-publication state; it does not prove the
+provider request ended or release any reserved money. Restart and month rollover
+retain the same obligation.
 
-```sh
-scry spend reconcile SPEND_ID --cost-micros INTEGER \
-  --reference NON_SECRET_PROVIDER_RECEIPT --verified-provider-billing \
-  --operation-id STABLE_OPERATION_ID --json
-```
+Only the existing authoritative provider-result path can settle a measured
+charge and preserve its complete bounded response receipt. A late result can
+record actual spend even when stale learning is rejected. Exact response replay
+is idempotent and conflicting response bytes/cost remain refused. If a received
+response had no cost, its immutable receipt and full hold remain: a separate
+verified provider-billing reconciliation capability is deferred, not simulated
+with an operator string or extra token authority.
 
-The API is `POST /api/v1/spend/reconcile`, with `operation_id`, `spend_id`,
-`cost_micros`, `reference` and `verified: "provider_billing"` (plus browser CSRF
-when not using a token). The reference is a bounded non-secret identifier, not
-an invoice, URL containing credentials, prompt or response body. This is an
-explicit owner attestation that the authoritative record was checked; the
-application does not independently fetch or certify the invoice. Do not use it
-on an estimate, a successful HTTP status, or an in-flight request.
+## Activation remains separate
 
-Reconciliation is append-only inside the original Spend row. It never changes
-`cost_micros`, raw provider bytes, response hash or attribution. Exact replay is
-idempotent; a contradictory resolution conflicts. Known charges cannot be
-reconciled away, and active leases cannot be released. A late measured receipt
-is retained too; disagreement surfaces an enforcement breach and stops sends.
-Unpaid tokens may read Spend but cannot reconcile it.
-
-Before activation: obtain the owner's explicit monthly/per-request amounts;
-verify the dedicated provider key's hard monthly control and its UTC/reset and
-concurrency behavior; confirm no BYOK/upstream invoice, shared-key traffic,
-extra fees or additional billable dimension can evade this contract; then run
-a separately authorized bounded live acceptance. If any assumption cannot be
-verified, keep paid generation off. No code receipt is a real billing guarantee.
+Before activation, obtain explicit owner monthly/per-request amounts and verify
+the dedicated provider key's actual settings, UTC/reset and concurrency
+behavior. Provider budget settings are not an absolute spending guarantee:
+[OpenRouter documents in-flight overage](https://openrouter.ai/docs/guides/features/workspaces/workspace-budgets).
+Scry's own pre-send reservation is the bound, conditional on the reviewed model,
+context/token and price contract being enforced for every billed dimension.
+Confirm no BYOK/upstream invoice, shared-key traffic, extra fees or additional
+billable dimension can evade that contract, then run separately authorized
+bounded live acceptance. If any assumption cannot be verified, keep paid
+generation off. This source change supplies no production budget amount and
+makes no claim of a live billing guarantee.

@@ -56,13 +56,6 @@ pub struct Quote {
     pub request_hash: String,
     pub maximum_micros: u64,
 }
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Reconciliation {
-    pub cost_micros: u64,
-    pub reference: String,
-    pub recorded_ms: i64,
-}
 fn refusal(message: &str) -> AppError {
     AppError::new(429, message)
 }
@@ -76,24 +69,12 @@ fn hash(request: &Value) -> String {
         serde_json::to_vec(request).expect("JSON request"),
     ))
 }
-pub fn effective_cost(spend: &Spend) -> Option<u64> {
-    // A late measured receipt must never be hidden by an earlier reconciliation.
-    match (spend.cost_micros, spend.reconciliation.as_ref()) {
-        (Some(cost), Some(resolution)) => Some(cost.max(resolution.cost_micros)),
-        (Some(cost), None) => Some(cost),
-        (None, Some(resolution)) => Some(resolution.cost_micros),
-        (None, None) => None,
-    }
-}
 pub fn breach(spend: &Spend) -> bool {
-    spend
-        .quote
-        .as_ref()
-        .is_some_and(|quote| effective_cost(spend).is_some_and(|cost| cost > quote.maximum_micros))
-        || spend
-            .reconciliation
-            .as_ref()
-            .is_some_and(|r| spend.cost_micros.is_some_and(|cost| cost != r.cost_micros))
+    spend.quote.as_ref().is_some_and(|quote| {
+        spend
+            .cost_micros
+            .is_some_and(|cost| cost > quote.maximum_micros)
+    })
 }
 pub fn committed(app: &App, now: i64) -> AppResult<u64> {
     let period = month(now)?;
@@ -101,10 +82,10 @@ pub fn committed(app: &App, now: i64) -> AppResult<u64> {
     for spend in &app.spend {
         if breach(spend) {
             return Err(refusal(
-                "Paid AI stopped: a provider charge breached its bound or reconciliation. Inspect Spend.",
+                "Paid AI stopped: a provider charge breached its bound. Inspect Spend.",
             ));
         }
-        let cost = effective_cost(spend);
+        let cost = spend.cost_micros;
         // Unknown charges never age out, including across month boundaries.
         if cost.is_none()
             || month(spend.created_ms)? == period
@@ -112,9 +93,6 @@ pub fn committed(app: &App, now: i64) -> AppResult<u64> {
             || spend
                 .settled_ms
                 .is_some_and(|settled| month(settled).is_ok_and(|m| m == period) || settled > now)
-            || spend.reconciliation.as_ref().is_some_and(|r| {
-                month(r.recorded_ms).is_ok_and(|m| m == period) || r.recorded_ms > now
-            })
         {
             total = total
                 .checked_add(cost.unwrap_or(spend.reserved_micros))
@@ -200,8 +178,11 @@ pub fn claim_work(
     };
     let admitted = policy.and_then(|policy| {
         let quote = bound(&mut work, &policy, now)?;
+        if app.spent(now).checked_add(quote.maximum_micros).is_none_or(|total| total > DAILY_ALLOWANCE) {
+            return Err(refusal("The exact request bound exceeds the remaining rolling-day allowance. Your input is saved."));
+        }
         if committed(app, now)?.checked_add(quote.maximum_micros).is_none_or(|total| total > policy.monthly_micros) {
-            return Err(refusal("The monthly AI budget is held or spent. Your input is saved; reconcile unknown charges or wait for the next period."));
+            return Err(refusal("The monthly AI budget is held or spent. Your input is saved. Unresolved provider charges remain reserved."));
         }
         Ok(quote)
     });
@@ -245,7 +226,6 @@ pub fn authorize_send(app: &App, work: &Work, policy: &Policy, now: i64) -> AppR
         || quote.month != month(now)?
         || quote.request_hash != hash(&work.request)
         || spend.cost_micros.is_some()
-        || spend.reconciliation.is_some()
         || job.status != "sent"
         || job.lease.as_deref() != Some(&work.lease)
         || job
@@ -258,68 +238,13 @@ pub fn authorize_send(app: &App, work: &Work, policy: &Policy, now: i64) -> AppR
                 .get(id)
                 .is_none_or(|q| q.archived || Some(q.content().version) != job.question_version)
         })
+        || app.spent(now) > DAILY_ALLOWANCE
         || committed(app, now)? > policy.monthly_micros
     {
         return Err(refusal(
             "Paid AI was cancelled before send: its lease, source or budget changed.",
         ));
     }
-    Ok(())
-}
-
-pub fn reconcile(
-    app: &mut App,
-    spend_id: &str,
-    cost_micros: u64,
-    reference: &str,
-    now: i64,
-) -> AppResult<()> {
-    if !(8..=200).contains(&reference.len())
-        || !reference
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/'))
-    {
-        return Err(AppError::new(
-            422,
-            "Use a non-secret provider billing receipt reference (8–200 ASCII characters).",
-        ));
-    }
-    if app.jobs.values().any(|job| {
-        job.lease.as_deref() == Some(spend_id)
-            && matches!(job.status.as_str(), "sent" | "critic-sent")
-    }) || app
-        .assessments
-        .values()
-        .any(|a| a.lease.as_deref() == Some(spend_id) && a.status == "sent")
-    {
-        return Err(AppError::new(
-            409,
-            "An in-flight reservation cannot be reconciled.",
-        ));
-    }
-    let spend = app
-        .spend
-        .iter_mut()
-        .find(|spend| spend.id == spend_id)
-        .ok_or_else(AppError::conflict)?;
-    if now < spend.created_ms {
-        return Err(AppError::conflict());
-    }
-    if let Some(saved) = &spend.reconciliation {
-        return if saved.cost_micros == cost_micros && saved.reference == reference {
-            Ok(())
-        } else {
-            Err(AppError::conflict())
-        };
-    }
-    if spend.cost_micros.is_some() {
-        return Err(AppError::conflict());
-    }
-    spend.reconciliation = Some(Reconciliation {
-        cost_micros,
-        reference: reference.into(),
-        recorded_ms: now,
-    });
     Ok(())
 }
 
@@ -339,11 +264,4 @@ pub fn validate_spend(spend: &Spend) -> bool {
         && spend
             .settled_ms
             .is_none_or(|settled| spend.cost_micros.is_some() && settled >= spend.created_ms)
-        && spend.reconciliation.as_ref().is_none_or(|r| {
-            r.recorded_ms >= spend.created_ms
-                && (8..=200).contains(&r.reference.len())
-                && r.reference
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/'))
-        })
 }

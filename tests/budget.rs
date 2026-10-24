@@ -141,53 +141,52 @@ fn concurrent_claims_share_one_remaining_budget_and_replay_cannot_resend() {
 }
 
 #[test]
-fn month_rollover_unknown_transport_and_manual_resolution_are_durable_and_immutable() {
+fn month_rollover_unknown_transport_and_late_provider_settlement_are_durable() {
     let mut app = fresh();
     capture(&mut app, 1);
     let work = claim(&mut app, 1, MAX).unwrap();
-    assert!(
-        budget::reconcile(&mut app, &work.lease, 0, "provider-receipt-001", NOW + 1).is_err(),
-        "Cannot free an in-flight reservation."
-    );
-    engine::fail_work(
-        &mut app,
-        &work,
-        "Synthetic transport uncertainty",
-        true,
-        NOW + 1,
-    )
-    .unwrap();
+    engine::fail_work(&mut app, &work, "Synthetic lost response", true, NOW + 1).unwrap();
     let later = NOW + DAY_MS * 40;
     let mut app = restart(&app);
     assert_eq!(budget::committed(&app, later).unwrap(), MAX);
-    budget::reconcile(&mut app, &work.lease, 123, "provider-receipt-001", later).unwrap();
-    assert_eq!(
-        app.spend[0].cost_micros, None,
-        "The original provider receipt is not rewritten."
+    // Only the existing provider-result receipt path can settle a charge. A late
+    // result cannot publish stale learning, but its actual expense is retained.
+    let raw = "{\"usage\":{\"cost\":0.000123}}".to_owned();
+    assert!(
+        engine::finish_work(
+            &mut app,
+            &work,
+            raw.clone(),
+            budget::MODEL.into(),
+            Some(123),
+            later
+        )
+        .is_err()
     );
-    let app = restart(&app);
+    let saved = restart(&app);
     assert_eq!(budget::committed(&app, later).unwrap(), 123);
-    let mut replay = app.clone();
-    budget::reconcile(
-        &mut replay,
-        &work.lease,
-        123,
-        "provider-receipt-001",
+    engine::finish_work(
+        &mut app,
+        &work,
+        raw.clone(),
+        budget::MODEL.into(),
+        Some(123),
         later + 1,
     )
     .unwrap();
-    assert_eq!(replay, app);
+    assert_eq!(app, saved);
     assert!(
-        budget::reconcile(
-            &mut replay,
-            &work.lease,
-            0,
-            "provider-receipt-002",
+        engine::finish_work(
+            &mut app,
+            &work,
+            raw,
+            budget::MODEL.into(),
+            Some(0),
             later + 1
         )
         .is_err()
     );
-    assert_eq!(replay, app);
+    assert_eq!(app, saved);
 }
 
 #[test]
@@ -238,52 +237,118 @@ fn pre_send_rechecks_policy_request_source_lease_and_clock() {
 }
 
 #[test]
-fn reconciliation_mutation_replay_and_archive_format_keep_original_receipt() {
+fn no_caller_can_release_an_archived_or_restarted_unknown_hold() {
+    use scry::owner_token::{MutationActor, OwnerToken};
     let mut app = fresh();
     capture(&mut app, 1);
     let work = claim(&mut app, 1, MAX).unwrap();
-    engine::fail_work(&mut app, &work, "Synthetic unknown", true, NOW + 1).unwrap();
+    let goal = app.jobs[&work.id].goal_id.clone();
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "budget-archive-operation-001".into()),
+    ]);
+    engine::mutate(
+        &mut app,
+        &format!("/goals/{goal}/archive"),
+        &fields,
+        NOW + 1,
+        "archive",
+    )
+    .unwrap();
+    let token = OwnerToken::issue(
+        "synthetic paid caller",
+        None,
+        true,
+        NOW,
+        "0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    .unwrap();
+    app.owner_tokens
+        .insert(token.info.id.clone(), token.clone());
+    let mut app = restart(&app);
+    let saved = app.clone();
     let fields = BTreeMap::from([
         ("csrf".into(), app.csrf.clone()),
         (
             "operation_id".into(),
-            "budget-resolution-operation-001".into(),
+            "budget-false-reconciliation-001".into(),
         ),
         ("spend_id".into(), work.lease.clone()),
         ("cost_micros".into(), "0".into()),
-        ("reference".into(), "synthetic-provider-bill-001".into()),
         ("verified".into(), "provider_billing".into()),
+        ("reference".into(), "made-up-receipt-001".into()),
     ]);
-    engine::mutate(&mut app, "/spend/reconcile", &fields, NOW + 2, "reconcile").unwrap();
-    let saved = restart(&app);
-    engine::mutate(
-        &mut app,
-        "/spend/reconcile",
-        &fields,
-        NOW + 3,
-        "different-seed",
-    )
-    .unwrap();
-    assert_eq!(app, saved);
-    assert_eq!(app.spend[0].cost_micros, None);
-    assert_eq!(budget::committed(&app, NOW + 3).unwrap(), 0);
+    for actor in [MutationActor::Browser, MutationActor::Token(&token.info)] {
+        assert!(
+            engine::mutate_as(
+                &mut app,
+                "/spend/reconcile",
+                &fields,
+                NOW + 2,
+                "attestation",
+                actor
+            )
+            .is_err()
+        );
+        assert_eq!(app, saved);
+    }
+    assert_eq!(budget::committed(&app, NOW + DAY_MS * 40).unwrap(), MAX);
     let archive = persistence::Archive::new(app.clone(), vec![], NOW + 3);
     assert_eq!(archive.format, "scry-rust-durable-sqlite-budget-v1");
-    let mut wrong = fields;
-    wrong.insert("cost_micros".into(), "1".into());
-    assert_eq!(
-        engine::mutate(
-            &mut app,
-            "/spend/reconcile",
-            &wrong,
-            NOW + 4,
-            "different-seed"
-        )
-        .unwrap_err()
-        .status,
-        409
+    let bytes = archive.encode().unwrap();
+    let restored = persistence::Archive::decode(&bytes, &persistence::sha256(&bytes)).unwrap();
+    assert_eq!(restored.app, app);
+}
+
+#[test]
+fn exact_quote_fits_the_retained_daily_cap_at_claim_and_before_send() {
+    for extra in [0, 1] {
+        let mut app = fresh();
+        for n in 1..=2 {
+            capture(&mut app, n);
+            let work = claim(&mut app, n, 10_000_000).unwrap();
+            let cost = (DAILY_ALLOWANCE - 2 * MAX) / 2 + if n == 1 { extra } else { 0 };
+            let _ = engine::finish_work(
+                &mut app,
+                &work,
+                "{}".into(),
+                budget::MODEL.into(),
+                Some(cost),
+                NOW + 1,
+            );
+        }
+        capture(&mut app, 3);
+        let third = claim(&mut app, 3, 10_000_000).unwrap();
+        engine::fail_work(&mut app, &third, "Synthetic unknown", true, NOW + 1).unwrap();
+        capture(&mut app, 4);
+        let fourth = claim(&mut app, 4, 10_000_000);
+        assert_eq!(fourth.is_some(), extra == 0);
+        if let Some(work) = fourth {
+            assert_eq!(app.spent(NOW), DAILY_ALLOWANCE);
+            budget::authorize_send(&app, &work, &policy(10_000_000), NOW).unwrap();
+        }
+        assert!(app.spent(NOW) <= DAILY_ALLOWANCE);
+        restart(&app);
+    }
+    // A pre-deployment legacy request can settle above its old fixed reserve
+    // while a new bounded claim waits. Recheck the daily limit before sending.
+    let mut app = fresh();
+    capture(&mut app, 10);
+    let legacy = engine::claim_work(&mut app, NOW, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", &config())
+        .unwrap()
+        .unwrap();
+    capture(&mut app, 11);
+    let pending = claim(&mut app, 11, 10_000_000).unwrap();
+    let _ = engine::finish_work(
+        &mut app,
+        &legacy,
+        "{}".into(),
+        budget::MODEL.into(),
+        Some(3_000_000),
+        NOW + 1,
     );
-    assert_eq!(app, saved);
+    restart(&app);
+    assert!(budget::authorize_send(&app, &pending, &policy(10_000_000), NOW + 1).is_err());
 }
 
 #[test]

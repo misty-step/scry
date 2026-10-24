@@ -39,8 +39,14 @@ test('US-019.5 / #375: real SQLite claim, monthly hold, restart and default-off 
   bindings={...bindings,SCRY_AI_BUDGET_POLICY:policy};runtime={...runtime,...await runtime.rebind(bindings)};
   const first=await capture('Synthetic bounded text request');await sending;
   const second=await capture('Concurrent intent must not borrow the held balance');
+  const inFlight=await snapshot(),hold=structuredClone(inFlight.spend);
+  const archivePath=`/goals/${first}/archive`,page=await(await request(`/goals/${first}`)).text();
+  const archiveForm=[...page.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===archivePath);assert.ok(archiveForm);
+  assert.equal((await request(archivePath,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields(archiveForm[2]))})).status,303);
+  const noRelease=async()=>{const app=await snapshot();return request('/api/v1/spend/reconcile',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({csrf:app.csrf,operation_id:'budget-no-release-001',spend_id:hold[0].id,cost_micros:0,reference:'made-up-receipt-001',verified:'provider_billing'})});};
+  assert.equal((await noRelease()).status,404);assert.deepEqual((await snapshot()).spend,hold,'Archiving while fetch is delayed cannot release the dispatched obligation.');
   release();release=null;
-  const settled=await wait(app=>app.goals[first].status==='failed'&&app.goals[second].status==='failed');
+  const settled=await wait(app=>app.jobs[app.goals[first].job_id].raw_response!==null&&app.goals[second].status==='failed');
   assert.equal(sends,1);assert.equal(settled.spend.length,1);assert.equal(settled.spend[0].cost_micros,null);assert.equal(settled.spend[0].reserved_micros,maximum);
   assert.match(settled.jobs[settled.goals[second].job_id].error,/monthly AI budget/);
   const held=structuredClone(settled.spend);
@@ -53,12 +59,7 @@ test('US-019.5 / #375: real SQLite claim, monthly hold, restart and default-off 
   assert.deepEqual((await snapshot()).spend,held);
   const later=await capture('Unresolved old-month charge still holds the new-month budget');
   await wait(app=>app.goals[later].status==='failed');assert.equal(sends,1);assert.deepEqual((await snapshot()).spend,held);
-  const app=await snapshot(),payload={csrf:app.csrf,operation_id:'budget-runtime-resolution-001',spend_id:held[0].id,cost_micros:123,reference:'synthetic-provider-billing-001',verified:'provider_billing'};
-  const resolve=body=>request('/api/v1/spend/reconcile',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  assert.equal((await resolve(payload)).status,200);const resolved=(await snapshot()).spend;
-  assert.equal(resolved[0].cost_micros,null);assert.equal(resolved[0].reconciliation.cost_micros,123);
-  assert.equal((await resolve(payload)).status,200);assert.deepEqual((await snapshot()).spend,resolved);
-  assert.equal((await resolve({...payload,cost_micros:0})).status,409);assert.deepEqual((await snapshot()).spend,resolved);
-  console.log(JSON.stringify({budget_boundary:'PASS',provider_sends:sends,reservation_micros:maximum,restart:true,old_month_hold:true,reconciliation:'immutable'}));
+  assert.equal((await noRelease()).status,404);assert.deepEqual((await snapshot()).spend,held);
+  console.log(JSON.stringify({budget_boundary:'PASS',provider_sends:sends,reservation_micros:maximum,restart:true,old_month_hold:true,caller_release:'refused',archived_in_flight_hold:true}));
  } finally {release?.();await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}
 });

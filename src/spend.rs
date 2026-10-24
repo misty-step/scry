@@ -59,8 +59,6 @@ pub struct SpendEntry {
     pub cost_micros: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote: Option<crate::budget::Quote>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reconciliation: Option<crate::budget::Reconciliation>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub enforcement_breach: bool,
     pub unknown_held_micros: u64,
@@ -116,18 +114,17 @@ pub fn report(app: &App, by: SpendBy) -> AppResult<SpendReport> {
             day: date.format("%Y-%m-%d").to_string(),
             purpose: attribution(&spend.purpose),
             model: attribution(&spend.model),
-            status: if crate::budget::effective_cost(spend).is_some() {
+            status: if spend.cost_micros.is_some() {
                 "known"
             } else {
                 "unknown"
             }
             .into(),
             reserved_micros: spend.reserved_micros,
-            cost_micros: crate::budget::effective_cost(spend),
+            cost_micros: spend.cost_micros,
             quote: spend.quote.clone(),
-            reconciliation: spend.reconciliation.clone(),
             enforcement_breach: crate::budget::breach(spend),
-            unknown_held_micros: if crate::budget::effective_cost(spend).is_none() {
+            unknown_held_micros: if spend.cost_micros.is_none() {
                 spend.reserved_micros
             } else {
                 0

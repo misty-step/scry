@@ -37,7 +37,6 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/tokens" => Some("/tokens/create"),
         "/api/v1/tokens/revoke" => Some("/tokens/revoke"),
         "/api/v1/settings" => Some("/settings"),
-        "/api/v1/spend/reconcile" => Some("/spend/reconcile"),
         "/api/v1/create" => Some("/create"),
         _ => None,
     }

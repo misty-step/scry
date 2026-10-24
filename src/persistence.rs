@@ -305,7 +305,7 @@ fn archive_format(app: &App) -> &'static str {
     if app
         .spend
         .iter()
-        .any(|s| s.quote.is_some() || s.reconciliation.is_some() || s.settled_ms.is_some())
+        .any(|s| s.quote.is_some() || s.settled_ms.is_some())
     {
         "scry-rust-durable-sqlite-budget-v1"
     } else if !app.practice.is_empty()
@@ -687,7 +687,6 @@ mod tests {
         job.critic_json = Some(escaped.clone());
         app.spend.push(Spend {
             quote: None,
-            reconciliation: None,
             settled_ms: None,
             id: "synthetic-paid-lease".into(),
             work_id: "fixture-job".into(),

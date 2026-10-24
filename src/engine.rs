@@ -105,9 +105,7 @@ pub fn mutate_as(
         crate::study::check_replay(app, &receipt.result)?;
         return Ok(receipt.result.clone());
     }
-    if ((path == "/tokens/create" && field(fields, "paid") == "true") || path == "/spend/reconcile")
-        && !actor.paid()
-    {
+    if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
         return Err(owner_token::paid_refusal());
     }
     let mut next = app.clone();
@@ -335,20 +333,6 @@ fn apply(
         return Ok(result(format!("/goals/{goal_id}"), Some(goal_id)));
     }
     match path {
-        "/spend/reconcile" => {
-            if field(fields, "verified") != "provider_billing" {
-                return Err(AppError::new(
-                    422,
-                    "Verify the authoritative provider billing record before reconciliation.",
-                ));
-            }
-            let cost = field(fields, "cost_micros")
-                .parse::<u64>()
-                .map_err(|_| AppError::new(422, "Use an integer USD microdollar amount."))?;
-            let spend_id = field(fields, "spend_id");
-            crate::budget::reconcile(app, spend_id, cost, field(fields, "reference"), now)?;
-            Ok(result("/settings", Some(spend_id.into())))
-        }
         "/tokens/create" => {
             let expiry = field(fields, "expires_ms");
             let expires_ms = if expiry.is_empty() {
@@ -1280,7 +1264,6 @@ fn reserve(
     }
     app.spend.push(Spend {
         quote: None,
-        reconciliation: None,
         settled_ms: None,
         id: lease.into(),
         work_id: work_id.into(),
