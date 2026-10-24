@@ -713,7 +713,18 @@ export async function materialAuthoringWalk(browser, capture) {
         zoom: [100, 200], status: 'pass', evidence: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom, not physical-phone or provider-quality acceptance.'};
       results.push(result);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
-      const shot = async suffix => result.evidence.push(await capture(page, `${name}-${suffix}.png`));
+      const shot = async suffix => {
+        // Capture the whole page from its top. A negative-top fixed skip link
+        // otherwise appears inside Chromium's beyond-viewport screenshot even
+        // though it is outside the actual scrolled viewport.
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.evaluate(() => new Promise(done => requestAnimationFrame(() => done())));
+        const skipLink = await page.locator('.skip-link').evaluate(node => ({
+          focused: node === document.activeElement, bottom: node.getBoundingClientRect().bottom,
+        }));
+        assert.ok(skipLink.focused || skipLink.bottom <= 0, 'An unfocused skip link cannot obscure the viewport.');
+        result.evidence.push(await capture(page, `${name}-${suffix}.png`));
+      };
       const activate = async locator => {
         if (width < 1280) {await locator.tap(); return;}
         for (let i = 0; i < 80; i++) {
@@ -906,5 +917,77 @@ export async function materialAuthoringWalk(browser, capture) {
       } finally {await context.close(); await runtime.close();}
     }
   } finally {await harness.close(); await rm(temp, {recursive: true, force: true});}
+  results.push(...await materialProtectionWalk(browser, capture));
+  return results;
+}
+
+async function materialProtectionWalk(browser, capture) {
+  const {phoneFixture, phoneText} = await import('./phone-stream.mjs');
+  const results = [];
+  for (const js of [false, true]) {
+    const name = `material-protected-history-${js ? 'enhanced' : 'no-js'}`;
+    const result = {name, javascript: js, status: 'pass', evidence: [],
+      scope: 'Real existing exact-Study setup and CLI-created Materials; no fixture injection or automatic assistance.'};
+    results.push(result);
+    let fixture, context, page;
+    const shot = async (target, suffix) => {
+      await target.evaluate(() => window.scrollTo(0, 0));
+      result.evidence.push(await capture(target, `${name}-${suffix}.png`));
+    };
+    try {
+      fixture = await phoneFixture();
+      // Explicitly answer the existing synthetic Prompt before authoring.
+      // This setup is separate from the authoring-only no-practice assertions.
+      await fixture.cli(['answer', fixture.prompt.id, '--text-stdin'], phoneText);
+      const created = await fixture.cli(['concept', 'create', '--name', 'Protected reference concept',
+        '--title', 'PRIVATE_MATERIAL_OLD_TITLE', '--stdin'], TEXT);
+      const conceptId = created.result.entity_id;
+      const shown = await fixture.cli(['concept', 'show', conceptId]);
+      const supplied = shown.materials.find(value => value.kind === 'supplied').material;
+      await fixture.cli(['material', 'revise', supplied.id, '--expected-revision-id', supplied.current_revision_id,
+        '--title', 'PRIVATE_MATERIAL_NEW_TITLE', '--stdin'], REVISED);
+      context = await browser.newContext({viewport: {width: 390, height: 844}, colorScheme: 'dark',
+        javaScriptEnabled: js, isMobile: true, hasTouch: true});
+      page = await context.newPage(); page.setDefaultTimeout(12000);
+      const oldPath = `/materials/${supplied.id}/revisions/${supplied.current_revision_id}`;
+      await page.goto(fixture.origin + oldPath);
+      await page.getByRole('heading', {name: 'PRIVATE_MATERIAL_OLD_TITLE', exact: true}).waitFor();
+      const staleRead = await context.newPage(), editor = await context.newPage();
+      await staleRead.goto(fixture.origin + oldPath);
+      await staleRead.getByRole('heading', {name: 'PRIVATE_MATERIAL_OLD_TITLE', exact: true}).waitFor();
+      await editor.goto(fixture.origin + `/materials/${supplied.id}/edit`);
+      const form = editor.locator('form[action="/materials/revise"]');
+      await form.waitFor();
+      assert.equal(await form.locator('[name=title]').inputValue(), 'PRIVATE_MATERIAL_NEW_TITLE');
+      await form.locator('[name=text]').fill('UNSENT_PRIVATE_MATERIAL_DRAFT');
+      const next = await fixture.cli(['next', '--after', fixture.prompt.id, '--card', fixture.cid]);
+      assert.equal(next.practice.prompt.assisted, false);
+      const protectedRows = await fixture.rows();
+      assert.equal(protectedRows.meta.practice.current.attempt_id, null);
+      const gate = async target => {
+        await target.locator('[data-state="material-gate"]').waitFor();
+        const document = await target.content();
+        for (const privateText of [TEXT, REVISED, 'PRIVATE_MATERIAL_OLD_TITLE', 'PRIVATE_MATERIAL_NEW_TITLE', 'UNSENT_PRIVATE_MATERIAL_DRAFT']) {
+          assert.ok(!document.includes(escapeHtml(privateText)), 'Protected Material pages do not keep reference or draft payloads in the DOM.');
+        }
+        assert.equal(await target.locator('textarea, [data-material-revision-id], form[action="/review/help"]').count(), 0);
+        assert.deepEqual(await fixture.rows(), protectedRows, 'A Material gate cannot record assistance, exposure, a revision or a receipt.');
+      };
+      await page.locator('footer').getByRole('link', {name: 'Text practice', exact: true}).tap();
+      await page.locator('[data-state="exact-prompt"]').waitFor();
+      await page.goBack(); await gate(page); await shot(page, 'old-revision-back-gate');
+      await page.goForward(); await page.locator('[data-state="exact-prompt"]').waitFor();
+      assert.equal(await page.locator('[data-state="exact-prompt"]').getAttribute('data-prompt-id'), next.practice.prompt.id);
+      await page.goBack(); await gate(page);
+      await staleRead.reload(); await gate(staleRead);
+      await form.getByRole('button', {name: 'Save', exact: true}).tap();
+      await gate(editor); await shot(editor, 'stale-editor-protected');
+      await editor.reload(); await gate(editor);
+      assert.equal(fixture.egress, 0);
+    } catch (error) {
+      result.status = 'fail'; result.reason = error.message; console.error(`${name}: ${error.message}`);
+      if (page) try {await shot(page, 'failure');} catch { /* Preserve original failure. */ }
+    } finally {await context?.close(); await fixture?.close();}
+  }
   return results;
 }

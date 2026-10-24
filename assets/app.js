@@ -101,6 +101,18 @@
       if (pending !== request) return;
       if (response.status === 401 || response.status === 403) { conceal(); return; }
       if (response.status === 409) {
+        if (request.form?.classList.contains('material-form')) {
+          const doc = await safePage(response);
+          if (pending !== request) return;
+          if (doc?.querySelector('[data-state="material-gate"],[data-state="gate"]')) {
+            // A newer protected Prompt is not an editable revision conflict.
+            // Replace stale reference fields with the server's assistance gate.
+            pending = null;
+            unlock(request);
+            install(doc, response, false);
+            return;
+          }
+        }
         pending = null;
         unlock(request);
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
