@@ -229,7 +229,7 @@ try {
       assert.equal((await state()).restored_paused,true);
       assert.equal(recoverySends,0);
     }
-    const resumed=await resume();assert.equal(resumed.status,303);assert.equal(resumed.headers.get('Location'),'/');
+    const resumed=await resume();assert.equal(resumed.status,303);assert.equal(resumed.headers.get('Location'),'/notebook');
     assert.equal((await resume()).status,303,'Lost-response replay reconciles the same operation.');
     assert.equal((await resume({...resumeFields,operation_id:'second-distinct-resume-operation'})).status,409);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}})).status,409);
@@ -259,9 +259,9 @@ try {
     const peek=async()=>{const ns=await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);const bucket=await fixture.mf.getR2Bucket('SCRY_BACKUPS');const list=await bucket.list({prefix:`snapshots/${space}/`});const object=await bucket.get(list.objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key);return(await object.json()).app;};
     try {
       let html=await(await req('/create')).text();assert.equal((await post('/__fixture',fields(html,'/create'))).status,303);let state=await peek();let occurrence=state.occurrence;const cold=occurrence.concept_id,goal=state.concepts[cold].goal_id,oldExposure=state.concepts[cold].exposure_ms;assert.equal(occurrence.assisted,false);
-      if(occurrence.presentation.kind==='choice'){assert.equal((await post(`/questions/${occurrence.question_id}/archive`,{csrf:state.csrf,operation_id:'synthetic-archive-choice-only'})).status,303);await req('/');state=await peek();occurrence=state.occurrence;}assert.equal(occurrence.presentation.kind,'recall');assert.equal(occurrence.assisted,false);
+      if(occurrence.presentation.kind==='choice'){assert.equal((await post(`/questions/${occurrence.question_id}/archive`,{csrf:state.csrf,operation_id:'synthetic-archive-choice-only'})).status,303);await req('/notebook');state=await peek();occurrence=state.occurrence;}assert.equal(occurrence.presentation.kind,'recall');assert.equal(occurrence.assisted,false);
       const other=Object.keys(state.concepts).find(id=>id!==cold);assert.equal((await req(`/concepts/${other}`)).status,200);state=await peek();assert.ok(state.concepts[other].exposure_ms>oldExposure);assert.equal(state.concepts[cold].exposure_ms,oldExposure);
-      const active=await fixture.rebind({...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-exposure-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'});current=active.worker;currentOrigin=origin;html=await(await req('/')).text();assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),answer:'A deliberately non-exact remembered response'})).status,303);await Promise.race([sending,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Synthetic meaning check did not start.')),5000))]);
+      const active=await fixture.rebind({...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-exposure-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'});current=active.worker;currentOrigin=origin;html=await(await req('/notebook')).text();assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),answer:'A deliberately non-exact remembered response'})).status,303);await Promise.race([sending,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Synthetic meaning check did not start.')),5000))]);
       for(const path of [`/concepts/${cold}`,`/goals/${goal}`,`/questions/${occurrence.question_id}/edit`,'/export']){const gated=await(await req(path)).text();assert.match(gated,/data-state="checking-reference"/);assert.doesNotMatch(gated,/A cache stores a response/);assert.doesNotMatch(gated,/action="\/review\/help"/,'Submitted checking answers cannot be retroactively marked helped.');}
       state=await peek();assert.equal(state.occurrence.phase,'checking');assert.equal(state.occurrence.assisted,false);assert.equal(state.concepts[cold].exposure_ms,oldExposure);release();const deadline=Date.now()+5000;do{state=await peek();if(state.occurrence.phase==='result')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(state.events.length,1);assert.equal(state.events[0].assisted,false);const event=structuredClone(state.events[0]);await req(`/concepts/${cold}`);state=await peek();assert.ok(state.concepts[cold].exposure_ms>oldExposure);assert.deepEqual(state.events[0],event,'Later reference reads must preserve original answer evidence.');
     } finally {release?.();await fixture.mf.dispose();}
@@ -309,10 +309,10 @@ try {
     try {
       const goal=await capture('Learn conditional caching');
       let prepared=await wait(app=>app.goals[goal].status==='ready');assert.equal(Object.keys(prepared.app.questions).length,1);assert.equal(prepared.app.spend.length,2);assert.equal(prepared.app.spend.every(s=>s.status==='known'&&s.cost_micros>0),true);assert.ok(prepared.app.jobs[prepared.app.goals[goal].job_id].critic_json);
-      let html=await(await req('/')).text();assert.match(html,/data-state="intro"/);const intro=formFields(html,'/review/intro');assert.equal((await submit('/review/intro',{...intro,known:'false'})).status,303);
-      html=await(await req('/')).text();const answer=formFields(html,'/review/answer');const answered={...answer,answer:'304 Not Modified'};assert.equal((await submit('/review/answer',answered)).status,303);
+      let html=await(await req('/notebook')).text();assert.match(html,/data-state="intro"/);const intro=formFields(html,'/review/intro');assert.equal((await submit('/review/intro',{...intro,known:'false'})).status,303);
+      html=await(await req('/notebook')).text();const answer=formFields(html,'/review/answer');const answered={...answer,answer:'304 Not Modified'};assert.equal((await submit('/review/answer',answered)).status,303);
       let graded=await wait(app=>app.occurrence?.phase==='result');assert.equal(graded.app.events.length,1);assert.equal(graded.app.events[0].result.authority,'jev');const recorded=graded.app.events[0];const sends=transmissions;
-      assert.equal((await submit('/review/answer',answered)).status,303);await req('/');graded=await readState();assert.equal(graded.app.events.length,1);assert.deepEqual(graded.app.events[0],recorded);assert.equal(transmissions,sends);
+      assert.equal((await submit('/review/answer',answered)).status,303);await req('/notebook');graded=await readState();assert.equal(graded.app.events.length,1);assert.deepEqual(graded.app.events[0],recorded);assert.equal(transmissions,sends);
       const fresh=formFields(await(await req('/create')).text(),'/create');const upload=new FormData();for(const[key,value]of Object.entries({...fresh,intent:'Understand the image'}))upload.set(key,value);upload.set('photo',new Blob([photoBytes],{type:'image/png'}),'image.png');const encoded=new globalThis.Request(origin,{method:'POST',body:upload});const photoResponse=await req('/create',{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});assert.equal(photoResponse.status,303);const photoGoal=photoResponse.headers.get('Location').split('/').at(-1);const transcribed=await wait(app=>app.goals[photoGoal].status==='ready');assert.match(transcribed.app.goals[photoGoal].transcript,/ETag/);assert.equal(transcribed.photos.length,1);
       mode='delayed';const started=new Promise(resolve=>{blockedStarted=resolve;});const staleGoal=await capture('A deliberately stale paid preparation');await started;const archivePath=`/goals/${staleGoal}/archive`;const archiveFields=formFields(await(await req(`/goals/${staleGoal}`)).text(),archivePath);assert.equal((await submit(archivePath,archiveFields)).status,303);releaseBlocked();const stale=await wait(app=>app.jobs[app.goals[staleGoal].job_id].raw_response!==null);const staleJob=stale.app.jobs[stale.app.goals[staleGoal].job_id];assert.equal(staleJob.status,'superseded');assert.ok(staleJob.raw_response);const charge=stale.app.spend.find(s=>s.work_id===staleJob.id);assert.equal(charge.status,'known');assert.ok(charge.cost_micros>0);assert.equal(stale.app.goals[staleGoal].concept_ids.length,0);
       for(const failure of ['network-error','oversize','http-error','malformed','http-success-shaped']){mode=failure;const failedGoal=await capture(`Controlled ${failure} request`);const failed=await wait(app=>['unknown','failed'].includes(app.goals[failedGoal].status));const failedJob=failed.app.jobs[failed.app.goals[failedGoal].job_id];const paid=failed.app.spend.find(s=>s.work_id===failedJob.id);assert.equal(paid.status,failure==='http-success-shaped'?'known':'unknown');assert.equal(paid.cost_micros,failure==='http-success-shaped'?456:null);assert.equal(paid.reserved_micros,500000);assert.equal(failed.app.goals[failedGoal].concept_ids.length,0,'Rejected or malformed transport must not publish any content.');if(['http-error','malformed','http-success-shaped'].includes(failure)){assert.ok(paid.raw_response);assert.equal(paid.response_hash,createHash('sha256').update(paid.raw_response).digest('hex'));assert.equal(paid.response_bytes,Buffer.byteLength(paid.raw_response));assert.equal(paid.response_outcome,failure==='malformed'?'received':'rejected');}const count=transmissions;await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,count,'Unknown paid requests must never resend automatically.');}
@@ -364,7 +364,7 @@ try {
       for(const path of ['/','/create','/export'])assert.equal((await req(path)).status,200);
       for(const token of ['',jwt(),jwt({sub:'',common_name:'other.access'}),jwt({sub:owner,common_name:client}),jwt({sub:'',common_name:client,aud:['wrong']}),jwt({sub:'',common_name:client,iss:'https://wrong.invalid'}),jwt({sub:'',common_name:client,exp:epoch-1}),jwt({sub:'',common_name:client},{},generateKeyPairSync('rsa',{modulusLength:2048}).privateKey)])assert.equal((await req('/',token)).status,401);
       assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-owner','Cf-Access-Authenticated-User-Email':'owner@example.invalid'}})).status,401);
-      const empty=await(await req('/')).text();
+      const empty=await(await req('/notebook')).text();
       assert.match(empty,/Explore an authored demo/);
       const fixtureCsrf=/name="csrf" value="([^"]+)"/.exec(empty)[1];
       assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,303);
@@ -591,7 +591,7 @@ try {
       };
       const notebook = app => JSON.stringify([app.csrf, Object.keys(app.goals).sort()]);
       try {
-        const home = await req('/');
+        const home = await req('/notebook');
         assert.equal(home.status, 200);
         assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
         const qaSaved = await post('/create', {...fields(await (await req('/create')).text()), intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
@@ -639,7 +639,7 @@ try {
         assert.equal(notebook(await exported(identity)), notebook(qaArchive), 'The QA identity does not depend on the service-token binding.');
         assert.equal((await req('/',service)).status,401);
         active = await fixture.rebind({...bindings, SPACE_NAME:'scry-qa'});
-        assert.equal((await req('/')).status,401,'A colliding owner space must never admit the QA identity as owner.');
+        assert.equal((await req('/notebook')).status,401,'A colliding owner space must never admit the QA identity as owner.');
         assert.equal((await req('/',jwt())).status,200);
       } finally {await fixture.mf.dispose();}
     });
@@ -780,7 +780,7 @@ try {
           JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
           JEV_URL:'https://openrouter.ai/api/alpha/decisions'});
         currentOrigin = origin;
-        html = await (await req('/')).text();
+        html = await (await req('/notebook')).text();
         assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),
           answer:'A deliberately non-exact QA remembered response'})).status,303);
         const deadline = Date.now()+5000;
@@ -795,7 +795,7 @@ try {
         assert.match(Object.values(app.assessments)[0].error,/Meaning checking is not configured/);
         assert.deepEqual(app.spend,[]);
         assert.equal(app.events.length,0);
-        html = await (await req('/')).text();
+        html = await (await req('/notebook')).text();
         assert.equal((await post('/review/self',{...fields(html,'/review/self'),correct:'true'})).status,303);
         app = await snapshot('private-qa');
         assert.equal(app.events.length,1);

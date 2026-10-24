@@ -8,7 +8,7 @@ export async function recoveryWalk(browser,capture){
   const runtime=await createSyntheticRuntime({name:`recovery-${results.length}`});
   const context=await browser.newContext({viewport:{width:390,height:844},...options});const page=await context.newPage();page.setDefaultTimeout(12000);
   const result={name,status:'pass',evidence:[]};results.push(result);
-  try{await page.goto(runtime.url+'/');if(seed){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}await run({page,context,url:runtime.url,runtime});}
+  try{await page.goto(runtime.url+'/notebook');if(seed){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}await run({page,context,url:runtime.url,runtime});}
   catch(error){result.status='fail';result.reason=error.message;console.error(`Browser recovery ${name}: ${error.message}`);}
   finally{result.evidence.push(await capture(page,`recovery-${results.length}-${result.status}.png`));await context.close();await runtime.mf.dispose();}
  };
@@ -26,10 +26,10 @@ export async function recoveryWalk(browser,capture){
   await context.setOffline(true);await page.getByRole('button',{name:'Check my answer'}).click();assert.equal(sends,0);assert.equal(await page.locator('#answer').inputValue(),'max-age');await context.setOffline(false);await page.waitForTimeout(400);assert.equal(sends,0);await page.getByRole('button',{name:'Check my answer'}).click();await page.locator('[data-state="result"]').waitFor();assert.equal(sends,1);assert.equal((await exported(context,url)).app.events.length,2);
  });
  await check('competing tabs reject stale answer',{},async({page,context,url})=>{
-  const other=await context.newPage();await other.goto(url+'/');await other.locator('[data-state="question"]').waitFor();await answer(page);await other.locator('.choice').nth(1).click();await other.getByText('This changed in another tab. Your draft is still here.',{exact:true}).waitFor();assert.equal(await other.locator('[data-state="result"]').count(),0);assert.equal((await exported(context,url)).app.events.length,1);await other.close();
+  const other=await context.newPage();await other.goto(url+'/notebook');await other.locator('[data-state="question"]').waitFor();await answer(page);await other.locator('.choice').nth(1).click();await other.getByText('This changed in another tab. Your draft is still here.',{exact:true}).waitFor();assert.equal(await other.locator('[data-state="result"]').count(),0);assert.equal((await exported(context,url)).app.events.length,1);await other.close();
  });
  await check('notes require durable assistance',{},async({page,context,url})=>{
-  await page.locator('details.overflow>summary').click();await page.getByRole('link',{name:'Look it up in my notes'}).click();await page.locator('[data-state="gate"]').waitFor();assert.equal(await page.locator('.reading').count(),0);await page.getByRole('button',{name:'Look it up',exact:true}).click();await page.locator('[data-state="concept"]').waitFor();await page.goto(url+'/');await answer(page);const state=await exported(context,url);assert.equal(state.app.events[0].assisted,true);assert.equal(state.app.events[0].result.rating,0);assert.equal(await page.getByRole('button',{name:'Count as a miss'}).count(),0);
+  await page.locator('details.overflow>summary').click();await page.getByRole('link',{name:'Look it up in my notes'}).click();await page.locator('[data-state="gate"]').waitFor();assert.equal(await page.locator('.reading').count(),0);await page.getByRole('button',{name:'Look it up',exact:true}).click();await page.locator('[data-state="concept"]').waitFor();await page.goto(url+'/notebook');await answer(page);const state=await exported(context,url);assert.equal(state.app.events[0].assisted,true);assert.equal(state.app.events[0].result.rating,0);assert.equal(await page.getByRole('button',{name:'Count as a miss'}).count(),0);
  });
  await check('private access loss conceals current page',{},async({page,context})=>{
   await context.route('**/review/answer',route=>route.fulfill({status:401,contentType:'text/plain',body:'Owner authorization expired.'}));await page.locator('.choice').first().click();await page.locator('body.private-hidden').waitFor({state:'attached'});assert.equal(await page.locator('#main').count(),0);assert.equal(await page.locator('.question').count(),0);
@@ -43,7 +43,7 @@ export async function recoveryWalk(browser,capture){
   await page.getByLabel('What do you want to learn?',{exact:true}).fill(intent);
   await page.getByRole('button',{name:'Make it understandable'}).tap();
   await page.getByText('Preparation stopped.',{exact:true}).waitFor();const saved=page.url();
-  await page.goto(url+'/');await page.locator('[data-state="preparation-stopped"]').waitFor();
+  await page.goto(url+'/notebook');await page.locator('[data-state="preparation-stopped"]').waitFor();
   assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Your request needs attention.');
   assert.doesNotMatch(await page.locator('main').innerText(),/taking shape|while Scry prepares/);
   const before=await exported(context,url);assert.equal(before.app.spend.length,0);
@@ -59,7 +59,7 @@ export async function recoveryWalk(browser,capture){
   let active=await runtime.rebind({SCRY_ENV:'restore',CANONICAL_ORIGIN:url,SPACE_NAME:'restored-meaning-check',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken});
   const restored=await active.worker.fetch(url+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':createHash('sha256').update(archive).digest('hex')},body:archive});assert.equal(restored.status,200);
   await runtime.rebind({SCRY_ENV:'development',CANONICAL_ORIGIN:url,SPACE_NAME:'restored-meaning-check',INTERNAL_KEY:internalKey});
-  await page.goto(url+'/');await page.getByRole('button',{name:'Next question'}).tap();await page.locator('#answer').fill('I remember the cache freshness header');await page.getByRole('button',{name:'Check my answer'}).tap();
+  await page.goto(url+'/notebook');await page.getByRole('button',{name:'Next question'}).tap();await page.locator('#answer').fill('I remember the cache freshness header');await page.getByRole('button',{name:'Check my answer'}).tap();
   await page.getByRole('heading',{name:'Your meaning check is paused.',exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'Check again',exact:true}).count(),0);await capture(page,'paused-meaning-check.png');
   await page.getByRole('link',{name:'Resume preparation',exact:false}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();
   await page.waitForTimeout(1300);await page.reload();await page.getByRole('heading',{name:'You know your answer best.',exact:true}).waitFor();await capture(page,'resumed-meaning-self-check.png');

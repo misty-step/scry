@@ -20,8 +20,9 @@ straight into the next due Unit. Behavior authority:
 
 ## How to get to it (user POV)
 
-- Phone or desktop: open `/` once a Study is active. The understanding notebook
-  moves to `/notebook`, linked quietly as "Understanding practice".
+- Phone or desktop: open `/`. Before a Study, Library offers search or supplied
+  text and Learn; afterwards the current Prompt or held result opens directly.
+  The understanding notebook remains at `/notebook`, linked quietly as Understanding.
 - Terminal: `scry learn VERSION`, then `scry next` and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).
 
@@ -42,6 +43,9 @@ Preconditions:
 - **Interactive fixture.** `node qa/phone-serve.mjs PORT` prints a loopback URL
   whose second Unit is already in Free recall. Drive it with Playwright or the
   T3 preview; start another fixture for Show me before answering.
+- **First study.** `qa/phone-library.mjs` walks empty Library → supplied Version
+  → Learn → held result, with CLI readback, dedupe, protected navigation, native
+  forms and interruption checks under US-018.6.
 - **Story walk.** `qa/walk --stories "US-016 US-017 US-018"` covers every
   criterion. The CLI-only US-016/017 walks need no browser. US-018 retains light
   and dark at 320/390/1280px, 200% text, keyboard and no-JS forms. It checks

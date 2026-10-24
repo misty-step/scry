@@ -63,7 +63,7 @@ async function stop() {
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
 try {
   // Seed through the ordinary CSRF/operation contract, never by assigning state.
-  const first=await worker.fetch(origin+'/');
+  const first=await worker.fetch(origin+'/notebook');
   if(first.status!==200)throw Error('Fresh Worker GET failed: '+first.status);
   const html=await first.text();
   const form=html.match(/<form[^>]+action="\/__fixture"[^>]*>([\s\S]*?)<\/form>/);

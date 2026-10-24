@@ -381,7 +381,7 @@ for (const mode of ['learner-correct', 'learner-missed']) {
       assert.deepEqual(restored.events, app.events);
       assert.deepEqual(restored.questions, app.questions);
       assert.deepEqual(restored.occurrence, app.occurrence);
-      assert.match(await (await active.worker.fetch(origin + '/')).text(), /You checked your answer/);
+      assert.match(await (await active.worker.fetch(origin + '/notebook')).text(), /You checked your answer/);
       assert.match(await (await active.worker.fetch(origin + '/history')).text(), /Self-checked/);
       assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');

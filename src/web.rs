@@ -350,6 +350,205 @@ impl View<'_> {
             &format!("{}{body}", hidden("prompt_id", id)),
         )
     }
+    fn library_gate(&self) -> String {
+        let destination = if library_destination(self.path) {
+            self.path
+        } else {
+            "/library"
+        };
+        let action = self.practice_form(
+            "reveal",
+            "library-help",
+            "",
+            &format!(
+                "{}<button class=\"button primary\">Open Library with help</button>",
+                hidden("return_to", destination)
+            ),
+        );
+        format!(
+            "<section class=\"empty-stage gate\" data-state=\"library-gate\"><h1>Open your Library?</h1><p class=\"lede\">It contains the words you are recalling. Opening it records help for your current Prompt, without changing its schedule.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"/\">Keep trying</a></div></section>"
+        )
+    }
+    fn library(&self) -> String {
+        if self.app.practice.protected() {
+            return self.library_gate();
+        }
+        let q = self.query.get("q").map(String::as_str).unwrap_or("");
+        let found = self.app.library.search(q);
+        let mut out = format!(
+            "<section class=\"library-page\" data-state=\"library\"><h1>Your Library</h1><form method=\"get\" action=\"/library\" class=\"library-search\"><label for=\"library-query\">Find a text</label><div class=\"search-controls\"><input id=\"library-query\" name=\"q\" type=\"search\" value=\"{}\" placeholder=\"Title, alias or opening words\"><button class=\"button quiet\">Search</button></div></form>",
+            escape(q)
+        );
+        if found.empty {
+            out.push_str(
+                if q.trim().is_empty() && self.app.library.works.is_empty() {
+                    "<p class=\"lede\">Start with a text you want to know by heart.</p>"
+                } else {
+                    "<p class=\"lede\" role=\"status\">Nothing matches.</p>"
+                },
+            );
+        } else {
+            out.push_str("<div class=\"library-results\">");
+            for item in found.matches {
+                let _ = write!(
+                    out,
+                    "<section class=\"library-work\"><h2>{}</h2>",
+                    escape(&item.work.title)
+                );
+                if !item.work.aliases.is_empty() {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint\">Also known as {}</p>",
+                        escape(&item.work.aliases.join(" · "))
+                    );
+                }
+                out.push_str("<ul class=\"library-versions\">");
+                for v in item.versions {
+                    let _ = write!(
+                        out,
+                        "<li><a class=\"version-link\" href=\"/library/versions/{}\">{}</a><p class=\"fineprint\">{}</p>{}</li>",
+                        escape(&v.id),
+                        escape(version_name(v)),
+                        version_metadata(v),
+                        self.study_status(&v.id)
+                    );
+                }
+                out.push_str("</ul></section>");
+            }
+            out.push_str("</div>");
+        }
+        out.push_str("<a class=\"button primary\" href=\"/library/add\">Add a text</a></section>");
+        out
+    }
+    fn library_add(&self) -> String {
+        if self.app.practice.protected() {
+            return self.library_gate();
+        }
+        let value = |key| escape(self.query.get(key).map(String::as_str).unwrap_or(""));
+        let details = if self.query.get("name").is_some_and(|v| !v.is_empty())
+            || self.query.get("source").is_some_and(|v| !v.is_empty())
+        {
+            " open"
+        } else {
+            ""
+        };
+        let body = format!(
+            "<label for=\"text-title\">Title</label><input id=\"text-title\" name=\"title\" value=\"{}\" maxlength=\"240\" required><label for=\"supplied-text\">Text</label><textarea id=\"supplied-text\" name=\"text\" rows=\"10\" maxlength=\"262144\" required aria-describedby=\"text-note\">{}</textarea><p id=\"text-note\" class=\"fineprint\">Your exact wording, kept privately. Up to 256 KiB. Lines and clauses become practice Units; no AI call is needed.</p><details class=\"library-details\"{details}><summary>Edition and source</summary><label for=\"edition\">Edition</label><input id=\"edition\" name=\"name\" value=\"{}\" maxlength=\"240\"><label for=\"text-source\">Source</label><input id=\"text-source\" name=\"source\" value=\"{}\" maxlength=\"2048\"><p class=\"fineprint\">Optional. A source is recorded as supplied, not fetched or verified.</p></details><button class=\"button primary\">Save text</button>",
+            value("title"),
+            value("text"),
+            value("name"),
+            value("source")
+        );
+        format!(
+            "<section class=\"library-page\" data-state=\"library-add\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>Add a text</h1>{}</section>",
+            self.form(
+                "/library/version/add",
+                "supplied-text",
+                "library-add-form",
+                "",
+                &body
+            )
+        )
+    }
+    fn study_status(&self, version_id: &str) -> String {
+        self.app
+            .practice
+            .studies
+            .values()
+            .find(|s| s.version_id == version_id)
+            .map_or_else(String::new, |s| {
+                let status = match s.status {
+                    crate::study::Status::Active => "Learning",
+                    crate::study::Status::Paused => "Paused",
+                    crate::study::Status::Dropped => "Dropped · history kept",
+                };
+                format!("<p class=\"fineprint\">{status}</p>")
+            })
+    }
+    fn library_version(&self, id: &str) -> String {
+        if self.app.practice.protected() {
+            return self.library_gate();
+        }
+        let Ok(item) = self.app.library.show_version(id) else {
+            return self.not_found();
+        };
+        let v = item.version;
+        let mut out = format!(
+            "<section class=\"library-page\" data-state=\"library-version\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>{}</h1><p class=\"lede\">{}</p><p class=\"fineprint\">{}</p>",
+            escape(&item.work.title),
+            escape(version_name(v)),
+            version_metadata(v)
+        );
+        if !v.sources.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint\">Source: {}</p>",
+                escape(&v.sources.join(" · "))
+            );
+        }
+        let rights = match v.rights {
+            crate::library::Rights::PrivateOnly => "Private only",
+            crate::library::Rights::Licensed => "Licensed",
+            crate::library::Rights::PublicDomain => "Public domain",
+        };
+        let _ = write!(out, "<p class=\"fineprint\">Supplied text · {rights}</p>");
+        if let Some(study) = self
+            .app
+            .practice
+            .studies
+            .values()
+            .find(|s| s.version_id == id)
+        {
+            out.push_str(&self.study_status(id));
+            out.push_str("<div class=\"actions\"><a class=\"button primary\" href=\"/\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new Units; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">");
+            let (action, label) = if study.status == crate::study::Status::Active {
+                ("pause", "Pause")
+            } else {
+                ("resume", "Resume")
+            };
+            out.push_str(&self.form(
+                &format!("/practice/{action}"),
+                action,
+                "",
+                "",
+                &format!(
+                    "{}<button class=\"button quiet\">{label}</button>",
+                    hidden("study_id", &study.id)
+                ),
+            ));
+            if study.status != crate::study::Status::Dropped {
+                out.push_str(&self.form(
+                    "/practice/drop",
+                    "drop",
+                    "",
+                    "",
+                    &format!(
+                        "{}<button class=\"text-button\">Drop</button>",
+                        hidden("study_id", &study.id)
+                    ),
+                ));
+            }
+            out.push_str("</div></details>");
+        } else if v.kind == crate::library::Kind::Text {
+            let body = format!(
+                "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
+                hidden("version_id", id)
+            );
+            out.push_str(&self.form("/practice/learn", "learn", "library-learn", "", &body));
+        } else {
+            out.push_str("<p class=\"fineprint\">Practice for this kind is not available yet.</p>");
+        }
+        out.push_str("<div class=\"library-text\" aria-label=\"Saved text\">");
+        for section in &v.sections {
+            let _ = write!(out, "<section><h2>{}</h2>", escape(&section.heading));
+            for unit in &section.units {
+                let _ = write!(out, "<p class=\"reading\">{}</p>", escape(&unit.text));
+            }
+            out.push_str("</section>");
+        }
+        out.push_str("</div></section>");
+        out
+    }
     fn exact_stream(&self) -> String {
         use crate::study::{Cue, Status};
         let Some(p) = &self.app.practice.current else {
@@ -360,7 +559,7 @@ impl View<'_> {
                 |at| format!("Next due at {} (UTC).", date(at)),
             );
             return format!(
-                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"text-link\" href=\"/notebook\">Understanding practice →</a></section>",
+                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"button primary\" href=\"/library\">Open Library</a></section>",
                 escape(&message)
             );
         };
@@ -1732,6 +1931,36 @@ fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
     assert!(!changelog().contains("style=\""));
 }
 
+/// Only known, same-origin Library pages can follow the assistance POST.
+pub fn library_destination(path: &str) -> bool {
+    matches!(path, "/library" | "/library/add")
+        || path.strip_prefix("/library/versions/").is_some_and(|id| {
+            id.len() == 32
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+}
+fn version_name(v: &crate::library::Version) -> &str {
+    if v.name.trim().is_empty() {
+        "Supplied text"
+    } else {
+        &v.name
+    }
+}
+fn version_metadata(v: &crate::library::Version) -> String {
+    let kind = match v.kind {
+        crate::library::Kind::Text => "Text",
+        crate::library::Kind::OrderedList => "Ordered list",
+        crate::library::Kind::KeyedMapping => "Keyed mapping",
+    };
+    format!(
+        "{kind} · {} Sections · {} Units",
+        v.sections.len(),
+        v.sections.iter().map(|s| s.units.len()).sum::<usize>()
+    )
+}
+
 fn exact_stream_active(app: &App) -> bool {
     app.practice.current.is_some()
         || app
@@ -1741,16 +1970,14 @@ fn exact_stream_active(app: &App) -> bool {
             .any(|s| s.status != crate::study::Status::Dropped)
 }
 
-fn legacy_home(app: &App) -> &'static str {
-    if exact_stream_active(app) {
-        "/notebook"
-    } else {
-        "/"
-    }
+fn legacy_home(_app: &App) -> &'static str {
+    "/notebook"
 }
 
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
-    if path.starts_with("/practice/") {
+    if path == "/library/version/add" {
+        redirect.strip_prefix("/api/v1").unwrap_or("/library")
+    } else if path.starts_with("/practice/") {
         "/"
     } else if redirect == "/"
         && (path.starts_with("/review/")
@@ -1766,7 +1993,9 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
 }
 
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
-    if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
+    if path == "/library/version/add" {
+        "/library/add"
+    } else if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
         path
     } else {
         mutation_redirect(app, path, "/")
@@ -1788,7 +2017,12 @@ pub fn render(
     };
     let content = match path {
         "/" if exact_stream_active(app) => view.exact_stream(),
-        "/" | "/notebook" => view.study(),
+        "/" | "/library" => view.library(),
+        "/library/add" => view.library_add(),
+        "/notebook" => format!(
+            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/create\">Create</a><a href=\"/map\">Map</a></nav>{}",
+            view.study()
+        ),
         "/create" | "/add" => view.create(),
         "/map" => view.map(),
         "/history" => view.history(),
@@ -1813,6 +2047,7 @@ pub fn render(
         _ => {
             let segments: Vec<_> = path.trim_matches('/').split('/').collect();
             match segments.as_slice() {
+                ["library", "versions", id] => view.library_version(id),
                 ["goals", id] => view.goal(id),
                 ["concepts", id] => view.concept(id),
                 ["questions", id, "edit"] => view.edit(id),
@@ -1821,6 +2056,9 @@ pub fn render(
         }
     };
     let title = match path {
+        "/library/add" => "Add a text",
+        "/" if !exact_stream_active(app) => "Your Library",
+        p if p.starts_with("/library") => "Your Library",
         "/create" | "/add" => "Create",
         "/map" => "Your map",
         "/history" => "History",
@@ -1876,15 +2114,10 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/create\" {}>Create</a><a href=\"/map\" {}>Map</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><span class=\"footer-motto\">A little understanding, kept.</span><div><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, return to practice\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/library\" {}>Library</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/notebook\">Understanding</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
-        if matches!(path, "/create" | "/add") {
-            "aria-current=\"page\""
-        } else {
-            ""
-        },
-        if path == "/map" {
+        if path.starts_with("/library") {
             "aria-current=\"page\""
         } else {
             ""

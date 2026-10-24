@@ -55,9 +55,9 @@ export async function createWalk(browser,capture){
   // Native HTTPS requests/redirects traverse Rust ingress with a synthetic
   // owner assertion. The self-signed loopback certificate is test-only.
   await page.goto(origin+'/settings');await page.getByRole('button',{name:'Resume preparation',exact:true}).waitFor();result.evidence.push(await capture(page,'paused-settings.png'));
-  await page.getByRole('link',{name:'Create',exact:true}).tap();await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');await page.getByRole('button',{name:'Make it understandable'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
+  await page.getByRole('link',{name:'Understanding',exact:true}).tap();await page.getByRole('link',{name:'Create',exact:true}).tap();await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');await page.getByRole('button',{name:'Make it understandable'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();
   await page.getByRole('heading',{name:'Preparation is paused.',exact:true}).waitFor();assert.equal(preparations,0);assert.equal(await page.getByRole('button',{name:'Try preparation again'}).count(),0);result.evidence.push(await capture(page,'paused-saved-request.png'));
-  await page.goto(origin+'/');await page.locator('[data-state="preparation-paused"]').waitFor();assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-stream.png'));
+  await page.goto(origin+'/notebook');await page.locator('[data-state="preparation-paused"]').waitFor();assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-stream.png'));
   await page.locator('.empty-stage').getByRole('link',{name:'Resume preparation'}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();await page.locator('[data-state="preparing"]').waitFor();assert.equal((await readState()).restored_paused,false);
   await page.goto(goalUrl);
   await page.locator('.preparation-panel').waitFor();
