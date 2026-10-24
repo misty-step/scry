@@ -9,6 +9,183 @@ use scry::{
 };
 use serde_json::{Value, json};
 const NOW: i64 = 1_800_000_000_000;
+
+#[test]
+fn phone_recitation_choices_are_answer_free_and_use_fenced_shared_operations() {
+    let mut o = Owner::new();
+    let first = "The lantern guards our quiet path.\n";
+    let second = "A patient garden grows beside the water.\n";
+    let version = o
+        .call(
+            "/api/v1/library/versions",
+            json!({"data":{
+                "title":"An authored journey <&>", "name":"Two \"Sections\"", "kind":"text",
+                "text":format!("{first}{second}"), "sections":[
+                    {"heading":"Lantern", "units":[first]},
+                    {"heading":"Garden", "units":[second]}
+                ]
+            }}),
+        )
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sid = o.learn(&version, "steady");
+    o.fade_to_free(first);
+    o.answer(first);
+    let render = |app: &App| {
+        scry::web::render(
+            app,
+            "/",
+            &std::collections::BTreeMap::from([(
+                "__nonce".into(),
+                "synthetic-recitation-render".into(),
+            )]),
+            NOW,
+            None,
+        )
+    };
+    let page = render(&o.app);
+    assert!(
+        page.contains("<summary>Recite a text</summary>"),
+        "The phone needs an answer-free native Recitation choice."
+    );
+    let chooser = page
+        .split("class=\"exact-recitation\"")
+        .nth(1)
+        .unwrap()
+        .split("</details>")
+        .next()
+        .unwrap();
+    for metadata in [
+        "An authored journey &lt;&amp;&gt;",
+        "Two &quot;Sections&quot;",
+        "Lantern",
+        "Garden",
+    ] {
+        assert!(chooser.contains(metadata));
+    }
+    for answer in [
+        first.trim(),
+        second.trim(),
+        "/library/versions/",
+        "name=\"pace\"",
+    ] {
+        assert!(
+            !chooser.contains(answer),
+            "Chooser leaked or bypassed practice: {answer}"
+        );
+    }
+    assert_eq!(chooser.matches("action=\"/practice/next\"").count(), 3);
+    let operations = chooser
+        .split("name=\"operation_id\" value=\"")
+        .skip(1)
+        .map(|field| field.split('"').next().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        operations.len(),
+        3,
+        "Each distinct scope has its own nonce-bound operation."
+    );
+    for field in [
+        "csrf",
+        "revision",
+        "operation_id",
+        "after",
+        "study_id",
+        "recite",
+        "section_id",
+    ] {
+        assert!(chooser.contains(&format!("name=\"{field}\"")));
+    }
+    let held = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let before = o.app.clone();
+    let refusal = o
+        .call(
+            "/api/v1/next",
+            json!({"after":held,"study_id":sid,"recite":"whole"}),
+        )
+        .unwrap_err();
+    assert_eq!(refusal.status, 409);
+    assert_eq!(
+        o.app, before,
+        "Incomplete scope retains the held result and every receipt."
+    );
+
+    o.fade_to_free(second);
+    assert!(
+        !render(&o.app).contains("Recite a text"),
+        "Unanswered Prompts cannot be abandoned through Recitation."
+    );
+    let before = o.app.clone();
+    let prompt = before.practice.current.as_ref().unwrap().prompt.id.clone();
+    assert_eq!(
+        o.call(
+            "/api/v1/next",
+            json!({"after":prompt,"study_id":sid,"recite":"whole"})
+        )
+        .unwrap_err()
+        .status,
+        409
+    );
+    assert_eq!(o.app, before);
+    o.answer(second);
+    let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let payload = json!({"operation_id":"phone-recitation-whole-operation","after":after,"study_id":sid,"recite":"whole"});
+    let whole = o.operation("/api/v1/next", payload.clone()).unwrap();
+    let saved = o.app.clone();
+    assert_eq!(o.operation("/api/v1/next", payload).unwrap(), whole);
+    assert_eq!(o.app, saved, "Repeated choice reuses the identical Prompt.");
+    let page = render(&o.app);
+    assert!(page.contains("data-state=\"exact-prompt\""));
+    assert!(!page.contains(first.trim()) && !page.contains(second.trim()));
+    assert!(!page.contains("Recite a text"));
+    let attempt = o.answer(&format!("{first}A patient orchard grows beside the water."));
+    assert_eq!(attempt["attempt"]["grade"]["units"][0]["verdict"], "Good");
+    assert_eq!(attempt["attempt"]["grade"]["units"][1]["verdict"], "Again");
+    assert!(
+        attempt["attempt"]["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["extra_practice"] == true && e["scheduled"] == false)
+    );
+    let result = render(&o.app);
+    assert!(result.contains("data-feedback-kind=\"wrong\" data-unit-index=\"1\""));
+    assert!(result.contains("data-unit-verdict=\"Good\" data-unit-index=\"0\""));
+    assert!(result.contains("data-unit-verdict=\"Again\" data-unit-index=\"1\""));
+    assert!(result.contains("<summary>Recite a text</summary>"));
+    o.next(None);
+    assert!(o.app.practice.current.is_none());
+    let caught_up = render(&o.app);
+    assert!(caught_up.contains("data-state=\"exact-caught-up\""));
+    assert!(caught_up.contains("<summary>Recite a text</summary>"));
+    let chooser = caught_up
+        .split("class=\"exact-recitation\"")
+        .nth(1)
+        .unwrap();
+    assert!(!chooser.contains("name=\"after\""));
+    let section = o.app.library.versions[&version].sections[1].id.clone();
+    let recitation = o
+        .call(
+            "/api/v1/next",
+            json!({"study_id":sid,"recite":"section","section_id":section}),
+        )
+        .unwrap();
+    assert_eq!(recitation["prompt"]["cue"], "Garden");
+    assert_eq!(
+        recitation["prompt"]["unit_ids"].as_array().unwrap().len(),
+        1
+    );
+    let page = render(&o.app);
+    assert!(!page.contains(first.trim()) && !page.contains(second.trim()));
+    engine::validate_app(&o.app).unwrap();
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap(),
+        o.app
+    );
+}
+
 struct Owner {
     app: App,
     op: u64,

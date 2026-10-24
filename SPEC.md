@@ -987,6 +987,8 @@ Criteria:
 5. WHEN an automatic Verdict is shown, THE SYSTEM SHALL offer the US-007 corrections without auto-advancing.
 6. WHEN I have no current exact-recall Study, THE SYSTEM SHALL offer Library entry on my phone: search by title, alias or opening words with an honest miss, inspect matching Work/Version metadata, add supplied text with optional edition/source, and Learn a chosen Version. Supplied text SHALL retain US-015 segmentation, deduplication and private rights by default; repeated Learn SHALL return the same Study (US-016.1). Current Prompts and held results SHALL remain directly reachable. Library content SHALL remain behind the deliberate assistance boundary while a protected Prompt is unanswered, and the supplied-text path SHALL call no provider.
 
+7. WHEN I have a held result or no unanswered Prompt, THE SYSTEM SHALL let me deliberately choose a whole Version or Section Recitation from Work/Version identity and Section headings without first showing its text. This choice SHALL preserve the existing introduction, Pace and capacity refusals and the held result on refusal; it SHALL NOT discard an unanswered Prompt. Recitation SHALL use the same per-Unit Verdicts, assistance, schedules and Corrections as US-016 and US-017.
+
 No-gos: no web-only exact-recall action, no
 microphone integration, no swipe grading.
 

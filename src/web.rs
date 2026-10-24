@@ -559,8 +559,9 @@ impl View<'_> {
                 |at| format!("Next due at {} (UTC).", date(at)),
             );
             return format!(
-                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"button primary\" href=\"/library\">Open Library</a></section>",
-                escape(&message)
+                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p>{}<a class=\"button primary\" href=\"/library\">Open Library</a></section>",
+                escape(&message),
+                self.exact_recitation_choices(None)
             );
         };
         let prompt = &p.prompt;
@@ -579,6 +580,7 @@ impl View<'_> {
         );
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
+            out.push_str(&self.exact_recitation_choices(Some(&prompt.id)));
         } else {
             let _ = write!(
                 out,
@@ -590,7 +592,15 @@ impl View<'_> {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
             if p.revealed {
-                out.push_str("<section class=\"exact-disclosure\"><h2>The Unit</h2><p class=\"fineprint\">Assistance is recorded.</p>");
+                let label = if matches!(prompt.scope, crate::study::Scope::Unit { .. }) {
+                    "The Unit"
+                } else {
+                    "The text"
+                };
+                let _ = write!(
+                    out,
+                    "<section class=\"exact-disclosure\"><h2>{label}</h2><p class=\"fineprint\">Assistance is recorded.</p>"
+                );
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
             }
@@ -619,6 +629,74 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
+    fn exact_recitation_choices(&self, after: Option<&str>) -> String {
+        if self
+            .app
+            .practice
+            .current
+            .as_ref()
+            .is_some_and(|p| p.attempt_id.is_none())
+        {
+            return String::new();
+        }
+        let mut choices = String::new();
+        for study in self
+            .app
+            .practice
+            .studies
+            .values()
+            .filter(|s| s.status != crate::study::Status::Dropped)
+        {
+            let version = &self.app.library.versions[&study.version_id];
+            let work = &self.app.library.works[&version.work_id];
+            let _ = write!(
+                choices,
+                "<section data-recitation-study=\"{}\" aria-labelledby=\"recite-{}\"><h2 id=\"recite-{}\">{}</h2><p class=\"fineprint\">{}</p>",
+                escape(&study.id),
+                escape(&study.id),
+                escape(&study.id),
+                escape(&work.title),
+                escape(version_name(version))
+            );
+            let fence = format!(
+                "{}{}",
+                hidden("study_id", &study.id),
+                after.map_or_else(String::new, |id| hidden("after", id))
+            );
+            choices.push_str(&self.form(
+                "/practice/next",
+                &format!("recite-whole-{}", study.id),
+                "recitation-form",
+                "",
+                &format!(
+                    "{fence}{}<button class=\"button secondary\">Whole text</button>",
+                    hidden("recite", "whole")
+                ),
+            ));
+            for section in &version.sections {
+                choices.push_str(&self.form(
+                    "/practice/next",
+                    &format!("recite-section-{}-{}", study.id, section.id),
+                    "recitation-form",
+                    "",
+                    &format!(
+                        "{fence}{}{}<button class=\"text-button\">Section: {}</button>",
+                        hidden("recite", "section"),
+                        hidden("section_id", &section.id),
+                        escape(&section.heading)
+                    ),
+                ));
+            }
+            choices.push_str("</section>");
+        }
+        if choices.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<details class=\"exact-recitation\"><summary>Recite a text</summary>{choices}</details>"
+            )
+        }
+    }
     fn exact_prompt_context(prompt: &crate::study::Prompt) -> String {
         use crate::study::Cue;
         let mut out = String::new();
@@ -636,6 +714,9 @@ impl View<'_> {
                 Cue::FirstLetter => "First letter",
                 Cue::PreviousLine => "Cue",
                 Cue::SectionHeading => "Section",
+                Cue::WholeTitle if matches!(prompt.scope, crate::study::Scope::Whole) => {
+                    "Whole text"
+                }
                 Cue::WholeTitle => "Title",
             };
             let _ = write!(
@@ -709,9 +790,29 @@ impl View<'_> {
         for d in &a.grade.diff {
             out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
         }
+        out.push_str("</ol>");
+        if a.grade.units.len() > 1 {
+            out.push_str(
+                "<h2>By Unit</h2><ol class=\"exact-unit-verdicts\" aria-label=\"Unit Verdicts\">",
+            );
+            for unit in &a.grade.units {
+                let verdict = if unit.verdict == Verdict::Good {
+                    "Good"
+                } else {
+                    "Again"
+                };
+                let _ = write!(
+                    out,
+                    "<li data-unit-verdict=\"{verdict}\" data-unit-index=\"{}\">Unit {} · {verdict}</li>",
+                    unit.unit_index,
+                    unit.unit_index + 1
+                );
+            }
+            out.push_str("</ol>");
+        }
         let _ = write!(
             out,
-            "</ol><p class=\"fineprint exact-authority\">{} · {}</p></details>",
+            "<p class=\"fineprint exact-authority\">{} · {}</p></details>",
             escape(&a.grade.authority.name),
             escape(&a.grade.authority.grader_version)
         );

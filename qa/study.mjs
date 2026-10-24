@@ -175,14 +175,131 @@ export async function studyJourney(){
    assert.equal(egress,0);assert.deepEqual((await ok(['spend','--by','model'])).entries,[]);transcript.push({observation:'Parallel and lost-response answer replay',attempts_added:1,same_result:true,changed_payload:'409/nonzero',stale_prompt:'409/nonzero',original_attempt_unchanged:true});
   }
  ];
- // Recitation edit attribution through a separate active two-Unit Study.
+ // US-017.7 also proves Section/whole Recitation across US-016.4–6 and 10.
  graderCriteria.splice(6,0,async()=>{
-  await stopCurrent();const text='We conceived a patient garden,\na gentle silver orchard.\n';const v=await add('Multi Unit attribution',text,[{heading:'Synthetic orchard',units:['We conceived a patient garden,\n','a gentle silver orchard.\n']}]);const s=(await ok(['learn',v])).practice.study.id;
-  for(const line of ['We conceived a patient garden,','a gentle silver orchard.']){await next(['--study',s]);const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id===current.prompt.unit_ids[0]&&r.state);await prepare(c.id,line);await answer(line);}
-  const shown=await ok(['version','show',v]);await next(['--study',s,'--recite','section','--section',shown.version.sections[0].id]);const a=await answer('We concieved a patient garden a harsh silver orchard.');assert.deepEqual(a.grade.units.map(u=>u.verdict),['Good','Again']);assert.equal(a.effects.length,2);assert.ok(a.grade.diff.some(d=>d.kind==='slip'&&d.unit_index===0));assert.ok(a.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===1));
-  const before=a.effects.map(e=>e.after.schedule);
-  const corrected=await ok(['correct',current.prompt.id,a.id,'--unit',a.effects[1].unit_id,'--verdict','Good']);assert.deepEqual(await attempt(a.id),a);assert.equal(corrected.practice.correction.unit_id,a.effects[1].unit_id);
-  for(let i=0;i<2;i++)assert.deepEqual((await card(a.effects[i].card_id)).state.schedule,before[i],'Same-day Recitation/Correction cannot reschedule either Card.');
+  await stopCurrent();
+  const textLines=['We conceived a patient garden,','a gentle silver orchard.','Copper lanterns shelter quiet gardens,','while amber rivers follow distant mountains.'];
+  const sections=[{heading:'Synthetic orchard',units:textLines.slice(0,2).map(s=>s+'\n')},{heading:'Synthetic river',units:textLines.slice(2).map(s=>s+'\n')}];
+  const v=await add('Multi Section Recitation attribution',textLines.join('\n')+'\n',sections);
+  const shown=(await ok(['version','show',v])).version,units=shown.sections.flatMap(s=>s.units);
+  assert.deepEqual(shown.sections.map(s=>({heading:s.heading,units:s.units.map(u=>u.text)})),sections);
+  assert.equal(units.map(u=>u.text).join(''),shown.text,'Authored Sections reproduce the saved Version exactly.');
+  const s=(await ok(['learn',v])).practice.study.id,recitationCards=[],savedAttempts=[],savedCorrections=[],recitationAt=at;
+  for(const [i,line]of textLines.entries()){
+   await next(['--study',s]);assert.deepEqual(current.prompt.unit_ids,[units[i].id]);
+   const c=await card((await record('meta')).practice.current.targets[0].card_id);
+   assert.equal(c.unit_index,i);recitationCards.push(c.id);
+   await prepare(c.id,line);const a=await answer(line);assert.equal(a.effects[0].scheduled,true);
+  }
+  const cardStates=()=>Promise.all(recitationCards.map(cid=>card(cid)));
+  const schedules=async()=>(await cardStates()).map(c=>c.state.schedule);
+  const initialSchedules=await schedules();
+  const checkPrompt=(scope,indexes)=>{
+   assert.deepEqual(current.prompt.scope,scope);assert.deepEqual(current.prompt.unit_ids,indexes.map(i=>units[i].id));
+   assert.equal(current.prompt.cue_level,scope.kind==='whole'?'whole_title':'section_heading');
+   assert.equal(current.prompt.cue,scope.kind==='whole'?'Multi Section Recitation attribution':shown.sections[1].heading);
+   assert.equal(current.prompt.context,null);assert.equal(current.prompt.assisted,false);
+   for(const word of ['conceived','lanterns','mountains'])assert.ok(!JSON.stringify(current.prompt).includes(word),'A Recitation Prompt contains no expected wording.');
+  };
+  const checkAttribution=(a,indexes,verdicts)=>{
+   assert.deepEqual(a.grade.units,indexes.map((unit_index,i)=>({unit_index,verdict:verdicts[i]})));
+   assert.deepEqual(a.effects.map(e=>({unit_id:e.unit_id,unit_index:e.unit_index,verdict:e.verdict})),indexes.map((unit_index,i)=>({unit_id:units[unit_index].id,unit_index,verdict:verdicts[i]})));
+   assert.ok(a.grade.diff.every(d=>indexes.includes(d.unit_index)));assert.equal(a.acting_token,tokenId);
+   assert.equal(a.grade.authority.name,'exact-v2');savedAttempts.push(a);
+  };
+  const checkHeld=async a=>{
+   const held=(await ok(['next'])).practice;
+   assert.deepEqual(held.attempt,a);assert.deepEqual(held.prompt,a.prompt);
+   assert.equal((await record('meta')).practice.current.attempt_id,a.id);
+  };
+  const checkExtra=async a=>{
+   assert.equal(a.assisted,false);assert.ok(a.effects.every(e=>!e.assisted&&e.extra_practice&&!e.scheduled));
+   assert.deepEqual(await schedules(),initialSchedules,'Same-day Recitation cannot reschedule any Unit.');
+  };
+
+  // Start with the second Section so attribution must retain absolute Unit indexes.
+  await next(['--study',s,'--recite','section','--section',shown.sections[1].id]);
+  checkPrompt({kind:'section',section_id:shown.sections[1].id},[2,3]);
+  const section=await answer('Copper lantrens shelter quiet gardens while amber rivers follow distant valleys.');
+  checkAttribution(section,[2,3],['Good','Again']);await checkExtra(section);await checkHeld(section);
+  assert.ok(section.grade.diff.some(d=>d.kind==='slip'&&d.unit_index===2&&d.expected.text==='lanterns'&&d.typed.text==='lantrens'));
+  assert.ok(section.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===3&&d.expected.text==='mountains'&&d.typed.text==='valleys'));
+  const immutableAttempt=await attemptRows(section.id);
+  for(const target of [[],['--unit',units[0].id]]){
+   const before=await rows();assert.notEqual((await cli(['correct',current.prompt.id,section.id,...target,'--verdict','Good'])).code,0);
+   assert.deepEqual(await rows(),before,'A multi-Unit Correction must name a Unit in this Attempt.');
+  }
+  for(const [index,verdict]of [[3,'Good'],[2,'Again']]){
+   const before=await cardStates(),operation=randomUUID();
+   const args=['correct',current.prompt.id,section.id,'--unit',units[index].id,'--verdict',verdict,'--operation-id',operation];
+   const corrected=await ok(args),c=corrected.practice.correction;savedCorrections.push(c);
+   assert.equal(c.attempt_id,section.id);assert.equal(c.unit_id,units[index].id);assert.equal(c.verdict,verdict);
+   assert.equal(c.authority,'owner');assert.equal(c.acting_token,tokenId);
+   assert.deepEqual(c.before,before[index].state);assert.deepEqual(c.after,(await card(recitationCards[index])).state);
+   for(const [i,prior]of before.entries())if(i!==index)assert.deepEqual(await card(recitationCards[i]),prior,'A per-Unit Correction leaves every other Card untouched.');
+   assert.deepEqual(await attempt(section.id),section);assert.deepEqual(await attemptRows(section.id),immutableAttempt);
+   const correctedCards=await cardStates(),correctionRows=(await rows()).filter(r=>r.key.startsWith('practice_corrections/'));
+   const replay=await ok(args);assert.equal(replay.replayed,true);assert.deepEqual(replay.practice,corrected.practice);
+   const response=await req('/api/v1/correct',{operation_id:operation,prompt_id:current.prompt.id,attempt_id:section.id,unit_id:units[index].id,verdict});
+   assert.equal(response.status,200);const apiReplay=await response.json();assert.equal(apiReplay.replayed,true);assert.deepEqual(apiReplay.practice,corrected.practice);
+   assert.deepEqual(await cardStates(),correctedCards);assert.deepEqual(await attemptRows(section.id),immutableAttempt);
+   assert.deepEqual((await rows()).filter(r=>r.key.startsWith('practice_corrections/')),correctionRows,'CLI/API replay cannot append or rewrite a Correction.');
+   const beforeRefusal=await rows();
+   assert.notEqual((await cli(['correct',current.prompt.id,section.id,'--unit',units[index].id,'--verdict',verdict])).code,0);
+   assert.deepEqual(await rows(),beforeRefusal,'A second Correction for the same Unit leaves every row unchanged.');
+   assert.deepEqual(await schedules(),initialSchedules,'Same-day Correction cannot reschedule any Unit.');
+  }
+  await checkHeld(section);
+  const immutableCorrections=(await rows()).filter(r=>savedCorrections.some(c=>r.key==='practice_corrections/'+c.id));
+
+  await next(['--study',s,'--recite','whole']);checkPrompt({kind:'whole'},[0,1,2,3]);
+  const whole=await answer('We concieved a patient garden a harsh silver orchard Copper lanterns shelter gardens while amber rivers follow distant mountains extra.');
+  checkAttribution(whole,[0,1,2,3],['Good','Again','Again','Again']);await checkExtra(whole);await checkHeld(whole);
+  for(const [kind,unit_index]of [['slip',0],['wrong',1],['missing',2],['extra',3]])assert.ok(whole.grade.diff.some(d=>d.kind===kind&&d.unit_index===unit_index),`${kind} remains attributed to Unit ${unit_index+1}.`);
+
+  // A next-day disclosure cannot consume the day's unaided scheduling allowance.
+  await clock(recitationAt+DAY);
+  await next(['--study',s,'--recite','section','--section',shown.sections[1].id]);checkPrompt({kind:'section',section_id:shown.sections[1].id},[2,3]);
+  const protectedRows=await rows();
+  for(const command of [['history'],['export'],['version','show',v]]){assert.notEqual((await cli(command)).code,0);assert.deepEqual(await rows(),protectedRows);}
+  assert.equal((await req('/api/v1/history')).status,409);assert.deepEqual(await rows(),protectedRows);
+  const revealed=(await ok(['reveal',current.prompt.id])).practice;
+  assert.equal(revealed.assisted,true);assert.deepEqual(revealed.expected,units.slice(2).map(u=>({unit_id:u.id,text:u.text})));
+  assert.equal((await record('meta')).practice.current.revealed,true,'Assistance is durable before expected wording is returned.');
+  const disclosure=await attempt(revealed.disclosure_attempt_id);
+  checkAttribution(disclosure,[2,3],['Again','Again']);assert.equal(disclosure.disclosure,true);assert.equal(disclosure.assisted,true);assert.equal(disclosure.revealed,true);
+  assert.ok(disclosure.effects.every(e=>e.assisted&&!e.scheduled&&!e.extra_practice));
+  for(const e of disclosure.effects)assert.deepEqual(e.after,e.before);
+  assert.deepEqual(await schedules(),initialSchedules);
+  const assisted=await answer(textLines.slice(2).join(' '));checkAttribution(assisted,[2,3],['Good','Good']);
+  assert.equal(assisted.assisted,true);assert.equal(assisted.revealed,true);assert.ok(assisted.effects.every(e=>e.assisted&&!e.scheduled&&!e.extra_practice));
+  assert.deepEqual(await schedules(),initialSchedules,'Next-day assisted Recitation leaves every schedule unchanged.');await checkHeld(assisted);
+
+  await next(['--study',s,'--recite','whole']);checkPrompt({kind:'whole'},[0,1,2,3]);
+  const nextDay=await answer(textLines.join(' '));checkAttribution(nextDay,[0,1,2,3],['Good','Good','Good','Good']);
+  assert.equal(nextDay.assisted,false);
+  for(const [i,e]of nextDay.effects.entries()){
+   assert.equal(e.assisted,false);assert.equal(e.extra_practice,false);assert.equal(e.scheduled,true);
+   assert.deepEqual(e.before.schedule,initialSchedules[i]);assert.equal(e.after.schedule.reps,initialSchedules[i].reps+1);
+   assert.equal(e.after.schedule.last_review_ms,recitationAt+DAY);assert.deepEqual((await card(e.card_id)).state.schedule,e.after.schedule);
+  }
+  const nextDaySchedules=await schedules();await checkHeld(nextDay);
+  await next(['--study',s,'--recite','whole']);const repeated=await answer(textLines.join(' '));
+  checkAttribution(repeated,[0,1,2,3],['Good','Good','Good','Good']);assert.ok(repeated.effects.every(e=>!e.assisted&&e.extra_practice&&!e.scheduled));
+  assert.deepEqual(await schedules(),nextDaySchedules,'A second next-day Recitation cannot schedule any Unit again.');await checkHeld(repeated);
+
+  const beforeReads=await rows(),response=await req('/api/v1/history');assert.equal(response.status,200);
+  const apiHistory=await response.json(),history=await ok(['history']),full=await ok(['export']);
+  assert.deepEqual(history,apiHistory,'Compiled CLI and API expose the same saved history.');
+  for(const key of ['studies','cards','attempts','corrections'])assert.deepEqual(full.app.practice[key],history[key]);
+  assert.deepEqual(history.versions[v],shown);
+  for(const a of savedAttempts)assert.deepEqual(history.attempts[a.id],a,'Saved per-Unit Verdict, Diff, Authority and effects remain original.');
+  for(const c of savedCorrections)assert.deepEqual(history.corrections[c.id],c,'Each per-Unit Correction remains immutable after further practice.');
+  assert.deepEqual(await attemptRows(section.id),immutableAttempt);
+  assert.deepEqual((await rows()).filter(r=>savedCorrections.some(c=>r.key==='practice_corrections/'+c.id)),immutableCorrections);
+  assert.deepEqual(await rows(),beforeReads);
+  assert.equal(egress,0);assert.deepEqual((await ok(['spend','--by','model'])).entries,[]);
+  transcript.push({observation:'Multi-Section Recitation through compiled CLI, API and persisted History',study_id:s,version_id:v,section_unit_indexes:[2,3],whole_unit_indexes:[0,1,2,3],attempts:savedAttempts.map(a=>({id:a.id,scope:a.prompt.scope,assisted:a.assisted,disclosure:a.disclosure||false,units:a.grade.units,effects:a.effects.map(e=>({unit_id:e.unit_id,scheduled:e.scheduled,extra_practice:e.extra_practice}))})),corrections:savedCorrections,initial_schedules:initialSchedules,next_day_ms:recitationAt+DAY,next_day_schedules:nextDaySchedules,limits:'Authored synthetic runtime proof; phone interaction is verified separately.'});
  });
  return {studyCriteria,graderCriteria,transcript,close:async()=>{await mkdir('target',{recursive:true});await writeFile('target/study-cli-full.json',JSON.stringify(fullTranscript,null,2)+'\n');await runtime.mf.dispose();await rm(temp,{recursive:true});}};
 }

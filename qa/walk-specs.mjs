@@ -92,5 +92,8 @@ export const specs={
    for(const row of c.library){assert.equal(row.status,'pass',row.reason);assert.ok(row.criteria.includes(6),`US-018.6: missing ${row.width}px ${row.scheme} entry observation`);}
    assert.equal(c.libraryRecovery.length,6);
    for(const row of c.libraryRecovery)assert.equal(row.status,'pass',`${row.name}: ${row.reason}`);
+ },async c=>{
+   assert.equal(c.recitation.length,10);
+   for(const row of c.recitation){assert.equal(row.status,'pass',row.reason);assert.ok(row.criteria.includes(7),`US-018.7: missing ${row.width}px ${row.scheme} recitation choice`);assert.deepEqual(row.scopes.map(scope=>scope.scope),['whole','section']);}
  }],
 };
