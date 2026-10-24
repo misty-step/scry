@@ -198,6 +198,10 @@ fn observe_read(app: &mut App, path: &str, timestamp: i64) -> bool {
     let mut changed = false;
     for id in concepts {
         if let Some(concept) = app.concepts.get_mut(&id)
+            // Supplied Materials are readable without inventing legacy learning
+            // observations on an owner-authored Concept. Goal-backed reads keep
+            // their existing exposure and assistance behavior.
+            && concept.origin != Some(ConceptOrigin::OwnerAuthored)
             && concept.exposure_ms != Some(timestamp)
         {
             // This affects future presentations only. The occurrence's saved

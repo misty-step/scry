@@ -116,7 +116,8 @@ fn revived() -> App {
         concept.clone(),
         Concept {
             id: concept.clone(),
-            goal_id: LEGACY_GOAL.into(),
+            goal_id: Some(LEGACY_GOAL.into()),
+            origin: None,
             name: format!("Legacy import — quiz {QUIZ}"),
             summary: "Legacy import: reference assembled mechanically from the original quiz, not new learning evidence.".into(),
             notes: vec![Note {
@@ -332,7 +333,7 @@ fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() 
         app.goals.retain(|id, _| id == LEGACY_GOAL);
         app.jobs.retain(|_, job| job.goal_id == LEGACY_GOAL);
         app.concepts
-            .retain(|_, concept| concept.goal_id == LEGACY_GOAL);
+            .retain(|_, concept| concept.goal_id.as_deref() == Some(LEGACY_GOAL));
         app.questions
             .retain(|_, question| question.goal_id == LEGACY_GOAL);
         for question in app.questions.values_mut() {
@@ -485,7 +486,7 @@ fn answer_and_related_reference_are_absent_before_assistance() {
     concept.name = "PRIVATE_CONCEPT_NAME".into();
     concept.summary = "PRIVATE_CONCEPT_SUMMARY".into();
     concept.notes[0].text = "PRIVATE_NOTE".into();
-    let goal_id = concept.goal_id.clone();
+    let goal_id = concept.goal_id.clone().unwrap();
     let goal = app.goals.get_mut(&goal_id).unwrap();
     goal.title = "PRIVATE_GOAL_TITLE".into();
     goal.intent = "PRIVATE_GOAL_INTENT".into();
@@ -561,7 +562,7 @@ fn pending_check_keeps_reference_private_without_offering_an_invalid_help_mutati
     concept.name = "PENDING_PRIVATE_CONCEPT".into();
     concept.summary = "PENDING_PRIVATE_SUMMARY".into();
     concept.notes[0].text = "PENDING_PRIVATE_NOTE".into();
-    let goal_id = concept.goal_id.clone();
+    let goal_id = concept.goal_id.clone().unwrap();
     let goal = app.goals.get_mut(&goal_id).unwrap();
     goal.title = "PENDING_PRIVATE_GOAL".into();
     goal.intent = "PENDING_PRIVATE_INTENT".into();

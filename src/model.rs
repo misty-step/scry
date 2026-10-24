@@ -11,6 +11,8 @@ pub const RESERVATION: u64 = 500_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct App {
+    #[serde(default, skip_serializing_if = "crate::materials::Materials::is_empty")]
+    pub materials: crate::materials::Materials,
     #[serde(default, skip_serializing_if = "crate::study::Practice::is_empty")]
     pub practice: crate::study::Practice,
     #[serde(default, skip_serializing_if = "crate::library::Library::is_empty")]
@@ -51,6 +53,7 @@ pub struct App {
 impl App {
     pub fn new(csrf: String) -> Self {
         Self {
+            materials: crate::materials::Materials::default(),
             practice: crate::study::Practice::default(),
             library: crate::library::Library::default(),
             study_version_refs: BTreeMap::new(),
@@ -135,9 +138,18 @@ pub struct Note {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ConceptOrigin {
+    #[serde(rename = "owner-authored")]
+    OwnerAuthored,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Concept {
     pub id: String,
-    pub goal_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ConceptOrigin>,
     pub name: String,
     pub summary: String,
     pub notes: Vec<Note>,

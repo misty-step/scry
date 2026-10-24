@@ -70,6 +70,37 @@ Dictated input is text, not an assumed speech engine or automatic recording
 integration; it is graded as typed. A mandatory activity ladder is excluded;
 the exact-recall Ladder is a cue scaffold, not a required activity sequence.
 
+### Concept Material compatibility floor (Phase A)
+
+Phase A of [#124](https://github.com/misty-step/scry/issues/124), tracked in
+[#393](https://github.com/misty-step/scry/issues/393), establishes recovery and
+read compatibility before authoring is enabled. It accepts an explicitly
+owner-authored Concept with no Goal, at least one independently addressable
+Material, and immutable revisions of exact supplied text. It invents no
+preparation, questions, prerequisites, learning observations or provider spend.
+Existing generated Concepts retain their Goal, Note history, prerequisite and
+question validation. Their Note chain is one read-only Material projection,
+not a copied or split collection.
+
+**CM1: compatible retention.** A complete archive or store containing these
+records must retain every Material, revision, acknowledged operation and old
+history across read, fresh-space restore, and the first unrelated ordinary
+write. New-format state, including a retained capability marker alone, must
+not be silently accepted by a reader that would discard it. The retained floor
+artifact must be a functioning compatible writer before Phase B authoring is
+activated. Refusal by an older artifact alone is not rollback, and an older
+snapshot must never overwrite accepted writes.
+
+**CM2: honest read-only floor.** Home and Concept detail can show compatible
+restored Concepts and all supplied Material revisions without inventing a
+legacy Note or exposure. Existing Goal-backed exposure and assistance fences
+remain unchanged, including for a supplied Material attached to a generated
+Concept. This phase exposes no normal authoring API, CLI command or UI form;
+no new source formats, quizzes, graph prediction or paid capability follows.
+Reserved authoring paths refuse before replay even for an exact retained future
+receipt, without any storage write. Ordinary existing-operation replay remains
+unchanged; retained future receipts stay readable and valid.
+
 ### Exact recall first (2026-10-20)
 
 Historical priority decision: navigation priority is amended above on 2026-10-24;
