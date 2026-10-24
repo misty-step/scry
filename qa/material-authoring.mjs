@@ -748,13 +748,22 @@ export async function materialAuthoringWalk(browser, capture) {
       const result = {name, width, scheme, javascript: js, restored_paused: paused, input: width < 1280 ? 'native touch' : 'native keyboard',
         zoom: [100, 200], text_size: [100, 200], status: 'pass', evidence: [], geometry: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom and doubled computed text sizes, not physical-phone or provider-quality acceptance.'};
       results.push(result);
+      console.log(`Starting synthetic browser case: ${name}`);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
       const shot = async suffix => {
         // Capture the whole page from its top. A negative-top fixed skip link
         // otherwise appears inside Chromium's beyond-viewport screenshot even
         // though it is outside the actual scrolled viewport.
         await page.evaluate(() => window.scrollTo(0, 0));
-        await page.evaluate(() => new Promise(done => requestAnimationFrame(() => done())));
+        // Page callbacks may not run with JavaScript disabled. Poll a
+        // synchronous geometry fact from Node, with a hard readiness bound.
+        let atTop = false;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          atTop = await page.evaluate(() => scrollY === 0 && scrollX === 0);
+          if (atTop) break;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.ok(atTop, 'Screenshot scroll position reaches the page top within one second.');
         const skipLink = await page.locator('.skip-link').evaluate(node => ({
           focused: node === document.activeElement, bottom: node.getBoundingClientRect().bottom,
         }));
@@ -976,7 +985,7 @@ export async function materialAuthoringWalk(browser, capture) {
       } catch (error) {
         result.status = 'fail'; result.reason = error.message; console.error(`${name}: ${error.message}`);
         try {await shot('failure');} catch { /* Preserve original failure if the page closed. */ }
-      } finally {await context.close(); await runtime.close();}
+      } finally {await context.close(); await runtime.close(); console.log(`Finished synthetic browser case: ${name}: ${result.status}`);}
     }
   } finally {await harness.close(); await rm(temp, {recursive: true, force: true});}
   results.push(...await materialProtectionWalk(browser, capture));
