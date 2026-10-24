@@ -248,6 +248,7 @@ def gate(args):
     shutil.copytree(source / "target/walk", output / "walk")
     shutil.copyfile(source / "target/materials-runtime.json", output / "materials-runtime.json")
     shutil.copyfile(source / "target/material-authoring-runtime.json", output / "material-authoring-runtime.json")
+    shutil.copytree(source / "target/materials-browser", output / "materials-browser")
     archive_source(source, metadata, output / "source.tar.gz")
     shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
     (output / "source.json").write_bytes(encoded(metadata))

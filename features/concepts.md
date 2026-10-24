@@ -43,13 +43,18 @@ Preconditions:
 - **Compatibility proof.** `tests/materials.rs`, `tests/materials_history.rs` and
   `node --test qa/materials.test.mjs` cover SPEC CM1/CM2: typed synthetic complete
   history, read-only home/detail, compiled CLI, built Worker SQLite/R2, fresh
-  restore, first unrelated write, and checksum-pinned old-reader refusal. This
-  runs against the exact published floor bytes, including absent-authoring probes.
-  It does not certify independently retrieved hosted recovery.
+  restore, first unrelated write, reserved-path refusal before replay, and
+  checksum-pinned old-reader refusal. The runtime suite runs against the exact
+  published floor bytes, including all absent-authoring/replay probes.
+  `qa/materials-browser.mjs` retains native disclosure and Home/detail/reload
+  pixels across phone/desktop light/dark and 100%/200% text in
+  `target/materials-browser/`. It does not certify independently retrieved hosted recovery.
 - **Authoring proof.** `tests/material_authoring.rs`, `tests/material_read_ui.rs`,
   `node --test qa/material-authoring.test.mjs`, and the Material authoring walk
-  inside `qa/walk --all` cover CM3/CM4. The shared domain writes every new record;
-  floor rollback uses the qualified published pin, never a source substitute.
+  inside `qa/walk --all` cover CM3/CM4. Native tests exercise enabled handlers;
+  floor-only route refusal stays in the exact floor runtime suite. The shared
+  domain writes every new record; floor rollback uses the qualified published
+  pin, never a source substitute.
 
 ## Gotchas
 

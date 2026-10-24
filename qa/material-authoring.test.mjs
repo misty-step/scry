@@ -98,7 +98,7 @@ await test('Phase B compiled CLI / built Worker / persisted SQLite / local R2 / 
   const {buildCli} = await import('./owner-api.mjs');
   buildCli();
   const journey = await materialAuthoringJourney();
-  const receipt = {criteria: [], transcript: journey.transcript,
+  const receipt = {proof_subject: 'phase-b-candidate', criteria: [], transcript: journey.transcript,
     limits: ['Local isolated synthetic workerd/SQLite/R2 only.', 'Browser screenshots are recorded by qa/walk, not this runtime suite.',
       'No paid provider, deployed ingress, physical phone, or independent hosted recovery acceptance.']};
   try {

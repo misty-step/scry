@@ -80,6 +80,8 @@ pub fn mutate_as(
     seed: &str,
     actor: MutationActor<'_>,
 ) -> AppResult<MutationResult> {
+    // Phase B deliberately enables the three floor-reserved authoring paths.
+    // Their retained receipt replays still pass the current assistance fence.
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
         || !operation

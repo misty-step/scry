@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {unzipSync} from 'fflate';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
+import {materialBrowserJourney} from './materials-browser.mjs';
 
 const FORMAT = 'scry-rust-durable-sqlite-materials-v1';
 const MARKER = 'material_capability/v1';
@@ -223,6 +224,8 @@ export async function materialJourney({artifact: floorArtifact, cliWriter = fals
         const config = join(temp, `${name}-login.json`);
         const context = {
           space,
+          get origin() {return runtime.url;},
+          artifact: resolve(artifact || process.env.SCRY_WORKER_ARTIFACT || 'build'),
           rows: async () => {
             const tables = await storage.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='records'");
             return tables.length ? storage.exec('SELECT key,value FROM records ORDER BY key') : [];
@@ -416,6 +419,52 @@ export async function materialJourney({artifact: floorArtifact, cliWriter = fals
       },
       async () => {
         const priorRows = await current.rows(), priorBuckets = await buckets(current);
+        for (const path of ['/concepts/create', '/materials/add', '/materials/revise']) {
+          const retained = Object.entries(accepted.app.operations).filter(([, receipt]) => receipt.path === path);
+          assert.equal(retained.length, 1, 'Each reserved path has a retained, typed future-writer receipt.');
+          const [operation, receipt] = retained[0];
+          const matching = {entity_id: receipt.result.entity_id, operation_id: operation, synthetic_fixture: 'future-writer'};
+          assert.equal(hash(JSON.stringify([path, matching])), receipt.payload_hash,
+            'The refusal probe really matches the acknowledged payload, rather than failing its hash check.');
+          for (const [kind, payload] of [
+            ['matching retained payload', matching],
+            ['changed retained payload', {...matching, synthetic_fixture: 'changed-future-writer'}],
+            ['fresh operation', {...matching, operation_id: randomUUID()}],
+          ]) {
+            for (const ingress of ['native', 'api']) {
+              const response = ingress === 'native'
+                ? await current.form(path, {...payload, csrf: accepted.app.csrf})
+                : await current.request(`/api/v1${path}`, payload);
+              assert.equal(response.status, 404, `${ingress} ${path}: ${kind} must refuse before generic receipt replay.`);
+              await response.text();
+              assert.deepEqual(await current.rows(), priorRows, 'Reserved authoring refusal cannot change any SQLite row.');
+              assert.deepEqual(await buckets(current), priorBuckets, 'Reserved authoring refusal cannot change any R2 object.');
+            }
+          }
+        }
+        // Ordinary operations keep their existing replay semantics. The
+        // runtime advances CAS metadata on replay, but duplicates no receipt.
+        const payload = {operation_id: 'materials-first-settings-write', pace: 'light'};
+        const expected = clone(accepted.app);
+        const replay = await current.request('/api/v1/settings', payload);
+        assert.equal(replay.status, 200, await replay.clone().text());
+        const replayed = await replay.json();
+        assert.equal(replayed.replayed, true);
+        assert.deepEqual(replayed.result, expected.operations[payload.operation_id].result);
+        expected.revision++;
+        assert.deepEqual((await exported(current)).app, expected);
+        const nativeReplay = await current.form('/settings', {...payload, csrf: expected.csrf});
+        assert.equal(nativeReplay.status, 303, await nativeReplay.text());
+        assert.equal(new URL(nativeReplay.headers.get('location'), current.origin).pathname, '/settings');
+        expected.revision++;
+        accepted = await exported(current);
+        assert.deepEqual(accepted.app, expected, 'Ordinary native replay preserves its original receipt and all learner history.');
+        assertRowsExcept(priorRows, await current.rows(), new Set(['meta']), 'Only existing replay CAS metadata changes');
+        assert.deepEqual(await buckets(current), priorBuckets);
+        transcript.push({observation: 'All three reserved authoring paths refuse matching retained payloads, changed payloads, and fresh operation IDs through native/API ingress without SQLite/R2 writes; ordinary settings replay remains compatible.'});
+      },
+      async () => {
+        const priorRows = await current.rows(), priorBuckets = await buckets(current);
         for (const path of ['/api/v1/materials', '/api/v1/materials/create', '/api/v1/materials/add', '/api/v1/materials/revise',
           '/api/v1/concepts', '/api/v1/concepts/create']) {
           const response = await current.request(path, {operation_id: randomUUID(), title: 'Not an authoring route', text: 'Synthetic'});
@@ -439,7 +488,7 @@ export async function materialJourney({artifact: floorArtifact, cliWriter = fals
           assert.deepEqual(await current.rows(), priorRows);
         }
         assert.deepEqual(await buckets(current), priorBuckets);
-        transcript.push({observation: 'No normal Concept/Material authoring route in API, compiled CLI or native form probes; SQLite and R2 unchanged.'});
+        transcript.push({observation: 'Pinned floor refuses Concept/Material authoring through API, candidate CLI and native form probes; SQLite and R2 unchanged.'});
       },
       async () => {
         const priorRows = await current.rows();
@@ -591,6 +640,18 @@ export async function materialJourney({artifact: floorArtifact, cliWriter = fals
             'The original material/preparation navigation remains available.');
           assert.deepEqual(await buckets(reading), initialBuckets);
           transcript.push({observation: 'A Material on an unchanged Goal-backed Concept obeys the real unaided assistance fence; native Look it up preserves history and the original generated controls/navigation.'});
+        } finally {await reading.close();}
+      },
+      async () => {
+        const reading = await open('authored-native-browser');
+        try {
+          const before = await assertFreshRestore(reading, archive);
+          const report = await materialBrowserJourney({
+            origin: reading.origin, artifact: reading.artifact, app: before.app, conceptId: ids.authored_concept,
+            readRows: reading.rows, readBuckets: () => buckets(reading),
+          });
+          transcript.push({observation: 'Actual Chromium Home/detail/reload and native disclosure preserve authored Material wording, immutable history, exposure, SQLite and R2 across phone/desktop light/dark and 200% computed text sizing.',
+            report: report.path, variants: report.variants, limit: 'Synthetic local browser emulation, not physical-phone or hosted acceptance.'});
         } finally {await reading.close();}
       },
       async () => {

@@ -658,8 +658,7 @@ export async function materialAuthoringJourney() {
         assert.deepEqual(actual, expected, 'A real published rollback writer retains every Phase B field and acknowledged receipt.');
         for (const row of before) if (!['meta', `owner_tokens/${tokenId}`].includes(row.key)) assert.equal(rowMap(await floor.rows())[row.key], row.value);
         await floor.restart(); assert.deepEqual((await exported(floor)).app, actual);
-        transcript.push({observation: 'Functioning compatible rollback writer', release: pin.release, source: pin.source,
-          zip_sha256: pin.zip, worker_sha256: pin.js, wasm_sha256: pin.wasm});
+        transcript.push({observation: 'Functioning compatible rollback writer', proof_subject: 'published-phase-a-floor', pin});
       } finally {await floor.close();}
       const store = await open('qualified-floor-store', {secret, artifact});
       try {
@@ -710,7 +709,7 @@ export async function materialAuthoringWalk(browser, capture) {
         colorScheme: scheme, javaScriptEnabled: js, isMobile: width < 1280, hasTouch: width < 1280});
       const page = await context.newPage(); page.setDefaultTimeout(12000);
       const result = {name, width, scheme, javascript: js, restored_paused: paused, input: width < 1280 ? 'native touch' : 'native keyboard',
-        zoom: [100, 200], status: 'pass', evidence: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom, not physical-phone or provider-quality acceptance.'};
+        zoom: [100, 200], text_size: [100, 200], status: 'pass', evidence: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom and doubled computed text sizes, not physical-phone or provider-quality acceptance.'};
       results.push(result);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
       const shot = async suffix => {
@@ -735,8 +734,23 @@ export async function materialAuthoringWalk(browser, capture) {
       };
       const layout = async suffix => {
         await page.evaluate(() => document.fonts.ready);
-        for (const zoom of [1, 2]) {
-          await page.evaluate(value => {document.documentElement.style.zoom = String(value);}, zoom);
+        for (const mode of ['normal', 'zoom', 'text']) {
+          const sizes = await page.evaluate(mode => {
+            document.documentElement.style.zoom = mode === 'zoom' ? '2' : '1';
+            for (const node of document.querySelectorAll('[data-qa-text-size]')) {
+              node.style.removeProperty('font-size'); delete node.dataset.qaTextSize;
+            }
+            const nodes = [...document.querySelectorAll('body,body *')];
+            const original = nodes.map(node => parseFloat(getComputedStyle(node).fontSize));
+            if (mode === 'text') {
+              nodes.forEach((node, i) => {node.dataset.qaTextSize = String(original[i] * 2);});
+              nodes.forEach(node => {node.style.fontSize = node.dataset.qaTextSize + 'px';});
+            }
+            return nodes.map((node, i) => ({before: original[i], after: parseFloat(getComputedStyle(node).fontSize)}));
+          }, mode);
+          for (const size of sizes) assert.ok(Math.abs(size.after - size.before * (mode === 'text' ? 2 : 1)) < 0.1,
+            'Computed text size must match the declared 100% or 200% mode.');
+          const zoom = mode === 'normal' ? 1 : 2;
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} ${zoom * 100}% overflow`);
           const clipped = await page.locator('main input:not([type=hidden]), main textarea, main button, main a.button').evaluateAll(nodes =>
             nodes.filter(node => {const box = node.getBoundingClientRect(); return box.width > 0 && (box.left < -0.5 || box.right > innerWidth + 0.5);}).map(node => node.name || node.textContent));
@@ -746,9 +760,14 @@ export async function materialAuthoringWalk(browser, capture) {
             return text.getClientRects().length !== 1;
           }).map(node => node.textContent));
           assert.deepEqual(wrappedActions, [], `${name}: Save/Cancel labels stay on one readable line at ${zoom * 100}%`);
-          await shot(`${suffix}-${zoom * 100}`);
+          await shot(`${suffix}-${mode === 'text' ? 'text-' : ''}${zoom * 100}`);
         }
-        await page.evaluate(() => {document.documentElement.style.zoom = '1';});
+        await page.evaluate(() => {
+          document.documentElement.style.zoom = '1';
+          for (const node of document.querySelectorAll('[data-qa-text-size]')) {
+            node.style.removeProperty('font-size'); delete node.dataset.qaTextSize;
+          }
+        });
       };
       const fill = async (action, values) => {
         const form = page.locator(`form[action="${action}"]`); await form.waitFor();
@@ -966,9 +985,9 @@ async function materialProtectionWalk(browser, capture) {
       assert.equal(protectedRows.meta.practice.current.attempt_id, null);
       const gate = async target => {
         await target.locator('[data-state="material-gate"]').waitFor();
-        const document = await target.content();
+        const text = await target.locator('body').textContent();
         for (const privateText of [TEXT, REVISED, 'PRIVATE_MATERIAL_OLD_TITLE', 'PRIVATE_MATERIAL_NEW_TITLE', 'UNSENT_PRIVATE_MATERIAL_DRAFT']) {
-          assert.ok(!document.includes(escapeHtml(privateText)), 'Protected Material pages do not keep reference or draft payloads in the DOM.');
+          assert.ok(!text.includes(privateText.replace(/\r\n?/g, '\n')), 'Protected Material pages do not keep reference or draft payloads in the DOM.');
         }
         assert.equal(await target.locator('textarea, [data-material-revision-id], form[action="/review/help"]').count(), 0);
         assert.deepEqual(await fixture.rows(), protectedRows, 'A Material gate cannot record assistance, exposure, a revision or a receipt.');

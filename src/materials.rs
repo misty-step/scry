@@ -32,11 +32,15 @@ pub fn requires_capability(app: &App) -> bool {
         || app.operations.values().any(is_authoring_receipt)
 }
 
-fn is_authoring_receipt(receipt: &Receipt) -> bool {
+pub(crate) fn authoring_path(path: &str) -> bool {
     matches!(
-        receipt.path.as_deref(),
-        Some("/concepts/create" | "/materials/add" | "/materials/revise")
+        path,
+        "/concepts/create" | "/materials/add" | "/materials/revise"
     )
+}
+
+fn is_authoring_receipt(receipt: &Receipt) -> bool {
+    receipt.path.as_deref().is_some_and(authoring_path)
 }
 
 /// A rollback reader must retain and validate acknowledged operations as
@@ -109,10 +113,7 @@ pub enum MaterialProvenance {
 }
 
 pub fn is_authoring_path(path: &str) -> bool {
-    matches!(
-        path,
-        "/concepts/create" | "/materials/add" | "/materials/revise"
-    )
+    authoring_path(path)
 }
 
 fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
