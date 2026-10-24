@@ -719,6 +719,11 @@ export async function materialAuthoringWalk(browser, capture) {
           const clipped = await page.locator('main input:not([type=hidden]), main textarea, main button, main a.button').evaluateAll(nodes =>
             nodes.filter(node => {const box = node.getBoundingClientRect(); return box.width > 0 && (box.left < -0.5 || box.right > innerWidth + 0.5);}).map(node => node.name || node.textContent));
           assert.deepEqual(clipped, [], `${name}: authoring controls fit at ${zoom * 100}%`);
+          const wrappedActions = await page.locator('.material-form .actions .button').evaluateAll(nodes => nodes.filter(node => {
+            const text = document.createRange(); text.selectNodeContents(node);
+            return text.getClientRects().length !== 1;
+          }).map(node => node.textContent));
+          assert.deepEqual(wrappedActions, [], `${name}: Save/Cancel labels stay on one readable line at ${zoom * 100}%`);
           await shot(`${suffix}-${zoom * 100}`);
         }
         await page.evaluate(() => {document.documentElement.style.zoom = '1';});
@@ -826,7 +831,13 @@ export async function materialAuthoringWalk(browser, capture) {
         await activate(article.locator('summary').filter({hasText: 'Earlier revisions'}));
         await article.locator(`[data-material-revision-id="${item.current_revision_id}"]`).waitFor();
         await layout('earlier-revisions'); await page.reload(); assert.deepEqual(await runtime.rows(), revisedRows);
-        await page.goBack(); await page.goForward(); await page.locator('[data-state="concept"]').waitFor();
+        await page.goBack();
+        // Enhanced history deliberately reloads on popstate. Wait for the
+        // restored editor before requesting Forward, rather than interrupting
+        // that privacy reload with a second concurrent navigation.
+        await page.locator('form[action="/materials/revise"]').waitFor();
+        assert.deepEqual(await runtime.rows(), revisedRows, 'Back to the editor never resubmits a revision.');
+        await page.goForward(); await page.locator('[data-state="concept"]').waitFor();
         assert.deepEqual(await runtime.rows(), revisedRows, 'Back/Forward and refresh do not resubmit the revision.');
         if (js) {
           await activate(page.locator(`[data-material-id="${item.id}"]`).getByRole('link', {name: 'Revise material', exact: true}));
