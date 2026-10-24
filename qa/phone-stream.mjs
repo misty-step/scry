@@ -1,5 +1,6 @@
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
+import {feedbackArrival,assertFeedbackArrival} from './feedback-arrival.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -88,10 +89,15 @@ export async function phoneWalk(browser,capture) {
    assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
+   await page.setViewportSize({width,height:844});
    await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);
    // Submit with a real keyboard, including the no-JavaScript path.
    await page.getByRole('button',{name:'Check my answer',exact:true}).focus();await page.keyboard.press('Enter');
    await page.locator('[data-state="exact-result"]').waitFor();
+   row.arrival=await feedbackArrival(page,capture,`phone-${width}-${scheme}-arrival.png`,zoom);
+   row.evidence.push(row.arrival.evidence);
+   assertFeedbackArrival(row.arrival);
+   await page.setViewportSize({width,height:900});
    const held=(await f.record('meta')).practice.current;
    const a=(await f.cli(['next'])).practice.attempt;
    assert.equal(a.id,held.attempt_id);assert.equal(a.prompt.version_id,f.vid);assert.deepEqual(a.prompt,f.prompt);

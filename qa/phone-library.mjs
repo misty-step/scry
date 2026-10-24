@@ -1,6 +1,7 @@
 // First exact Study through native browser forms, backed by the compiled Worker,
 // real SQLite and local R2. All wording is authored synthetic text; no provider.
 import assert from 'node:assert/strict';
+import {feedbackArrival,assertFeedbackArrival} from './feedback-arrival.mjs';
 import {randomUUID, createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp, writeFile, rm} from 'node:fs/promises';
@@ -221,9 +222,14 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.equal(await count(f,'practice_studies/'),1);
       assert.deepEqual((await f.record('meta')).practice.current.prompt,prompt);
       await shot('first-prompt');
+      await page.setViewportSize({width,height:844});
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter a tired garden.');
       await activate(page.getByRole('button',{name:'Check my answer',exact:true}));
       await page.locator('[data-state="exact-result"]').waitFor();
+      row.arrival=await feedbackArrival(page,capture,`phone-library-${width}-${scheme}-arrival.png`,zoom);
+      row.evidence.push(row.arrival.evidence);
+      assertFeedbackArrival(row.arrival);
+      await page.setViewportSize({width,height:900});
       const attempt = (await f.cli(['next'])).practice.attempt;
       assert.equal(attempt.prompt.id,prompt.id);
       assert.equal(attempt.assisted,true,'First answer-bearing cue is not unaided recall.');
