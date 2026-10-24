@@ -210,10 +210,32 @@ refuses an empty/uncommissioned target, verifies the uploaded module bytes,
 asserts the Worker's Custom Domains and script routes are unchanged, and emits
 `target/promotion.json` with that observed serving set. The live release must be
 an ancestor of the promoted source. A live version made by a secret-only change
-carries no release annotation, so promotion traces it to the nearest annotated
-release only when every step keeps the same script etag, and then re-uploads.
-Domain cutover and
-live-owner verification remain the separate operator steps above. Compatible
+carries no release annotation. Promotion requires valid, unique native version
+numbers and traces only backward through secret changes to an earlier annotated
+release, then re-uploads. An opaque script etag is a consistency check, not proof
+of whole-bundle identity: multiple eligible source annotations sharing that etag
+or missing/contradictory chronology refuse. A later-created release can never
+establish the provenance of an older secret version re-deployed by rollback.
+Every live observation (before upload, the deployment-ID recheck, and final
+receipt) must be a single version serving 100% of traffic. A split deployment
+is refused, never completed or replaced by automation. Promotion reads all
+retained deployment-history pages, with a 100-page bound; missing, inconsistent
+or non-terminating required history fails closed. Releases that actually served
+traffic must be ancestors of the effective live source. A previously deployed
+descendant or divergent release therefore indicates a manual rollback or
+conflicting history and stops even a newer candidate or an idempotent rerun.
+An uploaded-but-never-deployed version is not promotion history. Secret-only
+changes require the causal provenance above; upload order alone is not a source
+identity and uploaded-only versions do not establish prior promotion.
+
+A manual rollback requires operator resolution and verified recovery through
+the native procedure before normal promotion resumes; there is no automatic
+override or unlock flag. Cloudflare history retention and deletion limit what
+this native read can establish: it is not an everlasting rollback watermark.
+These are observed-state checks, not an atomic compare-and-swap with Wrangler;
+a change after the last pre-upload observation remains a time-of-check race.
+Domain cutover and live-owner verification remain the separate operator steps
+above. Compatible
 code rollback uses a retained custody/history-compatible artifact on these same
 bindings, never an old Go snapshot. Versions/notes remain the existing release
 lane's responsibility; this adds no second workflow or release policy.

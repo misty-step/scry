@@ -5,11 +5,14 @@ from copy import deepcopy
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import tomllib
 import unittest
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('scry_promote', ROOT / 'scripts/scry-promote.py')
@@ -30,9 +33,9 @@ DOMAIN = {'zone_id': 'f7be06f7426d5532921cc4348746a2b8', 'zone_name': 'scry.stud
           'service': NAME, 'environment': 'production', 'enabled': True}
 
 
-def version(etag=None, message=None, trigger=None):
+def version(etag=None, message=None, trigger=None, number=1):
     annotations = {k: v for k, v in [('workers/message', message), ('workers/triggered_by', trigger)] if v}
-    return {'annotations': annotations, 'resources': {'script': {'etag': etag}} if etag else {}}
+    return {'number': number, 'annotations': annotations, 'resources': {'script': {'etag': etag}} if etag else {}}
 
 
 def drift(name, **change):
@@ -87,8 +90,10 @@ class Promotion(unittest.TestCase):
                     elif path.endswith('/domains/managed'): result = {'enabled': False}
                     elif path.endswith('/domains/custom'): result = {'domains': []}
                     elif '/objects?' in path: result = [{'key': 'synthetic-snapshot'}]
-                    elif path == script + '/deployments':
-                        result = {'deployments': [{'id': d, 'versions': [{'version_id': v}]} for d, v, _ in history]}
+                    elif path.split('?', 1)[0] == script + '/deployments':
+                        result = {'deployments': [{'id': d, 'versions': [{'version_id': v, 'percentage': 100}]} for d, v, _ in history]}
+                        if '?' in path and parse_qs(urlsplit(path).query)['page'] != ['1']:
+                            result = {'deployments': []}
                     elif path.startswith(script + '/versions/') and path.rsplit('/', 1)[1] in {v for _, v, _ in history}:
                         result = next(body for _, v, body in history if v == path.rsplit('/', 1)[1])
                     elif path == '/workers/domains?service=' + NAME: result = domains if run.called else [DOMAIN]
@@ -122,7 +127,7 @@ class Promotion(unittest.TestCase):
     def test_deploy_promotes_over_a_secret_only_change_to_a_known_release(self):
         # 2026-10-20: rotating OWNER_SUBJECT made an unannotated version with the release's exact script.
         released = 'b' * 40
-        history = [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+        history = [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2)),
                    ('release', 'released', version(etag='same', message='scry-rust ' + released))]
         with self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
             run.side_effect = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('stop at ' + args[0][1]))
@@ -136,7 +141,7 @@ class Promotion(unittest.TestCase):
         source = 'a' * 40
         for label, history, uploads in [
                 ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
-                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2)),
                                  ('release', 'released', version(etag='same', message='scry-rust ' + source))], True)]:
             with self.subTest(label), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
                 def command(args, **kwargs):
@@ -152,9 +157,9 @@ class Promotion(unittest.TestCase):
                 self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
 
     def test_deploy_refuses_an_untraceable_live_version(self):
-        for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret')),
+        for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret', number=2)),
                          ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))],
-                        [('secret-change', 'secret-only', version(etag='same', trigger='secret'))],
+                        [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2))],
                         [('manual', 'manual', version(etag='same', trigger='version_upload')),
                          ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))]]:
             with self.subTest(history=history), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
@@ -164,13 +169,13 @@ class Promotion(unittest.TestCase):
 
     def test_live_release_resolves_only_secret_changes_with_the_same_script(self):
         versions = {'released': version(etag='same', message='scry-rust ' + 'b' * 40),
-                    'secret': version(etag='same', trigger='secret'),
-                    'secret-again': version(etag='same', trigger='secret'),
-                    'other-script': version(etag='other', trigger='secret'),
+                    'secret': version(etag='same', trigger='secret', number=2),
+                    'secret-again': version(etag='same', trigger='secret', number=3),
+                    'other-script': version(etag='other', trigger='secret', number=2),
                     'upload': version(etag='same', trigger='version_upload'),
-                    'no-etag': version(trigger='secret'),
+                    'no-etag': version(trigger='secret', number=2),
                     'malformed': version(etag='same', message='scry-rust ' + 'b' * 39)}
-        live = lambda *ids: PROMOTE.live_release([{'versions': [{'version_id': i}]} for i in ids], versions.__getitem__)
+        live = lambda *ids: PROMOTE.live_release([{'versions': [{'version_id': i, 'percentage': 100}]} for i in ids], versions.__getitem__)
         self.assertEqual(live('released'), ('b' * 40, True))
         self.assertEqual(live('secret', 'released'), ('b' * 40, False))
         self.assertEqual(live('secret-again', 'secret', 'released'), ('b' * 40, False))
@@ -191,6 +196,283 @@ class Promotion(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, 'refusing before upload'):
                     PROMOTE.deploy()
                 run.assert_not_called()
+
+
+def deployment(identity, *versions):
+    return {'id': identity, 'versions': [{'version_id': name, 'percentage': percent} for name, percent in versions]}
+
+
+class DeploymentSafety(unittest.TestCase):
+    """Real deploy(), receipt and Git ancestry; only HTTP and Wrangler effects are synthetic."""
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.directory.name)
+        cls.real_run = staticmethod(subprocess.run)
+        env = {'PATH': os.environ['PATH'], 'HOME': str(cls.root), 'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'}
+        def git(*args):
+            return cls.real_run(['git', '-C', str(cls.root), '-c', 'user.name=Synthetic proof', '-c',
+                                 'user.email=proof@example.invalid', *args], env=env, check=True, capture_output=True, text=True).stdout.strip()
+        git('init', '--quiet')
+        git('commit', '--quiet', '--allow-empty', '-m', 'release A')
+        cls.a = git('rev-parse', 'HEAD')
+        git('commit', '--quiet', '--allow-empty', '-m', 'release B')
+        cls.b = git('rev-parse', 'HEAD')
+        git('commit', '--quiet', '--allow-empty', '-m', 'candidate C')
+        cls.c = git('rev-parse', 'HEAD')
+        cls.divergent = git('commit-tree', git('rev-parse', 'HEAD^{tree}'), '-p', cls.a, '-m', 'divergent')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.directory.cleanup()
+
+    @contextmanager
+    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None):
+        source = source or self.b
+        current = deepcopy(history)
+        versions = {'A': version(etag='old', message='scry-rust ' + self.a),
+                    'B': version(etag='new', message='scry-rust ' + self.b, number=3),
+                    'C': version(etag='candidate', message='scry-rust ' + self.c, number=5),
+                    'secret-A': version(etag='old', trigger='secret', number=2),
+                    'secret-B': version(etag='new', trigger='secret', number=4)}
+        if version_change: version_change(versions)
+        if uploaded_only: versions['not-deployed-C'] = version(etag='candidate', message='scry-rust ' + self.c)
+        bindings = deepcopy(LIVE) + [{'name': n, 'type': 'secret_text'} for n in ('OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY')]
+        modules = {'index.js': b'export default {};', 'index_bg.wasm': b'synthetic wasm'}
+        raw = b''.join(b'--fixture\r\nContent-Disposition: form-data; name="' + n.encode() + b'"; filename="' + n.encode() + b'"\r\n\r\n' + b + b'\r\n' for n, b in modules.items()) + b'--fixture--\r\n'
+        requests, uploads = [], []
+        reads = 0
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            receipt = out / 'promotion.json'
+            initial = {'source': source, 'stage': 'artifact_verified'}
+            receipt.write_text(json.dumps(initial))
+            (out / 'proof.json').write_text(json.dumps({'worker': {n: PROMOTE.sha(b) for n, b in modules.items()}}))
+            def urlopen(request, timeout):
+                nonlocal reads
+                self.assertEqual(request.get_method(), 'GET')
+                prefix = 'https://api.cloudflare.com/client/v4/accounts/' + CONFIG['account_id']
+                self.assertTrue(request.full_url.startswith(prefix))
+                path = request.full_url[len(prefix):]
+                requests.append(path)
+                script = '/workers/scripts/' + NAME
+                info = None
+                if path == script + '/settings': result = {'bindings': bindings}
+                elif path.endswith('/domains/managed'): result = {'enabled': False}
+                elif path.endswith('/domains/custom'): result = {'domains': []}
+                elif '/objects?' in path: result = [{'key': 'synthetic-snapshot'}]
+                elif path.startswith(script + '/deployments?'):
+                    page = int(parse_qs(urlsplit(path).query)['page'][0])
+                    batch = current[(page - 1) * page_size:page * page_size]
+                    info = {'page': page, 'per_page': page_size, 'count': len(batch),
+                            'total_count': len(current), 'total_pages': max(1, (len(current) + page_size - 1) // page_size)}
+                    result = {'deployments': deepcopy(batch)}
+                    if page_change: result, info = page_change(page, result, info)
+                elif path == script + '/deployments':
+                    reads += 1
+                    observed = recheck if reads == 1 else final
+                    result = {'deployments': deepcopy(current if observed is None else observed)}
+                elif path.startswith(script + '/versions/'):
+                    result = versions[path.rsplit('/', 1)[1]]
+                elif path == '/workers/domains?service=' + NAME: result = [DOMAIN]
+                elif path == script + '/routes': result = []
+                elif path == script + '/subdomain': result = {'enabled': False, 'previews_enabled': False}
+                elif path == script + '/content/v2':
+                    response = io.BytesIO(raw)
+                    response.headers = {'Content-Type': 'multipart/form-data; boundary=fixture'}
+                    return response
+                else: self.fail('Unexpected request: ' + path)
+                return io.BytesIO(json.dumps({'success': True, 'result': result, **({'result_info': info} if info is not None else {})}).encode())
+            def command(args, **kwargs):
+                if args[:3] == ['git', 'merge-base', '--is-ancestor']:
+                    self.assertEqual(kwargs['cwd'], self.root)
+                    return self.real_run(args, **kwargs)
+                self.assertEqual(args, [str(self.root / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(PROMOTE.CONFIG), '--no-bundle', '--message', 'scry-rust ' + source])
+                uploads.append(args)
+                versions['uploaded'] = version(etag='new', message='scry-rust ' + source)
+                current.insert(0, deployment('uploaded', ('uploaded', 100)))
+            with mock.patch.object(PROMOTE, 'ROOT', self.root), mock.patch.object(PROMOTE, 'OUT', out), \
+                    mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict(os.environ, {'PATH': os.environ['PATH'], 'CLOUDFLARE_API_TOKEN': 'synthetic'}, clear=True), \
+                    mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), mock.patch.object(PROMOTE.subprocess, 'run', side_effect=command), \
+                    mock.patch('sys.stdout', new_callable=io.StringIO):
+                yield uploads, requests, receipt, initial
+
+    def test_full_forward_and_idempotent_receipts_preserve_secret_only_support(self):
+        for name, history, uploads in [
+            ('forward', [deployment('a', ('A', 100))], 1),
+            ('idempotent', [deployment('b', ('B', 100)), deployment('a', ('A', 100))], 0),
+            ('secret-only', [deployment('secret', ('secret-B', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))], 1),
+        ]:
+            with self.subTest(name=name), self.fixture(history, uploaded_only=True) as (called, requests, receipt, _):
+                PROMOTE.deploy()
+                self.assertEqual(len(called), uploads)
+                saved = json.loads(receipt.read_text())
+                self.assertEqual(saved['stage'], 'exact_artifact_promoted')
+                self.assertEqual(saved['deployment']['versions'][0]['percentage'], 100)
+                self.assertFalse(any('not-deployed-C' in p for p in requests))
+
+    def test_rollback_refuses_duplicate_newer_and_same_source_candidates(self):
+        history = [deployment('rollback', ('A', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]
+        for source in (self.a, self.b, self.c):
+            for secret in (False, True):
+                live = ([deployment('secret', ('secret-A', 100))] if secret else []) + history
+                with self.subTest(source=source, secret=secret), self.fixture(live, source, page_size=1) as (uploads, _, receipt, initial):
+                    with self.assertRaisesRegex(AssertionError, 'Manual rollback'):
+                        PROMOTE.deploy()
+                    self.assertEqual(uploads, [])
+                    self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_replayed_secret_version_cannot_inherit_a_later_release_annotation(self):
+        history = [deployment('rollback', ('secret-A', 100)), deployment('b', ('B', 100)),
+                   deployment('original-secret', ('secret-A', 100)), deployment('a', ('A', 100))]
+        def equal_etags(versions):
+            versions['B']['resources']['script']['etag'] = 'old'
+        for source in (self.b, self.c):
+            with self.subTest(source=source), self.fixture(history, source, page_size=1, version_change=equal_etags) as (uploads, _, receipt, initial):
+                with self.assertRaisesRegex(AssertionError, 'Manual rollback'): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_secret_provenance_refuses_missing_conflicting_or_ambiguous_chronology(self):
+        history = [deployment('secret', ('secret-B', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]
+        changes = [
+            lambda v: v['secret-B'].pop('number'),
+            lambda v: v['B'].pop('number'),
+            lambda v: v['A'].pop('number'),
+            lambda v: v['secret-B'].update(number=True),
+            lambda v: v['B'].update(number='3'),
+            lambda v: v['B'].update(number=0),
+            lambda v: v['B'].update(number=4),
+            lambda v: v['B'].update(number=5),
+            lambda v: v['A']['resources']['script'].update(etag='new'),
+        ]
+        for index, change in enumerate(changes):
+            with self.subTest(change=index), self.fixture(history, version_change=change) as (uploads, _, receipt, initial):
+                with self.assertRaisesRegex(AssertionError, 'Unrecognized live release'): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_secret_chain_refuses_reversed_creation_order(self):
+        history = [deployment('new-secret', ('secret-B', 100)), deployment('old-secret', ('secret-A', 100)),
+                   deployment('noncausal-secret', ('middle-secret', 100)), deployment('a', ('A', 100))]
+        def reversed_chain(versions):
+            versions['secret-B']['resources']['script']['etag'] = 'old'
+            versions['middle-secret'] = version(etag='old', trigger='secret', number=3)
+        with self.fixture(history, version_change=reversed_chain) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'Unrecognized live release'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_unambiguous_multiple_secret_versions_and_redeployments_still_promote(self):
+        history = [deployment('new-secret', ('secret-B', 100)), deployment('old-secret', ('secret-A', 100)),
+                   deployment('repeat-release', ('A', 100)), deployment('a', ('A', 100))]
+        def same_source(versions):
+            versions['secret-B']['resources']['script']['etag'] = 'old'
+        with self.fixture(history, version_change=same_source) as (uploads, _, receipt, _):
+            PROMOTE.deploy()
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
+
+    def test_stale_and_divergent_targets_still_refuse(self):
+        for source in (self.a, self.divergent):
+            with self.subTest(source=source), self.fixture([deployment('b', ('B', 100))], source) as (uploads, _, receipt, initial):
+                with self.assertRaises(subprocess.CalledProcessError): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_split_and_malformed_traffic_refuse_at_every_read(self):
+        invalid = [[('B', 10), ('A', 90)], [('A', 90), ('B', 10)], [('B', 100), ('A', 0)],
+                   [('B', 50)], [('B', '100')], [('B', True)], [('B', None)], [], [('B', 100), ('B', 0)]]
+        pure = deployment('live', ('B', 100))
+        for entries in invalid:
+            broken = deployment('live', *entries)
+            for phase in ('before', 'recheck', 'final'):
+                options = {} if phase == 'before' else {phase: [broken]}
+                with self.subTest(entries=entries, phase=phase), self.fixture([broken if phase == 'before' else pure], **options) as (uploads, _, receipt, initial):
+                    with self.assertRaisesRegex(AssertionError, 'single version at 100%|deployment traffic'):
+                        PROMOTE.deploy()
+                    self.assertEqual(uploads, [])
+                    self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_secret_chain_cannot_trace_through_a_split(self):
+        history = [deployment('secret', ('secret-B', 100)), deployment('split', ('B', 50), ('A', 50))]
+        with self.fixture(history) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'single version at 100%'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_historical_split_inspects_every_version_that_served(self):
+        history = [deployment('rollback', ('A', 100)), deployment('split', ('A', 90), ('B', 10))]
+        with self.fixture(history) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'Manual rollback'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_changed_deployment_id_still_refuses(self):
+        with self.fixture([deployment('a', ('A', 100))], recheck=[deployment('moved', ('A', 100))]) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'Live deployment changed'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_uploaded_candidate_split_readback_never_writes_success(self):
+        with self.fixture([deployment('a', ('A', 100))], final=[deployment('late-split', ('B', 10), ('A', 90))]) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'single version at 100%'): PROMOTE.deploy()
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_resolved_historical_split_does_not_block_forward_progress(self):
+        history = [deployment('b', ('B', 100)), deployment('old-split', ('A', 90), ('B', 10)), deployment('a', ('A', 100))]
+        with self.fixture(history, self.c) as (uploads, _, receipt, _):
+            PROMOTE.deploy()
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(json.loads(receipt.read_text())['source'], self.c)
+
+    def test_pagination_without_metadata_reads_until_empty_not_first_short_page(self):
+        history = [deployment('b', ('B', 100)), deployment('a', ('A', 100))]
+        with self.fixture(history, page_size=1, page_change=lambda page, result, info: (result, None)) as (uploads, requests, receipt, _):
+            PROMOTE.deploy()
+            self.assertTrue(any('/deployments?page=3&' in path for path in requests))
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
+
+    def test_incomplete_or_ambiguous_history_refuses_before_upload(self):
+        history = [deployment('b', ('B', 100)), deployment('a', ('A', 100))]
+        changes = [
+            lambda p, r, i: (r, {}),
+            lambda p, r, i: (r, dict(i, page=True)),
+            lambda p, r, i: (r, dict(i, page=p + 1)),
+            lambda p, r, i: (r, dict(i, total_count=i['total_count'] + 1)),
+            lambda p, r, i: (r, dict(i, total_pages=i['total_pages'] + (p == 2))),
+            lambda p, r, i: (r, None if p == 2 else i),
+            lambda p, r, i: ({'deployments': [history[0]]}, i),
+            lambda p, r, i: ({'deployments': [history[0]]}, None),
+            lambda p, r, i: ({'deployments': []} if p == 1 else r, i),
+            lambda p, r, i: ({'deployments': [dict(r['deployments'][0], id='')]}, i),
+        ]
+        for index, change in enumerate(changes):
+            with self.subTest(change=index), self.fixture(history, page_size=1, page_change=change) as (uploads, _, receipt, initial):
+                with self.assertRaisesRegex(AssertionError, 'deployment history|Deployment history'): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_missing_history_and_history_read_failure_refuse(self):
+        with self.fixture([]) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'No live deployment history'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+        def failure(page, result, info): raise RuntimeError('synthetic history read failed')
+        with self.fixture([deployment('a', ('A', 100))], page_change=failure) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(RuntimeError, 'synthetic history read failed'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_unbounded_history_is_not_silently_truncated(self):
+        def endless(page, result, info): return {'deployments': [deployment(str(page), ('A', 100))]}, None
+        with self.fixture([deployment('a', ('A', 100))], page_change=endless) as (uploads, requests, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'exceeds the bounded read'): PROMOTE.deploy()
+            self.assertEqual(sum('/deployments?' in path for path in requests), 100)
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
 
 
 if __name__ == '__main__':
