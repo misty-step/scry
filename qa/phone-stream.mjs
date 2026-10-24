@@ -193,7 +193,7 @@ async function recitationChoices(page,f,after) {
   for(const name of ['csrf','operation_id','revision'])assert.ok(fields[name]);
   assert.equal(fields.study_id,f.sid);assert.equal(fields.recite,scope);assert.equal(fields.after,after);
   if(scope==='section')assert.equal(fields.section_id,f.version.sections[section].id);
-  assert.equal(await form.getByRole('button').textContent(),scope==='whole'?'Whole text':`Section: ${f.version.sections[section].heading}`);
+  assert.equal(await form.locator('button').textContent(),scope==='whole'?'Whole text':`Section: ${f.version.sections[section].heading}`);
   operations.push(fields.operation_id);
  }
  assert.equal(new Set(operations).size,operations.length,'Each scope owns its own existing form operation.');
