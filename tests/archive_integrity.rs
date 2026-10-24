@@ -117,7 +117,7 @@ fn valid_history_corrections_warm_attempts_and_paused_work_roundtrip() {
         .unwrap()
         .unwrap();
     engine::validate_app(&checking).unwrap();
-    engine::pause_for_restore(&mut checking, NOW + 1);
+    engine::pause_for_restore(&mut checking, NOW + 1).unwrap();
     engine::validate_app(&checking).unwrap();
 }
 
@@ -246,4 +246,22 @@ fn paid_leases_and_saved_checking_answers_have_complete_ownership() {
     corrupt(app, |a| {
         a.occurrence.as_mut().unwrap().answer = Some("a different saved answer".into())
     });
+}
+
+#[test]
+fn restore_advances_source_revision_once_and_refuses_exhaustion_before_mutation() {
+    let mut app = reviewed();
+    let before = app.clone();
+    engine::pause_for_restore(&mut app, NOW + 1).unwrap();
+    assert_eq!(app.revision, before.revision + 1);
+    assert_eq!(app.events, before.events);
+    engine::validate_app(&app).unwrap();
+
+    let mut exhausted = before;
+    exhausted.revision = u64::MAX;
+    let unchanged = exhausted.clone();
+    let error = engine::pause_for_restore(&mut exhausted, NOW + 1).unwrap_err();
+    assert_eq!(error.status, 422);
+    assert_eq!(error.message, "State revision exhausted.");
+    assert_eq!(exhausted, unchanged);
 }

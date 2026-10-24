@@ -62,6 +62,11 @@ try {
   await check('real RS256 owner signature and private response headers',async()=>{
     const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>What do you want to learn\?<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
+  await check('empty initialization starts at revision one',async()=>{
+    const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
+    const meta=JSON.parse((await storage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+    assert.equal(meta.revision,1);
+  });
   await check('private build-bound changelog is read-only, with health version and revision',async()=>{
     assert.equal((await request('/changelog','')).status,401);
     assert.equal((await request('/changelog',jwt({sub:'wrong'}))).status,401);
@@ -215,13 +220,26 @@ try {
     } finally {await fixture.mf.dispose();}
   });
   const recoveryEgress=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');recoverySends++;return new Response('Controlled malformed recovery response',{status:200});};
-  const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress});
+  const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress,inspect:true});
   restored=restoreRuntime.mf;
   const restoreWorker=restoreRuntime.worker;
   const restore=(body,checksum=hash,token=restoreToken)=>restoreWorker.fetch(`${origin}/operator/restore`,{method:'POST',headers:{'x-scry-restore-token':token,'x-scry-sha256':checksum},body});
   await check('restore authorization and archive checksum fail before writes',async()=>{
     assert.equal((await restore(archiveBytes,hash,'wrong')).status,403);assert.equal((await restore(archiveBytes,'0'.repeat(64))).status,422);
     const conflicting=JSON.parse(archiveBytes);const withoutPhoto=Object.values(conflicting.app.goals).find(goal=>!goal.photo);withoutPhoto.photo={...conflicting.photos[0].photo,sha256:'0'.repeat(64)};const inconsistent=Buffer.from(JSON.stringify(conflicting));assert.equal((await restore(inconsistent,createHash('sha256').update(inconsistent).digest('hex'))).status,422);assert.equal((await(await restored.getR2Bucket('SCRY_ASSETS')).list()).objects.length,0,'Conflicting photo metadata must fail before any recovery write.');
+  });
+  await check('restore revision exhaustion refuses before SQLite or photo writes',async()=>{
+    const storage=await restored.unsafeGetDurableObjectStorage('scry-restore-smoke','LearningSpace',{name:'fresh-isolated-restore-only'});
+    assert.ok(JSON.parse(archiveBytes).photos.length,'The overflow fixture must include a photo to detect early R2 writes.');
+    for(const revision of ['18446744073709551615','18446744073709551616']){
+      const source=JSON.parse(archiveBytes);source.app.revision='EXHAUSTED_REVISION';
+      const bytes=Buffer.from(JSON.stringify(source).replace('"EXHAUSTED_REVISION"',revision));
+      const response=await restore(bytes,createHash('sha256').update(bytes).digest('hex'));
+      assert.equal(response.status,422,await response.text());
+      assert.deepEqual(await storage.exec('SELECT key,value FROM records'),[]);
+      assert.equal((await(await restored.getR2Bucket('SCRY_ASSETS')).list()).objects.length,0);
+      assert.equal((await(await restored.getR2Bucket('SCRY_BACKUPS')).list()).objects.length,0);
+    }
   });
   await check('independent complete restore is paused and refuses overwrite',async()=>{
     const response=await restore(archiveBytes);assert.equal(response.status,200);assert.match(await response.text(),/paused/);assert.equal((await restore(archiveBytes)).status,409);

@@ -3441,7 +3441,11 @@ fn archive_schedule_chains(app: &App, checks: &mut ArchiveChecks) -> AppResult<(
 }
 
 /// Recovery never clones scheduler/job ownership or quietly sends paid work again.
-pub fn pause_for_restore(app: &mut App, now: i64) {
+pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
+    let revision = app
+        .revision
+        .checked_add(1)
+        .ok_or_else(|| AppError::new(422, "State revision exhausted."))?;
     app.restored_paused = true;
     for j in app.jobs.values_mut() {
         if matches!(j.status.as_str(), "sent" | "critic-sent") {
@@ -3475,5 +3479,6 @@ pub fn pause_for_restore(app: &mut App, now: i64) {
     app.backup.error = Some(format!(
         "Restored into an isolated space at {now}; external work remains paused."
     ));
-    app.revision += 1;
+    app.revision = revision;
+    Ok(())
 }

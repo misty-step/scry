@@ -139,6 +139,9 @@ export async function studyJourney(){
   assert.deepEqual(after.history.attempts[mixed.id],mixed);assert.equal(after.history.corrections[corrected.id].verdict,'Good');
   const empty=await practice(unitCards[1],'');assert.equal(empty.grade.verdict,'Again');assert.equal(Boolean(empty.disclosure),false);
   await checkHistory('History: an actual empty answer is Again, not Reveal',[empty.id]);
+  const emptyRows=await attemptRows(empty.id);
+  await ok(['correct',current.prompt.id,empty.id,'--verdict','Good']);
+  assert.deepEqual(await attemptRows(empty.id),emptyRows,'A second Correction preserves the original empty Attempt before restore.');
   const replacement='A replacement Version has entirely different wording.\n',path=await file('history-superseded.txt',replacement);
   const newId=(await ok(['version','supersede',v,'--revision',String(shown.work.revision),'--title',title,'--kind','text','--text-file',path,'--name','Replacement metadata'])).result.entity_id;
   assert.notEqual(newId,v);assert.deepEqual((await ok(['version','show',v])).version,shown.version);
@@ -245,9 +248,20 @@ export async function studyJourney(){
    const historyRestart=await checkHistory('History: actual SQLite runtime restart retains Attempts, Corrections and immutable wording');assert.deepEqual([...historyRestart.entries.values()],[...historyBefore.entries.values()]);
    const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);
    const bucket=await runtime.mf.getR2Bucket('SCRY_BACKUPS'),list=await bucket.list({prefix:`snapshots/${space}/`});const bytes=Buffer.from(await(await bucket.get(list.objects.at(-1).key)).arrayBuffer());const archive=JSON.parse(bytes);assert.deepEqual(archive.app.practice,before);
-   const restoreToken='synthetic-study-isolated-restore-only-32chars',restored=await createRuntime({name:'restore-'+randomUUID(),bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:'https://restore-study.invalid',SPACE_NAME:'unused-study-restore',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken}});
+   const restoreToken='synthetic-study-isolated-restore-only-32chars',restoreName='restore-'+randomUUID();
+   const restoreBindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:'unused-study-restore',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken};
+   const restored=await createRuntime({port:0,inspect:true,name:restoreName,bindings:restoreBindings});
+   const restoreOrigin=(await restored.mf.ready).origin;
+   const restoreWorker=(await restored.rebind({...restoreBindings,CANONICAL_ORIGIN:restoreOrigin})).worker;
+   const restoreRequest=body=>restoreWorker.fetch(restoreOrigin+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(body)},body});
    try{
-    const response=await restored.worker.fetch('https://restore-study.invalid/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(bytes)},body:bytes});const restoredBody=await response.text();assert.equal(response.status,200,restoredBody);
+    const response=await restoreRequest(bytes);const restoredBody=await response.text();assert.equal(response.status,200,restoredBody);
+    const restoredStorage=await restored.mf.unsafeGetDurableObjectStorage(restoreName,'LearningSpace',{name:restoreBindings.SPACE_NAME});
+    const restoredRows=()=>restoredStorage.exec('SELECT key,value FROM records ORDER BY key');
+    const committed=await restoredRows();
+    assert.equal(JSON.parse(committed.find(row=>row.key==='meta').value).revision,archive.app.revision+1,'The fresh commit advances the source revision exactly once.');
+    assert.equal((await restoreRequest(bytes)).status,409);
+    assert.deepEqual(await restoredRows(),committed,'An occupied target refuses restore without changing any row.');
     const restoreNs=await restored.mf.getDurableObjectNamespace('LEARNING_SPACE'),restoreStub=restoreNs.get(restoreNs.idFromName('unused-study-restore'));
     const restoredRead=path=>restoreStub.fetch('https://restore-study.invalid'+path,{headers:{Authorization:'Bearer '+secret,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
     const read=await restoredRead('/api/v1/export');assert.equal(read.status,200);assert.deepEqual((await read.json()).app.practice,before);
@@ -256,7 +270,44 @@ export async function studyJourney(){
     assert.deepEqual([...restoredEntries.values()],[...historyBefore.entries.values()],'A fresh local R2 restore renders the same original Attempts and appended Corrections.');
     assertHistoryHtml(await historyPage(restoredRead),restoredHistory);assert.deepEqual((await(await restoredRead('/api/v1/export')).json()).app.practice,before,'History/reload leaves restored exact Practice unchanged.');
     transcript.push({observation:'History: fresh local R2 restore renders and retains complete immutable exact history',attempts:Object.keys(restoredHistory.attempts).length,corrections:Object.keys(restoredHistory.corrections).length,html_sha256:hash(restoredHtml),limit:'Built Worker and local R2 emulator; hosted ingress, independent remote restore and physical-phone usability remain UNVERIFIED.'});
-   }finally{await restored.mf.dispose();}
+    assert.ok(Object.keys(before.attempts).length>1&&Object.keys(before.corrections).length>1,'Exercise multiple immutable Attempts and Corrections, not an empty archive.');
+    await restored.rebind({...restoreBindings,SCRY_ENV:'development',CANONICAL_ORIGIN:restoreOrigin});
+    await ok(['login','--url',restoreOrigin,'--token-stdin'],secret+'\n');
+    const loggedIn=await ok(['export']);
+    assert.equal(loggedIn.app.revision,archive.app.revision+2,'CLI login retains its existing token last-use write.');
+    assert.deepEqual(loggedIn.app.practice,before);
+    const work=archive.app.library.works[wid];
+    const edit=['work','edit',wid,'--revision',String(work.revision),'--title','An unrelated edit after restore','--operation-id','restore-unrelated-edit-operation'];
+    await ok(edit);
+    const written=await ok(['export']);
+    assert.equal(written.app.revision,loggedIn.app.revision+1,'The unrelated edit still advances the current CAS revision once.');
+    assert.deepEqual(written.app.practice,before);
+    assert.deepEqual(written.app.library.versions,archive.app.library.versions);
+    const backupNs=await restored.mf.getDurableObjectNamespace('LEARNING_SPACE'),backupStub=backupNs.get(backupNs.idFromName(restoreBindings.SPACE_NAME));
+    const backed=await backupStub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
+    assert.equal(backed.status,200,await backed.text());
+    const backedState=await ok(['export']),restoredBucket=await restored.mf.getR2Bucket('SCRY_BACKUPS');
+    const nextBytes=Buffer.from(await(await restoredBucket.get(backedState.app.backup.key)).arrayBuffer());
+    assert.equal(hash(nextBytes),backedState.app.backup.sha256);
+    const nextArchive=JSON.parse(nextBytes);
+    assert.equal(nextArchive.app.revision,written.app.revision);
+    assert.deepEqual(nextArchive.app.practice,before,'Complete backup revalidates and retains exact history after an unrelated write.');
+    const second=await createRuntime({name:'second-restore-'+randomUUID(),bindings:{...restoreBindings,CANONICAL_ORIGIN:'https://second-restore.invalid',SPACE_NAME:'second-unused-study-restore'}});
+    try{
+     const response=await second.worker.fetch('https://second-restore.invalid/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(nextBytes)},body:nextBytes});
+     assert.equal(response.status,200,await response.text());
+     const ns=await second.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName('second-unused-study-restore'));
+     const exported=await stub.fetch('https://internal.invalid/api/v1/export',{headers:{Authorization:'Bearer '+secret,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
+     assert.equal(exported.status,200);
+     const twice=await exported.json();
+     assert.equal(twice.app.revision,nextArchive.app.revision+1);
+     assert.deepEqual(twice.app.practice,before);
+     assert.deepEqual(twice.app.library,written.app.library);
+     const verified=await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
+     assert.equal(verified.status,200,await verified.text());
+    }finally{await second.mf.dispose();}
+    transcript.push({observation:'Fresh restore → compiled CLI login and unrelated write → fully validated R2 backup → second fresh restore and backup',source_revision:archive.app.revision,first_restore_revision:archive.app.revision+1,login_revision:loggedIn.app.revision,first_write_revision:written.app.revision,second_restore_revision:nextArchive.app.revision+1,attempts:Object.keys(before.attempts).length,corrections:Object.keys(before.corrections).length,archive_sha256:hash(nextBytes)});
+   }finally{await restored.mf.dispose();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');}
    transcript.push({observation:'Full local R2 readback and fresh isolated restore retain populated Studies/Cards/Attempts',archive_sha256:hash(bytes),limits:'Local emulator; independent hosted restore UNVERIFIED.'});
   },
   async()=>{

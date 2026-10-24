@@ -612,7 +612,7 @@ fn restored_state_keeps_paid_work_paused_and_held_feedback() {
         .unwrap()
         .unwrap();
     let spend = a.spend.clone();
-    engine::pause_for_restore(&mut a, NOW + 1);
+    engine::pause_for_restore(&mut a, NOW + 1).unwrap();
     assert!(a.restored_paused);
     assert_eq!(a.spend, spend);
     assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");

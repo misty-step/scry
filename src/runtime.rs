@@ -1597,6 +1597,11 @@ impl LearningSpace {
             .unwrap_or(0)
             .checked_add(1)
             .ok_or_else(|| Error::RustError("State revision exhausted.".into()))?;
+        self.commit_at_revision(app, expected)
+    }
+    // Revision assignment and target CAS are separate: a fresh restore keeps
+    // its already-advanced source revision but must still find an unused target.
+    fn commit_at_revision(&self, app: &App, expected: Option<u64>) -> Result<()> {
         let next = persistence::rows(app).map_err(to_worker_error)?;
         let previous = self.stored_rows()?;
         let actual = previous
@@ -2067,6 +2072,10 @@ impl LearningSpace {
             Ok(a) => a,
             Err(e) => return app_error(e),
         };
+        // Reject revision exhaustion before any photo or SQLite write.
+        if let Err(error) = engine::pause_for_restore(&mut archive.app, now()) {
+            return app_error(error);
+        }
         let mut renamed = BTreeMap::new();
         let bucket = self.env.bucket("SCRY_ASSETS")?;
         for photo in &archive.photos {
@@ -2099,7 +2108,6 @@ impl LearningSpace {
             }
         }
         archive.app.csrf = random_id()?;
-        engine::pause_for_restore(&mut archive.app, now());
         archive.app.backup = BackupStatus::default();
         // Check again after R2 awaits: a concurrent restore cannot overwrite it.
         if !self.stored_rows()?.is_empty() {
@@ -2108,7 +2116,7 @@ impl LearningSpace {
                 409,
             )?);
         }
-        self.save(&mut archive.app, None)?;
+        self.commit_at_revision(&archive.app, None)?;
         self.state.storage().sync().await?;
         private(Response::ok(
             "Complete archive restored into a fresh learning space. External work remains paused.",
