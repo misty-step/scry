@@ -638,19 +638,26 @@ export async function materialJourney() {
         } finally {await reading.close();}
       },
       async () => {
+        oldArtifact = await frozenWorker(join(temp, `frozen-${OLD.release}`));
         const reading = await open('authored-native-browser');
+        let previous;
         try {
           const before = await assertFreshRestore(reading, archive);
+          previous = await open('predecessor-browser-baseline', oldArtifact);
+          await assertFreshRestore(previous, baseline);
           const report = await materialBrowserJourney({
             origin: reading.origin, artifact: reading.artifact, app: before.app, conceptId: ids.authored_concept,
             readRows: reading.rows, readBuckets: () => buckets(reading),
+            predecessor: {origin: previous.origin, artifact: previous.artifact,
+              readRows: previous.rows, readBuckets: () => buckets(previous), release: OLD.release},
           });
           transcript.push({observation: 'Actual Chromium Home/detail/reload and native disclosure preserve authored Material wording, immutable history, exposure, SQLite and R2 across phone/desktop light/dark and 200% computed text sizing.',
-            report: report.path, variants: report.variants, limit: 'Synthetic local browser emulation, not physical-phone or hosted acceptance.'});
-        } finally {await reading.close();}
+            report: report.path, variants: report.variants, layout_status: report.layout_status,
+            limit: 'Synthetic local browser emulation, not physical-phone or hosted acceptance; inherited Home overflow is reported separately from new Material layout.'});
+        } finally {await previous?.close(); await reading.close();}
       },
       async () => {
-        oldArtifact = await frozenWorker(join(temp, `frozen-${OLD.release}`));
+        if (!oldArtifact) oldArtifact = await frozenWorker(join(temp, `frozen-${OLD.release}`));
         const old = await open('old-baseline-control', oldArtifact);
         try {
           const first = await assertFreshRestore(old, baseline);
