@@ -189,6 +189,29 @@ fn legacy_occurrence(app: &App, phase: &str) -> Occurrence {
 }
 
 #[test]
+fn understanding_reference_and_preparation_return_to_the_notebook() {
+    let app = revived();
+    let reference = web::render(
+        &app,
+        &format!("/goals/{LEGACY_GOAL}"),
+        &query("reference-return"),
+        NOW,
+        None,
+    );
+    assert!(reference.contains("href=\"/notebook\">Go to practice →</a>"));
+    assert!(!reference.contains("href=\"/\">Go to practice →</a>"));
+    let preparation = web::render(
+        &app,
+        "/goals/legacy-import-goal-00000000000000000000000000000000",
+        &query("preparation-return"),
+        NOW,
+        None,
+    );
+    assert!(preparation.contains("href=\"/notebook\">Return to practice →</a>"));
+    assert!(!preparation.contains("href=\"/\">Return to practice →</a>"));
+}
+
+#[test]
 fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     let mut app = revived();
     let concept = format!("legacy-import-quiz-concept-{QUIZ}");

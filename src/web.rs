@@ -1301,7 +1301,11 @@ impl View<'_> {
                     );
                 }
             }
-            out.push_str("</section><a class=\"button primary\" href=\"/\">Go to practice →</a>");
+            let _ = write!(
+                out,
+                "</section><a class=\"button primary\" href=\"{}\">Go to practice →</a>",
+                legacy_home(self.app)
+            );
         }
         let _ = write!(
             out,
@@ -1459,7 +1463,11 @@ impl View<'_> {
                 out.push_str("<p class=\"fineprint\">The attempt limit is reached. Save a new request or add feedback to change what comes next.</p><a class=\"text-link\" href=\"/create\">Create a new request →</a>");
             }
         }
-        out.push_str("<a class=\"text-link\" href=\"/\">Return to practice →</a></section>");
+        let _ = write!(
+            out,
+            "<a class=\"text-link\" href=\"{}\">Return to practice →</a></section>",
+            legacy_home(self.app)
+        );
         out
     }
     fn concept(&self, id: &str) -> String {

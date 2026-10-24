@@ -22,7 +22,10 @@ const count = async (f, prefix) => Object.keys(await f.rows()).filter(key => key
 const form = page => page.locator('form[action="/library/version/add"]');
 const addButton = page => form(page).getByRole('button');
 const versionPath = id => '/library/versions/' + id;
-const fields = async locator => Object.fromEntries(await locator.locator('input[name]').evaluateAll(nodes => nodes.filter(node => !['radio','checkbox'].includes(node.type) || node.checked).map(node => [node.name, node.value])));
+const fields = async locator => {
+  await locator.waitFor({state:'visible'});
+  return locator.evaluate(form => Object.fromEntries([...form.querySelectorAll('input[name]')].filter(node => !['radio','checkbox'].includes(node.type) || node.checked).map(node => [node.name, node.value])));
+};
 
 async function libraryFixture() {
   const temp = await mkdtemp(join(tmpdir(), 'scry-phone-library-'));
@@ -110,8 +113,10 @@ async function layout(page, zoom) {
 async function search(page, query) {
   const field = page.getByLabel('Find a text',{exact:true});
   await field.fill(query);
-  await field.press('Enter');
-  await page.waitForURL(url => url.pathname === '/library' && url.searchParams.get('q') === query);
+  await Promise.all([
+    page.waitForURL(url => url.pathname === '/library' && url.searchParams.get('q') === query,{waitUntil:'domcontentloaded'}),
+    field.press('Enter')
+  ]);
 }
 
 export async function phoneLibraryWalk(browser, capture) {
@@ -124,6 +129,14 @@ export async function phoneLibraryWalk(browser, capture) {
     results.push(row);
     const shot = async name => {await layout(page,zoom); row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${name}.png`));};
     const activate = async locator => {if (width < 768) await locator.tap(); else {await locator.focus(); await page.keyboard.press('Enter');}};
+    const selectVersion = async id => {
+      await Promise.all([
+        page.waitForURL(f.origin + versionPath(id),{waitUntil:'domcontentloaded'}),
+        activate(page.locator(`main a[href="${versionPath(id)}"]`))
+      ]);
+      await page.locator('[data-state="library-version"]').waitFor();
+      await page.locator('form[action="/practice/learn"]').waitFor({state:'visible'});
+    };
     try {
       await page.goto(f.origin + '/');
       await page.getByLabel('Find a text',{exact:true}).waitFor();
@@ -181,7 +194,7 @@ export async function phoneLibraryWalk(browser, capture) {
       await search(page,alias);
       assert.equal(await page.locator(`main a[href="${versionPath(secondId)}"]`).count(),1);
       assert.ok((await page.locator('main').innerText()).includes(otherEdition));
-      await activate(page.locator(`main a[href="${versionPath(secondId)}"]`));
+      await selectVersion(secondId);
       await page.getByRole('heading',{name:title,level:1,exact:true}).waitFor();
       assert.ok((await page.locator('main').innerText()).includes(otherText));
       await page.goto(f.origin + '/library');
@@ -189,9 +202,12 @@ export async function phoneLibraryWalk(browser, capture) {
       // alias and opening words. Do not invent a metadata/semantic search.
       await search(page,otherEdition); await page.getByText('Nothing matches.',{exact:true}).waitFor();
       await shot('honest-miss');
-      await search(page,alias); await activate(page.locator(`main a[href="${versionPath(vid)}"]`));
+      await search(page,alias); await selectVersion(vid);
       const learnFields = await fields(page.locator('form[action="/practice/learn"]'));
-      await activate(page.getByRole('button',{name:'Learn',exact:true}));
+      await Promise.all([
+        page.waitForURL(f.origin + '/',{waitUntil:'domcontentloaded'}),
+        activate(page.getByRole('button',{name:'Learn',exact:true}))
+      ]);
       await page.locator('[data-state="exact-prompt"]').waitFor();
       assert.equal(new URL(page.url()).pathname,'/');
       assert.equal(await page.getByLabel('Your answer',{exact:true}).count(),1);
@@ -223,8 +239,11 @@ export async function phoneLibraryWalk(browser, capture) {
       for (const [action,status] of [['Pause','paused'],['Resume','active'],['Drop','dropped']]) {
         await page.goto(f.origin + versionPath(vid));
         await activate(page.getByText('Manage Study',{exact:true}));
-        await activate(page.getByRole('button',{name:action,exact:true}));
-        await page.waitForURL(f.origin + '/');
+        await Promise.all([
+          page.waitForURL(f.origin + '/',{waitUntil:'domcontentloaded'}),
+          activate(page.getByRole('button',{name:action,exact:true}))
+        ]);
+        await page.locator(status==='dropped'?'[data-state="library"]':'[data-state="exact-prompt"]').waitFor();
         assert.equal((await f.record('practice_studies/'+study.id)).status,status);
         assert.equal(await count(f,'practice_attempts/'),1,'Study controls retain the first Attempt.');
         assert.deepEqual((await f.cli(['version','show',vid])).version,original.version);
@@ -277,14 +296,25 @@ export async function phoneLibraryRecovery(browser, capture) {
     assert.equal(await count(f,'library_versions/'),1); assert.equal(await count(f,'library_works/'),1);
     row.observed={sends:2,versions:1,works:1,frozen_payload_equal:true};
   });
-  await check('competing add tabs refuse stale write',{},async ({f,context,page,row}) => {
+  await check('competing add tabs converge on one Version',{},async ({f,context,page,row}) => {
     await openDraft(f,page); const other=await context.newPage(); await openDraft(f,other);
-    await addButton(page).tap(); await page.waitForURL(/\/library\/versions\/[^/?]+$/);
-    await addButton(other).tap(); await other.getByText('This changed in another tab. Your draft is still here.',{exact:true}).waitFor();
-    assert.equal(await other.getByLabel('Text',{exact:true}).inputValue(),text);
-    assert.equal(await count(f,'library_versions/'),1); assert.equal(await count(f,'practice_studies/'),0);
-    row.evidence.push(await capture(other,'phone-library-stale-draft.png')); await other.close();
-    row.observed={versions:1,studies:0,stale_refusal:409,draft_retained:true};
+    const firstFields=await fields(form(page)), secondFields=await fields(form(other));
+    assert.ok(firstFields.operation_id && secondFields.operation_id);
+    assert.notEqual(firstFields.operation_id,secondFields.operation_id,'Each tab owns its own operation.');
+    const firstResponse=page.waitForResponse(response => response.request().method()==='POST' && new URL(response.url()).pathname==='/library/version/add');
+    await Promise.all([page.waitForURL(/\/library\/versions\/[^/?]+$/,{waitUntil:'domcontentloaded'}),addButton(page).tap()]);
+    assert.equal((await firstResponse).status(),303);
+    await page.locator('[data-state="library-version"]').waitFor();
+    const destination=page.url(), vid=new URL(destination).pathname.split('/').at(-1);
+    const original=(await f.cli(['version','show',vid])).version;
+    const secondResponse=other.waitForResponse(response => response.request().method()==='POST' && new URL(response.url()).pathname==='/library/version/add');
+    await Promise.all([other.waitForURL(destination,{waitUntil:'domcontentloaded'}),addButton(other).tap()]);
+    assert.equal((await secondResponse).status(),303);
+    await other.locator('[data-state="library-version"]').waitFor();
+    assert.equal(await count(f,'library_works/'),1); assert.equal(await count(f,'library_versions/'),1); assert.equal(await count(f,'practice_studies/'),0);
+    assert.deepEqual((await f.cli(['version','show',vid])).version,original,'Competing supplied-text adds preserve the original Version.');
+    row.evidence.push(await capture(other,'phone-library-competing-add.png')); await other.close();
+    row.observed={version:vid,works:1,versions:1,studies:0,responses:[303,303],distinct_operations:true,original_version_unchanged:true};
   });
   await check('offline Library draft pauses without automatic writes',{},async ({f,context,page,row}) => {
     await openDraft(f,page); let sends=0;
@@ -329,6 +359,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     assert.deepEqual(await f.rows(),before,'Protected HTML/JSON reads write no assistance or learning state.');
     const destination=versionPath(vid);
     await page.goto(f.origin+destination); await page.locator('[data-state="library-gate"]').waitFor();
+    row.evidence.push(await capture(page,`phone-library-${noJS?'native':'js'}-protected-gate.png`));
     const revealFields=await fields(page.locator('form[action="/practice/reveal"]'));
     let durableBeforeRedirect=false;
     await context.route('**/practice/reveal',async route => {
