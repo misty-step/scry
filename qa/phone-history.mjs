@@ -1,5 +1,6 @@
 // Saved History journeys against the built Worker and compiled CLI. All text is
-// synthetic; reads and native disclosures must not mutate learning records.
+// synthetic; exact History and native disclosures must not mutate Practice.
+// Existing legacy History reads may still record concept exposure.
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -12,6 +13,15 @@ const htmlText = text => text.replace(/\r\n?/g,'\n');
 const status = effect => effect.assisted ? 'assisted' : effect.extra_practice ? 'extra' : effect.scheduled ? 'scheduled' : 'unchanged';
 const word = part => ({kind:part.kind,unit_index:part.unit_index,text:part.kind==='correct'||part.kind==='missing'?part.expected.text:part.kind==='extra'?part.typed.text:part.typed.text+' → '+part.expected.text});
 const savedOrder = history => Object.values(history.attempts).sort((a,b)=>b.sequence-a.sequence);
+const exactHistoryState = rows => ({
+  practice:rows.meta.practice,
+  rows:Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('practice_')||key.startsWith('study_version_refs/')||key.startsWith('operations/'))),
+});
+const legacyEvents = rows => Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('events/')));
+const assertExactReadOnly = (before,after) => {
+  assert.deepEqual(exactHistoryState(after),exactHistoryState(before),'History leaves exact Practice/current, immutable payloads, Corrections, Study references and mutation receipts unchanged.');
+  assert.deepEqual(legacyEvents(after),legacyEvents(before),'Legacy concept exposure never rewrites original legacy events.');
+};
 const entry = (page,id) => page.locator(`${entries}[data-attempt-id="${id}"]`);
 const activate = async (page,locator,key='Enter') => {await locator.focus(); await page.keyboard.press(key);};
 const openHistory = async page => {
@@ -95,11 +105,15 @@ async function assertHistory(page,history) {
   return rendered;
 }
 
-async function assertGate(page,f,privateValues) {
-  await page.getByText(gateText,{exact:true}).waitFor();
+async function assertNoHistory(page,privateValues) {
   const html=await page.content();
   for(const value of privateValues.filter(Boolean)) assert.ok(!html.includes(value),`Protected History contains no saved content or IDs: ${value}`);
   for(const selector of ['article.history-entry','.token-history','[data-unit-index]',entries,'[data-attempt-id]','[data-correction-id]','[data-diff-kind]','.exact-history-answer','.exact-expected','script[type="application/json"]']) assert.equal(await page.locator(selector).count(),0,`No historical payload behind the gate: ${selector}`);
+}
+
+async function assertGate(page,f,privateValues) {
+  await page.getByText(gateText,{exact:true}).waitFor();
+  await assertNoHistory(page,privateValues);
   assert.equal(await page.locator('form[action^="/practice/"]').count(),0,'Reading History cannot record assistance.');
   const response=await page.request.get(f.origin+'/history');
   assert.equal(response.status(),200);
@@ -218,6 +232,8 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     const history=await historyParity(f), saved=(await f.cli(['next'])).practice.attempt;
     await openHistory(page); await assertHistory(page,history); await disclosure(page,saved.id);
     const stale=await context.newPage(); await stale.goto(f.origin+'/history'); await stale.locator('[data-state="history"]').waitFor();
+    const offline=await context.newPage(); await offline.goto(f.origin+'/history'); await offline.locator('[data-state="history"]').waitFor();
+    await disclosure(offline,saved.id);
     const firstCard=Object.values(history.cards).find(card=>card.unit_index===0);
     const newer=(await f.cli(['next','--after',saved.prompt.id,'--card',firstCard.id])).practice.prompt;
     assert.equal(newer.assisted,false); assert.notEqual(newer.id,saved.prompt.id);
@@ -228,11 +244,36 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     assert.equal(await page.locator('[data-state="exact-prompt"]').getAttribute('data-prompt-id'),newer.id);
     await page.goBack(); await assertGate(page,f,privateValues);
     await stale.reload(); await assertGate(stale,f,privateValues); await stale.close();
+    // This separate tab still has the original expanded answer-bearing History
+    // in its Back stack, rather than the safe gate installed by the online walk.
+    await activate(offline,offline.locator('.wordmark')); await offline.locator('[data-state="exact-prompt"]').waitFor();
+    let writes=0;
+    const countWrite=request=>{if(request.method()==='POST')writes++;};
+    context.on('request',countWrite);
+    let offlineNavigation='completed';
+    await context.setOffline(true);
+    try {
+      try {await offline.goBack({waitUntil:'domcontentloaded'});}
+      catch(error) {
+        assert.match(error.message,/net::ERR_INTERNET_DISCONNECTED/,'Only the explicit offline navigation failure is expected.');
+        offlineNavigation='ERR_INTERNET_DISCONNECTED';
+      }
+      await offline.waitForLoadState('domcontentloaded');
+      await assertNoHistory(offline,privateValues);
+      row.evidence.push(await capture(offline,`phone-history-${results.length}-offline-return.png`));
+      assert.equal(writes,0,'Offline Back never queues an answer or assistance.');
+      assert.deepEqual(await f.rows(),before);
+    } finally {await context.setOffline(false);}
+    // A deliberate fresh GET after reconnection must recheck the newer Prompt;
+    // do not treat an offline browser error page as a saved application result.
+    await offline.goto(f.origin+'/history'); await assertGate(offline,f,privateValues);
+    assert.equal(writes,0,'Reconnecting and revalidating History send no mutation.');
+    context.off('request',countWrite); await offline.close();
     assert.deepEqual(await f.rows(),before,'Protected navigation does not reveal, advance or reschedule.');
     await activate(page,page.locator('.wordmark')); await page.locator('[data-state="exact-prompt"]').waitFor();
     await answer(page,previousText);
     await openHistory(page); await assertHistory(page,await historyParity(f));
-    row.observed={noJS,back_revalidated:true,forward_current_prompt:true,stale_tab_reload_gated:true,raw_html_safe:true,read_only_gate:true};
+    row.observed={noJS,back_revalidated:true,forward_current_prompt:true,stale_tab_reload_gated:true,offline_return_private_history:false,offline_navigation:offlineNavigation,online_return_revalidated:true,offline_and_reconnect_writes:0,raw_html_safe:true,read_only_gate:true};
   });
 
   await check('History disclosures stay read-only offline and reconnect sends nothing',{},async({f,page,context,row})=>{
@@ -266,7 +307,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     const protectedRows=await f.rows();
     const privateIds=Object.keys(protectedRows).filter(key=>key.startsWith('practice_attempts/')).map(key=>key.slice('practice_attempts/'.length));
     await openHistory(page); await assertGate(page,f,[phoneText.trim(),previousText.trim(),...privateIds]);
-    assert.deepEqual(await f.rows(),protectedRows,'An unanswered exact Prompt gates legacy and exact History without writing assistance.');
+    assertExactReadOnly(protectedRows,await f.rows());
     await shot('mixed-history-gate');
     await activate(page,page.locator('.wordmark')); await page.locator('[data-state="exact-prompt"]').waitFor();
     await answer(page,phoneAnswer); const history=await historyParity(f), original=(await f.cli(['export'])).app.events;
@@ -284,7 +325,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     assert.equal((await f.record('meta')).occurrence.assisted,true);
     const before=await f.rows(); await openHistory(page); await assertHistory(page,history);
     assert.equal(await legacy.count(),1);
-    assert.deepEqual(await f.rows(),before,'Assisted legacy History remains a read-only view.');
+    assertExactReadOnly(before,await f.rows());
     await page.goto(f.origin+'/notebook'); await page.locator('#answer').fill('max-age');
     await page.getByRole('button',{name:/Check my answer/}).tap(); await page.locator('[data-state="result"]').waitFor();
     await openHistory(page); await assertHistory(page,await historyParity(f));
