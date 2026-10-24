@@ -90,9 +90,13 @@ async function fillDraft(page, overrides = {}) {
 
 async function layout(page, zoom) {
   if (zoom) await page.evaluate(() => {
-    // Capture computed sizes first, then apply once per element. Repeated checks
-    // on an unchanged held page must not accidentally turn 200% into 400%.
-    const nodes = [...document.querySelectorAll('body,body *')].filter(node => !node.dataset.qaTextSize);
+    // Restore our previous sizing before measuring. AJAX replaces only the main
+    // and header, so retaining an already-doubled body would turn inherited
+    // sizes in the new main into 400% instead of the requested 200%.
+    for (const node of document.querySelectorAll('[data-qa-text-size]')) {
+      node.style.removeProperty('font-size'); delete node.dataset.qaTextSize;
+    }
+    const nodes = [...document.querySelectorAll('body,body *')];
     for (const node of nodes) node.dataset.qaTextSize = String(parseFloat(getComputedStyle(node).fontSize) * 2);
     for (const node of nodes) node.style.fontSize = node.dataset.qaTextSize + 'px';
   });

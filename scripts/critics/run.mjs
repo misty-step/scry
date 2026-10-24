@@ -414,6 +414,9 @@ async function humanWalk(args) {
     }
   }
 
+  const entryUrl = new URL(url || 'http://127.0.0.1:18080/');
+  let surface = entryUrl.pathname;
+
   // Candidate binding (D1): receipts carry the identity of the tested artifact
   // only from its handle. A mismatch is a blocked walk with a receipt.
   let binding = {
@@ -450,9 +453,8 @@ async function humanWalk(args) {
 
   // Current Worker concept critics exercise the understanding notebook. Keep
   // declared external/retained targets unchanged; never rewrite product routes.
-  const entryUrl = new URL(url || 'http://127.0.0.1:18080/');
   if (binding.identity_format === 'scry-critic-worker-candidate-v2' && entryUrl.pathname === '/') entryUrl.pathname = '/notebook';
-  const surface = entryUrl.pathname;
+  surface = entryUrl.pathname;
 
   function getNetworkType(inputUrl) {
     if (!inputUrl) return 'local-loopback';
