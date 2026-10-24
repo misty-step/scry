@@ -246,6 +246,7 @@ def gate(args):
     shutil.copytree(inspector, output / "revival-inspect")
     shutil.copytree(converter, output / "revival-convert")
     shutil.copytree(source / "target/walk", output / "walk")
+    shutil.copyfile(source / "target/materials-runtime.json", output / "materials-runtime.json")
     archive_source(source, metadata, output / "source.tar.gz")
     shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
     (output / "source.json").write_bytes(encoded(metadata))
