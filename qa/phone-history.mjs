@@ -247,18 +247,28 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     // This separate tab still has the original expanded answer-bearing History
     // in its Back stack, rather than the safe gate installed by the online walk.
     await activate(offline,offline.locator('.wordmark')); await offline.locator('[data-state="exact-prompt"]').waitFor();
+    await offline.waitForLoadState('load');
     let writes=0;
     const countWrite=request=>{if(request.method()==='POST')writes++;};
     context.on('request',countWrite);
     let offlineNavigation='completed';
     await context.setOffline(true);
     try {
-      try {await offline.goBack({waitUntil:'domcontentloaded'});}
-      catch(error) {
-        assert.match(error.message,/net::ERR_INTERNET_DISCONNECTED/,'Only the explicit offline navigation failure is expected.');
-        offlineNavigation='ERR_INTERNET_DISCONNECTED';
-      }
-      await offline.waitForLoadState('domcontentloaded');
+      // Arm fresh events after the old document has loaded. The failed request
+      // rejects goBack before Chromium commits its error document, so checking
+      // the old document's cached load state is not a navigation barrier. Match
+      // the main-frame commit and its new load without guessing the error URL.
+      await Promise.all([
+        offline.waitForEvent('framenavigated',{predicate:frame=>frame===offline.mainFrame()}),
+        offline.waitForEvent('load'),
+        (async()=>{
+          try {await offline.goBack({waitUntil:'domcontentloaded'});}
+          catch(error) {
+            assert.match(error.message,/net::ERR_INTERNET_DISCONNECTED/,'Only the explicit offline navigation failure is expected.');
+            offlineNavigation='ERR_INTERNET_DISCONNECTED';
+          }
+        })(),
+      ]);
       await assertNoHistory(offline,privateValues);
       row.evidence.push(await capture(offline,`phone-history-${results.length}-offline-return.png`));
       assert.equal(writes,0,'Offline Back never queues an answer or assistance.');
