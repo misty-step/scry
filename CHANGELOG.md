@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/misty-step/scry/compare/v0.8.0...v0.8.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **restore:** preserve immutable history revision floor ([#395](https://github.com/misty-step/scry/issues/395)) ([5b5948f](https://github.com/misty-step/scry/commit/5b5948f69af4401c44f4613126e4b5e21b16145e))
+
 ## [0.8.0](https://github.com/misty-step/scry/compare/v0.7.3...v0.8.0) (2026-10-24)
 
 
