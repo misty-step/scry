@@ -88,3 +88,45 @@ fn related_concepts_reuse_both_directions_of_the_existing_prerequisite_graph() {
     assert!(second.contains("Builds on"));
     assert!(second.contains(&format!("href=\"/concepts/{}\"", prerequisite.id)));
 }
+
+#[test]
+fn archived_goal_concepts_leave_active_navigation_but_keep_their_reference() {
+    let mut app = App::new("synthetic-concept-home-csrf-value".into());
+    engine::seed_fixture(&mut app, NOW).unwrap();
+    app.occurrence = None;
+    let original = app.concepts.clone();
+    let goal = app.goals.keys().next().unwrap().clone();
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "archive-home-goal".into()),
+    ]);
+    engine::mutate(
+        &mut app,
+        &format!("/goals/{goal}/archive"),
+        &fields,
+        NOW,
+        "archive-home-goal",
+    )
+    .unwrap();
+    assert_eq!(
+        app.concepts, original,
+        "Goal archival must retain concept records"
+    );
+    let before = app.clone();
+    let home = render(&app, "/");
+    assert!(home.contains("What do you want to learn?"));
+    assert!(!home.contains("Start practice"));
+    for c in app.concepts.values() {
+        assert!(!home.contains(&format!("href=\"/concepts/{}\"", c.id)));
+        let detail = render(&app, &format!("/concepts/{}", c.id));
+        assert!(detail.contains(&c.name));
+        assert!(detail.contains("Archived: retained for reference."));
+        assert!(!detail.contains("Practice this idea"));
+        assert!(!detail.contains("<h2>Related</h2>"));
+        assert!(!detail.contains("<h3>Builds on</h3>") && !detail.contains("<h3>Used by</h3>"));
+    }
+    assert_eq!(
+        app, before,
+        "Rendering retained references must not change records"
+    );
+}

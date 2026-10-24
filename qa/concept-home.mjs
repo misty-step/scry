@@ -1,7 +1,7 @@
 // Native local-browser journeys over the compiled Worker and real SQLite.
 // The sole content fixture is the existing explicit authored-demo action.
 import assert from 'node:assert/strict';
-import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {createRuntime,createSyntheticRuntime,internalKey} from './runtime-helper.mjs';
 
 export async function conceptHomeWalk(browser,capture){
  const results=[];
@@ -85,9 +85,61 @@ export async function conceptHomeWalk(browser,capture){
    await layout();await shot('concept-used-by');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('concept-used-by-200');
    await activate(reverse);await page.getByRole('heading',{name:'Builds on',exact:true}).waitFor();assert.equal(await page.locator('.connected').getByRole('link',{name:prerequisite.name,exact:true}).getAttribute('href'),`/concepts/${prerequisite.id}`);
    const afterReference=await state();assert.deepEqual(afterReference.occurrence,held.occurrence);assert.deepEqual(afterReference.practice,held.practice);assert.deepEqual(afterReference.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
+   // Archive through the real Worker command, not by rewriting Concept flags.
+   await activate(page.getByRole('link',{name:'Original material & preparation',exact:true}));
+   const archiveBaseline=await state();
+   await activate(page.getByRole('button',{name:'Archive this goal',exact:true}));await page.locator('[data-state="map"]').waitFor();
+   assert.equal(await page.locator(`a[href="/goals/${prerequisite.goal_id}"]`).count(),0);
+   await activate(headerHome());await home().waitFor();
+   assert.equal(await home().locator('.home-concepts a').count(),0);assert.equal(await home().getByRole('link',{name:'Start practice',exact:true}).count(),0);
+   await stable(archiveBaseline);await shot('archived-goal-home');
+   for(const concept of [prerequisite,dependent]){
+    await page.goto(url+`/concepts/${concept.id}`);await page.getByRole('heading',{name:concept.name,exact:true}).waitFor();
+    await page.getByText('Archived: retained for reference.',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Practice this idea',exact:false}).count(),0);
+    assert.equal(await page.locator('.connected').count(),0);await stable(archiveBaseline);
+   }
+   await page.goto(url+'/history');assert.deepEqual((await state()).records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
+   await page.goto(url+'/notebook');await page.locator('[data-state="result"]').waitFor();
+   await activate(page.getByRole('button',{name:'Next question',exact:true}));await page.locator('[data-state="empty"], [data-state="caught-up"]').waitFor();
+   await activate(headerHome());await home().waitFor();assert.equal(await home().getByRole('link',{name:/^(Start|Resume) practice$/}).count(),0);
+   assert.equal((await state()).occurrence,null);assert.equal((await state()).practice?.current??null,null);
    await layout();assert.deepEqual(errors,[],'Browser errors');
   }catch(error){row.status='fail';row.reason=error.message;console.error(`${name}: ${error.message}`);await shot('failure');}
   finally{await context.close();await runtime.mf.dispose();}
  }
+ const row={name:'concept-home-read-only-poll',status:'pass',evidence:[],scope:'Existing saved requests and native Home polling; no provider configuration or external egress.'};results.push(row);
+ const runtime=await createSyntheticRuntime({name:'concept-home-read-only-poll'});
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
+ let releasePoll;const pollRelease=new Promise(done=>{releasePoll=done;});
+ try{
+  const read=async()=>{const response=await context.request.get(runtime.url+'/export');assert.equal(response.status(),200);return(await response.json()).app;};
+  const practice=app=>({occurrence:app.occurrence,practice:app.practice,events:app.events,concepts:app.concepts,questions:app.questions});
+  const save=async operation=>{
+   const settings=await(await context.request.get(runtime.url+'/settings')).text();
+   const fields=Object.fromEntries([...settings.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+   const response=await context.request.post(runtime.url+'/create',{form:{...fields,operation_id:operation,intent:'Synthetic saved request for Home status'},headers:{Origin:runtime.url},maxRedirects:0});assert.equal(response.status(),303);
+  };
+  await save('home-poll-stopped');await page.goto(runtime.url+'/');
+  await page.getByText('Preparing your material',{exact:true}).waitFor();const before=practice(await read());
+  await page.getByText('Preparation needs your attention',{exact:true}).waitFor();
+  assert.equal(new URL(page.url()).pathname,'/');assert.deepEqual(practice(await read()),before);assert.deepEqual((await read()).spend,[]);
+  row.evidence.push(await capture(page,'concept-home-poll-stopped.png'));
+  // Hold an actual server poll response across newer native navigation.
+  await save('home-poll-stale-navigation');let sawPoll;const started=new Promise(done=>{sawPoll=done;});let completedPoll;const completed=new Promise(done=>{completedPoll=done;});let deliveryError;
+  await context.route(runtime.url+'/',async route=>{
+   if(route.request().headers()['x-scry-request']!=='poll')return route.continue();
+   const response=await route.fetch();sawPoll();await pollRelease;
+   try{await route.fulfill({response});}catch(error){deliveryError=error.message;}finally{completedPoll();}
+  });
+  await page.goto(runtime.url+'/');await page.getByText('Preparing your material',{exact:true}).waitFor();
+  let timer;try{await Promise.race([started,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Home did not issue its read-only poll')),12000);})]);}finally{clearTimeout(timer);}
+  await page.locator('footer').getByRole('link',{name:'Settings',exact:true}).tap();await page.waitForURL(runtime.url+'/settings');
+  releasePoll();await completed;await page.waitForTimeout(250);
+  if(deliveryError)assert.match(deliveryError,/closed|cancel|abort/i,'Only native navigation cancellation may prevent delivery of the old poll');
+  assert.equal(new URL(page.url()).pathname,'/settings');assert.equal(await page.locator('[data-state="concept-home"]').count(),0);
+  assert.deepEqual(practice(await read()),before);assert.deepEqual((await read()).spend,[]);row.evidence.push(await capture(page,'concept-home-poll-newer-navigation.png'));
+ }catch(error){row.status='fail';row.reason=error.message;console.error(`${row.name}: ${error.message}`);row.evidence.push(await capture(page,'concept-home-poll-failure.png'));}
+ finally{releasePoll();await context.close();await runtime.mf.dispose();}
  return results;
 }

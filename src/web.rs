@@ -209,6 +209,14 @@ impl View<'_> {
             escape(&idea_title(self.app, concept))
         }
     }
+    fn active_concept(&self, concept: &Concept) -> bool {
+        !concept.archived
+            && self
+                .app
+                .goals
+                .get(&concept.goal_id)
+                .is_some_and(|goal| !goal.archived)
+    }
     /// Above a question, an imported placeholder is named by its goal: its own
     /// title would repeat the question directly beneath it.
     fn study_chip(&self, concept: &Concept) -> (String, String) {
@@ -1226,7 +1234,12 @@ impl View<'_> {
         )
     }
     fn home(&self) -> String {
-        let concepts: Vec<_> = self.app.concepts.values().filter(|c| !c.archived).collect();
+        let concepts: Vec<_> = self
+            .app
+            .concepts
+            .values()
+            .filter(|c| self.active_concept(c))
+            .collect();
         let mut out = format!(
             "<section class=\"concept-home\" data-state=\"concept-home\"><h1>{}</h1>",
             if concepts.is_empty() {
@@ -1606,7 +1619,7 @@ impl View<'_> {
             self.lede("lede", c),
             self.notes(c),
             recall_label(self.app, c, self.now),
-            if c.archived {
+            if !self.active_concept(c) {
                 "<p>Archived: retained for reference.</p>".into()
             } else {
                 self.form(
@@ -1663,18 +1676,19 @@ impl View<'_> {
             .app
             .concepts
             .values()
-            .filter(|other| !other.archived && other.prerequisites.contains(&c.id))
+            .filter(|other| self.active_concept(other) && other.prerequisites.contains(&c.id))
             .collect();
-        if !c.prerequisites.is_empty() || !dependents.is_empty() {
+        let prerequisites: Vec<_> = c
+            .prerequisites
+            .iter()
+            .filter_map(|id| self.app.concepts.get(id))
+            .filter(|p| self.active_concept(p))
+            .collect();
+        if !prerequisites.is_empty() || !dependents.is_empty() {
             out.push_str("<section class=\"connected\"><h2>Related</h2>");
-            if !c.prerequisites.is_empty() {
+            if !prerequisites.is_empty() {
                 out.push_str("<h3>Builds on</h3>");
-                for p in c
-                    .prerequisites
-                    .iter()
-                    .filter_map(|id| self.app.concepts.get(id))
-                    .filter(|p| !p.archived)
-                {
+                for p in prerequisites {
                     let _ = write!(
                         out,
                         "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
