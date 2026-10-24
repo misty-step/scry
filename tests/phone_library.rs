@@ -52,10 +52,10 @@ fn page(app: &App, path: &str) -> String {
 #[test]
 fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     let mut app = app();
-    let empty = page(&app, "/");
+    let empty = page(&app, "/library");
     assert!(empty.contains("data-state=\"library\""));
     assert!(!empty.contains("Make it understandable"));
-    assert!(empty.contains("href=\"/notebook\">Understanding</a>"));
+    assert!(empty.contains("href=\"/recall\">Text practice</a>"));
     let masthead = empty
         .split("<nav aria-label=\"Main navigation\">")
         .nth(1)
@@ -63,7 +63,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         .split("</nav>")
         .next()
         .unwrap();
-    assert!(masthead.contains(">Library</a>"));
+    assert!(masthead.contains(">Concepts</a>"));
     assert!(!masthead.contains(">Create</a>") && !masthead.contains(">Map</a>"));
     let form = page(&app, "/library/add");
     for expected in [
@@ -138,7 +138,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     );
     assert_eq!(app.practice.studies.len(), 1);
     study::ensure_stream(&mut app, NOW, "first-prompt").unwrap();
-    assert!(page(&app, "/").contains("data-state=\"exact-prompt\""));
+    assert!(page(&app, "/recall").contains("data-state=\"exact-prompt\""));
     let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     action(
         &mut app,
@@ -149,7 +149,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     let held = app.practice.current.clone();
     let restored = persistence::app_from_rows(&persistence::rows(&app).unwrap()).unwrap();
     assert_eq!(restored.practice.current, held);
-    assert!(page(&restored, "/").contains("data-state=\"exact-result\""));
+    assert!(page(&restored, "/recall").contains("data-state=\"exact-result\""));
     assert_eq!(app.jobs.len(), 0);
     assert_eq!(app.assessments.len(), 0);
     assert_eq!(app.spend.len(), 0);

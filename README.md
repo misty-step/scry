@@ -1,10 +1,10 @@
 # Scry
 
-Scry gets fixed texts and sets into its owner's head word for word: **find or
-create a Work in the private Library → learn a Version unit by unit → exact
-verdict and diff on every word → a memory model schedules each unit**. Every
-action is drivable by an agent through the API and the `scry` CLI. The
-prompt-first understanding notebook comes later on the same Library.
+Scry helps its owner understand and remember concepts. Concept Home leads to
+existing study material, practice, and connections. Exact text memorization
+remains available through Text practice and the private Library, with fading
+cues, word-by-word verdicts and memory scheduling. [SPEC](SPEC.md) records the
+owner's 2026-10-24 priority amendment and the capabilities still to be built.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
 rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
@@ -31,7 +31,7 @@ and the [promotion/backup handoff](docs/rust-cloudflare.md#canonical-origin-prom
 
 ## Start or resume work
 
-Read SPEC, especially "Exact recall first" and US-014 to US-021, before
+Read SPEC, especially its latest scope amendment and the relevant stories, before
 scoping work. GLOSSARY owns the words. VISION explains intent;
 USER_STORIES is only a compatibility index. Technical decisions live in ADRs.
 Use the current operator request as authority; preserve overlapping work and

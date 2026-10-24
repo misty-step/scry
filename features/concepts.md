@@ -1,6 +1,6 @@
 # Concepts, references, and goals
 
-The Map shows what the owner is learning as goals and concepts. Reference sits
+Concept Home (`/`) is the primary destination. The Map shows goals and connections. Reference sits
 behind a visible assistance gate, and he can focus, pause, resume and pace his
 material. Stories: US-001, US-006, US-009, US-010. Intent:
 [S07](../SPEC.md#s07--manage-what-i-am-learning-us-001us-009us-010),
@@ -9,6 +9,7 @@ material. Stories: US-001, US-006, US-009, US-010. Intent:
 
 ## Sub-features
 
+- `concept-home` explains an empty start and links saved concepts or Resume practice without selecting an occurrence.
 - `map-list` shows goals and their concepts at `/map`, in an accessible list.
 - `map-goal` opens a goal (`/goals/{id}`) with focus, pause, resume and Practice.
 - `map-concept` opens a concept (`/concepts/{id}`) with its reference.
@@ -17,7 +18,7 @@ material. Stories: US-001, US-006, US-009, US-010. Intent:
 
 ## How to get to it (user POV)
 
-- Masthead Map → a goal → a concept from its ordinary list. Follow displayed
+- Masthead Concepts → a concept; View connections → Map → a goal. Follow displayed
   links, never invented IDs. More → Look it up from a question reaches the gate.
 
 ## Driving it with verify-scry helpers

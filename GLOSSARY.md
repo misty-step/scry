@@ -1,7 +1,8 @@
 # Scry
 
-Scry gets fixed texts and sets into its owner's head word for word and keeps
-them there. These are the words its specification, tickets and code use.
+Scry helps its owner understand and remember concepts. Exact text memorization
+remains a distinct activity. These are the words its specification, tickets
+and code use; future ambitions are not implemented data contracts.
 
 ## People and access
 
@@ -162,15 +163,17 @@ The record of money reserved and spent on model and tool calls, by day,
 purpose and model.
 _Avoid_: usage log, billing
 
-## Older notebook terms
+## Concepts and their material
 
 **Concept**:
-A teachable idea in the understanding notebook (kind 7, deferred). It is not
-used for exact recall.
+The primary teachable idea the owner wants to understand. Today it has a
+current explanation, saved questions, and directed prerequisite relationships.
+It is not an exact-recall Work or Unit. Multiple independent reference materials
+and quizzes, varied sources, and related-concept prediction are future work.
 _Avoid_: using it for a Work or Unit
 
 **Goal**:
-The understanding notebook's saved request to learn about something. Exact
+The saved preparation request that groups generated concepts. Exact
 recall uses Study instead.
 _Avoid_: using it for a Study
 
