@@ -116,6 +116,32 @@ pub fn is_authoring_path(path: &str) -> bool {
     authoring_path(path)
 }
 
+/// Browser form parsers replace malformed byte sequences. Reject those bytes
+/// before parsing so new authoring never silently changes supplied wording.
+pub fn valid_form_utf8(content_type: &str, bytes: &[u8]) -> bool {
+    if !content_type.starts_with("application/x-www-form-urlencoded") {
+        return std::str::from_utf8(bytes).is_ok();
+    }
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut offset = 0;
+    while offset < bytes.len() {
+        if bytes[offset] == b'%'
+            && offset + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (
+                (bytes[offset + 1] as char).to_digit(16),
+                (bytes[offset + 2] as char).to_digit(16),
+            )
+        {
+            decoded.push((high * 16 + low) as u8);
+            offset += 3;
+        } else {
+            decoded.push(bytes[offset]);
+            offset += 1;
+        }
+    }
+    std::str::from_utf8(&decoded).is_ok()
+}
+
 fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
     fields.get(key).map(String::as_str).unwrap_or("")
 }

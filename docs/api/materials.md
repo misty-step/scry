@@ -53,6 +53,9 @@ Names and titles allow at most 200 UTF-8 bytes, optional summary at most 2,000,
 and text at most 32,768. The engine validates the supplied content. The CLI
 bounds text reads and refuses oversize or invalid UTF-8 without truncating.
 Spaces, tabs, CRLF, Unicode and trailing line breaks are not normalized.
+The new JSON authoring routes reject malformed UTF-8 and unpaired surrogate
+escapes instead of replacing them. Their native forms likewise reject malformed
+raw or percent-encoded UTF-8 and file-valued fields; only supplied text is accepted.
 
 Supply and retain `--operation-id` for a mutation that might need a retry.
 Omitting it generates a fresh ID, as for existing CLI mutations. After a lost

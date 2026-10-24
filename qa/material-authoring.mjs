@@ -422,6 +422,43 @@ export async function materialAuthoringJourney() {
         assert.equal((await current.form(path, {...createPayload, csrf: meta(before).csrf},
           {headers: {'X-Scry-Test-Origin': 'https://attacker.invalid'}})).status, 403);
       }
+      const currentApp = (await exported(current)).app;
+      const targets = [
+        ['/concepts/create', {name: 'Strict UTF-8', title: 'Strict text'}],
+        ['/materials/add', {concept_id: firstConcept, title: 'Strict text'}],
+        ['/materials/revise', {material_id: firstMaterial, expected_revision_id: currentApp.materials.items[firstMaterial].current_revision_id, title: 'Strict text'}],
+      ];
+      for (const [path, fields] of targets) {
+        const payload = operation({...fields, text: 'BROKEN_UTF8'});
+        const encoded = JSON.stringify(payload);
+        const [prefix, suffix] = encoded.split('BROKEN_UTF8');
+        for (const body of [Buffer.concat([Buffer.from(prefix), Buffer.from([0xff]), Buffer.from(suffix)]),
+          encoded.replace('BROKEN_UTF8', '\\ud800')]) {
+          assert.equal((await current.request('/api/v1' + path, undefined, {method: 'POST', body})).status, 422);
+          assert.deepEqual(await current.rows(), before, 'Malformed UTF-8/JSON cannot be replaced into accepted wording.');
+        }
+        const native = {...payload, csrf: meta(before).csrf};
+        const formBody = new URLSearchParams(native).toString();
+        for (const body of [formBody.replace('BROKEN_UTF8', '%FF'),
+          Buffer.concat(formBody.split('BROKEN_UTF8').flatMap((part, i) => i ? [Buffer.from([0xff]), Buffer.from(part)] : [Buffer.from(part)]))]) {
+          assert.equal((await current.page(path, {method: 'POST', headers: {
+            'X-Scry-Test-Origin': current.url, 'Content-Type': 'application/x-www-form-urlencoded'}, body})).status, 422);
+          assert.deepEqual(await current.rows(), before, 'Native percent decoding cannot silently replace malformed bytes.');
+        }
+        const boundary = 'synthetic-authoring-utf8-boundary';
+        const rawMultipart = Object.entries(native).map(([key, value]) =>
+          `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`).join('') + `--${boundary}--\r\n`;
+        const [beforeText, afterText] = rawMultipart.split('BROKEN_UTF8');
+        const malformedMultipart = Buffer.concat([Buffer.from(beforeText), Buffer.from([0xff]), Buffer.from(afterText)]);
+        assert.equal((await current.page(path, {method: 'POST', headers: {'X-Scry-Test-Origin': current.url,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`}, body: malformedMultipart})).status, 422);
+        assert.deepEqual(await current.rows(), before, 'Multipart text cannot silently replace malformed bytes.');
+        const multipart = new FormData();
+        for (const [key, value] of Object.entries(native)) multipart.set(key, value);
+        multipart.set('attachment', new Blob(['Unsupported supplied file']), 'not-supported.txt');
+        assert.equal((await current.page(path, {method: 'POST', headers: {'X-Scry-Test-Origin': current.url}, body: multipart})).status, 422);
+        assert.deepEqual(await current.rows(), before, 'File-valued fields cannot be dropped from the canonical payload.');
+      }
       const invalid = [
         {name: 'é'.repeat(101)}, {title: 'é'.repeat(101)}, {summary: 'é'.repeat(1001)}, {text: 'é'.repeat(16385)},
         {text: 'x'.repeat(32769)}, {text: ' \r\n\t '}, {text: 'x\0y'}, {text: 'x\u0001y'}, {name: ''}, {title: ''},
@@ -709,7 +746,7 @@ export async function materialAuthoringWalk(browser, capture) {
         colorScheme: scheme, javaScriptEnabled: js, isMobile: width < 1280, hasTouch: width < 1280});
       const page = await context.newPage(); page.setDefaultTimeout(12000);
       const result = {name, width, scheme, javascript: js, restored_paused: paused, input: width < 1280 ? 'native touch' : 'native keyboard',
-        zoom: [100, 200], text_size: [100, 200], status: 'pass', evidence: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom and doubled computed text sizes, not physical-phone or provider-quality acceptance.'};
+        zoom: [100, 200], text_size: [100, 200], status: 'pass', evidence: [], geometry: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom and doubled computed text sizes, not physical-phone or provider-quality acceptance.'};
       results.push(result);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
       const shot = async suffix => {
@@ -751,6 +788,11 @@ export async function materialAuthoringWalk(browser, capture) {
           for (const size of sizes) assert.ok(Math.abs(size.after - size.before * (mode === 'text' ? 2 : 1)) < 0.1,
             'Computed text size must match the declared 100% or 200% mode.');
           const zoom = mode === 'normal' ? 1 : 2;
+          const geometry = await page.evaluate(() => ({inner_width: innerWidth,
+            client_width: document.documentElement.clientWidth, scroll_width: document.documentElement.scrollWidth,
+            visual_width: visualViewport.width, visual_scale: visualViewport.scale}));
+          result.geometry.push({page: suffix, mode, configured_width: width, ...geometry});
+          assert.ok(geometry.inner_width <= width + 0.5, `${name}: mobile layout cannot silently expand its configured viewport`);
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} ${zoom * 100}% overflow`);
           const clipped = await page.locator('main input:not([type=hidden]), main textarea, main button, main a.button').evaluateAll(nodes =>
             nodes.filter(node => {const box = node.getBoundingClientRect(); return box.width > 0 && (box.left < -0.5 || box.right > innerWidth + 0.5);}).map(node => node.name || node.textContent));
@@ -761,6 +803,7 @@ export async function materialAuthoringWalk(browser, capture) {
           }).map(node => node.textContent));
           assert.deepEqual(wrappedActions, [], `${name}: Save/Cancel labels stay on one readable line at ${zoom * 100}%`);
           await shot(`${suffix}-${mode === 'text' ? 'text-' : ''}${zoom * 100}`);
+          if (mode === 'text') result.evidence.push(await capture(page, `${name}-${suffix}-text-200-viewport.png`, {fullPage: false}));
         }
         await page.evaluate(() => {
           document.documentElement.style.zoom = '1';

@@ -695,3 +695,33 @@ fn complete_archive_and_row_bounds_refuse_without_partial_authorship() {
     );
     refused(&mut app, "/materials/add", &input, NOW, 413);
 }
+
+#[test]
+fn form_decoding_refuses_replacement_without_rejecting_literal_unicode_or_percent() {
+    use scry::materials::valid_form_utf8;
+    let encoded = "application/x-www-form-urlencoded;charset=UTF-8";
+    for bytes in [
+        b"text=%C3%A9%0D%0A%09".as_slice(),
+        "text=Café\r\n".as_bytes(),
+        b"text=100%+literal%Q0",
+    ] {
+        assert!(valid_form_utf8(encoded, bytes));
+    }
+    for bytes in [
+        b"text=%FF".as_slice(),
+        b"text=%C3",
+        b"text=%ED%A0%80",
+        b"text=\xff",
+        b"text=%C3&title=%A9",
+    ] {
+        assert!(!valid_form_utf8(encoded, bytes));
+    }
+    assert!(valid_form_utf8(
+        "multipart/form-data; boundary=x",
+        "Café\r\n%FF".as_bytes()
+    ));
+    assert!(!valid_form_utf8(
+        "multipart/form-data; boundary=x",
+        b"text=\xff"
+    ));
+}

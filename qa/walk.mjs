@@ -116,7 +116,7 @@ try{
   finally{await context.close();await runtime.mf.dispose();await owner?.close();}
  }
  if(browser){
- receipt.material_authoring=await materialAuthoringWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
+ receipt.material_authoring=await materialAuthoringWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;const png=await page.screenshot({path:join(output,path),fullPage:true,...options});if(options.fullPage===false){assert.equal(png.readUInt32BE(16),page.viewportSize().width);assert.equal(png.readUInt32BE(20),page.viewportSize().height);}await register(path);return path;});
  receipt.concept_home=await conceptHomeWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.mixed_notebook=await mixedBrowserWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});

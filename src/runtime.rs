@@ -1130,6 +1130,14 @@ impl DurableObject for LearningSpace {
         {
             return private(Response::error("Use an application form to submit.", 415)?);
         }
+        if crate::materials::is_authoring_path(&path)
+            && !crate::materials::valid_form_utf8(&content_type, &req.clone()?.bytes().await?)
+        {
+            return private(Response::error(
+                "Supply valid UTF-8 text without replacement.",
+                422,
+            )?);
+        }
         let form = req.form_data().await?;
         let raw_form: JsValue = form.into();
         let raw_keys = call(&raw_form, "keys", &[])?;
@@ -1153,6 +1161,11 @@ impl DurableObject for LearningSpace {
                     return private(Response::error("Duplicate form field.", 422)?);
                 }
                 fields.insert(name, value);
+            } else if crate::materials::is_authoring_path(&path) {
+                return private(Response::error(
+                    "Supply text fields only; files are not supported.",
+                    422,
+                )?);
             }
         }
         let mut app = self.load()?;
@@ -1490,10 +1503,20 @@ impl LearningSpace {
             {
                 return api_error(AppError::new(415, "Use application/json."));
             }
-            let value = match req.json::<Value>().await {
-                Ok(value) => value,
-                Err(_) => return api_error(AppError::new(422, "Invalid JSON.")),
-            };
+            let value =
+                if api::mutation_path(&path).is_some_and(crate::materials::is_authoring_path) {
+                    // Request.json uses the browser's replacement decoding. Rust's
+                    // parser rejects malformed UTF-8 and unpaired JSON surrogates.
+                    match serde_json::from_slice::<Value>(&req.bytes().await?) {
+                        Ok(value) => value,
+                        Err(_) => return api_error(AppError::new(422, "Supply valid UTF-8 JSON.")),
+                    }
+                } else {
+                    match req.json::<Value>().await {
+                        Ok(value) => value,
+                        Err(_) => return api_error(AppError::new(422, "Invalid JSON.")),
+                    }
+                };
             let parsed = if path.starts_with("/api/v1/library/") {
                 api::library_fields(value)
             } else {
