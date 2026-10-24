@@ -1,7 +1,7 @@
 // First exact Study through native browser forms, backed by the compiled Worker,
 // real SQLite and local R2. All wording is authored synthetic text; no provider.
 import assert from 'node:assert/strict';
-import {feedbackArrival,assertFeedbackArrival} from './feedback-arrival.mjs';
+import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
 import {randomUUID, createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp, writeFile, rm} from 'node:fs/promises';
@@ -17,7 +17,7 @@ const firstUnit = 'Copper lanterns shelter a quiet garden.';
 const text = firstUnit + ' Silver rain marks the sheltered path.';
 const otherEdition = 'Second supplied edition';
 const otherText = 'Bronze lanterns shelter a patient orchard.';
-const variants = [[320,'light',false,true], [320,'dark',true,true], [390,'light',false,false], [390,'dark',false,false], [1280,'light',false,false], [1280,'dark',true,false]];
+const variants = feedbackVariants;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const count = async (f, prefix) => Object.keys(await f.rows()).filter(key => key.startsWith(prefix)).length;
 const form = page => page.locator('form[action="/library/version/add"]');
@@ -128,7 +128,7 @@ export async function phoneLibraryWalk(browser, capture) {
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     const row = {width,scheme,noJS,text_zoom:zoom?'200%':'100%',status:'pass',criteria:[],evidence:[]};
     results.push(row);
-    const shot = async name => {await layout(page,zoom); row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${name}.png`));};
+    const shot = async name => {await layout(page,zoom); row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${zoom?200:100}-${name}.png`));};
     const activate = async locator => {if (width < 768) await locator.tap(); else {await locator.focus(); await page.keyboard.press('Enter');}};
     const selectVersion = async id => {
       await Promise.all([
@@ -226,7 +226,7 @@ export async function phoneLibraryWalk(browser, capture) {
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter a tired garden.');
       await activate(page.getByRole('button',{name:'Check my answer',exact:true}));
       await page.locator('[data-state="exact-result"]').waitFor();
-      row.arrival=await feedbackArrival(page,capture,`phone-library-${width}-${scheme}-arrival.png`,zoom);
+      row.arrival=await feedbackArrival(page,capture,`phone-library-${width}-${scheme}-${zoom?200:100}-arrival.png`,zoom);
       row.evidence.push(row.arrival.evidence);
       assertFeedbackArrival(row.arrival);
       await page.setViewportSize({width,height:900});
@@ -237,7 +237,13 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.deepEqual(await page.locator('[data-diff-kind]').evaluateAll(nodes => nodes.map(node => node.dataset.diffKind)),attempt.grade.diff.map(part => part.kind));
       await page.reload(); await page.locator('[data-state="exact-result"]').waitFor();
       assert.equal((await f.record('meta')).practice.current.attempt_id,attempt.id);
-      await shot('held-diff');
+      const closeFull=await fullAnswer(page,f,attempt,original.version.sections[0].units[0].text);
+      await shot('held-diff');await closeFull();
+      const heldRows=await f.rows();
+      await page.goto(f.origin+'/library');await page.goBack();
+      await page.locator('[data-state="exact-result"]').waitFor();
+      assert.equal((await f.record('meta')).practice.current.attempt_id,attempt.id);
+      assert.deepEqual(await f.rows(),heldRows,'Back and read-only Library navigation preserve the held Attempt.');
       await activate(page.getByRole('button',{name:'Next',exact:true}));
       await page.locator('[data-state="exact-prompt"]').waitFor();
       assert.notEqual((await f.record('meta')).practice.current.prompt.id,prompt.id);
@@ -264,7 +270,7 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.equal(f.egress,0);
       row.criteria.push(6);
       row.observed = {version:vid,study:study.id,attempt:attempt.id,duplicate_versions:0,duplicate_studies:0,first_attempt_assisted:true,held_reload:true,deliberate_next:true,search:'title, alias, opening words; edition-only honest miss',study_controls:['pause','resume','drop'],local_r2:{sha256:backup.sha256,bytes:backup.bytes},egress:0,spend:0};
-    } catch (error) {row.status='fail'; row.reason=error.message; row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-failure.png`));}
+    } catch (error) {row.status='fail'; row.reason=error.message; row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${zoom?200:100}-failure.png`));}
     finally {row.cli=f.transcript; await context.close(); await f.close();}
   }
   return results;
@@ -332,6 +338,30 @@ export async function phoneLibraryRecovery(browser, capture) {
     await addButton(page).tap(); await page.waitForURL(/\/library\/versions\/[^/?]+$/);
     assert.equal(sends,1); assert.equal(await count(f,'library_versions/'),1);
     row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
+  });
+  await check('long title and unbroken words remain readable in native disclosure',{viewport:{width:320,height:844},colorScheme:'dark',javaScriptEnabled:false},async ({f,page,row}) => {
+    const longTitle='A deliberately long supplied title keeps every word available without displacing the correction from its learning moment';
+    const longWord='counterrevolutionary'.repeat(4), longAnswer='misremembered'.repeat(6);
+    const added=await f.cli(['version','add','--title',longTitle,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('long.txt',longWord+'.')]);
+    await f.cli(['learn',added.result.entity_id]);
+    await page.goto(f.origin+'/');
+    await page.getByLabel('Your answer',{exact:true}).fill(longAnswer);
+    await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
+    await page.locator('[data-state="exact-result"]').waitFor();
+    await layout(page,true);
+    const original=(await f.cli(['next'])).practice.attempt;
+    assert.equal(await page.locator('[data-verdict]').getAttribute('data-verdict'),original.grade.verdict);
+    row.evidence.push(await capture(page,'phone-library-long-words-320-dark-200.png'));
+    const closeFull=await fullAnswer(page,f,original,longWord+'.');
+    assert.equal(await page.locator('.exact-full-answer>h2').first().textContent(),longTitle);
+    await layout(page,true);
+    for(const selector of ['.exact-full-answer>h2','.diff-text','.exact-expected']) {
+      assert.equal(await page.locator(selector).evaluateAll(nodes=>nodes.every(node=>{const rect=node.getBoundingClientRect();return rect.left>=0&&rect.right<=innerWidth&&getComputedStyle(node).overflow!=='hidden';})),true,'Full words wrap rather than clip.');
+    }
+    row.evidence.push(await capture(page,'phone-library-long-full-answer-320-dark-200.png'));
+    await closeFull();
+    assert.deepEqual((await f.cli(['next'])).practice.attempt,original);
+    row.observed={width:320,text_zoom:'200%',noJS:true,complete_title:true,complete_long_words:true,overflow:false,held_attempt_unchanged:true};
   });
   for (const noJS of [false,true]) await check(`protected Library gates HTML, JSON and Back (${noJS?'native forms':'JavaScript'})`,{javaScriptEnabled:!noJS},async ({f,context,page,row}) => {
     const added=await f.cli(['version','add','--title',title,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('protected.txt',text)]);

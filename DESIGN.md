@@ -126,9 +126,11 @@ also offer an explicit retry. The learner check retains whether the submitted
 attempt had help; reading the exposed answer makes the next practice helped.
 
 On a phone, unanswered study stretches enough to put answer controls in the
-thumb zone. The result's Next and grade correction, self-check decisions, and
-introduction action stay at the bottom as the learner reads. Desktop controls
-follow the prose naturally. All core touch targets are at least 44 px, and
+thumb zone. Self-check decisions and introduction actions stay at the bottom
+as the learner reads. Exact-recall result actions follow the correction and its disclosure in
+ordinary flow: they never float over words the learner needs to see, including
+at 200% text size. The full-width Next remains an easy phone target. Desktop
+controls follow the prose naturally. All core touch targets are at least 44 px, and
 primary/choice controls are larger. Narrow 320 px layouts retain ordinary
 flow without horizontal scrolling.
 
@@ -210,9 +212,22 @@ quiet hairline; the allowed cue has a small uppercase label and ordinary
 reading type. Show me opens the Unit behind a violet rule. The answer field
 and primary control use the existing writing surface and cobalt action.
 
-The held Diff wraps into word groups at narrow widths. Every group carries a
-written label: Correct, Slipped, Wrong, Missing, or Extra. Correct uses the
-recall green, Slipped uses the helped violet, and the remaining marks use red
-pencil. Typed and expected words appear together when they differ. The palette
-changes with the existing night scheme. Next and the quiet Correction controls
-follow the Diff and use the existing phone action area.
+The held result leads with its saved verdict and only the changed words from
+its saved Diff, in order. Each change says Slipped, Wrong, Missing, or Extra;
+typed → expected wording appears together when it differs. Multi-Unit edits
+name their Unit. Slipped uses helped violet; other changes use red pencil.
+No matching-word tiles compete with the correction.
+
+Native Full answer disclosure retains the Work title, previous Unit and cue,
+submitted answer, complete expected text, ordered word-by-word Diff and exact-v2
+authority. Matching words are quiet ordinary text with an explicit accessible
+Correct label. Changed labels remain visible, never color-only. Assistance,
+unchanged/extra-practice scheduling status and any wrong-Version warning stay
+outside the disclosure. Next and immutable Correction forms follow it.
+
+This correction-first hierarchy applies on phone and desktop, including the
+same server-rendered no-JavaScript path. It intentionally replaces the earlier
+always-expanded result and per-word colored tiles (#362); grading, saved
+word classifications, disclosure completeness and deliberate advancement do
+not change. Long text wraps, and expanded detail never sits behind a sticky
+action bar.

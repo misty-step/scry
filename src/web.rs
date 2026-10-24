@@ -550,7 +550,7 @@ impl View<'_> {
         out
     }
     fn exact_stream(&self) -> String {
-        use crate::study::{Cue, Status};
+        use crate::study::Status;
         let Some(p) = &self.app.practice.current else {
             let due = crate::study::due(self.app, self.now);
             let next = due["next_due_ms"].as_i64();
@@ -574,35 +574,18 @@ impl View<'_> {
             "exact-prompt"
         };
         let mut out = format!(
-            "<section class=\"study exact-study\" data-state=\"{state}\" data-prompt-id=\"{}\"><p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
-            escape(&prompt.id),
-            escape(&prompt.title)
+            "<section class=\"study exact-study\" data-state=\"{state}\" data-prompt-id=\"{}\">",
+            escape(&prompt.id)
         );
-        if let Some(context) = &prompt.context {
-            let _ = write!(
-                out,
-                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous Unit</p><p class=\"reading\">{}</p></div>",
-                escape(context)
-            );
-        }
-        if !prompt.cue.is_empty() {
-            let label = match prompt.cue_level {
-                Cue::Read => "Read the Unit",
-                Cue::FirstLetters => "First letters",
-                Cue::FirstLetter => "First letter",
-                Cue::PreviousLine => "Cue",
-                Cue::SectionHeading => "Section",
-                Cue::WholeTitle => "Title",
-            };
-            let _ = write!(
-                out,
-                "<div class=\"exact-cue\"><p class=\"eyebrow\">{label}</p><p class=\"reading\">{}</p></div>",
-                escape(&prompt.cue)
-            );
-        }
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else {
+            let _ = write!(
+                out,
+                "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
+                escape(&prompt.title)
+            );
+            out.push_str(&Self::exact_prompt_context(prompt));
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
@@ -636,6 +619,33 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
+    fn exact_prompt_context(prompt: &crate::study::Prompt) -> String {
+        use crate::study::Cue;
+        let mut out = String::new();
+        if let Some(context) = &prompt.context {
+            let _ = write!(
+                out,
+                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous Unit</p><p class=\"reading\">{}</p></div>",
+                escape(context)
+            );
+        }
+        if !prompt.cue.is_empty() {
+            let label = match prompt.cue_level {
+                Cue::Read => "Read the Unit",
+                Cue::FirstLetters => "First letters",
+                Cue::FirstLetter => "First letter",
+                Cue::PreviousLine => "Cue",
+                Cue::SectionHeading => "Section",
+                Cue::WholeTitle => "Title",
+            };
+            let _ = write!(
+                out,
+                "<div class=\"exact-cue\"><p class=\"eyebrow\">{label}</p><p class=\"reading\">{}</p></div>",
+                escape(&prompt.cue)
+            );
+        }
+        out
+    }
     fn exact_expected(&self) -> String {
         let Some(p) = &self.app.practice.current else {
             return String::new();
@@ -658,44 +668,22 @@ impl View<'_> {
         let good = a.grade.verdict == Verdict::Good;
         let verdict = if good { "Good" } else { "Again" };
         let mut out = format!(
-            "<div class=\"feedback feedback-{}\" role=\"status\"><div><h2 data-verdict=\"{verdict}\">{verdict}.</h2><p>{} · {}</p></div></div><div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><h2>Expected text</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div>",
             if good { "correct" } else { "miss" },
-            escape(&a.grade.authority.name),
-            escape(&a.grade.authority.grader_version),
-            escape(&a.raw_answer),
-            self.exact_expected()
         );
-        for d in &a.grade.diff {
-            let (kind, label, text) = match &d.change {
-                Change::Correct { expected, .. } => ("correct", "Correct", escape(&expected.text)),
-                Change::Slip { expected, typed } => (
-                    "slip",
-                    "Slipped",
-                    format!("{} → {}", escape(&typed.text), escape(&expected.text)),
-                ),
-                Change::Wrong {
-                    expected,
-                    typed,
-                    out_of_order,
-                } => (
-                    "wrong",
-                    if *out_of_order {
-                        "Wrong · out of order"
-                    } else {
-                        "Wrong"
-                    },
-                    format!("{} → {}", escape(&typed.text), escape(&expected.text)),
-                ),
-                Change::Missing { expected } => ("missing", "Missing", escape(&expected.text)),
-                Change::Extra { typed } => ("extra", "Extra", escape(&typed.text)),
-            };
-            let _ = write!(
-                out,
-                "<li data-diff-kind=\"{kind}\" data-unit-index=\"{}\"><span class=\"diff-label\">{label}</span><span>{text}</span></li>",
-                d.unit_index
-            );
+        let changed = a
+            .grade
+            .diff
+            .iter()
+            .filter(|d| !matches!(d.change, Change::Correct { .. }))
+            .collect::<Vec<_>>();
+        if !changed.is_empty() {
+            out.push_str("<ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">");
+            for d in changed {
+                out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
+            }
+            out.push_str("</ol>");
         }
-        out.push_str("</ol>");
         if let Some(hint) = &a.grade.wrong_version_hint {
             let _ = write!(
                 out,
@@ -710,6 +698,23 @@ impl View<'_> {
         } else if a.effects.iter().all(|e| e.extra_practice) {
             out.push_str("<p class=\"fineprint\">Extra practice · already scheduled today.</p>");
         }
+        let _ = write!(
+            out,
+            "<details class=\"exact-full-answer\"><summary>Full answer</summary><h2>{}</h2>{}<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><h2>Expected text</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            escape(&a.prompt.title),
+            Self::exact_prompt_context(&a.prompt),
+            escape(&a.raw_answer),
+            self.exact_expected()
+        );
+        for d in &a.grade.diff {
+            out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+        }
+        let _ = write!(
+            out,
+            "</ol><p class=\"fineprint exact-authority\">{} · {}</p></details>",
+            escape(&a.grade.authority.name),
+            escape(&a.grade.authority.grader_version)
+        );
         out.push_str("<div class=\"result-actions\">");
         out.push_str(&self.form(
             "/practice/next",
@@ -766,6 +771,55 @@ impl View<'_> {
         }
         out.push_str("</div>");
         out
+    }
+    fn exact_diff_word(d: &crate::grading::Diff, summary: bool, multiple_units: bool) -> String {
+        use crate::grading::Change;
+        let (kind, label, text) = match &d.change {
+            Change::Correct { expected, .. } => ("correct", "Correct", escape(&expected.text)),
+            Change::Slip { expected, typed } => (
+                "slip",
+                "Slipped",
+                format!("{} → {}", escape(&typed.text), escape(&expected.text)),
+            ),
+            Change::Wrong {
+                expected,
+                typed,
+                out_of_order,
+            } => (
+                "wrong",
+                if *out_of_order {
+                    "Wrong · out of order"
+                } else {
+                    "Wrong"
+                },
+                format!("{} → {}", escape(&typed.text), escape(&expected.text)),
+            ),
+            Change::Missing { expected } => ("missing", "Missing", escape(&expected.text)),
+            Change::Extra { typed } => ("extra", "Extra", escape(&typed.text)),
+        };
+        let attribute = if summary {
+            "data-feedback-kind"
+        } else {
+            "data-diff-kind"
+        };
+        let label_class = if kind == "correct" {
+            "diff-label sr-only"
+        } else {
+            "diff-label"
+        };
+        let unit = if multiple_units {
+            format!(
+                "<span class=\"diff-unit{}\">Unit {}</span>",
+                if kind == "correct" { " sr-only" } else { "" },
+                d.unit_index + 1
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            "<li {attribute}=\"{kind}\" data-unit-index=\"{}\">{unit}<span class=\"{label_class}\">{label}</span><span class=\"diff-text\">{text}</span></li>",
+            d.unit_index
+        )
     }
     fn study(&self) -> String {
         let Some(o) = self.app.occurrence.as_ref() else {

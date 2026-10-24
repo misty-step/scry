@@ -16,6 +16,7 @@ import {repo,outDir,reporter,launch,settle} from './lib.mjs';
 
 process.chdir(repo);
 const {createSyntheticRuntime}=await import(join(repo,'qa/runtime-helper.mjs'));
+const {feedbackArrival,assertFeedbackArrival}=await import(join(repo,'qa/feedback-arrival.mjs'));
 const width=Number(process.argv[process.argv.indexOf('--width')+1]||390)||390;
 const cliPath=join(repo,process.env.SCRY_STUDY_CLI||'target/debug/scry');
 for(const [path,build] of [['build/index_bg.wasm','worker-build --release --locked'],[cliPath,'cargo build --locked --bin scry']])
@@ -116,21 +117,22 @@ try{
   await page.getByLabel('Your answer',{exact:true}).fill('The path begins in a synthetic notebook.');
   await page.getByRole('button',{name:'Check my answer',exact:true}).click();
   await page.locator('[data-state="exact-result"]').waitFor();
+  const arrivalProof=await feedbackArrival(page,async (page,name,options)=>{await page.screenshot({path:join(dir,name),...options});return name;},`study-result-arrival-${width}.png`,false);
+  await writeFile(join(dir,'study-result-arrival.json'),JSON.stringify(arrivalProof,null,2));
+  assertFeedbackArrival(arrivalProof);
   await page.reload();await page.locator('[data-state="exact-result"]').waitFor();
   const verdict=await page.locator('[data-verdict]').getAttribute('data-verdict');
   const kinds=await page.locator('[data-diff-kind]').evaluateAll(n=>n.map(x=>x.dataset.diffKind));
   const api=(await run(['next'])).value?.practice?.attempt;
   if(verdict!==api?.grade?.verdict||JSON.stringify(kinds)!==JSON.stringify(api.grade.diff.map(d=>d.kind)))throw Error(`phone ${verdict} ${kinds} ≠ CLI ${api?.grade?.verdict}`);
-  // On arrival the sticky actions can cover the first Diff row; keep both views.
-  await settle(page);
-  const covered=await page.locator('[data-diff-kind]').first().evaluate(li=>{const b=li.getBoundingClientRect();if(b.bottom>innerHeight)return 'below the fold';const top=document.elementFromPoint(b.x+b.width/2,b.bottom-4);return li.contains(top)?'visible':'covered by '+(top?.closest('.result-actions')?'the sticky result actions':top?.tagName);});
-  const arrival=await page.screenshot({path:join(dir,`study-result-arrival-${width}.png`)}).then(()=>`study-result-arrival-${width}.png`);
-  const diff=await shot('study-diff',[],page.locator('.exact-diff'));
+  const arrival=arrivalProof.evidence;
+  await page.getByText('Full answer',{exact:true}).click();
+  const diff=await shot('study-diff',[],page.locator('.exact-full-answer .exact-diff'));
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   if(overflow)throw Error('horizontal overflow at phone width');
   await page.getByRole('button',{name:'Next',exact:true}).click();
   await page.locator('[data-state="exact-prompt"],[data-state="exact-caught-up"]').first().waitFor();
-  log('study.phone','PASS',`scry learn → / opens the exact Prompt (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first Diff row is ${covered}`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
+  log('study.phone','PASS',`scry learn → / opens the exact Prompt (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first changed word and replacement are fully visible and unoccluded`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
  });
  await step('notebook.legacy-link',async()=>{
   await page.goto(origin+'/notebook');
