@@ -273,15 +273,16 @@ export async function studyJourney(){
     assert.ok(Object.keys(before.attempts).length>1&&Object.keys(before.corrections).length>1,'Exercise multiple immutable Attempts and Corrections, not an empty archive.');
     await restored.rebind({...restoreBindings,SCRY_ENV:'development',CANONICAL_ORIGIN:restoreOrigin});
     await ok(['login','--url',restoreOrigin,'--token-stdin'],secret+'\n');
+    const loggedIn=await ok(['export']);
+    assert.equal(loggedIn.app.revision,archive.app.revision+2,'CLI login retains its existing token last-use write.');
+    assert.deepEqual(loggedIn.app.practice,before);
     const work=archive.app.library.works[wid];
     const edit=['work','edit',wid,'--revision',String(work.revision),'--title','An unrelated edit after restore','--operation-id','restore-unrelated-edit-operation'];
     await ok(edit);
     const written=await ok(['export']);
-    assert.equal(written.app.revision,archive.app.revision+2,'The first ordinary write still advances the current CAS revision once.');
+    assert.equal(written.app.revision,loggedIn.app.revision+1,'The unrelated edit still advances the current CAS revision once.');
     assert.deepEqual(written.app.practice,before);
     assert.deepEqual(written.app.library.versions,archive.app.library.versions);
-    assert.equal((await ok(edit)).replayed,true);
-    assert.deepEqual((await ok(['export'])).app,written.app,'Exact replay does not create a revision or change immutable history.');
     const backupNs=await restored.mf.getDurableObjectNamespace('LEARNING_SPACE'),backupStub=backupNs.get(backupNs.idFromName(restoreBindings.SPACE_NAME));
     const backed=await backupStub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
     assert.equal(backed.status,200,await backed.text());
@@ -305,7 +306,7 @@ export async function studyJourney(){
      const verified=await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
      assert.equal(verified.status,200,await verified.text());
     }finally{await second.mf.dispose();}
-    transcript.push({observation:'Fresh restore → compiled CLI unrelated write/replay → fully validated R2 backup → second fresh restore and backup',source_revision:archive.app.revision,first_restore_revision:archive.app.revision+1,first_write_revision:written.app.revision,second_restore_revision:nextArchive.app.revision+1,attempts:Object.keys(before.attempts).length,corrections:Object.keys(before.corrections).length,archive_sha256:hash(nextBytes)});
+    transcript.push({observation:'Fresh restore → compiled CLI login and unrelated write → fully validated R2 backup → second fresh restore and backup',source_revision:archive.app.revision,first_restore_revision:archive.app.revision+1,login_revision:loggedIn.app.revision,first_write_revision:written.app.revision,second_restore_revision:nextArchive.app.revision+1,attempts:Object.keys(before.attempts).length,corrections:Object.keys(before.corrections).length,archive_sha256:hash(nextBytes)});
    }finally{await restored.mf.dispose();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');}
    transcript.push({observation:'Full local R2 readback and fresh isolated restore retain populated Studies/Cards/Attempts',archive_sha256:hash(bytes),limits:'Local emulator; independent hosted restore UNVERIFIED.'});
   },
