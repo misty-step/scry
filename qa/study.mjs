@@ -139,6 +139,9 @@ export async function studyJourney(){
   assert.deepEqual(after.history.attempts[mixed.id],mixed);assert.equal(after.history.corrections[corrected.id].verdict,'Good');
   const empty=await practice(unitCards[1],'');assert.equal(empty.grade.verdict,'Again');assert.equal(Boolean(empty.disclosure),false);
   await checkHistory('History: an actual empty answer is Again, not Reveal',[empty.id]);
+  const emptyRows=await attemptRows(empty.id);
+  await ok(['correct',current.prompt.id,empty.id,'--verdict','Good']);
+  assert.deepEqual(await attemptRows(empty.id),emptyRows,'A second Correction preserves the original empty Attempt before restore.');
   const replacement='A replacement Version has entirely different wording.\n',path=await file('history-superseded.txt',replacement);
   const newId=(await ok(['version','supersede',v,'--revision',String(shown.work.revision),'--title',title,'--kind','text','--text-file',path,'--name','Replacement metadata'])).result.entity_id;
   assert.notEqual(newId,v);assert.deepEqual((await ok(['version','show',v])).version,shown.version);
