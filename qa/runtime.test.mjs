@@ -3,6 +3,7 @@
 // Egress uses synthetic RSA issuer keys and explicitly controlled model
 // responses. No account, owner credential, real model, or remote bucket is used.
 import assert from 'node:assert/strict';
+import './budget.mjs';
 import { generateKeyPairSync, sign, createHash } from 'node:crypto';
 import test from 'node:test';
 import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
@@ -11,6 +12,10 @@ import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
 const artifact = resolve(process.env.SCRY_WORKER_ARTIFACT || 'build');
+const budgetPolicy=JSON.stringify({contract:'openrouter-gpt41-mini-text-2026-10-24',monthly_micros:10_000_000,request_micros:1_071_576});
+const budgetNow=1792800000000;
+const budgetBindings={SCRY_AI_BUDGET_POLICY:budgetPolicy,SCRY_TEST_NOW_MS:String(budgetNow)};
+const budgetJwt=(changes={})=>jwt({...changes,iat:budgetNow/1000,nbf:budgetNow/1000-1,exp:budgetNow/1000+600});
 const origin = 'https://scry-synthetic.invalid';
 const team = 'synthetic.cloudflareaccess.com';
 const owner = 'synthetic-owner-only';
@@ -200,7 +205,7 @@ try {
     } finally {await fixture.mf.dispose();}
   });
   const recoveryEgress=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');recoverySends++;return new Response('Controlled malformed recovery response',{status:200});};
-  const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress});
+  const restoreRuntime=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:'fresh-isolated-restore-only',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name:'scry-restore-smoke',artifact,egress:recoveryEgress,testClock:true});
   restored=restoreRuntime.mf;
   const restoreWorker=restoreRuntime.worker;
   const restore=(body,checksum=hash,token=restoreToken)=>restoreWorker.fetch(`${origin}/operator/restore`,{method:'POST',headers:{'x-scry-restore-token':token,'x-scry-sha256':checksum},body});
@@ -213,8 +218,8 @@ try {
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName('fresh-isolated-restore-only'));const readback=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(readback.status,200);const recovered=await readback.json();assert.equal(recovered.app.restored_paused,true);assert.equal(recovered.app.preferences.pace,'steady');assert.equal(Object.keys(recovered.app.goals).length,2);assert.equal(recovered.photos.length,1);assert.deepEqual(Buffer.from(recovered.photos[0].bytes,"base64"),photoBytes);assert.notEqual(recovered.photos[0].photo.key,JSON.parse(archiveBytes).photos[0].photo.key);assert.deepEqual(recovered.app.events,JSON.parse(archiveBytes).app.events);assert.deepEqual(recovered.app.operations,JSON.parse(archiveBytes).app.operations);
   });
   await check('learner Settings resume refuses CSRF, replays safely and preserves historical work',async()=>{
-    const activeBindings={...baseBindings,SPACE_NAME:'fresh-isolated-restore-only',OPENROUTER_API_KEY:'synthetic-recovery-generator-key',OPENROUTER_MODEL:'synthetic-recovery-model'};
-    const active=await restoreRuntime.rebind(activeBindings);const req=(path,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
+    const activeBindings={...baseBindings,SPACE_NAME:'fresh-isolated-restore-only',OPENROUTER_API_KEY:'synthetic-recovery-generator-key',OPENROUTER_MODEL:'openai/gpt-4.1-mini',...budgetBindings};
+    const active=await restoreRuntime.rebind(activeBindings);const req=(path,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':budgetJwt(),...init.headers}});
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(activeBindings.SPACE_NAME));const state=async()=>{const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});return(await response.json()).app;};
     const before=await state();assert.equal(before.restored_paused,true);const oldJobs=structuredClone(before.jobs),oldAssessments=structuredClone(before.assessments);
     const html=await(await req('/create')).text();const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new deliberate request after recovery review'})});assert.equal(created.status,303);const newGoal=created.headers.get('Location').split('/').at(-1);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);
@@ -266,7 +271,7 @@ try {
       state=await peek();assert.equal(state.occurrence.phase,'checking');assert.equal(state.occurrence.assisted,false);assert.equal(state.concepts[cold].exposure_ms,oldExposure);release();const deadline=Date.now()+5000;do{state=await peek();if(state.occurrence.phase==='result')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(state.events.length,1);assert.equal(state.events[0].assisted,false);const event=structuredClone(state.events[0]);await req(`/concepts/${cold}`);state=await peek();assert.ok(state.concepts[cold].exposure_ms>oldExposure);assert.deepEqual(state.events[0],event,'Later reference reads must preserve original answer evidence.');
     } finally {release?.();await fixture.mf.dispose();}
   });
-  await check('bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle',async()=>{
+  await check('bounded synthetic generation; unbounded Jev/photo refusal; stale-paid and unknown transport lifecycle',async()=>{
     const batch={title:'Conditional cache validation',complete:true,concepts:[{key:'conditional',name:'Conditional validation',summary:'A validator lets the origin confirm saved content.',note:'A stored representation can be validated by sending its ETag. If the validator still matches, a 304 response lets the browser reuse its body without downloading it again.',basis:'general',quotes:[],prerequisites:[],questions:[{prompt:'Which HTTP response status confirms a conditional cache request can reuse its stored representation?',kind:'recall',answer:'304',variants:[],choices:[],explanation:'304 Not Modified confirms that the saved validator still matches the selected representation.',basis:'general',quotes:[]}]}]};
     let instance,mode='normal',blockedStarted,releaseBlocked,transmissions=0;
     const jsonResponse=value=>new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
@@ -275,8 +280,8 @@ try {
       assert.ok(['https://openrouter.ai/api/v1/chat/completions','https://openrouter.ai/api/alpha/decisions'].includes(req.url));
       const payload=await req.json();const chat=req.url.endsWith('/chat/completions');
       assert.equal(req.headers.get('Authorization'),`Bearer ${chat?'synthetic-generator-key':'synthetic-jev-key'}`);transmissions++;
-      const state=await readState();const reservation=state.app.spend.at(-1);assert.equal(reservation.reserved_micros,500000);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);
-      assert.equal(reservation.model,chat?'synthetic-generator':'synthetic-jev');
+      const state=await readState();const reservation=state.app.spend.at(-1);assert.equal(reservation.reserved_micros,1071576);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);
+      assert.equal(reservation.model,'openai/gpt-4.1-mini');assert.equal(payload.provider.allow_fallbacks,false);assert.deepEqual(payload.provider.only,['openai']);assert.ok(reservation.quote.request_hash);
       assert.equal(reservation.purpose,chat?(Array.isArray(payload.messages.at(-1).content)?'transcribe.photo':'generate.concepts'):(payload.questions.verdict?'grade.jev':'critic'));
       if(chat){
         if(mode==='network-error')throw new Error('Synthetic interrupted provider transport');
@@ -297,36 +302,36 @@ try {
       assert.equal(Object.values(state.app.jobs).some(j=>j.status==='critic-sent'&&j.candidate_json),true,'Candidates must be durably stored before criticism.');
       return jsonResponse({model:'synthetic-jev',usage:{cost:0.000234},answers:Object.fromEntries(Object.keys(payload.questions).map(key=>[key,{type:'noul',noul:0.01}]))});
     };
-    const newBindings={...baseBindings,SPACE_NAME:'synthetic-provider-only',OPENROUTER_API_KEY:'synthetic-generator-key',OPENROUTER_MODEL:'synthetic-generator',JEV_API_KEY:'synthetic-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
-    instance=await createRuntime({bindings:newBindings,name:'scry-provider-smoke',artifact,egress:provider});
+    const newBindings={...baseBindings,SPACE_NAME:'synthetic-provider-only',OPENROUTER_API_KEY:'synthetic-generator-key',OPENROUTER_MODEL:'openai/gpt-4.1-mini',...budgetBindings};
+    instance=await createRuntime({bindings:newBindings,name:'scry-provider-smoke',artifact,egress:provider,testClock:true});
     const ns=await instance.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(newBindings.SPACE_NAME));
     async function readState(){const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(response.status,200);return response.json();}
-    const req=(path,init={})=>instance.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
+    const req=(path,init={})=>instance.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':budgetJwt(),...init.headers}});
     const formFields=(html,action)=>{const form=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);assert.ok(form,`Missing real form ${action}`);return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));};
     const submit=(path,fields)=>req(path,{method:'POST',body:new URLSearchParams(fields),headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'}});
     const wait=async predicate=>{const end=Date.now()+12000;do{const state=await readState();if(predicate(state.app))return state;await new Promise(r=>setTimeout(r,100));}while(Date.now()<end);throw new Error('Synthetic work did not reach its expected durable state.');};
     async function capture(intent){const fields=formFields(await(await req('/create')).text(),'/create');const response=await submit('/create',{...fields,intent});assert.equal(response.status,303);return response.headers.get('Location').split('/').at(-1);}
     try {
       const goal=await capture('Learn conditional caching');
-      let prepared=await wait(app=>app.goals[goal].status==='ready');assert.equal(Object.keys(prepared.app.questions).length,1);assert.equal(prepared.app.spend.length,2);assert.equal(prepared.app.spend.every(s=>s.status==='known'&&s.cost_micros>0),true);assert.ok(prepared.app.jobs[prepared.app.goals[goal].job_id].critic_json);
+      let prepared=await wait(app=>app.goals[goal].status==='ready');assert.equal(Object.keys(prepared.app.questions).length,1);assert.equal(prepared.app.spend.length,1);assert.equal(prepared.app.spend.every(s=>s.status==='known'&&s.cost_micros>0),true);assert.ok(prepared.app.jobs[prepared.app.goals[goal].job_id].critic_json);
       let html=await(await req('/')).text();assert.match(html,/data-state="intro"/);const intro=formFields(html,'/review/intro');assert.equal((await submit('/review/intro',{...intro,known:'false'})).status,303);
       html=await(await req('/')).text();const answer=formFields(html,'/review/answer');const answered={...answer,answer:'304 Not Modified'};assert.equal((await submit('/review/answer',answered)).status,303);
-      let graded=await wait(app=>app.occurrence?.phase==='result');assert.equal(graded.app.events.length,1);assert.equal(graded.app.events[0].result.authority,'jev');const recorded=graded.app.events[0];const sends=transmissions;
+      let selfChecked=await wait(app=>app.occurrence?.phase==='self-check');assert.equal(selfChecked.app.spend.length,1,'Unbounded meaning checks cannot send.');html=await(await req('/')).text();const selfForm=formFields(html,'/review/self');assert.equal((await submit('/review/self',{...selfForm,correct:'true'})).status,303);let graded=await wait(app=>app.occurrence?.phase==='result');assert.equal(graded.app.events.length,1);assert.equal(graded.app.events[0].result.authority,'learner');const recorded=graded.app.events[0];const sends=transmissions;
       assert.equal((await submit('/review/answer',answered)).status,303);await req('/');graded=await readState();assert.equal(graded.app.events.length,1);assert.deepEqual(graded.app.events[0],recorded);assert.equal(transmissions,sends);
-      const fresh=formFields(await(await req('/create')).text(),'/create');const upload=new FormData();for(const[key,value]of Object.entries({...fresh,intent:'Understand the image'}))upload.set(key,value);upload.set('photo',new Blob([photoBytes],{type:'image/png'}),'image.png');const encoded=new globalThis.Request(origin,{method:'POST',body:upload});const photoResponse=await req('/create',{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});assert.equal(photoResponse.status,303);const photoGoal=photoResponse.headers.get('Location').split('/').at(-1);const transcribed=await wait(app=>app.goals[photoGoal].status==='ready');assert.match(transcribed.app.goals[photoGoal].transcript,/ETag/);assert.equal(transcribed.photos.length,1);
+      const fresh=formFields(await(await req('/create')).text(),'/create');const upload=new FormData();for(const[key,value]of Object.entries({...fresh,intent:'Understand the image'}))upload.set(key,value);upload.set('photo',new Blob([photoBytes],{type:'image/png'}),'image.png');const encoded=new globalThis.Request(origin,{method:'POST',body:upload});const photoResponse=await req('/create',{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});assert.equal(photoResponse.status,303);const photoGoal=photoResponse.headers.get('Location').split('/').at(-1);const transcribed=await wait(app=>app.goals[photoGoal].status==='failed');assert.equal(transcribed.app.goals[photoGoal].transcript,null);assert.equal(transcribed.photos.length,1);assert.match(transcribed.app.jobs[transcribed.app.goals[photoGoal].job_id].error,/no reviewed total-cost bound/);assert.equal(transmissions,sends);
       mode='delayed';const started=new Promise(resolve=>{blockedStarted=resolve;});const staleGoal=await capture('A deliberately stale paid preparation');await started;const archivePath=`/goals/${staleGoal}/archive`;const archiveFields=formFields(await(await req(`/goals/${staleGoal}`)).text(),archivePath);assert.equal((await submit(archivePath,archiveFields)).status,303);releaseBlocked();const stale=await wait(app=>app.jobs[app.goals[staleGoal].job_id].raw_response!==null);const staleJob=stale.app.jobs[stale.app.goals[staleGoal].job_id];assert.equal(staleJob.status,'superseded');assert.ok(staleJob.raw_response);const charge=stale.app.spend.find(s=>s.work_id===staleJob.id);assert.equal(charge.status,'known');assert.ok(charge.cost_micros>0);assert.equal(stale.app.goals[staleGoal].concept_ids.length,0);
-      for(const failure of ['network-error','oversize','http-error','malformed','http-success-shaped']){mode=failure;const failedGoal=await capture(`Controlled ${failure} request`);const failed=await wait(app=>['unknown','failed'].includes(app.goals[failedGoal].status));const failedJob=failed.app.jobs[failed.app.goals[failedGoal].job_id];const paid=failed.app.spend.find(s=>s.work_id===failedJob.id);assert.equal(paid.status,failure==='http-success-shaped'?'known':'unknown');assert.equal(paid.cost_micros,failure==='http-success-shaped'?456:null);assert.equal(paid.reserved_micros,500000);assert.equal(failed.app.goals[failedGoal].concept_ids.length,0,'Rejected or malformed transport must not publish any content.');if(['http-error','malformed','http-success-shaped'].includes(failure)){assert.ok(paid.raw_response);assert.equal(paid.response_hash,createHash('sha256').update(paid.raw_response).digest('hex'));assert.equal(paid.response_bytes,Buffer.byteLength(paid.raw_response));assert.equal(paid.response_outcome,failure==='malformed'?'received':'rejected');}const count=transmissions;await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,count,'Unknown paid requests must never resend automatically.');}
-      mode='over-allowance';const expensive=await capture('Controlled measured expense beyond the daily allowance');const over=await wait(app=>app.goals[expensive].status==='failed');const expensiveJob=over.app.jobs[over.app.goals[expensive].job_id];const measured=over.app.spend.find(s=>s.work_id===expensiveJob.id);assert.equal(measured.status,'known');assert.equal(measured.cost_micros,2_000_000_000);assert.ok(expensiveJob.raw_response);assert.ok(expensiveJob.candidate_json);const stopped=transmissions;const blocked=await capture('Save this intent after the measured allowance is exhausted');await wait(app=>app.goals[blocked].status==='failed');assert.equal(transmissions,stopped,'Measured over-budget expense must stop further reservations and sends.');
+      for(const failure of ['network-error','oversize','http-error','malformed','http-success-shaped']){mode=failure;const failedGoal=await capture(`Controlled ${failure} request`);const failed=await wait(app=>['unknown','failed'].includes(app.goals[failedGoal].status));const failedJob=failed.app.jobs[failed.app.goals[failedGoal].job_id];const paid=failed.app.spend.find(s=>s.work_id===failedJob.id);assert.equal(paid.status,failure==='http-success-shaped'?'known':'unknown');assert.equal(paid.cost_micros,failure==='http-success-shaped'?456:null);assert.equal(paid.reserved_micros,1071576);assert.equal(failed.app.goals[failedGoal].concept_ids.length,0,'Rejected or malformed transport must not publish any content.');if(['http-error','malformed','http-success-shaped'].includes(failure)){assert.ok(paid.raw_response);assert.equal(paid.response_hash,createHash('sha256').update(paid.raw_response).digest('hex'));assert.equal(paid.response_bytes,Buffer.byteLength(paid.raw_response));assert.equal(paid.response_outcome,failure==='malformed'?'received':'rejected');}const count=transmissions;await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,count,'Unknown paid requests must never resend automatically.');if(failure!=='network-error'&&paid.cost_micros===null){const reconcile=await req('/api/v1/spend/reconcile',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({csrf:failed.app.csrf,operation_id:'synthetic-resolution-'+failure,spend_id:paid.id,cost_micros:0,reference:'synthetic-provider-billing-'+failure,verified:'provider_billing'})});assert.equal(reconcile.status,200);}}
+      mode='over-allowance';const expensive=await capture('Controlled measured expense beyond the daily allowance');const over=await wait(app=>app.spend.some(s=>s.cost_micros===2_000_000_000));const expensiveJob=over.app.jobs[over.app.goals[expensive].job_id];const measured=over.app.spend.find(s=>s.work_id===expensiveJob.id);assert.equal(measured.status,'known');assert.equal(measured.cost_micros,2_000_000_000);assert.ok(expensiveJob.raw_response);assert.ok(expensiveJob.candidate_json);const stopped=transmissions;const blocked=await capture('Save this intent after the measured allowance is exhausted');await wait(app=>app.goals[blocked].status==='failed');assert.equal(transmissions,stopped,'Measured over-budget expense must stop further reservations and sends.');
       const ledger=(await readState()).app.spend;
       const response=await req('/api/v1/spend?by=purpose');assert.equal(response.status,200);
       const report=await response.json();assert.equal(report.entries.length,ledger.length);
-      for(const purpose of ['generate.concepts','critic','grade.jev','transcribe.photo']){
+      for(const purpose of ['generate.concepts']){
         // Existing transport rounds reported dollars upward to whole micros.
         const expected={'generate.concepts':124,critic:234,'grade.jev':345,'transcribe.photo':124}[purpose];
         assert.ok(report.entries.some(e=>e.purpose===purpose&&e.status==='known'&&e.cost_micros===expected));
       }
-      for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros);assert.equal(entry.work_id,row.work_id);}
-      assert.ok(report.entries.some(e=>e.status==='unknown'&&e.cost_micros===null&&e.unknown_held_micros===500000));
+      for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros??row.reconciliation?.cost_micros??null);assert.equal(entry.work_id,row.work_id);}
+      assert.ok(report.entries.some(e=>e.status==='unknown'&&e.cost_micros===null&&e.unknown_held_micros===1071576));
       assert.deepEqual((await readState()).app.spend,ledger);
       console.log(JSON.stringify({controlled_spend:'PASS',purposes:report.groups.map(g=>({purpose:g.key,totals:g.totals})),entries:report.entries}));
     } finally {releaseBlocked?.();await instance.mf.dispose();}
@@ -647,10 +652,10 @@ try {
   for (const mode of ['preview', 'production']) {
     await check(`${mode}: QA cannot acquire a second paid allowance before or after owner exhaustion`, async () => {
       const client = 'no-paid-scry-qa.access';
-      const service = jwt({sub:'',common_name:client});
+      const service = budgetJwt({sub:'',common_name:client});
       const name = `scry-qa-spending-${mode}`;
       const bindings = {...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
-        OPENROUTER_API_KEY:'synthetic-owner-generator-key',OPENROUTER_MODEL:'synthetic-owner-model',
+        OPENROUTER_API_KEY:'synthetic-owner-generator-key',OPENROUTER_MODEL:'openai/gpt-4.1-mini',...budgetBindings,
         JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
         JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
       let sends = 0;
@@ -663,7 +668,7 @@ try {
         return new Response(JSON.stringify({model:'synthetic-owner-model',usage:{cost:3.5},
           choices:[{message:{content:'{}'}}]}),{headers:{'Content-Type':'application/json'}});
       };
-      const fixture = await createRuntime({bindings,name,artifact,egress:provider});
+      const fixture = await createRuntime({bindings,name,artifact,egress:provider,testClock:true});
       let active = fixture;
       const req = (path,token,init={}) => active.worker.fetch(`${origin}${path}`,{
         ...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers},
@@ -701,21 +706,21 @@ try {
         throw new Error('Actual alarm did not settle the controlled capture.');
       };
       try {
-        const ownerInitial = await state(jwt());
+        const ownerInitial = await state(budgetJwt());
         const qaFirst = await capture(service,'QA intent with no paid allocation');
         let qaApp = await settled(service,qaFirst);
         assert.match(qaApp.jobs[qaApp.goals[qaFirst].job_id].error,/not configured/);
         assert.equal(qaApp.goals[qaFirst].intent,'QA intent with no paid allocation');
         assert.deepEqual(qaApp.spend,[]);
         assert.equal(sends,0,'QA cannot use owner providers even with an unused owner allowance.');
-        assert.deepEqual(await state(jwt()),ownerInitial);
+        assert.deepEqual(await state(budgetJwt()),ownerInitial);
 
-        const ownerFirst = await capture(jwt(),'Owner controlled allowance exhaustion');
-        const ownerSpent = await settled(jwt(),ownerFirst);
+        const ownerFirst = await capture(budgetJwt(),'Owner controlled allowance exhaustion');
+        const ownerSpent = await settled(budgetJwt(),ownerFirst);
         assert.equal(sends,1,'The unchanged owner provider remains usable.');
         assert.equal(ownerSpent.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),3_500_000);
-        const ownerSecond = await capture(jwt(),'Owner must stop when the allowance is used');
-        const ownerBlocked = await settled(jwt(),ownerSecond);
+        const ownerSecond = await capture(budgetJwt(),'Owner must stop when the allowance is used');
+        const ownerBlocked = await settled(budgetJwt(),ownerSecond);
         assert.match(ownerBlocked.jobs[ownerBlocked.goals[ownerSecond].job_id].error,/allowance is used/);
         assert.equal(sends,1);
 
@@ -724,7 +729,7 @@ try {
         assert.match(qaApp.jobs[qaApp.goals[qaSecond].job_id].error,/not configured/);
         assert.deepEqual(qaApp.spend,[]);
         assert.equal(sends,1,'An exhausted owner allowance cannot be bypassed by QA.');
-        assert.deepEqual(await state(jwt()),ownerBlocked,'QA work cannot mutate the owner ledger or notebook.');
+        assert.deepEqual(await state(budgetJwt()),ownerBlocked,'QA work cannot mutate the owner ledger or notebook.');
 
         // Restart after queuing photo work. Background capability comes from
         // the immutable object ID, never the latest request or owner bindings.
@@ -737,7 +742,7 @@ try {
         assert.equal(qaApp.goals[qaPhoto].transcript,null);
         assert.deepEqual(qaApp.spend,[]);
         assert.equal(sends,1,'Restarted QA photo alarms cannot send through owner providers.');
-        assert.deepEqual(await state(jwt()),ownerBlocked);
+        assert.deepEqual(await state(budgetJwt()),ownerBlocked);
         console.log(JSON.stringify({qa_spend_boundary:'PASS',mode,provider_sends:sends,
           owner_micros:ownerBlocked.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),
           qa_micros:qaApp.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0)}));

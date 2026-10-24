@@ -270,3 +270,13 @@ the platform can allocate SQLite, WAL and SHM files before application SQL.
 Initialized read stability does not establish a literal cold-filesystem guarantee.
 The local synthetic journey does not establish hosted API admission under #335,
 physical-phone behavior, private Missal wording or independent hosted recovery.
+
+
+### Spend reconciliation
+
+`POST /api/v1/spend/reconcile` uses the ordinary authenticated mutation and
+operation-replay contract. It requires paid permission, an unknown non-active
+Spend ID, integer `cost_micros`, a non-secret billing `reference`, and explicit
+`verified: "provider_billing"` attestation. It appends immutable evidence instead
+of overwriting the provider receipt. See [Spend](spend.md#authoritative-reconciliation)
+for the CLI, accounting meaning, refusals and activation limits.

@@ -3,7 +3,7 @@
 `scry spend --by day|purpose|model --json` reads the same projection as
 `GET /api/v1/spend?by=day|purpose|model`. The selector is required. An Owner
 token (including an unpaid token) or authenticated Access owner may read it.
-There is no spend-write endpoint. CLI errors remain JSON with a nonzero exit;
+Reconciliation is a separate paid-permission mutation described below. CLI errors remain JSON with a nonzero exit;
 the client retains its private login file, origin check and redirect refusal.
 
 The response contains `by`, `currency: "USD"`, `day_basis: "UTC"`, `totals`,
@@ -16,13 +16,14 @@ its key; global totals are the sums across every entry and every group.
 | --- | --- |
 | `entries` / `unknown_entries` in totals | Entry count / count with no reported cost |
 | `reserved_micros` | Original reservation bound, including entries subsequently measured; this is not a bill or an outstanding balance |
-| Entry `cost_micros` | Provider-reported amount, or `null` when unknown; a reported zero remains zero |
+| Entry `cost_micros` | Provider-reported or separately reconciled amount, or `null` when unknown; zero remains zero; a conflicting late provider charge is never hidden |
 | `known_cost_micros` in totals | Sum of reported amounts only; unknown entries contribute no measured amount and remain counted separately |
 | `unknown_held_micros` | Original reservations for entries whose cost remains unknown; zero for known entries |
 
 `reserved_micros` overlaps the other monetary columns: never add all three
-as a bill. Existing allowance enforcement is unchanged: `App.spent(now)` sums
-reported amounts or held reservations for entries newer than `now - 24h`.
+as a bill. The retained rolling-day guard counts recent measured costs and all unresolved
+reservations, regardless of age. It is an additional restrictive guard, not the
+monthly hard-budget admission described below.
 Report days instead use the reservation's `created_ms` UTC calendar date,
 including midnight, with no rolling-day filter. Reporting rejects arithmetic
 overflow instead of silently truncating a sum.
@@ -30,7 +31,9 @@ overflow instead of silently truncating a sum.
 Entries expose only cost metadata: ledger `id` (send lease), existing `work_id`,
 `work_kind` (`concept_job`, `assessment`, or `unattributed` when `work_id`
 matches neither), optional `goal_id` (`null` when unattributed), `created_ms`,
-`day`, `purpose`, `model`, `status`, and the entry monetary fields above.
+`day`, `purpose`, `model`, `status`, and the entry monetary fields above. New
+entries can also include their non-secret `quote`, `reconciliation`, and an
+`enforcement_breach: true` marker.
 Use `work_id` to sum the calls for one existing job or assessment; `goal_id`
 connects generation, transcription and critic jobs to the saved request.
 These are older notebook identities, not Library Work or future Generation run
@@ -38,8 +41,9 @@ identities. Raw provider responses, prompts, answer text, titles, token metadata
 verifiers and credentials are excluded. `model` is the reserved/requested model;
 the provider's raw response/model receipt remains private in the full archive.
 
-New reservations use `grade.jev`, `critic`, `generate.concepts`, or
-`transcribe.photo`. Concept generation is not `generate.version`; #322 owns
+Historical reservations use `grade.jev`, `critic`, `generate.concepts`, or
+`transcribe.photo`. The reviewed budget contract currently admits only
+`generate.concepts`; other paid request shapes are explicitly refused. Concept generation is not `generate.version`; #322 owns
 Generation agent calls and their run identities. Missing or empty historical
 purpose/model display as `unattributed`, without inference or writeback.
 Nonempty historical values are retained verbatim.
@@ -53,8 +57,10 @@ revision, operation receipt, recovery, reservation, alarm or provider effect.
 
 Missing attribution fields deserialize as absent and remain omitted on write.
 Existing model strings and explicit empty strings round-trip; amounts, statuses,
-provider receipts and retained Go custody bytes are unchanged. New complete
-archives containing a purpose use
+provider receipts and retained Go custody bytes are unchanged. Budget-aware archives use `scry-rust-durable-sqlite-budget-v1` when quote,
+reconciliation or settlement-time metadata is present. Optional fields missing
+from old records remain absent; old writers must not attach to a populated
+budget-aware SQLite store. New complete archives containing only a purpose use
 `scry-rust-durable-sqlite-attributed-spend-v1`, including Library/custody state
 when present. Old restore builds refuse this format. Archives without purpose
 retain their previous format and bytes on encode/decode.
@@ -72,3 +78,82 @@ controlled provider lifecycle in `qa/runtime.test.mjs`. See the
 [feature navigation](../features/owner-tokens.md) and
 [builder receipt](qa/spend-321/README.md). This is US-019.7 only; US-019's
 `Evidence: pending` remains until the Generation agent slice completes it.
+
+
+## Disabled-by-default monthly admission (#375)
+
+A legacy model/key setting does not enable paid work. `SCRY_AI_BUDGET_POLICY`
+must be explicit JSON with `contract`, `monthly_micros`, and `request_micros`.
+There is no default amount, and this change supplies no production binding.
+The contract identifier is `openrouter-gpt41-mini-text-2026-10-24`; it refuses
+new sends on or after 2026-11-30 UTC pending a new contract review.
+
+The current narrow contract is OpenRouter Chat Completions, model
+`openai/gpt-4.1-mini`, OpenAI provider only, no fallback, mandatory parameter
+support, 12,000 maximum output tokens, text-only messages and JSON output.
+Tools, search, plugins, images, files, alternate providers, service tiers and
+Jev are not admitted. It is not the US-019 Library Generation agent.
+
+The request sets exact integer ceilings of $1/million input tokens and
+$2/million output tokens, and zero request/image fees. These are route price
+ceilings, not an estimated bill or an approved spend allocation. The reservation
+is the entire published 1,047,576-token context at the input ceiling plus the
+output limit at its ceiling: 1,071,576 microdollars. No tokenizer heuristic or
+fixed per-call guess is used. This deliberately pessimistic maximum includes
+all input framing; excess context must be rejected by the pinned provider.
+For this non-reasoning model, cache reads are discounted and there is no
+separate cache-write/long-context fee in the reviewed pricing contract.
+
+Primary contract sources, reviewed 2026-10-24:
+[OpenRouter model/context/pricing](https://openrouter.ai/openai/gpt-4.1-mini/performance),
+[OpenAI model contract](https://developers.openai.com/api/docs/models/gpt-4.1-mini),
+[OpenRouter price and parameter routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+These documented controls are not proof that any current key has a cap.
+
+Admission sums measured costs in the UTC reservation month, plus costs settled
+or reconciled in the current month, plus every unresolved reservation from all
+months. Arithmetic overflow, a charge above its quote, or a provider receipt
+contradicting reconciliation blocks further paid work. The full measured charge
+is retained, never clamped to its quote. A blocked job keeps its input and
+explicit error; exact practice continues without a provider.
+
+The runtime commits the exact request hash, contract, monthly/per-request caps,
+period and reservation in the existing Spend row before its first await.
+Concurrent claims share the singleton's synchronous revision-fenced SQLite
+transaction. Immediately before send it rechecks the current policy, month,
+lease, source and paid-token authority. No automatic retry follows an unknown
+outcome. Cancellation, timeout, missing usage, malformed responses and HTTP
+errors do not prove a free request and therefore cannot erase a saved hold.
+
+## Authoritative reconciliation
+
+After checking the actual provider billing record, an authenticated owner or
+paid Owner token can record the exact final USD charge:
+
+```sh
+scry spend reconcile SPEND_ID --cost-micros INTEGER \
+  --reference NON_SECRET_PROVIDER_RECEIPT --verified-provider-billing \
+  --operation-id STABLE_OPERATION_ID --json
+```
+
+The API is `POST /api/v1/spend/reconcile`, with `operation_id`, `spend_id`,
+`cost_micros`, `reference` and `verified: "provider_billing"` (plus browser CSRF
+when not using a token). The reference is a bounded non-secret identifier, not
+an invoice, URL containing credentials, prompt or response body. This is an
+explicit owner attestation that the authoritative record was checked; the
+application does not independently fetch or certify the invoice. Do not use it
+on an estimate, a successful HTTP status, or an in-flight request.
+
+Reconciliation is append-only inside the original Spend row. It never changes
+`cost_micros`, raw provider bytes, response hash or attribution. Exact replay is
+idempotent; a contradictory resolution conflicts. Known charges cannot be
+reconciled away, and active leases cannot be released. A late measured receipt
+is retained too; disagreement surfaces an enforcement breach and stops sends.
+Unpaid tokens may read Spend but cannot reconcile it.
+
+Before activation: obtain the owner's explicit monthly/per-request amounts;
+verify the dedicated provider key's hard monthly control and its UTC/reset and
+concurrency behavior; confirm no BYOK/upstream invoice, shared-key traffic,
+extra fees or additional billable dimension can evade this contract; then run
+a separately authorized bounded live acceptance. If any assumption cannot be
+verified, keep paid generation off. No code receipt is a real billing guarantee.

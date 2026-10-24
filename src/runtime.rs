@@ -1267,7 +1267,13 @@ impl DurableObject for LearningSpace {
         if !app.restored_paused {
             let config = self.work_config();
             let lease = random_id()?;
-            match engine::claim_work(&mut app, now(), &lease, &config) {
+            match crate::budget::claim_work(
+                &mut app,
+                now(),
+                &lease,
+                &config,
+                crate::budget::Policy::parse(&variable(&self.env, "SCRY_AI_BUDGET_POLICY")),
+            ) {
                 Err(e) => return app_error(e),
                 Ok(work) => {
                     if app.revision != before {
@@ -1801,7 +1807,16 @@ impl LearningSpace {
         let current = self
             .load()
             .map_err(|_| ("Saved state is unavailable.".into(), false))?;
-        engine::authorize_work(&current, &work.id, now()).map_err(|e| (e.message, false))?;
+        let policy = crate::budget::Policy::parse(&variable(&self.env, "SCRY_AI_BUDGET_POLICY"))
+            .map_err(|e| (e.message, false))?;
+        if endpoint != crate::budget::ENDPOINT || model != crate::budget::MODEL {
+            return Err((
+                "The paid provider contract changed before send.".into(),
+                false,
+            ));
+        }
+        crate::budget::authorize_send(&current, work, &policy, now())
+            .map_err(|e| (e.message, false))?;
         let headers = Headers::new();
         headers
             .set("Authorization", &format!("Bearer {key}"))

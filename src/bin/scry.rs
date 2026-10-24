@@ -281,6 +281,33 @@ mod cli {
         if args.as_slice() == ["whoami"] {
             return request(&client, &login, "/api/v1/whoami", None);
         }
+        if args.first().is_some_and(|arg| arg == "spend")
+            && args.get(1).is_some_and(|arg| arg == "reconcile")
+        {
+            let cost = option(&mut args, "--cost-micros")?
+                .ok_or("Use --cost-micros with an authoritative USD charge.")?;
+            let cost: u64 = cost
+                .parse()
+                .map_err(|_| "Use an integer microdollar amount.")?;
+            let reference = option(&mut args, "--reference")?
+                .ok_or("Use --reference with a non-secret provider billing receipt reference.")?;
+            let verified = flag(&mut args, "--verified-provider-billing");
+            let operation = option(&mut args, "--operation-id")?
+                .map(Ok)
+                .unwrap_or_else(random_id)?;
+            if args.len() != 3 || !verified {
+                return Err(
+                    "Usage: scry spend reconcile SPEND --cost-micros N --reference RECEIPT --verified-provider-billing [--operation-id ID]",
+                );
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/spend/reconcile",
+                Some(&json!({"operation_id":operation,
+                "spend_id":args[2],"cost_micros":cost,"reference":reference,"verified":"provider_billing"})),
+            );
+        }
         if args.first().is_some_and(|arg| arg == "spend") {
             let by = option(&mut args, "--by")?.ok_or("Use spend --by day|purpose|model.")?;
             if args.len() != 1 || scry::spend::SpendBy::parse(&by).is_err() {

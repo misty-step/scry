@@ -105,7 +105,9 @@ pub fn mutate_as(
         crate::study::check_replay(app, &receipt.result)?;
         return Ok(receipt.result.clone());
     }
-    if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
+    if ((path == "/tokens/create" && field(fields, "paid") == "true") || path == "/spend/reconcile")
+        && !actor.paid()
+    {
         return Err(owner_token::paid_refusal());
     }
     let mut next = app.clone();
@@ -333,6 +335,20 @@ fn apply(
         return Ok(result(format!("/goals/{goal_id}"), Some(goal_id)));
     }
     match path {
+        "/spend/reconcile" => {
+            if field(fields, "verified") != "provider_billing" {
+                return Err(AppError::new(
+                    422,
+                    "Verify the authoritative provider billing record before reconciliation.",
+                ));
+            }
+            let cost = field(fields, "cost_micros")
+                .parse::<u64>()
+                .map_err(|_| AppError::new(422, "Use an integer USD microdollar amount."))?;
+            let spend_id = field(fields, "spend_id");
+            crate::budget::reconcile(app, spend_id, cost, field(fields, "reference"), now)?;
+            Ok(result("/settings", Some(spend_id.into())))
+        }
         "/tokens/create" => {
             let expiry = field(fields, "expires_ms");
             let expires_ms = if expiry.is_empty() {
@@ -1263,6 +1279,9 @@ fn reserve(
         ));
     }
     app.spend.push(Spend {
+        quote: None,
+        reconciliation: None,
+        settled_ms: None,
         id: lease.into(),
         work_id: work_id.into(),
         created_ms: now,
@@ -1562,8 +1581,11 @@ pub fn recover(app: &mut App, now: i64) -> bool {
     changed
 }
 
-fn settle(app: &mut App, work: &Work, cost: Option<u64>) {
+fn settle(app: &mut App, work: &Work, cost: Option<u64>, now: i64) {
     if let Some(s) = app.spend.iter_mut().find(|s| s.id == work.lease) {
+        if s.quote.is_some() && cost.is_some() {
+            s.settled_ms.get_or_insert(now.max(s.created_ms));
+        }
         s.cost_micros = cost;
         s.status = if cost.is_some() { "known" } else { "unknown" }.into();
     }
@@ -1588,7 +1610,7 @@ pub fn finish_work(
             .iter()
             .any(|s| s.id == work.lease && s.work_id == work.id)
     {
-        settle(app, work, cost_micros);
+        settle(app, work, cost_micros, now);
         let mut end = raw.len().min(generation::RESPONSE_LIMIT);
         while !raw.is_char_boundary(end) {
             end -= 1;
@@ -1658,7 +1680,8 @@ pub fn finish_work(
         }
         app.revision += 1;
     }
-    record_response(app, work, &raw, &model, cost_micros, "received");
+    settle(app, work, cost_micros, now);
+    record_response(app, work, &raw, &model, "received");
     outcome
 }
 
@@ -1688,15 +1711,7 @@ fn replay_response(
     Ok(false)
 }
 
-fn record_response(
-    app: &mut App,
-    work: &Work,
-    raw: &str,
-    model: &str,
-    cost: Option<u64>,
-    outcome: &str,
-) {
-    settle(app, work, cost);
+fn record_response(app: &mut App, work: &Work, raw: &str, model: &str, outcome: &str) {
     if let Some(receipt) = app
         .spend
         .iter_mut()
@@ -1770,7 +1785,8 @@ pub fn fail_received_work(
             job_failed(&mut next, &work.id, message, false);
         }
     }
-    record_response(&mut next, work, &raw, &model, cost_micros, "rejected");
+    settle(&mut next, work, cost_micros, now);
+    record_response(&mut next, work, &raw, &model, "rejected");
     next.revision += 1;
     *app = next;
     Ok(())
@@ -1785,7 +1801,7 @@ fn finish_work_inner(
     now: i64,
 ) -> AppResult<()> {
     let mut next = app.clone();
-    settle(&mut next, work, cost_micros);
+    settle(&mut next, work, cost_micros, now);
     if raw.len() > generation::RESPONSE_LIMIT {
         return Err(AppError::new(
             422,
@@ -2866,7 +2882,10 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             && spend.cost_micros.is_none()
             && spend.reserved_micros >= RESERVATION;
         if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
-            || (spend.reserved_micros != RESERVATION && !imported_reservation)
+            || (spend.reserved_micros != RESERVATION
+                && !imported_reservation
+                && spend.quote.is_none())
+            || !crate::budget::validate_spend(spend)
             || spend.model.as_ref().is_some_and(|model| model.len() > 256)
             || spend
                 .purpose

@@ -80,8 +80,8 @@ impl App {
     pub fn spent(&self, now: i64) -> u64 {
         self.spend
             .iter()
-            .filter(|s| s.created_ms > now - DAY_MS)
-            .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
+            .filter(|s| crate::budget::effective_cost(s).is_none() || s.created_ms > now - DAY_MS)
+            .map(|s| crate::budget::effective_cost(s).unwrap_or(s.reserved_micros))
             .fold(0, u64::saturating_add)
     }
     pub fn protected_goal(&self) -> Option<&str> {
@@ -361,6 +361,12 @@ pub struct Assessment {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Spend {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<crate::budget::Quote>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconciliation: Option<crate::budget::Reconciliation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settled_ms: Option<i64>,
     pub id: String,
     pub work_id: String,
     pub created_ms: i64,

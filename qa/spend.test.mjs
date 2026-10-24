@@ -104,6 +104,21 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
   } finally {await new Promise(done=>source.close(done));await new Promise(done=>target.close(done));await writeFile(config,login);}
   const reader=JSON.parse(savedToken);assert.equal(reader.paid,false);
   const frozen=await rows();const paid=await request('/api/v1/create',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation_id:'unpaid-spend-probe',intent:'Must refuse before reservation'})});assert.equal(paid.status,403);assert.deepEqual(await rows(),frozen);
+  const reconciliationArgs=['spend','reconcile','unknown-at-midnight','--cost-micros','123','--reference','synthetic-provider-billing-001','--verified-provider-billing','--operation-id','spend-reconciliation-0001'];
+  assert.equal((await cli(reconciliationArgs)).code,1,'An unpaid reader cannot release an unknown obligation.');
+  const paidHtml=await(await runtime.worker.fetch(origin+'/settings')).text();
+  const paidIssue=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...form(paidHtml,'/tokens/create'),name:'synthetic budget reconciler',paid:'true'})});
+  assert.equal(paidIssue.status,200);secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await paidIssue.text())?.[1];assert.ok(secret);
+  assert.equal((await cli(['login','--url',origin,'--token-stdin'],secret+'\n')).code,0);
+  const original=JSON.parse((await rows()).find(r=>r.key==='spend/0000000000000001').value);
+  assert.equal((await cli(reconciliationArgs)).code,0);
+  const reconciled=(await rows()).find(r=>r.key==='spend/0000000000000001').value;
+  const saved=JSON.parse(reconciled);assert.equal(saved.cost_micros,null);assert.equal(saved.reconciliation.cost_micros,123);
+  const {reconciliation,...preserved}=saved;assert.deepEqual(preserved,original,'Reconciliation appends evidence without rewriting the provider receipt.');
+  assert.equal((await cli(reconciliationArgs)).code,0);assert.equal((await rows()).find(r=>r.key==='spend/0000000000000001').value,reconciled);
+  const conflict=[...reconciliationArgs];conflict[4]='0';assert.equal((await cli(conflict)).code,1);assert.equal((await rows()).find(r=>r.key==='spend/0000000000000001').value,reconciled);
+  assert.equal((await cli(['spend','reconcile','unknown-at-midnight','--cost-micros','0','--reference','synthetic-provider-billing-001'])).code,1,'Billing verification is explicit, never inferred from HTTP success.');
+  const resolvedReport=await cli(['spend','--by','day']);assert.equal(resolvedReport.code,0);assert.equal(resolvedReport.value.entries.find(e=>e.id==='unknown-at-midnight').cost_micros,123);
   transcript.push({observation:'Repeated API + CLI reads preserve every SQLite row, total_changes and all persisted resource bytes',files:beforeFiles,totals:report.totals,unpaid_reader:true});
   await mkdir('target',{recursive:true});await writeFile('target/spend-cli.json',JSON.stringify(transcript,null,2)+'\n');
  } finally {await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}
