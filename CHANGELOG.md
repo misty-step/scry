@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/misty-step/scry/compare/v0.7.2...v0.7.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **promote:** preserve manual rollback and full-traffic release state ([#386](https://github.com/misty-step/scry/issues/386)) ([c06de9e](https://github.com/misty-step/scry/commit/c06de9e7f95b81ae89fec2886120cdcc12ab974f))
+
 ## [0.7.2](https://github.com/misty-step/scry/compare/v0.7.1...v0.7.2) (2026-10-24)
 
 
