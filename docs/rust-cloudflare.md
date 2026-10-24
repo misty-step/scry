@@ -240,6 +240,15 @@ code rollback uses a retained custody/history-compatible artifact on these same
 bindings, never an old Go snapshot. Versions/notes remain the existing release
 lane's responsibility; this adds no second workflow or release policy.
 
+For owner-authored Concepts and Materials, retain the exact verified Phase A
+floor artifact before enabling Phase B authoring. It must read, display, export,
+fresh-restore and preserve the populated format on an unrelated ordinary write.
+A pre-floor reader's refusal prevents silent loss but is not a usable rollback.
+Never strip the capability marker or restore an older snapshot over accepted
+writes. [ADR 008](adr/008-concept-material-compatibility.md) records this boundary;
+SPEC CM1/CM2 and the existing full historical gates govern proof. No production
+authoring or paid capability is enabled by the floor release.
+
 The former Go Container deploy job is removed rather than pointed at replacement source.
 The deployment/recovery scripts under `deploy/cloudflare-hosting/`, retained
 exe.dev VM scripts, and old data tooling remain specific to their corresponding

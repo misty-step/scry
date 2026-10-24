@@ -1,7 +1,7 @@
 # Scry: words worth keeping
 
 Concepts come first (2026-10-24, #388). Home asks “What do you want to learn?”
-and offers Add material, or shows saved concepts and an explicit practice return.
+and offers Create concept, or shows saved concepts and an explicit practice return.
 It does not select a question. Exact text memorization remains reachable through
 Text practice, which preserves the current Prompt or held result and leads to
 Library when no Study exists. [SPEC](SPEC.md) alone governs behavior.
@@ -15,7 +15,7 @@ hairlines, and small square radii. It should feel like a place to think, rather
 than a dashboard to operate. There is no progress ring, streak, accuracy badge,
 notification feed, or always-visible due count.
 
-The masthead contains the Scry wordmark, Concepts and Add material. The wordmark
+The masthead contains the Scry wordmark, Concepts and Create concept. The wordmark
 returns Home. Text practice, History and Settings live in the quiet footer;
 Library remains within Text practice. Home links to the existing connections Map. The reading column is at most 680 px;
 question practice narrows to 650 px. The outer page frame is 1080 px.
@@ -60,7 +60,7 @@ of breaking the viewport.
 
 ## Concepts and their material
 
-Empty Home has one clear question, a brief description, and Add material, not a
+Empty Home has one clear question, a brief description, and Create concept, not a
 search field for an empty Library. Saved concepts are ordinary linked names;
 Resume practice leads to the saved occurrence without exposing its answer.
 Concept detail puts Study first, then Practice with existing questions, Resources
@@ -82,9 +82,23 @@ content is rendered. Opening it deliberately records help first. Native forms,
 validation drafts and response reconciliation use the same page conventions as
 practice; no separate client state or offline queue is introduced.
 
-## Add material and the useful first result
+## Authored Concepts and Materials
 
-When preparation is ready, Add material asks, “What do you want to understand?” One large writing surface accepts a
+Create concept saves a name and first supplied Material in one explicit form.
+An optional short description comes before the Material title and text. Save,
+Cancel and Back remain ordinary native controls. No AI capability or permission
+is needed. Concept detail uses Materials and shows each independent reference,
+with Revise material and Earlier revisions. Add study material saves another reference,
+not a new Concept or a replacement. Empty practice says “No quizzes/questions
+yet” with no Practice action. Legacy Saved explanation remains read-only.
+
+Prepare material with AI remains a clearly separate Home link to the existing
+paid-preparation route. A restored external-work pause never disables supplied
+text authoring. Forms preserve rejected drafts and never auto-submit on return.
+
+## Prepare material and the useful first result
+
+When preparation is ready, Prepare material asks, “What do you want to understand?” One large writing surface accepts a
 word, phrase, ramble, pasted material, or dictated text. There is no mode picker,
 profile questionnaire, or quiz before preparation. An optional disclosure
 accepts a photo. The privacy note states that private words prepare material and

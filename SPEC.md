@@ -31,7 +31,7 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 On 2026-10-24 the owner made concepts the primary primitive and rejected an
 empty saved-text Library as the front door ([#388](https://github.com/misty-step/scry/issues/388)).
-Home (`/`) now introduces concepts and offers Add material. It does not select
+Home (`/`) introduces concepts; Phase B adds the explicit manual Create concept path. It does not select
 or consume either practice stream. Resume practice opens the existing concept
 occurrence at `/notebook`; Text practice opens exact recall at `/recall`, with
 Library secondary there. Both streams retain their current questions, protected
@@ -69,6 +69,83 @@ exact-recall action is available through the API and the `scry` CLI (AG1).
 Dictated input is text, not an assumed speech engine or automatic recording
 integration; it is graded as typed. A mandatory activity ladder is excluded;
 the exact-recall Ladder is a cue scaffold, not a required activity sequence.
+
+### Concept Material compatibility floor (Phase A)
+
+Phase A of [#124](https://github.com/misty-step/scry/issues/124), tracked in
+[#393](https://github.com/misty-step/scry/issues/393), establishes recovery and
+read compatibility before authoring is enabled. It accepts an explicitly
+owner-authored Concept with no Goal, at least one independently addressable
+Material, and immutable revisions of exact supplied text. It invents no
+preparation, questions, prerequisites, learning observations or provider spend.
+Existing generated Concepts retain their Goal, Note history, prerequisite and
+question validation. Their Note chain is one read-only Material projection,
+not a copied or split collection.
+
+**CM1: compatible retention.** A complete archive or store containing these
+records must retain every Material, revision, acknowledged operation and old
+history across read, fresh-space restore, and the first unrelated ordinary
+write. New-format state, including a retained capability marker alone, must
+not be silently accepted by a reader that would discard it. The retained floor
+artifact must be a functioning compatible writer before Phase B authoring is
+activated. Refusal by an older artifact alone is not rollback, and an older
+snapshot must never overwrite accepted writes.
+
+**CM2: honest read-only floor.** Home and Concept detail can show compatible
+restored Concepts and all supplied Material revisions without inventing a
+legacy Note or exposure. Existing Goal-backed exposure and assistance fences
+remain unchanged, including for a supplied Material attached to a generated
+Concept. This phase exposes no normal authoring API, CLI command or UI form;
+no new source formats, quizzes, graph prediction or paid capability follows.
+Reserved authoring paths refuse before replay even for an exact retained future
+receipt, without any storage write. Ordinary existing-operation replay remains
+unchanged; retained future receipts stay readable and valid.
+
+### Supplied Concept authoring (Phase B)
+
+Phase B of #124, tracked in [#400](https://github.com/misty-step/scry/issues/400),
+uses the released CM1/CM2 compatibility contract. Its activation is dependent on
+qualification, publication and promotion of that floor, not merely a source
+merge. The floor's exact published artifact is the compatible rollback writer.
+
+**CM3: supplied authoring.** From empty Home, Create concept saves a named Concept
+and its first supplied-text Material atomically. A Concept can have multiple
+independent Materials; matching names, titles or text never deduplicate them.
+Add study material appends another Material. Revise material requires the expected
+current revision and appends immutable wording; stale revisions conflict.
+Names/titles are nonempty and at most 200 UTF-8 bytes; optional summary is at
+most 2,000; text is nonempty and at most 32,768. Exact supplied UTF-8, CRLF,
+tabs and trailing newlines survive. Unknown fields are refused. Full graph,
+row and complete-archive bounds apply to the candidate including its receipt
+before commit, with no partial Concept, Material, revision or operation.
+
+**CM4: honest free surfaces.** These create/read/add/revise actions share the
+engine through native forms, versioned API and CLI. Existing Owner auth,
+principal, CSRF and exact operation replay apply; only POST can mutate. Reads
+of new Material routes and authored Concepts use snapshots, without stream
+selection or exposure. Current Concept and exact-Prompt protection covers
+all reference revisions, JSON and replays; no read or authoring action Reveals
+an answer. Validation, stale edits and unknown responses keep the draft until
+a deliberate Save, Cancel, Back, reload or same-operation reconciliation.
+
+Manual Create concept remains available when AI is off, on an unpaid token,
+and while external work is restored-paused. Prepare material with AI is a
+separate existing path. No Goal, Job, Question, Event, schedule, provider call,
+reservation or spend is invented. With no real questions the page says
+“No quizzes/questions yet” and offers no Practice action. Generated Concepts
+retain their existing Note/Goal/refinement behavior; the old Note chain stays
+one read-only Saved explanation. The Map includes authored Concepts without
+fabricating relatedness or mastery. URLs remain literal text, not fetched
+sources. Deletion, quiz authoring, relations, prediction and multimodal
+source ingestion are out of scope.
+
+Qualification uses real engine/API-created state, the complete retained
+historical baseline, zero-egress API/compiled CLI/native browser journeys,
+SQLite restart and complete R2 fresh restore. The published floor must preserve
+accepted Phase B records and receipts on its first unrelated ordinary write;
+pre-floor refusal is a separate negative control. All existing native,
+historical, runtime and browser gates remain required. No down-conversion or
+old snapshot may replace accepted writes.
 
 ### Exact recall first (2026-10-20)
 
@@ -138,14 +215,15 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-Home introduces concepts, with a clear learning purpose and Add material rather
+Home introduces concepts, with a clear learning purpose and Create concept rather
 than an empty text search. It offers Resume practice when an occurrence exists,
 without showing its answer or selecting another one. The concept Stream at
 `/notebook` retains its question, introduction, preparing receipt and first-run
 states. The exact-recall Stream at `/recall` opens into the current Prompt or held result, an honest
 caught-up state, or Library entry when no Study remains active (US-018). Neither practice stream opens an administration dashboard.
-Concepts are teachable ideas, goals express intent, and notes are durable
-reference material, one current note per concept. The Map is the place
+Concepts are teachable ideas. Generated goals express preparation intent, and
+their original Note chain is one read-only Saved explanation. Independently
+supplied Materials have their own immutable wording history (CM3/CM4). The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
 from real observations, not a certified mastery score.
 
@@ -156,7 +234,7 @@ continue retrieval-led study directly. “Quiz-first” is not a compulsory pret
 material-import workflow, or mastery profile before generation.
 
 ```text
-scry                                    Concepts   Add material
+scry                                    Concepts   Create concept
 concept chip (inert before grading)
 One question or first-time concept introduction
 One answer control OR Start practicing / I know this already
@@ -482,7 +560,7 @@ real fresh-environment restore. Persistent disk or VM cloning is insufficient.
 ### S11 — Create useful material from intent (US-013)
 
 Approved product acceptance, reaffirmed 2026-10-02; not an implementation receipt.
-Amended 2026-10-24: S11 governs concept preparation, reached through Add material
+Amended 2026-10-24: S11 governs concept preparation, reached through Prepare material with AI
 from concept Home. S11.3's search boundary does not restrict US-019.
 If preparation is unavailable, the interface states that before accepting a
 request; it never enables a provider or claims a free save-only draft.
@@ -719,7 +797,7 @@ Criteria:
 1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
 2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
 3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
-4. THE SYSTEM SHALL keep Concepts and Add material in the masthead, with the wordmark returning to concept Home. Home SHALL NOT select either practice stream or reveal a protected answer; it SHALL offer Resume practice for a saved concept occurrence at `/notebook`. Quiet Text practice SHALL retain the exact stream at `/recall` and its Library access, including current Prompts and held results. Maintenance SHALL NOT become an always-visible inspection dashboard.
+4. THE SYSTEM SHALL keep Concepts and Create concept in the masthead, with the wordmark returning to concept Home. Home SHALL NOT select either practice stream or reveal a protected answer; it SHALL offer Resume practice for a saved concept occurrence at `/notebook`. Quiet Text practice SHALL retain the exact stream at `/recall` and its Library access, including current Prompts and held results. Maintenance SHALL NOT become an always-visible inspection dashboard.
 5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Create or an honest next-time indication, not an invented due question or foundation detour.
 
 No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
@@ -873,7 +951,7 @@ I want Create to produce useful tailored study/reference and practice material
 without a setup questionnaire, so I can start learning and refine it through
 actual practice and feedback.
 
-Amended 2026-10-24: US-013 is concept preparation, reached through Add material
+Amended 2026-10-24: US-013 is concept preparation, reached through Prepare material with AI
 from concept Home. When unavailable, the page explains that honestly and
 omits submission controls; no free draft or unsupported format is promised.
 

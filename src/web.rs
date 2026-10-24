@@ -169,8 +169,22 @@ impl View<'_> {
             escape(class),
             extra,
             hidden("csrf", &self.app.csrf),
-            hidden("operation_id", &operation),
-            hidden("revision", &self.app.revision.to_string())
+            hidden(
+                "operation_id",
+                if crate::materials::is_authoring_path(action) {
+                    self.query
+                        .get("__draft_operation")
+                        .map(String::as_str)
+                        .unwrap_or(&operation)
+                } else {
+                    &operation
+                }
+            ),
+            if crate::materials::is_authoring_path(action) {
+                String::new()
+            } else {
+                hidden("revision", &self.app.revision.to_string())
+            }
         )
     }
     fn review_form(
@@ -203,7 +217,7 @@ impl View<'_> {
         }
     }
     fn concept_name(&self, concept: &Concept) -> String {
-        if self.app.protected_concept(&concept.id) {
+        if self.app.practice.protected() || self.app.protected_concept(&concept.id) {
             "Current idea".into()
         } else {
             escape(&idea_title(self.app, concept))
@@ -211,16 +225,18 @@ impl View<'_> {
     }
     fn active_concept(&self, concept: &Concept) -> bool {
         !concept.archived
-            && self
-                .app
-                .goals
-                .get(&concept.goal_id)
-                .is_some_and(|goal| !goal.archived)
+            && match concept.goal_id.as_ref() {
+                Some(id) => self.app.goals.get(id).is_some_and(|goal| !goal.archived),
+                None => concept.origin == Some(ConceptOrigin::OwnerAuthored),
+            }
     }
     /// Above a question, an imported placeholder is named by its goal: its own
     /// title would repeat the question directly beneath it.
     fn study_chip(&self, concept: &Concept) -> (String, String) {
-        let goal = self.app.goals.get(&concept.goal_id);
+        let goal = concept
+            .goal_id
+            .as_ref()
+            .and_then(|id| self.app.goals.get(id));
         match goal {
             Some(g) if legacy_idea(concept) && !self.app.protected_concept(&concept.id) => {
                 (self.goal_title(g), format!("/goals/{}", escape(&g.id)))
@@ -233,6 +249,44 @@ impl View<'_> {
     }
     fn notes(&self, concept: &Concept) -> String {
         notes(self.app, concept)
+    }
+    fn study_materials(&self, concept: &Concept) -> String {
+        use crate::materials::{MaterialView, for_concept};
+        let mut out = String::new();
+        for material in for_concept(self.app, concept) {
+            match material {
+                MaterialView::LegacyNote { .. } => out.push_str(&self.notes(concept)),
+                MaterialView::Supplied {
+                    material,
+                    revisions,
+                } => {
+                    let (current, earlier) =
+                        revisions.split_last().expect("validated revision chain");
+                    let _ = write!(
+                        out,
+                        "<article class=\"concept-note\" data-material-id=\"{}\">{}",
+                        escape(&material.id),
+                        supplied_revision(current)
+                    );
+                    if !earlier.is_empty() {
+                        out.push_str(
+                            "<details class=\"saved-input\"><summary>Earlier revisions</summary>",
+                        );
+                        for revision in earlier {
+                            out.push_str(&supplied_revision(revision));
+                        }
+                        out.push_str("</details>");
+                    }
+                    let _ = write!(
+                        out,
+                        "<a class=\"text-link\" href=\"/materials/{}/edit\">Revise material</a>",
+                        escape(&material.id)
+                    );
+                    out.push_str("</article>");
+                }
+            }
+        }
+        out
     }
     fn lede(&self, class: &str, concept: &Concept) -> String {
         let summary = idea_summary(concept);
@@ -1249,17 +1303,22 @@ impl View<'_> {
             }
         );
         if concepts.is_empty() {
-            out.push_str("<p class=\"lede\">Explore a concept, study its explanation, and practise what you understand.</p>");
+            out.push_str("<p class=\"lede\">Name a concept and add your own study material. Save more than one reference and keep every revision.</p>");
         }
         out.push_str("<div class=\"actions\">");
         if self.app.occurrence.is_some() {
             out.push_str("<a class=\"button primary\" href=\"/notebook\">Resume practice</a>");
-        } else if !concepts.is_empty() {
+        } else if concepts.iter().any(|c| {
+            self.app
+                .questions
+                .values()
+                .any(|q| q.concept_id == c.id && !q.archived)
+        }) {
             out.push_str("<a class=\"button primary\" href=\"/notebook\">Start practice</a>");
         }
         let _ = write!(
             out,
-            "<a class=\"button {}\" href=\"/create\">Add material</a></div>",
+            "<a class=\"button {}\" href=\"/concepts/new\">Create concept</a><a class=\"text-link\" href=\"/create\">Prepare material with AI</a></div>",
             if concepts.is_empty() && self.app.occurrence.is_none() {
                 "primary"
             } else {
@@ -1272,7 +1331,12 @@ impl View<'_> {
             for c in concepts {
                 let _ = write!(
                     out,
-                    "<li><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
+                    "<li{}><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
+                    if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+                        " class=\"authored-concept\""
+                    } else {
+                        ""
+                    },
                     escape(&c.id),
                     self.concept_name(c),
                     concept_state(self.app, c, self.now)
@@ -1283,6 +1347,136 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
+
+    fn material_gate(&self) -> String {
+        "<section class=\"empty-stage gate\" data-state=\"material-gate\"><h1>Your current Prompt is protected</h1><p class=\"lede\">Finish it, or deliberately open its answer, before reading or authoring study material.</p><a class=\"button primary\" href=\"/recall\">Return to your Prompt</a></section>".into()
+    }
+    fn material_authoring(&self, concept_id: Option<&str>, material_id: Option<&str>) -> String {
+        if self.app.practice.protected() {
+            return self.material_gate();
+        }
+        let material = match material_id {
+            Some(id) => match self.app.materials.items.get(id) {
+                Some(m) => Some(m),
+                None => return self.not_found(),
+            },
+            None => None,
+        };
+        let concept_id = material.map(|m| m.concept_id.as_str()).or(concept_id);
+        let concept = match concept_id {
+            Some(id) => match self.app.concepts.get(id) {
+                Some(c) => Some(c),
+                None => return self.not_found(),
+            },
+            None => None,
+        };
+        if let Some(c) = concept {
+            if self.app.protected_concept(&c.id) {
+                return self.gate(self.path);
+            }
+            if c.archived {
+                return "<p>Archived Concepts are retained for reading.</p>".into();
+            }
+        }
+        let current =
+            material.and_then(|m| self.app.materials.revisions.get(&m.current_revision_id));
+        let value = |key: &str, fallback: &str| {
+            self.query
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| fallback.into())
+        };
+        let (heading, action) = if material.is_some() {
+            ("Revise material", "/materials/revise")
+        } else if concept.is_some() {
+            ("Add study material", "/materials/add")
+        } else {
+            ("Create concept", "/concepts/create")
+        };
+        let back = concept.map_or_else(|| "/".into(), |c| format!("/concepts/{}", c.id));
+        let mut fields = String::new();
+        if let Some(m) = material {
+            fields.push_str(&hidden("material_id", &m.id));
+            fields.push_str(&hidden(
+                "expected_revision_id",
+                &value("expected_revision_id", &m.current_revision_id),
+            ));
+            fields.push_str("<p class=\"fineprint\">Saving appends a new revision. Earlier wording stays unchanged.</p>");
+        } else if let Some(c) = concept {
+            fields.push_str(&hidden("concept_id", &c.id));
+        } else {
+            let _ = write!(
+                fields,
+                "<label for=\"concept-name\">Concept name</label><input id=\"concept-name\" name=\"name\" required maxlength=\"200\" value=\"{}\"><label for=\"concept-summary\">Short description (optional)</label><textarea id=\"concept-summary\" name=\"summary\" rows=\"2\" maxlength=\"2000\">\n{}</textarea>",
+                escape(&value("name", "")),
+                escape(&value("summary", ""))
+            );
+        }
+        let _ = write!(
+            fields,
+            "<label for=\"material-title\">Material title</label><input id=\"material-title\" name=\"title\" required maxlength=\"200\" value=\"{}\"><label for=\"material-text\">Your text</label><textarea id=\"material-text\" name=\"text\" required rows=\"12\" maxlength=\"32768\" aria-describedby=\"material-hint\">\n{}</textarea><p class=\"control-hint\" id=\"material-hint\">Up to 32 KiB of UTF-8 text. Titles and names: 200 bytes; description: 2,000 bytes. Links are saved as text, never opened. No AI or paid work.</p><div class=\"actions\"><button class=\"button primary\">Save</button><a class=\"button quiet\" href=\"{}\">Cancel</a></div>",
+            escape(&value("title", current.map_or("", |r| r.title.as_str()))),
+            escape(&value("text", current.map_or("", |r| r.text.as_str()))),
+            escape(&back)
+        );
+        format!(
+            "<section class=\"create-page\" data-state=\"material-authoring\"><a class=\"back-link\" href=\"{}\">← Back</a><h1>{heading}</h1><p class=\"lede\">{}</p>{}</section>",
+            escape(&back),
+            concept.map_or_else(
+                || "Save a named concept and its first study material together.".into(),
+                |c| self.concept_name(c)
+            ),
+            self.form(action, "author-material", "material-form", "", &fields)
+        )
+    }
+    fn material(&self, id: &str, revision_id: Option<&str>) -> String {
+        let Some(material) = self.app.materials.items.get(id) else {
+            return self.not_found();
+        };
+        if self.app.practice.protected() {
+            return self.material_gate();
+        }
+        if self.app.protected_concept(&material.concept_id) {
+            return self.gate(self.path);
+        }
+        let revision_id = revision_id.unwrap_or(&material.current_revision_id);
+        let Some(revision) = self
+            .app
+            .materials
+            .revisions
+            .get(revision_id)
+            .filter(|r| r.material_id == material.id)
+        else {
+            return self.not_found();
+        };
+        let mut out = format!(
+            "<article class=\"concept-page\" data-state=\"material\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to concept</a>{}<a class=\"text-link\" href=\"/materials/{}/edit\">Revise material</a><h2>Revision history</h2><ol>",
+            escape(&material.concept_id),
+            supplied_revision(revision),
+            escape(id)
+        );
+        let mut revisions: Vec<_> = self
+            .app
+            .materials
+            .revisions
+            .values()
+            .filter(|r| r.material_id == material.id)
+            .collect();
+        revisions.sort_by_key(|r| r.ordinal);
+        for r in revisions {
+            let _ = write!(
+                out,
+                "<li><a href=\"/materials/{}/revisions/{}\">Revision {}: {}</a></li>",
+                escape(id),
+                escape(&r.id),
+                r.ordinal,
+                escape(&r.title)
+            );
+        }
+        out.push_str("</ol></article>");
+        out
+    }
+
     fn create(&self) -> String {
         let prefill = self
             .query
@@ -1306,7 +1500,7 @@ impl View<'_> {
                 )
             };
             return format!(
-                "<section class=\"create-page\" data-state=\"create\"><h1>Add material</h1><p class=\"lede\">Preparation is unavailable right now.</p><p>Scry cannot prepare new concepts and practice here yet. Your saved concepts and text practice are still available.</p>{draft}<div class=\"actions\"><a class=\"button primary\" href=\"/\">Your concepts</a><a class=\"text-link\" href=\"/recall\">Text practice</a></div></section>"
+                "<section class=\"create-page\" data-state=\"create\"><h1>Prepare material</h1><p class=\"lede\">Preparation is unavailable right now.</p><p>Scry cannot prepare new concepts and practice here yet. You can still create a concept with your own text, or read your saved concepts.</p>{draft}<a class=\"button primary\" href=\"/concepts/new\">Create concept</a><div class=\"actions\"><a class=\"button primary\" href=\"/\">Your concepts</a><a class=\"text-link\" href=\"/recall\">Text practice</a></div></section>"
             );
         }
         let body = format!(
@@ -1314,7 +1508,7 @@ impl View<'_> {
             escape(prefill)
         );
         format!(
-            "<section class=\"create-page\" data-state=\"create\"><div class=\"page-heading\"><h1>Add material</h1><p class=\"lede\">What do you want to understand?</p></div>{}<p class=\"privacy-note\">{}<span>Private by default. Your words are used to prepare your material; pasted links are not opened. Video is not supported yet.</span></p></section>",
+            "<section class=\"create-page\" data-state=\"create\"><div class=\"page-heading\"><h1>Prepare material</h1><p class=\"lede\">What do you want to understand?</p></div>{}<p class=\"privacy-note\">{}<span>Private by default. Your words are used to prepare your material; pasted links are not opened. Video is not supported yet.</span></p></section>",
             self.form(
                 "/create",
                 "capture",
@@ -1331,8 +1525,26 @@ impl View<'_> {
         let mut out = String::from(
             "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note. Give the ideas that matter a little more attention.</p></div>",
         );
-        if goals.is_empty() {
-            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/create\">Create your first material →</a></div>");
+        let authored: Vec<_> = self
+            .app
+            .concepts
+            .values()
+            .filter(|c| c.origin == Some(ConceptOrigin::OwnerAuthored) && self.active_concept(c))
+            .collect();
+        if goals.is_empty() && authored.is_empty() {
+            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/concepts/new\">Create your first concept →</a></div>");
+        }
+        if !authored.is_empty() {
+            out.push_str("<section><h2>Your authored concepts</h2><ul class=\"concept-list\">");
+            for c in authored {
+                let _ = write!(
+                    out,
+                    "<li><a href=\"/concepts/{}\">{}</a><span class=\"idea-status\">Study material</span></li>",
+                    escape(&c.id),
+                    self.concept_name(c)
+                );
+            }
+            out.push_str("</ul></section>");
         }
         for (index, goal) in goals.iter().enumerate() {
             let concepts: Vec<_> = goal
@@ -1606,21 +1818,38 @@ impl View<'_> {
         let Some(c) = self.app.concepts.get(id) else {
             return self.not_found();
         };
+        if self.app.practice.protected() {
+            return self.material_gate();
+        }
         if self.app.protected_concept(id) {
             return self.gate(&format!("/concepts/{id}"));
+        }
+        let mut out = format!(
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\" aria-label=\"Study materials\"><h2>Materials</h2>{}<a class=\"text-link\" href=\"/concepts/{}/materials/new\">Add study material</a></section>",
+            self.concept_name(c),
+            self.lede("lede", c),
+            self.study_materials(c),
+            escape(id)
+        );
+        if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+            out.push_str("<section class=\"practice-evidence\"><h2>Practice</h2><p>No quizzes/questions yet. Read your materials here; saving text does not create practice.</p></section>");
+            if c.archived {
+                out.push_str("<p>Archived: retained for reference.</p>");
+            }
+            out.push_str("</article>");
+            return out;
         }
         let state = concept_evidence(self.app, c, self.now);
         let unaided = state.unaided;
         let helped = state.helped;
         let missed = state.missed;
-        let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Study</h2>{}</section><section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
-            self.concept_name(c),
-            self.lede("lede", c),
-            self.notes(c),
+        out.push_str(&format!(
+            "<section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
             recall_label(self.app, c, self.now),
             if !self.active_concept(c) {
                 "<p>Archived: retained for reference.</p>".into()
+            } else if !self.app.questions.values().any(|q| q.concept_id == c.id && !q.archived) {
+                "<p>No quizzes/questions yet.</p>".into()
             } else {
                 self.form(
                     &format!("/concepts/{id}/practice"),
@@ -1631,7 +1860,7 @@ impl View<'_> {
                 )
             },
             tally(&state)
-        );
+        ));
         out.push_str("<section class=\"saved-questions\"><h3>Saved questions</h3>");
         for q in self
             .app
@@ -1665,7 +1894,7 @@ impl View<'_> {
             );
         }
         out.push_str("</section>");
-        if let Some(g) = self.app.goals.get(&c.goal_id) {
+        if let Some(g) = c.goal_id.as_ref().and_then(|id| self.app.goals.get(id)) {
             let _ = write!(
                 out,
                 "<section class=\"concept-resources\"><h2>Resources</h2><a class=\"text-link\" href=\"/goals/{}\">Original material &amp; preparation</a></section>",
@@ -1721,7 +1950,9 @@ impl View<'_> {
                 "<button class=\"text-button danger\">Archive this idea</button>",
             ));
         }
-        out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
+        if let Some(goal_id) = &c.goal_id {
+            out.push_str(&self.feedback_history(goal_id, Some(id)));
+        }
         out.push_str("</article>");
         out
     }
@@ -2345,7 +2576,9 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
 }
 
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
-    if path == "/library/version/add" {
+    if crate::materials::is_authoring_path(path) {
+        path
+    } else if path == "/library/version/add" {
         "/library/add"
     } else if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
         path
@@ -2369,6 +2602,13 @@ pub fn render(
     };
     let content = match path {
         "/" => view.home(),
+        "/concepts/new" | "/concepts/create" => view.material_authoring(None, None),
+        "/materials/add" => {
+            view.material_authoring(query.get("concept_id").map(String::as_str), None)
+        }
+        "/materials/revise" => {
+            view.material_authoring(None, query.get("material_id").map(String::as_str))
+        }
         "/recall" if exact_stream_active(app) => view.exact_stream(),
         "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
@@ -2403,6 +2643,10 @@ pub fn render(
                 ["library", "versions", id] => view.library_version(id),
                 ["goals", id] => view.goal(id),
                 ["concepts", id] => view.concept(id),
+                ["concepts", id, "materials", "new"] => view.material_authoring(Some(id), None),
+                ["materials", id, "edit"] => view.material_authoring(None, Some(id)),
+                ["materials", id] => view.material(id, None),
+                ["materials", id, "revisions", rid] => view.material(id, Some(rid)),
                 ["questions", id, "edit"] => view.edit(id),
                 _ => view.not_found(),
             }
@@ -2468,7 +2712,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Concepts</a><a href=\"/create\">Add material</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Text practice</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Concepts</a><a href=\"/concepts/new\">Create concept</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Text practice</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -2499,6 +2743,15 @@ fn emblem(class: &str) -> String {
 }
 fn lock_icon() -> &'static str {
     "<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/></svg>"
+}
+fn supplied_revision(revision: &crate::materials::MaterialRevision) -> String {
+    format!(
+        "<section data-material-revision-id=\"{}\"><h3>{}</h3><div class=\"reading preserve\">{}</div><p class=\"fineprint\">Owner-supplied · Revision {}</p></section>",
+        escape(&revision.id),
+        escape(&revision.title),
+        escape(&revision.text),
+        revision.ordinal
+    )
 }
 fn notes(app: &App, c: &Concept) -> String {
     let Some(note) = c.notes.last() else {
@@ -2654,6 +2907,9 @@ fn concept_state(app: &App, c: &Concept, now: i64) -> &'static str {
     if c.archived {
         return "Archived";
     }
+    if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+        return "Study material";
+    }
     let state = concept_evidence(app, c, now);
     if state.tally.is_empty() && c.introduced_ms.is_some() {
         return "Introduced";
@@ -2779,4 +3035,18 @@ pub fn token_created(secret: &str) -> String {
         escape(secret)
     );
     shell("Owner token", "/settings", &content, None, false, false)
+}
+
+/// Material route reads avoid legacy question selection and learning exposure.
+pub fn material_read_path(path: &str) -> bool {
+    path.starts_with("/concepts/") || path.starts_with("/materials/")
+}
+pub fn material_form_path(path: &str) -> bool {
+    path == "/concepts/new"
+        || path
+            .strip_prefix("/concepts/")
+            .is_some_and(|p| p.ends_with("/materials/new"))
+        || path
+            .strip_prefix("/materials/")
+            .is_some_and(|p| p.ends_with("/edit"))
 }

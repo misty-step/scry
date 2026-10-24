@@ -42,11 +42,11 @@ export async function conceptHomeWalk(browser,capture){
   const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
   try{
    await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'What do you want to learn?',exact:true}).waitFor();
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Concepts','Add material']);
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Concepts','Create concept']);
    assert.equal(await page.locator('footer').getByRole('link',{name:'Text practice',exact:true}).getAttribute('href'),'/recall');
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
    await layout();await shot('empty');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');
-   await activate(home().getByRole('link',{name:'Add material',exact:true}));
+   await activate(home().getByRole('link',{name:'Prepare material with AI',exact:true}));
    await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();
    assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
    await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('unavailable-200');
@@ -79,7 +79,7 @@ export async function conceptHomeWalk(browser,capture){
    const dependent=concepts.find(c=>c.prerequisites.length);assert.ok(dependent,'The authored demo must retain its real prerequisite relation');
    const prerequisite=concepts.find(c=>c.id===dependent.prerequisites[0]);assert.ok(prerequisite);
    await activate(home().locator(`a[href="/concepts/${prerequisite.id}"]`));await page.locator('[data-state="concept"]').waitFor();
-   for(const heading of ['Study','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+   for(const heading of ['Materials','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
    assert.equal(await page.getByRole('link',{name:'Original material & preparation',exact:true}).getAttribute('href'),`/goals/${prerequisite.goal_id}`);
    const reverse=page.locator('.connected').getByRole('link',{name:dependent.name,exact:true});assert.equal(await reverse.getAttribute('href'),`/concepts/${dependent.id}`);
    await layout();await shot('concept-used-by');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('concept-used-by-200');

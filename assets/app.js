@@ -101,6 +101,18 @@
       if (pending !== request) return;
       if (response.status === 401 || response.status === 403) { conceal(); return; }
       if (response.status === 409) {
+        if (request.form?.classList.contains('material-form')) {
+          const doc = await safePage(response);
+          if (pending !== request) return;
+          if (doc?.querySelector('[data-state="material-gate"],[data-state="gate"]')) {
+            // A newer protected Prompt is not an editable revision conflict.
+            // Replace stale reference fields with the server's assistance gate.
+            pending = null;
+            unlock(request);
+            install(doc, response, false);
+            return;
+          }
+        }
         pending = null;
         unlock(request);
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
@@ -138,9 +150,9 @@
       if (pending !== request) return;
       // A lost response may follow a committed write. Freeze the exact payload.
       announce('The response did not arrive. Your draft is still here.', [
-        ['Reconcile this attempt', () => send(request)],
+        [request.form?.classList.contains('material-form') ? 'Reconcile saved change' : 'Reconcile this attempt', () => send(request)],
         ['Open saved progress', () => location.reload()]
-      ], 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.');
+      ], request.form?.classList.contains('material-form') ? 'Reconciliation sends the same saved operation and wording. It cannot create a duplicate material or revision.' : 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.');
     } finally { clearTimeout(timer); request.sending = false; }
   };
   document.addEventListener('submit', event => {
@@ -155,6 +167,14 @@
     const intent = form.querySelector('textarea[name=intent]');
     if (intent && photo && new TextEncoder().encode(intent.value).length > 1024) { announce('A photo caption can contain up to 1 KB of text. Your draft is still here.'); return; }
     if (intent && new TextEncoder().encode(intent.value).length > 32768) { announce('Your request is over the 32 KB limit. Shorten it and keep the rest separately; your draft is still here.'); return; }
+    if (form.classList.contains('material-form')) {
+      for (const [field, limit] of [['name', 200], ['summary', 2000], ['title', 200], ['text', 32768]]) {
+        const input = form.elements.namedItem(field);
+        if (input && new TextEncoder().encode(input.value).length > limit) {
+          announce(`Keep ${field === 'text' ? 'your text' : field} within ${limit.toLocaleString('en-US')} UTF-8 bytes. Your draft is still here.`); return;
+        }
+      }
+    }
     const answer = form.querySelector('textarea[name=answer]');
     const answerLimit = Number(form.dataset.answerLimit || 4000);
     if (form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }

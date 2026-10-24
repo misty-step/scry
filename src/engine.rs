@@ -80,6 +80,8 @@ pub fn mutate_as(
     seed: &str,
     actor: MutationActor<'_>,
 ) -> AppResult<MutationResult> {
+    // Phase B deliberately enables the three floor-reserved authoring paths.
+    // Their retained receipt replays still pass the current assistance fence.
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
         || !operation
@@ -103,6 +105,7 @@ pub fn mutate_as(
             return Err(AppError::conflict());
         }
         crate::study::check_replay(app, &receipt.result)?;
+        crate::materials::check_replay(app, receipt)?;
         return Ok(receipt.result.clone());
     }
     if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
@@ -138,7 +141,17 @@ pub fn mutate_as(
             result: response.clone(),
         },
     );
-    next.revision += 1;
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or_else(AppError::conflict)?;
+    if crate::materials::is_authoring_path(path) {
+        // Validate the acknowledged candidate, including its receipt, before
+        // committing. The retained reader must be able to write and archive it.
+        validate_app(&next)?;
+        crate::persistence::rows(&next)?;
+        crate::persistence::archive_size(&next)?;
+    }
     *app = next;
     Ok(response)
 }
@@ -262,6 +275,9 @@ fn apply(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    if crate::materials::is_authoring_path(path) {
+        return crate::materials::mutate(app, path, fields, now, seed);
+    }
     if path.starts_with("/practice/") {
         return crate::study::mutate(app, path, fields, now, seed);
     }
@@ -848,6 +864,12 @@ fn apply_entity(
             if c.archived {
                 return Err(AppError::conflict());
             }
+            if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+                return Err(AppError::new(
+                    422,
+                    "Authored Concept changes are not available in this build.",
+                ));
+            }
             match action {
                 "practice" => {
                     if app.occurrence.is_some() {
@@ -887,7 +909,9 @@ fn apply_entity(
                 "feedback" => {
                     add_feedback(
                         app,
-                        &c.goal_id,
+                        c.goal_id.as_deref().ok_or_else(|| {
+                            AppError::new(422, "This Concept has no preparation request.")
+                        })?,
                         (Some(entity.into()), None),
                         "confusion",
                         field(fields, "text"),
@@ -2041,14 +2065,14 @@ fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64)
         let mut mapping: BTreeMap<String, String> = app
             .concepts
             .values()
-            .filter(|c| c.goal_id == job.goal_id)
+            .filter(|c| c.goal_id.as_deref() == Some(job.goal_id.as_str()))
             .map(|c| (c.id.clone(), c.id.clone()))
             .collect();
         for c in &batch.concepts {
             if app
                 .concepts
                 .get(&c.key)
-                .is_some_and(|c| c.goal_id == job.goal_id && c.archived)
+                .is_some_and(|c| c.goal_id.as_deref() == Some(job.goal_id.as_str()) && c.archived)
             {
                 return Err(AppError::new(
                     422,
@@ -2058,7 +2082,7 @@ fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64)
             let existing = app
                 .concepts
                 .get(&c.key)
-                .filter(|c| c.goal_id == job.goal_id && !c.archived);
+                .filter(|c| c.goal_id.as_deref() == Some(job.goal_id.as_str()) && !c.archived);
             mapping.insert(
                 c.key.clone(),
                 existing
@@ -2106,7 +2130,8 @@ fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64)
                     cid.clone(),
                     Concept {
                         id: cid.clone(),
-                        goal_id: job.goal_id.clone(),
+                        goal_id: Some(job.goal_id.clone()),
+                        origin: None,
                         name: c.name.clone(),
                         summary: c.summary.clone(),
                         notes: vec![note],
@@ -2163,7 +2188,7 @@ fn publish_inner(app: &mut App, job: &Job, batch: &Batch, model: &str, now: i64)
 fn goal_graph(app: &App, goal_id: &str) -> BTreeMap<String, Vec<String>> {
     app.concepts
         .values()
-        .filter(|c| c.goal_id == goal_id)
+        .filter(|c| c.goal_id.as_deref() == Some(goal_id))
         .map(|c| (c.id.clone(), c.prerequisites.clone()))
         .collect()
 }
@@ -2214,7 +2239,11 @@ fn finish_critic_candidates(
 }
 
 pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
-    if !app.goals.is_empty() || !app.events.is_empty() || !app.operations.is_empty() {
+    if !app.goals.is_empty()
+        || !app.events.is_empty()
+        || !app.operations.is_empty()
+        || crate::materials::requires_capability(app)
+    {
         return Err(AppError::new(
             409,
             "The authored fixture requires a fresh learning space.",
@@ -2402,10 +2431,11 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                 .as_ref()
                 .is_some_and(|t| !generation::text_valid(t, TEXT_LIMIT))
             || concepts.len() != goal.concept_ids.len()
-            || goal
-                .concept_ids
-                .iter()
-                .any(|id| app.concepts.get(id).is_none_or(|c| c.goal_id != goal.id))
+            || goal.concept_ids.iter().any(|id| {
+                app.concepts
+                    .get(id)
+                    .is_none_or(|c| c.goal_id.as_deref() != Some(goal.id.as_str()))
+            })
             || app
                 .jobs
                 .get(&goal.job_id)
@@ -2431,12 +2461,34 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             checks.reject("invalid saved photo metadata")?;
         }
     }
+    let material_owners: BTreeSet<_> = app
+        .materials
+        .items
+        .values()
+        .map(|material| material.concept_id.as_str())
+        .collect();
     for (key, concept) in &app.concepts {
         checks.record();
         checks.check(archive_id(key, &concept.id, &mut ids))?;
-        let goal = app
-            .goals
-            .get(&concept.goal_id)
+        if concept.origin == Some(ConceptOrigin::OwnerAuthored) {
+            if concept.goal_id.is_some()
+                || !concept.notes.is_empty()
+                || !concept.prerequisites.is_empty()
+                || concept.introduced_ms.is_some()
+                || concept.exposure_ms.is_some()
+                || concept.already_known
+                || !generation::text_valid(&concept.name, 200)
+                || (!concept.summary.is_empty() && !generation::text_valid(&concept.summary, 2000))
+                || !material_owners.contains(concept.id.as_str())
+            {
+                checks.reject("invalid owner-authored Concept")?;
+            }
+            continue;
+        }
+        let goal = concept
+            .goal_id
+            .as_ref()
+            .and_then(|id| app.goals.get(id))
             .ok_or_else(|| archive_error("an orphaned idea"))?;
         let prerequisites: BTreeSet<_> = concept.prerequisites.iter().collect();
         if !goal.concept_ids.contains(key)
@@ -2464,6 +2516,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             }
         }
     }
+    checks.check(crate::materials::validate(app, &mut ids))?;
     // Every prerequisite stays within its goal, and historical archived ideas
     // remain present. A cycle is corrupt structure, never a new learning plan.
     let mut reached = BTreeSet::new();
@@ -2488,7 +2541,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
         if app
             .concepts
             .get(&question.concept_id)
-            .is_none_or(|c| c.goal_id != question.goal_id)
+            .is_none_or(|c| c.goal_id.as_deref() != Some(question.goal_id.as_str()))
             || question.versions.is_empty()
             || question.versions[0].version != 1
             || question
@@ -2915,7 +2968,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             || feedback.concept_id.as_ref().is_some_and(|id| {
                 app.concepts
                     .get(id)
-                    .is_none_or(|c| c.goal_id != feedback.goal_id)
+                    .is_none_or(|c| c.goal_id.as_deref() != Some(feedback.goal_id.as_str()))
             })
             || feedback.question_id.as_ref().is_some_and(|id| {
                 app.questions.get(id).is_none_or(|q| {
@@ -2958,6 +3011,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                     && !app.owner_tokens.contains_key(id)
                     && !crate::library::receipt_entity(receipt, id)
                     && !crate::study::receipt_entity(app, receipt, id)
+                    && !crate::materials::receipt_entity(app, receipt, id)
             })
         {
             checks.reject("an invalid exact-operation receipt")?;
@@ -3093,7 +3147,7 @@ fn archive_error(reason: &str) -> AppError {
     AppError::new(422, format!("The archive contains {reason}."))
 }
 
-fn archive_id(key: &str, id: &str, seen: &mut BTreeSet<String>) -> AppResult<()> {
+pub(crate) fn archive_id(key: &str, id: &str, seen: &mut BTreeSet<String>) -> AppResult<()> {
     if key != id
         || id.is_empty()
         || id.len() > 128

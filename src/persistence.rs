@@ -72,11 +72,28 @@ fn payload_rows(
 }
 
 pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
+    if crate::materials::requires_capability(app) {
+        crate::engine::validate_app(app)?;
+    }
     let mut value = serde_json::to_value(app).map_err(serialization)?;
     let object = value
         .as_object_mut()
         .ok_or_else(|| AppError::new(500, "Invalid state."))?;
     let mut result = BTreeMap::new();
+    if let Some(materials) = object.remove("materials") {
+        if materials["capability"] != true {
+            return Err(serialization("Missing Material capability"));
+        }
+        result.insert(crate::materials::CAPABILITY_ROW.into(), "true".into());
+        for (field, prefix) in [("items", "materials"), ("revisions", "material_revisions")] {
+            for (id, record) in materials[field]
+                .as_object()
+                .ok_or_else(|| serialization("Materials"))?
+            {
+                result.insert(format!("{prefix}/{id}"), bounded_json(record)?);
+            }
+        }
+    }
     object
         .entry("owner_tokens")
         .or_insert_with(|| serde_json::json!({}));
@@ -169,8 +186,21 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     }
     value["study_version_refs"] = serde_json::json!({});
     value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
+    // The explicit row marker is authoritative. Never accept an optional meta
+    // field as a substitute that an incompatible writer could silently discard.
+    if value.get("materials").is_some() {
+        return Err(serialization("Inline Materials"));
+    }
+    value["materials"] = serde_json::json!({"capability":false,"items":{},"revisions":{}});
     for (key, data) in rows {
         if key == "meta" {
+            continue;
+        }
+        if key == crate::materials::CAPABILITY_ROW {
+            if data != "true" {
+                return Err(serialization("Invalid Material capability"));
+            }
+            value["materials"]["capability"] = Value::Bool(true);
             continue;
         }
         let (field, id) = key
@@ -180,7 +210,17 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             continue;
         }
         let record: Value = serde_json::from_str(data).map_err(serialization)?;
-        if let Some(field) = field.strip_prefix("practice_") {
+        if matches!(field, "materials" | "material_revisions") {
+            let target = if field == "materials" {
+                "items"
+            } else {
+                "revisions"
+            };
+            value["materials"][target]
+                .as_object_mut()
+                .unwrap()
+                .insert(id.into(), record);
+        } else if let Some(field) = field.strip_prefix("practice_") {
             value["practice"]
                 .get_mut(field)
                 .and_then(Value::as_object_mut)
@@ -285,6 +325,9 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
+    if crate::materials::requires_capability(&app) {
+        crate::engine::validate_app(&app)?;
+    }
     Ok(app)
 }
 fn bounded_json(value: &Value) -> AppResult<String> {
@@ -302,7 +345,9 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if !app.practice.is_empty()
+    if crate::materials::requires_capability(app) {
+        crate::materials::ARCHIVE_FORMAT
+    } else if !app.practice.is_empty()
         || app.operations.values().any(|r| {
             r.path
                 .as_deref()

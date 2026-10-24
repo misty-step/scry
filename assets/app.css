@@ -23,3 +23,9 @@
 
 .concept-home .actions{display:flex;gap:1rem;flex-wrap:wrap;margin:2rem 0}.home-concepts{margin:2rem 0}.concept-home .preparations{margin:2rem 0}.concept-study,.concept-resources,.connected{margin-top:2.5rem}.create-page #unsent-material{width:100%;min-height:12rem}.concept-home{overflow-wrap:anywhere}
 @media(max-width:767px){.masthead nav{gap:1rem;flex-wrap:wrap;justify-content:flex-end}.concept-home .actions .button{width:100%}}
+/* Concept authoring uses native, explicit-save forms at every viewport. */
+.material-form{min-width:0}.material-form>label{margin:1.25rem 0 .5rem}.material-form input:not([type=hidden]){display:block;width:100%;min-width:0;min-height:48px;padding:.8rem;border:1px solid var(--rule-2);border-radius:4px;background:var(--sheet);color:var(--ink)}.material-form textarea{min-width:0}.material-form .actions{margin-top:1.5rem}.concept-note{overflow-wrap:anywhere}
+@media(max-width:767px){.material-form .actions .button{flex:1 1 100%;white-space:nowrap}}
+
+/* Supplied Concept status stays readable at phone text magnification. */
+@media(max-width:767px){.home-concepts li.authored-concept>a{flex-direction:column;align-items:flex-start;gap:.25rem}.home-concepts li.authored-concept>a>span{max-width:100%;min-width:0}.home-concepts li.authored-concept .idea-status{max-width:100%;margin-left:0;text-align:left;overflow-wrap:anywhere}}

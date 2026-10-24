@@ -21,6 +21,9 @@ pub struct MutationResponse {
 }
 pub fn mutation_path(path: &str) -> Option<&str> {
     match path {
+        "/api/v1/concepts/create" => Some("/concepts/create"),
+        "/api/v1/materials/add" => Some("/materials/add"),
+        "/api/v1/materials/revise" => Some("/materials/revise"),
         "/api/v1/learn" => Some("/practice/learn"),
         "/api/v1/studies/pause" => Some("/practice/pause"),
         "/api/v1/studies/resume" => Some("/practice/resume"),
@@ -129,4 +132,86 @@ pub fn library_form_fields(fields: &mut BTreeMap<String, String>) -> AppResult<(
         serde_json::to_string(&input).map_err(|_| AppError::new(422, "Invalid supplied text."))?,
     );
     Ok(())
+}
+
+/// New reference reads never initialize a stream, record exposure, or write token metadata.
+pub fn material_read_path(path: &str) -> bool {
+    path == "/api/v1/concepts"
+        || path.starts_with("/api/v1/concepts/")
+        || path == "/api/v1/materials"
+        || path.starts_with("/api/v1/materials/")
+}
+
+pub fn material_read(app: &App, path: &str) -> AppResult<serde_json::Value> {
+    use serde_json::json;
+    if app.practice.protected() {
+        return Err(AppError::new(
+            409,
+            "Finish your Prompt or record assistance before reading Materials.",
+        ));
+    }
+    let check = |id: &str| -> AppResult<()> {
+        if app.protected_concept(id) {
+            Err(AppError::new(
+                409,
+                "Record assistance before reading this Concept.",
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    match parts.as_slice() {
+        ["api", "v1", "concepts"] => {
+            if app.protected_goal().is_some() {
+                return Err(AppError::new(
+                    409,
+                    "Record assistance before listing Concepts.",
+                ));
+            }
+            Ok(json!({"concepts": app.concepts.values().collect::<Vec<_>>()}))
+        }
+        ["api", "v1", "concepts", id] | ["api", "v1", "concepts", id, "materials"] => {
+            let concept = app
+                .concepts
+                .get(*id)
+                .ok_or_else(|| AppError::new(404, "Concept not found."))?;
+            check(id)?;
+            let materials = crate::materials::for_concept(app, concept);
+            if parts.len() == 4 {
+                Ok(json!({"concept":concept,"materials":materials}))
+            } else {
+                Ok(json!({"materials":materials}))
+            }
+        }
+        ["api", "v1", "materials", id]
+        | ["api", "v1", "materials", id, "revisions"]
+        | ["api", "v1", "materials", id, "revisions", _] => {
+            let material = app
+                .materials
+                .items
+                .get(*id)
+                .ok_or_else(|| AppError::new(404, "Material not found."))?;
+            check(&material.concept_id)?;
+            if let Some(revision_id) = parts.get(5) {
+                let revision = app
+                    .materials
+                    .revisions
+                    .get(*revision_id)
+                    .filter(|r| r.material_id == material.id)
+                    .ok_or_else(|| AppError::new(404, "Revision not found for this Material."))?;
+                Ok(json!({"material":material,"revision":revision}))
+            } else {
+                let mut revisions: Vec<_> = app
+                    .materials
+                    .revisions
+                    .values()
+                    .filter(|r| r.material_id == material.id)
+                    .collect();
+                revisions.sort_by_key(|r| r.ordinal);
+                Ok(json!({"material":material,"revisions":revisions}))
+            }
+        }
+        _ => Err(AppError::new(404, "Concept or Material action not found.")),
+    }
 }
