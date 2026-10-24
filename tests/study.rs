@@ -111,6 +111,34 @@ impl Owner {
         cid
     }
 }
+
+#[test]
+fn exact_history_shows_a_valid_api_created_attempt_instead_of_false_empty() {
+    let mut o = Owner::new();
+    let v = o.add("We conceived a patient garden.\n", false);
+    o.learn(&v, "steady");
+    o.next(None);
+    let answer = o.answer("We imagined a patient garden.");
+    let attempt = &answer["attempt"];
+    assert_eq!(o.app.practice.attempts.len(), 1);
+    assert!(o.app.events.is_empty());
+    assert_eq!(attempt["grade"]["verdict"], "Again");
+    assert_eq!(attempt["assisted"], true);
+    let before = o.app.clone();
+    let html = scry::web::render(&o.app, "/history", &Default::default(), o.now, None);
+    assert!(
+        html.contains(&format!(
+            "data-attempt-id=\"{}\"",
+            attempt["id"].as_str().unwrap()
+        )),
+        "History must render the saved exact Attempt"
+    );
+    assert!(!html.contains("Your first practice will appear here."));
+    assert!(html.contains("We imagined a patient garden."));
+    assert!(html.contains("We conceived a patient garden."));
+    assert_eq!(o.app, before, "Rendering History does not mutate practice");
+}
+
 #[test]
 fn study_receipts_assistance_fading_free_recall_once_daily_and_lapse() {
     let mut o = Owner::new();
