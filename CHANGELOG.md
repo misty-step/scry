@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/misty-step/scry/compare/v0.7.3...v0.8.0) (2026-10-24)
+
+
+### Features
+
+* make concepts the clear learning home ([#392](https://github.com/misty-step/scry/issues/392)) ([7502f1e](https://github.com/misty-step/scry/commit/7502f1e6c041efefe347c31bc884d14cda6756cb))
+
 ## [0.7.3](https://github.com/misty-step/scry/compare/v0.7.2...v0.7.3) (2026-10-24)
 
 
