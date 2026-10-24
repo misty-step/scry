@@ -13,6 +13,7 @@ material. Stories: US-001, US-006, US-009, US-010. Intent:
 - `map-list` shows goals and their concepts at `/map`, in an accessible list.
 - `map-goal` opens a goal (`/goals/{id}`) with focus, pause, resume and Practice.
 - `map-concept` opens a concept (`/concepts/{id}`) with its reference.
+- `material-floor` reads restored owner-authored Concepts and independent supplied Material revisions without enabling authoring (SPEC CM1/CM2).
 - `map-gate` puts "Look it up" before reference for the current question's concept.
 - `map-pace` sets Settings → "How many new ideas in a day?" (3/6/12).
 
@@ -35,9 +36,16 @@ Preconditions:
   runs the retained-Go migration check described in [QA](../docs/qa/system.md).
 - **Proof.** Inspect desktop and phone navigation, not the decorative constellation or a process exit.
 
+- **Compatibility proof.** `tests/materials.rs`, `tests/materials_history.rs` and
+  `node --test qa/materials.test.mjs` cover SPEC CM1/CM2: typed synthetic complete
+  history, read-only home/detail, compiled CLI, built Worker SQLite/R2, fresh
+  restore, first unrelated write, and checksum-pinned old-reader refusal. This
+  does not enable authoring or certify independently retrieved hosted recovery.
+
 ## Gotchas
 
-- Opening `/history`, `/goals/*` or `/concepts/*` marks exposure for future
-  presentations. It is a write, so never browse the owner's concepts on production.
+- Opening `/history`, `/goals/*` or `/concepts/*` marks exposure on Goal-backed
+  Concepts for future presentations. Reading an owner-authored Concept does not
+  fabricate legacy exposure. It is a write, so never browse the owner's concepts on production.
 - Do not use historical live stores as fixtures.
 - Source: `src/learning.rs`, `src/model.rs`, `src/engine.rs`, `src/web.rs`, `assets/*`.

@@ -166,11 +166,26 @@ _Avoid_: usage log, billing
 ## Concepts and their material
 
 **Concept**:
-The primary teachable idea the owner wants to understand. Today it has a
-current explanation, saved questions, and directed prerequisite relationships.
-It is not an exact-recall Work or Unit. Multiple independent reference materials
-and quizzes, varied sources, and related-concept prediction are future work.
+The primary teachable idea the owner wants to understand. Generated Concepts
+have a Goal, a current explanation, saved questions and directed prerequisites.
+The compatibility floor also retains explicitly owner-authored Concepts with
+Materials and no invented Goal or practice. Normal authoring, quiz collections,
+varied sources and related-concept prediction remain future work. A Concept is
+not an exact-recall Work or Unit.
 _Avoid_: using it for a Work or Unit
+
+**Material**:
+An independently addressable reference belonging to one Concept, with a current
+revision and immutable wording history. Supplied text is not a fetched or
+verified Source. An existing generated Note chain is one read-only Material
+projection, preserving its original records rather than copying or splitting it.
+_Avoid_: saved text (as the primary learning object), source (without provenance)
+
+**Material revision**:
+One immutable title and exact supplied text, with its Material owner, ordinal,
+predecessor, supplied provenance and timestamp. Revising wording keeps earlier
+revisions; separate Materials do not collapse because their wording matches.
+_Avoid_: new Material (for a revision of the same reference)
 
 **Goal**:
 The saved preparation request that groups generated concepts. Exact

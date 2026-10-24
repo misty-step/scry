@@ -211,16 +211,18 @@ impl View<'_> {
     }
     fn active_concept(&self, concept: &Concept) -> bool {
         !concept.archived
-            && self
-                .app
-                .goals
-                .get(&concept.goal_id)
-                .is_some_and(|goal| !goal.archived)
+            && match concept.goal_id.as_ref() {
+                Some(id) => self.app.goals.get(id).is_some_and(|goal| !goal.archived),
+                None => concept.origin == Some(ConceptOrigin::OwnerAuthored),
+            }
     }
     /// Above a question, an imported placeholder is named by its goal: its own
     /// title would repeat the question directly beneath it.
     fn study_chip(&self, concept: &Concept) -> (String, String) {
-        let goal = self.app.goals.get(&concept.goal_id);
+        let goal = concept
+            .goal_id
+            .as_ref()
+            .and_then(|id| self.app.goals.get(id));
         match goal {
             Some(g) if legacy_idea(concept) && !self.app.protected_concept(&concept.id) => {
                 (self.goal_title(g), format!("/goals/{}", escape(&g.id)))
@@ -233,6 +235,39 @@ impl View<'_> {
     }
     fn notes(&self, concept: &Concept) -> String {
         notes(self.app, concept)
+    }
+    fn study_materials(&self, concept: &Concept) -> String {
+        use crate::materials::{MaterialView, for_concept};
+        let mut out = String::new();
+        for material in for_concept(self.app, concept) {
+            match material {
+                MaterialView::LegacyNote { .. } => out.push_str(&self.notes(concept)),
+                MaterialView::Supplied {
+                    material,
+                    revisions,
+                } => {
+                    let (current, earlier) =
+                        revisions.split_last().expect("validated revision chain");
+                    let _ = write!(
+                        out,
+                        "<article class=\"concept-note\" data-material-id=\"{}\">{}",
+                        escape(&material.id),
+                        supplied_revision(current)
+                    );
+                    if !earlier.is_empty() {
+                        out.push_str(
+                            "<details class=\"saved-input\"><summary>Earlier revisions</summary>",
+                        );
+                        for revision in earlier {
+                            out.push_str(&supplied_revision(revision));
+                        }
+                        out.push_str("</details>");
+                    }
+                    out.push_str("</article>");
+                }
+            }
+        }
+        out
     }
     fn lede(&self, class: &str, concept: &Concept) -> String {
         let summary = idea_summary(concept);
@@ -1254,7 +1289,7 @@ impl View<'_> {
         out.push_str("<div class=\"actions\">");
         if self.app.occurrence.is_some() {
             out.push_str("<a class=\"button primary\" href=\"/notebook\">Resume practice</a>");
-        } else if !concepts.is_empty() {
+        } else if concepts.iter().any(|c| c.goal_id.is_some()) {
             out.push_str("<a class=\"button primary\" href=\"/notebook\">Start practice</a>");
         }
         let _ = write!(
@@ -1609,15 +1644,26 @@ impl View<'_> {
         if self.app.protected_concept(id) {
             return self.gate(&format!("/concepts/{id}"));
         }
+        let mut out = format!(
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\" aria-label=\"Study materials\"><h2>Study</h2>{}</section>",
+            self.concept_name(c),
+            self.lede("lede", c),
+            self.study_materials(c)
+        );
+        if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+            out.push_str("<section class=\"practice-evidence\"><h2>Practice</h2><p>No saved questions. These materials are available for reading only in this version.</p></section>");
+            if c.archived {
+                out.push_str("<p>Archived: retained for reference.</p>");
+            }
+            out.push_str("</article>");
+            return out;
+        }
         let state = concept_evidence(self.app, c, self.now);
         let unaided = state.unaided;
         let helped = state.helped;
         let missed = state.missed;
-        let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Study</h2>{}</section><section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
-            self.concept_name(c),
-            self.lede("lede", c),
-            self.notes(c),
+        out.push_str(&format!(
+            "<section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
             recall_label(self.app, c, self.now),
             if !self.active_concept(c) {
                 "<p>Archived: retained for reference.</p>".into()
@@ -1631,7 +1677,7 @@ impl View<'_> {
                 )
             },
             tally(&state)
-        );
+        ));
         out.push_str("<section class=\"saved-questions\"><h3>Saved questions</h3>");
         for q in self
             .app
@@ -1665,7 +1711,7 @@ impl View<'_> {
             );
         }
         out.push_str("</section>");
-        if let Some(g) = self.app.goals.get(&c.goal_id) {
+        if let Some(g) = c.goal_id.as_ref().and_then(|id| self.app.goals.get(id)) {
             let _ = write!(
                 out,
                 "<section class=\"concept-resources\"><h2>Resources</h2><a class=\"text-link\" href=\"/goals/{}\">Original material &amp; preparation</a></section>",
@@ -1721,7 +1767,9 @@ impl View<'_> {
                 "<button class=\"text-button danger\">Archive this idea</button>",
             ));
         }
-        out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
+        if let Some(goal_id) = &c.goal_id {
+            out.push_str(&self.feedback_history(goal_id, Some(id)));
+        }
         out.push_str("</article>");
         out
     }
@@ -2500,6 +2548,15 @@ fn emblem(class: &str) -> String {
 fn lock_icon() -> &'static str {
     "<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/></svg>"
 }
+fn supplied_revision(revision: &crate::materials::MaterialRevision) -> String {
+    format!(
+        "<section data-material-revision-id=\"{}\"><h3>{}</h3><div class=\"reading preserve\">{}</div><p class=\"fineprint\">Owner-supplied · Revision {}</p></section>",
+        escape(&revision.id),
+        escape(&revision.title),
+        escape(&revision.text),
+        revision.ordinal
+    )
+}
 fn notes(app: &App, c: &Concept) -> String {
     let Some(note) = c.notes.last() else {
         return "<p class=\"fineprint\">No note is available yet.</p>".into();
@@ -2653,6 +2710,9 @@ fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
 fn concept_state(app: &App, c: &Concept, now: i64) -> &'static str {
     if c.archived {
         return "Archived";
+    }
+    if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+        return "Study material";
     }
     let state = concept_evidence(app, c, now);
     if state.tally.is_empty() && c.introduced_ms.is_some() {
