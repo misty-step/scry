@@ -71,7 +71,7 @@ Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: root `GLOSSARY.md` (created lazily) and `docs/adr/`. See `docs/agents/domain.md`.
-Run `upkeep where <task-kind>` before dispatching.
+Run `sitrep where <task-kind>` before dispatching.
 
 ## No fallbacks
 
