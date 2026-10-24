@@ -80,7 +80,7 @@ impl App {
     pub fn spent(&self, now: i64) -> u64 {
         self.spend
             .iter()
-            .filter(|s| s.created_ms > now - DAY_MS)
+            .filter(|s| s.cost_micros.is_none() || s.created_ms > now - DAY_MS)
             .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
             .fold(0, u64::saturating_add)
     }
