@@ -14,7 +14,7 @@ export const specs={
   async c=>{assert.equal(await c.page.locator('.choice').count(),3);assert.equal(await c.page.locator('.explanation,.answer-pair').count(),0);await c.page.getByRole('heading',{level:1}).waitFor();},
   async c=>{await choice(c);await c.page.reload();await c.page.locator('[data-state="result"]').waitFor();await c.page.locator('.answer-pair').waitFor();assert.equal(await c.page.getByRole('button',{name:'Next question'}).count(),1);},
   async c=>{await c.page.locator('details.overflow>summary').click();await c.page.getByRole('button',{name:'Count as a miss'}).waitFor();},
-  async c=>{assert.deepEqual(await c.page.locator('.masthead nav a').allTextContents(),['Create','Map']);},
+  async c=>{assert.deepEqual(await c.page.locator('.masthead nav a').allTextContents(),['Library']);},
   policy('reveal_is_held_and_next_is_deliberate','competing_occurrences_and_archive_cannot_publish_stale_answer')
  ],
  'US-003':[
@@ -83,9 +83,14 @@ export const specs={
  }),
  'US-016':Array.from({length:11},(_,i)=>async c=>c.practice.studyCriteria[i]()),
  'US-017':Array.from({length:10},(_,i)=>async c=>c.practice.graderCriteria[i]()),
- 'US-018':Array.from({length:5},(_,i)=>async c=>{
+ 'US-018':[...Array.from({length:5},(_,i)=>async c=>{
    c.policy('phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts');
    assert.equal(c.phone.length,6);
    for(const row of c.phone){assert.equal(row.status,'pass',row.reason);assert.ok(row.criteria.includes(i+1),`US-018.${i+1}: missing ${row.width}px ${row.scheme} observation`);}
- }),
+ }),async c=>{
+   assert.equal(c.library.length,6);
+   for(const row of c.library){assert.equal(row.status,'pass',row.reason);assert.ok(row.criteria.includes(6),`US-018.6: missing ${row.width}px ${row.scheme} entry observation`);}
+   assert.equal(c.libraryRecovery.length,5);
+   for(const row of c.libraryRecovery)assert.equal(row.status,'pass',`${row.name}: ${row.reason}`);
+ }],
 };

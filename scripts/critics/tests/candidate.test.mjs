@@ -68,7 +68,7 @@ describe('Rust Worker candidate lifecycle and data boundaries',()=>{
       assert.equal(handle.seed.model,'authored-test-fixture');
       assert.match(handle.source_sha256,/^[a-f0-9]{64}$/);
       await verifyWorkerIdentity(handle);
-      const response=await fetch(handle.url+'/');
+      const response=await fetch(handle.url+'/notebook');
       assert.equal(response.status,200);
       const html=await response.text();assert.match(html,/data-state="question"/);
       assert.match(html,/cached response|freshness lifetime|conditional request/);

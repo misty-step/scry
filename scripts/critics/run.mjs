@@ -414,6 +414,9 @@ async function humanWalk(args) {
     }
   }
 
+  const entryUrl = new URL(url || 'http://127.0.0.1:18080/');
+  let surface = entryUrl.pathname;
+
   // Candidate binding (D1): receipts carry the identity of the tested artifact
   // only from its handle. A mismatch is a blocked walk with a receipt.
   let binding = {
@@ -447,6 +450,11 @@ async function humanWalk(args) {
     'a stored response has passed its freshness lifetime. what does that tell you?': 'It may need validation before reuse',
     'what http status tells a browser its cached representation can be reused after a conditional request?': '304',
   };
+
+  // Current Worker concept critics exercise the understanding notebook. Keep
+  // declared external/retained targets unchanged; never rewrite product routes.
+  if (binding.identity_format === 'scry-critic-worker-candidate-v2' && entryUrl.pathname === '/') entryUrl.pathname = '/notebook';
+  surface = entryUrl.pathname;
 
   function getNetworkType(inputUrl) {
     if (!inputUrl) return 'local-loopback';
@@ -556,7 +564,7 @@ async function humanWalk(args) {
     const elapsedS = Math.round((Date.now() - startedAt) / 1000);
     const receipt = makeReceipt(
       { question: { name: '', status: 'unverified' }, answerAffordance: { type: null, controls: [], status: 'unverified' }, state: 'unknown', notes: [] },
-      [{ id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed, evidence: { screenshots: [], notes: ['blocked: ' + observed] } }],
+      [{ id: 'walk-execution', surface, status: 'unverified', expected: 'complete review walk', observed, evidence: { screenshots: [], notes: ['blocked: ' + observed] } }],
       [],
       { exercised: ['walk-execution'], skipped: [] },
       elapsedS, '', getNetworkType(url), bindingOverride
@@ -609,7 +617,7 @@ async function humanWalk(args) {
 
   try {
     checkBudget('initial navigation');
-    await p.goto(url || 'http://127.0.0.1:18080/', { waitUntil: 'load', timeout: 15000 });
+    await p.goto(entryUrl.href, { waitUntil: 'load', timeout: 15000 });
     await p.waitForTimeout(500);
 
     // Resume-safe: a persistent candidate can carry a leftover graded state
@@ -682,7 +690,7 @@ async function humanWalk(args) {
             : 'discovery status: ' + discovery.answerAffordance.status + ', state: ' + discovery.state);
         checks.push({ 
           id: 'US-002.1', 
-          surface: '/', 
+          surface,
           status: 'unverified', 
           expected: 'answerable review question', 
           observed: reason, 
@@ -704,7 +712,7 @@ async function humanWalk(args) {
 
     checks.push({ 
       id: 'US-002.1', 
-      surface: '/', 
+      surface,
       status: 'pass', 
       expected: 'answer affordance', 
       observed: discovery.answerAffordance.type + ' confirmed', 
@@ -743,7 +751,7 @@ async function humanWalk(args) {
     if (!answerAction) {
       checks.push({ 
         id: 'US-002.1-loc', 
-        surface: '/', 
+        surface,
         status: 'unverified', 
         expected: 'answer control present', 
         observed: 'discovered type=' + affordanceType + ' but no locatable control', 
@@ -795,7 +803,7 @@ async function humanWalk(args) {
       if (discovery2.state === 'unknown') {
         checks.push({ 
           id: 'US-002.2', 
-          surface: '/', 
+          surface,
           status: 'unverified', 
           expected: 'graded state after answer', 
           observed: 'discovery state: ' + discovery2.state, 
@@ -831,7 +839,7 @@ async function humanWalk(args) {
 
     checks.push({ 
       id: 'US-002.2', 
-      surface: '/', 
+      surface,
       status: 'pass', 
       expected: 'feedback+next', 
       observed: 'state=' + discovery2.state, 
@@ -844,7 +852,7 @@ async function humanWalk(args) {
     if (!nextBtn) {
       checks.push({ 
         id: 'US-002.2-next', 
-        surface: '/', 
+        surface,
         status: 'unverified', 
         expected: 'next button present', 
         observed: 'not found', 
@@ -896,7 +904,7 @@ async function humanWalk(args) {
     } else {
       checks.push({ 
         id: 'US-002.2-next', 
-        surface: '/', 
+        surface,
         status: 'pass', 
         expected: 'advance to next', 
         observed: 'state=' + discovery3.state, 
@@ -933,7 +941,7 @@ async function humanWalk(args) {
     const note = (err && err.budgetStop) ? 'budget-stop: ' + err.message : 'runner-defect: walk execution failed';
 
     const catchChecks = [
-      { id: 'walk-execution', surface: '/', status: 'unverified', expected: 'complete review walk', observed: err.message || 'exception', evidence: { screenshots: [], notes: [note] } }
+      { id: 'walk-execution', surface, status: 'unverified', expected: 'complete review walk', observed: err.message || 'exception', evidence: { screenshots: [], notes: [note] } }
     ];
 
     const receipt = makeReceipt(

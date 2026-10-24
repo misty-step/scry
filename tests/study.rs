@@ -353,7 +353,8 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     let page = scry::web::render(&o.app, "/", &query, NOW, None);
     assert!(page.contains("Next due at"));
     assert!(!page.contains("<textarea"));
-    assert!(page.contains("Understanding practice"));
+    assert!(page.contains("Open Library"));
+    assert!(page.contains("href=\"/notebook\">Understanding</a>"));
 }
 #[test]
 fn study_recitation_grades_each_unit_and_strict_slips() {
@@ -938,7 +939,7 @@ fn notebook_page(o: &Owner, path: &str) -> String {
 fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
     for exact in [true, false] {
         let mut o = mixed_notebook(exact);
-        let destination = if exact { "/notebook" } else { "/" };
+        let destination = "/notebook";
         let practice = o.app.practice.clone();
         let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
         assert_eq!(
@@ -1002,7 +1003,7 @@ fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
 fn mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context() {
     for exact in [true, false] {
         let mut o = mixed_notebook(exact);
-        let destination = if exact { "/notebook" } else { "/" };
+        let destination = "/notebook";
         let practice = o.app.practice.clone();
         for c in o.app.concepts.values_mut() {
             c.introduced_ms = None;
@@ -1038,7 +1039,7 @@ fn mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context() {
 fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
     for exact in [true, false] {
         let mut o = mixed_notebook(exact);
-        let destination = if exact { "/notebook" } else { "/" };
+        let destination = "/notebook";
         for (occurrence, answer, status) in [("stale", "", 409), ("current", "", 422)] {
             let before = o.app.clone();
             let fields = [
@@ -1213,7 +1214,7 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 "/missing".into(),
             ];
             let root = notebook_page(&o, "/");
-            let expected = if exact == "none" { "/" } else { "/notebook" };
+            let expected = "/notebook";
             if exact != "none" {
                 assert!(root.contains(if exact == "prompt" {
                     "data-state=\"exact-prompt\""

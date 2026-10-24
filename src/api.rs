@@ -88,3 +88,45 @@ pub fn library_read(app: &App, path: &str, query: &str) -> AppResult<serde_json:
     };
     value.map_err(|_| AppError::new(500, "Cannot encode Library."))
 }
+
+/// Browser supplied-text fields become the same Library input as the API/CLI.
+/// No segmentation, dedupe, validation or durable writes live in this adapter.
+pub fn library_form_fields(fields: &mut BTreeMap<String, String>) -> AppResult<()> {
+    let value = |key| fields.get(key).cloned().unwrap_or_default();
+    let title = value("title");
+    let text = value("text");
+    if title.trim().is_empty() || title.len() > 240 {
+        return Err(AppError::new(
+            422,
+            "Add a title of up to 240 bytes. Your text is still here.",
+        ));
+    }
+    if text.trim().is_empty() || text.len() > crate::library::TEXT_BYTES {
+        return Err(AppError::new(
+            422,
+            "Add text of up to 256 KiB. Your draft is still here.",
+        ));
+    }
+    let source = value("source");
+    let input = crate::library::VersionInput {
+        title,
+        text,
+        name: value("name"),
+        kind: crate::library::Kind::Text,
+        sources: if source.trim().is_empty() {
+            vec![]
+        } else {
+            vec![source]
+        },
+        aliases: vec![],
+        context: String::new(),
+        rights: crate::library::Rights::PrivateOnly,
+        spelling_strict: false,
+        sections: None,
+    };
+    fields.insert(
+        "data".into(),
+        serde_json::to_string(&input).map_err(|_| AppError::new(422, "Invalid supplied text."))?,
+    );
+    Ok(())
+}

@@ -18,10 +18,13 @@ owns storage and rollback.
 
 ## How to get to it (user POV)
 
-- Terminal only for now: `scry search`, `scry version add|show|supersede|delete`,
+- Phone or desktop: Library in the masthead, or `/` before starting a Study.
+  Search → choose a Version → Learn. Add a text accepts supplied wording with
+  optional edition/source. Protected practice requires deliberate help before
+  Library content is shown.
+- Terminal: `scry search`, `scry version add|show|supersede|delete`,
   `scry work show|edit|delete` and `scry export --library`
-  (see the [command reference](../docs/owner-api.md#private-library)). This is
-  a CLI-only story, and the browser has no Library page.
+  (see the [command reference](../docs/owner-api.md#private-library)).
 
 ## Driving it with verify-scry helpers
 
@@ -29,6 +32,9 @@ Preconditions:
 
 - Built Worker and CLI; a CLI login made with an Owner token ([owner-tokens.md](owner-tokens.md)).
 
+- **Phone first study.** `qa/walk --stories "US-018"` drives `qa/phone-library.mjs`
+  through native forms, compiled CLI readback, protected Library access, duplicate
+  saves, interrupted responses and phone layouts.
 - **Find and keep.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`.
   `library.find-keep` runs `scry search` → `{"empty":true}`, then `scry version add`
   with authored text, an alias and a sections file. Searching the alias must
@@ -52,4 +58,4 @@ Preconditions:
   complete recovery archives keep them separately.
 - Hosted CLI use is blocked by Access until #335 (see [sign-in](sign-in.md)).
 - Source: `src/library.rs`, `src/api.rs`, `src/engine.rs`, `src/persistence.rs`,
-  `src/runtime.rs`, `src/bin/scry.rs`.
+  `src/runtime.rs`, `src/web.rs`, `src/bin/scry.rs`.

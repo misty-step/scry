@@ -76,7 +76,7 @@ stories. These existing contracts are retired or narrowed as of that date:
 | Owner identity (S09.1) | Extended: an unexpired, unrevoked Owner token is owner identity (US-014). |
 | Bespoke QA identity (S09.4) | Retired: machine access uses Owner tokens (S09.3, US-014) or synthetic environments; removal of the QA service identity is a ticket. A verification-only QA sign-in to the isolated `scry-qa` space remains (2026-10-21, S09.4). |
 | One-way revival (D6, revival dry-run boundary) | Retired for new work: the revived notebook is archived read-only, nothing deleted, and exact recall starts in a fresh space. |
-| Two masthead destinations (US-002.4) | Unchanged: exact-recall Prompts open in the Stream (US-018), so no new destination is needed. |
+| Masthead navigation (US-002.4) | Library is the primary destination; the wordmark returns to practice. Understanding retains the old Create/Map paths quietly. |
 | `exact-v1` trim equality | Narrowed: history keeps its attribution; new exact-recall Attempts use `exact-v2`. |
 
 ## Adopted behavioral policies
@@ -89,7 +89,7 @@ belong in ADRs, not this table.
 | D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
 | D2 | Honest grading and uncertainty follow S02 and US-003/US-008 outside exact recall; exact-recall answers follow US-017's deterministic `exact-v2`. |
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
-| D4 | One question, one answer action, held feedback and deliberate Next; Create/Map masthead. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
+| D4 | One question, one answer action, held feedback and deliberate Next; Library navigation and quiet Understanding access. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
 | D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. Exact-recall practice makes no provider call. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
 | D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
@@ -121,9 +121,10 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-The Stream opens into a question, an exact-recall Prompt (US-018), a concept
-introduction, a preparing receipt, or an honest first-run/caught-up state; never
-an administration dashboard.
+The exact-recall Stream opens into the current Prompt or held result, an honest
+caught-up state, or Library entry when no Study remains active (US-018). The
+Understanding notebook retains its concept question, introduction, preparing
+receipt and first-run states. Neither opens an administration dashboard.
 Concepts are teachable ideas, goals express intent, and notes are durable
 reference material, one current note per concept. The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
@@ -695,7 +696,7 @@ Criteria:
 1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
 2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
 3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
-4. THE SYSTEM SHALL show exactly two masthead destinations, Create and Map, beside the wordmark; other maintenance actions SHALL remain in More, not an always-visible navigation bar or inspection dashboard.
+4. THE SYSTEM SHALL keep Library as the primary masthead destination and the wordmark as the return to practice, while retaining the understanding notebook and its Create/Map actions behind quiet Understanding access; maintenance SHALL NOT become an always-visible inspection dashboard.
 5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Create or an honest next-time indication, not an invented due question or foundation detour.
 
 No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
@@ -975,8 +976,8 @@ Evidence: `qa/walk --stories "US-017"`, `qa/study.test.mjs`, and `tests/study.rs
 ## US-018 Practise exact recall on my phone
 
 Statement: When I have a few minutes with my phone, I want Scry to open
-straight into my next due Unit, so practice fits into my day without a
-terminal.
+straight into my current practice, and to find or add a text and begin learning
+it there, so practice fits into my day without a terminal.
 
 Criteria:
 1. WHEN I open Scry on my phone with exact-recall Cards due, THE SYSTEM SHALL show the next Prompt in the Stream with one answer field and one submit control.
@@ -984,11 +985,12 @@ Criteria:
 3. WHEN I ask for a cue or to see the Unit before answering, THE SYSTEM SHALL record the Attempt as assisted before showing it.
 4. WHEN no exact-recall Card is due, THE SYSTEM SHALL say when the next one is due instead of inventing practice.
 5. WHEN an automatic Verdict is shown, THE SYSTEM SHALL offer the US-007 corrections without auto-advancing.
+6. WHEN I have no current exact-recall Study, THE SYSTEM SHALL offer Library entry on my phone: search by title, alias or opening words with an honest miss, inspect matching Work/Version metadata, add supplied text with optional edition/source, and Learn a chosen Version. Supplied text SHALL retain US-015 segmentation, deduplication and private rights by default; repeated Learn SHALL return the same Study (US-016.1). Current Prompts and held results SHALL remain directly reachable. Library content SHALL remain behind the deliberate assistance boundary while a protected Prompt is unanswered, and the supplied-text path SHALL call no provider.
 
-No-gos: no new masthead destination, no web-only exact-recall action, no
+No-gos: no web-only exact-recall action, no
 microphone integration, no swipe grading.
 
-Evidence: `qa/walk --stories "US-018"`, `qa/phone-stream.mjs`, and `tests/study.rs` cover the phone Stream, shared CLI Verdict and Diff, held results, assistance, next due time, and Corrections using authored synthetic wording in light and dark. Emulation is not physical-phone acceptance. Private canonical wording, deployed ingress, and owner acceptance remain unverified.
+Evidence: `qa/walk --stories "US-018"`, `qa/phone-stream.mjs`, `qa/phone-library.mjs`, `tests/phone_library.rs`, and `tests/study.rs` cover first-study Library entry and the phone Stream, shared CLI Verdict and Diff, held results, assistance, next due time, and Corrections using authored synthetic wording in light and dark. Emulation is not physical-phone acceptance. Private canonical wording, deployed ingress, and owner acceptance remain unverified.
 
 ## US-019 Create a Version with the generation agent
 

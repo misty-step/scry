@@ -869,7 +869,10 @@ impl DurableObject for LearningSpace {
             let mut app = self.load()?;
             let previous = app.clone();
             engine::recover(&mut app, now());
-            if let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?) {
+            if path != "/"
+                && !path.starts_with("/library")
+                && let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?)
+            {
                 return app_error(e);
             }
             if path == "/"
@@ -1118,7 +1121,12 @@ impl DurableObject for LearningSpace {
             }
             self.save(&mut app, Some(before))?;
             self.arm().await?;
-            return redirect("/");
+            return redirect("/notebook");
+        }
+        if path == "/library/version/add"
+            && let Err(e) = api::library_form_fields(&mut fields)
+        {
+            return render_error(&self.env, &app, &path, &fields, e);
         }
         let mut photo_key = None;
         if let Some(FormEntry::File(file)) = form.get("photo")
@@ -1218,7 +1226,8 @@ impl DurableObject for LearningSpace {
                 // archive. Paid completions still retain their raw/ledger
                 // outcome through the separate durable work path.
                 if app.revision != before
-                    && (matches!(path.as_str(), "/create" | "/add") || path.ends_with("/edit"))
+                    && (matches!(path.as_str(), "/create" | "/add" | "/library/version/add")
+                        || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
                     let retained = self.load()?;
@@ -1242,7 +1251,14 @@ impl DurableObject for LearningSpace {
                     ))?);
                 }
                 self.arm().await?;
-                redirect(web::mutation_redirect(&app, &path, &result.redirect))
+                let destination = fields
+                    .get("return_to")
+                    .filter(|to| path == "/practice/reveal" && web::library_destination(to));
+                redirect(
+                    destination
+                        .map(String::as_str)
+                        .unwrap_or_else(|| web::mutation_redirect(&app, &path, &result.redirect)),
+                )
             }
         }
     }

@@ -21,7 +21,7 @@ export async function mixedFixture({nowMs} = {}) {
   const record = async key => JSON.parse((await sql.exec('SELECT value FROM records WHERE key=?', key))[0].value);
   const html = async path => (await worker.fetch(origin + path)).text();
   const post = (path, fields) => worker.fetch(origin + path, {method:'POST', redirect:'manual', headers:{'Content-Type':'application/x-www-form-urlencoded', 'X-Scry-Test-Origin':origin}, body:new URLSearchParams(fields)});
-  assert.equal((await post('/__fixture', formFields(await html('/'), '/__fixture'))).status, 303);
+  assert.equal((await post('/__fixture', formFields(await html('/notebook'), '/__fixture'))).status, 303);
   const minted = await post('/tokens/create', {...formFields(await html('/settings'), '/tokens/create'), name:'Mixed synthetic fixture; unpaid'});
   assert.equal(minted.status, 200);
   const secret = /<textarea[^>]*>([^<]+)<\/textarea>/.exec(await minted.text())[1];

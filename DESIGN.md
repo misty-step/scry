@@ -1,12 +1,12 @@
-# Scry: the curiosity notebook
+# Scry: words worth keeping
 
-The Rust rewrite treats Scry as a private notebook that grows through use.
-Create begins with curiosity, not an import workflow or an assessment. A useful
-explanation and practice come first; answers and explicit feedback shape what
-comes next. [VISION](VISION.md) explains intent; [SPEC](SPEC.md), especially
-[S11](SPEC.md#s11--create-useful-material-from-intent-us-013), alone governs
-behavior. This document owns visual decisions, not deployment or
-physical-phone acceptance evidence.
+Exact recall comes first: find or add a text in the private Library, choose its
+Version, and learn it a little at a time. The current Prompt or held result is
+always the shortest return. A fresh start opens Library, not conceptual
+preparation. The understanding notebook remains available without competing
+with this path. [VISION](VISION.md) explains intent; [SPEC](SPEC.md), especially
+[US-018](SPEC.md#us-018-practise-exact-recall-on-my-phone), alone governs behavior.
+This document owns visual decisions, not deployment or physical-phone evidence.
 
 ## A quiet page with a clear next action
 
@@ -16,9 +16,9 @@ hairlines, and small square radii. It should feel like a place to think, rather
 than a dashboard to operate. There is no progress ring, streak, accuracy badge,
 notification feed, or always-visible due count.
 
-The masthead contains the Scry wordmark and exactly two destinations: Create
-and Map. The wordmark returns to the held question or result. History and
-Settings live in the quiet footer. The reading column is at most 680 px;
+The masthead contains the Scry wordmark and Library. The wordmark returns to
+practice. Understanding, History and Settings live in the quiet footer; Create
+and Map remain inside Understanding. The reading column is at most 680 px;
 question practice narrows to 650 px. The outer page frame is 1080 px.
 
 Scry's mark is four connected points inside a fine circle. One point opens into
@@ -59,7 +59,21 @@ reach 64 px, mobile titles 44 px, and questions scale between 30 and 52 px.
 Reading prose uses 16–19 px and generous line height. Long text wraps instead
 of breaking the viewport.
 
-## Create and the useful first result
+## Find a text and begin
+
+Library leads with a labeled search field, then matching Works and their
+Versions. Titles, edition names, sources and Unit counts help the learner
+choose the wording. An honest miss offers Add a text, never generation by
+surprise. Adding needs only Title and Text; edition/source live in a disclosure.
+The Version shows the exact saved wording and one Learn action, with optional
+3/6/12 Pace. Repeating either action reuses saved content and Study.
+
+Unanswered protected practice gates the entire Library before any answer-bearing
+content is rendered. Opening it deliberately records help first. Native forms,
+validation drafts and response reconciliation use the same page conventions as
+practice; no separate client state or offline queue is introduced.
+
+## Understanding: Create and the useful first result
 
 Create asks, “What do you want to learn?” One large writing surface accepts a
 word, phrase, ramble, pasted material, or dictated text. There is no mode picker,
