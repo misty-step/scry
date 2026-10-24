@@ -212,8 +212,23 @@ asserts the Worker's Custom Domains and script routes are unchanged, and emits
 an ancestor of the promoted source. A live version made by a secret-only change
 carries no release annotation, so promotion traces it to the nearest annotated
 release only when every step keeps the same script etag, and then re-uploads.
-Domain cutover and
-live-owner verification remain the separate operator steps above. Compatible
+Every live observation (before upload, the deployment-ID recheck, and final
+receipt) must be a single version serving 100% of traffic. A split deployment
+is refused, never completed or replaced by automation. Promotion reads all
+retained deployment-history pages, with a 100-page bound; missing, inconsistent
+or non-terminating required history fails closed. Releases that actually served
+traffic must be ancestors of the effective live source. A previously deployed
+descendant or divergent release therefore indicates a manual rollback or
+conflicting history and stops even a newer candidate or an idempotent rerun.
+An uploaded-but-never-deployed version is not promotion history. Secret-only
+changes still resolve by the same-script rule above, not their upload order.
+
+A manual rollback requires operator resolution and verified recovery through
+the native procedure before normal promotion resumes; there is no automatic
+override or unlock flag. Cloudflare history retention and deletion limit what
+this native read can establish: it is not an everlasting rollback watermark.
+Domain cutover and live-owner verification remain the separate operator steps
+above. Compatible
 code rollback uses a retained custody/history-compatible artifact on these same
 bindings, never an old Go snapshot. Versions/notes remain the existing release
 lane's responsibility; this adds no second workflow or release policy.
