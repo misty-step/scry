@@ -441,12 +441,12 @@ fn leaving_held_feedback_refreshes_exposure_without_changing_the_saved_attempt()
         let held_id = app.occurrence.as_ref().unwrap().id.clone();
         let resumed_at = NOW + elapsed;
         // Resume the persisted held result through the same selection and HTML
-        // paths used by GET /. The answer is visible immediately before Next.
+        // paths used by GET /notebook. The answer is visible immediately before Next.
         let rows = persistence::rows(&app).unwrap();
         app = persistence::app_from_rows(&rows).unwrap();
         engine::ensure_occurrence(&mut app, resumed_at, "held-result-resume").unwrap();
         assert_eq!(app.occurrence.as_ref().unwrap().id, held_id);
-        let html = scry::web::render(&app, "/", &BTreeMap::new(), resumed_at, None);
+        let html = scry::web::render(&app, "/notebook", &BTreeMap::new(), resumed_at, None);
         assert!(html.contains("data-state=\"result\""));
         assert!(html.contains("<dt>The answer</dt><dd>max-age</dd>"));
         let next_fields = fields(&app, "held-feedback-next01", &[]);

@@ -189,11 +189,34 @@ fn legacy_occurrence(app: &App, phase: &str) -> Occurrence {
 }
 
 #[test]
+fn understanding_reference_and_preparation_return_to_the_notebook() {
+    let app = revived();
+    let reference = web::render(
+        &app,
+        &format!("/goals/{LEGACY_GOAL}"),
+        &query("reference-return"),
+        NOW,
+        None,
+    );
+    assert!(reference.contains("href=\"/notebook\">Go to practice →</a>"));
+    assert!(!reference.contains("href=\"/\">Go to practice →</a>"));
+    let preparation = web::render(
+        &app,
+        "/goals/legacy-import-goal-00000000000000000000000000000000",
+        &query("preparation-return"),
+        NOW,
+        None,
+    );
+    assert!(preparation.contains("href=\"/notebook\">Return to practice →</a>"));
+    assert!(!preparation.contains("href=\"/\">Return to practice →</a>"));
+}
+
+#[test]
 fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     let mut app = revived();
     let concept = format!("legacy-import-quiz-concept-{QUIZ}");
     let routes = [
-        "/".to_string(),
+        "/notebook".to_string(),
         "/map".into(),
         "/history".into(),
         "/settings".into(),
@@ -246,7 +269,7 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
             assert!(!page.contains(claim), "goal {n} claims {claim}");
         }
     }
-    let home = check(&app, "/");
+    let home = check(&app, "/notebook");
     for words in [
         "Preparation is paused",
         "Preparation stopped",
@@ -258,11 +281,11 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     assert!(!home.contains("Some material is ready"));
     let mut idle = app.clone();
     idle.occurrence = None;
-    assert!(!check(&idle, "/").contains("taking shape"));
+    assert!(!check(&idle, "/notebook").contains("taking shape"));
 
     // The new-idea introduction names the idea by its question, once.
     app.occurrence = Some(legacy_occurrence(&app, "intro"));
-    let intro = check(&app, "/");
+    let intro = check(&app, "/notebook");
     assert_eq!(intro.matches(LEGACY_PROMPT).count(), 1);
     assert!(intro.contains("The Sacramento and the American"));
 
@@ -280,8 +303,8 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
         corrected: false,
     });
     app.occurrence = Some(result);
-    let html = web::render(&app, "/", &query("result"), NOW, None);
-    let held = check(&app, "/");
+    let html = web::render(&app, "/notebook", &query("result"), NOW, None);
+    let held = check(&app, "/notebook");
     assert!(html.contains(&format!("href=\"/goals/{LEGACY_GOAL}\"")));
     assert!(held.contains(LEGACY_GOAL_TITLE));
     assert_eq!(held.matches(LEGACY_PROMPT).count(), 1);
@@ -323,7 +346,7 @@ fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() 
         for paused in [true, false] {
             assert_eq!(app.restored_paused, paused);
             let before = app.clone();
-            let home = web::render(&app, "/", &query("ready-import"), NOW, None);
+            let home = web::render(&app, "/notebook", &query("ready-import"), NOW, None);
             assert!(
                 home.contains("data-state=\"caught-up\""),
                 "{status}, paused={paused}"
@@ -383,7 +406,7 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
     for paused in [true, false] {
         assert_eq!(app.restored_paused, paused);
         let before = app.clone();
-        let home = web::render(&app, "/", &query("import-stream"), NOW, None);
+        let home = web::render(&app, "/notebook", &query("import-stream"), NOW, None);
         assert!(home.contains("data-state=\"caught-up\""));
         assert!(home.contains("A good place to pause."));
         assert!(!home.contains("taking shape"));
@@ -430,15 +453,18 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
     let created = engine::mutate(&mut app, "/create", &fields, NOW, "new-with-imports").unwrap();
     let goal = created.entity_id.unwrap();
     let job = app.goals[&goal].job_id.clone();
-    assert!(web::render(&app, "/", &query("new"), NOW, None).contains("data-state=\"preparing\""));
+    assert!(
+        web::render(&app, "/notebook", &query("new"), NOW, None)
+            .contains("data-state=\"preparing\"")
+    );
     app.restored_paused = true;
     assert!(
-        web::render(&app, "/", &query("paused"), NOW, None)
+        web::render(&app, "/notebook", &query("paused"), NOW, None)
             .contains("data-state=\"preparation-paused\"")
     );
     app.restored_paused = false;
     app.jobs.get_mut(&job).unwrap().status = "failed".into();
-    let stopped = web::render(&app, "/", &query("stopped"), NOW, None);
+    let stopped = web::render(&app, "/notebook", &query("stopped"), NOW, None);
     assert!(stopped.contains(&format!(
         "class=\"button primary\" href=\"/goals/{goal}\">Review your saved request"
     )));
@@ -473,7 +499,7 @@ fn answer_and_related_reference_are_absent_before_assistance() {
     current.answer = "PRIVATE_EXPECTED_ANSWER".into();
     current.explanation = "PRIVATE_EXPLANATION".into();
     for path in [
-        "/".to_string(),
+        "/notebook".to_string(),
         "/map".into(),
         "/history".into(),
         "/settings".into(),
@@ -540,7 +566,7 @@ fn pending_check_keeps_reference_private_without_offering_an_invalid_help_mutati
     goal.title = "PENDING_PRIVATE_GOAL".into();
     goal.intent = "PENDING_PRIVATE_INTENT".into();
     for path in [
-        "/".to_string(),
+        "/notebook".to_string(),
         "/map".into(),
         "/history".into(),
         "/settings".into(),
@@ -585,7 +611,7 @@ fn author_and_model_text_is_escaped_in_every_context() {
         "<img src=x onerror=alert(1)> & \"test\"".into();
     let html = web::render(
         &app,
-        "/",
+        "/notebook",
         &query("nonce"),
         NOW,
         Some("<script>private()</script>"),
@@ -599,8 +625,8 @@ fn author_and_model_text_is_escaped_in_every_context() {
 #[test]
 fn every_form_has_a_unique_nonce_bound_operation_and_native_fallback() {
     let app = fixture();
-    let first = web::render(&app, "/", &query("first-request"), NOW, None);
-    let second = web::render(&app, "/", &query("second-request"), NOW, None);
+    let first = web::render(&app, "/notebook", &query("first-request"), NOW, None);
+    let second = web::render(&app, "/notebook", &query("second-request"), NOW, None);
     let ids = |html: &str| {
         html.split("name=\"operation_id\" value=\"")
             .skip(1)
@@ -630,12 +656,12 @@ fn every_form_has_a_unique_nonce_bound_operation_and_native_fallback() {
 #[test]
 fn synthetic_fixture_is_never_advertised_in_the_private_application() {
     let app = App::new("01234567890123456789012345678901".into());
-    let private = web::render(&app, "/", &query("private"), NOW, None);
+    let private = web::render(&app, "/notebook", &query("private"), NOW, None);
     assert!(!private.contains("/__fixture"));
     assert!(!private.contains("Synthetic notebook"));
     let mut synthetic_query = query("synthetic");
     synthetic_query.insert("__synthetic".into(), "true".into());
-    let synthetic = web::render(&app, "/", &synthetic_query, NOW, None);
+    let synthetic = web::render(&app, "/notebook", &synthetic_query, NOW, None);
     assert!(synthetic.contains("/__fixture"));
     assert!(synthetic.contains("Synthetic notebook"));
 }
@@ -674,7 +700,7 @@ fn held_result_names_authority_and_requires_deliberate_next() {
         ("answer".into(), o.presentation.answer),
     ]);
     engine::mutate(&mut app, "/review/answer", &fields, NOW, "result").unwrap();
-    let html = web::render(&app, "/", &query("result"), NOW, None);
+    let html = web::render(&app, "/notebook", &query("result"), NOW, None);
     assert!(html.contains("data-state=\"result\""));
     assert!(html.contains("data-next"));
     assert!(html.contains("Matched the saved answer"));
@@ -699,7 +725,7 @@ fn assisted_results_do_not_offer_automatic_grade_overrides() {
         ("answer".into(), o.presentation.answer),
     ]);
     engine::mutate(&mut app, "/review/answer", &fields, NOW, "assisted").unwrap();
-    let html = web::render(&app, "/", &query("assisted"), NOW, None);
+    let html = web::render(&app, "/notebook", &query("assisted"), NOW, None);
     assert!(html.contains("recorded as helped practice"));
     assert!(!html.contains("/review/override"));
     assert!(!html.contains("Count as a miss"));
@@ -708,7 +734,7 @@ fn assisted_results_do_not_offer_automatic_grade_overrides() {
 #[test]
 fn repair_dispute_form_fences_a_deliberate_schedule_reset() {
     let app = fixture();
-    let html = web::render(&app, "/", &query("dispute"), NOW, None);
+    let html = web::render(&app, "/notebook", &query("dispute"), NOW, None);
     let form = html
         .split("/dispute\"")
         .nth(1)
@@ -753,13 +779,13 @@ fn restored_pause_is_truthful_across_preparation_views_without_retries() {
     ] {
         app.jobs.values_mut().next().unwrap().status = phase.into();
         let before = app.clone();
-        let stream = web::render(&app, "/", &query(phase), NOW + 7 * 86_400_000, None);
+        let stream = web::render(&app, "/notebook", &query(phase), NOW + 7 * 86_400_000, None);
         assert!(
             stream.contains("data-state=\"preparation-paused\""),
             "{phase}"
         );
         assert!(stream.contains("Preparation is paused · Resume preparation"));
-        for path in ["/".to_string(), format!("/goals/{goal_id}")] {
+        for path in ["/notebook".to_string(), format!("/goals/{goal_id}")] {
             let html = web::render(&app, &path, &query(phase), NOW, None);
             assert!(
                 html.contains("href=\"/settings#preparation\""),
@@ -811,7 +837,7 @@ fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answ
     ]);
     engine::mutate(&mut app, "/review/answer", &fields, NOW, "paused-check").unwrap();
     assert_eq!(app.occurrence.as_ref().unwrap().phase, "checking");
-    for path in ["/".to_string(), format!("/goals/{goal}")] {
+    for path in ["/notebook".to_string(), format!("/goals/{goal}")] {
         let html = web::render(&app, &path, &query("paused-check"), NOW, None);
         assert!(html.contains("Your meaning check is paused."));
         assert!(html.contains("href=\"/settings#preparation\""));
@@ -852,7 +878,7 @@ fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answ
 #[test]
 fn stream_transitions_from_preparing_to_honest_stopped_recovery() {
     let mut app = captured_request();
-    let pending = web::render(&app, "/", &query("pending"), NOW, None);
+    let pending = web::render(&app, "/notebook", &query("pending"), NOW, None);
     assert!(pending.contains("data-state=\"preparing\""));
     assert!(pending.contains("Your next idea is taking shape."));
     let config = engine::WorkConfig {
@@ -869,7 +895,7 @@ fn stream_transitions_from_preparing_to_honest_stopped_recovery() {
     );
     assert_eq!(app.goals.values().next().unwrap().status, "failed");
     let saved = app.clone();
-    let stopped = web::render(&app, "/", &query("failed"), NOW, None);
+    let stopped = web::render(&app, "/notebook", &query("failed"), NOW, None);
     assert!(stopped.contains("data-state=\"preparation-stopped\""));
     assert!(stopped.contains("Your request needs attention."));
     assert!(stopped.contains("Review your saved request"));
@@ -893,7 +919,7 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
     ] {
         let mut app = captured_request();
         app.jobs.values_mut().next().unwrap().status = phase.into();
-        let html = web::render(&app, "/", &query(phase), NOW, None);
+        let html = web::render(&app, "/notebook", &query(phase), NOW, None);
         assert!(
             html.contains("data-state=\"preparation-stopped\""),
             "{phase}"
@@ -905,12 +931,12 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
     let goal = app.goals.values_mut().next().unwrap();
     goal.status = "partial".into();
     app.jobs.values_mut().next().unwrap().status = "partial".into();
-    let partial = web::render(&app, "/", &query("partial"), NOW, None);
+    let partial = web::render(&app, "/notebook", &query("partial"), NOW, None);
     assert!(partial.contains("data-state=\"caught-up\""));
     assert!(partial.contains("Some material is ready; preparation is incomplete"));
     assert!(!partial.contains("taking shape"));
     app.goals.values_mut().next().unwrap().archived = true;
-    let archived = web::render(&app, "/", &query("archived"), NOW, None);
+    let archived = web::render(&app, "/notebook", &query("archived"), NOW, None);
     assert!(archived.contains("Follow your curiosity."));
     assert!(!archived.contains("Review your saved request"));
 
@@ -922,18 +948,18 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
         ("intent".into(), "Learn Rust ownership".into()),
     ]);
     let created = engine::mutate(&mut app, "/create", &fields, NOW + 1, "second-goal").unwrap();
-    let mixed = web::render(&app, "/", &query("mixed"), NOW, None);
+    let mixed = web::render(&app, "/notebook", &query("mixed"), NOW, None);
     assert!(mixed.contains("data-state=\"preparing\""));
     assert!(mixed.contains("Preparation needs your attention"));
     let latest = created.entity_id.unwrap();
     let job = app.goals[&latest].job_id.clone();
     app.jobs.get_mut(&job).unwrap().status = "failed".into();
-    let stopped = web::render(&app, "/", &query("latest"), NOW, None);
+    let stopped = web::render(&app, "/notebook", &query("latest"), NOW, None);
     assert!(stopped.contains(&format!(
         "class=\"button primary\" href=\"/goals/{latest}\">Review your saved request"
     )));
     app.goals.get_mut(&latest).unwrap().paused = true;
-    let paused_goal = web::render(&app, "/", &query("goal-paused"), NOW, None);
+    let paused_goal = web::render(&app, "/notebook", &query("goal-paused"), NOW, None);
     assert!(!paused_goal.contains(&format!(
         "class=\"button primary\" href=\"/goals/{latest}\""
     )));

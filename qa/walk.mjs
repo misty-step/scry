@@ -15,6 +15,7 @@ import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 import {releaseWalk} from './browser-release.mjs';
 import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
+import {phoneLibraryWalk,phoneLibraryRecovery} from './phone-library.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
 const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
@@ -56,12 +57,15 @@ try{
    const paths=[];
    const phone=await phoneWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
    const recovery=await phoneRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const library=await phoneLibraryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const libraryRecovery=await phoneLibraryRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const libraryPath='logs/US-018-library.json';await writeFile(join(output,libraryPath),JSON.stringify({journey:library,recovery:libraryRecovery},null,2)+'\n');await register(libraryPath);
    const recoveryPath='logs/US-018-recovery.json';await writeFile(join(output,recoveryPath),JSON.stringify(recovery,null,2)+'\n');await register(recoveryPath);
    const path='logs/US-018-phone.json';await writeFile(join(output,path),JSON.stringify(phone,null,2)+'\n');await register(path);
    const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
    for(let i=0;i<specs[id].length;i++){
-    const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:[path,recoveryPath,...paths]};result.criteria.push(criterion);
-    try{await specs[id][i]({phone,policy});assert.ok(recovery.every(r=>r.status==='pass'),JSON.stringify(recovery.filter(r=>r.status!=='pass')));}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+    const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:[path,recoveryPath,libraryPath,...paths]};result.criteria.push(criterion);
+    try{await specs[id][i]({phone,library,libraryRecovery,policy});assert.ok(recovery.every(r=>r.status==='pass'),JSON.stringify(recovery.filter(r=>r.status!=='pass')));}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
    }
    continue;
   }
@@ -93,9 +97,9 @@ try{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
   try{
-   await page.goto(runtime.url+'/');
+   await page.goto(runtime.url+'/notebook');
    if(!['US-013','US-014'].includes(id)){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
-   const c={page,url:path=>runtime.url+path,policy,retainedGoMigration,owner};
+   const c={page,url:path=>runtime.url+(path==='/'?'/notebook':path),policy,retainedGoMigration,owner};
    for(let i=0;i<specs[id].length;i++){
     const legacy=id==='US-001'&&i===0;
     const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);

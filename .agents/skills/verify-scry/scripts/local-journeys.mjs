@@ -53,10 +53,10 @@ try{
  const context=await browser.newContext({viewport:{width,height:844},...(width<768?{isMobile:true,hasTouch:true}:{})});
  page=await context.newPage();page.setDefaultTimeout(15000);
  await step('notebook.empty',async()=>{
-  await page.goto(origin+'/');
+  await page.goto(origin+'/notebook');
   const h1=await page.getByRole('heading',{level:1}).innerText();
   if(h1!=='Follow your curiosity.')throw Error(`empty notebook heading "${h1}"`);
-  log('notebook.empty','PASS',`fresh notebook / → "${h1}" with Create and the authored-demo action`,{evidence:await shot('notebook-empty')});
+  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}" with Create and the authored-demo action`,{evidence:await shot('notebook-empty')});
  });
  await step('notebook.concept',async()=>{
   await page.getByRole('button',{name:'Explore an authored demo'}).click();
