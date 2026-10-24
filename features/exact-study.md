@@ -17,6 +17,8 @@ straight into the next due Unit. Behavior authority:
 - `study-correct` records I was right or Count as a miss as an immutable Correction.
 - `study-caught-up` says when the next Card is due instead of inventing practice.
 - `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
+- `study-history` reads saved Attempts and appended Corrections from the footer's
+  History link, with frozen wording, Diff, Authority and per-Unit schedule effects.
 
 ## How to get to it (user POV)
 
@@ -46,6 +48,13 @@ Preconditions:
 - **First study.** `qa/phone-library.mjs` walks empty Library → supplied Version
   → Learn → held result, with CLI readback, dedupe, protected navigation, native
   forms and interruption checks under US-018.6.
+- **History.** `qa/phone-history.mjs`, called by the existing phone Stream walks,
+  exercises native disclosures, saved CLI/export parity, original Verdicts and
+  Corrections, reveal versus empty answers, frozen Versions, dropped Studies,
+  protected navigation and private return. `tests/study.rs` covers rendering
+  from real engine operations; `qa/study.mjs` retains SQLite/restart/R2 parity.
+  Exact Prompt protection gates all historical wording; a protected legacy
+  question gates exact Attempts and preserves its per-concept history fence.
 - **Story walk.** `qa/walk --stories "US-016 US-017 US-018"` covers every
   criterion. The CLI-only US-016/017 walks need no browser. US-018 retains light
   and dark at 320/390/1280px, 100/200% text at 320/390px, keyboard and no-JS forms. Native Full answer

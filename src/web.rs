@@ -1624,11 +1624,29 @@ impl View<'_> {
         out
     }
     fn history(&self) -> String {
+        if self.app.practice.protected() {
+            return String::from(
+                "<section class=\"empty-stage gate\" data-state=\"history\"><h1>History</h1><p class=\"lede\">History is hidden while you answer from memory.</p><a class=\"button primary\" href=\"/\">Return to practice</a></section>",
+            );
+        }
         let mut out = String::from(
             "<section class=\"history-page\" data-state=\"history\"><div class=\"page-heading\"><p class=\"eyebrow\">A record, not a score</p><h1>The work of remembering.</h1><p class=\"lede\">Your attempts stay as they happened. Help, misses, and corrections are part of the story.</p></div>",
         );
-        if self.app.events.is_empty() {
+        if self.app.events.is_empty() && self.app.practice.attempts.is_empty() {
             out.push_str("<p class=\"quiet-empty\">Your first practice will appear here.</p>");
+        }
+        if !self.app.practice.attempts.is_empty() {
+            out.push_str("<section aria-label=\"Exact recall\"><h2>Exact recall</h2>");
+            if self.app.protected_goal().is_some() {
+                out.push_str("<p class=\"fineprint\">History is hidden while you answer from memory.</p><a class=\"text-link\" href=\"/notebook\">Return to the question</a>");
+            } else {
+                let mut attempts = self.app.practice.attempts.values().collect::<Vec<_>>();
+                attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
+                for attempt in attempts {
+                    out.push_str(&self.exact_history_attempt(attempt));
+                }
+            }
+            out.push_str("</section>");
         }
         for (operation, receipt) in &self.app.operations {
             if let Some(id) = &receipt.acting_token {
@@ -1683,6 +1701,176 @@ impl View<'_> {
             );
         }
         out.push_str("</section>");
+        out
+    }
+    fn exact_history_attempt(&self, a: &crate::study::Attempt) -> String {
+        use crate::{grading::Verdict, study::Scope};
+        let version = &self.app.library.versions[&a.version_id];
+        let scope = match &a.prompt.scope {
+            Scope::Unit { position, .. } => format!("Unit {position}"),
+            Scope::Section { section_id } => format!(
+                "Section: {}",
+                version
+                    .sections
+                    .iter()
+                    .find(|s| &s.id == section_id)
+                    .unwrap()
+                    .heading
+            ),
+            Scope::Whole => "Whole text".into(),
+        };
+        let verdict = |v| if v == Verdict::Good { "Good" } else { "Again" };
+        let label = if a.disclosure {
+            "Shown before answering"
+        } else {
+            verdict(a.grade.verdict)
+        };
+        let mut out = format!(
+            "<article class=\"history-entry exact-history-entry\" data-attempt-id=\"{}\" data-disclosure=\"{}\"><p class=\"history-meta\"><span>{label}</span> · {} · {}</p><h2>{}</h2><p class=\"fineprint\">{} · {}</p><details><summary>See this attempt <span aria-hidden=\"true\">＋</span></summary>{}",
+            escape(&a.id),
+            a.disclosure,
+            date(a.created_ms),
+            if a.assisted {
+                "Assisted practice"
+            } else {
+                "Unassisted practice"
+            },
+            escape(&a.prompt.title),
+            escape(version_name(version)),
+            escape(&scope),
+            Self::exact_prompt_context(&a.prompt)
+        );
+        let answer = if a.disclosure {
+            "No answer submitted.".into()
+        } else if a.raw_answer.is_empty() {
+            "No words submitted.".into()
+        } else {
+            escape(&a.raw_answer)
+        };
+        let _ = write!(
+            out,
+            "<dl class=\"answer-pair\"><div><dt>You answered</dt><dd class=\"exact-history-answer\">{answer}</dd></div><div><dt>Expected text</dt><dd>"
+        );
+        for unit in version
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .filter(|u| a.prompt.unit_ids.contains(&u.id))
+        {
+            let _ = write!(
+                out,
+                "<p class=\"reading exact-expected\">{}</p>",
+                escape(&unit.text)
+            );
+        }
+        out.push_str("</dd></div></dl>");
+        if let Some(hint) = &a.grade.wrong_version_hint {
+            let _ = write!(
+                out,
+                "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                escape(&hint.name)
+            );
+        }
+        let _ = write!(
+            out,
+            "<h3>{}</h3><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            if a.disclosure {
+                "Saved comparison · no answer submitted"
+            } else {
+                "Word by word"
+            }
+        );
+        for d in &a.grade.diff {
+            out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+        }
+        let _ = write!(
+            out,
+            "</ol><p class=\"fineprint exact-authority\">{} · {}{}</p><ul class=\"exact-history-effects\">",
+            escape(&a.grade.authority.name),
+            escape(&a.grade.authority.grader_version),
+            if a.disclosure {
+                " · comparison only, not a recall Verdict"
+            } else {
+                ""
+            }
+        );
+        for e in &a.effects {
+            let (kind, status) = if e.assisted {
+                ("assisted", "Assisted practice · schedule unchanged".into())
+            } else if e.extra_practice {
+                ("extra", "Extra practice · already scheduled today".into())
+            } else if e.scheduled {
+                (
+                    "scheduled",
+                    format!("Scheduled · next due {}", date(e.after.schedule.due_ms)),
+                )
+            } else {
+                ("unchanged", "Schedule unchanged".into())
+            };
+            let original = if a.disclosure {
+                String::new()
+            } else {
+                format!(" data-verdict=\"{}\"", verdict(e.verdict))
+            };
+            let _ = write!(
+                out,
+                "<li data-unit-index=\"{}\" data-schedule-effect=\"{kind}\"{original}>Unit {}: {}{status}</li>",
+                e.unit_index,
+                e.unit_index + 1,
+                if a.disclosure {
+                    String::new()
+                } else {
+                    format!("{} · ", verdict(e.verdict))
+                }
+            );
+        }
+        out.push_str("</ul>");
+        let mut corrections = self
+            .app
+            .practice
+            .corrections
+            .values()
+            .filter(|c| c.attempt_id == a.id)
+            .collect::<Vec<_>>();
+        corrections.sort_by_key(|c| c.sequence);
+        for c in corrections {
+            let unit = a
+                .effects
+                .iter()
+                .find(|e| e.unit_id == c.unit_id)
+                .unwrap()
+                .unit_index
+                + 1;
+            let _ = write!(
+                out,
+                "<div class=\"exact-history-correction\" data-correction-id=\"{}\"><h3>Owner Correction · Unit {unit}</h3><p>{} · {} · Authority: {}</p><p class=\"fineprint\">The original Attempt and Diff above are unchanged.</p></div>",
+                escape(&c.id),
+                verdict(c.verdict),
+                date(c.created_ms),
+                escape(&c.authority)
+            );
+            if let Some(token) = &c.acting_token {
+                let _ = write!(
+                    out,
+                    "<p class=\"fineprint\">Correction by Owner token {}</p>",
+                    escape(token)
+                );
+            }
+        }
+        if let Some(token) = &a.acting_token {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint\">Attempt by Owner token {}</p>",
+                escape(token)
+            );
+        }
+        let _ = write!(
+            out,
+            "<p class=\"fineprint\">Version {} · hash {}</p><p class=\"fineprint\">Schedule authority: {}</p></details></article>",
+            escape(&a.version_id),
+            escape(&a.version_hash),
+            escape(&a.algorithm)
+        );
         out
     }
     fn owner_tokens(&self) -> String {

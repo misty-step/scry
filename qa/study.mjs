@@ -8,6 +8,53 @@ import {recitationAdmission} from './recitation-admission.mjs';
 const DAY=86400000,START=Math.floor(Date.now()/DAY)*DAY+12*60*60*1000;
 const lines=['We conceived a patient garden,','with gentle silver branches.','The lantern guards our quiet path,','and keeps the morning bright.','We carry woven baskets,','beside the tranquil stream.','The orchard welcomes every guest,','and shelters every seed.'];
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+const escapeHtml=text=>text.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const htmlText=html=>html.replace(/<[^>]*>/g,'').replace(/&(amp|lt|gt|quot|#39);/g,(_,entity)=>({amp:'&',lt:'<',gt:'>',quot:'"','#39':"'"}[entity]));
+const attributes=html=>Object.fromEntries([...html.matchAll(/([\w-]+)="([^"]*)"/g)].map(m=>[m[1],htmlText(m[2])]));
+const classContents=(html,name)=>[...html.matchAll(new RegExp(`<([a-z][a-z0-9]*)\\b[^>]*class="[^"]*\\b${name}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/\\1>`,'g'))].map(m=>htmlText(m[2]));
+
+// Inspect the server-rendered response, not source strings or a second renderer.
+// These controlled, escaped fixtures need no browser/DOM dependency. Every
+// semantic assertion is keyed by the saved Attempt rather than HTML position.
+function assertHistoryHtml(html,history,ids=Object.keys(history.attempts)) {
+ const entries=[...html.matchAll(/<article\b([^>]*)>([\s\S]*?)<\/article>/g)]
+  .map(m=>({attrs:attributes(m[1]),body:m[2],html:m[0]}))
+  .filter(e=>e.attrs.class?.split(/\s+/).includes('exact-history-entry'));
+ const ordered=Object.values(history.attempts).sort((a,b)=>b.sequence-a.sequence);
+ assert.deepEqual(entries.map(e=>e.attrs['data-attempt-id']),ordered.map(a=>a.id),'Every saved Attempt appears once, newest sequence first.');
+ if(ordered.length)assert.doesNotMatch(html,/Your first practice will appear here\./);
+ const byId=new Map(entries.map(e=>[e.attrs['data-attempt-id'],e]));
+ for(const id of ids){
+  const a=history.attempts[id],entry=byId.get(id);assert.ok(a&&entry,`Missing exact History Attempt ${id}`);
+  const body=entry.body,details=/<details\b[^>]*>([\s\S]*?)<\/details>/.exec(body)?.[1];
+  assert.ok(details,'History has native, inspectable details.');assert.match(details,/<summary\b[^>]*>See this attempt\b/);
+  assert.doesNotMatch(entry.html,/<form\b/,'History must not create practice mutations.');
+  assert.equal(htmlText(/<h2\b[^>]*>([\s\S]*?)<\/h2>/.exec(body)?.[1]||''),a.prompt.title,'The title is frozen with the Prompt.');
+  const meta=classContents(body,'history-meta')[0];assert.ok(meta?.startsWith(a.disclosure?'Shown before answering':a.grade.verdict),'The entry labels its original saved Verdict, or honest disclosure.');
+  assert.ok(meta.includes(a.assisted?'Assisted practice':'Unassisted practice'));
+  assert.equal(entry.attrs['data-disclosure'],String(Boolean(a.disclosure)));
+  assert.deepEqual(classContents(details,'exact-history-answer'),[a.disclosure?'No answer submitted.':a.raw_answer||'No words submitted.']);
+  const version=history.versions[a.version_id];assert.ok(version);
+  const units=version.sections.flatMap(s=>s.units),expected=a.prompt.unit_ids.map(id=>units.find(u=>u.id===id)?.text);
+  assert.ok(expected.every(text=>typeof text==='string'),'Every expected Unit comes from its immutable Version.');
+  assert.deepEqual(classContents(details,'exact-expected'),expected,'History preserves expected wording and Unit order.');
+  assert.ok(htmlText(body).includes(version.name),'Version name remains available in the entry metadata.');
+  for(const value of [a.version_id,a.version_hash,a.grade.authority.name,a.grade.authority.grader_version])assert.ok(htmlText(details).includes(value),`Saved metadata is missing: ${value}`);
+  if(a.grade.wrong_version_hint)assert.ok(htmlText(details).includes(a.grade.wrong_version_hint.name),'The saved wrong-Version hint is retained.');
+  const diff=[...details.matchAll(/<li\b([^>]*data-diff-kind="[^"]+"[^>]*)>([\s\S]*?)<\/li>/g)].map(m=>({attrs:attributes(m[1]),body:m[2]}));
+  assert.deepEqual(diff.map(d=>[d.attrs['data-diff-kind'],Number(d.attrs['data-unit-index'])]),a.grade.diff.map(d=>[d.kind,d.unit_index]),'The saved Diff and Unit attribution are rendered in order.');
+  assert.deepEqual(diff.map(d=>classContents(d.body,'diff-text')[0]),a.grade.diff.map(d=>d.kind==='slip'||d.kind==='wrong'?`${d.typed.text} → ${d.expected.text}`:d.expected?.text??d.typed.text),'The saved Diff includes exact typed/expected words.');
+  const effects=[...details.matchAll(/<li\b([^>]*data-schedule-effect="[^"]+"[^>]*)>([\s\S]*?)<\/li>/g)].map(m=>attributes(m[1]));
+  assert.deepEqual(effects.map(e=>[Number(e['data-unit-index']),e['data-verdict'],e['data-schedule-effect']]),a.effects.map(e=>[e.unit_index,a.disclosure?undefined:e.verdict,e.assisted?'assisted':e.extra_practice?'extra':e.scheduled?'scheduled':'unchanged']),'Each Unit keeps its original Verdict and its own schedule effect.');
+  if(a.disclosure){assert.match(htmlText(body),/Shown before answering/);assert.doesNotMatch(body,/data-verdict=|\bAgain\b/,'Reveal is not an empty answer or a miss.');}
+  else if(!a.raw_answer)assert.match(htmlText(body),/\bAgain\b/,'A submitted empty answer is still a real Again Attempt.');
+  const corrections=[...details.matchAll(/<([a-z][a-z0-9]*)\b([^>]*data-correction-id="[^"]+"[^>]*)>([\s\S]*?)<\/\1>/g)].map(m=>({attrs:attributes(m[2]),text:htmlText(m[3])}));
+  const saved=Object.values(history.corrections).filter(c=>c.attempt_id===id).sort((a,b)=>a.sequence-b.sequence);
+  assert.deepEqual(corrections.map(c=>c.attrs['data-correction-id']),saved.map(c=>c.id),'Corrections are appended without replacing the original Attempt.');
+  for(let i=0;i<saved.length;i++){assert.ok(corrections[i].text.includes(saved[i].verdict));assert.match(corrections[i].text,/owner/i);assert.ok(corrections[i].text.includes(`Unit ${a.effects.find(e=>e.unit_id===saved[i].unit_id).unit_index+1}`),'A Correction identifies its original Unit.');}
+ }
+ return byId;
+}
 export async function studyJourney(){
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-study-'));
  const name='study-'+randomUUID(),space='study-'+randomUUID(),config=join(temp,'login.json'),persist=join(temp,'state');
@@ -43,6 +90,19 @@ export async function studyJourney(){
  const card=cid=>record('practice_cards/'+cid);
  const attempt=async id=>(await(await req('/api/v1/history')).json()).attempts[id];
  const attemptRows=async id=>(await rows()).filter(r=>r.key==='practice_attempts/'+id||r.key.startsWith('practice_payload/'+id+'/'));
+ const practiceRows=async()=>({current:(await record('meta')).practice,records:(await rows()).filter(r=>r.key.startsWith('practice_')||r.key.startsWith('study_version_refs/')||r.key.startsWith('operations/'))});
+ const historyPage=async(fetch=path=>runtime.worker.fetch(origin+path))=>{const response=await fetch('/history');assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/text\/html/);return response.text();};
+ const checkHistory=async(label,ids)=>{
+  const before=await practiceRows(),response=await req('/api/v1/history');assert.equal(response.status,200);
+  const history=await response.json();assert.deepEqual(await ok(['history']),history,'Compiled CLI and API agree on saved History.');
+  const full=await ok(['export']);for(const key of ['studies','cards','attempts','corrections'])assert.deepEqual(full.app.practice[key],history[key],`Export retains History ${key}.`);
+  for(const [id,version]of Object.entries(history.versions))assert.deepEqual(full.app.library.versions[id],version);
+  const html=await historyPage(),entries=assertHistoryHtml(html,history,ids),reload=assertHistoryHtml(await historyPage(),history,ids);
+  assert.deepEqual([...reload.values()],[...entries.values()],'Reload preserves the same saved History entries.');
+  assert.deepEqual(await practiceRows(),before,'History GET/reload must not alter exact Practice, frozen Prompt, receipts or schedule evidence.');
+  transcript.push({observation:label,attempts:Object.keys(history.attempts).length,corrections:Object.keys(history.corrections).length,html_sha256:hash(html),practice_unchanged:true,limit:'Exact-only synthetic fixture. Legacy reference exposure is allowed to write; this is not a global page-GET byte-stability claim.'});
+  return {history,entries,html};
+ };
  const clock=async value=>{at=value;bindings={...bindings,SCRY_TEST_NOW_MS:String(at)};runtime={...runtime,...await runtime.rebind(bindings)};storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});};
  const add=async(title,text,sections,strict=false)=>{const path=await file(randomUUID()+'.txt',text),sectionFile=sections?await file(randomUUID()+'.json',JSON.stringify(sections)):null;
   const v=await ok(['version','add','--title',title,'--kind','text','--text-file',path,'--name','Roman Missal 2011 metadata; caller-authored synthetic wording','--source','Authored test text; no canonical wording claimed',...(sectionFile?['--sections-file',sectionFile]:[]),...(strict?['--spelling-strict']:[])]);return v.result.entity_id;};
@@ -57,6 +117,37 @@ export async function studyJourney(){
  };
  const freshCase=async(title='Exact grader example',strict=false)=>{await stopCurrent();const tail='Synthetic '+title+' tail.\n';const v=await add(title,'We conceived a patient garden.\n'+tail,[{heading:'Synthetic clause',units:['We conceived a patient garden.\n']},{heading:'Fixture identity',units:[tail]}],strict);const s=(await ok(['learn',v])).practice.study.id;await next(['--study',s]);const p=current.prompt;const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id&&r.state)?.id;return {s,c,p,v};};
  const practice=async(cid,text)=>{await next(['--card',cid]);return answer(text);};
+ const historyRecoveryCases=async()=>{
+  await stopCurrent();
+  const title='History <script>title</script> & "frozen"',texts=['Cedar <script>source</script> & silver branches.\n','The quiet river carries patient boats.\n'];
+  const v=await add(title,texts.join(''),[{heading:'Escaped & immutable wording',units:texts}]),shown=await ok(['version','show',v]);
+  const s=(await ok(['learn',v])).practice.study.id,unitCards=[];
+  for(let i=0;i<texts.length;i++){
+   await next(['--study',s]);const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id===current.prompt.unit_ids[0]&&r.state);unitCards.push(c.id);
+   await prepare(c.id,texts[i]);if(i===1)await clock(at+DAY);await answer(texts[i]);
+  }
+  await next(['--study',s,'--recite','whole']);
+  const raw=texts[0]+texts[1].replace('patient','<img src=x onerror="answer()">'),mixed=await answer(raw);
+  assert.deepEqual(mixed.grade.units.map(u=>u.verdict),['Good','Again']);
+  assert.deepEqual(mixed.effects.map(e=>[e.scheduled,e.extra_practice]),[[true,false],[false,true]],'One Recitation retains mixed per-Unit scheduled and same-day extra effects.');
+  const before=await checkHistory('History: mixed Recitation and source/answer escaping',[mixed.id]);
+  assert.ok(before.entries.get(mixed.id).html.includes(escapeHtml(raw)));
+  assert.doesNotMatch(before.entries.get(mixed.id).html,/<script\b|<img\b|onerror="/,'Authored title, expected text and raw answer remain text, never active markup.');
+  const immutable=await attemptRows(mixed.id),corrected=(await ok(['correct',current.prompt.id,mixed.id,'--unit',mixed.effects[1].unit_id,'--verdict','Good'])).practice.correction;
+  assert.equal(corrected.unit_id,mixed.effects[1].unit_id);assert.deepEqual(await attemptRows(mixed.id),immutable);
+  const after=await checkHistory('History: appended Correction preserves original per-Unit Verdict',[mixed.id]);
+  assert.deepEqual(after.history.attempts[mixed.id],mixed);assert.equal(after.history.corrections[corrected.id].verdict,'Good');
+  const empty=await practice(unitCards[1],'');assert.equal(empty.grade.verdict,'Again');assert.equal(Boolean(empty.disclosure),false);
+  await checkHistory('History: an actual empty answer is Again, not Reveal',[empty.id]);
+  const replacement='A replacement Version has entirely different wording.\n',path=await file('history-superseded.txt',replacement);
+  const newId=(await ok(['version','supersede',v,'--revision',String(shown.work.revision),'--title',title,'--kind','text','--text-file',path,'--name','Replacement metadata'])).result.entity_id;
+  assert.notEqual(newId,v);assert.deepEqual((await ok(['version','show',v])).version,shown.version);
+  const currentWork=(await ok(['version','show',newId])).work;
+  await ok(['work','edit',currentWork.id,'--revision',String(currentWork.revision),'--title','Renamed current Work, not the frozen Prompt']);
+  const superseded=await checkHistory('History: immutable wording and frozen title survive Version supersession and Work rename',[mixed.id,empty.id]);
+  assert.equal(superseded.entries.get(mixed.id).html,after.entries.get(mixed.id).html,'Later Library changes cannot rewrite an acknowledged Attempt.');
+  assert.ok(!superseded.entries.get(mixed.id).html.includes(replacement.trim()));
+ };
  const studyCriteria=[
   async()=>{
    assert.equal((await ok(['search','apostles creed'])).empty,true);
@@ -64,7 +155,8 @@ export async function studyJourney(){
    vid=await add("Apostles' Creed",lines.join('\n')+'\n',sections);const shown=await ok(['version','show',vid]);version=shown.version;wid=shown.work.id;
    sid=(await ok(['learn',vid,'--pace','steady'])).practice.study.id;assert.equal((await ok(['learn',vid])).practice.study.id,sid);
    assert.equal(Object.keys((await ok(['study','list'])).studies).length,1);
-   await next(['--study',sid]);assert.equal(current.prompt.cue,lines[0]+'\n');await answer(lines[0]);
+   await next(['--study',sid]);assert.equal(current.prompt.cue,lines[0]+'\n');const assisted=await answer(lines[0]);
+   await checkHistory('History: first assisted Attempt is visible with saved Diff and Authority',[assisted.id]);
    await ok(['due']);await ok(['history']);await ok(['export']);assert.deepEqual((await ok(['spend','--by','day'])).entries,[]);
    const beforeRecite=await rows();assert.notEqual((await cli(['next','--after',current.prompt.id,'--study',sid,'--recite','whole'])).code,0);assert.deepEqual(await rows(),beforeRecite,'Recitation cannot bypass introductions/Pace.');
   },
@@ -100,18 +192,29 @@ export async function studyJourney(){
    const a=await answer(lines.slice(0,4).join(' '));assert.ok(a.grade.units.every(u=>u.verdict==='Good'));assert.equal(a.effects.length,4);
    await next(['--study',sid,'--recite','whole']);assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);assert.equal(current.prompt.unit_ids.length,8);
    const bad=await answer(lines.join(' ').replace('lantern','mountain'));assert.equal(bad.grade.units.filter(u=>u.verdict==='Again').length,1);assert.equal(bad.grade.units[2].verdict,'Again');assert.ok(bad.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===2));
+   await checkHistory('History: Recitation keeps every original per-Unit Verdict and Diff',[a.id,bad.id]);
    await recitationAdmission({add,ok,cli,next,answer,stopCurrent,rows,record,req,transcript});
   },
   async()=>{
+   const prior=await ok(['history']);
    await next(['--card',cards[4]]);const cid=cards[4],before=(await card(cid)).state.schedule;assert.equal(current.prompt.assisted,false);
    const protectedRows=await rows();for(const command of [['history'],['export'],['version','show',vid]]){assert.notEqual((await cli(command)).code,0);assert.deepEqual(await rows(),protectedRows);}
+   const protectedPractice=await practiceRows(),gated=await historyPage();
+   assert.match(gated,/History is hidden while you answer from memory\./);assert.doesNotMatch(gated,/<article\b|data-attempt-id=|data-diff-kind=|class="[^"]*exact-expected/);
+   for(const a of Object.values(prior.attempts))if(a.raw_answer.trim())assert.ok(!gated.includes(escapeHtml(a.raw_answer.trim())),'An unanswered protected Prompt gates historical raw answers before HTML disclosure.');
+   for(const v of Object.values(prior.versions))for(const u of v.sections.flatMap(s=>s.units))assert.ok(!gated.includes(escapeHtml(u.text.trim())),'Protected History does not leak immutable expected wording.');
+   assert.deepEqual(await practiceRows(),protectedPractice);
    const shown=await ok(['reveal',current.prompt.id]);assert.equal(shown.practice.assisted,true);assert.equal((await record('meta')).practice.current.revealed,true,'Assistance persisted before reveal response.');
+   const disclosure=await attempt(shown.practice.disclosure_attempt_id);assert.equal(disclosure.disclosure,true);assert.equal(disclosure.raw_answer,'');
+   await checkHistory('History: Reveal unlocks historical records as Shown before answering',[disclosure.id]);
    const a=await answer(lines[4]);assert.equal(a.assisted,true);assert.deepEqual((await card(cid)).state.schedule,before);
+   await checkHistory('History: disclosure and later assisted answer are distinct saved records',[disclosure.id,a.id]);
   },
   async()=>{
    const x=await freshCase('Once daily Free recall');caseStudy=x.s;caseCard=x.c;await prepare(x.c,'We conceived a patient garden.');const before=(await card(x.c)).state.schedule;
    const first=await answer('We conceived a patient garden.');assert.equal(first.effects[0].scheduled,true);assert.equal(first.effects[0].after.schedule.reps,before.reps+1);firstScheduled=(await card(x.c)).state.schedule;
    const extra=await practice(x.c,'We conceived a patient garden.');assert.equal(extra.assisted,false);assert.equal(extra.effects[0].extra_practice,true);assert.equal(extra.effects[0].scheduled,false);assert.deepEqual((await card(x.c)).state.schedule,firstScheduled);
+   await checkHistory('History: unassisted scheduled and same-day extra Attempts agree with API/CLI/export',[first.id,extra.id]);
   },
   async()=>{
    assert.equal((await card(caseCard)).state.cue,'section_heading');const bad=await practice(caseCard,'We imagined a patient garden.');assert.equal(bad.grade.verdict,'Again');assert.equal((await card(caseCard)).state.cue,'previous_line');assert.deepEqual((await card(caseCard)).state.schedule,firstScheduled);
@@ -132,15 +235,28 @@ export async function studyJourney(){
    for(const command of [['version','delete',vid,'--revision','1'],['work','delete',wid,'--revision','1']]){const before=await rows();assert.notEqual((await cli(command)).code,0);assert.deepEqual(await rows(),before);}
    assert.equal((await record('study_version_refs/'+sid)),vid);assert.equal((await ok(['learn',vid])).practice.study.id,sid);assert.equal((await ok(['study','list'])).studies[sid].status,'dropped');assert.deepEqual(await attempt(original.id),original);
    assert.equal((await next(['--study',sid])).prompt,null);
+   const dropped=await checkHistory('History: dropped Study keeps every acknowledged Attempt');assert.equal(dropped.history.studies[sid].status,'dropped');assert.deepEqual(dropped.history.attempts[original.id],original);
   },
   async()=>{
+   await historyRecoveryCases();
    const history=await ok(['history']),full=await ok(['export']);assert.equal(full.format,'scry-rust-durable-sqlite-study-v1');assert.deepEqual(full.app.practice.studies,history.studies);assert.deepEqual(full.app.practice.cards,history.cards);assert.deepEqual(full.app.practice.attempts,history.attempts);assert.equal(history.versions[vid].normalized_hash,version.normalized_hash);assert.ok(Object.values(history.attempts).every(a=>a.acting_token===tokenId&&a.grade.authority.name==='exact-v2'&&a.grade.authority.grader_version));
-   const before=full.app.practice;
+   const before=full.app.practice,historyBefore=await checkHistory('History: full populated record before actual runtime restart');
    await runtime.mf.dispose();await start();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');assert.deepEqual((await ok(['export'])).app.practice,before,'Real runtime restart retains all acknowledged practice rows.');
+   const historyRestart=await checkHistory('History: actual SQLite runtime restart retains Attempts, Corrections and immutable wording');assert.deepEqual([...historyRestart.entries.values()],[...historyBefore.entries.values()]);
    const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);
    const bucket=await runtime.mf.getR2Bucket('SCRY_BACKUPS'),list=await bucket.list({prefix:`snapshots/${space}/`});const bytes=Buffer.from(await(await bucket.get(list.objects.at(-1).key)).arrayBuffer());const archive=JSON.parse(bytes);assert.deepEqual(archive.app.practice,before);
    const restoreToken='synthetic-study-isolated-restore-only-32chars',restored=await createRuntime({name:'restore-'+randomUUID(),bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:'https://restore-study.invalid',SPACE_NAME:'unused-study-restore',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken}});
-   try{const response=await restored.worker.fetch('https://restore-study.invalid/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(bytes)},body:bytes});const restoredBody=await response.text();assert.equal(response.status,200,restoredBody);const restoreNs=await restored.mf.getDurableObjectNamespace('LEARNING_SPACE');const restoreStub=restoreNs.get(restoreNs.idFromName('unused-study-restore'));const read=await restoreStub.fetch('https://restore-study.invalid/api/v1/export',{headers:{Authorization:'Bearer '+secret,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(read.status,200);assert.deepEqual((await read.json()).app.practice,before);}finally{await restored.mf.dispose();}
+   try{
+    const response=await restored.worker.fetch('https://restore-study.invalid/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(bytes)},body:bytes});const restoredBody=await response.text();assert.equal(response.status,200,restoredBody);
+    const restoreNs=await restored.mf.getDurableObjectNamespace('LEARNING_SPACE'),restoreStub=restoreNs.get(restoreNs.idFromName('unused-study-restore'));
+    const restoredRead=path=>restoreStub.fetch('https://restore-study.invalid'+path,{headers:{Authorization:'Bearer '+secret,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
+    const read=await restoredRead('/api/v1/export');assert.equal(read.status,200);assert.deepEqual((await read.json()).app.practice,before);
+    const restoredHistoryResponse=await restoredRead('/api/v1/history');assert.equal(restoredHistoryResponse.status,200);const restoredHistory=await restoredHistoryResponse.json();assert.deepEqual(restoredHistory,history);
+    const restoredHtml=await historyPage(restoredRead),restoredEntries=assertHistoryHtml(restoredHtml,restoredHistory);
+    assert.deepEqual([...restoredEntries.values()],[...historyBefore.entries.values()],'A fresh local R2 restore renders the same original Attempts and appended Corrections.');
+    assertHistoryHtml(await historyPage(restoredRead),restoredHistory);assert.deepEqual((await(await restoredRead('/api/v1/export')).json()).app.practice,before,'History/reload leaves restored exact Practice unchanged.');
+    transcript.push({observation:'History: fresh local R2 restore renders and retains complete immutable exact history',attempts:Object.keys(restoredHistory.attempts).length,corrections:Object.keys(restoredHistory.corrections).length,html_sha256:hash(restoredHtml),limit:'Built Worker and local R2 emulator; hosted ingress, independent remote restore and physical-phone usability remain UNVERIFIED.'});
+   }finally{await restored.mf.dispose();}
    transcript.push({observation:'Full local R2 readback and fresh isolated restore retain populated Studies/Cards/Attempts',archive_sha256:hash(bytes),limits:'Local emulator; independent hosted restore UNVERIFIED.'});
   },
   async()=>{
@@ -172,6 +288,7 @@ export async function studyJourney(){
    const replayed=await ok(args,'We concieved a patient garden.');assert.deepEqual(replayed.practice,a.value.practice);assert.equal(replayed.replayed,true);
    const saved=await rows();assert.notEqual((await cli(args,'A changed answer.')).code,0);assert.deepEqual(await rows(),saved);assert.notEqual((await cli(['answer',prompt,'--text-stdin'],'late answer')).code,0);assert.deepEqual(await rows(),saved);
    await next(['--card',caseCard]);assert.notEqual((await cli(['correct',prompt,original.id,'--verdict','Again'])).code,0);await answer('We conceived a patient garden.');
+   await checkHistory('History: immutable Corrections and lost-response/parallel answer replay remain visible once');
    assert.equal(egress,0);assert.deepEqual((await ok(['spend','--by','model'])).entries,[]);transcript.push({observation:'Parallel and lost-response answer replay',attempts_added:1,same_result:true,changed_payload:'409/nonzero',stale_prompt:'409/nonzero',original_attempt_unchanged:true});
   }
  ];
@@ -183,6 +300,7 @@ export async function studyJourney(){
   const before=a.effects.map(e=>e.after.schedule);
   const corrected=await ok(['correct',current.prompt.id,a.id,'--unit',a.effects[1].unit_id,'--verdict','Good']);assert.deepEqual(await attempt(a.id),a);assert.equal(corrected.practice.correction.unit_id,a.effects[1].unit_id);
   for(let i=0;i<2;i++)assert.deepEqual((await card(a.effects[i].card_id)).state.schedule,before[i],'Same-day Recitation/Correction cannot reschedule either Card.');
+  await checkHistory('History: per-Unit Correction appends beside original mixed Good/Again Recitation',[a.id]);
  });
  return {studyCriteria,graderCriteria,transcript,close:async()=>{await mkdir('target',{recursive:true});await writeFile('target/study-cli-full.json',JSON.stringify(fullTranscript,null,2)+'\n');await runtime.mf.dispose();await rm(temp,{recursive:true});}};
 }

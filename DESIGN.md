@@ -159,6 +159,15 @@ attention is stated plainly. An isolated synthetic preview carries a clear
 badge and alone offers an authored fixture; production never offers fixture
 seeding or presents authored material as model-quality proof.
 
+Exact recall appears first in History, newest Attempt first. Each quiet entry
+names the saved Work title, Version, scope, date, original Verdict and assistance.
+Native details hold the frozen wording, complete saved Diff and Authority,
+per-Unit scheduling effects and later Owner Corrections, without replacing the
+original Attempt. A pre-answer reveal says “Shown before answering,” not Again;
+its stored comparison is explicitly not a recall Verdict. Protected unanswered
+practice shows a safe return link instead of historical answer text. There are
+no History mutation controls or new progress measures.
+
 ## Browser, privacy, and access
 
 Every mutation is an ordinary same-origin POST with CSRF and a unique
