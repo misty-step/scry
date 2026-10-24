@@ -224,6 +224,142 @@ mod cli {
         }
         Ok(format!("/api/v1/library/{resource}/{id}"))
     }
+    fn material_resource_path(resource: &str, id: &str) -> Result<String> {
+        // Concepts and Materials include retained opaque identities, not only
+        // the Library's 32-hex IDs. Keep an ID within a single URL path segment.
+        if id.is_empty()
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        {
+            return Err("Use a Concept, Material or revision identifier from list or show.");
+        }
+        Ok(format!("/api/v1/{resource}/{id}"))
+    }
+    fn material_read_path(args: &mut Vec<String>) -> Result<Option<String>> {
+        let command = args.first().map(String::as_str);
+        let action = args.get(1).map(String::as_str);
+        match (command, action) {
+            (Some("concept"), Some("list")) => {
+                if args.len() != 2 {
+                    return Err("Usage: scry concept list");
+                }
+                Ok(Some("/api/v1/concepts".into()))
+            }
+            (Some("concept"), Some("show")) => {
+                if args.len() != 3 {
+                    return Err("Usage: scry concept show CONCEPT");
+                }
+                Ok(Some(material_resource_path("concepts", &args[2])?))
+            }
+            (Some("material"), Some("list")) => {
+                if args.len() != 3 {
+                    return Err("Usage: scry material list CONCEPT");
+                }
+                Ok(Some(format!(
+                    "{}/materials",
+                    material_resource_path("concepts", &args[2])?
+                )))
+            }
+            (Some("material"), Some("show")) => {
+                let revision = option(args, "--revision-id")?;
+                if args.len() != 3 {
+                    return Err("Usage: scry material show MATERIAL [--revision-id REVISION]");
+                }
+                let path = material_resource_path("materials", &args[2])?;
+                Ok(Some(match revision {
+                    Some(revision) => {
+                        material_resource_path("revisions", &revision)?;
+                        format!("{path}/revisions/{revision}")
+                    }
+                    None => path,
+                }))
+            }
+            (Some("material"), Some("history")) => {
+                if args.len() != 3 {
+                    return Err("Usage: scry material history MATERIAL");
+                }
+                Ok(Some(format!(
+                    "{}/revisions",
+                    material_resource_path("materials", &args[2])?
+                )))
+            }
+            _ => Ok(None),
+        }
+    }
+    fn material_text(reader: impl Read) -> Result<String> {
+        // Bound transport memory without normalizing line endings or silently
+        // truncating input. All content validation still belongs to the engine.
+        let mut bytes = Vec::new();
+        reader
+            .take(scry::model::TEXT_LIMIT as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Cannot read Material text.")?;
+        if bytes.len() > scry::model::TEXT_LIMIT {
+            return Err("Material text must be at most 32768 UTF-8 bytes.");
+        }
+        String::from_utf8(bytes).map_err(|_| "Material text must be UTF-8.")
+    }
+    fn material_mutation(
+        args: &mut Vec<String>,
+        operation: &str,
+        stdin: impl Read,
+    ) -> Result<Option<(&'static str, Value)>> {
+        let command = args.first().map(String::as_str);
+        let action = args.get(1).map(String::as_str);
+        let (route, usage, create, revise) = match (command, action) {
+            (Some("concept"), Some("create")) => (
+                "/api/v1/concepts/create",
+                "Usage: scry concept create --name NAME [--summary SUMMARY] --title TITLE --text-file PATH|--stdin",
+                true,
+                false,
+            ),
+            (Some("material"), Some("add")) => (
+                "/api/v1/materials/add",
+                "Usage: scry material add CONCEPT --title TITLE --text-file PATH|--stdin",
+                false,
+                false,
+            ),
+            (Some("material"), Some("revise")) => (
+                "/api/v1/materials/revise",
+                "Usage: scry material revise MATERIAL --expected-revision-id REVISION --title TITLE --text-file PATH|--stdin",
+                false,
+                true,
+            ),
+            _ => return Ok(None),
+        };
+        let mut payload = json!({"operation_id":operation});
+        if create {
+            payload["name"] = json!(option(args, "--name")?.ok_or("Use --name CONCEPT_NAME.")?);
+            if let Some(summary) = option(args, "--summary")? {
+                payload["summary"] = json!(summary);
+            }
+        }
+        if revise {
+            payload["expected_revision_id"] = json!(
+                option(args, "--expected-revision-id")?
+                    .ok_or("Use --expected-revision-id from Material show.")?
+            );
+        }
+        payload["title"] = json!(option(args, "--title")?.ok_or("Use --title MATERIAL_TITLE.")?);
+        let file = option(args, "--text-file")?;
+        let use_stdin = flag(args, "--stdin");
+        let positional_count = if create { 2 } else { 3 };
+        if args.len() != positional_count || file.is_some() == use_stdin {
+            return Err(usage);
+        }
+        if !create {
+            payload[if revise { "material_id" } else { "concept_id" }] = json!(args[2]);
+        }
+        payload["text"] = json!(match file {
+            Some(path) => {
+                let file = fs::File::open(path).map_err(|_| "Cannot open Material text file.")?;
+                material_text(file)?
+            }
+            None => material_text(stdin)?,
+        });
+        Ok(Some((route, payload)))
+    }
     pub fn run() -> Result<Value> {
         let mut args: Vec<String> = std::env::args().skip(1).collect();
         flag(&mut args, "--json");
@@ -281,6 +417,9 @@ mod cli {
         if args.as_slice() == ["whoami"] {
             return request(&client, &login, "/api/v1/whoami", None);
         }
+        if let Some(path) = material_read_path(&mut args)? {
+            return request(&client, &login, &path, None);
+        }
         if args.first().is_some_and(|arg| arg == "spend") {
             let by = option(&mut args, "--by")?.ok_or("Use spend --by day|purpose|model.")?;
             if args.len() != 1 || scry::spend::SpendBy::parse(&by).is_err() {
@@ -325,6 +464,11 @@ mod cli {
         let operation = option(&mut args, "--operation-id")?
             .map(Ok)
             .unwrap_or_else(random_id)?;
+        if let Some((path, payload)) =
+            material_mutation(&mut args, &operation, std::io::stdin().lock())?
+        {
+            return request(&client, &login, path, Some(&payload));
+        }
         if args.first().is_some_and(|a| a == "learn") {
             let pace = option(&mut args, "--pace")?.unwrap_or_else(|| "steady".into());
             if args.len() != 2 {
@@ -515,7 +659,333 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|concept|material|search|work|version|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn args(values: &[&str]) -> Vec<String> {
+            values.iter().map(|value| (*value).into()).collect()
+        }
+
+        struct NoInput;
+
+        impl Read for NoInput {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                panic!("invalid arguments must not consume stdin");
+            }
+        }
+
+        #[test]
+        fn material_reads_use_the_canonical_resource_routes() {
+            for (arguments, expected) in [
+                (vec!["concept", "list"], "/api/v1/concepts"),
+                (
+                    vec!["concept", "show", "concept-retained_1"],
+                    "/api/v1/concepts/concept-retained_1",
+                ),
+                (
+                    vec!["material", "list", "concept-1"],
+                    "/api/v1/concepts/concept-1/materials",
+                ),
+                (
+                    vec!["material", "show", "material-1"],
+                    "/api/v1/materials/material-1",
+                ),
+                (
+                    vec!["material", "history", "material-1"],
+                    "/api/v1/materials/material-1/revisions",
+                ),
+                (
+                    vec![
+                        "material",
+                        "show",
+                        "material-1",
+                        "--revision-id",
+                        "revision-1",
+                    ],
+                    "/api/v1/materials/material-1/revisions/revision-1",
+                ),
+            ] {
+                assert_eq!(
+                    material_read_path(&mut args(&arguments)).unwrap(),
+                    Some(expected.into())
+                );
+            }
+            assert_eq!(material_read_path(&mut args(&["history"])).unwrap(), None);
+        }
+
+        #[test]
+        fn material_read_arguments_cannot_change_the_route_or_query() {
+            for id in [
+                "",
+                ".",
+                "..",
+                "../export",
+                "a/b",
+                "a?b",
+                "a#b",
+                "a%2fb",
+                "é",
+            ] {
+                assert!(material_read_path(&mut args(&["concept", "show", id])).is_err());
+                assert!(
+                    material_read_path(&mut args(&[
+                        "material",
+                        "show",
+                        "material-1",
+                        "--revision-id",
+                        id
+                    ]))
+                    .is_err()
+                );
+            }
+            for arguments in [
+                vec!["concept", "list", "extra"],
+                vec!["concept", "show"],
+                vec!["material", "list"],
+                vec!["material", "show", "material-1", "--revision-id"],
+                vec!["material", "history", "material-1", "extra"],
+            ] {
+                assert!(material_read_path(&mut args(&arguments)).is_err());
+            }
+        }
+
+        #[test]
+        fn concept_create_transports_exact_supplied_fields_and_operation() {
+            let text = "  First\r\n\tCafé 💡\nhttps://example.invalid/reference\n";
+            let (path, payload) = material_mutation(
+                &mut args(&[
+                    "concept",
+                    "create",
+                    "--name",
+                    " Name ",
+                    "--summary",
+                    " Summary ",
+                    "--title",
+                    " Title ",
+                    "--stdin",
+                ]),
+                "retained-operation",
+                text.as_bytes(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(path, "/api/v1/concepts/create");
+            assert_eq!(
+                payload,
+                json!({"operation_id":"retained-operation","name":" Name ","summary":" Summary ","title":" Title ","text":text})
+            );
+        }
+
+        #[test]
+        fn concept_create_does_not_invent_optional_summary() {
+            let (_, payload) = material_mutation(
+                &mut args(&[
+                    "concept", "create", "--name", "Name", "--title", "Title", "--stdin",
+                ]),
+                "operation",
+                &b"Text"[..],
+            )
+            .unwrap()
+            .unwrap();
+            assert!(payload.get("summary").is_none());
+        }
+
+        #[test]
+        fn identical_concept_commands_retain_optional_field_presence_for_replay() {
+            let base = [
+                "concept", "create", "--name", "Name", "--title", "Title", "--stdin",
+            ];
+            for summary in [None, Some("")] {
+                let mut arguments = args(&base);
+                if let Some(summary) = summary {
+                    arguments.extend(args(&["--summary", summary]));
+                }
+                let first =
+                    material_mutation(&mut arguments.clone(), "operation", &b"Text"[..]).unwrap();
+                let second = material_mutation(&mut arguments, "operation", &b"Text"[..]).unwrap();
+                assert_eq!(first, second);
+                assert_eq!(
+                    first.unwrap().1.get("summary").cloned(),
+                    summary.map(|value| json!(value))
+                );
+            }
+        }
+
+        #[test]
+        fn material_add_and_revise_transport_opaque_identities() {
+            for (arguments, path, fields) in [
+                (
+                    vec![
+                        "material",
+                        "add",
+                        "concept-1",
+                        "--title",
+                        "Title",
+                        "--stdin",
+                    ],
+                    "/api/v1/materials/add",
+                    json!({"concept_id":"concept-1"}),
+                ),
+                (
+                    vec![
+                        "material",
+                        "revise",
+                        "material-1",
+                        "--expected-revision-id",
+                        "revision-1",
+                        "--title",
+                        "Title",
+                        "--stdin",
+                    ],
+                    "/api/v1/materials/revise",
+                    json!({"material_id":"material-1","expected_revision_id":"revision-1"}),
+                ),
+            ] {
+                let (actual_path, payload) =
+                    material_mutation(&mut args(&arguments), "operation", &b"Text\r\n"[..])
+                        .unwrap()
+                        .unwrap();
+                let mut expected =
+                    json!({"operation_id":"operation","title":"Title","text":"Text\r\n"});
+                expected
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(fields.as_object().unwrap().clone());
+                assert_eq!(actual_path, path);
+                assert_eq!(payload, expected);
+            }
+        }
+
+        #[test]
+        fn material_file_and_stdin_preserve_identical_utf8_bytes() {
+            let path =
+                std::env::temp_dir().join(format!("scry-cli-material-{}", random_id().unwrap()));
+            let text = " \r\nCafé 💡\t\n ";
+            fs::write(&path, text.as_bytes()).unwrap();
+            let from_file = material_mutation(
+                &mut args(&[
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--text-file",
+                    path.to_str().unwrap(),
+                ]),
+                "operation",
+                NoInput,
+            );
+            fs::remove_file(path).unwrap();
+            let from_stdin = material_mutation(
+                &mut args(&[
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                ]),
+                "operation",
+                text.as_bytes(),
+            );
+            assert_eq!(from_file, from_stdin);
+            assert_eq!(from_file.unwrap().unwrap().1["text"], text);
+        }
+
+        #[test]
+        fn material_transport_refuses_oversize_and_invalid_utf8_without_truncation() {
+            let limit = scry::model::TEXT_LIMIT;
+            let exact = "💡".repeat(limit / 4);
+            assert_eq!(material_text(exact.as_bytes()).unwrap(), exact);
+            let too_large = format!("{exact}x");
+            assert_eq!(
+                material_text(too_large.as_bytes()),
+                Err("Material text must be at most 32768 UTF-8 bytes.")
+            );
+            assert_eq!(
+                material_text(&[0xff][..]),
+                Err("Material text must be UTF-8.")
+            );
+            // Empty or blank supplied content goes to the shared engine, which
+            // owns content validity rather than this transport adapter.
+            assert_eq!(material_text(&b" \r\n"[..]).unwrap(), " \r\n");
+        }
+
+        #[test]
+        fn material_mutation_rejects_bad_arguments_before_reading_input() {
+            for arguments in [
+                vec!["concept", "create", "--title", "Title", "--stdin"],
+                vec!["material", "add", "concept-1", "--stdin"],
+                vec!["material", "add", "concept-1", "--title", "Title"],
+                vec![
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                    "--text-file",
+                    "/missing",
+                ],
+                vec![
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                    "--stdin",
+                ],
+                vec![
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                    "--source",
+                    "https://example.invalid",
+                ],
+                vec![
+                    "material",
+                    "add",
+                    "concept-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                    "--paid",
+                ],
+                vec![
+                    "material",
+                    "revise",
+                    "material-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                ],
+                vec![
+                    "material",
+                    "revise",
+                    "material-1",
+                    "--expected-revision-id",
+                    "revision-1",
+                    "--title",
+                    "Title",
+                    "--stdin",
+                    "extra",
+                ],
+            ] {
+                assert!(material_mutation(&mut args(&arguments), "operation", NoInput).is_err());
+            }
+            assert_eq!(
+                material_mutation(&mut args(&["next"]), "operation", NoInput).unwrap(),
+                None
+            );
+        }
     }
 }

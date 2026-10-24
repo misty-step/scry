@@ -221,7 +221,12 @@ fn render_error(
     preparation_ready: bool,
 ) -> Result<Response> {
     let view_path = web::mutation_error_path(app, path);
-    let query = view_query(env, fields, preparation_ready)?;
+    let mut query = view_query(env, fields, preparation_ready)?;
+    if crate::materials::is_authoring_path(path)
+        && let Some(operation) = fields.get("operation_id")
+    {
+        query.insert("__draft_operation".into(), operation.clone());
+    }
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
             .with_status(e.status),
@@ -866,7 +871,45 @@ impl DurableObject for LearningSpace {
             return private(Response::ok("Snapshot verified.")?);
         }
         let url = req.url()?;
+        // Reserved authoring endpoints are POST-only before initialization or recovery.
+        if crate::materials::is_authoring_path(&path) && req.method() != Method::Post {
+            return private(Response::error("Method not allowed.", 405)?);
+        }
         if matches!(req.method(), Method::Get | Method::Head) {
+            let snapshot = if web::material_read_path(&path) {
+                Some(self.read_snapshot()?)
+            } else {
+                None
+            };
+            let authored_detail = path
+                .strip_prefix("/concepts/")
+                .filter(|id| !id.contains('/'))
+                .and_then(|id| snapshot.as_ref().and_then(|app| app.concepts.get(id)))
+                .is_some_and(|c| c.origin == Some(ConceptOrigin::OwnerAuthored));
+            if web::material_form_path(&path) || path.starts_with("/materials/") || authored_detail
+            {
+                // Forms need an initial CSRF session, but do not select a question,
+                // recover external work, record exposure, or arm an alarm.
+                let mut app = match snapshot {
+                    Some(app) => app,
+                    None => self.read_snapshot()?,
+                };
+                if web::material_form_path(&path) && app.csrf.is_empty() {
+                    app = self.load()?;
+                }
+                let external_query = url
+                    .query_pairs()
+                    .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                    .collect();
+                let query = view_query(&self.env, &external_query, self.preparation_ready())?;
+                return private(Response::from_html(web::render(
+                    &app,
+                    &path,
+                    &query,
+                    now(),
+                    None,
+                ))?);
+            }
             if path == "/readyz" {
                 self.load()?;
                 return private(Response::ok("ready")?);
@@ -1236,11 +1279,15 @@ impl DurableObject for LearningSpace {
                 render_error(&self.env, &app, &path, &fields, e, self.preparation_ready())
             }
             Ok(result) => {
+                if replayed && crate::materials::is_authoring_path(&path) {
+                    return redirect(&result.redirect);
+                }
                 // New captured or edited content must fit a complete recovery
                 // archive. Paid completions still retain their raw/ledger
                 // outcome through the separate durable work path.
                 if app.revision != before
                     && (matches!(path.as_str(), "/create" | "/add" | "/library/version/add")
+                        || crate::materials::is_authoring_path(&path)
                         || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
@@ -1364,6 +1411,18 @@ impl LearningSpace {
         };
         let path = req.path();
         let read = matches!(req.method(), Method::Get | Method::Head);
+        if api::mutation_path(&path).is_some_and(crate::materials::is_authoring_path)
+            && req.method() != Method::Post
+        {
+            return api_error(AppError::new(405, "Method not allowed."));
+        }
+        if read && api::material_read_path(&path) {
+            let app = self.read_snapshot()?;
+            return match api::material_read(&app, &path) {
+                Ok(value) => api_json(&value, 200),
+                Err(error) => api_error(error),
+            };
+        }
         if read
             && matches!(
                 path.as_str(),
@@ -1457,7 +1516,14 @@ impl LearningSpace {
         if !read && token.is_none() && fields.get("csrf") != Some(&app.csrf) {
             return api_error(AppError::new(403, "Reload before submitting."));
         }
-        if let Some(token) = &mut token {
+        let authoring_replay = api::mutation_path(&path)
+            .is_some_and(crate::materials::is_authoring_path)
+            && fields
+                .get("operation_id")
+                .is_some_and(|id| app.operations.contains_key(id));
+        if let Some(token) = &mut token
+            && !authoring_replay
+        {
             token.info.last_used_ms = Some(now());
             app.owner_tokens
                 .insert(token.info.id.clone(), token.clone());
@@ -1518,7 +1584,9 @@ impl LearningSpace {
         if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
         }
-        self.save(&mut app, Some(before))?;
+        if !authoring_replay {
+            self.save(&mut app, Some(before))?;
+        }
         // Token creation is the only response containing a secret. Its receipt never does.
         let created = canonical_path == "/tokens/create";
         let token = if created {
@@ -1530,7 +1598,9 @@ impl LearningSpace {
         } else {
             None
         };
-        self.arm().await?;
+        if !authoring_replay {
+            self.arm().await?;
+        }
         api_json(
             &api::MutationResponse {
                 practice: crate::study::wire_response(&app, &result),

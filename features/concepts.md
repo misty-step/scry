@@ -13,12 +13,16 @@ material. Stories: US-001, US-006, US-009, US-010. Intent:
 - `map-list` shows goals and their concepts at `/map`, in an accessible list.
 - `map-goal` opens a goal (`/goals/{id}`) with focus, pause, resume and Practice.
 - `map-concept` opens a concept (`/concepts/{id}`) with its reference.
-- `material-floor` reads restored owner-authored Concepts and independent supplied Material revisions without enabling authoring (SPEC CM1/CM2).
+- `material-floor` retains restored Concepts and all immutable revisions under SPEC CM1/CM2.
+- `concept-authoring` creates a named Concept and first supplied Material at `/concepts/new` (CM3/CM4).
+- `material-authoring` adds an independent reference or appends a revision with its expected current identity.
+- `material-history` reads original and revised wording, without copying the legacy Note chain.
 - `map-gate` puts "Look it up" before reference for the current question's concept.
 - `map-pace` sets Settings → "How many new ideas in a day?" (3/6/12).
 
 ## How to get to it (user POV)
 
+- Masthead Create concept → name, first Material title and text → Save. On the Concept, use Add material, Revise material or Earlier revisions.
 - Masthead Concepts → a concept; View connections → Map → a goal. Follow displayed
   links, never invented IDs. More → Look it up from a question reaches the gate.
 
@@ -40,7 +44,12 @@ Preconditions:
   `node --test qa/materials.test.mjs` cover SPEC CM1/CM2: typed synthetic complete
   history, read-only home/detail, compiled CLI, built Worker SQLite/R2, fresh
   restore, first unrelated write, and checksum-pinned old-reader refusal. This
-  does not enable authoring or certify independently retrieved hosted recovery.
+  runs against the exact published floor bytes, including absent-authoring probes.
+  It does not certify independently retrieved hosted recovery.
+- **Authoring proof.** `tests/material_authoring.rs`, `tests/material_read_ui.rs`,
+  `node --test qa/material-authoring.test.mjs`, and the Material authoring walk
+  inside `qa/walk --all` cover CM3/CM4. The shared domain writes every new record;
+  floor rollback uses the qualified published pin, never a source substitute.
 
 ## Gotchas
 

@@ -359,7 +359,7 @@ fn exact_utf8_bounds_and_complete_archive_capacity_are_enforced() {
 }
 
 #[test]
-fn no_normal_authoring_or_legacy_mutation_of_authored_concepts_is_enabled() {
+fn incomplete_authoring_and_legacy_mutation_of_authored_concepts_are_refused() {
     let mut app = fixture();
     let before = app.clone();
     assert_eq!(engine::seed_fixture(&mut app, NOW).unwrap_err().status, 409);
@@ -383,11 +383,7 @@ fn no_normal_authoring_or_legacy_mutation_of_authored_concepts_is_enabled() {
         assert!(engine::mutate(&mut app, path, &fields, NOW, "refuse").is_err());
         assert_eq!(app, before);
     }
-    for path in [
-        "/api/v1/concepts",
-        "/api/v1/materials",
-        "/api/v1/materials/revise",
-    ] {
+    for path in ["/api/v1/concepts", "/api/v1/materials"] {
         assert_eq!(scry::api::mutation_path(path), None);
     }
 }
@@ -395,7 +391,7 @@ fn no_normal_authoring_or_legacy_mutation_of_authored_concepts_is_enabled() {
 #[test]
 fn simulated_future_receipts_require_the_exact_retained_entity_and_owner() {
     let mut app = fixture();
-    // This models acknowledged Phase B writes. Phase A has no writer for them.
+    // Retained floor fixture receipts remain valid alongside real Phase B writes.
     for (operation, path, entity) in [
         (
             "synthetic-concept-create",
@@ -517,7 +513,7 @@ fn restored_authored_materials_are_readable_without_offering_fake_learning_actio
     assert!(
         page.find("material-a-revision-2").unwrap() < page.find("material-a-revision-1").unwrap()
     );
-    assert!(page.contains("Earlier revisions") && page.contains("No saved questions"));
+    assert!(page.contains("Earlier revisions") && page.contains("No quizzes/questions yet"));
     assert!(!page.contains("<script>not executable"));
     assert!(!page.contains("Saved explanation") && !page.contains("No note is available"));
     for action in ["practice", "feedback", "archive"] {

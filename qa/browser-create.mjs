@@ -74,7 +74,7 @@ export async function createWalk(browser,capture){
   // Native HTTPS requests/redirects traverse Rust ingress with a synthetic
   // owner assertion. The self-signed loopback certificate is test-only.
   await page.goto(origin+'/settings');await page.getByRole('button',{name:'Resume preparation',exact:true}).waitFor();result.evidence.push(await capture(page,'paused-settings.png'));
-  await page.locator('.masthead').getByRole('link',{name:'Add material',exact:true}).tap();
+  await page.goto(origin+'/create');
   await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();
   assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);assert.equal(preparations,0);result.evidence.push(await capture(page,'paused-add-material-unavailable.png'));
   await page.goto(origin+savedPath);await page.getByRole('heading',{name:'Preparation is paused.',exact:true}).waitFor();
@@ -82,7 +82,7 @@ export async function createWalk(browser,capture){
   await page.goto(origin+'/notebook');await page.locator('[data-state="preparation-paused"]').waitFor();result.evidence.push(await capture(page,'paused-stream.png'));
   await page.locator('.empty-stage').getByRole('link',{name:'Resume preparation'}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();
   await page.locator('[data-state="preparation-stopped"]').waitFor();assert.equal((await readState()).restored_paused,false);assert.equal(preparations,0,'Resume must not retry historical stopped work');
-  await page.locator('.masthead').getByRole('link',{name:'Add material',exact:true}).tap();
+  await page.goto(origin+'/create');
   await page.getByRole('button',{name:'Prepare material'}).waitFor();assert.match(await page.locator('#intent-hint').innerText(),/paid AI/);assert.equal(await page.locator('input[type="file"]').count(),1);
   await page.locator('#intent').fill('Understand HTTP cache validation with a practical browser example.');result.evidence.push(await capture(page,'ready-add-material.png'));
   await page.getByRole('button',{name:'Prepare material'}).tap();await page.locator('[data-state="goal"]').waitFor();const goalUrl=page.url();

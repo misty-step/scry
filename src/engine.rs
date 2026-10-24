@@ -103,6 +103,7 @@ pub fn mutate_as(
             return Err(AppError::conflict());
         }
         crate::study::check_replay(app, &receipt.result)?;
+        crate::materials::check_replay(app, receipt)?;
         return Ok(receipt.result.clone());
     }
     if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
@@ -138,7 +139,17 @@ pub fn mutate_as(
             result: response.clone(),
         },
     );
-    next.revision += 1;
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or_else(AppError::conflict)?;
+    if crate::materials::is_authoring_path(path) {
+        // Validate the acknowledged candidate, including its receipt, before
+        // committing. The retained reader must be able to write and archive it.
+        validate_app(&next)?;
+        crate::persistence::rows(&next)?;
+        crate::persistence::archive_size(&next)?;
+    }
     *app = next;
     Ok(response)
 }
@@ -262,6 +273,9 @@ fn apply(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    if crate::materials::is_authoring_path(path) {
+        return crate::materials::mutate(app, path, fields, now, seed);
+    }
     if path.starts_with("/practice/") {
         return crate::study::mutate(app, path, fields, now, seed);
     }

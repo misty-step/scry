@@ -168,9 +168,10 @@ _Avoid_: usage log, billing
 **Concept**:
 The primary teachable idea the owner wants to understand. Generated Concepts
 have a Goal, a current explanation, saved questions and directed prerequisites.
-The compatibility floor also retains explicitly owner-authored Concepts with
-Materials and no invented Goal or practice. Normal authoring, quiz collections,
-varied sources and related-concept prediction remain future work. A Concept is
+Explicitly owner-authored Concepts have supplied Materials and no invented
+Goal or practice. Supplied-text authoring preserves the compatibility floor;
+quiz collections, varied sources and related-concept prediction remain future
+work. A Concept is
 not an exact-recall Work or Unit.
 _Avoid_: using it for a Work or Unit
 

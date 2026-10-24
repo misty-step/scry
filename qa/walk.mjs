@@ -14,6 +14,7 @@ import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 import {conceptHomeWalk} from './concept-home.mjs';
+import {materialAuthoringWalk} from './material-authoring.mjs';
 import {mixedBrowserWalk} from './mixed-notebook.mjs';
 import {releaseWalk} from './browser-release.mjs';
 import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
@@ -115,13 +116,14 @@ try{
   finally{await context.close();await runtime.mf.dispose();await owner?.close();}
  }
  if(browser){
+ receipt.material_authoring=await materialAuthoringWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.concept_home=await conceptHomeWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.mixed_notebook=await mixedBrowserWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.browser_recovery=await recoveryWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.create_journey=await createWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  receipt.release_journey=await releaseWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});
  }
- receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.concept_home.every(s=>s.status==='pass')&&receipt.mixed_notebook.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
+ receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.material_authoring.every(s=>s.status==='pass')&&receipt.concept_home.every(s=>s.status==='pass')&&receipt.mixed_notebook.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
 finally{await practice?.close();await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
 process.exitCode=receipt.exit;

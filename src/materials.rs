@@ -1,6 +1,5 @@
-//! Concept-owned reference material and immutable wording. Phase A deliberately
-//! has no authoring route or public mutation: this is the compatible reader and
-//! writer floor for complete recovery and later authoring releases.
+//! Concept-owned reference material and immutable owner-supplied wording.
+//! Authoring adds only the records accepted by the retained compatibility floor.
 use crate::{generation::text_valid, model::*};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,8 +39,7 @@ fn is_authoring_receipt(receipt: &Receipt) -> bool {
     )
 }
 
-/// Reserved receipt shapes for the later writer, not executable routes in this
-/// build. A rollback reader must retain and validate acknowledged operations as
+/// A rollback reader must retain and validate acknowledged operations as
 /// well as content. No broad unknown-entity exemption is safe.
 pub(crate) fn receipt_entity(app: &App, receipt: &Receipt, id: &str) -> bool {
     let (concept_id, created_ms) = match receipt.path.as_deref() {
@@ -108,6 +106,222 @@ pub struct MaterialRevision {
 #[serde(rename_all = "kebab-case")]
 pub enum MaterialProvenance {
     OwnerSupplied,
+}
+
+pub fn is_authoring_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/concepts/create" | "/materials/add" | "/materials/revise"
+    )
+}
+
+fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
+    fields.get(key).map(String::as_str).unwrap_or("")
+}
+
+fn identity(seed: &str, label: &str) -> String {
+    crate::persistence::sha256(format!("{seed}:{label}").as_bytes())[..32].into()
+}
+
+fn check_concept_access(app: &App, concept_id: Option<&str>) -> AppResult<()> {
+    if app.practice.protected() || concept_id.is_some_and(|id| app.protected_concept(id)) {
+        return Err(AppError::new(
+            409,
+            "Record assistance or answer before authoring reference material.",
+        ));
+    }
+    Ok(())
+}
+
+/// Authoring is never an implicit Reveal. The same fence applies to token and
+/// browser writes, and receipt replays recheck the *current* protected state.
+pub fn check_access(app: &App, path: &str, fields: &BTreeMap<String, String>) -> AppResult<()> {
+    let concept_id = match path {
+        "/concepts/create" => None,
+        "/materials/add" => Some(field(fields, "concept_id")),
+        "/materials/revise" => app
+            .materials
+            .items
+            .get(field(fields, "material_id"))
+            .map(|m| m.concept_id.as_str()),
+        _ => return Ok(()),
+    };
+    check_concept_access(app, concept_id)
+}
+
+pub(crate) fn check_replay(app: &App, receipt: &Receipt) -> AppResult<()> {
+    let Some(path) = receipt
+        .path
+        .as_deref()
+        .filter(|path| is_authoring_path(path))
+    else {
+        return Ok(());
+    };
+    let id = receipt
+        .result
+        .entity_id
+        .as_deref()
+        .ok_or_else(AppError::conflict)?;
+    let concept_id = match path {
+        "/concepts/create" => app.concepts.get(id).map(|c| c.id.as_str()),
+        "/materials/add" => app.materials.items.get(id).map(|m| m.concept_id.as_str()),
+        "/materials/revise" => app
+            .materials
+            .revisions
+            .get(id)
+            .and_then(|r| app.materials.items.get(&r.material_id))
+            .map(|m| m.concept_id.as_str()),
+        _ => unreachable!(),
+    };
+    check_concept_access(app, Some(concept_id.ok_or_else(AppError::conflict)?))
+}
+
+/// Only the engine calls this against its uncommitted clone. The engine adds
+/// the receipt and validates the complete state and persistence bounds before
+/// committing any of these changes.
+pub(crate) fn mutate(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    let allowed: &[&str] = match path {
+        "/concepts/create" => &["name", "summary", "title", "text"],
+        "/materials/add" => &["concept_id", "title", "text"],
+        "/materials/revise" => &["material_id", "expected_revision_id", "title", "text"],
+        _ => return Err(AppError::new(404, "That authoring action does not exist.")),
+    };
+    if fields.keys().any(|key| {
+        !matches!(key.as_str(), "operation_id" | "csrf") && !allowed.contains(&key.as_str())
+    }) {
+        return Err(AppError::new(422, "Unknown material authoring field."));
+    }
+    check_access(app, path, fields)?;
+    let title = field(fields, "title");
+    let text = field(fields, "text");
+    if !text_valid(title, 200) || !text_valid(text, TEXT_LIMIT) {
+        return Err(AppError::new(
+            422,
+            "Supply a title up to 200 bytes and nonempty text up to 32 KiB.",
+        ));
+    }
+
+    let revision_id = identity(seed, "material-revision");
+    if app.materials.revisions.contains_key(&revision_id) {
+        return Err(AppError::conflict());
+    }
+    let (concept_id, material_id, predecessor_id, ordinal, entity_id) = match path {
+        "/concepts/create" => {
+            let name = field(fields, "name");
+            let summary = field(fields, "summary");
+            if !text_valid(name, 200) || (!summary.is_empty() && !text_valid(summary, 2000)) {
+                return Err(AppError::new(
+                    422,
+                    "Supply a Concept name up to 200 bytes and an optional summary up to 2000 bytes.",
+                ));
+            }
+            let concept_id = identity(seed, "material-concept");
+            if app.concepts.contains_key(&concept_id) {
+                return Err(AppError::conflict());
+            }
+            app.concepts.insert(
+                concept_id.clone(),
+                Concept {
+                    id: concept_id.clone(),
+                    goal_id: None,
+                    origin: Some(ConceptOrigin::OwnerAuthored),
+                    name: name.into(),
+                    summary: summary.into(),
+                    notes: vec![],
+                    prerequisites: vec![],
+                    introduced_ms: None,
+                    exposure_ms: None,
+                    already_known: false,
+                    archived: false,
+                },
+            );
+            let entity_id = concept_id.clone();
+            (concept_id, identity(seed, "material"), None, 1, entity_id)
+        }
+        "/materials/add" => {
+            let concept_id = field(fields, "concept_id");
+            if !app.concepts.contains_key(concept_id) {
+                return Err(AppError::new(404, "That Concept does not exist."));
+            }
+            let material_id = identity(seed, "material");
+            (concept_id.into(), material_id.clone(), None, 1, material_id)
+        }
+        "/materials/revise" => {
+            let material = app
+                .materials
+                .items
+                .get(field(fields, "material_id"))
+                .ok_or_else(|| AppError::new(404, "That Material does not exist."))?;
+            if material.current_revision_id != field(fields, "expected_revision_id") {
+                return Err(AppError::conflict());
+            }
+            let previous = app
+                .materials
+                .revisions
+                .get(&material.current_revision_id)
+                .ok_or_else(AppError::conflict)?;
+            if now < previous.created_ms {
+                return Err(AppError::conflict());
+            }
+            (
+                material.concept_id.clone(),
+                material.id.clone(),
+                Some(previous.id.clone()),
+                previous
+                    .ordinal
+                    .checked_add(1)
+                    .ok_or_else(AppError::conflict)?,
+                revision_id.clone(),
+            )
+        }
+        _ => unreachable!(),
+    };
+    if predecessor_id.is_none() {
+        if app.materials.items.contains_key(&material_id) {
+            return Err(AppError::conflict());
+        }
+        app.materials.items.insert(
+            material_id.clone(),
+            Material {
+                id: material_id.clone(),
+                concept_id: concept_id.clone(),
+                current_revision_id: revision_id.clone(),
+                created_ms: now,
+            },
+        );
+    } else {
+        app.materials
+            .items
+            .get_mut(&material_id)
+            .unwrap()
+            .current_revision_id = revision_id.clone();
+    }
+    app.materials.revisions.insert(
+        revision_id.clone(),
+        MaterialRevision {
+            id: revision_id,
+            material_id,
+            predecessor_id,
+            ordinal,
+            title: title.into(),
+            text: text.into(),
+            provenance: MaterialProvenance::OwnerSupplied,
+            created_ms: now,
+        },
+    );
+    app.materials.capability = true;
+    Ok(MutationResult {
+        redirect: format!("/concepts/{concept_id}"),
+        entity_id: Some(entity_id),
+        data: None,
+        message: None,
+    })
 }
 
 /// One legacy Note chain is one read-only Material projection. It borrows the

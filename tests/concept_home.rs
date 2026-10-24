@@ -12,7 +12,7 @@ fn concept_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
     let home = render(&app, "/");
     assert!(home.contains("data-state=\"concept-home\""));
     assert!(home.contains("<h1>What do you want to learn?</h1>"));
-    assert!(home.contains("href=\"/create\">Add material</a>"));
+    assert!(home.contains("href=\"/concepts/new\">Create concept</a>"));
     assert!(home.contains("href=\"/recall\">Text practice</a>"));
     assert!(!home.contains("Find a text") && !home.contains("library-query"));
     assert!(!home.contains("<h1>Your Library</h1>"));
@@ -80,7 +80,7 @@ fn related_concepts_reuse_both_directions_of_the_existing_prerequisite_graph() {
         .unwrap();
     let first = render(&app, &format!("/concepts/{}", prerequisite.id));
     let second = render(&app, &format!("/concepts/{}", dependent.id));
-    for heading in ["Study", "Practice", "Resources", "Related"] {
+    for heading in ["Materials", "Practice", "Resources", "Related"] {
         assert!(first.contains(&format!("<h2>{heading}</h2>")), "{heading}");
     }
     assert!(first.contains("Used by"));

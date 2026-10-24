@@ -180,7 +180,7 @@ function assertSettledRestoreRows(sourceRows, actualRows, restoredApp) {
   assert.deepEqual(stored, expected, 'Every remaining historical row retains its exact serialized bytes.');
 }
 
-export async function materialJourney() {
+export async function materialJourney({artifact: floorArtifact, cliWriter = false} = {}) {
   const temp = await mkdtemp(join(tmpdir(), 'scry-materials-'));
   const active = new Set(), transcript = [];
   const close = async () => {
@@ -210,7 +210,7 @@ export async function materialJourney() {
     const restoreToken = 'synthetic-materials-restore-only-capability-32chars';
     const binary = resolve(process.env.SCRY_MATERIAL_CLI || 'target/debug/scry');
 
-    async function open(label, artifact) {
+    async function open(label, artifact = floorArtifact) {
       const name = `materials-${label}-${randomUUID()}`, space = `materials-${randomUUID()}`;
       let bindings = {SCRY_ENV: 'restore', CANONICAL_ORIGIN: 'http://127.0.0.1:0',
         SPACE_NAME: space, INTERNAL_KEY: internalKey, RESTORE_TOKEN: restoreToken,
@@ -422,10 +422,15 @@ export async function materialJourney() {
           assert.equal(response.status, 404, path);
           assert.deepEqual(await current.rows(), priorRows, `${path} must not write even a receipt or token last-use.`);
         }
-        for (const command of [['material', 'add'], ['material', 'revise'], ['concept', 'add']]) {
-          const response = await current.cli(command);
+        const commands = cliWriter ? [
+          ['concept', 'create', '--name', 'Not enabled by floor', '--title', 'Synthetic', '--stdin'],
+          ['material', 'add', ids.authored_concept, '--title', 'Synthetic', '--stdin'],
+          ['material', 'revise', Object.keys(accepted.app.materials.items)[0], '--expected-revision-id', Object.values(accepted.app.materials.items)[0].current_revision_id, '--title', 'Synthetic', '--stdin'],
+        ] : [['material', 'add'], ['material', 'revise'], ['concept', 'add']];
+        for (const command of commands) {
+          const response = await current.cli(command, 'Synthetic input only');
           assert.equal(response.code, 1);
-          assert.match(response.value.error, /^Usage:/);
+          assert.match(response.value.error, cliWriter ? /^API request failed\./ : /^Usage:/);
           assert.deepEqual(await current.rows(), priorRows);
         }
         for (const path of ['/materials/create', '/materials/add', '/materials/revise', '/concepts/create']) {
