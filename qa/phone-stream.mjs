@@ -1,6 +1,7 @@
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
 import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
+import {phoneHistory,phoneHistoryRecovery,seedHistoryNotebook} from './phone-history.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -9,7 +10,7 @@ import {createRuntime,internalKey} from './runtime-helper.mjs';
 export const phoneText='We conceived a patient garden by the water.\n';
 export const previousText='The path begins in our synthetic notebook.\n';
 export const phoneAnswer='We concieved a tired garden the water extra.';
-export async function phoneFixture({port=0}={}) {
+export async function phoneFixture({port=0,legacy=false}={}) {
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-phone-'));
  const name='phone-'+randomUUID(),space='phone-'+randomUUID(),config=join(temp,'login.json');
  let egress=0;
@@ -20,6 +21,7 @@ export async function phoneFixture({port=0}={}) {
  const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
  const rows=async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,JSON.parse(r.value)]));
  const record=async key=>JSON.parse((await storage.exec('SELECT value FROM records WHERE key=?',key))[0].value);
+ if(legacy)await seedHistoryNotebook({worker:runtime.worker,origin,record});
  const page=await(await runtime.worker.fetch(origin+'/settings')).text();
  const form=/<form[^>]*action="\/tokens\/create"[^>]*>([\s\S]*?)<\/form>/.exec(page)[1];
  const fields=Object.fromEntries([...form.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
@@ -132,6 +134,7 @@ export async function phoneWalk(browser,capture) {
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attempts+1);
    assert.ok(Object.values(await f.rows()).some(v=>v?.disclosure===true&&v?.assisted===true));
    await record('shown');row.criteria.push(3);
+   await phoneHistory({f,page,row,original:a,typography,record});
    assert.equal(f.egress,0);
   }catch(e){row.status='fail';row.reason=e.message;await record('failure');}
   finally{await clone?.close();await context.close();await f.close();}
@@ -181,5 +184,6 @@ export async function phoneRecovery(browser,capture) {
  await check('access loss removes private DOM',async({context,page,row})=>{
   await context.route('**/practice/answer',route=>route.fulfill({status:401,contentType:'text/plain',body:'Owner authorization expired.'}));await answer(page);await page.locator('body.private-hidden').waitFor({state:'attached'});assert.equal(await page.locator('#main').count(),0);row.observed={private_main_present:false};
  });
+ results.push(...await phoneHistoryRecovery(browser,capture,phoneFixture,{previousText,phoneText,phoneAnswer}));
  return results;
 }

@@ -1388,3 +1388,217 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
     assert_eq!(observed, recovery.into_iter().map(String::from).collect());
     assert!(wrong.is_empty(), "Wrong recovery destinations: {wrong:#?}");
 }
+
+fn exact_history_entry<'a>(html: &'a str, id: &str) -> &'a str {
+    html.split(&format!("data-attempt-id=\"{id}\""))
+        .nth(1)
+        .unwrap()
+        .split("</article>")
+        .next()
+        .unwrap()
+}
+
+#[test]
+fn exact_history_preserves_original_correction_wording_and_dropped_study() {
+    let mut o = Owner::new();
+    let text = "We conceived a patient garden by the water.\n";
+    let v = o.add(text, false);
+    let sid = o.learn(&v, "steady");
+    o.next(None);
+    let result = o.answer("We concieved a tired garden the water extra.");
+    let aid = result["attempt"]["id"].as_str().unwrap();
+    let original = o.app.practice.attempts[aid].clone();
+    let correction = o
+        .call(
+            "/api/v1/correct",
+            json!({"prompt_id":original.prompt.id,"attempt_id":aid,"verdict":"Good"}),
+        )
+        .unwrap();
+    let original_version = o.app.library.versions[&v].clone();
+    o.call("/api/v1/library/versions/supersede", json!({"version_id":v,"revision":1,"data":{"title":"Synthetic Creed","name":"Revised wording","kind":"text","text":"The replacement text is never the historical answer.\n"}})).unwrap();
+    let wid = original_version.work_id.clone();
+    let revision = o.app.library.works[&wid].revision;
+    o.call(
+        "/api/v1/library/works/edit",
+        json!({"data":{"work_id":wid,"revision":revision,"title":"Renamed Work"}}),
+    )
+    .unwrap();
+    o.call("/api/v1/studies/drop", json!({"study_id":sid}))
+        .unwrap();
+    assert!(o.app.practice.current.is_none());
+    let html = notebook_page(&o, "/history");
+    let entry = exact_history_entry(&html, aid);
+    assert!(entry.contains("<span>Again</span>"));
+    assert!(entry.contains("<h2>Synthetic Creed</h2>"));
+    assert!(entry.contains(text));
+    assert!(!entry.contains("replacement text") && !entry.contains("Renamed Work"));
+    for (needle, expected) in [
+        ("data-diff-kind=\"", original.grade.diff.len()),
+        ("data-correction-id=\"", 1),
+    ] {
+        assert_eq!(entry.matches(needle).count(), expected);
+    }
+    for kind in ["correct", "slip", "wrong", "missing", "extra"] {
+        assert!(entry.contains(&format!("data-diff-kind=\"{kind}\"")));
+    }
+    assert!(entry.contains(correction["correction"]["id"].as_str().unwrap()));
+    assert!(entry.contains("Authority: owner"));
+    assert!(entry.contains(&original.grade.authority.name));
+    assert!(entry.contains(&original.grade.authority.grader_version));
+    assert!(entry.contains(&original.version_hash));
+    assert!(!entry.contains("<form") && !entry.contains("/practice/"));
+    assert_eq!(o.app.practice.attempts[aid], original);
+    assert_eq!(o.app.library.versions[&v], original_version);
+    let restarted = persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap();
+    assert_eq!(
+        scry::web::render(&restarted, "/history", &Default::default(), NOW, None),
+        html
+    );
+}
+
+#[test]
+fn exact_history_distinguishes_reveal_from_empty_answer_and_orders_by_sequence() {
+    let mut o = Owner::new();
+    let text = "We conceived a patient garden.\n";
+    let v = o.add(text, false);
+    o.learn(&v, "steady");
+    let cid = o.fade_to_free(text);
+    let before = notebook_page(&o, "/history");
+    assert!(before.contains("History is hidden while you answer from memory."));
+    assert!(!before.contains(text) && !before.contains("data-attempt-id"));
+    let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let shown = o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
+    let disclosure = shown["disclosure_attempt_id"].as_str().unwrap();
+    let empty = o.answer("");
+    let empty_id = empty["attempt"]["id"].as_str().unwrap();
+    let html = notebook_page(&o, "/history");
+    let revealed = exact_history_entry(&html, disclosure);
+    assert!(revealed.contains("Shown before answering"));
+    assert!(revealed.contains("No answer submitted."));
+    assert!(revealed.contains("comparison only, not a recall Verdict"));
+    assert!(!revealed.contains("Again") && !revealed.contains("data-verdict"));
+    let answered = exact_history_entry(&html, empty_id);
+    assert!(answered.contains("<span>Again</span>"));
+    assert!(answered.contains("No words submitted."));
+    assert!(answered.contains("data-verdict=\"Again\""));
+    let mut attempts = o.app.practice.attempts.values().collect::<Vec<_>>();
+    attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
+    let positions = attempts
+        .iter()
+        .map(|a| html.find(&format!("data-attempt-id=\"{}\"", a.id)).unwrap())
+        .collect::<Vec<_>>();
+    assert!(positions.windows(2).all(|w| w[0] < w[1]));
+    // A later unanswered Prompt must fence every earlier entry, including disclosures.
+    o.next(Some(&cid));
+    assert!(o.app.practice.protected());
+    let protected = notebook_page(&o, "/history");
+    for forbidden in [
+        text,
+        disclosure,
+        empty_id,
+        "data-diff-kind",
+        "data-correction-id",
+    ] {
+        assert!(
+            !protected.contains(forbidden),
+            "Protected History leaked {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn exact_history_keeps_mixed_recitation_effects_and_scope_honest() {
+    let mut o = Owner::new();
+    let first = "A patient garden grows.\n";
+    let second = "The lantern lights our path.\n";
+    let v = o.call("/api/v1/library/versions", json!({"data":{"title":"Two quiet lines","name":"Original wording","kind":"text","text":format!("{first}{second}"),"sections":[{"heading":"The garden","units":[first]},{"heading":"The lantern","units":[second]}]}})).unwrap()["id"].as_str().unwrap().to_owned();
+    let sid = o.learn(&v, "steady");
+    let cid = o.fade_to_free(first);
+    o.answer(first); // Unit 1 is now scheduled today.
+    o.next(None);
+    assert_ne!(
+        o.app.practice.current.as_ref().unwrap().targets[0].card_id,
+        cid
+    );
+    o.answer(second); // Unit 2 is introduced, but still assisted and unscheduled.
+    let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    o.call(
+        "/api/v1/next",
+        json!({"after":after,"study_id":sid,"recite":"whole"}),
+    )
+    .unwrap();
+    let whole = o.answer(&format!("{first}{second}"));
+    let aid = whole["attempt"]["id"].as_str().unwrap();
+    assert_eq!(whole["attempt"]["effects"][0]["extra_practice"], true);
+    assert_eq!(whole["attempt"]["effects"][1]["scheduled"], true);
+    let html = notebook_page(&o, "/history");
+    let entry = exact_history_entry(&html, aid);
+    assert!(entry.contains("Whole text"));
+    assert!(entry.contains("data-unit-index=\"0\" data-schedule-effect=\"extra\""));
+    assert!(entry.contains("data-unit-index=\"1\" data-schedule-effect=\"scheduled\""));
+    assert!(entry.contains(first) && entry.contains(second));
+    let section = o.app.library.versions[&v].sections[1].id.clone();
+    let after = whole["attempt"]["prompt"]["id"].clone();
+    o.call(
+        "/api/v1/next",
+        json!({"after":after,"study_id":sid,"recite":"section","section_id":section}),
+    )
+    .unwrap();
+    let section_attempt = o.answer(second);
+    let html = notebook_page(&o, "/history");
+    let section_entry =
+        exact_history_entry(&html, section_attempt["attempt"]["id"].as_str().unwrap());
+    assert!(section_entry.contains("Section: The lantern"));
+    assert!(section_entry.contains("data-unit-index=\"1\""));
+    assert!(!section_entry.contains(first));
+}
+
+#[test]
+fn exact_history_escapes_saved_words_and_coexists_with_legacy_privacy() {
+    let mut o = mixed_notebook(true);
+    let exact = o.answer("Exact answer <img src=x onerror=alert(1)> & saved");
+    let aid = exact["attempt"]["id"].as_str().unwrap();
+    assert!(o.app.protected_goal().is_some());
+    let gated = notebook_page(&o, "/history");
+    assert!(!gated.contains(aid) && !gated.contains("onerror"));
+    assert!(gated.contains("History is hidden while you answer from memory."));
+    let answer = o
+        .app
+        .occurrence
+        .as_ref()
+        .unwrap()
+        .presentation
+        .answer
+        .clone();
+    notebook_action(&mut o, "/review/answer", &[("answer", &answer)]);
+    let page = notebook_page(&o, "/history");
+    let entry = exact_history_entry(&page, aid);
+    assert!(entry.contains("Exact answer &lt;img src=x onerror=alert(1)&gt; &amp; saved"));
+    assert!(!entry.contains("<img"));
+    assert_eq!(page.matches("<article class=\"history-entry").count(), 2);
+    assert!(
+        page.find("exact-history-entry").unwrap()
+            < page.find("<article class=\"history-entry\">").unwrap()
+    );
+    // Keep the existing per-concept gate for the understanding notebook's own history.
+    // Deliberate Next records exposure. Complete the warm session, then let
+    // its real exposure window expire before asking again from memory.
+    for _ in 0..3 {
+        notebook_action(&mut o, "/review/next", &[]);
+        let Some(current) = &o.app.occurrence else {
+            break;
+        };
+        let answer = current.presentation.answer.clone();
+        notebook_action(&mut o, "/review/answer", &[("answer", &answer)]);
+    }
+    assert!(o.app.occurrence.is_none());
+    engine::ensure_occurrence(&mut o.app, NOW + DAY_MS + 1, "history-next-day").unwrap();
+    engine::validate_app(&o.app).unwrap();
+    assert!(o.app.protected_goal().is_some());
+    let protected = notebook_page(&o, "/history");
+    assert!(!protected.contains(aid));
+    assert!(
+        protected
+            .contains("An earlier attempt is hidden while you work on its question from memory.")
+    );
+}
