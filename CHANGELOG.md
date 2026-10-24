@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/misty-step/scry/compare/v0.6.0...v0.7.0) (2026-10-24)
+
+
+### Features
+
+* **phone:** start a Library Study without a terminal ([#376](https://github.com/misty-step/scry/issues/376)) ([f75d76c](https://github.com/misty-step/scry/commit/f75d76cc19d358c5dc86d2b14432bbdf2c1921d6))
+
 ## [0.6.0](https://github.com/misty-step/scry/compare/v0.5.0...v0.6.0) (2026-10-23)
 
 
