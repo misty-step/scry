@@ -194,7 +194,15 @@ export async function materialBrowserJourney({origin, artifact, app, conceptId, 
         await shot('interaction-viewport', false);
         await shot('full', true);
         await target.evaluate(() => {window.scrollTo(0, 0);});
-        await target.evaluate(() => new Promise(requestAnimationFrame));
+        // No page-script callback is required: no-JS contexts may never invoke
+        // requestAnimationFrame. Poll the actual scroll state from Node instead.
+        let atTop = false;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          atTop = await target.evaluate(() => scrollX === 0 && scrollY === 0);
+          if (atTop) break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        assert.ok(atTop, 'Viewport capture must reach scroll top within two seconds.');
         const top = await geometry(target);
         row.measurements.push({stage: label, capture_position: 'scroll-top', ...top});
         if (kind === 'material') assertMaterialViewport(top);
