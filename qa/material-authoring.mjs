@@ -692,13 +692,24 @@ export async function materialAuthoringWalk(browser, capture) {
   const harness = await makeHarness(temp, Date.now(), []);
   const cases = [320, 390, 1280].flatMap(width => ['light', 'dark'].map(scheme => ({width, scheme, js: false})));
   cases.push({width: 390, scheme: 'light', js: true});
+  cases.push({width: 390, scheme: 'dark', js: false, paused: true});
   try {
-    for (const {width, scheme, js} of cases) {
-      const name = `material-authoring-${width}-${scheme}-${js ? 'enhanced' : 'no-js'}`;
-      const runtime = await harness.open(name), context = await browser.newContext({viewport: {width, height: 844},
+    for (const {width, scheme, js, paused = false} of cases) {
+      const name = `material-authoring-${width}-${scheme}-${paused ? 'restored-paused-' : ''}${js ? 'enhanced' : 'no-js'}`;
+      const runtime = await harness.open(name, {mode: paused ? 'restore' : 'development'});
+      if (paused) {
+        const seed = await harness.open('empty-restore-source');
+        try {
+          const source = await json(await seed.internal('/api/v1/export', {method: 'GET'}));
+          assert.equal((await runtime.restore(source)).status, 200);
+          await runtime.bind('development');
+          assert.equal(meta(await runtime.rows()).restored_paused, true);
+        } finally {await seed.close();}
+      }
+      const context = await browser.newContext({viewport: {width, height: 844},
         colorScheme: scheme, javaScriptEnabled: js, isMobile: width < 1280, hasTouch: width < 1280});
       const page = await context.newPage(); page.setDefaultTimeout(12000);
-      const result = {name, width, scheme, javascript: js, input: width < 1280 ? 'native touch' : 'native keyboard',
+      const result = {name, width, scheme, javascript: js, restored_paused: paused, input: width < 1280 ? 'native touch' : 'native keyboard',
         zoom: [100, 200], status: 'pass', evidence: [], scope: 'Real local Worker/native forms; CSS 200% layout zoom, not physical-phone or provider-quality acceptance.'};
       results.push(result);
       const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -740,7 +751,15 @@ export async function materialAuthoringWalk(browser, capture) {
         const empty = await runtime.rows();
         const link = page.locator('main').getByRole('link', {name: 'Create concept', exact: true});
         assert.equal(await link.getAttribute('href'), '/concepts/new');
-        await layout('empty'); await activate(link);
+        await layout('empty');
+        const paid = page.locator('main').getByRole('link', {name: 'Prepare material with AI', exact: true});
+        assert.equal(await paid.getAttribute('href'), '/create');
+        await activate(paid); await page.getByRole('heading', {name: 'Prepare material', exact: true}).waitFor();
+        await page.getByText('Preparation is unavailable right now.', {exact: true}).waitFor();
+        assert.equal(await page.locator('form[action="/create"], input[type="file"]').count(), 0);
+        assert.deepEqual(await runtime.rows(), empty, 'Unavailable paid preparation does not affect free authoring.');
+        await layout('preparation-unavailable');
+        await activate(page.locator('main').getByRole('link', {name: 'Create concept', exact: true}));
         let form = await fill('/concepts/create', {name: 'Cancelled concept', title: 'Unsent', text: 'Do not save this draft.'});
         await activate(page.getByRole('link', {name: 'Cancel', exact: true}));
         await page.waitForURL(runtime.url + '/'); assert.deepEqual(await runtime.rows(), empty, 'Cancel creates no content or receipt.');
@@ -785,14 +804,23 @@ export async function materialAuthoringWalk(browser, capture) {
         assert.equal(await page.locator('main img, main script').count(), 0);
         assert.equal(await page.locator('main a[href^="https://example.invalid"]').count(), 0);
         await layout('saved'); await page.reload(); assert.deepEqual(await runtime.rows(), saved);
-        const add = page.getByRole('link', {name: 'Add material', exact: true});
+        await activate(page.getByRole('link', {name: '← Your concepts', exact: true}));
+        await page.locator('[data-state="concept-home"]').waitFor();
+        assert.equal(await page.locator('main').getByRole('link', {name: 'Prepare material with AI', exact: true}).getAttribute('href'), '/create');
+        assert.equal(await page.locator('main').getByRole('link', {name: 'Create concept', exact: true}).getAttribute('href'), '/concepts/new');
+        assert.equal(await page.getByRole('link', {name: /^(Start|Resume) practice$/}).count(), 0);
+        await layout('populated-home');
+        await activate(page.locator(`.home-concepts a[href="/concepts/${conceptId}"]`));
+        await page.locator('[data-state="concept"]').waitFor();
+        assert.deepEqual(await runtime.rows(), saved, 'Populated Home is only navigation, never practice or a save.');
+        const add = page.getByRole('link', {name: 'Add study material', exact: true});
         assert.equal(await add.getAttribute('href'), `/concepts/${conceptId}/materials/new`); await activate(add);
         form = await fill('/materials/add', {title: 'Independent material', text: 'Another exact reference.\n'});
         assert.equal(await form.locator('input[name=concept_id]').inputValue(), conceptId);
         await layout('add-form');
         await activate(page.getByRole('link', {name: 'Cancel', exact: true})); await page.locator('[data-state="concept"]').waitFor();
         assert.deepEqual(await runtime.rows(), saved);
-        await activate(page.getByRole('link', {name: 'Add material', exact: true}));
+        await activate(page.getByRole('link', {name: 'Add study material', exact: true}));
         form = await fill('/materials/add', {title: 'Independent material', text: 'Another exact reference.\n'});
         if (js) {
           let dropped = false;
@@ -868,6 +896,7 @@ export async function materialAuthoringWalk(browser, capture) {
         }
         const state = meta(revisedRows);
         assert.equal(state.occurrence, null); assert.equal(state.practice?.current ?? null, null);
+        assert.equal(state.restored_paused, paused, 'Free authoring cannot resume external work.');
         for (const prefix of ['goals/', 'jobs/', 'questions/', 'events/', 'spend/', 'practice_attempts/']) assert.equal(revisedRows.filter(row => row.key.startsWith(prefix)).length, 0);
         assert.deepEqual(errors, []);
         assert.equal(harness.egressAttempts, 0, 'Native authoring never opens supplied links or starts provider work.');

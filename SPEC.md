@@ -108,7 +108,7 @@ merge. The floor's exact published artifact is the compatible rollback writer.
 **CM3: supplied authoring.** From empty Home, Create concept saves a named Concept
 and its first supplied-text Material atomically. A Concept can have multiple
 independent Materials; matching names, titles or text never deduplicate them.
-Add material appends another Material. Revise material requires the expected
+Add study material appends another Material. Revise material requires the expected
 current revision and appends immutable wording; stale revisions conflict.
 Names/titles are nonempty and at most 200 UTF-8 bytes; optional summary is at
 most 2,000; text is nonempty and at most 32,768. Exact supplied UTF-8, CRLF,

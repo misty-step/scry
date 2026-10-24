@@ -22,7 +22,7 @@ material. Stories: US-001, US-006, US-009, US-010. Intent:
 
 ## How to get to it (user POV)
 
-- Masthead Create concept → name, first Material title and text → Save. On the Concept, use Add material, Revise material or Earlier revisions.
+- Masthead Create concept → name, first Material title and text → Save. On the Concept, use Add study material, Revise material or Earlier revisions.
 - Masthead Concepts → a concept; View connections → Map → a goal. Follow displayed
   links, never invented IDs. More → Look it up from a question reaches the gate.
 

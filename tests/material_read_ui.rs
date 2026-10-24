@@ -145,6 +145,7 @@ fn detail_history_map_and_stale_revision_editor_use_same_real_material_ids() {
         None,
     );
     assert!(html.contains("<h2>Materials</h2>") && html.contains("Earlier revisions"));
+    assert!(html.contains(">Add study material</a>"));
     assert!(html.contains("No quizzes/questions yet.") && !html.contains("Practice this idea"));
     assert!(html.contains(&format!("/materials/{material}/edit")));
     assert!(!html.contains("Saved explanation"));

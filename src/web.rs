@@ -1384,7 +1384,7 @@ impl View<'_> {
         let (heading, action) = if material.is_some() {
             ("Revise material", "/materials/revise")
         } else if concept.is_some() {
-            ("Add material", "/materials/add")
+            ("Add study material", "/materials/add")
         } else {
             ("Create concept", "/concepts/create")
         };
@@ -1820,7 +1820,7 @@ impl View<'_> {
             return self.gate(&format!("/concepts/{id}"));
         }
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\" aria-label=\"Study materials\"><h2>Materials</h2>{}<a class=\"text-link\" href=\"/concepts/{}/materials/new\">Add material</a></section>",
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\" aria-label=\"Study materials\"><h2>Materials</h2>{}<a class=\"text-link\" href=\"/concepts/{}/materials/new\">Add study material</a></section>",
             self.concept_name(c),
             self.lede("lede", c),
             self.study_materials(c),

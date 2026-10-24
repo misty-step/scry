@@ -88,7 +88,7 @@ Create concept saves a name and first supplied Material in one explicit form.
 An optional short description comes before the Material title and text. Save,
 Cancel and Back remain ordinary native controls. No AI capability or permission
 is needed. Concept detail uses Materials and shows each independent reference,
-with Revise material and Earlier revisions. Add material saves another reference,
+with Revise material and Earlier revisions. Add study material saves another reference,
 not a new Concept or a replacement. Empty practice says “No quizzes/questions
 yet” with no Practice action. Legacy Saved explanation remains read-only.
 

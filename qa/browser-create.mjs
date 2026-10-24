@@ -42,7 +42,7 @@ export async function createWalk(browser,capture){
   critics++;return new Response(JSON.stringify({model:'authored-browser-critic',usage:{cost:0.00003},answers:Object.fromEntries(Object.keys(body.questions).map(key=>[key,{type:'noul',noul:0.01}]))}),{headers:{'Content-Type':'application/json'}});
  };
  const bindings={SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:'browser-provider-isolated',ACCESS_TEAM:team,ACCESS_AUDIENCE:'browser-synthetic',OWNER_SUBJECT:'browser-owner-synthetic',INTERNAL_KEY:internalKey,OPENROUTER_API_KEY:'synthetic-no-live-provider-key',OPENROUTER_MODEL:'authored-browser-generator',JEV_API_KEY:'synthetic-no-live-jev-key',JEV_MODEL:'authored-browser-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
- let context,page;const result={name:'Restored pause → unavailable Add material → Settings Resume → native ready Create → reference → meaning check → refinement',status:'pass',evidence:[],scope:'Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated.'};
+ let context,page;const result={name:'Restored pause → unavailable Prepare material → Settings Resume → native ready Create → reference → meaning check → refinement',status:'pass',evidence:[],scope:'Fresh isolated restore and authored provider responses through real model transport; usefulness/calibration not evaluated.'};
  try{
  runtime=await createRuntime({bindings:{...bindings,SPACE_NAME:'browser-before-restore',OPENROUTER_API_KEY:'',OPENROUTER_MODEL:''},name:'scry-browser-create',egress:provider});
  // Retain a real earlier saved request through the existing POST contract.
