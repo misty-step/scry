@@ -1,5 +1,20 @@
 # Scry Product Vision
 
+## Current priority (2026-10-24)
+
+The owner made concepts the primary learning primitive: concepts can have many
+quizzes and study/reference materials, and relate to one another. The longer-term
+goal includes material from text, images, URLs and videos, and estimating
+performance on related concepts from observed practice. These are product
+directions, not claims of implemented formats, independent material collections,
+or calibrated predictions. [SPEC](SPEC.md#scope-and-acceptance-status) governs
+the bounded concept-first front door; exact text practice remains available.
+
+## Earlier exact-recall direction (2026-10-20)
+
+The following records the earlier priority. Its exact-recall behavior is retained;
+its front-door priority is superseded above.
+
 Scry gets fixed texts and sets into phaedrus's head word for word, and keeps
 them there for the fewest minutes a day. Examples are the Apostles' Creed,
 a Frost poem, the Mysteries of the Rosary and the NATO alphabet. Scry is for

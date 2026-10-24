@@ -82,7 +82,7 @@ export async function conceptHomeWalk(browser,capture){
    for(const heading of ['Study','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
    assert.equal(await page.getByRole('link',{name:'Original material & preparation',exact:true}).getAttribute('href'),`/goals/${prerequisite.goal_id}`);
    const reverse=page.locator('.connected').getByRole('link',{name:dependent.name,exact:true});assert.equal(await reverse.getAttribute('href'),`/concepts/${dependent.id}`);
-   await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('concept-used-by-200');
+   await layout();await shot('concept-used-by');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('concept-used-by-200');
    await activate(reverse);await page.getByRole('heading',{name:'Builds on',exact:true}).waitFor();assert.equal(await page.locator('.connected').getByRole('link',{name:prerequisite.name,exact:true}).getAttribute('href'),`/concepts/${prerequisite.id}`);
    const afterReference=await state();assert.deepEqual(afterReference.occurrence,held.occurrence);assert.deepEqual(afterReference.practice,held.practice);assert.deepEqual(afterReference.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
    await layout();assert.deepEqual(errors,[],'Browser errors');

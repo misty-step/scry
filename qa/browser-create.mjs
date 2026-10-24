@@ -50,8 +50,16 @@ export async function createWalk(browser,capture){
  const saved=await runtime.worker.fetch(origin+'/create',{method:'POST',redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt,'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...savedFields,operation_id:'earlier-stopped-browser-request',intent:'Understand an earlier cache question.'})});
  assert.equal(saved.status,303);const savedPath=saved.headers.get('Location');
  const deadline=Date.now()+5000;let stopped=false;
- do{stopped=(await(await runtime.worker.fetch(origin+savedPath,{headers:{'Cf-Access-Jwt-Assertion':jwt}})).text()).includes('Preparation stopped.');if(!stopped)await new Promise(done=>setTimeout(done,100));}while(!stopped&&Date.now()<deadline);
- assert.ok(stopped,'The earlier saved request must stop without a configured provider');assert.equal(preparations,0);
+ // Rendered goal reads re-arm the one-second work alarm. Poll the existing
+ // export readback instead so setup observes, rather than postpones, that alarm.
+ do{
+  const response=await runtime.worker.fetch(origin+'/export',{headers:{'Cf-Access-Jwt-Assertion':jwt}});assert.equal(response.status,200);
+  const app=(await response.json()).app;const goal=app.goals[savedPath.split('/').at(-1)];const job=app.jobs[goal.job_id];
+  stopped=goal.status==='failed'&&job.status==='failed';
+  if(stopped){assert.match(job.error,/Preparation is not configured/);assert.deepEqual(app.spend,[]);}
+  else await new Promise(done=>setTimeout(done,100));
+ }while(!stopped&&Date.now()<deadline);
+ assert.ok(stopped,'The earlier saved request must stop without a configured provider');assert.deepEqual({preparations,critics,checks},{preparations:0,critics:0,checks:0});
  const archive=Buffer.from(await(await runtime.worker.fetch(origin+'/export',{headers:{'Cf-Access-Jwt-Assertion':jwt}})).arrayBuffer());
  const restoreToken='browser-synthetic-restore-token-at-least-32chars';
  let active=await runtime.rebind({SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:bindings.SPACE_NAME,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken});
