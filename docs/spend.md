@@ -21,8 +21,10 @@ its key; global totals are the sums across every entry and every group.
 | `unknown_held_micros` | Original reservations for entries whose cost remains unknown; zero for known entries |
 
 `reserved_micros` overlaps the other monetary columns: never add all three
-as a bill. Existing allowance enforcement is unchanged: `App.spent(now)` sums
-reported amounts or held reservations for entries newer than `now - 24h`.
+as a bill. `App.spent(now)` sums reported amounts for entries newer than
+`now - 24h`, plus every reservation whose cost is still unknown, regardless of
+age. An unresolved provider charge never becomes free merely because a day or
+month passed; the existing Spend row retains that hold across restart.
 Report days instead use the reservation's `created_ms` UTC calendar date,
 including midnight, with no rolling-day filter. Reporting rejects arithmetic
 overflow instead of silently truncating a sum.
@@ -72,3 +74,14 @@ controlled provider lifecycle in `qa/runtime.test.mjs`. See the
 [feature navigation](../features/owner-tokens.md) and
 [builder receipt](qa/spend-321/README.md). This is US-019.7 only; US-019's
 `Evidence: pending` remains until the Generation agent slice completes it.
+
+## Unshipped budget controls
+
+The unknown-hold repair does not add a monthly cap, an exact per-request cost
+quote, a new paid-send admission gate, or a caller-controlled reconciliation
+path. The existing rolling allowance and reservation amount are not a proven
+provider spending ceiling. Full budget enforcement and verified resolution of
+unknown charges remain open in #375 and #322. Paid generation remains off;
+activation still requires explicit owner limits and independently verified
+provider pricing and control assumptions. No production amount, provider call
+or credential change is included in this repair.
