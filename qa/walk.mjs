@@ -14,7 +14,7 @@ import {createSyntheticRuntime} from './runtime-helper.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 import {releaseWalk} from './browser-release.mjs';
-import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
+import {phoneWalk,phoneRecovery,phoneRecitationWalk} from './phone-stream.mjs';
 import {phoneLibraryWalk,phoneLibraryRecovery} from './phone-library.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
@@ -57,6 +57,8 @@ try{
    const paths=[];
    const phone=await phoneWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});
    const recovery=await phoneRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
+   const recitation=await phoneRecitationWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});
+   const recitationPath='logs/US-018-recitation.json';await writeFile(join(output,recitationPath),JSON.stringify(recitation,null,2)+'\n');await register(recitationPath);
    const library=await phoneLibraryWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});
    const libraryRecovery=await phoneLibraryRecovery(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);paths.push(path);return path;});
    const libraryPath='logs/US-018-library.json';await writeFile(join(output,libraryPath),JSON.stringify({journey:library,recovery:libraryRecovery},null,2)+'\n');await register(libraryPath);
@@ -64,8 +66,8 @@ try{
    const path='logs/US-018-phone.json';await writeFile(join(output,path),JSON.stringify(phone,null,2)+'\n');await register(path);
    const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
    for(let i=0;i<specs[id].length;i++){
-    const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:[path,recoveryPath,libraryPath,...paths]};result.criteria.push(criterion);
-    try{await specs[id][i]({phone,library,libraryRecovery,policy});assert.ok(recovery.every(r=>r.status==='pass'),JSON.stringify(recovery.filter(r=>r.status!=='pass')));}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+    const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:[path,recoveryPath,libraryPath,recitationPath,...paths]};result.criteria.push(criterion);
+    try{await specs[id][i]({phone,library,libraryRecovery,recitation,policy});assert.ok(recovery.every(r=>r.status==='pass'),JSON.stringify(recovery.filter(r=>r.status!=='pass')));}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
    }
    continue;
   }

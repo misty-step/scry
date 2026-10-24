@@ -16,6 +16,7 @@ straight into the next due Unit. Behavior authority:
 - `study-assist` records Show me or a cue as an assisted Attempt before showing it.
 - `study-correct` records I was right or Count as a miss as an immutable Correction.
 - `study-caught-up` says when the next Card is due instead of inventing practice.
+- `study-recitation` chooses a whole text or Section without opening its wording.
 - `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
 
 ## How to get to it (user POV)
@@ -23,6 +24,9 @@ straight into the next due Unit. Behavior authority:
 - Phone or desktop: open `/`. Before a Study, Library offers search or supplied
   text and Learn; afterwards the current Prompt or held result opens directly.
   The understanding notebook remains at `/notebook`, linked quietly as Understanding.
+- After a held result or when caught up, open Recite a text and choose Whole text
+  or a Section. A pending Prompt must be answered first; introduction and
+  capacity refusals leave saved progress intact.
 - Terminal: `scry learn VERSION`, then `scry next` and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).
 

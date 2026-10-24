@@ -100,13 +100,13 @@
       });
       if (pending !== request) return;
       if (response.status === 401 || response.status === 403) { conceal(); return; }
-      if (response.status === 409) {
+      if (response.status === 409 && !request.form?.classList.contains('recitation-form')) {
         pending = null;
         unlock(request);
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
         return;
       }
-      if ([400, 413, 415, 422].includes(response.status)) {
+      if ([400, 413, 415, 422].includes(response.status) || response.status === 409) {
         // A definite rejection may be an HTML page or a plain transport error.
         const text = await response.text();
         let error = text.trim().slice(0, 1000);
@@ -117,7 +117,9 @@
         if (pending !== request) return;
         pending = null;
         unlock(request);
-        announce(error || 'This could not be saved. Check your draft and try again.', [['Continue editing', hideStatus]]);
+        announce(error || 'This could not be saved. Check your draft and try again.', response.status === 409
+          ? [['Open saved progress', () => location.reload()]]
+          : [['Continue editing', hideStatus]]);
         return;
       }
       if (!response.ok) throw new Error('The response did not confirm what was saved.');

@@ -19,7 +19,7 @@ fn phone_recitation_choices_are_answer_free_and_use_fenced_shared_operations() {
         .call(
             "/api/v1/library/versions",
             json!({"data":{
-                "title":"An authored journey", "name":"Two Sections", "kind":"text",
+                "title":"An authored journey <&>", "name":"Two \"Sections\"", "kind":"text",
                 "text":format!("{first}{second}"), "sections":[
                     {"heading":"Lantern", "units":[first]},
                     {"heading":"Garden", "units":[second]}
@@ -57,7 +57,12 @@ fn phone_recitation_choices_are_answer_free_and_use_fenced_shared_operations() {
         .split("</details>")
         .next()
         .unwrap();
-    for metadata in ["An authored journey", "Two Sections", "Lantern", "Garden"] {
+    for metadata in [
+        "An authored journey &lt;&amp;&gt;",
+        "Two &quot;Sections&quot;",
+        "Lantern",
+        "Garden",
+    ] {
         assert!(chooser.contains(metadata));
     }
     for answer in [
@@ -72,6 +77,16 @@ fn phone_recitation_choices_are_answer_free_and_use_fenced_shared_operations() {
         );
     }
     assert_eq!(chooser.matches("action=\"/practice/next\"").count(), 3);
+    let operations = chooser
+        .split("name=\"operation_id\" value=\"")
+        .skip(1)
+        .map(|field| field.split('"').next().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        operations.len(),
+        3,
+        "Each distinct scope has its own nonce-bound operation."
+    );
     for field in [
         "csrf",
         "revision",
@@ -137,6 +152,8 @@ fn phone_recitation_choices_are_answer_free_and_use_fenced_shared_operations() {
     );
     let result = render(&o.app);
     assert!(result.contains("data-feedback-kind=\"wrong\" data-unit-index=\"1\""));
+    assert!(result.contains("data-unit-verdict=\"Good\" data-unit-index=\"0\""));
+    assert!(result.contains("data-unit-verdict=\"Again\" data-unit-index=\"1\""));
     assert!(result.contains("<summary>Recite a text</summary>"));
     o.next(None);
     assert!(o.app.practice.current.is_none());
