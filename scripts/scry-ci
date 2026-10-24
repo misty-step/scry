@@ -228,7 +228,7 @@ def gate(args):
     run(["node", "--test", *critic_tests], cwd=source, env=qa_env, log=log)
     run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
     # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
-    run(["node", "--test", "qa/runtime.test.mjs", "qa/owner-api.test.mjs", "qa/library.test.mjs", "qa/study.test.mjs", "qa/study-integrity.test.mjs", "qa/spend.test.mjs", "qa/materials.test.mjs", "qa/material-authoring.test.mjs", "qa/revival-preserve.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=env, log=log)
+    run(["node", "--test", "qa/runtime.test.mjs", "qa/owner-api.test.mjs", "qa/library.test.mjs", "qa/study.test.mjs", "qa/study-integrity.test.mjs", "qa/spend.test.mjs", "qa/materials.test.mjs", "qa/material-authoring.test.mjs", "qa/revival-preserve.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=dict(env, SCRY_SOURCE_META=str(args.metadata.resolve())), log=log)
     inspect_env = dict(env, SCRY_SOURCE_META=str(args.metadata.resolve()))
     run([sys.executable, "scripts/build-revival-inspect.py"], cwd=source, env=inspect_env, log=log)
     inspector = source / "target/revival-inspect"
@@ -246,6 +246,8 @@ def gate(args):
     shutil.copytree(inspector, output / "revival-inspect")
     shutil.copytree(converter, output / "revival-convert")
     shutil.copytree(source / "target/walk", output / "walk")
+    shutil.copyfile(source / "target/materials-runtime.json", output / "materials-runtime.json")
+    shutil.copyfile(source / "target/material-authoring-runtime.json", output / "material-authoring-runtime.json")
     archive_source(source, metadata, output / "source.tar.gz")
     shutil.copyfile(args.metadata.parent / "retained-go.tar", output / "retained-go-source.tar")
     (output / "source.json").write_bytes(encoded(metadata))
