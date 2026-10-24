@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/misty-step/scry/compare/v0.7.1...v0.7.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **history:** show saved exact-recall Attempts and Corrections ([#384](https://github.com/misty-step/scry/issues/384)) ([4e5a936](https://github.com/misty-step/scry/commit/4e5a936412f46f28c2aedda843d6c96c82f1feef))
+
 ## [0.7.1](https://github.com/misty-step/scry/compare/v0.7.0...v0.7.1) (2026-10-24)
 
 
