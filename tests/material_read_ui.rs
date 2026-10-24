@@ -221,3 +221,29 @@ fn current_concept_reference_fence_covers_api_materials_and_old_revisions() {
     }
     assert_eq!(app, before);
 }
+
+#[test]
+fn authored_home_layout_is_scoped_without_changing_generated_rows() {
+    let mut app = App::new("synthetic-material-ui-csrf-at-least-32".into());
+    engine::seed_fixture(&mut app, NOW).unwrap();
+    let before = web::render(&app, "/", &BTreeMap::new(), NOW, None);
+    let generated: Vec<_> = app.concepts.keys().cloned().collect();
+    let input = fields(
+        "material-home-layout-operation",
+        &[
+            ("name", "Supplied concept"),
+            ("title", "Reference"),
+            ("text", "Supplied wording"),
+        ],
+    );
+    engine::mutate(&mut app, "/concepts/create", &input, NOW, "home-layout").unwrap();
+    let after = web::render(&app, "/", &BTreeMap::new(), NOW, None);
+    assert_eq!(after.matches("<li class=\"authored-concept\">").count(), 1);
+    for id in generated {
+        let start = before
+            .find(&format!("<li><a href=\"/concepts/{id}\""))
+            .unwrap();
+        let length = before[start..].find("</li>").unwrap() + 5;
+        assert!(after.contains(&before[start..start + length]));
+    }
+}

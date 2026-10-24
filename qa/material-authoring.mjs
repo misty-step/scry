@@ -453,10 +453,15 @@ export async function materialAuthoringJourney() {
         assert.equal((await current.page(path, {method: 'POST', headers: {'X-Scry-Test-Origin': current.url,
           'Content-Type': `multipart/form-data; boundary=${boundary}`}, body: malformedMultipart})).status, 422);
         assert.deepEqual(await current.rows(), before, 'Multipart text cannot silently replace malformed bytes.');
-        const multipart = new FormData();
-        for (const [key, value] of Object.entries(native)) multipart.set(key, value);
-        multipart.set('attachment', new Blob(['Unsupported supplied file']), 'not-supported.txt');
-        assert.equal((await current.page(path, {method: 'POST', headers: {'X-Scry-Test-Origin': current.url}, body: multipart})).status, 422);
+        // Use explicit wire bytes: the local Worker fetch bridge does not
+        // add a native browser's automatic FormData Content-Type header.
+        const filePart = `--${boundary}\r\nContent-Disposition: form-data; name="attachment"; filename="not-supported.txt"\r\n` +
+          `Content-Type: text/plain\r\n\r\nUnsupported supplied file\r\n--${boundary}--\r\n`;
+        const fileBody = rawMultipart.replace(`--${boundary}--\r\n`, filePart);
+        const fileResponse = await current.page(path, {method: 'POST', headers: {'X-Scry-Test-Origin': current.url,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`}, body: fileBody});
+        assert.equal(fileResponse.status, 422);
+        assert.match(await fileResponse.text(), /Supply text fields only; files are not supported\./);
         assert.deepEqual(await current.rows(), before, 'File-valued fields cannot be dropped from the canonical payload.');
       }
       const invalid = [

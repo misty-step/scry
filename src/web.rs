@@ -1331,7 +1331,12 @@ impl View<'_> {
             for c in concepts {
                 let _ = write!(
                     out,
-                    "<li><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
+                    "<li{}><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
+                    if c.origin == Some(ConceptOrigin::OwnerAuthored) {
+                        " class=\"authored-concept\""
+                    } else {
+                        ""
+                    },
                     escape(&c.id),
                     self.concept_name(c),
                     concept_state(self.app, c, self.now)
