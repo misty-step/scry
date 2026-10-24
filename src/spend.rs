@@ -1,4 +1,4 @@
-//! Read-only cost metadata. Monthly admission is owned by budget.
+//! Read-only cost metadata. Allowance enforcement remains App::spent.
 use crate::model::{App, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -57,10 +57,6 @@ pub struct SpendEntry {
     pub status: String,
     pub reserved_micros: u64,
     pub cost_micros: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quote: Option<crate::budget::Quote>,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub enforcement_breach: bool,
     pub unknown_held_micros: u64,
 }
 #[derive(Serialize, Deserialize)]
@@ -114,16 +110,9 @@ pub fn report(app: &App, by: SpendBy) -> AppResult<SpendReport> {
             day: date.format("%Y-%m-%d").to_string(),
             purpose: attribution(&spend.purpose),
             model: attribution(&spend.model),
-            status: if spend.cost_micros.is_some() {
-                "known"
-            } else {
-                "unknown"
-            }
-            .into(),
+            status: spend.status.clone(),
             reserved_micros: spend.reserved_micros,
             cost_micros: spend.cost_micros,
-            quote: spend.quote.clone(),
-            enforcement_breach: crate::budget::breach(spend),
             unknown_held_micros: if spend.cost_micros.is_none() {
                 spend.reserved_micros
             } else {
@@ -150,8 +139,4 @@ pub fn report(app: &App, by: SpendBy) -> AppResult<SpendReport> {
             .collect(),
         entries,
     })
-}
-
-fn is_false(value: &bool) -> bool {
-    !value
 }

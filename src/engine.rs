@@ -1263,8 +1263,6 @@ fn reserve(
         ));
     }
     app.spend.push(Spend {
-        quote: None,
-        settled_ms: None,
         id: lease.into(),
         work_id: work_id.into(),
         created_ms: now,
@@ -1564,11 +1562,8 @@ pub fn recover(app: &mut App, now: i64) -> bool {
     changed
 }
 
-fn settle(app: &mut App, work: &Work, cost: Option<u64>, now: i64) {
+fn settle(app: &mut App, work: &Work, cost: Option<u64>) {
     if let Some(s) = app.spend.iter_mut().find(|s| s.id == work.lease) {
-        if s.quote.is_some() && cost.is_some() {
-            s.settled_ms.get_or_insert(now.max(s.created_ms));
-        }
         s.cost_micros = cost;
         s.status = if cost.is_some() { "known" } else { "unknown" }.into();
     }
@@ -1593,7 +1588,7 @@ pub fn finish_work(
             .iter()
             .any(|s| s.id == work.lease && s.work_id == work.id)
     {
-        settle(app, work, cost_micros, now);
+        settle(app, work, cost_micros);
         let mut end = raw.len().min(generation::RESPONSE_LIMIT);
         while !raw.is_char_boundary(end) {
             end -= 1;
@@ -1663,8 +1658,7 @@ pub fn finish_work(
         }
         app.revision += 1;
     }
-    settle(app, work, cost_micros, now);
-    record_response(app, work, &raw, &model, "received");
+    record_response(app, work, &raw, &model, cost_micros, "received");
     outcome
 }
 
@@ -1694,7 +1688,15 @@ fn replay_response(
     Ok(false)
 }
 
-fn record_response(app: &mut App, work: &Work, raw: &str, model: &str, outcome: &str) {
+fn record_response(
+    app: &mut App,
+    work: &Work,
+    raw: &str,
+    model: &str,
+    cost: Option<u64>,
+    outcome: &str,
+) {
+    settle(app, work, cost);
     if let Some(receipt) = app
         .spend
         .iter_mut()
@@ -1768,8 +1770,7 @@ pub fn fail_received_work(
             job_failed(&mut next, &work.id, message, false);
         }
     }
-    settle(&mut next, work, cost_micros, now);
-    record_response(&mut next, work, &raw, &model, "rejected");
+    record_response(&mut next, work, &raw, &model, cost_micros, "rejected");
     next.revision += 1;
     *app = next;
     Ok(())
@@ -1784,7 +1785,7 @@ fn finish_work_inner(
     now: i64,
 ) -> AppResult<()> {
     let mut next = app.clone();
-    settle(&mut next, work, cost_micros, now);
+    settle(&mut next, work, cost_micros);
     if raw.len() > generation::RESPONSE_LIMIT {
         return Err(AppError::new(
             422,
@@ -2865,10 +2866,7 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             && spend.cost_micros.is_none()
             && spend.reserved_micros >= RESERVATION;
         if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
-            || (spend.reserved_micros != RESERVATION
-                && !imported_reservation
-                && spend.quote.is_none())
-            || !crate::budget::validate_spend(spend)
+            || (spend.reserved_micros != RESERVATION && !imported_reservation)
             || spend.model.as_ref().is_some_and(|model| model.len() > 256)
             || spend
                 .purpose

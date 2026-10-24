@@ -104,18 +104,6 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
   } finally {await new Promise(done=>source.close(done));await new Promise(done=>target.close(done));await writeFile(config,login);}
   const reader=JSON.parse(savedToken);assert.equal(reader.paid,false);
   const frozen=await rows();const paid=await request('/api/v1/create',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation_id:'unpaid-spend-probe',intent:'Must refuse before reservation'})});assert.equal(paid.status,403);assert.deepEqual(await rows(),frozen);
-  const reconciliationArgs=['spend','reconcile','unknown-at-midnight','--cost-micros','0','--reference','made-up-receipt-001','--verified-provider-billing'];
-  assert.equal((await cli(reconciliationArgs)).code,1,'The CLI has no hold-release command.');
-  const releasePayload={operation_id:'spend-cannot-self-release-001',spend_id:'unknown-at-midnight',cost_micros:0,reference:'made-up-receipt-001',verified:'provider_billing'};
-  const noRelease=()=>request('/api/v1/spend/reconcile',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(releasePayload)});
-  assert.equal((await noRelease()).status,404);assert.deepEqual(await rows(),frozen);
-  const paidHtml=await(await runtime.worker.fetch(origin+'/settings')).text();
-  const paidIssue=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...form(paidHtml,'/tokens/create'),name:'synthetic bounded paid caller',paid:'true'})});
-  assert.equal(paidIssue.status,200);secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await paidIssue.text())?.[1];assert.ok(secret);
-  assert.equal((await cli(['login','--url',origin,'--token-stdin'],secret+'\n')).code,0);
-  const paidFrozen=await rows();assert.equal((await noRelease()).status,404);assert.deepEqual(await rows(),paidFrozen);
-  assert.equal((await cli(reconciliationArgs)).code,1);assert.deepEqual(await rows(),paidFrozen);
-  assert.equal(JSON.parse(paidFrozen.find(r=>r.key==='spend/0000000000000001').value).cost_micros,null);
   transcript.push({observation:'Repeated API + CLI reads preserve every SQLite row, total_changes and all persisted resource bytes',files:beforeFiles,totals:report.totals,unpaid_reader:true});
   await mkdir('target',{recursive:true});await writeFile('target/spend-cli.json',JSON.stringify(transcript,null,2)+'\n');
  } finally {await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}

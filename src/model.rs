@@ -361,10 +361,6 @@ pub struct Assessment {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Spend {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quote: Option<crate::budget::Quote>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub settled_ms: Option<i64>,
     pub id: String,
     pub work_id: String,
     pub created_ms: i64,

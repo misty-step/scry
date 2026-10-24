@@ -308,8 +308,6 @@ fn allowance_is_shared_and_unknown_cost_is_never_free() {
     let mut a = fixture();
     for i in 0..7 {
         a.spend.push(Spend {
-            quote: None,
-            settled_ms: None,
             id: format!("prior-{i}"),
             work_id: format!("work-{i}"),
             created_ms: NOW,
