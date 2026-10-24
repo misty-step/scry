@@ -6,6 +6,7 @@ import {existsSync} from 'node:fs';
 import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join, resolve} from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const domText = text => text.replace(/\r\n?/g, '\n'); // HTML parsing normalizes CRLF; raw HTTP proof retains original bytes.
@@ -48,6 +49,7 @@ async function geometry(page) {
       const range = document.createRange(); range.selectNodeContents(node);
       const text = range.getBoundingClientRect();
       return {tag: node.tagName, class: node.getAttribute('class'), href: node.getAttribute('href'),
+        home_concept_href: node.closest('.home-concepts a')?.getAttribute('href') || null,
         material_id: node.getAttribute('data-material-id'), revision_id: node.getAttribute('data-material-revision-id'),
         text: (node.textContent || '').slice(0, 100), ...dimensions(node),
         rect: {x:r.x,y:r.y,left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height},
@@ -80,6 +82,35 @@ function assertMaterialViewport(measurement) {
   const skip = measurement.elements.find(element => element.class === 'skip-link');
   assert.ok(skip && !skip.focused && !skip.intersects_visual_viewport,
     'An unfocused skip link must not obstruct the actual Material viewport.');
+}
+
+function diagnosticSummary(row) {
+  // Failed Dagger gates do not export report.json. Keep the relevant geometry
+  // in stdout too, without raw HTML, Material wording, learner rows or tokens.
+  const round = value => Math.round(value * 100) / 100;
+  const relevant = element => element.class === 'skip-link' || element.class === 'masthead' || element.tag === 'NAV'
+    || element.class === 'idea-status' || element.home_concept_href || element.material_id || element.revision_id
+    || element.class?.split(' ').includes('reading') || element.tag === 'SUMMARY';
+  const detailed = (row.width === 390 && row.text_size === '200%') || row.status === 'fail';
+  return {format:'scry-material-geometry-summary-v1',width:row.width,scheme:row.scheme,text_size:row.text_size,
+    status:row.status,reason:row.reason?.slice(0,500),layout_status:row.layout_status,
+    authored_home_text_overflow_px:row.authored_home_text_overflow_px,authored_home_layout:row.authored_home_layout,
+    home_comparison:row.home_comparison,completed_actions:row.actions,
+    units:'CSS px; rect=[x,y,width,height]; text_bounds=[left,right,top,bottom]',
+    measurements:detailed ? row.measurements.slice(0,12).map(measurement => ({
+      stage:measurement.stage,capture_position:measurement.capture_position,configured_viewport:measurement.configured_viewport,
+      innerWidth:measurement.innerWidth,innerHeight:measurement.innerHeight,document:measurement.document,body:measurement.body,
+      visualViewport:measurement.visualViewport,scrollX:measurement.scrollX,scrollY:measurement.scrollY,
+      focused_element:measurement.focused_element && {tag:measurement.focused_element.tag,class:measurement.focused_element.class},
+      elements:measurement.elements.filter(relevant).slice(0,24).map(element => ({
+        tag:element.tag,class:element.class,home_concept_href:element.home_concept_href,
+        status_text:element.class === 'idea-status' ? element.text.slice(0,32) : undefined,
+        material_id:element.material_id,revision_id:element.revision_id,
+        rect:[element.rect.x,element.rect.y,element.rect.width,element.rect.height].map(round),
+        text_bounds:[element.text_bounds.left,element.text_bounds.right,element.text_bounds.top,element.text_bounds.bottom].map(round),
+        focused:element.focused,intersects_visual_viewport:element.intersects_visual_viewport,
+      })),
+    })) : []};
 }
 
 async function homeMarkup(page) {
@@ -225,8 +256,9 @@ export async function materialBrowserJourney({origin, artifact, app, conceptId, 
         const authoredCard = homeGeometry.elements.find(element => element.href === `/concepts/${conceptId}`);
         assert.ok(authoredCard);
         row.authored_home_text_overflow_px = Math.max(0, authoredCard.text_bounds.right - width, -authoredCard.text_bounds.left);
-        assert.ok(row.authored_home_text_overflow_px <= 1,
-          'The new authored Home card text must fit even if an existing generated status already makes the page wider.');
+        row.authored_home_layout = row.authored_home_text_overflow_px <= 1 ? 'within-configured-width' : 'configured-width-violation';
+        // Keep the width verdict, but finish baseline/detail diagnostics first.
+        // The final assertion below still fails this variant and the CI gate.
         if (width === 390 && doubled) {
           const previousContext = await browser.newContext(options);
           try {
@@ -239,6 +271,9 @@ export async function materialBrowserJourney({origin, artifact, app, conceptId, 
             assert.equal(response.status(), 200); await previousPage.locator('[data-state="concept-home"]').waitFor();
             const previousMarkup = await homeMarkup(previousPage), previousCss = await servedCss(previousContext, predecessor.origin);
             const generatedMarkup = {...currentMarkup}; delete generatedMarkup[`/concepts/${conceptId}`];
+            row.home_comparison = {release:predecessor.release,current_served_css_sha256:currentCss,predecessor_served_css_sha256:previousCss,
+              served_css_equal:currentCss === previousCss,generated_html_equal:isDeepStrictEqual(generatedMarkup,previousMarkup),
+              generated_current_rows_sha256:sha256(JSON.stringify(generatedMarkup)),generated_predecessor_rows_sha256:sha256(JSON.stringify(previousMarkup))};
             assert.deepEqual(generatedMarkup, previousMarkup, 'Existing generated-Home rows are byte-identical to the predecessor.');
             assert.equal(currentCss, previousCss, 'The actual served CSS is unchanged from the predecessor.');
             await textLayout(previousPage, true);
@@ -247,12 +282,11 @@ export async function materialBrowserJourney({origin, artifact, app, conceptId, 
               .map(element => ({text:element.text,left:element.rect.left,right:element.rect.right,width:element.rect.width,
                 text_left:element.text_bounds.left,text_right:element.text_bounds.right,text_width:element.text_bounds.width,
                 font_size:element.font_size,white_space:element.white_space,overflow_wrap:element.overflow_wrap}));
+            Object.assign(row.home_comparison, {generated_status_geometry_equal:isDeepStrictEqual(statusGeometry(homeGeometry),statusGeometry(previousGeometry)),
+              current_overflow_px:configuredOverflow(homeGeometry),predecessor_overflow_px:configuredOverflow(previousGeometry)});
             assert.deepEqual(statusGeometry(homeGeometry), statusGeometry(previousGeometry), 'Existing generated status horizontal geometry is unchanged.');
             assert.ok(Math.abs(configuredOverflow(homeGeometry) - configuredOverflow(previousGeometry)) <= 1,
               'Any Home overflow must match the unchanged predecessor, not silently accept a new regression.');
-            row.home_comparison = {release:predecessor.release,served_css_sha256:currentCss,
-              generated_rows_sha256:sha256(JSON.stringify(generatedMarkup)),generated_html_equal:true,generated_status_geometry_equal:true,
-              current_overflow_px:configuredOverflow(homeGeometry),predecessor_overflow_px:configuredOverflow(previousGeometry)};
             row.layout_status = configuredOverflow(homeGeometry) > 1 ? 'inherited-generated-home-overflow; Material detail checked separately' : 'within-configured-width';
             assert.deepEqual(await predecessor.readRows(), predecessorRows, 'Predecessor Home comparison changes no historical row.');
             assert.deepEqual(await predecessor.readBuckets(), predecessorBuckets, 'Predecessor Home comparison changes no R2 object.');
@@ -284,11 +318,16 @@ export async function materialBrowserJourney({origin, artifact, app, conceptId, 
         assert.deepEqual(errors, [], 'No browser runtime errors.');
         assert.deepEqual(external, [], 'No external browser request.');
         assert.deepEqual(posts, [], 'Reading and native disclosure issue no mutations.');
+        assert.ok(row.authored_home_text_overflow_px <= 1,
+          'The new authored Home card text must fit even if an existing generated status already makes the page wider.');
         row.status = 'pass';
       } catch (error) {
         row.status = 'fail'; row.reason = String(error.message).slice(0, 1500);
         await capture('failure', page, 'failure').catch(() => {});
-      } finally {await context.close();}
+      } finally {
+        console.log('MATERIAL_GEOMETRY_SUMMARY ' + JSON.stringify(diagnosticSummary(row)));
+        await context.close();
+      }
     }
     assert.ok(report.variants.every(row => row.status === 'pass'),
       report.variants.filter(row => row.status !== 'pass').map(row => `${row.width}/${row.scheme}/${row.text_size}: ${row.reason}`).join('\n'));
