@@ -1,11 +1,10 @@
 # Scry: words worth keeping
 
-Exact recall comes first: find or add a text in the private Library, choose its
-Version, and learn it a little at a time. The current Prompt or held result is
-always the shortest return. A fresh start opens Library, not conceptual
-preparation. The understanding notebook remains available without competing
-with this path. [VISION](VISION.md) explains intent; [SPEC](SPEC.md), especially
-[US-018](SPEC.md#us-018-practise-exact-recall-on-my-phone), alone governs behavior.
+Concepts come first (2026-10-24, #388). Home asks “What do you want to learn?”
+and offers Add material, or shows saved concepts and an explicit practice return.
+It does not select a question. Exact text memorization remains reachable through
+Text practice, which preserves the current Prompt or held result and leads to
+Library when no Study exists. [SPEC](SPEC.md) alone governs behavior.
 This document owns visual decisions, not deployment or physical-phone evidence.
 
 ## A quiet page with a clear next action
@@ -16,9 +15,9 @@ hairlines, and small square radii. It should feel like a place to think, rather
 than a dashboard to operate. There is no progress ring, streak, accuracy badge,
 notification feed, or always-visible due count.
 
-The masthead contains the Scry wordmark and Library. The wordmark returns to
-practice. Understanding, History and Settings live in the quiet footer; Create
-and Map remain inside Understanding. The reading column is at most 680 px;
+The masthead contains the Scry wordmark, Concepts and Add material. The wordmark
+returns Home. Text practice, History and Settings live in the quiet footer;
+Library remains within Text practice. Home links to the existing connections Map. The reading column is at most 680 px;
 question practice narrows to 650 px. The outer page frame is 1080 px.
 
 Scry's mark is four connected points inside a fine circle. One point opens into
@@ -59,7 +58,17 @@ reach 64 px, mobile titles 44 px, and questions scale between 30 and 52 px.
 Reading prose uses 16–19 px and generous line height. Long text wraps instead
 of breaking the viewport.
 
-## Find a text and begin
+## Concepts and their material
+
+Empty Home has one clear question, a brief description, and Add material, not a
+search field for an empty Library. Saved concepts are ordinary linked names;
+Resume practice leads to the saved occurrence without exposing its answer.
+Concept detail puts Study first, then Practice with existing questions, Resources
+with the original request, and Related links labeled Builds on and Used by.
+Do not turn note revisions into fictional independent resources or show transfer
+predictions or mastery claims not supported by evidence.
+
+## Text practice: find a text and begin
 
 Library leads with a labeled search field, then matching Works and their
 Versions. Titles, edition names, sources and Unit counts help the learner
@@ -73,14 +82,18 @@ content is rendered. Opening it deliberately records help first. Native forms,
 validation drafts and response reconciliation use the same page conventions as
 practice; no separate client state or offline queue is introduced.
 
-## Understanding: Create and the useful first result
+## Add material and the useful first result
 
-Create asks, “What do you want to learn?” One large writing surface accepts a
+When preparation is ready, Add material asks, “What do you want to understand?” One large writing surface accepts a
 word, phrase, ramble, pasted material, or dictated text. There is no mode picker,
 profile questionnaire, or quiz before preparation. An optional disclosure
 accepts a photo. The privacy note states that private words prepare material and
 pasted links do not trigger browsing. Text and photo limits are explained;
-validation retains the editable draft.
+validation retains the editable draft. The submit action says Prepare material
+and discloses paid AI. If preparation is unavailable, explain that before any
+input or submit controls, preserve unsent text visibly, and keep saved concepts
+and Text practice accessible. Readiness never means budget approval or provider
+activation; URL fetching and video are not offered.
 
 The first result is a saved reference: a plain explanation for each teachable
 idea, relevant examples and distinctions, provenance, and linked practice.
@@ -100,7 +113,7 @@ notes, wording, and learning history.
 
 ## One question, one action, a held result
 
-Returning study goes straight to the current question or a short prerequisite
+Explicitly resuming concept practice goes straight to the current question or a short prerequisite
 introduction. The question is the page's single h1. A choice tap submits that
 choice directly. Recall has one serif field and Check my answer. More contains
 Show me, Look it up, content repair, and archive. Keyboard numbers select

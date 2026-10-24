@@ -141,13 +141,18 @@ fn provider_secrets_present(env: &Env) -> bool {
 fn app_error(e: AppError) -> Result<Response> {
     private(Response::error(e.message, e.status)?)
 }
-fn view_query(env: &Env, fields: &BTreeMap<String, String>) -> Result<BTreeMap<String, String>> {
+fn view_query(
+    env: &Env,
+    fields: &BTreeMap<String, String>,
+    preparation_ready: bool,
+) -> Result<BTreeMap<String, String>> {
     let mut query: BTreeMap<_, _> = fields
         .iter()
         .filter(|(k, _)| !k.starts_with("__"))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     query.insert("__nonce".into(), random_id()?);
+    query.insert("__preparation_ready".into(), preparation_ready.to_string());
     if development(env) || variable(env, "SCRY_ENV") == "synthetic-preview" {
         query.insert("__synthetic".into(), "true".into());
     }
@@ -209,9 +214,10 @@ fn render_error(
     path: &str,
     fields: &BTreeMap<String, String>,
     e: AppError,
+    preparation_ready: bool,
 ) -> Result<Response> {
     let view_path = web::mutation_error_path(app, path);
-    let query = view_query(env, fields)?;
+    let query = view_query(env, fields, preparation_ready)?;
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
             .with_status(e.status),
@@ -870,12 +876,13 @@ impl DurableObject for LearningSpace {
             let previous = app.clone();
             engine::recover(&mut app, now());
             if path != "/"
+                && path != "/recall"
                 && !path.starts_with("/library")
                 && let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?)
             {
                 return app_error(e);
             }
-            if path == "/"
+            if path == "/recall"
                 && let Err(e) = crate::study::ensure_stream(&mut app, now(), &random_id()?)
             {
                 return app_error(e);
@@ -897,7 +904,7 @@ impl DurableObject for LearningSpace {
             {
                 let mut gate_query = BTreeMap::new();
                 gate_query.insert("return_to".into(), path.clone());
-                let gate_query = view_query(&self.env, &gate_query)?;
+                let gate_query = view_query(&self.env, &gate_query, self.preparation_ready())?;
                 return private(Response::from_html(web::render(
                     &app,
                     "/gate",
@@ -929,7 +936,7 @@ impl DurableObject for LearningSpace {
                     return private(Response::from_html(web::render(
                         &latest,
                         "/gate",
-                        &view_query(&self.env, &query)?,
+                        &view_query(&self.env, &query, self.preparation_ready())?,
                         now(),
                         None,
                     ))?);
@@ -980,7 +987,7 @@ impl DurableObject for LearningSpace {
                             return private(Response::from_html(web::render(
                                 &latest,
                                 "/gate",
-                                &view_query(&self.env, &query)?,
+                                &view_query(&self.env, &query, self.preparation_ready())?,
                                 now(),
                                 None,
                             ))?);
@@ -1002,7 +1009,7 @@ impl DurableObject for LearningSpace {
                 .query_pairs()
                 .map(|(k, v)| (k.into_owned(), v.into_owned()))
                 .collect();
-            let query = view_query(&self.env, &external_query)?;
+            let query = view_query(&self.env, &external_query, self.preparation_ready())?;
             self.arm().await?;
             // Alarm installation can yield to another owner request. Render
             // and mark only the latest allowed reference content after it.
@@ -1126,7 +1133,7 @@ impl DurableObject for LearningSpace {
         if path == "/library/version/add"
             && let Err(e) = api::library_form_fields(&mut fields)
         {
-            return render_error(&self.env, &app, &path, &fields, e);
+            return render_error(&self.env, &app, &path, &fields, e, self.preparation_ready());
         }
         let mut photo_key = None;
         if let Some(FormEntry::File(file)) = form.get("photo")
@@ -1142,6 +1149,7 @@ impl DurableObject for LearningSpace {
                         422,
                         "Choose a JPEG, PNG, or WebP photo up to 4 MiB. Your caption is still editable.",
                     ),
+                    self.preparation_ready(),
                 );
             }
             let text = fields
@@ -1159,6 +1167,7 @@ impl DurableObject for LearningSpace {
                         422,
                         "Keep a photo caption within 1 KiB. Your text is still editable; attach the photo again after revising it.",
                     ),
+                    self.preparation_ready(),
                 );
             }
             let op = fields.get("operation_id").cloned().unwrap_or_default();
@@ -1181,6 +1190,7 @@ impl DurableObject for LearningSpace {
                         422,
                         "Choose a JPEG, PNG, or WebP photo. Your caption is still editable.",
                     ),
+                    self.preparation_ready(),
                 );
             };
             let hash = persistence::sha256(&bytes);
@@ -1219,7 +1229,7 @@ impl DurableObject for LearningSpace {
                         let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                     }
                 }
-                render_error(&self.env, &app, &path, &fields, e)
+                render_error(&self.env, &app, &path, &fields, e, self.preparation_ready())
             }
             Ok(result) => {
                 // New captured or edited content must fit a complete recovery
@@ -1239,7 +1249,14 @@ impl DurableObject for LearningSpace {
                     {
                         let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                     }
-                    return render_error(&self.env, &retained, &path, &fields, e);
+                    return render_error(
+                        &self.env,
+                        &retained,
+                        &path,
+                        &fields,
+                        e,
+                        self.preparation_ready(),
+                    );
                 }
                 self.save(&mut app, Some(before))?;
                 if path == "/settings/backup" {
@@ -1636,6 +1653,9 @@ impl LearningSpace {
             model,
             jev_model,
         }
+    }
+    fn preparation_ready(&self) -> bool {
+        self.work_config().generation
     }
     async fn arm(&self) -> Result<()> {
         if variable(&self.env, "SCRY_ENV") == "restore" {

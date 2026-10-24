@@ -22,9 +22,9 @@ straight into the next due Unit. Behavior authority:
 
 ## How to get to it (user POV)
 
-- Phone or desktop: open `/`. Before a Study, Library offers search or supplied
+- Phone or desktop: choose Text practice (`/recall`). Before a Study, Library offers search or supplied
   text and Learn; afterwards the current Prompt or held result opens directly.
-  The understanding notebook remains at `/notebook`, linked quietly as Understanding.
+  Concept Home is `/`; its Resume practice opens the concept notebook at `/notebook`.
 - Terminal: `scry learn VERSION`, then `scry next` and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).
 
@@ -36,7 +36,7 @@ Preconditions:
 - A Version added through the [Library](library.md) in the same run-owned space.
 
 - **Phone journey.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`.
-  `study.phone` runs `scry learn` and opens `/` at 390px touch. It requires
+  `study.phone` runs `scry learn` and opens `/recall` at 390px touch. It requires
   `[data-state="exact-prompt"]` with one textarea, fills "Your answer", and
   chooses Check my answer. It captures `[data-state="exact-result"]` on arrival
   before scrolling or reloading, then requires the same held result on reload. `[data-verdict]` and every

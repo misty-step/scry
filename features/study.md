@@ -14,12 +14,12 @@ US-007, US-008, US-011. Intent: [S01/S02](../SPEC.md#s01--open-into-useful-learn
 - `notebook-result` holds the result across refresh until Next question.
 - `notebook-assist` offers Show me, Look it up, repair or archive from More, behind the assistance gate.
 - `notebook-correct` offers I was right or Count as a miss after grading; see `/history`.
-- `notebook-legacy` keeps the notebook at `/notebook` once exact Studies own `/`.
+- `notebook-resume` keeps the concept practice stream at `/notebook`, independent of Text practice.
 
 ## How to get to it (user POV)
 
-- Open `/`. With no active exact Study it is the notebook; otherwise follow the
-  quiet link to `/notebook`. Use Start practicing if an introduction is shown.
+- Open concept Home (`/`) and choose Resume practice, or open `/notebook`.
+  Use Start practicing if an introduction is shown.
 - In an empty isolated notebook, the authored-demo action seeds three questions.
 
 ## Driving it with verify-scry helpers
@@ -34,7 +34,7 @@ Preconditions:
   `notebook.concept` chooses Explore an authored demo, taps `.choice`, waits for
   `[data-state="result"]`, reloads and still sees it, chooses Next question,
   then opens Map → goal → concept. `notebook.legacy-link` reopens `/notebook`
-  after an exact Study takes over `/`. `state.backend-down` stops the run-owned
+  while an exact Study remains at `/recall`. `state.backend-down` stops the run-owned
   Worker and answers. No result may appear, and a failure must be visible.
 - **Story walk.** `qa/walk --stories "US-002 US-003 US-007 US-008 US-011"`
   covers each criterion. `qa/browser-recovery.mjs` (inside `qa/walk`) covers no-JS forms,

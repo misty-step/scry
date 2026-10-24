@@ -3,12 +3,23 @@
 // Egress uses synthetic RSA issuer keys and explicitly controlled model
 // responses. No account, owner credential, real model, or remote bucket is used.
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, sign, createHash } from 'node:crypto';
+import { generateKeyPairSync, sign, createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
 import {createServer} from 'node:net';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+
+// These are existing saved-request POST contracts, not a new Create journey.
+// Read the authenticated fixture's anti-CSRF token from Settings and author an isolated
+// operation ID. Unavailable Create must not expose a submit/photo form.
+async function savedRequestFields(response) {
+  assert.equal(response.status,200);
+  const html=await response.text();
+  const fields=Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+  assert.ok(fields.csrf);assert.ok(fields.revision);
+  return {...fields,operation_id:`saved-request-${randomUUID()}`};
+}
 
 const artifact = resolve(process.env.SCRY_WORKER_ARTIFACT || 'build');
 const origin = 'https://scry-synthetic.invalid';
@@ -49,7 +60,7 @@ try {
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
   await check('real RS256 owner signature and private response headers',async()=>{
-    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>Your Library<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
+    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>What do you want to learn\?<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
   await check('private build-bound changelog is read-only, with health version and revision',async()=>{
     assert.equal((await request('/changelog','')).status,401);
@@ -88,11 +99,15 @@ try {
     const read=await worker.fetch('https://alternate-synthetic.invalid/create?text=private',{redirect:'manual'});assert.equal(read.status,303);assert.equal(read.headers.get('Location'),`${origin}/create?text=private`);
     assert.equal((await worker.fetch('https://alternate-synthetic.invalid/create',{method:'POST',body:'intent=test'})).status,421);
   });
-  const html=await (await request('/create')).text();
-  const csrf=/name="csrf" value="([^"]+)"/.exec(html)?.[1];assert.ok(csrf);
-  const operation=/name="operation_id" value="([^"]+)"/.exec(html)?.[1];assert.ok(operation);
-  const revision=/name="revision" value="([^"]+)"/.exec(html)?.[1];assert.ok(revision);
-  const fields={csrf,operation_id:operation,revision,intent:'Learn cache validation'};
+  await check('unconfigured Add material is read-only and cannot be enabled through query fields',async()=>{
+    for(const path of ['/create','/create?__preparation_ready=true&text=Unsent%20material']){
+      const response=await request(path);assert.equal(response.status,200);const html=await response.text();
+      assert.match(html,/Preparation is unavailable/);
+      assert.doesNotMatch(html,/<form[^>]*action="\/create"|type="file"/);
+      if(path.includes('text='))assert.match(html,/<textarea[^>]*readonly[^>]*>Unsent material<\/textarea>/);
+    }
+  });
+  const fields={...await savedRequestFields(await request('/settings')),intent:'Learn cache validation'};
   const post=(path,body,headers={})=>request(path,jwt(),{method:'POST',body:new URLSearchParams(body),headers:{Origin:origin,'Content-Type':'application/x-www-form-urlencoded',...headers}});
   await check('cross-site Origin, forged CSRF and body-length bounds',async()=>{
     assert.equal((await post('/create',fields,{Origin:'https://attacker.invalid'})).status,403);
@@ -110,12 +125,12 @@ try {
   await check('no implicit paid request or synthetic fallback without model configuration',async()=>{
     await new Promise(resolve=>setTimeout(resolve,1300));const html=await (await request(goalPath)).text();assert.match(html,/not configured|needs your attention|retry|Try again/i);assert.equal(certRequests,1);
   });
-  await check('422 retains escaped no-JavaScript Create draft',async()=>{
-    const fresh=await(await request('/create')).text();const current=Object.fromEntries([...fresh.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));const text='x'.repeat(32769);const response=await post('/create',{...current,intent:text});assert.equal(response.status,422);assert.ok((await response.text()).includes(text));
+  await check('legacy 422 preserves the unsent Create draft read-only when preparation is unavailable',async()=>{
+    const current=await savedRequestFields(await request('/settings'));const text='x'.repeat(32769);const response=await post('/create',{...current,intent:text});assert.equal(response.status,422);const html=await response.text();assert.ok(html.includes(text));assert.match(html,/<textarea[^>]*readonly/);assert.doesNotMatch(html,/<form[^>]*action="\/create"|type="file"/);
   });
   const photoBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64');
   await check('photo type fence, durable exact capture and complete asset export',async()=>{
-    const fresh=await(await request('/create')).text();const current=Object.fromEntries([...fresh.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+    const current=await savedRequestFields(await request('/settings'));
     const multipart=bytes=>{const form=new FormData();for(const [key,value]of Object.entries({...current,intent:'Understand the image'}))form.set(key,value);form.set('photo',new Blob([bytes],{type:'image/png'}),'synthetic.png');return form;};
     const submit=async bytes=>{const encoded=new globalThis.Request(origin,{method:'POST',body:multipart(bytes)});return request('/create',jwt(),{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{Origin:origin,'Content-Type':encoded.headers.get('Content-Type')}});};
     const invalid=await submit(Buffer.from('<svg onload="alert(1)">'));assert.equal(invalid.status,422);assert.match(await invalid.text(),/Understand the image/);
@@ -217,7 +232,7 @@ try {
     const active=await restoreRuntime.rebind(activeBindings);const req=(path,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(activeBindings.SPACE_NAME));const state=async()=>{const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});return(await response.json()).app;};
     const before=await state();assert.equal(before.restored_paused,true);const oldJobs=structuredClone(before.jobs),oldAssessments=structuredClone(before.assessments);
-    const html=await(await req('/create')).text();const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new deliberate request after recovery review'})});assert.equal(created.status,303);const newGoal=created.headers.get('Location').split('/').at(-1);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);
+    const fields=await savedRequestFields(await req('/settings'));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new deliberate request after recovery review'})});assert.equal(created.status,303);const newGoal=created.headers.get('Location').split('/').at(-1);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':'wrong'}})).status,403);assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':'https://attacker.invalid','x-scry-operator-key':operatorKey}})).status,403);
     const settings=await(await req('/settings')).text();
     const resumeForm=/<form[^>]*action="\/settings\/resume"[^>]*>([\s\S]*?)<\/form>/.exec(settings);
@@ -241,7 +256,7 @@ try {
     const bytes=Buffer.concat([photoBytes,Buffer.alloc(4*1024*1024-photoBytes.length)]);
     try {
       for(let i=0;i<3;i++){
-        const html=await(await local.worker.fetch(`${localOrigin}/create`)).text();const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+        const fields=await savedRequestFields(await local.worker.fetch(`${localOrigin}/settings`));
         const form=new FormData();for(const[key,value]of Object.entries({...fields,intent:`Capacity photo ${i}`}))form.set(key,value);form.set('photo',new Blob([bytes],{type:'image/png'}),`capacity-${i}.png`);
         const encoded=new globalThis.Request(localOrigin,{method:'POST',body:form});const response=await local.worker.fetch(`${localOrigin}/create`,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':localOrigin,'Content-Type':encoded.headers.get('Content-Type')},body:Buffer.from(await encoded.arrayBuffer())});
         assert.equal(response.status,i<2?303:413);if(i===2){const rejected=await response.text();assert.match(rejected,/Capacity photo 2/);assert.match(rejected,/archive exceeds its bounded size limit/);}
@@ -258,7 +273,7 @@ try {
     const fields=(html,action)=>{const form=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);assert.ok(form);return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));};
     const peek=async()=>{const ns=await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);const bucket=await fixture.mf.getR2Bucket('SCRY_BACKUPS');const list=await bucket.list({prefix:`snapshots/${space}/`});const object=await bucket.get(list.objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key);return(await object.json()).app;};
     try {
-      let html=await(await req('/create')).text();assert.equal((await post('/__fixture',fields(html,'/create'))).status,303);let state=await peek();let occurrence=state.occurrence;const cold=occurrence.concept_id,goal=state.concepts[cold].goal_id,oldExposure=state.concepts[cold].exposure_ms;assert.equal(occurrence.assisted,false);
+      let html=await(await req('/notebook')).text();assert.equal((await post('/__fixture',fields(html,'/__fixture'))).status,303);let state=await peek();let occurrence=state.occurrence;const cold=occurrence.concept_id,goal=state.concepts[cold].goal_id,oldExposure=state.concepts[cold].exposure_ms;assert.equal(occurrence.assisted,false);
       if(occurrence.presentation.kind==='choice'){assert.equal((await post(`/questions/${occurrence.question_id}/archive`,{csrf:state.csrf,operation_id:'synthetic-archive-choice-only'})).status,303);await req('/notebook');state=await peek();occurrence=state.occurrence;}assert.equal(occurrence.presentation.kind,'recall');assert.equal(occurrence.assisted,false);
       const other=Object.keys(state.concepts).find(id=>id!==cold);assert.equal((await req(`/concepts/${other}`)).status,200);state=await peek();assert.ok(state.concepts[other].exposure_ms>oldExposure);assert.equal(state.concepts[cold].exposure_ms,oldExposure);
       const active=await fixture.rebind({...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-exposure-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'});current=active.worker;currentOrigin=origin;html=await(await req('/notebook')).text();assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),answer:'A deliberately non-exact remembered response'})).status,303);await Promise.race([sending,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Synthetic meaning check did not start.')),5000))]);
@@ -368,8 +383,7 @@ try {
       assert.match(empty,/Explore an authored demo/);
       const fixtureCsrf=/name="csrf" value="([^"]+)"/.exec(empty)[1];
       assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,303);
-      const html=await(await req('/create')).text();
-      const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+      const fields=await savedRequestFields(await req('/settings'));
       const submit=(originHeader,csrf=fields.csrf)=>req('/create',service,{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,csrf,intent:'Synthetic service-token capture'})});
       assert.equal((await submit('https://attacker.invalid')).status,403);
       assert.equal((await submit(origin,'forged')).status,403);
@@ -431,8 +445,8 @@ try {
           assert.equal((await req('/',token)).status,401);
         }
         assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-qa'}})).status,401);
-        const ownerFields = fields(await (await req('/create',jwt())).text());
-        const qaFields = fields(await (await req('/create')).text());
+        const ownerFields = await savedRequestFields(await req('/settings',jwt()));
+        const qaFields = await savedRequestFields(await req('/settings'));
         assert.notEqual(qaFields.csrf,ownerFields.csrf);
         const sharedOperation = 'same-photo-operation-both-principals';
         const ownerValues = {...ownerFields,operation_id:sharedOperation,intent:'OWNER_ONLY_NOTEBOOK_CANARY'};
@@ -544,7 +558,7 @@ try {
         assert.equal((await post('/settings/resume',{...resumeFields,operation_id:'qa-repeat-resume-new-operation'})).status,409);
         assert.equal((await post('/operator/resume-work',{},service,{'x-scry-operator-key':operatorKey})).status,403);
         active=await fixture.rebind({...bindings,OPENROUTER_API_KEY:'synthetic-owner-provider',OPENROUTER_MODEL:'synthetic-owner-model'});
-        const nextFields=fields(await(await req('/create')).text());
+        const nextFields=await savedRequestFields(await req('/settings'));
         const next=await post('/create',{...nextFields,intent:'QA after deliberate resume still cannot spend'});
         assert.equal(next.status,303);
         await new Promise(resolve=>setTimeout(resolve,1500));
@@ -594,9 +608,9 @@ try {
         const home = await req('/notebook');
         assert.equal(home.status, 200);
         assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
-        const qaSaved = await post('/create', {...fields(await (await req('/create')).text()), intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
+        const qaSaved = await post('/create', {...await savedRequestFields(await req('/settings')), intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
         assert.equal(qaSaved.status, 303);
-        const ownerSaved = await post('/create', {...fields(await (await req('/create',jwt())).text()), intent:'OWNER_ONLY_NOTEBOOK_CANARY'}, jwt());
+        const ownerSaved = await post('/create', {...await savedRequestFields(await req('/settings',jwt())), intent:'OWNER_ONLY_NOTEBOOK_CANARY'}, jwt());
         assert.equal(ownerSaved.status, 303);
         const qaRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:'scry-qa'})).exec('SELECT value FROM records'));
         const ownerRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:baseBindings.SPACE_NAME})).exec('SELECT value FROM records'));
@@ -674,8 +688,7 @@ try {
         return (await response.json()).app;
       };
       const capture = async (token,intent,photo=false) => {
-        const html = await (await req('/create',token)).text();
-        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+        const fields = await savedRequestFields(await req('/settings',token));
         let body = new URLSearchParams({...fields,intent});
         let contentType = 'application/x-www-form-urlencoded';
         if (photo) {
@@ -769,8 +782,8 @@ try {
       };
       try {
         // Authored local setup only; ordinary QA cannot call the fixture route.
-        let html = await (await req('/create')).text();
-        assert.equal((await post('/__fixture',fields(html,'/create'))).status,303);
+        let html = await (await req('/notebook')).text();
+        assert.equal((await post('/__fixture',fields(html,'/__fixture'))).status,303);
         let app = await snapshot('private-owner');
         if (app.occurrence.presentation.kind === 'choice') {
           assert.equal((await post(`/questions/${app.occurrence.question_id}/archive`,{
@@ -846,8 +859,7 @@ try {
       assert.deepEqual(before.app.events, source.app.events);
       assert.deepEqual(before.app.operations, source.app.operations);
       assert.equal((await active.worker.fetch(`${origin}/export`, {headers:{'x-scry-backup-key':backupKey}})).status, 401);
-      const html = await (await req('/create')).text();
-      const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m => [m[1], m[2]]));
+      const fields = await savedRequestFields(await req('/settings'));
       const submit = () => req('/create', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
         body:new URLSearchParams({...fields, intent:'A deliberate synthetic write after Go custody restore'})});
       const saved = await submit();
@@ -913,8 +925,8 @@ await test('listener allocation survives deterministic contention and concurrent
     assert.notEqual(new URL(listener).port,String(port));
     const response=await fetch(listener+'/create');
     assert.equal(response.status,200);
-    const html=await response.text();
-    const fields=Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+    const html=await response.text();assert.match(html,/Preparation is unavailable/);
+    const fields=await savedRequestFields(await fetch(listener+'/settings'));
     assert.ok(fields.csrf);
     const submit=origin=>fetch(listener+'/create',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,intent:'Listener-owned isolated capture'})});
     assert.equal((await submit('https://foreign.invalid')).status,403);

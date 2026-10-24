@@ -58,7 +58,7 @@ export async function mixedHttpProof() {
     assert.equal(r.status, 303);
     assert.equal(new URL(r.headers.get('location'), f.origin).pathname, '/notebook');
     assert.ok((await f.html('/notebook')).includes('data-state="result"'), 'Answer remains held');
-    assert.ok((await f.html('/')).includes('data-state="exact-prompt"'), 'Exact Stream remains current');
+    assert.ok((await f.html('/recall')).includes('data-state="exact-prompt"'), 'Exact Stream remains current');
     assert.deepEqual((await f.record('meta')).practice, f.practice);
     // Reconcile the original browser operation, including its old shared "/" receipt.
     const saved = await f.sql.exec('SELECT key,value FROM records ORDER BY key');
@@ -87,8 +87,31 @@ export async function mixedBrowserWalk(browser, capture) {
     const row = {noJS, status:'pass', evidence:[]};
     results.push(row);
     const shot = async name => row.evidence.push(await capture(page, `mixed-${noJS?'native':'js'}-${name}.png`));
+    const homeRoundTrip = async stage => {
+      const meta = await f.record('meta');
+      const frozen = {occurrence:meta.occurrence, practice:meta.practice};
+      assert.ok(frozen.occurrence && frozen.practice.current, 'Both practice streams must be populated');
+      const unchanged = async () => {const current=await f.record('meta');assert.deepEqual({occurrence:current.occurrence,practice:current.practice},frozen, 'Home navigation must preserve both frozen practice streams');};
+      const home = () => page.locator('[data-state="concept-home"]');
+      const openHome = async () => {await page.locator('.masthead nav').getByRole('link',{name:'Concepts',exact:true}).tap();await home().waitFor();await unchanged();};
+      await openHome();
+      const content=await page.locator('main').innerText();
+      for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation,'Copper lanterns shelter quiet gardens.'])assert.ok(!content.includes(hidden), 'Home must not show answer-bearing material from either stream');
+      assert.equal(await page.locator('[data-state^="exact-"],.answer-pair,.explanation').count(),0);
+      await shot(`home-${stage}`);
+      await page.reload();await home().waitFor();await unchanged();
+      await page.reload();await home().waitFor();await unchanged();
+      await page.goBack();await page.locator('[data-state="'+(new URL(page.url()).pathname==='/recall'?(frozen.practice.current.attempt_id?'exact-result':'exact-prompt'):frozen.occurrence.phase)+'"]').waitFor();await unchanged();await page.goForward();await home().waitFor();await unchanged();
+      await home().getByRole('link',{name:'Resume practice',exact:true}).tap();
+      await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
+      await openHome();await page.locator('footer').getByRole('link',{name:'Text practice',exact:true}).tap();
+      await page.waitForURL(f.origin+'/recall');await page.locator('[data-state="'+(frozen.practice.current.attempt_id?'exact-result':'exact-prompt')+'"]').waitFor();await unchanged();
+      await page.goBack();await home().waitFor();await unchanged();await page.goForward();await page.locator('[data-state^="exact-"]').waitFor();await unchanged();
+      await openHome();await home().getByRole('link',{name:'Resume practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
+    };
     try {
       await page.goto(f.origin + '/notebook');
+      await homeRoundTrip('both-current');
       const stale = await context.newPage();
       await stale.goto(f.origin + '/notebook');
       await page.getByRole('button', {name:'The origin content definitely changed', exact:true}).tap();
@@ -97,6 +120,7 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.reload();
       await page.locator('[data-state="result"]').waitFor();
       await shot('held-result');
+      await homeRoundTrip('concept-held');
       await stale.getByRole('button', {name:'The browser must delete it forever', exact:true}).tap();
       if (noJS) {
         await stale.locator('[data-state="result"]').waitFor();
@@ -129,11 +153,14 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.locator('[data-state="result"]').waitFor({state:'detached'});
       assert.equal(new URL(page.url()).pathname, '/notebook');
       assert.deepEqual((await f.record('meta')).practice, f.practice);
-      await page.goto(f.origin + '/');
+      await page.goto(f.origin + '/recall');
       await page.locator('[data-state="exact-prompt"]').waitFor();
       assert.deepEqual((await f.record('meta')).practice, f.practice);
       await shot('exact-unchanged');
-      row.observed = {held_refresh:true, override:true, self_check:true, deliberate_next:true, exact_practice_unchanged:true};
+      await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter quiet gardens.');
+      await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
+      await homeRoundTrip('exact-held');
+      row.observed = {held_refresh:true, override:true, self_check:true, deliberate_next:true, exact_practice_unchanged:true,home_both_current_unchanged:true,home_concept_held_unchanged:true,home_exact_held_unchanged:true,explicit_resume_and_text_practice:true};
     } catch (error) {
       row.status = 'fail'; row.reason = error.message;
       await shot('failure');

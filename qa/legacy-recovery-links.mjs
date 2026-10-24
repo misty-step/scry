@@ -36,7 +36,7 @@ export async function legacyRecoveryLinksWalk(browser, capture) {
       assert.equal(new URL(page.url()).pathname, '/notebook');
       await unchanged();
       await shot('kept-question');
-      await page.goto(f.origin + '/');
+      await page.goto(f.origin + '/recall');
       await page.locator('[data-state="exact-prompt"]').waitFor();
       await unchanged();
       await page.goto(f.origin + '/notebook');
@@ -56,7 +56,7 @@ export async function legacyRecoveryLinksWalk(browser, capture) {
       assert.ok((await page.locator('main').innerText()).includes('My saved uncertain freshness answer'));
       await unchanged();
       await shot('checking-after');
-      await page.goto(f.origin + '/');
+      await page.goto(f.origin + '/recall');
       await page.locator('[data-state="exact-prompt"]').waitFor();
       await unchanged();
       await shot('exact-unchanged');

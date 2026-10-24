@@ -33,8 +33,8 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
   await walk(persistence);return result.sort((a,b)=>a.path.localeCompare(b.path));
  };
  try {
-  const create=await(await runtime.worker.fetch(origin+'/create')).text();
-  assert.equal((await runtime.worker.fetch(origin+'/__fixture',{redirect:'manual',method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(form(create,'/create'))})).status,303);
+  const notebook=await(await runtime.worker.fetch(origin+'/notebook')).text();
+  assert.equal((await runtime.worker.fetch(origin+'/__fixture',{redirect:'manual',method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(form(notebook,'/__fixture'))})).status,303);
   const html=await(await runtime.worker.fetch(origin+'/settings')).text();
   const issued=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...form(html,'/tokens/create'),name:'synthetic unpaid spend reader'})});assert.equal(issued.status,200);
   secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);

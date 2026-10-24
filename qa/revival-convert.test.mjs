@@ -207,10 +207,13 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const readback = await exported.json();
     for (const section of ['questions', 'concepts', 'events', 'operations', 'revival_go', 'revival_schedule_origins'])
       assert.deepEqual(readback.app[section], app[section]);
-    const html = await (await active.worker.fetch(origin + '/create')).text();
-    const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)]
+    // Preserve the existing accepted-write/replay contract after restore without
+    // pretending paused Add material exposes a preparation form.
+    const html = await (await active.worker.fetch(origin + '/settings')).text();
+    const fields = Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)]
       .map(match => [match[1], match[2]]));
-    assert.ok(fields.csrf && fields.operation_id);
+    fields.operation_id = 'synthetic-after-go-projection';
+    assert.ok(fields.csrf && fields.revision);
     const capture = () => active.worker.fetch(origin + '/create', {method: 'POST', redirect: 'manual',
       headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
       body: new URLSearchParams({...fields, intent: 'Synthetic accepted write after Go projection'})});
