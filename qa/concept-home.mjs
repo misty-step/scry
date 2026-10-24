@@ -87,8 +87,11 @@ export async function conceptHomeWalk(browser,capture){
    const afterReference=await state();assert.deepEqual(afterReference.occurrence,held.occurrence);assert.deepEqual(afterReference.practice,held.practice);assert.deepEqual(afterReference.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
    // Archive through the real Worker command, not by rewriting Concept flags.
    await activate(page.getByRole('link',{name:'Original material & preparation',exact:true}));
-   const archiveBaseline=await state();
+   await page.locator('[data-state="goal"]').waitFor();
    await activate(page.getByRole('button',{name:'Archive this goal',exact:true}));await page.locator('[data-state="map"]').waitFor();
+   const archiveBaseline=await state();
+   assert.deepEqual(archiveBaseline.occurrence,held.occurrence);assert.deepEqual(archiveBaseline.practice,held.practice);
+   assert.deepEqual(archiveBaseline.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
    assert.equal(await page.locator(`a[href="/goals/${prerequisite.goal_id}"]`).count(),0);
    await activate(headerHome());await home().waitFor();
    assert.equal(await home().locator('.home-concepts a').count(),0);assert.equal(await home().getByRole('link',{name:'Start practice',exact:true}).count(),0);
@@ -97,7 +100,11 @@ export async function conceptHomeWalk(browser,capture){
     await page.goto(url+`/concepts/${concept.id}`);await page.getByRole('heading',{name:concept.name,exact:true}).waitFor();
     await page.getByText('Archived: retained for reference.',{exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Practice this idea',exact:false}).count(),0);
-    assert.equal(await page.locator('.connected').count(),0);await stable(archiveBaseline);
+    assert.equal(await page.locator('.connected').count(),0);
+    // Deliberately reading a reference records future exposure, not practice.
+    // Preserve every record field except that existing exposure timestamp.
+    const withoutExposure=snapshot=>({...snapshot,records:snapshot.records.map(r=>r.key.startsWith('concepts/')?{...r,value:JSON.stringify({...JSON.parse(r.value),exposure_ms:null})}:r)});
+    assert.deepEqual(withoutExposure(await state()),withoutExposure(archiveBaseline));
    }
    await page.goto(url+'/history');assert.deepEqual((await state()).records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
    await page.goto(url+'/notebook');await page.locator('[data-state="result"]').waitFor();
