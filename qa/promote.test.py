@@ -33,9 +33,9 @@ DOMAIN = {'zone_id': 'f7be06f7426d5532921cc4348746a2b8', 'zone_name': 'scry.stud
           'service': NAME, 'environment': 'production', 'enabled': True}
 
 
-def version(etag=None, message=None, trigger=None):
+def version(etag=None, message=None, trigger=None, number=1):
     annotations = {k: v for k, v in [('workers/message', message), ('workers/triggered_by', trigger)] if v}
-    return {'annotations': annotations, 'resources': {'script': {'etag': etag}} if etag else {}}
+    return {'number': number, 'annotations': annotations, 'resources': {'script': {'etag': etag}} if etag else {}}
 
 
 def drift(name, **change):
@@ -127,7 +127,7 @@ class Promotion(unittest.TestCase):
     def test_deploy_promotes_over_a_secret_only_change_to_a_known_release(self):
         # 2026-10-20: rotating OWNER_SUBJECT made an unannotated version with the release's exact script.
         released = 'b' * 40
-        history = [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+        history = [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2)),
                    ('release', 'released', version(etag='same', message='scry-rust ' + released))]
         with self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
             run.side_effect = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('stop at ' + args[0][1]))
@@ -141,7 +141,7 @@ class Promotion(unittest.TestCase):
         source = 'a' * 40
         for label, history, uploads in [
                 ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
-                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret')),
+                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2)),
                                  ('release', 'released', version(etag='same', message='scry-rust ' + source))], True)]:
             with self.subTest(label), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
                 def command(args, **kwargs):
@@ -157,9 +157,9 @@ class Promotion(unittest.TestCase):
                 self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
 
     def test_deploy_refuses_an_untraceable_live_version(self):
-        for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret')),
+        for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret', number=2)),
                          ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))],
-                        [('secret-change', 'secret-only', version(etag='same', trigger='secret'))],
+                        [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2))],
                         [('manual', 'manual', version(etag='same', trigger='version_upload')),
                          ('release', 'released', version(etag='same', message='scry-rust ' + 'b' * 40))]]:
             with self.subTest(history=history), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
@@ -169,11 +169,11 @@ class Promotion(unittest.TestCase):
 
     def test_live_release_resolves_only_secret_changes_with_the_same_script(self):
         versions = {'released': version(etag='same', message='scry-rust ' + 'b' * 40),
-                    'secret': version(etag='same', trigger='secret'),
-                    'secret-again': version(etag='same', trigger='secret'),
-                    'other-script': version(etag='other', trigger='secret'),
+                    'secret': version(etag='same', trigger='secret', number=2),
+                    'secret-again': version(etag='same', trigger='secret', number=3),
+                    'other-script': version(etag='other', trigger='secret', number=2),
                     'upload': version(etag='same', trigger='version_upload'),
-                    'no-etag': version(trigger='secret'),
+                    'no-etag': version(trigger='secret', number=2),
                     'malformed': version(etag='same', message='scry-rust ' + 'b' * 39)}
         live = lambda *ids: PROMOTE.live_release([{'versions': [{'version_id': i, 'percentage': 100}]} for i in ids], versions.__getitem__)
         self.assertEqual(live('released'), ('b' * 40, True))
@@ -227,14 +227,15 @@ class DeploymentSafety(unittest.TestCase):
         cls.directory.cleanup()
 
     @contextmanager
-    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False):
+    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None):
         source = source or self.b
         current = deepcopy(history)
         versions = {'A': version(etag='old', message='scry-rust ' + self.a),
-                    'B': version(etag='new', message='scry-rust ' + self.b),
-                    'C': version(etag='candidate', message='scry-rust ' + self.c),
-                    'secret-A': version(etag='old', trigger='secret'),
-                    'secret-B': version(etag='new', trigger='secret')}
+                    'B': version(etag='new', message='scry-rust ' + self.b, number=3),
+                    'C': version(etag='candidate', message='scry-rust ' + self.c, number=5),
+                    'secret-A': version(etag='old', trigger='secret', number=2),
+                    'secret-B': version(etag='new', trigger='secret', number=4)}
+        if version_change: version_change(versions)
         if uploaded_only: versions['not-deployed-C'] = version(etag='candidate', message='scry-rust ' + self.c)
         bindings = deepcopy(LIVE) + [{'name': n, 'type': 'secret_text'} for n in ('OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY')]
         modules = {'index.js': b'export default {};', 'index_bg.wasm': b'synthetic wasm'}
@@ -320,6 +321,57 @@ class DeploymentSafety(unittest.TestCase):
                         PROMOTE.deploy()
                     self.assertEqual(uploads, [])
                     self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_replayed_secret_version_cannot_inherit_a_later_release_annotation(self):
+        history = [deployment('rollback', ('secret-A', 100)), deployment('b', ('B', 100)),
+                   deployment('original-secret', ('secret-A', 100)), deployment('a', ('A', 100))]
+        def equal_etags(versions):
+            versions['B']['resources']['script']['etag'] = 'old'
+        for source in (self.b, self.c):
+            with self.subTest(source=source), self.fixture(history, source, page_size=1, version_change=equal_etags) as (uploads, _, receipt, initial):
+                with self.assertRaisesRegex(AssertionError, 'Manual rollback'): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_secret_provenance_refuses_missing_conflicting_or_ambiguous_chronology(self):
+        history = [deployment('secret', ('secret-B', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]
+        changes = [
+            lambda v: v['secret-B'].pop('number'),
+            lambda v: v['B'].pop('number'),
+            lambda v: v['A'].pop('number'),
+            lambda v: v['secret-B'].update(number=True),
+            lambda v: v['B'].update(number='3'),
+            lambda v: v['B'].update(number=0),
+            lambda v: v['B'].update(number=4),
+            lambda v: v['B'].update(number=5),
+            lambda v: v['A']['resources']['script'].update(etag='new'),
+        ]
+        for index, change in enumerate(changes):
+            with self.subTest(change=index), self.fixture(history, version_change=change) as (uploads, _, receipt, initial):
+                with self.assertRaisesRegex(AssertionError, 'Unrecognized live release'): PROMOTE.deploy()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_secret_chain_refuses_reversed_creation_order(self):
+        history = [deployment('new-secret', ('secret-B', 100)), deployment('old-secret', ('secret-A', 100)),
+                   deployment('noncausal-secret', ('middle-secret', 100)), deployment('a', ('A', 100))]
+        def reversed_chain(versions):
+            versions['secret-B']['resources']['script']['etag'] = 'old'
+            versions['middle-secret'] = version(etag='old', trigger='secret', number=3)
+        with self.fixture(history, version_change=reversed_chain) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'Unrecognized live release'): PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_unambiguous_multiple_secret_versions_and_redeployments_still_promote(self):
+        history = [deployment('new-secret', ('secret-B', 100)), deployment('old-secret', ('secret-A', 100)),
+                   deployment('repeat-release', ('A', 100)), deployment('a', ('A', 100))]
+        def same_source(versions):
+            versions['secret-B']['resources']['script']['etag'] = 'old'
+        with self.fixture(history, version_change=same_source) as (uploads, _, receipt, _):
+            PROMOTE.deploy()
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
 
     def test_stale_and_divergent_targets_still_refuse(self):
         for source in (self.a, self.divergent):

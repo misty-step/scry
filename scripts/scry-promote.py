@@ -78,18 +78,42 @@ def release_source(current):
     return match[1] if match else None
 
 def live_release(deployments, version):
-    """Source of the live code and whether its own version names it. A secret-only change keeps the
-    script, so it resolves to the release it re-deployed only when every step has the same script etag."""
-    etag = None
+    """Resolve secret-only provenance by native version chronology, not deployment adjacency.
+    An opaque script etag is a consistency check, never proof of whole-bundle identity."""
+    if not deployments: return None
+    identity = single_version(deployments[0])
+    current = version(identity)
+    prior = release_source(current)
+    if prior: return prior, True
+    etag = current.get('resources', {}).get('script', {}).get('etag')
+    if current.get('annotations', {}).get('workers/triggered_by') != 'secret' or not etag: return None
+    known, numbers = {}, {}
     for deployment in deployments:
-        current = version(single_version(deployment))
-        script = current.get('resources', {}).get('script', {}).get('etag')
-        if etag is not None and script != etag: return None
-        annotations = current.get('annotations', {})
-        prior = release_source(current)
-        if prior: return prior, etag is None
-        if annotations.get('workers/triggered_by') != 'secret' or not script: return None
-        etag = script
+        for entry in traffic(deployment):
+            if not entry['percentage']: continue
+            name = entry['version_id']
+            item = version(name)
+            number = item.get('number')
+            if type(number) is not int or number < 1 or numbers.get(number, name) != name: return None
+            known[name], numbers[number] = item, name
+    limit = current['number']
+    sources = {release_source(item) for item in known.values()
+               if item['number'] < limit and item.get('resources', {}).get('script', {}).get('etag') == etag
+               and release_source(item)}
+    if len(sources) != 1: return None
+    seen = {identity}
+    for deployment in deployments[1:]:
+        name = single_version(deployment)
+        if name in seen: continue
+        seen.add(name)
+        item = known[name]
+        # A rollback re-deploys an old immutable version; later-created releases cannot name it.
+        if item['number'] >= current['number']: continue
+        if item['number'] >= limit or item.get('resources', {}).get('script', {}).get('etag') != etag: return None
+        limit = item['number']
+        prior = release_source(item)
+        if prior: return prior, False
+        if item.get('annotations', {}).get('workers/triggered_by') != 'secret': return None
     return None
 
 def refuse_rollback(deployments, source, version):
