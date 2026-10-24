@@ -97,6 +97,9 @@ legacy Note or exposure. Existing Goal-backed exposure and assistance fences
 remain unchanged, including for a supplied Material attached to a generated
 Concept. This phase exposes no normal authoring API, CLI command or UI form;
 no new source formats, quizzes, graph prediction or paid capability follows.
+Reserved authoring paths refuse before replay even for an exact retained future
+receipt, without any storage write. Ordinary existing-operation replay remains
+unchanged; retained future receipts stay readable and valid.
 
 ### Exact recall first (2026-10-20)
 

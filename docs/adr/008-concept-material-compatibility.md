@@ -68,6 +68,11 @@ compatible floor.
 ## Deployment and rollback
 
 Phase A has no normal Concept/Material authoring API, CLI command or UI form.
+All three reserved authoring paths refuse before generic receipt replay, even
+with an exact retained payload; no storage revision or other write follows.
+The receipts remain validated and retained as data. Ordinary existing-operation
+replay stays unchanged. Phase B must explicitly enable its separately qualified
+handlers rather than treating retained receipts as enabled routes.
 The existing private export/CLI export and Concept read surface retain and show
 new material from a compatible archive without creating learning observations.
 Existing Goal-backed read exposure and assistance fences stay unchanged.

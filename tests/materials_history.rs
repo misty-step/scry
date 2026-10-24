@@ -336,3 +336,61 @@ fn export_material_fixture() {
     });
     std::fs::write(output, serde_json::to_vec(&envelope).unwrap()).unwrap();
 }
+
+#[test]
+fn reserved_future_receipts_remain_data_not_executable_phase_a_routes() {
+    let fixture = material_fixture().unwrap();
+    let cases = [
+        ("synthetic-future-concept-create", "/concepts/create"),
+        ("synthetic-future-material-add", "/materials/add"),
+        ("synthetic-future-material-revise", "/materials/revise"),
+    ];
+    for (index, (operation, path)) in cases.into_iter().enumerate() {
+        let receipt = &fixture.app.operations[operation];
+        let payload = BTreeMap::from([
+            ("operation_id".to_string(), operation.to_string()),
+            ("synthetic_fixture".to_string(), "future-writer".to_string()),
+            (
+                "entity_id".to_string(),
+                receipt.result.entity_id.clone().unwrap(),
+            ),
+        ]);
+        assert_eq!(
+            receipt.payload_hash,
+            persistence::sha256(&serde_json::to_vec(&(path, &payload)).unwrap())
+        );
+        for variant in 0..3 {
+            let mut fields = payload.clone();
+            if variant == 1 {
+                fields.insert("entity_id".into(), "changed-payload".into());
+            } else if variant == 2 {
+                fields.insert(
+                    "operation_id".into(),
+                    format!("fresh-disabled-authoring-{index}"),
+                );
+            }
+            fields.insert("csrf".into(), fixture.app.csrf.clone());
+            let mut candidate = fixture.app.clone();
+            let error = engine::mutate(
+                &mut candidate,
+                path,
+                &fields,
+                NOW + 3_000,
+                "disabled-authoring",
+            )
+            .unwrap_err();
+            assert_eq!(error.status, 404, "{path} variant {variant}");
+            assert_eq!(candidate, fixture.app);
+            assert_eq!(
+                persistence::rows(&candidate).unwrap(),
+                fixture.material_rows
+            );
+        }
+    }
+    // Ordinary existing operations still replay without duplicate domain changes.
+    let mut ordinary = fixture.app.clone();
+    unrelated_settings_mutation(&mut ordinary).unwrap();
+    let saved = ordinary.clone();
+    unrelated_settings_mutation(&mut ordinary).unwrap();
+    assert_eq!(ordinary, saved);
+}

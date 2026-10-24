@@ -39,8 +39,10 @@ Preconditions:
 - **Compatibility proof.** `tests/materials.rs`, `tests/materials_history.rs` and
   `node --test qa/materials.test.mjs` cover SPEC CM1/CM2: typed synthetic complete
   history, read-only home/detail, compiled CLI, built Worker SQLite/R2, fresh
-  restore, first unrelated write, and checksum-pinned old-reader refusal. This
-  does not enable authoring or certify independently retrieved hosted recovery.
+  restore, first unrelated write, reserved-path refusal before replay, and
+  checksum-pinned old-reader refusal. `qa/materials-browser.mjs` retains native
+  disclosure and Home/detail/reload pixels across phone/desktop light/dark and
+  100%/200% text in `target/materials-browser/`. This does not enable authoring or certify independently retrieved hosted recovery.
 
 ## Gotchas
 

@@ -80,6 +80,12 @@ pub fn mutate_as(
     seed: &str,
     actor: MutationActor<'_>,
 ) -> AppResult<MutationResult> {
+    // Phase A retains future receipts as data, not executable authoring routes.
+    // Refuse before generic replay so even an acknowledged future payload cannot
+    // trigger the runtime's ordinary commit/revision effects on this floor.
+    if crate::materials::authoring_path(path) {
+        return Err(AppError::new(404, "That action does not exist."));
+    }
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
         || !operation
