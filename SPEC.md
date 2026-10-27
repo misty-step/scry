@@ -1,19 +1,22 @@
-# Scry specification: concepts first
+# Scry specification: native memorization
 
 ## What it does
 
-Scry helps its owner understand concepts, study reference material, and practise
-what he knows. Concepts are the primary learning destination. Exact text
-memorization remains a distinct activity with its existing Library, Studies,
-fading cues, word-by-word verdicts, and memory schedule.
+Scry helps its owner memorize externally authored knowledge. Agents supply
+content; Scry owns native grading, honest assistance and the memory schedule.
+The first bounded path is forward NATO recall through the existing Library,
+Versions and Studies. Existing exact-text and concept-notebook history remains
+preserved; new purpose is not permission to rewrite learning evidence.
 
 ## What it enables
 
-The owner can move from a concept to its explanation, saved questions, original
-material, and related concepts, or resume practice without losing an answer.
-The longer-term direction includes many independent materials and quizzes per
-concept, varied source formats, and evidence-based transfer between related
-concepts. Those capabilities are not implied by the current interface.
+The owner can receive useful supplied material through the API/CLI, practise
+with one typed answer, see a deterministic Verdict and canonical correction,
+and continue deliberately. Agent-ergonomic MCP and multimedia are part of the
+new direction, with their delivered scope stated below rather than inferred
+from intent. Legacy concept/reference paths remain available while subsequent
+bounded work changes the front door; their existence does not imply native
+generation or self-grading belongs in the new memorization flow.
 
 This is the single behavioral reference for Scry, for one owner. Words follow
 [GLOSSARY](GLOSSARY.md). QA runs against this file's US,
@@ -29,6 +32,59 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### External authoring and native memorization (2026-10-27)
+
+The owner now wants Scry focused on memorization: external agents author the
+content through ergonomic API, CLI and MCP interfaces; Scry stores it, presents
+practice, grades answers natively and schedules recall. **No self-grading and
+no native content generation belong in this new flow.** Existing content,
+Attempts, Corrections, media and historical provider/spend records are retained,
+not rewritten or deleted. This supersedes the previous generation-first intent
+for new memorization features; it does not activate paid work or retire the
+preservation requirements of the legacy concept and text paths.
+
+The first bounded delivery is a supplied NATO spelling alphabet, using existing
+Work, Version, Unit, Study and Card records (US-015/016/017/018/021), not a new
+collection model. Forward key→value recall starts with the key alone; Scry's
+server-owned expected value and pinned `exact-v2` decide Good/Again. No client
+Verdict, rating, expected answer, assistance flag or schedule is accepted. The
+mapping path offers no Owner Correction; legacy Corrections remain intact.
+Reveal records assistance before disclosure, cannot advance the schedule, and
+cannot turn a later answer into unaided success. Held results require Next.
+
+An externally supplied typed-pair manifest declares `direction: forward` and
+is validated atomically before Library admission. Exactly one unique key/value
+pair becomes one immutable Unit; the supplied NATO example contains A–Z and
+all 26 canonical values, including Alfa, Juliett, Whiskey and X-ray. No provider
+or remote source is fetched. Import/retry and repeated Learn use the shared
+receipt and deduplication rules, preserving existing identity and schedules.
+The mapping-only `exact-v2` profile is pinned as
+`1;unicode=17.0.0;mapping=1`: Unicode NFKC/case-folding and whitespace follow
+the existing engine, but punctuation creates word boundaries rather than
+joining letters, and ampersands are not expanded to "and". Interior apostrophes
+remain significant. X-ray and X ray match; Xray does not. Separating a word
+with punctuation (a.l.f.a) cannot make it Alfa. Historical text grading retains
+its original profile and bytes. Spelling-strict Slips
+remain Again, with the official value shown; another pair's value is identified
+as the wrong key, never accepted as a near match.
+
+A bounded stdio MCP surface may discover and invoke the same supplied-content
+validation/import/search/show, Learn/due/next/raw-answer/reveal API. It inherits
+Owner-token admission, explicit mutation operation IDs, assistance fences and
+same-operation reconciliation before advancing. It exposes no generation,
+self-rating, Correction, credential-minting or arbitrary HTTP tool. MCP support
+is not hosted bearer-admission evidence (#335).
+
+Broader US-021 reverse directions, year policy, assisted value-choice ladder,
+random-start whole-set Recitation and Relations remain pending. Multimedia
+attachments/playback, broader MCP coverage, legacy-flow retirement and the
+front-door/navigation redesign require their own implementation and proof.
+The current NATO path is entered through Library and Text practice; this
+amendment does not claim those remaining surfaces are delivered.
+
+
+The following 2026-10-24 navigation amendment describes the preserved runtime
+front door while the 2026-10-27 direction is implemented in bounded slices.
 On 2026-10-24 the owner made concepts the primary primitive and rejected an
 empty saved-text Library as the front door ([#388](https://github.com/misty-step/scry/issues/388)).
 Home (`/`) now introduces concepts and offers Add material. It does not select
@@ -63,7 +119,7 @@ writer reactivation, new paid capability, or deployment permission follows here.
 
 Scry has one owner. Accounts or tokens for anyone else, public signup or
 anonymous reading, a public Library, billing, collaboration, universal import,
-a course/chat product, a manual graph editor, MCP, a compulsory foundation
+a course/chat product, a manual graph editor, a compulsory foundation
 detour, and an invisible offline mutation queue are out of scope. Every
 exact-recall action is available through the API and the `scry` CLI (AG1).
 Dictated input is text, not an assumed speech engine or automatic recording
@@ -916,7 +972,8 @@ Criteria:
 
 No-gos: no accounts or tokens for anyone but the owner, no signup, no anonymous
 or public reading, no token kept in browser storage, no relaxed CSRF for
-browser sessions, no MCP server.
+browser sessions. The bounded supplied-content stdio MCP exception is defined
+in the 2026-10-27 amendment; broader MCP actions remain out of scope.
 
 Evidence: `qa/walk --stories "US-014"` (eight criterion walks),
 `qa/owner-api.test.mjs` (built Worker, SQLite and compiled CLI),
@@ -1018,6 +1075,10 @@ Evidence: `qa/walk --stories "US-018"`, `qa/phone-stream.mjs`, `qa/phone-library
 
 ## US-019 Create a Version with the generation agent
 
+Retired for new memorization work by the 2026-10-27 external-authoring decision.
+The identifier and criteria remain historical; no implementation or provider
+activation follows from them. Supplied Versions remain supported by US-015.
+
 Statement: When something I want to learn is not in my Library, I want to
 name it and have an agent with tools produce a checked Version, so I can start
 learning without typing the text myself.
@@ -1074,3 +1135,18 @@ No-gos: no tolerance on years unless the Version declares a range, no
 relations editor.
 
 Evidence: pending
+
+### US-021 first delivery: forward NATO subset
+
+The 2026-10-27 amendment bounds the first implementation without claiming the
+whole story complete. Its required proof is supplied manifest → shared
+API/compiled CLI → Library → Learn → key-only phone Prompt → server Verdict,
+strict spelling Diff and held Next. It must include all 26 source-checked
+pairs, malformed/duplicate input refusal, canonical normalization cases,
+forged-grade and Correction refusal with unchanged state, reveal assistance,
+replay/conflict, protected reference access and immutable archive recovery.
+No reverse/years/choice/set/Relation criterion above is removed to fit this slice.
+
+Subset proof: `tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs`,
+`qa/keyed-mapping.test.mjs`. Exact-source execution and browser receipts belong
+in #324 / its PR; source existence alone is not a PASS.

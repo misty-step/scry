@@ -23,3 +23,10 @@
 
 .concept-home .actions{display:flex;gap:1rem;flex-wrap:wrap;margin:2rem 0}.home-concepts{margin:2rem 0}.concept-home .preparations{margin:2rem 0}.concept-study,.concept-resources,.connected{margin-top:2.5rem}.create-page #unsent-material{width:100%;min-height:12rem}.concept-home{overflow-wrap:anywhere}
 @media(max-width:767px){.masthead nav{gap:1rem;flex-wrap:wrap;justify-content:flex-end}.concept-home .actions .button{width:100%}}
+
+/* Keyed recall is a single typed answer, not a self-rating card. */
+.exact-answer-form input[type=text]{display:block;width:100%;min-width:0;min-height:54px;padding:1rem;border:1px solid var(--rule-2);border-radius:5px;background:var(--sheet);color:var(--ink);font-size:1.125rem}.mapping-result{font-family:var(--serif);font-size:1.75rem;overflow-wrap:anywhere}.mapping-result span{color:var(--ink-2)}
+
+.mapping-study[data-state=exact-prompt]>h1{font-family:var(--sans);font-size:1.125rem;letter-spacing:0;line-height:1.4;margin-bottom:1.25rem;color:var(--ink-2)}.mapping-study .exact-cue .reading{font-size:clamp(2.5rem,12vw,4.5rem);line-height:1.15;margin-bottom:1.25rem}.mapping-study .exact-cue .eyebrow{margin-bottom:.5rem}
+
+.mapping-pairs>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--rule)}.mapping-pairs dt{font-weight:600}.mapping-pairs dd{margin:0;overflow-wrap:anywhere}

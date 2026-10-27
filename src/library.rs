@@ -113,6 +113,138 @@ pub struct VersionInput {
     /// Omit for deterministic line/clause segmentation. Supplied boundaries are checked verbatim.
     pub sections: Option<Vec<SectionInput>>,
 }
+/// External authoring manifest. The adapter stores only existing immutable
+/// Version/Section/Unit records; it never generates content or creates a Study.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingPairInput {
+    pub key: String,
+    pub value: String,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MappingDirection {
+    Forward,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MappingInput {
+    pub title: String,
+    pub direction: MappingDirection,
+    pub pairs: Vec<MappingPairInput>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub context: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub rights: Rights,
+    #[serde(default = "strict_mapping")]
+    pub spelling_strict: bool,
+}
+fn strict_mapping() -> bool {
+    true
+}
+impl MappingInput {
+    pub fn into_version(self) -> AppResult<VersionInput> {
+        if self.pairs.is_empty() || self.pairs.len() > MAX_UNITS {
+            return Err(mapping_invalid());
+        }
+        let units = self
+            .pairs
+            .into_iter()
+            .map(|pair| {
+                if !mapping_component(&pair.key, 240) || !mapping_component(&pair.value, 4096) {
+                    return Err(mapping_invalid());
+                }
+                Ok(format!("{}\t{}\n", pair.key, pair.value))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        check_mapping_units(units.iter().map(String::as_str))?;
+        let text = units.concat();
+        let input = VersionInput {
+            title: self.title,
+            kind: Kind::KeyedMapping,
+            text,
+            aliases: self.aliases,
+            context: self.context,
+            name: self.name,
+            sources: self.sources,
+            rights: self.rights,
+            spelling_strict: self.spelling_strict,
+            sections: Some(vec![SectionInput {
+                heading: "Pairs".into(),
+                units,
+            }]),
+        };
+        checked_sections(&input)?;
+        Ok(input)
+    }
+}
+fn mapping_invalid() -> AppError {
+    AppError::new(
+        422,
+        "Supply unique nonempty mapping keys and values, without tabs, line breaks or surrounding whitespace; use direction forward.",
+    )
+}
+fn mapping_component(text: &str, max: usize) -> bool {
+    label(text, max)
+        && text == text.trim()
+        && !text.contains(['\u{2028}', '\u{2029}'])
+        && !grading::mapping_words(text).is_empty()
+}
+/// One stored Unit is exactly key TAB value LF (the final LF may be omitted).
+/// Delimiters are structural, never guessed from prose or punctuation.
+pub fn mapping_pair(text: &str) -> Option<(&str, &str)> {
+    let line = text.strip_suffix('\n').unwrap_or(text);
+    let (key, value) = line.split_once('\t')?;
+    (mapping_component(key, 240) && mapping_component(value, 4096)).then_some((key, value))
+}
+fn check_mapping_units<'a>(units: impl Iterator<Item = &'a str>) -> AppResult<()> {
+    let mut keys = BTreeSet::new();
+    let mut units = units.peekable();
+    while let Some(text) = units.next() {
+        if units.peek().is_some() && !text.ends_with('\n') {
+            return Err(mapping_invalid());
+        }
+        let (key, _) = mapping_pair(text).ok_or_else(mapping_invalid)?;
+        if !keys.insert(grading::mapping_words(key)) {
+            return Err(mapping_invalid());
+        }
+    }
+    if keys.is_empty() {
+        return Err(mapping_invalid());
+    }
+    Ok(())
+}
+/// New Study admission, not historical Library validation. Old metadata-only
+/// mappings remain readable/exportable but are not silently reinterpreted.
+pub fn validate_mapping(version: &Version) -> AppResult<()> {
+    if version.kind != Kind::KeyedMapping {
+        return Err(mapping_invalid());
+    }
+    check_mapping_units(
+        version
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .map(|u| u.text.as_str()),
+    )
+}
+fn mapping_identity<'a>(
+    units: impl Iterator<Item = &'a str>,
+) -> Option<Vec<(Vec<String>, Vec<String>)>> {
+    units
+        .map(|text| {
+            mapping_pair(text)
+                .map(|(key, value)| (grading::mapping_words(key), grading::mapping_words(value)))
+        })
+        .collect()
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkEdit {
@@ -209,10 +341,20 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
     {
         return Err(invalid());
     }
-    let sections = input
-        .sections
-        .clone()
-        .unwrap_or_else(|| segment(&input.text));
+    let sections = input.sections.clone().unwrap_or_else(|| {
+        if input.kind == Kind::KeyedMapping {
+            vec![SectionInput {
+                heading: "Pairs".into(),
+                units: input
+                    .text
+                    .split_inclusive('\n')
+                    .map(str::to_owned)
+                    .collect(),
+            }]
+        } else {
+            segment(&input.text)
+        }
+    });
     if sections.len() > MAX_SECTIONS {
         return Err(AppError::new(
             422,
@@ -347,6 +489,9 @@ impl Library {
         previous: Option<&str>,
     ) -> AppResult<String> {
         let sections = checked_sections(&input)?;
+        if input.kind == Kind::KeyedMapping {
+            check_mapping_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
+        }
         let mut proposed = Work {
             id: identity(seed, "work"),
             revision: 1,
@@ -377,7 +522,55 @@ impl Library {
             proposed = w.clone();
         }
         let hash = sha256(key(&input.text).as_bytes());
-        if let Some(v) = self.versions.values().find(|v| v.normalized_hash == hash) {
+        let pairs = (input.kind == Kind::KeyedMapping)
+            .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
+            .flatten();
+        let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
+        if let Some(v) = hash_match {
+            // The historical content hash deliberately ignores spacing. For
+            // mappings that must not erase pair boundaries or grading policy.
+            if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
+                && (input.kind != v.kind
+                    || input.spelling_strict != v.spelling_strict
+                    || pairs
+                        != mapping_identity(
+                            v.sections
+                                .iter()
+                                .flat_map(|s| &s.units)
+                                .map(|u| u.text.as_str()),
+                        ))
+            {
+                return Err(AppError::new(
+                    409,
+                    "That normalized text has different mapping boundaries or grading policy. Keep the existing Version unchanged.",
+                ));
+            }
+        }
+        // Mapping identity follows its own pinned normalization, not the
+        // historical text hash (which, for example, expands '&' to 'and').
+        // Check legacy hash conflicts first; never rewrite old bytes or hashes.
+        let duplicate = hash_match.or_else(|| {
+            pairs.as_ref().and_then(|pairs| {
+                self.versions.values().find(|v| {
+                    v.kind == Kind::KeyedMapping
+                        && mapping_identity(
+                            v.sections
+                                .iter()
+                                .flat_map(|s| &s.units)
+                                .map(|u| u.text.as_str()),
+                        )
+                        .as_ref()
+                            == Some(pairs)
+                })
+            })
+        });
+        if let Some(v) = duplicate {
+            if input.kind == Kind::KeyedMapping && input.spelling_strict != v.spelling_strict {
+                return Err(AppError::new(
+                    409,
+                    "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
+                ));
+            }
             if existing.is_some_and(|w| w.id != v.work_id) || previous.is_some() {
                 return Err(AppError::new(
                     409,
@@ -643,6 +836,17 @@ pub fn mutate(
             .map_err(|_| AppError::conflict())
     };
     let id = match path {
+        "/library/mapping/add" => {
+            if fields
+                .keys()
+                .any(|key| !matches!(key.as_str(), "operation_id" | "csrf" | "data"))
+            {
+                return Err(mapping_invalid());
+            }
+            let input: MappingInput =
+                serde_json::from_str(field("data")).map_err(|_| mapping_invalid())?;
+            app.library.add(input.into_version()?, seed, None)?
+        }
         "/library/version/add" => app.library.add(
             serde_json::from_str(field("data")).map_err(|_| invalid())?,
             seed,
@@ -701,9 +905,12 @@ fn valid_id(id: &str) -> bool {
 /// Deletion retains its immutable receipt even when its Library entity is gone.
 pub(crate) fn receipt_entity(receipt: &Receipt, id: &str) -> bool {
     let resource = match receipt.path.as_deref() {
-        Some("/library/version/add" | "/library/version/supersede" | "/library/version/delete") => {
-            "versions"
-        }
+        Some(
+            "/library/mapping/add"
+            | "/library/version/add"
+            | "/library/version/supersede"
+            | "/library/version/delete",
+        ) => "versions",
         Some("/library/work/edit" | "/library/work/delete") => "works",
         _ => return false,
     };

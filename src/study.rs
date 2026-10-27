@@ -56,6 +56,8 @@ pub enum Cue {
     PreviousLine,
     SectionHeading,
     WholeTitle,
+    /// A supplied key, never an answer-bearing text cue.
+    MappingKey,
 }
 impl Cue {
     fn assisted(self) -> bool {
@@ -68,6 +70,7 @@ impl Cue {
             Self::FirstLetter => Self::PreviousLine,
             Self::PreviousLine => Self::SectionHeading,
             Self::SectionHeading | Self::WholeTitle => Self::WholeTitle,
+            Self::MappingKey => Self::MappingKey,
         }
     }
     fn lapse(self) -> Self {
@@ -77,6 +80,7 @@ impl Cue {
             Self::PreviousLine => Self::FirstLetter,
             Self::SectionHeading => Self::PreviousLine,
             Self::WholeTitle => Self::SectionHeading,
+            Self::MappingKey => Self::MappingKey,
         }
     }
 }
@@ -219,11 +223,36 @@ fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
 fn id(seed: &str, kind: &str) -> String {
     crate::persistence::sha256(format!("{seed}:study:{kind}").as_bytes())[..32].into()
 }
-fn initial(now: i64) -> CardState {
+fn initial(now: i64, kind: Kind) -> CardState {
     CardState {
         schedule: learning::new_card(now),
-        cue: Cue::Read,
+        cue: if kind == Kind::KeyedMapping {
+            Cue::MappingKey
+        } else {
+            Cue::Read
+        },
         successes: 0,
+    }
+}
+/// Mapping Units retain their supplied key and delimiter in Library/history.
+/// Only their value is an expected answer; clients never supply this projection.
+pub(crate) fn expected_unit<'a>(version: &Version, unit: &'a crate::library::Unit) -> &'a str {
+    if version.kind == Kind::KeyedMapping {
+        crate::library::mapping_pair(&unit.text)
+            .expect("validated mapping Unit")
+            .1
+    } else {
+        &unit.text
+    }
+}
+pub(crate) fn studyable(version: &Version) -> AppResult<()> {
+    match version.kind {
+        Kind::Text => Ok(()),
+        Kind::KeyedMapping => crate::library::validate_mapping(version),
+        Kind::OrderedList => Err(AppError::new(
+            422,
+            "Ordered-list practice is not supported yet.",
+        )),
     }
 }
 fn units(version: &Version) -> Vec<&crate::library::Unit> {
@@ -237,22 +266,87 @@ fn response(entity: Option<String>, data: Value) -> MutationResult {
         data: Some(data),
     }
 }
+const MAPPING_PROMPT_TITLE: &str = "Recall the matching value";
+/// Supplied metadata may contain the answer. Preserve it in Library/history,
+/// but never use it as an extra mapping cue, including restored held Prompts.
+pub(crate) fn visible_prompt_title(prompt: &Prompt) -> &str {
+    if prompt.cue_level == Cue::MappingKey {
+        MAPPING_PROMPT_TITLE
+    } else {
+        &prompt.title
+    }
+}
 fn held(app: &App) -> AppResult<Value> {
     let p = app
         .practice
         .current
         .as_ref()
         .ok_or_else(AppError::conflict)?;
+    let mut prompt = p.prompt.clone();
+    prompt.title = visible_prompt_title(&prompt).to_string();
     Ok(
-        json!({"prompt":p.prompt,"revealed":p.revealed,"attempt_id":p.attempt_id,
+        json!({"prompt":prompt,"revealed":p.revealed,"attempt_id":p.attempt_id,
         "correction_ids":app.practice.corrections.values().filter(|c| Some(&c.attempt_id)==p.attempt_id.as_ref()).map(|c| &c.id).collect::<Vec<_>>() }),
     )
+}
+/// Deterministic, answer-time explanation; it never changes exact-v2's Verdict.
+#[derive(Clone, Debug, Serialize)]
+pub struct MappingFeedback {
+    pub kind: &'static str,
+    pub key: String,
+    pub expected: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answered_key: Option<String>,
+}
+pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback> {
+    let version = &app.library.versions[&attempt.version_id];
+    if version.kind != Kind::KeyedMapping {
+        return None;
+    }
+    let unit = units(version)[attempt.effects[0].unit_index];
+    let (key, expected) = crate::library::mapping_pair(&unit.text)?;
+    let answer = grading::mapping_words(&attempt.raw_answer);
+    let answered_key = (attempt.grade.verdict == Verdict::Again)
+        .then(|| {
+            units(version)
+                .into_iter()
+                .filter(|u| u.id != unit.id)
+                .filter_map(|u| crate::library::mapping_pair(&u.text))
+                .find(|(_, value)| grading::mapping_words(value) == answer)
+                .map(|(key, _)| key.to_string())
+        })
+        .flatten();
+    let kind = if attempt.grade.verdict == Verdict::Good {
+        "correct"
+    } else if answered_key.is_some() {
+        "wrong_key"
+    } else if attempt
+        .grade
+        .diff
+        .iter()
+        .any(|d| matches!(d.change, grading::Change::Slip { .. }))
+    {
+        "spelling"
+    } else {
+        "mismatch"
+    };
+    Some(MappingFeedback {
+        kind,
+        key: key.into(),
+        expected: expected.into(),
+        answered_key,
+    })
 }
 /// Resolve immutable response references only after the runtime has committed.
 pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
     let mut data = result.data.clone()?;
     if let Some(id) = data.get("attempt_id").and_then(Value::as_str) {
-        data["attempt"] = json!(app.practice.attempts.get(id));
+        let attempt = app.practice.attempts.get(id);
+        let feedback = attempt.and_then(|a| mapping_feedback(app, a));
+        data["attempt"] = json!(attempt);
+        if let Some(feedback) = feedback {
+            data["mapping_feedback"] = json!(feedback);
+        }
     }
     if let Some(id) = data.get("correction_id").and_then(Value::as_str) {
         data["correction"] = json!(app.practice.corrections.get(id));
@@ -282,6 +376,11 @@ pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> 
     if let Some(value) = data.get("prompt").filter(|v| !v.is_null()) {
         let prompt: Prompt =
             serde_json::from_value(value.clone()).map_err(|_| AppError::conflict())?;
+        // Do not rewrite a historical receipt merely to make it replayable.
+        // A pre-fix supplied mapping title is unsafe while any recall is protected.
+        if prompt.cue_level == Cue::MappingKey && prompt.title != MAPPING_PROMPT_TITLE {
+            return Err(AppError::conflict());
+        }
         let current = &app.practice.current.as_ref().unwrap().prompt;
         if prompt != *current && (prompt.cue_level.assisted() || prompt.context.is_some()) {
             return Err(AppError::conflict());
@@ -399,7 +498,8 @@ fn make_prompt(
         .iter()
         .find(|s| s.units.iter().any(|u| u.id == cards[0].unit_id))
         .expect("Card Unit in Version");
-    let context = if matches!(scope, Scope::Unit { .. })
+    let context = if v.kind == Kind::Text
+        && matches!(scope, Scope::Unit { .. })
         && !matches!(cue, Cue::SectionHeading | Cue::WholeTitle)
     {
         first.checked_sub(1).map(|i| all[i].text.clone())
@@ -423,6 +523,10 @@ fn make_prompt(
         Cue::PreviousLine => String::new(),
         Cue::SectionHeading => section.heading.clone(),
         Cue::WholeTitle => app.library.works[&v.work_id].title.clone(),
+        Cue::MappingKey => crate::library::mapping_pair(text)
+            .expect("validated mapping Unit")
+            .0
+            .into(),
     };
     Presentation {
         prompt: Prompt {
@@ -430,7 +534,11 @@ fn make_prompt(
             study_id: study.id.clone(),
             version_id: v.id.clone(),
             version_hash: v.normalized_hash.clone(),
-            title: app.library.works[&v.work_id].title.clone(),
+            title: if v.kind == Kind::KeyedMapping {
+                MAPPING_PROMPT_TITLE.into()
+            } else {
+                app.library.works[&v.work_id].title.clone()
+            },
             scope,
             unit_ids: cards.iter().map(|c| c.unit_id.clone()).collect(),
             cue_level: cue,
@@ -506,6 +614,12 @@ fn next(
             return Err(AppError::conflict());
         }
         let v = &app.library.versions[&study.version_id];
+        if v.kind == Kind::KeyedMapping {
+            return Err(AppError::new(
+                422,
+                "Mapping practice currently supports one key at a time, forward only.",
+            ));
+        }
         let (scope, cue, ids) = match recite {
             "whole" => (
                 Scope::Whole,
@@ -633,7 +747,7 @@ fn next(
                         direction: Direction::Forward,
                         introduced_ms: now,
                         revision: 0,
-                        state: initial(now),
+                        state: initial(now, app.library.versions[&study.version_id].kind),
                     },
                 );
                 cid
@@ -665,11 +779,19 @@ fn next(
         },
     ))
 }
+fn grade_words(version: &Version, text: &str) -> Vec<String> {
+    if version.kind == Kind::KeyedMapping {
+        grading::mapping_words(text)
+    } else {
+        grading::normalized_words(text)
+    }
+}
 fn prompt_words(app: &App, p: &Presentation) -> usize {
-    let all = units(&app.library.versions[&p.prompt.version_id]);
+    let v = &app.library.versions[&p.prompt.version_id];
+    let all = units(v);
     p.targets
         .iter()
-        .map(|t| grading::normalized_words(&all[t.unit_index].text).len())
+        .map(|t| grade_words(v, expected_unit(v, all[t.unit_index])).len())
         .sum()
 }
 fn matching_siblings<'a>(
@@ -678,6 +800,9 @@ fn matching_siblings<'a>(
     include_siblings: bool,
 ) -> Vec<(&'a Version, String)> {
     let v = &app.library.versions[&p.prompt.version_id];
+    if v.kind == Kind::KeyedMapping {
+        return Vec::new();
+    }
     let start = p.targets[0].unit_index;
     // Match sibling scope by ordinal for a Unit, by Section position for a
     // Section, and full text for whole recitation. Different boundaries are legal.
@@ -726,7 +851,7 @@ fn fits_grading_capacity(
 fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
-    let texts = all.iter().map(|u| u.text.as_str()).collect::<Vec<_>>();
+    let texts = all.iter().map(|u| expected_unit(v, u)).collect::<Vec<_>>();
     let start = p.targets[0].unit_index;
     let end = p.targets.last().unwrap().unit_index + 1;
     let siblings = matching_siblings(app, p, include_siblings);
@@ -742,7 +867,7 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
     // before allocating it; the saved Prompt and answer operation stay intact.
     if !fits_grading_capacity(
         prompt_words(app, p),
-        grading::normalized_words(answer).len(),
+        grade_words(v, answer).len(),
         &siblings,
     ) {
         return Err(AppError::new(
@@ -750,16 +875,40 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
             "This answer exceeds the 1,000,000-cell local grading capacity. Use a smaller Section or a shorter answer.",
         ));
     }
-    grading::grade(
-        grading::Version {
-            units: &texts,
-            spelling_strict: v.spelling_strict,
-        },
-        start..end,
-        answer,
-        &refs,
-    )
-    .map_err(|e| AppError::new(422, e.to_string()))
+    let version = grading::Version {
+        units: &texts,
+        spelling_strict: v.spelling_strict,
+    };
+    let mut result = if v.kind == Kind::KeyedMapping {
+        grading::grade_mapping(version, start..end, answer)
+    } else {
+        grading::grade(version, start..end, answer, &refs)
+    }
+    .map_err(|e| AppError::new(422, e.to_string()))?;
+    // exact-v2 spans are relative to its input. Restore expected spans to the
+    // immutable complete Unit; typed spans remain relative to the raw answer.
+    if v.kind == Kind::KeyedMapping {
+        for diff in &mut result.diff {
+            use grading::Change;
+            let offset = crate::library::mapping_pair(&all[diff.unit_index].text)
+                .unwrap()
+                .0
+                .len()
+                + 1;
+            let expected = match &mut diff.change {
+                Change::Correct { expected, .. }
+                | Change::Slip { expected, .. }
+                | Change::Wrong { expected, .. }
+                | Change::Missing { expected } => Some(expected),
+                Change::Extra { .. } => None,
+            };
+            if let Some(word) = expected {
+                word.span.start += offset;
+                word.span.end += offset;
+            }
+        }
+    }
+    Ok(result)
 }
 pub fn mutate(
     app: &mut App,
@@ -776,12 +925,7 @@ pub fn mutate(
                 .versions
                 .get(vid)
                 .ok_or_else(|| AppError::new(404, "Version not found."))?;
-            if v.kind != Kind::Text {
-                return Err(AppError::new(
-                    422,
-                    "This practice loop supports text Versions.",
-                ));
-            }
+            studyable(v)?;
             let pace = Pace::parse(field(fields, "pace"))?;
             let study = if let Some(s) = app.practice.studies.values().find(|s| s.version_id == vid)
             {
@@ -837,7 +981,7 @@ pub fn mutate(
             let expected = p
                 .targets
                 .iter()
-                .map(|t| json!({"unit_id":t.unit_id,"text":all[t.unit_index].text}))
+                .map(|t| json!({"unit_id":t.unit_id,"text":expected_unit(v, all[t.unit_index])}))
                 .collect::<Vec<_>>();
             let aid = if p.revealed {
                 app.practice
@@ -884,6 +1028,19 @@ pub fn mutate(
         }
         "/practice/answer" => {
             let p = active(app, fields, false)?;
+            if app.library.versions[&p.prompt.version_id].kind == Kind::KeyedMapping
+                && fields.keys().any(|k| {
+                    !matches!(
+                        k.as_str(),
+                        "csrf" | "operation_id" | "revision" | "prompt_id" | "answer"
+                    )
+                })
+            {
+                return Err(AppError::new(
+                    422,
+                    "Submit only your answer. Scry owns the expected value, Verdict and schedule.",
+                ));
+            }
             let answer = fields.get("answer").ok_or_else(|| {
                 AppError::new(
                     422,
@@ -931,6 +1088,12 @@ pub fn mutate(
         }
         "/practice/correct" => {
             let p = active(app, fields, true)?;
+            if app.library.versions[&p.prompt.version_id].kind == Kind::KeyedMapping {
+                return Err(AppError::new(
+                    422,
+                    "Mapping Verdicts are determined by Scry, not self-grading.",
+                ));
+            }
             let aid = field(fields, "attempt_id");
             if p.attempt_id.as_deref() != Some(aid) {
                 return Err(AppError::conflict());
@@ -1065,7 +1228,7 @@ pub fn validate(app: &App) -> AppResult<()> {
             || !versions.insert(&s.version_id)
             || s.version_hash != v.normalized_hash
             || !app.library.works.contains_key(&v.work_id)
-            || v.kind != Kind::Text
+            || studyable(v).is_err()
             || app.study_version_refs.get(sid) != Some(&s.version_id)
         {
             return Err(fail());
@@ -1091,7 +1254,16 @@ pub fn validate(app: &App) -> AppResult<()> {
         if cid != &c.id || !valid_id(cid) || !p.studies.contains_key(&c.study_id) {
             return Err(fail());
         }
-        projection.insert(cid.clone(), (initial(c.introduced_ms), 0u64));
+        projection.insert(
+            cid.clone(),
+            (
+                initial(
+                    c.introduced_ms,
+                    app.library.versions[&p.studies[&c.study_id].version_id].kind,
+                ),
+                0u64,
+            ),
+        );
     }
     let valid_actor = |a: &Option<String>| {
         a.as_ref()
@@ -1216,6 +1388,9 @@ pub fn validate(app: &App) -> AppResult<()> {
             }
             Entry::Correction(c) => {
                 let a = p.attempts.get(&c.attempt_id).ok_or_else(fail)?;
+                if app.library.versions[&a.version_id].kind == Kind::KeyedMapping {
+                    return Err(fail());
+                }
                 let e = a
                     .effects
                     .iter()
@@ -1298,6 +1473,7 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         || p.version_hash != v.normalized_hash
         || targets.is_empty()
         || p.assisted != p.cue_level.assisted()
+        || (v.kind == Kind::KeyedMapping) != (p.cue_level == Cue::MappingKey)
         || p.unit_ids
             != targets
                 .iter()

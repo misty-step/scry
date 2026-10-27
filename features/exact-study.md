@@ -82,3 +82,18 @@ Preconditions:
 - Source: `src/study.rs`, `src/engine.rs`, `src/api.rs`, `src/runtime.rs`,
   `src/web.rs`, `src/bin/scry.rs`, `assets/app.js`; grading and scheduling in
   `src/grading` and `src/learning.rs`.
+
+## Forward keyed mappings (NATO first)
+
+Externally authored mapping manifests enter through `scry mapping add --file`
+and the shared Library API. Learn the returned Version and open Text practice.
+The first Prompt shows only the key, with one typed answer and Check my answer.
+Results show the canonical value and native exact-v2 Diff, held until Next.
+Mapping results have no self-rating or Owner Correction. Show me records durable
+assistance and leaves the schedule unchanged, including a later correct answer.
+
+`tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs` and
+`qa/keyed-mapping.test.mjs` own the bounded US-021 forward subset. The canonical
+`examples/nato-alphabet.json` is supplied content, not generated runtime output.
+Reverse directions, choice scaffolding, random-start sets, year tolerance and
+multimedia are not implemented by this subset; hosted #335 remains unverified.

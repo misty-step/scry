@@ -155,7 +155,7 @@
     const intent = form.querySelector('textarea[name=intent]');
     if (intent && photo && new TextEncoder().encode(intent.value).length > 1024) { announce('A photo caption can contain up to 1 KB of text. Your draft is still here.'); return; }
     if (intent && new TextEncoder().encode(intent.value).length > 32768) { announce('Your request is over the 32 KB limit. Shorten it and keep the rest separately; your draft is still here.'); return; }
-    const answer = form.querySelector('textarea[name=answer]');
+    const answer = form.querySelector('textarea[name=answer],input[name=answer]');
     const answerLimit = Number(form.dataset.answerLimit || 4000);
     if (form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }
     const submitter = event.submitter;

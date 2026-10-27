@@ -537,7 +537,7 @@ impl View<'_> {
                 ));
             }
             out.push_str("</div></details>");
-        } else if v.kind == crate::library::Kind::Text {
+        } else if crate::study::studyable(v).is_ok() {
             let body = format!(
                 "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
                 hidden("version_id", id)
@@ -546,11 +546,27 @@ impl View<'_> {
         } else {
             out.push_str("<p class=\"fineprint\">Practice for this kind is not available yet.</p>");
         }
+        let mapping = v.kind == crate::library::Kind::KeyedMapping
+            && crate::library::validate_mapping(v).is_ok();
         out.push_str("<div class=\"library-text\" aria-label=\"Saved text\">");
         for section in &v.sections {
             let _ = write!(out, "<section><h2>{}</h2>", escape(&section.heading));
-            for unit in &section.units {
-                let _ = write!(out, "<p class=\"reading\">{}</p>", escape(&unit.text));
+            if mapping {
+                out.push_str("<dl class=\"mapping-pairs\">");
+                for unit in &section.units {
+                    let (key, value) = crate::library::mapping_pair(&unit.text).unwrap();
+                    let _ = write!(
+                        out,
+                        "<div><dt>{}</dt><dd>{}</dd></div>",
+                        escape(key),
+                        escape(value)
+                    );
+                }
+                out.push_str("</dl>");
+            } else {
+                for unit in &section.units {
+                    let _ = write!(out, "<p class=\"reading\">{}</p>", escape(&unit.text));
+                }
             }
             out.push_str("</section>");
         }
@@ -582,7 +598,12 @@ impl View<'_> {
             "exact-prompt"
         };
         let mut out = format!(
-            "<section class=\"study exact-study\" data-state=\"{state}\" data-prompt-id=\"{}\">",
+            "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\">",
+            if prompt.cue_level == crate::study::Cue::MappingKey {
+                " mapping-study"
+            } else {
+                ""
+            },
             escape(&prompt.id)
         );
         if let Some(a) = attempt {
@@ -591,7 +612,7 @@ impl View<'_> {
             let _ = write!(
                 out,
                 "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
-                escape(&prompt.title)
+                escape(crate::study::visible_prompt_title(prompt))
             );
             out.push_str(&Self::exact_prompt_context(prompt));
             if prompt.assisted || p.revealed {
@@ -602,8 +623,22 @@ impl View<'_> {
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
             }
-            out.push_str(&self.form("/practice/answer", "exact-answer", "answer-form exact-answer-form", "data-answer-limit=\"32768\"",
-                &format!("{}<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"></textarea><button class=\"button primary\">Check my answer</button>",hidden("prompt_id",&prompt.id))));
+            let mapping = prompt.cue_level == crate::study::Cue::MappingKey;
+            let answer = if mapping {
+                "<label class=\"answer-label\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\">"
+            } else {
+                "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"></textarea>"
+            };
+            out.push_str(&self.form(
+                "/practice/answer",
+                "exact-answer",
+                "answer-form exact-answer-form",
+                "data-answer-limit=\"32768\"",
+                &format!(
+                    "{}{answer}<button class=\"button primary\">Check my answer</button>",
+                    hidden("prompt_id", &prompt.id)
+                ),
+            ));
             if !p.revealed {
                 out.push_str("<details class=\"overflow\"><summary>More</summary>");
                 out.push_str(&self.practice_form(
@@ -647,6 +682,7 @@ impl View<'_> {
                 Cue::PreviousLine => "Cue",
                 Cue::SectionHeading => "Section",
                 Cue::WholeTitle => "Title",
+                Cue::MappingKey => "Key",
             };
             let _ = write!(
                 out,
@@ -660,7 +696,8 @@ impl View<'_> {
         let Some(p) = &self.app.practice.current else {
             return String::new();
         };
-        self.app.library.versions[&p.prompt.version_id]
+        let version = &self.app.library.versions[&p.prompt.version_id];
+        version
             .sections
             .iter()
             .flat_map(|s| &s.units)
@@ -668,7 +705,7 @@ impl View<'_> {
             .map(|u| {
                 format!(
                     "<p class=\"reading exact-expected\">{}</p>",
-                    escape(&u.text)
+                    escape(crate::study::expected_unit(version, u))
                 )
             })
             .collect()
@@ -681,6 +718,37 @@ impl View<'_> {
             "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div>",
             if good { "correct" } else { "miss" },
         );
+        let mapping = a.prompt.cue_level == crate::study::Cue::MappingKey;
+        if mapping {
+            let _ = write!(
+                out,
+                "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
+                escape(&a.prompt.cue),
+                escape(crate::study::expected_unit(
+                    &self.app.library.versions[&a.version_id],
+                    self.app.library.versions[&a.version_id]
+                        .sections
+                        .iter()
+                        .flat_map(|s| &s.units)
+                        .find(|u| u.id == a.prompt.unit_ids[0])
+                        .unwrap()
+                ))
+            );
+            if let Some(feedback) = crate::study::mapping_feedback(self.app, a) {
+                if let Some(answered_key) = feedback.answered_key {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint\">That answer belongs to key {}.</p>",
+                        escape(&answered_key)
+                    );
+                } else if feedback.kind == "spelling" {
+                    out.push_str("<p class=\"fineprint\">Spelling mismatch: use the official form shown above.</p>");
+                }
+            }
+            if !good && self.app.library.versions[&a.version_id].spelling_strict {
+                out.push_str("<p class=\"fineprint\">Official spelling matters. Scry checks your answer; no self-rating.</p>");
+            }
+        }
         let changed = a
             .grade
             .diff
@@ -737,6 +805,9 @@ impl View<'_> {
             ),
         ));
         for e in &a.effects {
+            if mapping {
+                continue;
+            }
             let corrected = self
                 .app
                 .practice
@@ -1862,7 +1933,7 @@ impl View<'_> {
             let _ = write!(
                 out,
                 "<p class=\"reading exact-expected\">{}</p>",
-                escape(&unit.text)
+                escape(crate::study::expected_unit(version, unit))
             );
         }
         out.push_str("</dd></div></dl>");

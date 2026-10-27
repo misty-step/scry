@@ -15,6 +15,15 @@ pub fn normalized_words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Version-pinned mapping normalization for key identity and answer feedback.
+pub fn mapping_words(text: &str) -> Vec<String> {
+    unicode::mapping_tokens(text)
+        .into_iter()
+        .map(|token| token.normalized)
+        .collect()
+}
+pub const MAPPING_GRADER_VERSION: &str = "1;unicode=17.0.0;mapping=1";
+
 pub const AUTHORITY: &str = "exact-v2";
 pub const GRADER_VERSION: &str = "1;unicode=17.0.0";
 
@@ -127,14 +136,34 @@ pub fn grade(
     answer: &str,
     siblings: &[SiblingVersion<'_>],
 ) -> Result<Grade, GradeError> {
+    grade_with_policy(version, units, answer, siblings, false)
+}
+
+/// Same deterministic alignment and spelling policy, with punctuation as word
+/// boundaries. Historical exact-v2 grades retain their original normalization.
+pub fn grade_mapping(
+    version: Version<'_>,
+    units: Range<usize>,
+    answer: &str,
+) -> Result<Grade, GradeError> {
+    grade_with_policy(version, units, answer, &[], true)
+}
+fn grade_with_policy(
+    version: Version<'_>,
+    units: Range<usize>,
+    answer: &str,
+    siblings: &[SiblingVersion<'_>],
+    mapping: bool,
+) -> Result<Grade, GradeError> {
+    let tokens = if mapping {
+        unicode::mapping_tokens
+    } else {
+        unicode::tokens
+    };
     if units.start >= units.end || units.end > version.units.len() {
         return Err(GradeError::InvalidUnitRange);
     }
-    let version_tokens: Vec<_> = version
-        .units
-        .iter()
-        .map(|text| unicode::tokens(text))
-        .collect();
+    let version_tokens: Vec<_> = version.units.iter().map(|text| tokens(text)).collect();
     let vocabulary: BTreeSet<_> = version_tokens
         .iter()
         .flatten()
@@ -144,7 +173,7 @@ pub fn grade(
         .clone()
         .flat_map(|unit| version_tokens[unit].iter().map(move |token| (unit, token)))
         .collect();
-    let typed = unicode::tokens(answer);
+    let typed = tokens(answer);
     let expected_words: Vec<_> = expected
         .iter()
         .map(|(_, token)| token.normalized.as_str())
@@ -244,7 +273,12 @@ pub fn grade(
     Ok(Grade {
         authority: Authority {
             name: AUTHORITY.into(),
-            grader_version: GRADER_VERSION.into(),
+            grader_version: if mapping {
+                MAPPING_GRADER_VERSION
+            } else {
+                GRADER_VERSION
+            }
+            .into(),
         },
         verdict,
         units: unit_verdicts,

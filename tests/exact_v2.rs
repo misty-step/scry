@@ -526,3 +526,45 @@ fn invalid_unit_ranges_are_refused_without_panicking() {
         Err(GradeError::InvalidUnitRange)
     );
 }
+
+#[test]
+fn mapping_profile_separates_punctuation_without_rewriting_historical_text_grades() {
+    use scry::grading::{self, Verdict, Version};
+    let units = ["Alfa", "Juliett", "X-ray"];
+    let v = Version {
+        units: &units,
+        spelling_strict: true,
+    };
+    let historical = grading::grade(v, 0..1, "a.l.f.a", &[]).unwrap();
+    assert_eq!(historical.verdict, Verdict::Good);
+    assert_eq!(historical.authority.grader_version, grading::GRADER_VERSION);
+    for answer in ["a.l.f.a", "Al/fa", "Alpha", "Alfa Bravo"] {
+        let grade = grading::grade_mapping(v, 0..1, answer).unwrap();
+        assert_eq!(grade.verdict, Verdict::Again, "{answer}");
+        assert_eq!(
+            grade.authority.grader_version,
+            grading::MAPPING_GRADER_VERSION
+        );
+    }
+    for answer in ["ALFA", "  Alfa!\n", "Ａｌｆａ"] {
+        assert_eq!(
+            grading::grade_mapping(v, 0..1, answer).unwrap().verdict,
+            Verdict::Good
+        );
+    }
+    for answer in ["x-ray", " X ray ", "X—ray"] {
+        assert_eq!(
+            grading::grade_mapping(v, 2..3, answer).unwrap().verdict,
+            Verdict::Good
+        );
+    }
+    assert_eq!(
+        grading::grade_mapping(v, 2..3, "Xray").unwrap().verdict,
+        Verdict::Again
+    );
+    assert_ne!(
+        grading::mapping_words("a&b"),
+        grading::mapping_words("a and b")
+    );
+    assert_ne!(grading::mapping_words("a.b"), grading::mapping_words("ab"));
+}

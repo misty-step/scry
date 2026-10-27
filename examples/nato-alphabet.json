@@ -1,0 +1,119 @@
+{
+  "title": "NATO spelling alphabet",
+  "name": "International radiotelephony spelling alphabet — supplied words",
+  "context": "Recall the official code word for each letter. Typed answers are graded natively; no self-grading. Alfa, Juliett and Whiskey retain their official spelling. X-ray and X ray normalize alike; Xray is not an alias in this Version. Pronunciation/audio and radio procedures are not assessed.",
+  "direction": "forward",
+  "spelling_strict": true,
+  "rights": "private_only",
+  "sources": [
+    "https://www.nato.int/en/about-us/nato-history/history-by-theme/symbols-of-nato/nato-phonetic-alphabet",
+    "https://www.faa.gov/air_traffic/publications/atpubs/atc_html/chap2_section_4.html",
+    "https://www.icao.int/sites/default/files/postalhistory/annex_10_aeronautical_telecommunications.htm"
+  ],
+  "pairs": [
+    {
+      "key": "A",
+      "value": "Alfa"
+    },
+    {
+      "key": "B",
+      "value": "Bravo"
+    },
+    {
+      "key": "C",
+      "value": "Charlie"
+    },
+    {
+      "key": "D",
+      "value": "Delta"
+    },
+    {
+      "key": "E",
+      "value": "Echo"
+    },
+    {
+      "key": "F",
+      "value": "Foxtrot"
+    },
+    {
+      "key": "G",
+      "value": "Golf"
+    },
+    {
+      "key": "H",
+      "value": "Hotel"
+    },
+    {
+      "key": "I",
+      "value": "India"
+    },
+    {
+      "key": "J",
+      "value": "Juliett"
+    },
+    {
+      "key": "K",
+      "value": "Kilo"
+    },
+    {
+      "key": "L",
+      "value": "Lima"
+    },
+    {
+      "key": "M",
+      "value": "Mike"
+    },
+    {
+      "key": "N",
+      "value": "November"
+    },
+    {
+      "key": "O",
+      "value": "Oscar"
+    },
+    {
+      "key": "P",
+      "value": "Papa"
+    },
+    {
+      "key": "Q",
+      "value": "Quebec"
+    },
+    {
+      "key": "R",
+      "value": "Romeo"
+    },
+    {
+      "key": "S",
+      "value": "Sierra"
+    },
+    {
+      "key": "T",
+      "value": "Tango"
+    },
+    {
+      "key": "U",
+      "value": "Uniform"
+    },
+    {
+      "key": "V",
+      "value": "Victor"
+    },
+    {
+      "key": "W",
+      "value": "Whiskey"
+    },
+    {
+      "key": "X",
+      "value": "X-ray"
+    },
+    {
+      "key": "Y",
+      "value": "Yankee"
+    },
+    {
+      "key": "Z",
+      "value": "Zulu"
+    }
+  ]
+}
