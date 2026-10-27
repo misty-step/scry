@@ -12,6 +12,7 @@ Behavior authority: [US-014 / AG1](../SPEC.md#us-014-drive-scry-with-an-owner-to
 - `token-refuse` refuses missing, malformed, expired and revoked tokens identically.
 - `token-revoke` refuses the token's next request.
 - `token-paid` refuses paid work for tokens without paid permission.
+- `mcp-supplied` exposes supplied-content schema, validation/import and native practice through [stdio MCP](../docs/mcp.md), using the existing private CLI login; no generation or caller grade.
 - `token-spend` reports spend through `scry spend --by day|purpose|model` and `GET /api/v1/spend` (US-019.7 slice, #321).
 
 ## How to get to it (user POV)
@@ -35,6 +36,8 @@ Preconditions:
   pipes the secret to `scry login --token-stdin` and requires that `scry whoami`
   names the token. `token.revoke` chooses Revoke in Settings, and the next
   `scry whoami` must exit non-zero.
+- **MCP wire contract.** `node --test qa/mcp.test.mjs` builds `scry-mcp` and drives its real stdio pipes against a local HTTP mock: discovery, bounded framing, native draft validation, exact route/payload forwarding, response loss/replay, credential/error privacy and optional cancellation. This is not built-Worker persistence or hosted ingress proof.
+- **MCP native integration.** `node --test qa/mcp-worker.test.mjs` uses the actual built Worker/SQLite and compiled MCP: external NATO authoring, native raw-answer grading, immutable replay with transport CAS accounting, Reveal disclosure, and assistance fences. The sanitized receipt binds component hashes; no hosted or phone claim.
 - **Hosted.** `.agents/skills/verify-scry/scripts/prod-states.mjs` →
   `cli.hosted-admission`: a Bearer request to `/api/v1/whoami` meets the Access
   login. **Hosted API admission (#335) is uncommissioned and UNPROVEN.**

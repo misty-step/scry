@@ -388,7 +388,7 @@ impl View<'_> {
             escape(q)
         );
         out.push_str(&format!(
-            "<section class=\"library-work\" id=\"nato-starter\"><p class=\"eyebrow\">Ready to memorize</p><h2>NATO spelling alphabet</h2><p>26 letters. Type each code word; Scry checks your answer and schedules your next review.</p><p class=\"fineprint\">Supplied official words, not AI-generated. Add them privately, then choose Learn. Adding again keeps your existing progress.</p>{}</section>",
+            "<section class=\"library-work\" id=\"nato-starter\"><h2>NATO spelling alphabet</h2><p>26 letters. Type each code word; Scry checks your answer and schedules your next review.</p><p class=\"fineprint\">Official code words, supplied to Scry. Add them privately, then choose Learn. Adding again keeps your existing progress.</p>{}</section>",
             self.form(
                 "/library/mapping/add",
                 "nato-starter",
