@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.0](https://github.com/misty-step/scry/compare/v0.8.1...v0.9.0) (2026-10-27)
+
+
+### Features
+
+* add an explicit authored NATO alphabet starter ([#408](https://github.com/misty-step/scry/issues/408)) ([87e367f](https://github.com/misty-step/scry/commit/87e367f9eb01a582edc50aa1b9cce3c2a640ac3d))
+* add bounded stdio MCP for external authoring and native practice ([#407](https://github.com/misty-step/scry/issues/407)) ([857a3d1](https://github.com/misty-step/scry/commit/857a3d14c22e22ecdae95ec6313eebba48f13266))
+* make review primary and retire generation and self-grading ([#413](https://github.com/misty-step/scry/issues/413)) ([f254b7e](https://github.com/misty-step/scry/commit/f254b7e2a6ddf2e4f080130cd8127781846fbe3b))
+* native grading for externally authored NATO mappings ([#405](https://github.com/misty-step/scry/issues/405)) ([104c76b](https://github.com/misty-step/scry/commit/104c76b4da21760114f4eb44babfed00635c2bb1))
+
+
+### Bug Fixes
+
+* gate release on cloud-only backup and recovery ([#414](https://github.com/misty-step/scry/issues/414)) ([5ed9e47](https://github.com/misty-step/scry/commit/5ed9e472f619fcb97b28bad741577cf2f99bd65a))
+
 ## [0.8.1](https://github.com/misty-step/scry/compare/v0.8.0...v0.8.1) (2026-10-24)
 
 
