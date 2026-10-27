@@ -13,12 +13,12 @@ US-007, US-008, US-011. Intent: [S01/S02](../SPEC.md#s01--open-into-useful-learn
 - `notebook-question` presents one question; a choice tap or `#answer` plus Check my answer submits it.
 - `notebook-result` holds the result across refresh until Next question.
 - `notebook-assist` offers Show me, Look it up, repair or archive from More, behind the assistance gate.
-- `notebook-correct` offers I was right or Count as a miss after grading; see `/history`.
-- `notebook-resume` keeps the concept practice stream at `/notebook`, independent of Text practice.
+- `notebook-correct` retains historical learner corrections in `/history`; new self-rating writes return 410. Unavailable native grading keeps the answer saved and ungraded.
+- `notebook-resume` keeps the concept practice stream at `/notebook`, independent of native Review.
 
 ## How to get to it (user POV)
 
-- Open concept Home (`/`) and choose Resume practice, or open `/notebook`.
+- Open review Home (`/`) and choose Resume earlier practice when native grading is available, or read saved earlier answers in `/notebook`.
   Use Start practicing if an introduction is shown.
 - In an empty isolated notebook, the authored-demo action seeds three questions.
 

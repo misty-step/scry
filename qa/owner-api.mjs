@@ -123,8 +123,8 @@ export async function ownerJourney() {
     },
     async()=>{
       const before=await rows();
-      const response=await bearer('/api/v1/create',root.secret,{operation_id:randomUUID(),intent:'synthetic paid request'});assert.equal(response.status,403);
-      assert.match((await response.json()).error,/paid permission/);assert.deepEqual(await rows(),before,'No learner write or allowance reservation on paid refusal.');
+      const response=await bearer('/api/v1/create',root.secret,{operation_id:randomUUID(),intent:'synthetic retired generation request'});assert.equal(response.status,410);
+      assert.match((await response.json()).error,/generation is retired/);assert.deepEqual(await rows(),before,'Retirement persists no learner write, token last-use update or allowance reservation.');
       const exported=await(await bearer('/api/v1/export')).json();assert.deepEqual(exported.app.spend,[]);assert.deepEqual(exported.app.jobs,{});
       for(const token of [root.secret,child.secret]) {
         const before=await rows();
@@ -136,9 +136,11 @@ export async function ownerJourney() {
       const ownerGrant=await access('/api/v1/tokens',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),name:'owner-authorized paid agent',paid:true,csrf})});
       assert.equal(ownerGrant.status,200);const paid=await ownerGrant.json();assert.equal(paid.token.paid,true);
       const delegated=await create('paid delegated agent',{paid:true},paid.secret);assert.equal(delegated.token.paid,true);
-      const queued=await bearer('/api/v1/create',delegated.secret,{operation_id:randomUUID(),intent:'synthetic authorized paid request'});assert.equal(queued.status,200);
+      const beforeRetired=await rows();
+      const refused=await bearer('/api/v1/create',delegated.secret,{operation_id:randomUUID(),intent:'synthetic retired paid request'});assert.equal(refused.status,410);assert.match((await refused.json()).error,/generation is retired/);
+      assert.deepEqual(await rows(),beforeRetired,'Paid delegation cannot reactivate generation or create a receipt.');
       const after=await(await bearer('/api/v1/export')).json();
-      assert.ok(Object.values(after.app.jobs).some(job=>job.acting_token===delegated.token.id));
+      assert.deepEqual(after.app.jobs,{},'Generation remains retired for explicitly paid tokens.');
       assert.deepEqual(after.app.spend,[],'Credential-free Worker never reserves or transmits provider work.');
       const persisted=JSON.stringify(await rows());
       for(const token of [paid.secret,delegated.secret]) {

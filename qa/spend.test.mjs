@@ -103,7 +103,7 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
    assert.equal(sourceRequests,2);assert.equal(targetRequests,0,'Never follow a spend redirect or forward its bearer.');
   } finally {await new Promise(done=>source.close(done));await new Promise(done=>target.close(done));await writeFile(config,login);}
   const reader=JSON.parse(savedToken);assert.equal(reader.paid,false);
-  const frozen=await rows();const paid=await request('/api/v1/create',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation_id:'unpaid-spend-probe',intent:'Must refuse before reservation'})});assert.equal(paid.status,403);assert.deepEqual(await rows(),frozen);
+  const frozen=await rows();const paid=await request('/api/v1/create',secret,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation_id:'unpaid-spend-probe',intent:'Must refuse before reservation'})});assert.equal(paid.status,410);assert.match(await paid.text(),/generation is retired/);assert.deepEqual(await rows(),frozen);
   transcript.push({observation:'Repeated API + CLI reads preserve every SQLite row, total_changes and all persisted resource bytes',files:beforeFiles,totals:report.totals,unpaid_reader:true});
   await mkdir('target',{recursive:true});await writeFile('target/spend-cli.json',JSON.stringify(transcript,null,2)+'\n');
  } finally {await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}

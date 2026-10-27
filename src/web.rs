@@ -154,7 +154,7 @@ impl View<'_> {
         ) == "notebook-paused"
     }
     fn resume_link(&self) -> &'static str {
-        "<a class=\"text-link\" href=\"/settings#preparation\">Resume preparation →</a>"
+        "<a class=\"text-link\" href=\"/settings#preparation\">Resume meaning checks →</a>"
     }
     fn form(&self, action: &str, suffix: &str, class: &str, extra: &str, body: &str) -> String {
         let nonce = self.query.get("__nonce").map(String::as_str).unwrap_or("");
@@ -256,7 +256,7 @@ impl View<'_> {
                 .is_some_and(|o| self.check_paused(o))
             {
                 return format!(
-                    "<section class=\"empty-stage gate\" data-state=\"checking-paused\"><p class=\"eyebrow\">Your answer is saved</p><h1>Your meaning check is paused.</h1><p class=\"lede\">Resume preparation in Settings to continue. Your answer stays ungraded and this reference stays protected.</p>{}</section>",
+                    "<section class=\"empty-stage gate\" data-state=\"checking-paused\"><p class=\"eyebrow\">Your answer is saved</p><h1>Your meaning check is paused.</h1><p class=\"lede\">Resume meaning checks in Settings to continue. Your answer stays ungraded and this reference stays protected.</p>{}</section>",
                     self.resume_link()
                 );
             }
@@ -290,50 +290,11 @@ impl View<'_> {
             .values()
             .filter(|g| !g.archived && g.status != "ready")
         {
-            let phase = self.goal_phase(goal);
-            let text = match phase {
-                "imported-unfinished" => match self.app.jobs[&goal.job_id].status.as_str() {
-                    "unknown" => "Preparation stopped with an uncertain outcome",
-                    "failed" | "blocked" => "Preparation needs your attention",
-                    "paused" => "Preparation is paused",
-                    "ready" => "No practice was prepared",
-                    _ => "Preparation stopped",
-                },
-                "notebook-paused" => "Preparation is paused · Resume preparation",
-                "queued" | "pending" | "preparing" => "Preparing your material",
-                "running" | "generating" | "critic" | "sent" | "candidates" | "critic-sent" => {
-                    "Working on your explanation and practice"
-                }
-                "unknown" => "Preparation stopped with an uncertain outcome",
-                "failed" | "blocked" => "Preparation needs your attention",
-                "paused" => "Preparation is paused",
-                "ready" => "No practice was prepared",
-                "budget" => "Waiting for today's preparation allowance",
-                "superseded" => "Preparation stopped",
-                "partial" => "Some material is ready; preparation is incomplete",
-                _ => "Preparation needs your attention",
-            };
-            let stopped = matches!(
-                phase,
-                "unknown"
-                    | "failed"
-                    | "blocked"
-                    | "paused"
-                    | "budget"
-                    | "superseded"
-                    | "notebook-paused"
-                    | "imported-unfinished"
-                    | "ready"
-            );
+            let text = "Saved preparation history · generation retired";
             let _ = write!(
                 out,
-                "<a class=\"preparation-receipt {}\" href=\"{}\"><span class=\"status-dot\" aria-hidden=\"true\"></span><span><strong>{}</strong><span>{text}</span></span><span aria-hidden=\"true\">↗</span></a>",
-                if stopped { "stopped" } else { "" },
-                if phase == "notebook-paused" {
-                    "/settings#preparation".into()
-                } else {
-                    format!("/goals/{}", escape(&goal.id))
-                },
+                "<a class=\"preparation-receipt stopped\" href=\"/goals/{}\"><span class=\"status-dot\" aria-hidden=\"true\"></span><span><strong>{}</strong><span>{text}</span></span><span aria-hidden=\"true\">↗</span></a>",
+                escape(&goal.id),
                 self.goal_title(goal)
             );
         }
@@ -838,29 +799,6 @@ impl View<'_> {
                         "Again"
                     }
                 );
-                continue;
-            }
-            let missed = e.verdict == Verdict::Again;
-            let body = format!(
-                "{}{}{}<button class=\"text-button\">{}</button>",
-                hidden("attempt_id", &a.id),
-                hidden("unit_id", &e.unit_id),
-                hidden("verdict", if missed { "Good" } else { "Again" }),
-                if missed {
-                    "I was right"
-                } else {
-                    "Count as a miss"
-                }
-            );
-            if a.effects.len() > 1 {
-                let _ = write!(out, "<p class=\"fineprint\">Unit {}</p>", e.unit_index + 1);
-            }
-            if !missed {
-                out.push_str("<details class=\"overflow\"><summary>More</summary>");
-            }
-            out.push_str(&self.practice_form("correct", &e.unit_id, "", &body));
-            if !missed {
-                out.push_str("</details>");
             }
         }
         out.push_str("</div>");
@@ -972,7 +910,7 @@ impl View<'_> {
             "self" | "self-check" => out.push_str(&self.self_check(o)),
             "checking" | "pending" => {
                 if self.check_paused(o) {
-                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Your meaning check is paused.</h2><p>Resume preparation in Settings to continue. Your answer stays ungraded.</p></div>");
+                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Your meaning check is paused.</h2><p>Resume meaning checks in Settings to continue. Your answer stays ungraded.</p></div>");
                 } else {
                     out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Checking your meaning.</h2><p>You can leave and come back. Your question will stay here.</p></div>");
                 }
@@ -1095,23 +1033,6 @@ impl View<'_> {
         );
         out.push_str("<div class=\"thumb-actions result-actions\">");
         out.push_str(&self.review_form("next","next","","data-next", "<button class=\"button primary\">Next question <span aria-hidden=\"true\">→</span></button>"));
-        if !correct
-            && result.rating > 0
-            && !helped
-            && matches!(result.authority.as_str(), "exact" | "jev")
-            && !result.corrected
-        {
-            out.push_str(&self.review_form(
-                "override",
-                "right",
-                "",
-                "",
-                &format!(
-                    "{}<button class=\"text-button\">I was right</button>",
-                    hidden("correct", "true")
-                ),
-            ));
-        }
         out.push_str("</div>");
         if let Some(c) = self.app.concepts.get(&o.concept_id) {
             let _ = write!(
@@ -1128,52 +1049,22 @@ impl View<'_> {
             .assessment_id
             .as_ref()
             .and_then(|id| self.app.assessments.get(id));
-        let failed = assessment
-            .is_some_and(|a| matches!(a.status.as_str(), "failed" | "unknown" | "superseded"));
         let mut out = format!(
-            "<div class=\"feedback feedback-self\" role=\"status\"><span class=\"result-mark\" aria-hidden=\"true\">≈</span><div><h2>You know your answer best.</h2><p>{}</p></div></div>{}<p class=\"fineprint\">Your judgment will be saved as a learner check. Reading this answer makes the next practice helped.</p><div class=\"thumb-actions split-actions\">",
-            if assessment.is_none() {
-                "Your saved answer is still ungraded. Compare it below."
-            } else if failed {
-                "The check couldn't finish. Compare your answer below."
-            } else {
-                "The check wasn't certain. Compare your answer below."
-            },
+            "<div class=\"feedback feedback-self\" role=\"status\"><h2>Your answer is saved, not graded.</h2><p>A native verdict is unavailable for this earlier activity. Self-grading is retired; your answer, history and schedule are unchanged.</p></div>{}<p><a class=\"text-link\" href=\"/\">Return to native review</a></p>",
             self.answer_pair(o)
         );
-        out.push_str(&self.review_form(
-            "self",
-            "right",
-            "",
-            "",
-            &format!(
-                "{}<button class=\"button primary\">I was right</button>",
-                hidden("correct", "true")
-            ),
-        ));
-        out.push_str(&self.review_form(
-            "self",
-            "miss",
-            "",
-            "",
-            &format!(
-                "{}<button class=\"button secondary\">Not quite</button>",
-                hidden("correct", "false")
-            ),
-        ));
-        out.push_str("</div>");
-        if failed {
-            if self.check_paused(o) {
-                out.push_str(self.resume_link());
-            } else {
-                out.push_str(&self.review_form(
-                    "retry",
-                    "retry",
-                    "",
-                    "",
-                    "<button class=\"text-button\">Retry the check</button>",
-                ));
-            }
+        if self.check_paused(o) {
+            out.push_str(self.resume_link());
+        } else if assessment
+            .is_some_and(|a| matches!(a.status.as_str(), "failed" | "unknown" | "superseded"))
+        {
+            out.push_str(&self.review_form(
+                "retry",
+                "retry",
+                "",
+                "",
+                "<button class=\"text-button\">Retry native check</button>",
+            ));
         }
         out
     }
@@ -1195,39 +1086,11 @@ impl View<'_> {
                 escape(&o.concept_id)
             );
         }
-        if let Some(r) = &o.result
-            && r.rating > 0
-            && !o.assisted
-            && r.outcome == "correct"
-            && matches!(r.authority.as_str(), "exact" | "jev")
-            && !r.corrected
-        {
-            out.push_str(&self.review_form(
-                "override",
-                "miss",
-                "",
-                "",
-                &format!(
-                    "{}<button>Count as a miss</button>",
-                    hidden("correct", "false")
-                ),
-            ));
-        }
         let _ = write!(
             out,
             "<a href=\"/questions/{}/edit\">Edit this question</a>",
             escape(&o.question_id)
         );
-        out.push_str(&self.form(
-            &format!("/questions/{}/fix", o.question_id),
-            "fix",
-            "",
-            "",
-            &format!(
-                "{}<button>Prepare a better question</button>",
-                hidden("content_version", &o.presentation.version.to_string())
-            ),
-        ));
         out.push_str(&self.form(&format!("/questions/{}/dispute",o.question_id),"dispute","","",&format!("{}<details class=\"dispute-fields\"><summary>Flag faulty material</summary><label for=\"dispute-text\">What needs fixing?</label><textarea id=\"dispute-text\" name=\"text\" rows=\"2\" maxlength=\"4000\" required></textarea><label class=\"checkbox-label\"><input type=\"checkbox\" name=\"reset\" value=\"true\"> Reset this question’s schedule</label><button>Save the concern</button></details>",format_args!("{}{}",hidden("content_version",&o.presentation.version.to_string()),hidden("schedule_version",&self.app.questions.get(&o.question_id).map(|q|q.schedule_version).unwrap_or(o.schedule_version).to_string())))));
         out.push_str(&self.form(
             &format!("/questions/{}/archive", o.question_id),
@@ -1292,19 +1155,19 @@ impl View<'_> {
             String::new()
         };
         let (state_name, title, desc) = match state {
-            EmptyState::FirstRun => ("empty","Follow your curiosity.","A word, a question, a train of thought. Tell Scry what you want to understand, and turn it into something you can remember.".to_string()),
-            EmptyState::Preparing => ("preparing","Your next idea is taking shape.","Your request is saved. You can leave while Scry prepares an explanation and practice, or explore what you already have.".to_string()),
-            EmptyState::Paused => ("preparation-paused","Preparation is paused.","Your requests are saved. Resume preparation in Settings to continue with new material and meaning checks. Your existing notes and practice are still available.".to_string()),
+            EmptyState::FirstRun => ("empty","Follow your curiosity.","Choose externally authored material from Library. Scry helps you remember it with native answer grading.".to_string()),
+            EmptyState::Preparing => ("preparing","Your saved request is preserved.","Native content generation is retired. Your request and any existing material remain available.".to_string()),
+            EmptyState::Paused => ("preparation-paused","Preparation is paused.","Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and practice are still available.".to_string()),
             EmptyState::Stopped(_) => ("preparation-stopped","Your request needs attention.","Your input is saved, but preparation is not running. Open the request to see what stopped it and choose what to do next.".to_string()),
-            EmptyState::CaughtUp => ("caught-up","A good place to pause.",due.map(|d|format!("You're caught up for now. Your next practice is {}.",relative(d,self.now))).unwrap_or_else(||"You have no eligible questions right now. Explore your notes, resume a paused goal, or follow a new curiosity.".into())),
+            EmptyState::CaughtUp => ("caught-up","A good place to pause.",due.map(|d|format!("You're caught up for now. Your next practice is {}.",relative(d,self.now))).unwrap_or_else(||"You have no eligible questions right now. Read your saved notes or choose material from Library.".into())),
         };
         let (destination, action) = match state {
-            EmptyState::Paused => ("/settings#preparation".into(), "Resume preparation"),
+            EmptyState::Paused => ("/settings#preparation".into(), "Resume meaning checks"),
             EmptyState::Stopped(goal) => (
                 format!("/goals/{}", escape(&goal.id)),
                 "Review your saved request",
             ),
-            _ => ("/create".into(), "Create something to learn"),
+            _ => ("/library".into(), "Browse Library"),
         };
         format!(
             "{demo}{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a>{}</div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
@@ -1318,51 +1181,41 @@ impl View<'_> {
         )
     }
     fn home(&self) -> String {
-        let concepts: Vec<_> = self
-            .app
-            .concepts
-            .values()
-            .filter(|c| self.active_concept(c))
-            .collect();
-        let mut out = format!(
-            "<section class=\"concept-home\" data-state=\"concept-home\"><h1>{}</h1>",
-            if concepts.is_empty() {
-                "What do you want to learn?"
-            } else {
-                "Your concepts"
-            }
+        let has_review = exact_stream_active(self.app);
+        let action = if self.app.practice.current.is_some() {
+            "Resume review"
+        } else {
+            "Start review"
+        };
+        let mut out = String::from(
+            "<section class=\"concept-home\" data-state=\"review-home\"><p class=\"eyebrow\">A little practice, lasting recall</p><h1>Make it memorable.</h1><p class=\"lede\">One question at a time. Type your answer; Scry checks your recall.</p><div class=\"actions\">",
         );
-        if concepts.is_empty() {
-            out.push_str("<p class=\"lede\">Explore a concept, study its explanation, and practise what you understand.</p>");
+        if has_review {
+            let _ = write!(
+                out,
+                "<a class=\"button primary\" href=\"/recall\">{action}</a><a class=\"button secondary\" href=\"/library#nato-starter\">Start with NATO</a>"
+            );
+        } else {
+            out.push_str(
+                "<a class=\"button primary\" href=\"/library#nato-starter\">Start with NATO</a>",
+            );
         }
-        out.push_str("<div class=\"actions\">");
-        if self.app.occurrence.is_some() {
-            out.push_str("<a class=\"button primary\" href=\"/notebook\">Resume practice</a>");
-        } else if !concepts.is_empty() {
-            out.push_str("<a class=\"button primary\" href=\"/notebook\">Start practice</a>");
-        }
-        let _ = write!(
-            out,
-            "<a class=\"button {}\" href=\"/create\">Add material</a></div>",
-            if concepts.is_empty() && self.app.occurrence.is_none() {
-                "primary"
+        out.push_str("</div><p><a class=\"text-link\" href=\"/library\">Browse Library</a></p>");
+        if let Some(occurrence) = &self.app.occurrence {
+            let label = if matches!(occurrence.phase.as_str(), "self" | "self-check") {
+                "Read saved earlier answer"
             } else {
-                "secondary"
-            }
-        );
-        out.push_str(&self.pending());
-        if !concepts.is_empty() {
-            out.push_str("<ul class=\"concept-list home-concepts\">");
-            for c in concepts {
-                let _ = write!(
-                    out,
-                    "<li><a href=\"/concepts/{}\"><span>{}</span><span class=\"idea-status\">{}</span></a></li>",
-                    escape(&c.id),
-                    self.concept_name(c),
-                    concept_state(self.app, c, self.now)
-                );
-            }
-            out.push_str("</ul><a class=\"text-link\" href=\"/map\">View connections</a>");
+                "Resume earlier practice"
+            };
+            let _ = write!(
+                out,
+                "<p><a class=\"text-link\" href=\"/notebook\">{label}</a></p>"
+            );
+        }
+        if !self.app.concepts.is_empty() || !self.app.goals.is_empty() {
+            out.push_str(
+                "<p><a class=\"text-link\" href=\"/map\">Earlier notes and concepts</a></p>",
+            );
         }
         out.push_str("</section>");
         out
@@ -1375,38 +1228,16 @@ impl View<'_> {
             .or_else(|| self.query.get("url"))
             .map(String::as_str)
             .unwrap_or("");
-        if self.app.restored_paused
-            || !self
-                .query
-                .get("__preparation_ready")
-                .is_some_and(|v| v == "true")
-        {
-            let draft = if prefill.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<label for=\"unsent-material\">Your unsent material</label><textarea id=\"unsent-material\" rows=\"7\" readonly>{}</textarea>",
-                    escape(prefill)
-                )
-            };
-            return format!(
-                "<section class=\"create-page\" data-state=\"create\"><h1>Add material</h1><p class=\"lede\">Preparation is unavailable right now.</p><p>Scry cannot prepare new concepts and practice here yet. Your saved concepts and text practice are still available.</p>{draft}<div class=\"actions\"><a class=\"button primary\" href=\"/\">Your concepts</a><a class=\"text-link\" href=\"/recall\">Text practice</a></div></section>"
-            );
-        }
-        let body = format!(
-            "<label for=\"intent\" class=\"sr-only\">What do you want to learn?</label><div class=\"writing-area\"><textarea id=\"intent\" name=\"intent\" rows=\"7\" maxlength=\"32768\" placeholder=\"Why do we forget things?\n\nA word is enough. Or tell me everything on your mind.\" aria-describedby=\"intent-hint\">{}</textarea><span class=\"writing-mark\" aria-hidden=\"true\">✦</span></div><p class=\"control-hint\" id=\"intent-hint\">Text or one photo. Preparation uses paid AI and your existing allowance.</p><details class=\"optional-material\"><summary>Add a photo for context <span aria-hidden=\"true\">＋</span></summary><label for=\"photo\">Optional photo</label><input type=\"file\" id=\"photo\" name=\"photo\" accept=\"image/jpeg,image/png,image/webp\" aria-describedby=\"photo-hint\"><p class=\"fineprint\" id=\"photo-hint\">JPEG, PNG or WebP, up to 4 MB, with a caption up to 1 KB. Scry reads the words; your prompt guides the result.</p></details><div class=\"thumb-actions\"><button class=\"button primary\">Prepare material <span aria-hidden=\"true\">→</span></button></div>",
-            escape(prefill)
-        );
+        let draft = if prefill.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<label for=\"unsent-material\">Your unsent material</label><textarea id=\"unsent-material\" rows=\"7\" readonly>{}</textarea>",
+                escape(prefill)
+            )
+        };
         format!(
-            "<section class=\"create-page\" data-state=\"create\"><div class=\"page-heading\"><h1>Add material</h1><p class=\"lede\">What do you want to understand?</p></div>{}<p class=\"privacy-note\">{}<span>Private by default. Your words are used to prepare your material; pasted links are not opened. Video is not supported yet.</span></p></section>",
-            self.form(
-                "/create",
-                "capture",
-                "create-form",
-                "enctype=\"multipart/form-data\"",
-                &body
-            ),
-            lock_icon()
+            "<section class=\"create-page\" data-state=\"create\"><h1>Bring your own content.</h1><p class=\"lede\">Native content generation is retired.</p><p>External agents author the content. Scry helps you remember it with native answer grading. Your saved material and history remain available.</p>{draft}<div class=\"actions\"><a class=\"button primary\" href=\"/library\">Open Library</a><a class=\"text-link\" href=\"/\">Back to review</a></div></section>"
         )
     }
     fn map(&self) -> String {
@@ -1416,7 +1247,7 @@ impl View<'_> {
             "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note. Give the ideas that matter a little more attention.</p></div>",
         );
         if goals.is_empty() {
-            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/create\">Create your first material →</a></div>");
+            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/library\">Open Library →</a></div>");
         }
         for (index, goal) in goals.iter().enumerate() {
             let concepts: Vec<_> = goal
@@ -1479,7 +1310,9 @@ impl View<'_> {
                 escape(&goal.id)
             );
         }
-        out.push_str("<a class=\"text-link add-curiosity\" href=\"/create\">Follow another curiosity <span aria-hidden=\"true\">＋</span></a></section>");
+        out.push_str(
+            "<a class=\"text-link add-curiosity\" href=\"/library\">Browse Library</a></section>",
+        );
         out
     }
     fn goal(&self, id: &str) -> String {
@@ -1536,10 +1369,6 @@ impl View<'_> {
                 .unwrap_or_default()
         );
         if !g.archived {
-            let feedback = String::from(
-                "<label for=\"feedback\">What would make this more useful?</label><textarea id=\"feedback\" name=\"feedback\" rows=\"3\" required maxlength=\"4000\" placeholder=\"A simpler explanation, a practical example, something you are still wondering…\"></textarea><button class=\"button secondary\">Refine my material →</button>",
-            );
-            out.push_str(&format!("<section class=\"refinement\"><h2>Shape what comes next.</h2><p>Your answers and feedback guide the next material. Your existing notes and attempts stay saved.</p>{}</section>",self.form(&format!("/goals/{id}/refine"),"refine","","",&feedback)));
             out.push_str(&self.form(
                 &format!("/goals/{id}/archive"),
                 "archive",
@@ -1586,105 +1415,26 @@ impl View<'_> {
     }
     fn preparation(&self, g: &Goal) -> String {
         let job = self.app.jobs.get(&g.job_id);
-        let status = self.goal_phase(g);
-        let imported = status == "imported-unfinished";
-        let paused = status == "notebook-paused" || imported && self.app.restored_paused;
-        let stopped = matches!(
-            status,
-            "failed"
-                | "unknown"
-                | "blocked"
-                | "budget"
-                | "paused"
-                | "superseded"
-                | "notebook-paused"
-                | "imported-unfinished"
-                | "ready"
-        );
-        let pending = matches!(status, "queued" | "candidates" | "sent" | "critic-sent");
-        let title = match status {
-            "imported-unfinished" => "This request didn't finish.",
-            "notebook-paused" => "Preparation is paused.",
-            "queued" => "Preparing your reference.",
-            "sent" => "Writing your reference and practice.",
-            "candidates" | "critic-sent" => "Checking your new material.",
-            "unknown" => "The outcome needs checking.",
-            "failed" | "blocked" => "Preparation stopped.",
-            "paused" => "Preparation is paused after recovery.",
-            "budget" => "Your preparation allowance is in use.",
-            "partial" => "A useful part is ready.",
-            "superseded" => "Your request has changed.",
-            "ready" => "No practice was prepared.",
-            _ => "Your material is taking shape.",
+        let accounted = self
+            .app
+            .spend
+            .iter()
+            .filter(|s| job.is_some_and(|j| s.work_id == j.id))
+            .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
+            .sum::<u64>() as f64
+            / 1_000_000.0;
+        let detail = if self.goal_phase(g) == "imported-unfinished" {
+            "<p>This request didn't finish. It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again.</p>".into()
+        } else {
+            job.and_then(|j| j.error.as_ref()).map_or_else(String::new, |error| {
+                format!("<details><summary>Recorded preparation outcome</summary><p>{}</p></details>", escape(error))
+            })
         };
-        let mut out = format!(
-            "<section class=\"preparation-panel {}\" {} aria-live=\"polite\"><p class=\"eyebrow\">{} saved</p><h2>{title}</h2><p>{}</p>",
-            if stopped { "stopped" } else { "" },
-            if pending { "data-poll" } else { "" },
-            if g.photo.is_some() {
-                "Your photo and request are"
-            } else {
-                "Your request is"
-            },
-            if imported {
-                "It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again."
-            } else if status == "notebook-paused" {
-                "Your input is safe. Resume preparation in Settings to enable queued and future work. Historical uncertain work stays stopped and its allowance remains accounted for."
-            } else if status == "unknown" {
-                "A request may have reached the model. Its allowance remains accounted for. Retrying is a deliberate new attempt, not a claim that the earlier one failed."
-            } else if status == "partial" {
-                "Your saved material is ready to read and practice. Add feedback below to shape the parts that still need work."
-            } else if status == "superseded" {
-                "This preparation belongs to an earlier request. Your input and existing material are saved. Add feedback below to prepare material for your newer direction."
-            } else if stopped {
-                "Your input is safe. Inspect the reason, add feedback, or keep studying existing material. Available retries are deliberate new attempts."
-            } else {
-                "Scry is preparing an explanation, examples, and practice. You can leave this page; your progress is saved."
-            }
-        );
-        if let Some(error) = job.and_then(|j| j.error.as_ref()).filter(|_| !imported) {
-            let _ = write!(
-                out,
-                "<details><summary>Why preparation stopped</summary><p>{}</p></details>",
-                escape(error)
-            );
-        }
-        if paused {
-            out.push_str(self.resume_link());
-        } else if job.is_some_and(|j| {
-            j.attempt < 3 && matches!(j.status.as_str(), "failed" | "unknown" | "paused")
-        }) {
-            out.push_str(&self.form(
-                &format!("/goals/{}/retry", g.id),
-                "retry",
-                "",
-                "",
-                "<button class=\"button secondary\">Try preparation again</button>",
-            ));
-        }
-        if stopped {
-            let accounted = self
-                .app
-                .spend
-                .iter()
-                .filter(|s| job.is_some_and(|j| s.work_id == j.id))
-                .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
-                .sum::<u64>() as f64
-                / 1_000_000.0;
-            let _ = write!(
-                out,
-                "<p class=\"fineprint\">${accounted:.2} used or reserved for this preparation. Uncertain outcomes remain accounted.</p>"
-            );
-            if !paused && job.is_some_and(|j| j.attempt >= 3) {
-                out.push_str("<p class=\"fineprint\">The attempt limit is reached. Save a new request or add feedback to change what comes next.</p><a class=\"text-link\" href=\"/create\">Create a new request →</a>");
-            }
-        }
-        let _ = write!(
-            out,
-            "<a class=\"text-link\" href=\"{}\">Return to practice →</a></section>",
-            legacy_home(self.app)
-        );
-        out
+        format!(
+            "<section class=\"preparation-panel stopped\"><h2>Saved preparation history</h2><p>Native content generation is retired. This request, its outcome and any existing material are kept; no work will be sent again.</p>{detail}<p>Recorded status: {} · job {}</p><p class=\"fineprint\">${accounted:.2} used or reserved for this preparation. Uncertain outcomes remain accounted.</p><a class=\"text-link\" href=\"/\">Back to review</a></section>",
+            escape(&g.status),
+            escape(job.map_or("unavailable", |j| &j.status))
+        )
     }
     fn concept(&self, id: &str) -> String {
         let Some(c) = self.app.concepts.get(id) else {
@@ -2124,20 +1874,20 @@ impl View<'_> {
         let backup=match self.app.backup.completed_ms{Some(time)=>format!("Last verified backup: {}.{}",date(time),if self.now-time>DAY_MS{" A fresh backup needs attention."}else{""}),None=>"No verified remote backup is recorded. Recovery needs attention before personal use.".into()};
         let resume = if self.app.restored_paused {
             format!(
-                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume queued and future preparation and meaning checks when you are ready. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
+                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume queued and future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
                 self.form(
                     "/settings/resume",
                     "resume",
                     "",
                     "",
-                    "<button class=\"button primary\">Resume preparation</button>"
+                    "<button class=\"button primary\">Resume meaning checks</button>"
                 )
             )
         } else {
             String::new()
         };
         let mut out = format!(
-            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><p class=\"eyebrow\">Make room for learning</p><h1>Your rhythm.</h1><p class=\"lede\">A little practice you return to is better than a pile of work you don't.</p></div>{resume}{}<section class=\"settings-section\"><h2>Preparation allowance</h2><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each preparation reserves $0.50 before it begins. Uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></section><section class=\"settings-section\"><h2>Your notebook is worth keeping.</h2><p>{backup}</p><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p>{}</section><section class=\"settings-section\"><h2>Take your learning with you.</h2><p>A portable record of your requests, notes, content versions, attempts, and schedules.</p><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><section class=\"settings-section font-colophon\"><p>Set in Literata and Atkinson Hyperlegible Next. Thoughtful letterforms, served from Scry.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses ↗</a></section></section>",
+            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><p class=\"eyebrow\">Make room for learning</p><h1>Your rhythm.</h1><p class=\"lede\">A little practice you return to is better than a pile of work you don't.</p></div>{resume}{}<section class=\"settings-section\"><h2>Usage allowance</h2><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></section><section class=\"settings-section\"><h2>Your notebook is worth keeping.</h2><p>{backup}</p><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p>{}</section><section class=\"settings-section\"><h2>Take your learning with you.</h2><p>A portable record of your requests, notes, content versions, attempts, and schedules.</p><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><section class=\"settings-section font-colophon\"><p>Set in Literata and Atkinson Hyperlegible Next. Thoughtful letterforms, served from Scry.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses ↗</a></section></section>",
             self.form("/settings", "pace", "pace-form", "", &pace),
             self.app
                 .backup
@@ -2164,59 +1914,16 @@ impl View<'_> {
         out
     }
     fn fix_status(&self, q: &Question) -> String {
-        let job = self
+        if self
             .app
             .jobs
             .values()
-            .filter(|j| j.question_id.as_deref() == Some(q.id.as_str()) && j.kind == "fix")
-            .max_by_key(|j| j.created_ms);
-        let Some(job) = job else {
-            return String::new();
-        };
-        let phase = self.effective_phase(&job.status, job.error.as_deref());
-        if phase == "notebook-paused" {
-            return format!(
-                "<aside class=\"notice\"><strong>Draft preparation is paused.</strong><p>Your saved question has not changed. Resume preparation in Settings to continue; historical uncertain work stays stopped.</p>{}</aside>",
-                self.resume_link()
-            );
+            .any(|j| j.question_id.as_deref() == Some(q.id.as_str()) && j.kind == "fix")
+        {
+            "<aside class=\"notice\"><strong>Saved draft history</strong><p>Native content generation is retired. Existing drafts and outcomes remain saved; nothing will be sent again.</p></aside>".into()
+        } else {
+            String::new()
         }
-        if matches!(phase, "queued" | "sent" | "candidates" | "critic-sent") {
-            return "<aside class=\"notice\" data-poll><strong>A better version is being prepared.</strong><p>Your current wording stays saved. The result will be a draft for you to review.</p></aside>".into();
-        }
-        if matches!(phase, "failed" | "unknown" | "paused") {
-            let accounted = self
-                .app
-                .spend
-                .iter()
-                .filter(|s| s.work_id == job.id)
-                .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
-                .sum::<u64>() as f64
-                / 1_000_000.0;
-            return format!(
-                "<aside class=\"notice\"><strong>Draft preparation stopped.</strong><p>{}</p><p class=\"fineprint\">${accounted:.2} used or reserved. Your saved question has not changed.</p>{}</aside>",
-                escape(
-                    job.error
-                        .as_deref()
-                        .unwrap_or("Its outcome has not been confirmed.")
-                ),
-                if job.attempt < 3 {
-                    self.form(
-                        &format!("/questions/{}/fix", q.id),
-                        "retry-fix",
-                        "",
-                        "",
-                        &format!(
-                            "{}<button class=\"text-button\">Try drafting again</button>",
-                            hidden("content_version", &q.content().version.to_string())
-                        ),
-                    )
-                } else {
-                    "<p>The attempt limit is reached. You can edit the question yourself.</p>"
-                        .into()
-                }
-            );
-        }
-        String::new()
     }
     fn edit(&self, id: &str) -> String {
         let Some(q) = self.app.questions.get(id) else {
@@ -2310,7 +2017,7 @@ impl View<'_> {
     }
     fn not_found(&self) -> String {
         format!(
-            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Your concepts →</a></section>",
+            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
             emblem("large")
         )
     }
@@ -2459,7 +2166,7 @@ pub fn render(
         "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
         "/notebook" => format!(
-            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/create\">Create</a><a href=\"/map\">Map</a></nav>{}",
+            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Review</a><a href=\"/map\">Map</a></nav>{}",
             view.study()
         ),
         "/create" | "/add" => view.create(),
@@ -2496,8 +2203,8 @@ pub fn render(
     };
     let title = match path {
         "/library/add" => "Add a text",
-        "/" => "Your concepts",
-        "/recall" => "Text practice",
+        "/" => "Review",
+        "/recall" => "Review",
         p if p.starts_with("/library") => "Your Library",
         "/create" | "/add" => "Create",
         "/map" => "Your map",
@@ -2505,16 +2212,11 @@ pub fn render(
         "/settings" => "Your rhythm",
         _ => "Your notebook",
     };
-    let poll = app
-        .occurrence
-        .as_ref()
-        .is_some_and(|o| matches!(o.phase.as_str(), "checking" | "pending"))
-        || app.jobs.values().any(|j| {
-            matches!(
-                j.status.as_str(),
-                "queued" | "sent" | "candidates" | "critic-sent"
-            )
-        });
+    let poll = path != "/"
+        && app
+            .occurrence
+            .as_ref()
+            .is_some_and(|o| matches!(o.phase.as_str(), "checking" | "pending"));
     shell(
         title,
         path,
@@ -2535,7 +2237,7 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         "A moment to pause."
     };
     let content = format!(
-        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Your concepts →</a></section>",
+        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
         emblem("large"),
         escape(message)
     );
@@ -2554,7 +2256,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Concepts</a><a href=\"/create\">Add material</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Text practice</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Review</a><a href=\"/library\">Library</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -2582,9 +2284,6 @@ fn emblem(class: &str) -> String {
         "<svg class=\"emblem {}\" width=\"48\" height=\"48\" viewBox=\"0 0 64 64\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"32\" cy=\"32\" r=\"25\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\"/><path d=\"M16 41 30 19 47 32 31 45 30 19M16 41l15 4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1\"/><circle cx=\"16\" cy=\"41\" r=\"2.5\" fill=\"currentColor\"/><circle cx=\"30\" cy=\"19\" r=\"3\" fill=\"currentColor\"/><circle cx=\"47\" cy=\"32\" r=\"2.5\" fill=\"currentColor\"/><path d=\"m31 39 1.5 4.5L37 45l-4.5 1.5L31 51l-1.5-4.5L25 45l4.5-1.5Z\" fill=\"currentColor\"/></svg>",
         escape(class)
     )
-}
-fn lock_icon() -> &'static str {
-    "<svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><rect x=\"5\" y=\"10\" width=\"14\" height=\"11\" rx=\"2\"/><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"/></svg>"
 }
 fn notes(app: &App, c: &Concept) -> String {
     let Some(note) = c.notes.last() else {
@@ -2789,7 +2488,7 @@ fn status_label(value: &str) -> &'static str {
         "partial" => "Partly ready",
         "paused" | "notebook-paused" | "imported-unfinished" => "Preparation paused",
         "blocked" | "budget" | "superseded" => "Needs attention",
-        _ => "Preparing",
+        _ => "Saved preparation history",
     }
 }
 fn outcome_label(value: &str) -> &'static str {
@@ -2801,7 +2500,7 @@ fn outcome_label(value: &str) -> &'static str {
 }
 fn authority_label(value: &str) -> &'static str {
     match value {
-        "ungraded" => "Awaiting self-check",
+        "ungraded" => "Saved, ungraded",
         "exact" => "Exact match",
         "jev" => "Meaning checked",
         "learner" => "Self-checked",

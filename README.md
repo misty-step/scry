@@ -1,15 +1,16 @@
 # Scry
 
-Scry helps its owner understand and remember concepts. Concept Home leads to
-existing study material, practice, and connections. Exact text memorization
-remains available through Text practice and the private Library, with fading
-cues, word-by-word verdicts and memory scheduling. [SPEC](SPEC.md) records the
-owner's 2026-10-24 priority amendment and the capabilities still to be built.
+Scry helps its owner memorize externally authored knowledge. Home leads to
+native review or the supplied NATO starter; Library is secondary. External
+agents supply content, while Scry grades answers and schedules recall. Native
+content generation is retired. Existing exact-text and concept-notebook
+material, interrupted practice and history remain preserved. [SPEC](SPEC.md)
+records the owner's 2026-10-27 direction and remaining acceptance work.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
 rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
 Access ingress and forwards to one SQLite-backed Durable Object. Rust owns
-learning, immutable history, generation, and recovery; server-rendered HTML,
+learning, immutable history, native grading, and recovery; server-rendered HTML,
 self-hosted fonts, and a small vanilla controller deliver the notebook. There
 is no Container or frontend framework in the replacement architecture.
 
@@ -67,8 +68,8 @@ state; stop the process before removing only that directory.
 
 The empty notebook offers an explicitly authored demo only in isolated
 development. The demo uses no provider and is never advertised in production.
-Without configured providers, new requests remain saved with an honest stopped
-preparation state. Local fixture mechanics do not prove live model usefulness,
+New native content-generation requests are refused before creating work, even
+when provider bindings exist. Local fixture mechanics do not prove live model usefulness,
 private HTTPS, remote R2 recovery, or phone acceptance.
 
 [.dev.vars.example](.dev.vars.example) documents synthetic local values only.

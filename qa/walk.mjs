@@ -41,6 +41,9 @@ const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
 const register=async path=>{receipt.artifacts.push({path,sha256:sha(await readFile(join(output,path)))});};
 const native=execFileSync('cargo',['test','--locked','--all-targets'],{encoding:'utf8',env:process.env});await writeFile(join(output,'logs/rust-tests.txt'),native);await register('logs/rust-tests.txt');
+// Cargo's example test harness is not the executable used by historical setup.
+// Build it before opening a runtime, including standalone story-walk CI.
+execFileSync('cargo',['build','--locked','--example','qa-historical-fixture'],{stdio:'inherit',env:process.env});
 const policy=(...names)=>{for(const name of names)assert.ok(native.includes(`test ${name} ... ok`),`Native test did not pass: ${name}`);};
 let retainedGo;
 if(selected.includes('US-001')){
@@ -51,7 +54,6 @@ if(selected.includes('US-001')){
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
 if(selected.some(id=>['US-014','US-015','US-016','US-017','US-018'].includes(id)))buildCli();
 let browser;
-const practice=selected.some(id=>['US-016','US-017'].includes(id))?await studyJourney():null;
 try{
  if(playwright)browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
@@ -72,13 +74,17 @@ try{
    continue;
   }
   if(['US-016','US-017'].includes(id)){
+   // US-016 retains old/current coexistence and cumulative restore; US-017
+   // independently exercises every dependent grading/replay criterion.
+   const practice=await studyJourney({seedHistorical:id==='US-016'});
    const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
-   const first=practice.transcript.length;
-   for(let i=0;i<specs[id].length;i++){
-    const criterion={n:i+1,status:'pass',target:'rust-worker-cli-sqlite-r2',source_revision:receipt.head,evidence:['logs/rust-tests.txt',`logs/${id}-cli.json`]};result.criteria.push(criterion);
-    try{await specs[id][i]({practice,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
-   }
-   const path=`logs/${id}-cli.json`;await writeFile(join(output,path),JSON.stringify(practice.transcript.slice(first),null,2)+'\n');await register(path);
+   try{
+    for(let i=0;i<specs[id].length;i++){
+     const criterion={n:i+1,status:'pass',target:'rust-worker-cli-sqlite-r2',source_revision:receipt.head,evidence:['logs/rust-tests.txt',`logs/${id}-cli.json`]};result.criteria.push(criterion);
+     try{await specs[id][i]({practice,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
+    }
+    const path=`logs/${id}-cli.json`;await writeFile(join(output,path),JSON.stringify(practice.transcript,null,2)+'\n');await register(path);
+   }finally{await practice.close();}
    continue;
   }
   if(id==='US-015'){
@@ -123,5 +129,5 @@ try{
  }
  receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.concept_home.every(s=>s.status==='pass')&&receipt.mixed_notebook.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
-finally{await practice?.close();await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
+finally{await browser?.close();receipt.finished_at=new Date().toISOString();await writeFile(join(output,'walk-receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(`Rust Worker story walk ${receipt.stories.filter(s=>s.status==='pass').length}/${selected.length}: ${output}/walk-receipt.json`);}
 process.exitCode=receipt.exit;

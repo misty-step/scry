@@ -31,8 +31,8 @@ export async function conceptHomeWalk(browser,capture){
    }
    assert.fail('The requested control is not reachable through the keyboard tab order');
   };
-  const home=()=>page.locator('[data-state="concept-home"]');
-  const headerHome=()=>page.locator('.masthead nav').getByRole('link',{name:'Concepts',exact:true});
+  const home=()=>page.locator('[data-state="review-home"]');
+  const headerHome=()=>page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true});
   const layout=async()=>{
    await page.evaluate(()=>document.fonts.ready);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${name}: horizontal overflow`);
@@ -41,18 +41,18 @@ export async function conceptHomeWalk(browser,capture){
   };
   const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
   try{
-   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'What do you want to learn?',exact:true}).waitFor();
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Concepts','Add material']);
-   assert.equal(await page.locator('footer').getByRole('link',{name:'Text practice',exact:true}).getAttribute('href'),'/recall');
+   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'Make it memorable.',exact:true}).waitFor();
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Review','Library']);
+   assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true}).getAttribute('href'),'/recall');
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
    await layout();await shot('empty');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');
-   await activate(home().getByRole('link',{name:'Add material',exact:true}));
-   await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();
+   await activate(home().getByRole('link',{name:'Start with NATO',exact:true}));
+   await page.locator('[data-state="library"]').waitFor();
    assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
    await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('unavailable-200');
    await activate(headerHome());await home().waitFor();await stable(empty);
    await page.reload();await home().waitFor();await stable(empty);
-   await page.goBack();await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();await page.goForward();await home().waitFor();await stable(empty);
+   await page.goBack();await page.locator('[data-state="library"]').waitFor();await page.goForward();await home().waitFor();await stable(empty);
    // Explicit opt-in to authored synthetic content, never a SQL fixture write.
    await page.goto(url+'/notebook');await activate(page.getByRole('button',{name:'Explore an authored demo',exact:true}));await page.locator('[data-state="question"]').waitFor();
    const question=await state();assert.equal(question.occurrence.phase,'question');assert.equal(question.practice?.current??null,null);
@@ -61,24 +61,24 @@ export async function conceptHomeWalk(browser,capture){
    for(const hidden of [question.occurrence.presentation.answer,question.occurrence.presentation.explanation,question.occurrence.presentation.prompt])assert.ok(!markup.includes(hidden),'Home must not leak the current question, answer or explanation');
    const cold=JSON.parse(question.records.find(r=>r.key===`concepts/${question.occurrence.concept_id}`).value);
    assert.ok(!markup.includes(cold.name),'Home must protect the current unaided concept name');
-   assert.equal(await home().getByRole('link',{name:'Resume practice',exact:true}).getAttribute('href'),'/notebook');
+   assert.equal(await home().getByRole('link',{name:'Resume earlier practice',exact:true}).getAttribute('href'),'/notebook');
    await stable(question);await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('question-home-200');
    await page.reload();await home().waitFor();await stable(question);
    await page.goBack();await page.locator('[data-state="question"]').waitFor();await stable(question);
    await page.goForward();await home().waitFor();await stable(question);
-   await activate(home().getByRole('link',{name:'Resume practice',exact:true}));await page.locator('[data-state="question"]').waitFor();await stable(question);
+   await activate(home().getByRole('link',{name:'Resume earlier practice',exact:true}));await page.locator('[data-state="question"]').waitFor();await stable(question);
    await activate(page.locator('.choice').first());await page.locator('[data-state="result"]').waitFor();
    const held=await state();assert.equal(held.occurrence.phase,'result');assert.equal(held.records.filter(r=>r.key.startsWith('events/')).length,1);
    const answerPair=await page.locator('.answer-pair').innerText();
    await activate(headerHome());await home().waitFor();await stable(held);await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('held-home-200');
    await page.reload();await home().waitFor();await stable(held);
-   await activate(home().getByRole('link',{name:'Resume practice',exact:true}));await page.locator('[data-state="result"]').waitFor();assert.equal(await page.locator('.answer-pair').innerText(),answerPair);await stable(held);
+   await activate(home().getByRole('link',{name:'Resume earlier practice',exact:true}));await page.locator('[data-state="result"]').waitFor();assert.equal(await page.locator('.answer-pair').innerText(),answerPair);await stable(held);
    await page.goBack();await home().waitFor();await page.goForward();await page.locator('[data-state="result"]').waitFor();await stable(held);
    await activate(headerHome());await home().waitFor();
    const concepts=held.records.filter(r=>r.key.startsWith('concepts/')).map(r=>JSON.parse(r.value));
    const dependent=concepts.find(c=>c.prerequisites.length);assert.ok(dependent,'The authored demo must retain its real prerequisite relation');
    const prerequisite=concepts.find(c=>c.id===dependent.prerequisites[0]);assert.ok(prerequisite);
-   await activate(home().locator(`a[href="/concepts/${prerequisite.id}"]`));await page.locator('[data-state="concept"]').waitFor();
+   await activate(home().getByRole('link',{name:'Earlier notes and concepts',exact:true}));await page.locator('[data-state="map"]').waitFor();await activate(page.locator(`a[href="/concepts/${prerequisite.id}"]`).first());await page.locator('[data-state="concept"]').waitFor();
    for(const heading of ['Study','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
    assert.equal(await page.getByRole('link',{name:'Original material & preparation',exact:true}).getAttribute('href'),`/goals/${prerequisite.goal_id}`);
    const reverse=page.locator('.connected').getByRole('link',{name:dependent.name,exact:true});assert.equal(await reverse.getAttribute('href'),`/concepts/${dependent.id}`);
@@ -115,38 +115,24 @@ export async function conceptHomeWalk(browser,capture){
   }catch(error){row.status='fail';row.reason=error.message;console.error(`${name}: ${error.message}`);await shot('failure');}
   finally{await context.close();await runtime.mf.dispose();}
  }
- const row={name:'concept-home-read-only-poll',status:'pass',evidence:[],scope:'Existing saved requests and native Home polling; no provider configuration or external egress.'};results.push(row);
- const runtime=await createSyntheticRuntime({name:'concept-home-read-only-poll'});
- const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
- let releasePoll;const pollRelease=new Promise(done=>{releasePoll=done;});
- try{
-  const read=async()=>{const response=await context.request.get(runtime.url+'/export');assert.equal(response.status(),200);return(await response.json()).app;};
-  const practice=app=>({occurrence:app.occurrence,practice:app.practice,events:app.events,concepts:app.concepts,questions:app.questions});
-  const save=async operation=>{
-   const settings=await(await context.request.get(runtime.url+'/settings')).text();
-   const fields=Object.fromEntries([...settings.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
-   const response=await context.request.post(runtime.url+'/create',{form:{...fields,operation_id:operation,intent:'Synthetic saved request for Home status'},headers:{Origin:runtime.url},maxRedirects:0});assert.equal(response.status(),303);
-  };
-  await save('home-poll-stopped');await page.goto(runtime.url+'/');
-  await page.getByText('Preparing your material',{exact:true}).waitFor();const before=practice(await read());
-  await page.getByText('Preparation needs your attention',{exact:true}).waitFor();
-  assert.equal(new URL(page.url()).pathname,'/');assert.deepEqual(practice(await read()),before);assert.deepEqual((await read()).spend,[]);
-  row.evidence.push(await capture(page,'concept-home-poll-stopped.png'));
-  // Hold an actual server poll response across newer native navigation.
-  await save('home-poll-stale-navigation');let sawPoll;const started=new Promise(done=>{sawPoll=done;});let completedPoll;const completed=new Promise(done=>{completedPoll=done;});let deliveryError;
-  await context.route(runtime.url+'/',async route=>{
-   if(route.request().headers()['x-scry-request']!=='poll')return route.continue();
-   const response=await route.fetch();sawPoll();await pollRelease;
-   try{await route.fulfill({response});}catch(error){deliveryError=error.message;}finally{completedPoll();}
-  });
-  await page.goto(runtime.url+'/');await page.getByText('Preparing your material',{exact:true}).waitFor();
-  let timer;try{await Promise.race([started,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Home did not issue its read-only poll')),12000);})]);}finally{clearTimeout(timer);}
-  await page.locator('footer').getByRole('link',{name:'Settings',exact:true}).tap();await page.waitForURL(runtime.url+'/settings');
-  releasePoll();await completed;await page.waitForTimeout(250);
-  if(deliveryError)assert.match(deliveryError,/closed|cancel|abort/i,'Only native navigation cancellation may prevent delivery of the old poll');
-  assert.equal(new URL(page.url()).pathname,'/settings');assert.equal(await page.locator('[data-state="concept-home"]').count(),0);
-  assert.deepEqual(practice(await read()),before);assert.deepEqual((await read()).spend,[]);row.evidence.push(await capture(page,'concept-home-poll-newer-navigation.png'));
- }catch(error){row.status='fail';row.reason=error.message;console.error(`${row.name}: ${error.message}`);row.evidence.push(await capture(page,'concept-home-poll-failure.png'));}
- finally{releasePoll();await context.close();await runtime.mf.dispose();}
+ // Home intentionally does not poll retired generation or select either stream.
+ const runtime=await createSyntheticRuntime({name:'review-home-refusal'});
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ const page=await context.newPage();
+ const row={name:'review-home-retired-request',status:'pass',evidence:[]};results.push(row);
+ try {
+  const read=async()=>(await(await context.request.get(runtime.url+'/export')).json()).app;
+  const before=await read();
+  const response=await context.request.post(runtime.url+'/create',{form:{csrf:before.csrf,operation_id:'home-retired-request',intent:'Unsent material'},headers:{Origin:runtime.url},maxRedirects:0});
+  assert.equal(response.status(),410);assert.deepEqual(await read(),before);
+  await page.goto(runtime.url+'/create?text=Unsent%20material');
+  await page.getByText('Native content generation is retired.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Your unsent material',{exact:true}).inputValue(),'Unsent material');
+  assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
+  await page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true}).tap();
+  await page.locator('[data-state="review-home"]').waitFor();assert.equal(await page.locator('[data-poll]').count(),0);
+  assert.deepEqual(await read(),before);row.evidence.push(await capture(page,'review-home-retired-request.png'));
+ }catch(error){row.status='fail';row.reason=error.message;}
+ finally{await context.close();await runtime.mf.dispose();}
  return results;
 }

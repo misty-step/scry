@@ -37,25 +37,40 @@ export async function recoveryWalk(browser,capture){
  await check('320px, desktop and dark layouts',{},async({page})=>{
   for(const width of [320,1280]){await page.setViewportSize({width,height:844});await page.emulateMedia({colorScheme:width===1280?'dark':'light'});await page.evaluate(()=>document.fonts.ready);await page.waitForFunction(()=>{const l=rgb=>{const a=rgb.match(/[\d.]+/g).slice(0,3).map(x=>{x=Number(x)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4;});return .2126*a[0]+.7152*a[1]+.0722*a[2];};return [...document.querySelectorAll('.choice')].every(node=>{const s=getComputedStyle(node),a=l(s.color),b=l(s.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5;});});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await capture(page,`layout-${width}.png`);}
  });
- await check('stopped preparation offers recovery instead of false progress',{isMobile:true,hasTouch:true},async({page,context,url})=>{
-  assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Follow your curiosity.');
-  await page.goto(url+'/create');const intent='How do Durable Objects serialize writes across an external API await?';
-  await page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
-  // Replay an earlier saved request through the existing POST contract. The
-  // unavailable page above offers no new submission or misleading progress.
-  const settings=await(await context.request.get(url+'/settings')).text();
-  const fields=Object.fromEntries([...settings.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
-  const response=await context.request.post(url+'/create',{form:{...fields,operation_id:'earlier-stopped-recovery-request',intent},headers:{Origin:url},maxRedirects:0});assert.equal(response.status(),303);
-  const saved=url+response.headers().location;await page.goto(saved);
-  await page.getByText('Preparation stopped.',{exact:true}).waitFor();
-  await page.goto(url+'/notebook');await page.locator('[data-state="preparation-stopped"]').waitFor();
-  assert.equal(await page.getByRole('heading',{level:1}).innerText(),'Your request needs attention.');
-  assert.doesNotMatch(await page.locator('main').innerText(),/taking shape|while Scry prepares/);
-  const before=await exported(context,url);assert.equal(before.app.spend.length,0);
-  await capture(page,'stopped-preparation-stream.png');
-  await page.getByRole('link',{name:'Review your saved request'}).tap();await page.waitForURL(saved);
-  await page.getByText('Your original request',{exact:true}).tap();assert.ok((await page.locator('main').innerText()).includes(intent));
-  assert.deepEqual((await exported(context,url)).app.goals,before.app.goals);
+ await check('retired preparation preserves the unsent draft without false progress',{isMobile:true,hasTouch:true},async({page,context,url})=>{
+  const before=await exported(context,url);const intent='How do Durable Objects serialize writes across an external API await?';
+  await page.goto(url+'/create?text='+encodeURIComponent(intent));
+  await page.getByText('Native content generation is retired.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Your unsent material',{exact:true}).inputValue(),intent);
+  assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
+  const response=await context.request.post(url+'/create',{form:{csrf:before.app.csrf,operation_id:'earlier-retired-recovery-request',intent},headers:{Origin:url},maxRedirects:0});assert.equal(response.status(),410);
+  assert.deepEqual((await exported(context,url)).app,before.app);
+  await capture(page,'retired-preparation-draft.png');
+ },false);
+ // A synthetic pre-upgrade tab retains its native form while the real current
+ // Worker refuses the write. This is a browser fixture, never a runtime route.
+ await check('retired write in an earlier tab unlocks and preserves its exact draft',{},async({page,context,url})=>{
+  const before=(await exported(context,url)).app;
+  const response=await context.request.get(url+'/create');assert.equal(response.status(),200);
+  const form=`<form method="post" action="/create" id="earlier-create"><input type="hidden" name="csrf" value="${before.csrf}"><input type="hidden" name="operation_id" value="earlier-tab-retired-operation"><label for="earlier-intent">Earlier unsent request</label><textarea id="earlier-intent" name="intent"></textarea><button>Save earlier request</button></form>`;
+  const body=(await response.text()).replace('</main>',form+'</main>');
+  await page.route(url+'/create?stale-tab=1',route=>route.fulfill({response,body}),{times:1});
+  await page.goto(url+'/create?stale-tab=1');
+  const draft='Keep this unsent earlier-tab draft exactly.';
+  await page.getByLabel('Earlier unsent request',{exact:true}).fill(draft);
+  let sends=0;page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/create')sends++;});
+  const rejected=page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname==='/create');
+  await page.getByRole('button',{name:'Save earlier request',exact:true}).focus();await page.keyboard.press('Enter');
+  assert.equal((await rejected).status(),410);
+  await page.locator('#request-status').getByText(/Native content generation is retired/).waitFor();
+  assert.equal(await page.getByLabel('Earlier unsent request',{exact:true}).inputValue(),draft);
+  assert.equal(await page.getByLabel('Earlier unsent request',{exact:true}).isEditable(),true);
+  assert.equal(await page.locator('#earlier-create [name="operation_id"]').inputValue(),'earlier-tab-retired-operation');
+  assert.equal(await page.locator('#earlier-create[aria-busy]').count(),0);
+  assert.equal(await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Continue editing',exact:true}).click();await page.waitForTimeout(400);
+  assert.equal(sends,1,'A definite retirement refusal is not queued or automatically retried.');
+  assert.deepEqual((await exported(context,url)).app,before);
  },false);
  await check('restored meaning check resumes through native Settings without JavaScript',{isMobile:true,hasTouch:true,javaScriptEnabled:false},async({page,context,url,runtime})=>{
   await answer(page);
@@ -66,10 +81,10 @@ export async function recoveryWalk(browser,capture){
   await runtime.rebind({SCRY_ENV:'development',CANONICAL_ORIGIN:url,SPACE_NAME:'restored-meaning-check',INTERNAL_KEY:internalKey});
   await page.goto(url+'/notebook');await page.getByRole('button',{name:'Next question'}).tap();await page.locator('#answer').fill('I remember the cache freshness header');await page.getByRole('button',{name:'Check my answer'}).tap();
   await page.getByRole('heading',{name:'Your meaning check is paused.',exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'Check again',exact:true}).count(),0);await capture(page,'paused-meaning-check.png');
-  await page.getByRole('link',{name:'Resume preparation',exact:false}).tap();await page.getByRole('button',{name:'Resume preparation',exact:true}).tap();
-  await page.waitForTimeout(1300);await page.reload();await page.getByRole('heading',{name:'You know your answer best.',exact:true}).waitFor();await capture(page,'resumed-meaning-self-check.png');
-  await page.getByRole('button',{name:'I was right',exact:true}).tap();await page.locator('[data-state="result"]').waitFor();
-  const state=(await exported(context,url)).app;assert.equal(state.restored_paused,false);assert.equal(state.events.length,2);assert.equal(state.events.at(-1).result.authority,'learner');assert.equal(state.spend.length,0);
+  await page.getByRole('link',{name:'Resume meaning checks',exact:false}).tap();await page.getByRole('button',{name:'Resume meaning checks',exact:true}).tap();
+  await page.waitForTimeout(1300);await page.reload();await page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();await capture(page,'resumed-meaning-self-check.png');
+  assert.equal(await page.getByRole('button',{name:'I was right',exact:true}).count(),0);
+  const state=(await exported(context,url)).app;assert.equal(state.restored_paused,false);assert.equal(state.events.length,1);assert.equal(state.occurrence.answer,'I remember the cache freshness header');assert.equal(state.spend.length,0);
  });
  return results;
 }

@@ -106,7 +106,7 @@
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
         return;
       }
-      if ([400, 413, 415, 422].includes(response.status)) {
+      if ([400, 410, 413, 415, 422].includes(response.status)) {
         // A definite rejection may be an HTML page or a plain transport error.
         const text = await response.text();
         let error = text.trim().slice(0, 1000);

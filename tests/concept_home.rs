@@ -7,13 +7,13 @@ fn render(app: &App, path: &str) -> String {
 }
 
 #[test]
-fn concept_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
+fn review_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
     let app = App::new("synthetic-concept-home-csrf-value".into());
     let home = render(&app, "/");
-    assert!(home.contains("data-state=\"concept-home\""));
-    assert!(home.contains("<h1>What do you want to learn?</h1>"));
-    assert!(home.contains("href=\"/create\">Add material</a>"));
-    assert!(home.contains("href=\"/recall\">Text practice</a>"));
+    assert!(home.contains("data-state=\"review-home\""));
+    assert!(home.contains("<h1>Make it memorable.</h1>"));
+    assert!(home.contains("href=\"/library#nato-starter\">Start with NATO</a>"));
+    assert!(home.contains("href=\"/recall\">Review</a>"));
     assert!(!home.contains("Find a text") && !home.contains("library-query"));
     assert!(!home.contains("<h1>Your Library</h1>"));
     assert!(render(&app, "/library").contains("data-state=\"library\""));
@@ -26,8 +26,8 @@ fn home_resumes_without_exposing_or_replacing_the_concept_occurrence() {
     engine::ensure_occurrence(&mut app, NOW, "home-practice").unwrap();
     let before = app.clone();
     let home = render(&app, "/");
-    assert!(home.contains("data-state=\"concept-home\""));
-    assert!(home.contains("href=\"/notebook\">Resume practice</a>"));
+    assert!(home.contains("data-state=\"review-home\""));
+    assert!(home.contains("href=\"/notebook\">Resume earlier practice</a>"));
     assert!(!home.contains("data-state=\"question\""));
     assert!(!home.contains(&app.occurrence.as_ref().unwrap().presentation.answer));
     assert_eq!(app, before);
@@ -46,7 +46,7 @@ fn home_resumes_without_exposing_or_replacing_the_concept_occurrence() {
 fn unavailable_preparation_does_not_offer_a_fake_submit_or_supported_formats() {
     let app = App::new("synthetic-concept-home-csrf-value".into());
     let unavailable = render(&app, "/create");
-    assert!(unavailable.contains("Preparation is unavailable"));
+    assert!(unavailable.contains("Native content generation is retired"));
     assert!(!unavailable.contains("action=\"/create\""));
     assert!(!unavailable.contains("type=\"file\""));
     let ready = web::render(
@@ -56,10 +56,10 @@ fn unavailable_preparation_does_not_offer_a_fake_submit_or_supported_formats() {
         NOW,
         None,
     );
-    assert!(ready.contains("action=\"/create\""));
-    assert!(ready.contains("Prepare material"));
-    assert!(ready.contains("paid AI"));
-    assert!(ready.contains("pasted links are not opened"));
+    assert!(!ready.contains("action=\"/create\""));
+    assert!(!ready.contains("Prepare material"));
+    assert!(ready.contains("native answer grading"));
+    assert!(ready.contains("Your saved material and history remain available"));
     assert!(!ready.contains("video/"));
 }
 
@@ -114,7 +114,7 @@ fn archived_goal_concepts_leave_active_navigation_but_keep_their_reference() {
     );
     let before = app.clone();
     let home = render(&app, "/");
-    assert!(home.contains("What do you want to learn?"));
+    assert!(home.contains("Make it memorable."));
     assert!(!home.contains("Start practice"));
     for c in app.concepts.values() {
         assert!(!home.contains(&format!("href=\"/concepts/{}\"", c.id)));

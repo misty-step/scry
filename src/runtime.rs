@@ -874,7 +874,7 @@ impl DurableObject for LearningSpace {
             }
             let mut app = self.load()?;
             let previous = app.clone();
-            engine::recover(&mut app, now());
+            engine::recover_grading(&mut app, now());
             if path != "/"
                 && path != "/recall"
                 && !path.starts_with("/library")
@@ -1061,7 +1061,7 @@ impl DurableObject for LearningSpace {
             self.save(&mut app, Some(before))?;
             self.arm().await?;
             return private(Response::ok(
-                "Future external work is enabled. Historical uncertain work remains paused.",
+                "Future meaning checks are enabled. Native content generation remains retired; historical uncertain work stays paused.",
             )?);
         }
         if path == "/operator/backup" {
@@ -1112,6 +1112,10 @@ impl DurableObject for LearningSpace {
         let before = app.revision;
         if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str()) {
             return private(Response::error("Reload before submitting.", 403)?);
+        }
+        // Refuse before photo bytes, R2 puts, operation receipts or new jobs.
+        if let Err(error) = engine::admit_current_mutation(&path) {
+            return render_error(&self.env, &app, &path, &fields, error, false);
         }
         if path == "/__fixture" {
             if (!development(&self.env) && variable(&self.env, "SCRY_ENV") != "synthetic-preview")
@@ -1286,7 +1290,7 @@ impl DurableObject for LearningSpace {
         // timed-out send becomes uncertain once, never another invisible send.
         let mut app = self.load()?;
         let before = app.revision;
-        engine::recover(&mut app, now());
+        engine::recover_grading(&mut app, now());
         if app.revision != before {
             self.save(&mut app, Some(before))?;
         }
@@ -1302,7 +1306,7 @@ impl DurableObject for LearningSpace {
         if !app.restored_paused {
             let config = self.work_config();
             let lease = random_id()?;
-            match engine::claim_work(&mut app, now(), &lease, &config) {
+            match engine::claim_grading_work(&mut app, now(), &lease, &config) {
                 Err(e) => return app_error(e),
                 Ok(work) => {
                     if app.revision != before {
@@ -1501,6 +1505,9 @@ impl LearningSpace {
         let Some(canonical_path) = api::mutation_path(&path) else {
             return api_error(AppError::new(404, "API action not found."));
         };
+        if let Err(error) = engine::admit_current_mutation(canonical_path) {
+            return api_error(error);
+        }
         let replayed = fields
             .get("operation_id")
             .is_some_and(|id| app.operations.contains_key(id));
@@ -1645,24 +1652,21 @@ impl LearningSpace {
     }
     fn work_config(&self) -> engine::WorkConfig {
         let disabled = !self.external_work_allowed();
-        let model = variable(&self.env, "OPENROUTER_MODEL");
         let jev_model = variable(&self.env, "JEV_MODEL");
-        let generation =
-            !disabled && !secret(&self.env, "OPENROUTER_API_KEY").is_empty() && !model.is_empty();
         let jev = !disabled
             && !secret(&self.env, "JEV_API_KEY").is_empty()
             && !jev_model.is_empty()
             && valid_provider_url(&variable(&self.env, "JEV_URL"));
         engine::WorkConfig {
-            generation,
+            generation: false,
             jev,
-            critic: jev,
-            model,
+            critic: false,
+            model: String::new(),
             jev_model,
         }
     }
     fn preparation_ready(&self) -> bool {
-        self.work_config().generation
+        false
     }
     async fn arm(&self) -> Result<()> {
         if variable(&self.env, "SCRY_ENV") == "restore" {
@@ -1681,14 +1685,6 @@ impl LearningSpace {
             due.max(timestamp + 1000)
         };
         if !app.restored_paused {
-            for job in app.jobs.values() {
-                if matches!(job.status.as_str(), "queued" | "candidates") {
-                    alarm = alarm.min(timestamp + 1000);
-                }
-                if matches!(job.status.as_str(), "sent" | "critic-sent") {
-                    alarm = alarm.min(job.started_ms.unwrap_or(timestamp) + RECOVERY_MS);
-                }
-            }
             for assessment in app.assessments.values() {
                 if assessment.status == "queued" {
                     alarm = alarm.min(timestamp + 1000);
@@ -1738,6 +1734,9 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
+        if work.kind != "assessment" {
+            return Err(("Native content generation is retired.".into(), false));
+        }
         if !self.external_work_allowed() {
             return Err((
                 "External work is disabled for this learning space.".into(),

@@ -57,7 +57,7 @@ try{
   await page.goto(origin+'/notebook');
   const h1=await page.getByRole('heading',{level:1}).innerText();
   if(h1!=='Follow your curiosity.')throw Error(`empty notebook heading "${h1}"`);
-  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}" with Create and the authored-demo action`,{evidence:await shot('notebook-empty')});
+  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}" with Library and the authored-demo action`,{evidence:await shot('notebook-empty')});
  });
  await step('notebook.concept',async()=>{
   await page.getByRole('button',{name:'Explore an authored demo'}).click();

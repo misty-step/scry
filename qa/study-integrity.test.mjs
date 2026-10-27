@@ -5,6 +5,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
+import {historicalMutation} from './historical-fixture.mjs';
 
 const text = 'Copper lanterns shelter quiet gardens.';
 const secondText = 'Amber streams carry patient wishes.';
@@ -65,7 +66,19 @@ async function fixture(t, twoUnits = false) {
     const current = (await record('meta')).practice.current;
     return (await cli(['answer', current.prompt.id, '--text-stdin'], input)).practice.attempt;
   };
-  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer};
+  const historicalCorrect = async payload => {
+    const fields = {operation_id: randomUUID(), ...payload};
+    const before = await rows();
+    const refusal = await api('/api/v1/correct', fields, 410);
+    assert.match(refusal.error, /Self-grading is retired/);
+    assert.ok(!JSON.stringify(refusal).includes(text), 'Retired Correction refusal discloses no old or current expected answer.');
+    assert.deepEqual(await rows(), before, 'Current Correction writes and receipt replays are retired without state changes.');
+    const result = await historicalMutation(sql, {path: '/practice/correct', fields, now_ms: Date.now(), seed: fields.operation_id, actor_token_id: secret.slice(8,40)});
+    assert.equal(result.practice.correction.acting_token, secret.slice(8,40), 'Historical CLI Correction attribution is retained.');
+    observations.push({observation: 'Validated historical Correction setup, not a supported HTTP write', correction_id: result.practice.correction.id, replayed: result.replayed});
+    return result;
+  };
+  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer, historicalCorrect};
 }
 
 for (const scope of ['unit', 'section', 'whole']) {
@@ -86,7 +99,9 @@ for (const scope of ['unit', 'section', 'whole']) {
     assert.deepEqual((await f.cli(answerArgs, text)).practice.attempt, original);
     await f.cli(['next', '--operation-id', heldOp]);
     const correctArgs = ['correct', pid, original.id, '--verdict', 'Again', '--operation-id', correctOp];
-    const corrected = await f.cli(correctArgs);
+    const correctFields = {prompt_id: pid, attempt_id: original.id, verdict: 'Again', operation_id: correctOp};
+    await f.cli(correctArgs, '', 1);
+    const corrected = await f.historicalCorrect(correctFields);
     for (let i = 0; i < 6; i++) {await f.next(); await f.answer(text);}
     const contextReplay = [];
     if (scope !== 'unit') {
@@ -119,9 +134,12 @@ for (const scope of ['unit', 'section', 'whole']) {
     await f.cli(revealArgs, '', 1);
     await f.api('/api/v1/answer', {operation_id: answerOp, prompt_id: pid, answer: 'Changed payload'}, 409);
     assert.deepEqual(await f.rows(), before);
-    const safeCorrection = await f.cli(correctArgs);
+    await f.cli(correctArgs, '', 1);
+    assert.deepEqual(await f.rows(), before, 'Retired current CLI correction replay cannot mutate the protected Prompt.');
+    const safeCorrection = await f.historicalCorrect(correctFields);
     assert.deepEqual(safeCorrection.practice.correction, corrected.practice.correction);
     assert.ok(!JSON.stringify(safeCorrection).includes(text));
+    assert.deepEqual(await f.rows(), before, 'Historical safe receipt replay remains read-only while current HTTP replay refuses.');
     const sameOp = randomUUID();
     const same = await f.cli(['next', '--operation-id', sameOp]);
     assert.deepEqual((await f.cli(['next', '--operation-id', sameOp])).result, same.result);
@@ -162,7 +180,7 @@ test('Explicit reveal breaks the cue success run at all rungs through the compil
     current = (await f.record('meta')).practice.current;
     await f.cli(['reveal', current.prompt.id]);
     const missed = await f.answer('Wrong words');
-    const correction = await f.cli(['correct', current.prompt.id, missed.id, '--verdict', 'Good']);
+    const correction = await f.historicalCorrect({prompt_id: current.prompt.id, attempt_id: missed.id, verdict: 'Good'});
     card = await f.record('practice_cards/' + cid);
     assert.equal(card.state.cue, cue);
     assert.equal(card.state.successes, 0);

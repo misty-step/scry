@@ -1,42 +1,45 @@
-# Create, preparation, and refinement
+# Retired generation and saved preparation history
 
-The owner writes what he wants to learn, Scry saves it and prepares material,
-and he refines it from his attempts and feedback. Stories: US-004, US-013.
-Intent: [US-013](../SPEC.md#us-013-create-from-what-i-want-to-learn),
-[S11](../SPEC.md#s11--create-useful-material-from-intent-us-013) and
-[US-004](../SPEC.md#us-004-check-generated-candidates-before-publication);
-[S10](../SPEC.md#s10--keep-my-work-recoverable) owns recovery.
+Native content generation and self-grading are retired under the
+[2026-10-27 amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406).
+Existing requests, drafts, material, Attempts, Corrections and provider/spend
+history remain preserved. [S10](../SPEC.md#s10--keep-my-work-recoverable) still
+owns complete recovery.
 
 ## Sub-features
 
-- `create-save` saves a word, phrase or long ramble from `/create` (`/add` is an alias), with an optional photo.
-- `create-preparation` shows pending, partial, failed, missing-provider, exhausted or unknown preparation honestly.
-- `create-refine` saves concept feedback, then Refine my material on the goal.
-- `create-repair` opens a question's repair draft for a deliberate Save.
-- `create-resume` resumes paused preparation from Settings (`/settings#preparation`).
+- Legacy `/create` and `/add` explain retirement and keep an unsent text draft
+  copyable. They never offer preparation or photo-upload controls.
+- New generation, retry, refinement and question-generation submissions refuse
+  before jobs, assets, receipts, reservations or provider calls.
+- Existing generation jobs remain historical: reads, alarms and meaning-check
+  resumption cannot send or publish them.
+- Native answer grading continues. Unsupported earlier answers remain saved and
+  ungraded rather than requesting a learner-supplied Verdict.
 
 ## How to get to it (user POV)
 
-- Masthead Create → "What do you want to learn?" → Make it understandable →
-  follow the saved goal, leave for Map and return.
+Home → native review or Start with NATO. Library contains supplied content.
+Earlier notes and concepts remain a secondary destination when saved material
+exists. Legacy links remain safe to read; they do not reactivate preparation.
 
 ## Driving it with verify-scry helpers
 
-Preconditions:
-
-- A run-owned synthetic Worker; production generation is off and provider calls are never made in verification.
-
-- **Story walk.** `qa/walk --stories "US-004 US-013"`. `qa/browser-create.mjs` and
-  `qa/browser-recovery.mjs` (inside `qa/walk --all`) cover stopped preparation,
-  Resume preparation and recovery with authored inputs. [QA](../docs/qa/system.md#core-journeys)
-  owns the setup, invalid-input and recovery recipes.
-- **Production.** [qa-signin.mjs](sign-in.md) loads `/create` in the QA
-  account's `scry-qa` space. Never submit it on production.
-- **Proof.** Capture the real missing-provider state in the credential-free runtime.
+`tests/generation_retirement.rs` exercises current admission, grading-only
+claims, preserved historical jobs and read-only Home/ungraded answers.
+`qa/generation-retirement.test.mjs` exercises the built Worker refusal boundary,
+including multipart requests and API calls, checking unchanged SQLite/R2 state.
+Historical generation policy fixtures remain compatibility proof, not evidence
+of an active generation feature. The 2026-10-27 local actual-Worker runtime
+suite passed 40/40, including retirement refusal, native grading, isolation and
+historical recovery; native tests passed 194 with one pre-existing ignored.
+These are synthetic worktree receipts, not release acceptance. Browser proof,
+independent review and exact-head protected CI are required before release.
 
 ## Gotchas
 
-- Authored fixture JSON does not prove useful generated material or refinement.
-- Use the photo chooser only with run-owned synthetic material.
-- Source: `src/web.rs`, `assets/app.js`, `src/engine.rs`, `src/generation.rs`,
-  `src/runtime.rs`, `src/persistence.rs`.
+- A missing provider is not the retirement policy: refusal is unconditional.
+- Retiring self-grading never deletes or relabels old learner-authored results.
+- Restoring/resuming meaning checks cannot resume historical generation jobs.
+- Source changes do not establish deployment, physical-phone acceptance or
+  independent hosted recovery.

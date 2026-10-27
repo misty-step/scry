@@ -1,5 +1,11 @@
 # Owner API and CLI
 
+Current policy: external agents author content; Scry grades answers natively.
+Under the [2026-10-27 retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406),
+native content-generation and learner-supplied Verdict/Correction writes return
+410, regardless of paid permission. Existing material, Attempts, Corrections,
+receipts and usage remain readable under the unchanged assistance/auth boundaries.
+
 The one Owner signs into Settings through Access to mint the first named
 Owner token. Save its secret on creation: lists, history, export and replay
 cannot recover it. An optional expiry is a Unix timestamp in milliseconds.
@@ -56,7 +62,7 @@ including malformed credentials. Tokens are never accepted in query strings.
 | GET | `/api/v1/history` | Operation receipts with `acting_token`, path and time |
 | GET | `/api/v1/export` | Complete existing archive, including token verifiers; assistance gate retained |
 | POST | `/api/v1/settings` | `operation_id`, `pace`; same engine as Settings |
-| POST | `/api/v1/create` | `operation_id`, `intent`; existing preparation, requires paid permission |
+| POST | `/api/v1/create` | Retired: 410 before jobs, reservations, provider calls or receipts |
 
 Mutation results contain `result`, `replayed`, and token metadata for creation.
 Only first creation includes `secret`. JSON fields are scalar strings, numbers
@@ -307,7 +313,6 @@ remain available. These reads never record help or consume a Prompt.
   --recite section --section SECTION --json
 ./target/debug/scry next --after PROMPT --study STUDY --recite whole --json
 ./target/debug/scry reveal PROMPT --json
-./target/debug/scry correct PROMPT ATTEMPT --verdict Good --unit UNIT --json
 ./target/debug/scry study pause STUDY --json
 ./target/debug/scry study resume STUDY --json
 ./target/debug/scry study drop STUDY --json
@@ -316,10 +321,11 @@ remain available. These reads never record help or consume a Prompt.
 Recitations require every Unit in the selected scope to have been introduced.
 Section prompts contain the heading alone. Whole prompts contain the title
 alone. Each target Unit gets its own Verdict and schedule effect.
-Correction accepts `Good` or `Again`; `--unit` is required for a Recitation.
-It appends an Owner override for the held Attempt and recomputes that Card from
-its original state and answer time. The original Attempt remains unchanged.
-A second override of that Unit, or a Correction after Next, conflicts.
+New `scry correct` and `/api/v1/correct` submissions are retired and return 410.
+Historical Corrections retain their original meaning: an Owner override for the
+held Attempt, recomputed from the original Card state and answer time, without
+changing the original Attempt. Read them through history/export; no new
+learner-supplied Verdict is accepted.
 
 | Method | Route | Payload or result |
 | --- | --- | --- |
@@ -329,7 +335,7 @@ A second override of that Unit, or a Correction after Next, conflicts.
 | POST | `/api/v1/next` | `operation_id`, optional `after`, `study_id`, `card_id`, `recite`, `section_id` |
 | POST | `/api/v1/answer` | `operation_id`, `prompt_id`, raw `answer` |
 | POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |
-| POST | `/api/v1/correct` | `operation_id`, `prompt_id`, `attempt_id`, `verdict`, optional `unit_id` |
+| POST | `/api/v1/correct` | Retired: 410; existing Corrections remain readable through history/export |
 | GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time |
 | GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |

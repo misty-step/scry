@@ -7,18 +7,36 @@ import { generateKeyPairSync, sign, createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
 import {createServer} from 'node:net';
+import {historicalMutation} from './historical-fixture.mjs';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
-// These are existing saved-request POST contracts, not a new Create journey.
-// Read the authenticated fixture's anti-CSRF token from Settings and author an isolated
-// operation ID. Unavailable Create must not expose a submit/photo form.
+// Retired HTTP operations are never used to populate new fixtures. Read native
+// Settings transport fields for active writes and explicit refusal assertions.
 async function savedRequestFields(response) {
   assert.equal(response.status,200);
   const html=await response.text();
   const fields=Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
   assert.ok(fields.csrf);assert.ok(fields.revision);
   return {...fields,operation_id:`saved-request-${randomUUID()}`};
+}
+
+// Validated lower-level historical setup only. Native engine transitions and
+// archive capacity are checked before writing this test-owned SQLite/R2 space.
+async function historicalCapture(fixture,name,space,values,photoBytes) {
+  const sql=await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+  const operation=values.operation_id||`historical-${randomUUID()}`;
+  const fields={...values,operation_id:operation};
+  let photo;
+  if(photoBytes){
+    photo={key:`photos/${space}/${operation}-${createHash('sha256').update(photoBytes).digest('hex')}`,mime:'image/png',size:photoBytes.length,sha256:createHash('sha256').update(photoBytes).digest('hex')};
+    fields.__photo=JSON.stringify(photo);
+  }
+  const at=Date.now();
+  const captured=await historicalMutation(sql,{path:'/create',fields,now_ms:at,seed:`${space}:${operation}`});
+  if(photo){const bucket=await fixture.mf.getR2Bucket('SCRY_ASSETS');await bucket.put(photo.key,photoBytes);assert.deepEqual(Buffer.from(await(await bucket.get(photo.key)).arrayBuffer()),photoBytes);}
+  await historicalMutation(sql,{actions:[{kind:'claim',now_ms:at+1,lease:`lease-${operation}`,generation:false,jev:false,critic:false}],now_ms:at+1,seed:`${space}:${operation}`});
+  return captured.result;
 }
 
 const artifact = resolve(process.env.SCRY_WORKER_ARTIFACT || 'build');
@@ -60,7 +78,7 @@ try {
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
   await check('real RS256 owner signature and private response headers',async()=>{
-    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>What do you want to learn\?<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
+    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>Make it memorable\.<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
   await check('empty initialization starts at revision one',async()=>{
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
@@ -107,7 +125,7 @@ try {
   await check('unconfigured Add material is read-only and cannot be enabled through query fields',async()=>{
     for(const path of ['/create','/create?__preparation_ready=true&text=Unsent%20material']){
       const response=await request(path);assert.equal(response.status,200);const html=await response.text();
-      assert.match(html,/Preparation is unavailable/);
+      assert.match(html,/Native content generation is retired/);
       assert.doesNotMatch(html,/<form[^>]*action="\/create"|type="file"/);
       if(path.includes('text='))assert.match(html,/<textarea[^>]*readonly[^>]*>Unsent material<\/textarea>/);
     }
@@ -121,25 +139,37 @@ try {
     assert.equal((await post('/create',{...fields,csrf:'forged'})).status,403);
     assert.equal((await request('/create',jwt(),{method:'POST',body:'x'.repeat(5*1024*1024),headers:{Origin:origin,'Content-Type':'application/x-www-form-urlencoded'}})).status,413);
   });
-  let goalPath;
-  await check('atomic durable capture and exact operation replay',async()=>{
-    const saved=await post('/create',fields);assert.equal(saved.status,303);goalPath=saved.headers.get('Location');assert.match(goalPath,/^\/goals\//);
-    const replay=await post('/create',fields);assert.equal(replay.status,303);assert.equal(replay.headers.get('Location'),goalPath);
-    const conflict=await post('/create',{...fields,intent:'different'});assert.equal(conflict.status,409);
+  const fixture={mf:preview};
+  const sql=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
+  await check('retired generation refuses new and repeated operations without durable writes',async()=>{
+    const before=await sql.exec('SELECT key,value FROM records ORDER BY key');
+    for(const values of [fields,fields,{...fields,intent:'different'}]){
+      const response=await post('/create',values);assert.equal(response.status,410);assert.match(await response.text(),/Native content generation is retired/);
+      assert.deepEqual(await sql.exec('SELECT key,value FROM records ORDER BY key'),before);
+    }
   });
-  await check('no implicit paid request or synthetic fallback without model configuration',async()=>{
-    await new Promise(resolve=>setTimeout(resolve,1300));const html=await (await request(goalPath)).text();assert.match(html,/not configured|needs your attention|retry|Try again/i);assert.equal(certRequests,1);
+  await check('retirement creates no implicit paid request or synthetic fallback',async()=>{
+    await new Promise(resolve=>setTimeout(resolve,1300));
+    const app=(await(await request('/export')).json()).app;
+    assert.deepEqual(app.jobs,{});assert.deepEqual(app.goals,{});assert.deepEqual(app.spend,[]);assert.equal(certRequests,1);
   });
-  await check('legacy 422 preserves the unsent Create draft read-only when preparation is unavailable',async()=>{
-    const current=await savedRequestFields(await request('/settings'));const text='x'.repeat(32769);const response=await post('/create',{...current,intent:text});assert.equal(response.status,422);const html=await response.text();assert.ok(html.includes(text));assert.match(html,/<textarea[^>]*readonly/);assert.doesNotMatch(html,/<form[^>]*action="\/create"|type="file"/);
+  await check('legacy draft is preserved read-only on a definite retirement refusal',async()=>{
+    const current=await savedRequestFields(await request('/settings'));const text='x'.repeat(32769);const response=await post('/create',{...current,intent:text});assert.equal(response.status,410);const html=await response.text();assert.ok(html.includes(text));assert.match(html,/<textarea[^>]*readonly/);assert.doesNotMatch(html,/<form[^>]*action="\/create"|type="file"/);
   });
   const photoBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64');
-  await check('photo type fence, durable exact capture and complete asset export',async()=>{
+  await check('retired photo capture refuses before assets; historical photos remain complete',async()=>{
     const current=await savedRequestFields(await request('/settings'));
+    const before=await sql.exec('SELECT key,value FROM records ORDER BY key');
     const multipart=bytes=>{const form=new FormData();for(const [key,value]of Object.entries({...current,intent:'Understand the image'}))form.set(key,value);form.set('photo',new Blob([bytes],{type:'image/png'}),'synthetic.png');return form;};
-    const submit=async bytes=>{const encoded=new globalThis.Request(origin,{method:'POST',body:multipart(bytes)});return request('/create',jwt(),{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{Origin:origin,'Content-Type':encoded.headers.get('Content-Type')}});};
-    const invalid=await submit(Buffer.from('<svg onload="alert(1)">'));assert.equal(invalid.status,422);assert.match(await invalid.text(),/Understand the image/);
-    const saved=await submit(photoBytes);assert.equal(saved.status,303);const replay=await submit(photoBytes);assert.equal(replay.status,303);assert.equal(replay.headers.get('Location'),saved.headers.get('Location'));
+    for(const bytes of [Buffer.from('<svg onload="alert(1)">'),photoBytes]){
+      const encoded=new globalThis.Request(origin,{method:'POST',body:multipart(bytes)});
+      const response=await request('/create',jwt(),{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{Origin:origin,'Content-Type':encoded.headers.get('Content-Type')}});
+      assert.equal(response.status,410);assert.match(await response.text(),/Understand the image/);
+      assert.deepEqual(await sql.exec('SELECT key,value FROM records ORDER BY key'),before);
+      assert.deepEqual((await(await preview.getR2Bucket('SCRY_ASSETS')).list()).objects,[]);
+    }
+    await historicalCapture(fixture,'scry-auth-smoke',baseBindings.SPACE_NAME,{...fields,operation_id:'historical-capture-text-only'});
+    await historicalCapture(fixture,'scry-auth-smoke',baseBindings.SPACE_NAME,{...current,operation_id:'historical-capture-photo-only',intent:'Understand the image'},photoBytes);
     const exported=await(await request('/export')).json();assert.equal(Object.keys(exported.app.goals).length,2);assert.equal(exported.photos.length,1);assert.deepEqual(Buffer.from(exported.photos[0].bytes,'base64'),photoBytes);
   });
   await check('failed scheduled photo archive reaches the scheduler without hiding retained work', async () => {
@@ -250,7 +280,7 @@ try {
     const active=await restoreRuntime.rebind(activeBindings);const req=(path,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(activeBindings.SPACE_NAME));const state=async()=>{const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});return(await response.json()).app;};
     const before=await state();assert.equal(before.restored_paused,true);const oldJobs=structuredClone(before.jobs),oldAssessments=structuredClone(before.assessments);
-    const fields=await savedRequestFields(await req('/settings'));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new deliberate request after recovery review'})});assert.equal(created.status,303);const newGoal=created.headers.get('Location').split('/').at(-1);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);
+    const fields=await savedRequestFields(await req('/settings'));const created=await req('/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,intent:'A new request cannot reactivate retired generation'})});assert.equal(created.status,410);await new Promise(r=>setTimeout(r,1200));assert.equal(recoverySends,0);assert.deepEqual(await state(),before);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':'wrong'}})).status,403);assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':'https://attacker.invalid','x-scry-operator-key':operatorKey}})).status,403);
     const settings=await(await req('/settings')).text();
     const resumeForm=/<form[^>]*action="\/settings\/resume"[^>]*>([\s\S]*?)<\/form>/.exec(settings);
@@ -266,21 +296,28 @@ try {
     assert.equal((await resume()).status,303,'Lost-response replay reconciles the same operation.');
     assert.equal((await resume({...resumeFields,operation_id:'second-distinct-resume-operation'})).status,409);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}})).status,409);
-    const deadline=Date.now()+5000;let after;do{after=await state();if(recoverySends&&after.goals[newGoal].status==='failed')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(recoverySends,1);assert.equal(after.restored_paused,false);assert.equal(after.goals[newGoal].status,'failed');for(const[id,job]of Object.entries(oldJobs))assert.deepEqual(after.jobs[id],job,'Historical uncertain jobs must not be requeued.');assert.deepEqual(after.assessments,oldAssessments);assert.match(after.spend.at(-1).raw_response,/Controlled malformed recovery response/);
+    await new Promise(r=>setTimeout(r,1300));const after=await state();assert.equal(recoverySends,0);assert.equal(after.restored_paused,false);for(const[id,job]of Object.entries(oldJobs))assert.deepEqual(after.jobs[id],job,'Historical jobs must never be requeued.');assert.deepEqual(after.assessments,oldAssessments);assert.deepEqual(after.spend,before.spend);assert.deepEqual(after.goals,before.goals);
+
   });
-  await check('complete asset capacity rejects capture atomically and removes its orphan',async()=>{
-    const localOrigin='http://127.0.0.1:8789';
-    const local=await createRuntime({bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:'synthetic-capacity-only',INTERNAL_KEY:internalKey},name:'scry-capacity-smoke',artifact});
+  await check('historical complete asset capacity stays bounded and retired capture creates no orphan',async()=>{
+    const localOrigin='http://127.0.0.1:8789',name='scry-capacity-smoke',space='synthetic-capacity-only';
+    const local=await createRuntime({bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:space,INTERNAL_KEY:internalKey},name,artifact,inspect:true});
     const bytes=Buffer.concat([photoBytes,Buffer.alloc(4*1024*1024-photoBytes.length)]);
     try {
-      for(let i=0;i<3;i++){
+      for(let i=0;i<2;i++){
         const fields=await savedRequestFields(await local.worker.fetch(`${localOrigin}/settings`));
-        const form=new FormData();for(const[key,value]of Object.entries({...fields,intent:`Capacity photo ${i}`}))form.set(key,value);form.set('photo',new Blob([bytes],{type:'image/png'}),`capacity-${i}.png`);
-        const encoded=new globalThis.Request(localOrigin,{method:'POST',body:form});const response=await local.worker.fetch(`${localOrigin}/create`,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':localOrigin,'Content-Type':encoded.headers.get('Content-Type')},body:Buffer.from(await encoded.arrayBuffer())});
-        assert.equal(response.status,i<2?303:413);if(i===2){const rejected=await response.text();assert.match(rejected,/Capacity photo 2/);assert.match(rejected,/archive exceeds its bounded size limit/);}
+        await historicalCapture(local,name,space,{...fields,intent:`Historical capacity photo ${i}`},bytes);
       }
-      const assets=await local.mf.getR2Bucket('SCRY_ASSETS');assert.equal((await assets.list()).objects.length,2,'The rejected photo must not become an orphan asset.');
-      const archive=await(await local.worker.fetch(`${localOrigin}/export`)).json();assert.equal(Object.keys(archive.app.goals).length,2);assert.equal(archive.photos.length,2);assert.equal(Object.keys(archive.app.operations).length,2,'Rejected captures must not commit an exact-retry receipt.');
+      const sql=await local.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+      const before=await sql.exec('SELECT key,value FROM records ORDER BY key');
+      const fields=await savedRequestFields(await local.worker.fetch(`${localOrigin}/settings`));
+      await assert.rejects(historicalCapture(local,name,space,{...fields,intent:'Historical capacity photo 2'},bytes),error=>error.status===413&&/archive exceeds/.test(error.message));
+      assert.deepEqual(await sql.exec('SELECT key,value FROM records ORDER BY key'),before,'An oversized historical fixture cannot bypass current archive limits.');
+      const form=new FormData();for(const[key,value]of Object.entries({...fields,intent:'Retired capture at capacity'}))form.set(key,value);form.set('photo',new Blob([bytes],{type:'image/png'}),'capacity.png');
+      const encoded=new globalThis.Request(localOrigin,{method:'POST',body:form});const response=await local.worker.fetch(`${localOrigin}/create`,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':localOrigin,'Content-Type':encoded.headers.get('Content-Type')},body:Buffer.from(await encoded.arrayBuffer())});
+      assert.equal(response.status,410);assert.deepEqual(await sql.exec('SELECT key,value FROM records ORDER BY key'),before);
+      const assets=await local.mf.getR2Bucket('SCRY_ASSETS');assert.equal((await assets.list()).objects.length,2,'Neither refused historical setup nor retired HTTP capture may create an orphan asset.');
+      const archive=await(await local.worker.fetch(`${localOrigin}/export`)).json();assert.equal(Object.keys(archive.app.goals).length,2);assert.equal(archive.photos.length,2);assert.equal(Object.keys(archive.app.operations).length,2);
     } finally {await local.mf.dispose();}
   });
   await check('allowed reference reads mark future exposure while checking stays unaided and protected',async()=>{
@@ -299,70 +336,90 @@ try {
       state=await peek();assert.equal(state.occurrence.phase,'checking');assert.equal(state.occurrence.assisted,false);assert.equal(state.concepts[cold].exposure_ms,oldExposure);release();const deadline=Date.now()+5000;do{state=await peek();if(state.occurrence.phase==='result')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(state.events.length,1);assert.equal(state.events[0].assisted,false);const event=structuredClone(state.events[0]);await req(`/concepts/${cold}`);state=await peek();assert.ok(state.concepts[cold].exposure_ms>oldExposure);assert.deepEqual(state.events[0],event,'Later reference reads must preserve original answer evidence.');
     } finally {release?.();await fixture.mf.dispose();}
   });
-  await check('bounded synthetic generation, critic, Jev, photo, stale-paid and unknown transport lifecycle',async()=>{
-    const batch={title:'Conditional cache validation',complete:true,concepts:[{key:'conditional',name:'Conditional validation',summary:'A validator lets the origin confirm saved content.',note:'A stored representation can be validated by sending its ETag. If the validator still matches, a 304 response lets the browser reuse its body without downloading it again.',basis:'general',quotes:[],prerequisites:[],questions:[{prompt:'Which HTTP response status confirms a conditional cache request can reuse its stored representation?',kind:'recall',answer:'304',variants:[],choices:[],explanation:'304 Not Modified confirms that the saved validator still matches the selected representation.',basis:'general',quotes:[]}]}]};
-    let instance,mode='normal',blockedStarted,releaseBlocked,transmissions=0;
-    const jsonResponse=value=>new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
-    const provider=async req=>{
-      if(req.url===`https://${team}/cdn-cgi/access/certs`)return egress(req);
-      assert.ok(['https://openrouter.ai/api/v1/chat/completions','https://openrouter.ai/api/alpha/decisions'].includes(req.url));
-      const payload=await req.json();const chat=req.url.endsWith('/chat/completions');
-      assert.equal(req.headers.get('Authorization'),`Bearer ${chat?'synthetic-generator-key':'synthetic-jev-key'}`);transmissions++;
-      const state=await readState();const reservation=state.app.spend.at(-1);assert.equal(reservation.reserved_micros,500000);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);
-      assert.equal(reservation.model,chat?'synthetic-generator':'synthetic-jev');
-      assert.equal(reservation.purpose,chat?(Array.isArray(payload.messages.at(-1).content)?'transcribe.photo':'generate.concepts'):(payload.questions.verdict?'grade.jev':'critic'));
-      if(chat){
-        if(mode==='network-error')throw new Error('Synthetic interrupted provider transport');
+  // Generation/transcription/critic sends are retired. Exercise the same live
+  // transport failure/accounting boundaries through supported answer grading;
+  // historical generation transitions remain covered by native policy suites.
+  await check('native answer grading retains replay, stale-paid, bounded failures and unknown accounting',async()=>{
+    for(const mode of ['normal','network-error','oversize','http-error','malformed','http-success-shaped','delayed','over-allowance']){
+      console.log(JSON.stringify({native_grading_transport:mode,phase:'start'}));
+      const name=`scry-grading-transport-${mode}`,space=`synthetic-grading-${mode}`;
+      let transmissions=0,releaseBlocked,blockedStarted;
+      const started=new Promise(resolve=>{blockedStarted=resolve;});
+      let fixture,sql;
+      const rows=()=>sql.exec('SELECT key,value FROM records ORDER BY key');
+      const app=async()=>{const values=await rows();const meta=JSON.parse(values.find(r=>r.key==='meta').value);return {...meta,
+        goals:Object.fromEntries(values.filter(r=>r.key.startsWith('goals/')).map(r=>[r.key.slice(6),JSON.parse(r.value)])),
+        assessments:Object.fromEntries(values.filter(r=>r.key.startsWith('assessments/')).map(r=>[r.key.slice(12),JSON.parse(r.value)])),
+        events:values.filter(r=>r.key.startsWith('events/')).map(r=>JSON.parse(r.value)),spend:values.filter(r=>r.key.startsWith('spend/')).map(r=>JSON.parse(r.value))};};
+      const accepted=cost=>JSON.stringify({model:'synthetic-jev',usage:{cost},answers:{verdict:{choice:'accept',probabilities:{accept:0.99,reject:0.005,unsure:0.005}},identity:{noul:0.01},injection:{noul:0.01}}});
+      const provider=async request=>{
+        if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);
+        assert.equal(request.url,'https://openrouter.ai/api/alpha/decisions','Generation endpoint must never be called.');
+        assert.equal(request.headers.get('Authorization'),'Bearer synthetic-jev-key');transmissions++;
+        const payload=await request.json();assert.ok(payload.questions.verdict);
+        const current=await app(),reservation=current.spend.at(-1);assert.equal(reservation.reserved_micros,500000);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);assert.equal(reservation.purpose,'grade.jev');assert.equal(reservation.model,'synthetic-jev');
+        if(mode==='network-error')throw new Error('Synthetic interrupted grading transport');
         if(mode==='oversize')return new Response('x'.repeat(256*1024+1),{status:200});
         if(mode==='http-error')return new Response('{}',{status:429});
-        if(mode==='http-success-shaped')return new Response(JSON.stringify({model:'synthetic-generator',usage:{cost:0.000456},choices:[{message:{content:JSON.stringify(batch)}}]}),{status:429});
+        if(mode==='http-success-shaped')return new Response(accepted(0.000456),{status:429});
         if(mode==='malformed')return new Response('Controlled malformed JSON',{status:200});
         if(mode==='delayed'){blockedStarted();await new Promise(resolve=>{releaseBlocked=resolve;});}
-        const parts=payload.messages.at(-1).content;
-        if(Array.isArray(parts)){
-          assert.match(parts.find(p=>p.type==='text').text,/Understand the image/);
-          assert.equal(parts.find(p=>p.type==='image_url').image_url.url,`data:image/png;base64,${photoBytes.toString('base64')}`);
-          return jsonResponse({model:'synthetic-generator',usage:{cost:0.000123},choices:[{message:{content:JSON.stringify({text:'ETag validates a representation without repeating its body.'})}}]});
+        return new Response(accepted(mode==='over-allowance'?2000:0.000345),{headers:{'Content-Type':'application/json'}});
+      };
+      const bindings={...baseBindings,SPACE_NAME:space,OPENROUTER_API_KEY:'synthetic-generator-must-not-send',OPENROUTER_MODEL:'synthetic-generator',JEV_API_KEY:'synthetic-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
+      fixture=await createRuntime({bindings,name,artifact,egress:provider,inspect:true});
+      const req=async(path,init={})=>{try{return await fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});}catch(error){throw new Error(`Native grading ${mode} ${init.method||'GET'} ${path}: ${error.message}`,{cause:error});}};
+      const post=(path,fields)=>req(path,{method:'POST',body:new URLSearchParams(fields),headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'}});
+      const wait=async predicate=>{const end=Date.now()+12000;do{const current=await app();if(predicate(current))return current;await new Promise(r=>setTimeout(r,50));}while(Date.now()<end);throw Error(`Synthetic grading ${mode} did not settle.`);};
+      try{
+        await req('/settings');sql=await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+        await historicalMutation(sql,{actions:[{kind:'seed_demo',now_ms:Date.now()}]});
+        let current=await app();const originalJobs=await sql.exec("SELECT key,value FROM records WHERE key LIKE 'jobs/%' OR key LIKE 'job_payload/%' ORDER BY key");
+        const rejected=await post('/create',{csrf:current.csrf,operation_id:`retired-configured-generation-${mode}`,intent:'Must not generate'});assert.equal(rejected.status,410);assert.equal(transmissions,0);
+        if(current.occurrence.presentation.kind==='choice')assert.equal((await post(`/questions/${current.occurrence.question_id}/archive`,{csrf:current.csrf,operation_id:`archive-choice-${mode}`})).status,303);
+        await req('/notebook');current=await app();assert.equal(current.occurrence.presentation.kind,'recall');
+        const answer={csrf:current.csrf,occurrence_id:current.occurrence.id,operation_id:`grading-transport-answer-${mode}`,answer:'A deliberately non-exact remembered response'};
+        assert.equal((await post('/review/answer',answer)).status,303);
+        if(mode==='delayed'){
+          await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('Delayed grader did not start.')),5000))]);
+          const goal=current.goals[Object.keys(current.goals)[0]].id;
+          assert.equal((await post(`/goals/${goal}/archive`,{csrf:current.csrf,operation_id:'archive-stale-grading-goal'})).status,303);releaseBlocked();
         }
-        return jsonResponse({model:'synthetic-generator',usage:{cost:mode==='over-allowance'?2000:0.000123},choices:[{message:{content:JSON.stringify(batch)}}]});
-      }
-      if(payload.questions.verdict)return jsonResponse({model:'synthetic-jev',usage:{cost:0.000345},answers:{verdict:{choice:'accept',probabilities:{accept:0.99,reject:0.005,unsure:0.005}},identity:{noul:0.01},injection:{noul:0.01}}});
-      assert.equal(Object.values(state.app.jobs).some(j=>j.status==='critic-sent'&&j.candidate_json),true,'Candidates must be durably stored before criticism.');
-      return jsonResponse({model:'synthetic-jev',usage:{cost:0.000234},answers:Object.fromEntries(Object.keys(payload.questions).map(key=>[key,{type:'noul',noul:0.01}]))});
-    };
-    const newBindings={...baseBindings,SPACE_NAME:'synthetic-provider-only',OPENROUTER_API_KEY:'synthetic-generator-key',OPENROUTER_MODEL:'synthetic-generator',JEV_API_KEY:'synthetic-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
-    instance=await createRuntime({bindings:newBindings,name:'scry-provider-smoke',artifact,egress:provider});
-    const ns=await instance.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(newBindings.SPACE_NAME));
-    async function readState(){const response=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(response.status,200);return response.json();}
-    const req=(path,init={})=>instance.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
-    const formFields=(html,action)=>{const form=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);assert.ok(form,`Missing real form ${action}`);return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));};
-    const submit=(path,fields)=>req(path,{method:'POST',body:new URLSearchParams(fields),headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'}});
-    const wait=async predicate=>{const end=Date.now()+12000;do{const state=await readState();if(predicate(state.app))return state;await new Promise(r=>setTimeout(r,100));}while(Date.now()<end);throw new Error('Synthetic work did not reach its expected durable state.');};
-    async function capture(intent){const fields=formFields(await(await req('/create')).text(),'/create');const response=await submit('/create',{...fields,intent});assert.equal(response.status,303);return response.headers.get('Location').split('/').at(-1);}
-    try {
-      const goal=await capture('Learn conditional caching');
-      let prepared=await wait(app=>app.goals[goal].status==='ready');assert.equal(Object.keys(prepared.app.questions).length,1);assert.equal(prepared.app.spend.length,2);assert.equal(prepared.app.spend.every(s=>s.status==='known'&&s.cost_micros>0),true);assert.ok(prepared.app.jobs[prepared.app.goals[goal].job_id].critic_json);
-      let html=await(await req('/notebook')).text();assert.match(html,/data-state="intro"/);const intro=formFields(html,'/review/intro');assert.equal((await submit('/review/intro',{...intro,known:'false'})).status,303);
-      html=await(await req('/notebook')).text();const answer=formFields(html,'/review/answer');const answered={...answer,answer:'304 Not Modified'};assert.equal((await submit('/review/answer',answered)).status,303);
-      let graded=await wait(app=>app.occurrence?.phase==='result');assert.equal(graded.app.events.length,1);assert.equal(graded.app.events[0].result.authority,'jev');const recorded=graded.app.events[0];const sends=transmissions;
-      assert.equal((await submit('/review/answer',answered)).status,303);await req('/notebook');graded=await readState();assert.equal(graded.app.events.length,1);assert.deepEqual(graded.app.events[0],recorded);assert.equal(transmissions,sends);
-      const fresh=formFields(await(await req('/create')).text(),'/create');const upload=new FormData();for(const[key,value]of Object.entries({...fresh,intent:'Understand the image'}))upload.set(key,value);upload.set('photo',new Blob([photoBytes],{type:'image/png'}),'image.png');const encoded=new globalThis.Request(origin,{method:'POST',body:upload});const photoResponse=await req('/create',{method:'POST',body:Buffer.from(await encoded.arrayBuffer()),headers:{'X-Scry-Test-Origin':origin,'Content-Type':encoded.headers.get('Content-Type')}});assert.equal(photoResponse.status,303);const photoGoal=photoResponse.headers.get('Location').split('/').at(-1);const transcribed=await wait(app=>app.goals[photoGoal].status==='ready');assert.match(transcribed.app.goals[photoGoal].transcript,/ETag/);assert.equal(transcribed.photos.length,1);
-      mode='delayed';const started=new Promise(resolve=>{blockedStarted=resolve;});const staleGoal=await capture('A deliberately stale paid preparation');await started;const archivePath=`/goals/${staleGoal}/archive`;const archiveFields=formFields(await(await req(`/goals/${staleGoal}`)).text(),archivePath);assert.equal((await submit(archivePath,archiveFields)).status,303);releaseBlocked();const stale=await wait(app=>app.jobs[app.goals[staleGoal].job_id].raw_response!==null);const staleJob=stale.app.jobs[stale.app.goals[staleGoal].job_id];assert.equal(staleJob.status,'superseded');assert.ok(staleJob.raw_response);const charge=stale.app.spend.find(s=>s.work_id===staleJob.id);assert.equal(charge.status,'known');assert.ok(charge.cost_micros>0);assert.equal(stale.app.goals[staleGoal].concept_ids.length,0);
-      for(const failure of ['network-error','oversize','http-error','malformed','http-success-shaped']){mode=failure;const failedGoal=await capture(`Controlled ${failure} request`);const failed=await wait(app=>['unknown','failed'].includes(app.goals[failedGoal].status));const failedJob=failed.app.jobs[failed.app.goals[failedGoal].job_id];const paid=failed.app.spend.find(s=>s.work_id===failedJob.id);assert.equal(paid.status,failure==='http-success-shaped'?'known':'unknown');assert.equal(paid.cost_micros,failure==='http-success-shaped'?456:null);assert.equal(paid.reserved_micros,500000);assert.equal(failed.app.goals[failedGoal].concept_ids.length,0,'Rejected or malformed transport must not publish any content.');if(['http-error','malformed','http-success-shaped'].includes(failure)){assert.ok(paid.raw_response);assert.equal(paid.response_hash,createHash('sha256').update(paid.raw_response).digest('hex'));assert.equal(paid.response_bytes,Buffer.byteLength(paid.raw_response));assert.equal(paid.response_outcome,failure==='malformed'?'received':'rejected');}const count=transmissions;await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,count,'Unknown paid requests must never resend automatically.');}
-      mode='over-allowance';const expensive=await capture('Controlled measured expense beyond the daily allowance');const over=await wait(app=>app.goals[expensive].status==='failed');const expensiveJob=over.app.jobs[over.app.goals[expensive].job_id];const measured=over.app.spend.find(s=>s.work_id===expensiveJob.id);assert.equal(measured.status,'known');assert.equal(measured.cost_micros,2_000_000_000);assert.ok(expensiveJob.raw_response);assert.ok(expensiveJob.candidate_json);const stopped=transmissions;const blocked=await capture('Save this intent after the measured allowance is exhausted');await wait(app=>app.goals[blocked].status==='failed');assert.equal(transmissions,stopped,'Measured over-budget expense must stop further reservations and sends.');
-      const ledger=(await readState()).app.spend;
-      const response=await req('/api/v1/spend?by=purpose');assert.equal(response.status,200);
-      const report=await response.json();assert.equal(report.entries.length,ledger.length);
-      for(const purpose of ['generate.concepts','critic','grade.jev','transcribe.photo']){
-        // Existing transport rounds reported dollars upward to whole micros.
-        const expected={'generate.concepts':124,critic:234,'grade.jev':345,'transcribe.photo':124}[purpose];
-        assert.ok(report.entries.some(e=>e.purpose===purpose&&e.status==='known'&&e.cost_micros===expected));
-      }
-      for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros);assert.equal(entry.work_id,row.work_id);}
-      assert.ok(report.entries.some(e=>e.status==='unknown'&&e.cost_micros===null&&e.unknown_held_micros===500000));
-      assert.deepEqual((await readState()).app.spend,ledger);
-      console.log(JSON.stringify({controlled_spend:'PASS',purposes:report.groups.map(g=>({purpose:g.key,totals:g.totals})),entries:report.entries}));
-    } finally {releaseBlocked?.();await instance.mf.dispose();}
+        const failed=['network-error','oversize','http-error','malformed','http-success-shaped'].includes(mode);
+        // Archiving the held occurrence marks the assessment superseded before
+        // the delayed paid response returns. Wait for its retained cost too,
+        // not that earlier state transition, before checking late accounting.
+        const settled=await wait(a=>a.spend.length===1&&a.assessments[Object.keys(a.assessments)[0]].status!=='sent'&&(mode!=='delayed'||a.spend[0].cost_micros!==null));
+        assert.equal(transmissions,1);assert.equal(settled.spend.length,1);
+        const paid=settled.spend[0];assert.equal(paid.purpose,'grade.jev');assert.equal(paid.reserved_micros,500000);
+        assert.equal(paid.status,failed&&mode!=='http-success-shaped'?'unknown':'known');
+        assert.equal(paid.cost_micros,failed?(mode==='http-success-shaped'?456:null):(mode==='over-allowance'?2_000_000_000:345));
+        if(failed||mode==='delayed')assert.equal(settled.events.length,0,'Unavailable or stale grading must not fabricate a learning verdict.');
+        else{assert.equal(settled.events.length,1);assert.equal(settled.events[0].result.authority,'jev');const event=structuredClone(settled.events[0]);assert.equal((await post('/review/answer',answer)).status,303);assert.deepEqual((await app()).events,[event]);}
+        if(['http-error','malformed','http-success-shaped'].includes(mode)){
+          // Spend SQL rows deliberately separate bulky raw payloads. Read the
+          // real archive codec after the answer settles to verify full custody.
+          const exported=await req('/export');assert.equal(exported.status,200);
+          const stored=(await exported.json()).app.spend.find(row=>row.id===paid.id);assert.ok(stored);
+          assert.ok(stored.raw_response);assert.equal(stored.response_hash,createHash('sha256').update(stored.raw_response).digest('hex'));assert.equal(stored.response_bytes,Buffer.byteLength(stored.raw_response));assert.equal(stored.response_outcome,mode==='malformed'?'received':'rejected');
+        }
+        for(const route of ['/review/self','/review/override'])assert.equal((await post(route,{csrf:current.csrf,operation_id:`retired-self-rating-${mode}`,correct:'true'})).status,410);
+        await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,1,'Unknown/unavailable grading must not resend automatically.');
+        if(mode==='over-allowance'){
+          const held=await app();assert.equal((await post('/review/next',{csrf:held.csrf,occurrence_id:held.occurrence.id,operation_id:'over-budget-next-question'})).status,303);
+          await req('/notebook');const next=await app();
+          if(next.occurrence?.phase==='intro')assert.equal((await post('/review/intro',{csrf:next.csrf,occurrence_id:next.occurrence.id,operation_id:'over-budget-introduce-next',known:'false'})).status,303);
+          const ready=await app();assert.ok(ready.occurrence,'Another native activity exists for budget admission proof.');
+          assert.equal((await post('/review/answer',{csrf:ready.csrf,occurrence_id:ready.occurrence.id,operation_id:'over-budget-next-answer',answer:'Another non-exact remembered response'})).status,303);
+          const blocked=await wait(a=>a.occurrence.phase==='self-check');assert.match(blocked.assessments[blocked.occurrence.assessment_id].error,/allowance is used/);assert.equal(transmissions,1);assert.equal(blocked.spend.length,1);
+        }
+        const ledger=(await app()).spend;const report=await(await req('/api/v1/spend?by=purpose')).json();assert.equal(report.entries.length,ledger.length);
+        for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros);assert.equal(entry.work_id,row.work_id);}
+        if(failed&&mode!=='http-success-shaped')assert.ok(report.entries.some(e=>e.status==='unknown'&&e.unknown_held_micros===500000));
+        if(mode!=='delayed')assert.deepEqual(await sql.exec("SELECT key,value FROM records WHERE key LIKE 'jobs/%' OR key LIKE 'job_payload/%' ORDER BY key"),originalJobs,'Native grading never claims or rewrites historical content-generation jobs.');
+        console.log(JSON.stringify({native_grading_transport:mode,phase:'pass'}));
+      }catch(error){throw new Error(`Native grading transport ${mode}: ${error.message}`,{cause:error});}finally{releaseBlocked?.();await fixture.mf.dispose();}
+    }
   });
   for (const [label, changes, succeeds, snapshot] of [
     ['verified snapshot', {}, true, true],
@@ -405,13 +462,13 @@ try {
       const submit=(originHeader,csrf=fields.csrf)=>req('/create',service,{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,csrf,intent:'Synthetic service-token capture'})});
       assert.equal((await submit('https://attacker.invalid')).status,403);
       assert.equal((await submit(origin,'forged')).status,403);
-      assert.equal((await submit(origin)).status,303);
-      assert.equal((await submit(origin)).status,303);
+      assert.equal((await submit(origin)).status,410);
+      assert.equal((await submit(origin)).status,410);
       assert.equal((await fixture.worker.scheduled({cron:'17 3 * * *'})).outcome,'ok');
       const snapshots=await fixture.mf.getR2Bucket('SCRY_BACKUPS');
       const listed=await snapshots.list();
       const snapshot=await snapshots.get(listed.objects.at(-1).key);
-      assert.equal(Object.keys((await snapshot.json()).app.goals).length,2,'Synthetic capture/replay persists once and scheduled complete backup remains available.');
+      assert.equal(Object.keys((await snapshot.json()).app.goals).length,1,'Retired capture leaves the authored demo unchanged and scheduled complete backup remains available.');
       assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,409,'The authored demo never overwrites acknowledged synthetic work.');
       for(const changes of [{SCRY_ENV:'production'},{SCRY_ENV:'preview'}]){
         active=await fixture.rebind({...bindings,...changes});
@@ -472,12 +529,12 @@ try {
         assert.equal((await post('/create',{...qaValues,csrf:ownerFields.csrf})).status,403);
         assert.equal((await post('/create',qaValues,service,{'X-Scry-Test-Origin':'https://attacker.invalid'})).status,403);
         assert.equal((await post('/create',qaValues,service,{'Sec-Fetch-Site':'cross-site'})).status,403);
-        const ownerSaved = await upload(ownerValues,jwt());
-        assert.equal(ownerSaved.status,303);
-        const qaSaved = await upload(qaValues,service);
-        assert.equal(qaSaved.status,303);
-        assert.equal((await upload(qaValues,service)).headers.get('Location'),qaSaved.headers.get('Location'));
-        await new Promise(resolve => setTimeout(resolve,1500)); // actual Rust alarms, no provider configured
+        assert.equal((await upload(ownerValues,jwt())).status,410);
+        assert.equal((await upload(qaValues,service)).status,410);
+        assert.equal((await upload(qaValues,service)).status,410);
+        const ownerSaved = await historicalCapture(fixture,name,baseBindings.SPACE_NAME,ownerValues,photoBytes);
+        const qaSaved = await historicalCapture(fixture,name,'scry-qa',qaValues,photoBytes);
+        await new Promise(resolve => setTimeout(resolve,1500)); // historical jobs must not restart
         const ownerArchive = await exported(jwt());
         const qaArchive = await exported(service);
         assert.equal(Object.keys(ownerArchive.app.goals).length,1);
@@ -496,7 +553,7 @@ try {
         assert.equal((await (await fixture.mf.getR2Bucket('SCRY_ASSETS')).list()).objects.length,2);
         assert.equal((await req(`/photos/${ownerGoal}`)).status,404);
         assert.equal((await req(`/photos/${qaGoal}`,jwt())).status,404);
-        for (const path of [ownerSaved.headers.get('Location'),'/map','/history','/export',
+        for (const path of [ownerSaved.redirect,'/map','/history','/export',
           `/create?SPACE_NAME=${baseBindings.SPACE_NAME}&__owner=private-owner`]) {
           const response = await req(path,service,{headers:{'x-scry-owner':'private-owner',
             'x-scry-internal-key':internalKey,'x-scry-space':baseBindings.SPACE_NAME}});
@@ -578,10 +635,11 @@ try {
         active=await fixture.rebind({...bindings,OPENROUTER_API_KEY:'synthetic-owner-provider',OPENROUTER_MODEL:'synthetic-owner-model'});
         const nextFields=await savedRequestFields(await req('/settings'));
         const next=await post('/create',{...nextFields,intent:'QA after deliberate resume still cannot spend'});
-        assert.equal(next.status,303);
+        assert.equal(next.status,410);
         await new Promise(resolve=>setTimeout(resolve,1500));
         const noPaid=(await exported(service)).app;
-        assert.equal(noPaid.goals[next.headers.get('Location').split('/').at(-1)].status,'failed');
+        assert.deepEqual(noPaid.goals,qaResumed.goals);
+        assert.deepEqual(noPaid.jobs,qaResumed.jobs);
         assert.deepEqual(noPaid.spend,qaPaused.spend);
         assert.deepEqual((await exported(jwt())).app,ownerPaused);
         const qaFinalGoals=noPaid.goals;
@@ -626,10 +684,12 @@ try {
         const home = await req('/notebook');
         assert.equal(home.status, 200);
         assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
-        const qaSaved = await post('/create', {...await savedRequestFields(await req('/settings')), intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
-        assert.equal(qaSaved.status, 303);
-        const ownerSaved = await post('/create', {...await savedRequestFields(await req('/settings',jwt())), intent:'OWNER_ONLY_NOTEBOOK_CANARY'}, jwt());
-        assert.equal(ownerSaved.status, 303);
+        const qaFields=await savedRequestFields(await req('/settings'));
+        const ownerFields=await savedRequestFields(await req('/settings',jwt()));
+        assert.equal((await post('/create',{...qaFields,intent:'Rejected new QA generation'})).status,410);
+        assert.equal((await post('/create',{...ownerFields,intent:'Rejected new owner generation'},jwt())).status,410);
+        const qaSaved=await historicalCapture(fixture,name,'scry-qa',{...qaFields,intent:'QA_IDENTITY_NOTEBOOK_CANARY'});
+        const ownerSaved=await historicalCapture(fixture,name,baseBindings.SPACE_NAME,{...ownerFields,intent:'OWNER_ONLY_NOTEBOOK_CANARY'});
         const qaRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:'scry-qa'})).exec('SELECT value FROM records'));
         const ownerRows = JSON.stringify(await (await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:baseBindings.SPACE_NAME})).exec('SELECT value FROM records'));
         assert.match(qaRows, /QA_IDENTITY_NOTEBOOK_CANARY/);
@@ -640,7 +700,7 @@ try {
         assert.match(JSON.stringify(qaArchive), /QA_IDENTITY_NOTEBOOK_CANARY/);
         assert.doesNotMatch(JSON.stringify(qaArchive), /OWNER_ONLY_NOTEBOOK_CANARY/);
         assert.equal(notebook(await exported(service)), notebook(qaArchive), 'The service token and the QA identity share one QA principal.');
-        assert.doesNotMatch(await (await req(ownerSaved.headers.get('Location'))).text(), /OWNER_ONLY_NOTEBOOK_CANARY/);
+        assert.doesNotMatch(await (await req(ownerSaved.redirect)).text(), /OWNER_ONLY_NOTEBOOK_CANARY/);
         assert.equal((await req('/api/v1/works')).status, 401, 'QA has no owner API.');
         for (const path of ['/operator/backup','/operator/resume-work','/operator/restore','/operator/restore-dry-run','/internal/backup']) {
           assert.equal((await post(path,{},identity,{'x-scry-operator-key':operatorKey,
@@ -677,104 +737,43 @@ try {
     });
   }
   for (const mode of ['preview', 'production']) {
-    await check(`${mode}: QA cannot acquire a second paid allowance before or after owner exhaustion`, async () => {
-      const client = 'no-paid-scry-qa.access';
-      const service = jwt({sub:'',common_name:client});
-      const name = `scry-qa-spending-${mode}`;
-      const bindings = {...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
+    await check(`${mode}: retired generation cannot acquire an allowance, preserving historical owner spend and QA isolation`, async () => {
+      const client='no-paid-scry-qa.access',service=jwt({sub:'',common_name:client}),name=`scry-qa-spending-${mode}`;
+      const bindings={...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
         OPENROUTER_API_KEY:'synthetic-owner-generator-key',OPENROUTER_MODEL:'synthetic-owner-model',
-        JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
-        JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
-      let sends = 0;
-      const provider = async request => {
-        if (request.url === `https://${team}/cdn-cgi/access/certs`) return egress(request);
-        assert.equal(request.url,'https://openrouter.ai/api/v1/chat/completions');
-        assert.equal(request.headers.get('Authorization'),'Bearer synthetic-owner-generator-key');
-        sends++;
-        // Controlled usage exhausts the real application ledger; no remote calls.
-        return new Response(JSON.stringify({model:'synthetic-owner-model',usage:{cost:3.5},
-          choices:[{message:{content:'{}'}}]}),{headers:{'Content-Type':'application/json'}});
+        JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
+      let sends=0;const provider=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);sends++;throw Error('Retired generation must never reach a configured provider.');};
+      const fixture=await createRuntime({bindings,name,artifact,egress:provider,inspect:true});let active=fixture;
+      const req=(path,token,init={})=>active.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers}});
+      const state=async token=>{const response=await req('/export',token);assert.equal(response.status,200);return(await response.json()).app;};
+      const refuse=async(token,intent,photo=false)=>{
+        const fields=await savedRequestFields(await req('/settings',token)),before=await state(token);
+        let body=new URLSearchParams({...fields,intent}),contentType='application/x-www-form-urlencoded';
+        if(photo){const form=new FormData();for(const[k,v]of Object.entries({...fields,intent}))form.set(k,v);form.set('photo',new Blob([photoBytes],{type:'image/png'}),'qa-only.png');const encoded=new globalThis.Request(origin,{method:'POST',body:form});body=Buffer.from(await encoded.arrayBuffer());contentType=encoded.headers.get('Content-Type');}
+        const response=await req('/create',token,{method:'POST',body,headers:{'X-Scry-Test-Origin':origin,'Content-Type':contentType}});
+        assert.equal(response.status,410);assert.deepEqual(await state(token),before);assert.equal(sends,0);
       };
-      const fixture = await createRuntime({bindings,name,artifact,egress:provider});
-      let active = fixture;
-      const req = (path,token,init={}) => active.worker.fetch(`${origin}${path}`,{
-        ...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers},
-      });
-      const state = async token => {
-        const response = await req('/export',token);
-        assert.equal(response.status,200);
-        return (await response.json()).app;
-      };
-      const capture = async (token,intent,photo=false) => {
-        const fields = await savedRequestFields(await req('/settings',token));
-        let body = new URLSearchParams({...fields,intent});
-        let contentType = 'application/x-www-form-urlencoded';
-        if (photo) {
-          const form = new FormData();
-          for (const [key,value] of Object.entries({...fields,intent})) form.set(key,value);
-          form.set('photo',new Blob([photoBytes],{type:'image/png'}),'qa-only.png');
-          const encoded = new globalThis.Request(origin,{method:'POST',body:form});
-          body = Buffer.from(await encoded.arrayBuffer());
-          contentType = encoded.headers.get('Content-Type');
-        }
-        const response = await req('/create',token,{method:'POST',body,
-          headers:{'X-Scry-Test-Origin':origin,'Content-Type':contentType}});
-        assert.equal(response.status,303);
-        return response.headers.get('Location').split('/').at(-1);
-      };
-      const settled = async (token,goal) => {
-        const deadline = Date.now()+5000;
-        do {
-          const app = await state(token);
-          if (app.goals[goal].status === 'failed') return app;
-          await new Promise(resolve=>setTimeout(resolve,50));
-        } while (Date.now()<deadline);
-        throw new Error('Actual alarm did not settle the controlled capture.');
-      };
-      try {
-        const ownerInitial = await state(jwt());
-        const qaFirst = await capture(service,'QA intent with no paid allocation');
-        let qaApp = await settled(service,qaFirst);
-        assert.match(qaApp.jobs[qaApp.goals[qaFirst].job_id].error,/not configured/);
-        assert.equal(qaApp.goals[qaFirst].intent,'QA intent with no paid allocation');
-        assert.deepEqual(qaApp.spend,[]);
-        assert.equal(sends,0,'QA cannot use owner providers even with an unused owner allowance.');
-        assert.deepEqual(await state(jwt()),ownerInitial);
-
-        const ownerFirst = await capture(jwt(),'Owner controlled allowance exhaustion');
-        const ownerSpent = await settled(jwt(),ownerFirst);
-        assert.equal(sends,1,'The unchanged owner provider remains usable.');
-        assert.equal(ownerSpent.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),3_500_000);
-        const ownerSecond = await capture(jwt(),'Owner must stop when the allowance is used');
-        const ownerBlocked = await settled(jwt(),ownerSecond);
-        assert.match(ownerBlocked.jobs[ownerBlocked.goals[ownerSecond].job_id].error,/allowance is used/);
-        assert.equal(sends,1);
-
-        const qaSecond = await capture(service,'QA must not get another application allowance');
-        qaApp = await settled(service,qaSecond);
-        assert.match(qaApp.jobs[qaApp.goals[qaSecond].job_id].error,/not configured/);
-        assert.deepEqual(qaApp.spend,[]);
-        assert.equal(sends,1,'An exhausted owner allowance cannot be bypassed by QA.');
-        assert.deepEqual(await state(jwt()),ownerBlocked,'QA work cannot mutate the owner ledger or notebook.');
-
-        // Restart after queuing photo work. Background capability comes from
-        // the immutable object ID, never the latest request or owner bindings.
-        const qaPhoto = await capture(service,'QA photo remains saved without paid transcription',true);
-        active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'restart-spending.invalid'});
-        await req('/settings',service);
-        qaApp = await settled(service,qaPhoto);
-        assert.match(qaApp.jobs[qaApp.goals[qaPhoto].job_id].error,/not configured/);
-        assert.ok(qaApp.goals[qaPhoto].photo);
-        assert.equal(qaApp.goals[qaPhoto].transcript,null);
-        assert.deepEqual(qaApp.spend,[]);
-        assert.equal(sends,1,'Restarted QA photo alarms cannot send through owner providers.');
-        assert.deepEqual(await state(jwt()),ownerBlocked);
-        console.log(JSON.stringify({qa_spend_boundary:'PASS',mode,provider_sends:sends,
-          owner_micros:ownerBlocked.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),
-          qa_micros:qaApp.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0)}));
-      } finally {await fixture.mf.dispose();}
+      try{
+        await req('/settings',jwt());await req('/settings',service);
+        const ownerInitial=await state(jwt());
+        await refuse(service,'QA before owner allowance exhaustion');await refuse(jwt(),'Owner generation is retired even with an unused allowance');assert.deepEqual(await state(jwt()),ownerInitial);
+        const ownerSql=await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:baseBindings.SPACE_NAME});
+        const at=Date.now();await historicalMutation(ownerSql,{path:'/create',fields:{operation_id:'historical-owner-exhausted-capture',intent:'Historical measured generation expense'},now_ms:at,seed:'historical-owner-expense'});
+        const claimed=await historicalMutation(ownerSql,{actions:[{kind:'claim',now_ms:at+1,lease:'historical-owner-expense-lease',generation:true,jev:false,critic:false}]});assert.ok(claimed.work);
+        await historicalMutation(ownerSql,{actions:[{kind:'received_failure',work:claimed.work,now_ms:at+2,raw:'{}',model:'synthetic-historical-generator',cost_micros:3_500_000,message:'Historical synthetic provider refusal with measured expense'}]});
+        const ownerSpent=await state(jwt());assert.equal(ownerSpent.spend.reduce((n,s)=>n+(s.cost_micros??s.reserved_micros),0),3_500_000);assert.equal(sends,0,'Historical fixture setup performs no network calls.');
+        await refuse(jwt(),'Owner generation remains retired after old allowance exhaustion');await refuse(service,'QA receives no alternative allowance');assert.deepEqual(await state(jwt()),ownerSpent);
+        const qaFields=await savedRequestFields(await req('/settings',service));
+        await historicalCapture(fixture,name,'scry-qa',{...qaFields,intent:'QA historical photo preserved without transcription'},photoBytes);
+        const qaBefore=await state(service);assert.deepEqual(qaBefore.spend,[]);
+        active=await fixture.rebind({...bindings,ALTERNATE_HOSTS:'restart-spending.invalid'});
+        await req('/settings',service);await new Promise(resolve=>setTimeout(resolve,1500));
+        await refuse(service,'QA cannot start transcription after restart',true);
+        assert.deepEqual(await state(service),qaBefore);assert.deepEqual(await state(jwt()),ownerSpent);assert.equal(sends,0);
+        const report=await(await req('/api/v1/spend?by=purpose',jwt())).json();assert.equal(report.entries.length,1);assert.equal(report.entries[0].cost_micros,3_500_000);assert.equal(report.entries[0].purpose,'generate.concepts');
+      }finally{await fixture.mf.dispose();}
     });
-    await check(`${mode}: QA keeps local study and learner self-check without inheriting paid Jev`, async () => {
+    await check(`${mode}: QA keeps native local study and saved ungraded answers without self-grading or paid Jev`, async () => {
       const localOrigin = 'http://127.0.0.1:8792';
       const client = 'no-paid-checking-qa.access';
       const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,
@@ -827,11 +826,12 @@ try {
         assert.deepEqual(app.spend,[]);
         assert.equal(app.events.length,0);
         html = await (await req('/notebook')).text();
-        assert.equal((await post('/review/self',{...fields(html,'/review/self'),correct:'true'})).status,303);
+        assert.match(html,/Your answer is saved, not graded/);assert.doesNotMatch(html,/action="\/review\/self"/);
+        const before=structuredClone(app);
+        for(const route of ['/review/self','/review/override'])assert.equal((await post(route,{csrf:app.csrf,operation_id:'retired-qa-self-rating-operation',correct:'true'})).status,410);
         app = await snapshot('private-qa');
-        assert.equal(app.events.length,1);
-        assert.equal(app.events[0].result.authority,'learner');
-        assert.deepEqual(app.spend,[]);
+        assert.deepEqual(app.events,[]);assert.deepEqual(app.occurrence,before.occurrence);
+        assert.deepEqual(app.questions,before.questions);assert.deepEqual(app.operations,before.operations);assert.deepEqual(app.spend,[]);
       } finally {await fixture.mf.dispose();}
     });
   }
@@ -878,15 +878,15 @@ try {
       assert.deepEqual(before.app.operations, source.app.operations);
       assert.equal((await active.worker.fetch(`${origin}/export`, {headers:{'x-scry-backup-key':backupKey}})).status, 401);
       const fields = await savedRequestFields(await req('/settings'));
-      const submit = () => req('/create', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
-        body:new URLSearchParams({...fields, intent:'A deliberate synthetic write after Go custody restore'})});
+      const submit = () => req('/settings', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, pace:'light'})});
       const saved = await submit();
       assert.equal(saved.status, 303);
       assert.equal((await submit()).headers.get('Location'), saved.headers.get('Location'));
       active = await fixture.rebind(activeBindings);
       const after = await (await req('/export')).json();
       assert.deepEqual(after.app.revival_go, custody);
-      assert.equal(Object.keys(after.app.goals).length, Object.keys(before.app.goals).length + 1);
+      assert.deepEqual(after.app.goals,before.app.goals);assert.equal(after.app.preferences.pace,'light');
       const response = await active.worker.fetch(`${origin}/internal/backup`, {method:'POST', headers:{'x-scry-backup-key':backupKey}});
       assert.equal(response.status, 200);
       const state = await (await req('/export')).json();
@@ -943,17 +943,17 @@ await test('listener allocation survives deterministic contention and concurrent
     assert.notEqual(new URL(listener).port,String(port));
     const response=await fetch(listener+'/create');
     assert.equal(response.status,200);
-    const html=await response.text();assert.match(html,/Preparation is unavailable/);
+    const html=await response.text();assert.match(html,/Native content generation is retired/);
     const fields=await savedRequestFields(await fetch(listener+'/settings'));
     assert.ok(fields.csrf);
-    const submit=origin=>fetch(listener+'/create',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,intent:'Listener-owned isolated capture'})});
+    const submit=origin=>fetch(listener+'/settings',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,pace:'light'})});
     assert.equal((await submit('https://foreign.invalid')).status,403);
     assert.equal((await submit(runtimes.find(other=>other!==local).url)).status,403);
     assert.equal((await fetch(listener+'/',{headers:{'X-Scry-Test-Host':'foreign.invalid'}})).status,421);
     assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,0);
     assert.equal((await submit(listener)).status,303,'A rejected write must not consume the operation.');
     assert.equal((await submit(listener)).status,303,'An exact retry must remain idempotent.');
-    assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,1);
+    const saved=(await(await fetch(listener+'/export')).json()).app;assert.equal(saved.preferences.pace,'light');assert.equal(Object.keys(saved.operations).length,1);assert.deepEqual(saved.goals,{});
   }
-  console.log(JSON.stringify({listener_allocation:'PASS',reclaimed_probe_port:port,concurrent_origins:runtimes.map(local=>local.url),isolated_goals_per_runtime:1,foreign_origin_status:403,foreign_host_status:421,canonical_write_and_replay_status:303}));
+  console.log(JSON.stringify({listener_allocation:'PASS',reclaimed_probe_port:port,concurrent_origins:runtimes.map(local=>local.url),isolated_receipts_per_runtime:1,foreign_origin_status:403,foreign_host_status:421,canonical_write_and_replay_status:303}));
 });
