@@ -58,6 +58,11 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
   `qa/runtime-helper.mjs` with a synthetic identity and the candidate origin
   vars. `qa/runtime.test.mjs` covers the broader runtime boundary. Deployed
   observations stay in the runbook.
+- [Cloud-only recovery gate](../docs/rust-cloudflare.md#cloud-only-release-recovery-gate):
+  S10 / #276; `qa/cloud-restore.test.mjs` exercises the exact candidate on local
+  workerd; `qa/cloud-backup.test.py` and `qa/cloud-recovery.test.py` cover bounded
+  orchestration refusals. Hosted Cron, recovery and cleanup remain UNVERIFIED
+  until the native promotion receipt records them.
 
 Old Go and retired-Worker receipts, as well as synthetic material, do not
 establish provider usefulness, private deployment, phone acceptance or

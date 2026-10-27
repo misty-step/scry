@@ -100,7 +100,8 @@ class Promotion(unittest.TestCase):
                     elif path == script + '/routes': result = routes if run.called else []
                     else: self.fail('Unexpected request: ' + path)
                     return io.BytesIO(json.dumps({'success': True, 'result': result}).encode())
-                with mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen):
+                with mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), \
+                        mock.patch.object(PROMOTE, 'cloud_gate', return_value={'synthetic': True}):
                     yield run, requested, receipt
 
     def test_deploy_refuses_serving_edge_drift(self):
@@ -115,8 +116,9 @@ class Promotion(unittest.TestCase):
     def test_deploy_observes_serving_edges_before_wrangler(self):
         with self.deployment([DOMAIN], []) as (run, requested, receipt):
             def wrangler(*args, **kwargs):
-                self.assertEqual(requested[-2:], ['/workers/domains?service=' + NAME,
-                                                 '/workers/scripts/' + NAME + '/routes'])
+                self.assertEqual(requested[-3:-1], ['/workers/domains?service=' + NAME,
+                                                   '/workers/scripts/' + NAME + '/routes'])
+                self.assertIn('/objects?', requested[-1])
                 self.assertEqual(args[0][1], 'deploy')
                 raise RuntimeError('wrangler intercepted')
             run.side_effect = wrangler
@@ -294,6 +296,7 @@ class DeploymentSafety(unittest.TestCase):
             with mock.patch.object(PROMOTE, 'ROOT', self.root), mock.patch.object(PROMOTE, 'OUT', out), \
                     mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict(os.environ, {'PATH': os.environ['PATH'], 'CLOUDFLARE_API_TOKEN': 'synthetic'}, clear=True), \
                     mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), mock.patch.object(PROMOTE.subprocess, 'run', side_effect=command), \
+                    mock.patch.object(PROMOTE, 'cloud_gate', return_value={'synthetic': True}), \
                     mock.patch('sys.stdout', new_callable=io.StringIO):
                 yield uploads, requests, receipt, initial
 
@@ -310,6 +313,23 @@ class DeploymentSafety(unittest.TestCase):
                 self.assertEqual(saved['stage'], 'exact_artifact_promoted')
                 self.assertEqual(saved['deployment']['versions'][0]['percentage'], 100)
                 self.assertFalse(any('not-deployed-C' in p for p in requests))
+
+    def test_cloud_recovery_refusal_prevents_upload_and_success_receipt(self):
+        with self.fixture([deployment('a', ('A', 100))]) as (uploads, _, receipt, initial):
+            with mock.patch.object(PROMOTE, 'cloud_gate', side_effect=RuntimeError('synthetic cloud gate refused')) as gate:
+                with self.assertRaisesRegex(RuntimeError, 'cloud gate refused'):
+                    PROMOTE.deploy()
+                gate.assert_called_once()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_already_exact_promoted_release_does_not_spend_on_another_rehearsal(self):
+        with self.fixture([deployment('b', ('B', 100))]) as (uploads, _, receipt, _):
+            with mock.patch.object(PROMOTE, 'cloud_gate') as gate:
+                PROMOTE.deploy()
+                gate.assert_not_called()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
 
     def test_rollback_refuses_duplicate_newer_and_same_source_candidates(self):
         history = [deployment('rollback', ('A', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]

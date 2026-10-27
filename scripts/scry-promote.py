@@ -3,6 +3,7 @@
 import email.parser
 import email.policy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tomllib
 from typing import Any
+from types import SimpleNamespace
 import urllib.request
 import zipfile
 
@@ -155,7 +157,10 @@ def prepare():
         assert sha((OUT / name).read_bytes()) == digest, 'Artifact file checksum mismatch'
     proof = json.loads((OUT / 'proof.json').read_text())
     assert proof['source_state'] == 'committed' and proof['revision'] == run['head_sha'], 'Artifact proof must match committed CI source'
-    for name in ('deploy/rust-production.toml', 'scripts/scry-promote.py'):
+    for name in ('deploy/rust-production.toml', 'scripts/scry-promote.py',
+                 'scripts/scry-cloud-backup.py', 'scripts/scry-cloud-recovery.py', 'recovery/cloud-restore.mjs',
+                 'recovery/target-adapter.mjs',
+                 'deploy/cloud-recovery-approval.json'):
         expected = subprocess.check_output(['git', 'show', proof['revision'] + ':' + name], cwd=ROOT)
         assert (ROOT / name).read_bytes() == expected, 'Promotion configuration differs from tested source'
     save({'artifact_id': int(identity), 'artifact_zip_sha256': checksum, 'source': proof['revision'], 'stage': 'artifact_verified'})
@@ -175,6 +180,26 @@ def edges(domains, routes, service):
     """Everything that sends traffic to the Worker: Custom Domains and the script's own routes on any zone."""
     return {'custom_domains': sorted([d['hostname'], d['zone_name'], d['zone_id'], d['environment'], d['enabled']] for d in domains if d['service'] == service),
             'routes': sorted(r['pattern'] for r in routes)}
+
+def cloud_gate(receipt, config, before, deployments, prior):
+    spec = importlib.util.spec_from_file_location('scry_cloud_backup', ROOT / 'scripts/scry-cloud-backup.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    native = SimpleNamespace(gh=gh, single_version=single_version, edges=edges, OUT=OUT)
+    try:
+        return module.gate(native, receipt, config, before, deployments, prior)
+    except Exception as error:
+        retained = getattr(error, 'retained_resources', [])
+        schedule = getattr(error, 'schedule_cleanup', None)
+        if retained or schedule:
+            assert all(re.fullmatch(r'scry-recovery-[a-f0-9]{24}-(?:target|bridge|data)', name) for name in retained), 'Invalid cleanup resource identity'
+            cleanup = {'source': receipt['source'], 'native_run_id': os.environ.get('GITHUB_RUN_ID'),
+                       'stage': 'cleanup_unverified', 'error': 'CLOUD_RECOVERY_CLEANUP_UNVERIFIED',
+                       'retained_temporary_resources': retained,
+                       'failed_cleanup_storage_cents_per_month_limit': 25}
+            if schedule: cleanup['temporary_schedule'] = schedule
+            (RECEIPT.parent / 'recovery-cleanup.json').write_text(json.dumps(cleanup, indent=2) + '\n')
+        raise
 
 def deploy():
     config = tomllib.loads(CONFIG.read_text())
@@ -199,10 +224,6 @@ def deploy():
         assert bindings[bucket['binding']]['bucket_name'] == bucket['bucket_name'], 'Live R2 bucket differs from configured bucket'
         assert not request('/r2/buckets/' + bucket['bucket_name'] + '/domains/managed')['enabled'], 'R2 managed domain is enabled'
         assert request('/r2/buckets/' + bucket['bucket_name'] + '/domains/custom')['domains'] == [], 'R2 custom domains are present'
-    # An empty target cannot be activated accidentally. The operator bridge's
-    # complete readback is the authority; presence alone is not restore proof.
-    snapshots = request('/r2/buckets/' + mutable['SCRY_BACKUPS'] + '/objects?per_page=1000&prefix=snapshots%2F' + config['vars']['SPACE_NAME'] + '%2F')
-    assert snapshots, 'Import and canonically verify the unused space before activation'
     deployments = deployment_history(request, script)
     previous = deployments[0]
     versions = {}
@@ -221,6 +242,12 @@ def deploy():
     serving = observe()
     # A secret-only version of the same source still lacks the release annotation verified below.
     if prior != (receipt['source'], True):
+        receipt['cloud_recovery'] = cloud_gate(receipt, config, before, deployments, prior)
+        # Preserve the original nonempty-target guard, after budget admission:
+        # R2 ListObjects itself may cross a billable usage unit. Presence is
+        # still not restore proof; the preceding independent gate is required.
+        snapshots = request('/r2/buckets/' + mutable['SCRY_BACKUPS'] + '/objects?per_page=1000&prefix=snapshots%2F' + config['vars']['SPACE_NAME'] + '%2F')
+        assert snapshots, 'Import and canonically verify the unused space before activation'
         subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
     after = request(script + '/settings')
     exact = {b['name']: b for b in after['bindings']}
