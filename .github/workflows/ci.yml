@@ -141,16 +141,27 @@ jobs:
           ARTIFACT_ID: ${{ inputs.artifact_id }}
           ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
         run: python3 scripts/scry-promote.py prepare
-      - name: Promote exact modules without rebuilding or changing routes
+      - name: Prove cloud-only backup and recovery, then promote exact modules
         env:
+          GH_TOKEN: ${{ github.token }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WRANGLER_SEND_METRICS: 'false'
         run: python3 scripts/scry-promote.py deploy
+      - name: Remove only this run's expired approval claim
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        # Actual deployment/readback precede this bounded wait. Never remove a
+        # claim while its approval could admit a second recovery drill.
+        run: python3 scripts/scry-cloud-backup.py cleanup-claim
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: scry-rust-promotion-${{ github.run_id }}
-          path: target/promotion.json
+          path: |
+            target/promotion.json
+            target/recovery-cleanup.json
+            target/recovery-claim.json
           if-no-files-found: warn
           retention-days: 14
       - name: Report promotion failure through the existing Actions issue path

@@ -276,6 +276,79 @@ rollout changes the origin again, align the trigger checkout with the serving
 configuration and repeat this verification. Never replay a rejected POST through
 an alternate-host redirect.
 
+## Cloud-only release recovery gate
+
+The native `ci.yml` promoter performs the launch check after exact committed
+artifact preparation and before any production code upload, under the existing
+`scry-rust-production` concurrency group. It does not depend on Mirrodin or copy
+learner archives into Actions. Source merge, a published release, or healthy
+`/healthz` alone is not a successful recovery check.
+
+`deploy/cloud-recovery-approval.json` starts disabled. One explicit approval is
+bound to a reviewed implementation commit and exact release version; only the
+existing release generator's version fields and append-only release notes may
+change afterward. A content-free private R2 claim consumes its unique ID once.
+The ordinary GET/PUT/readback claim relies on this native workflow being the
+sole authorized writer under production concurrency; it is **not** cross-writer
+CAS. Unknown/conflicting outcomes stop, never retry the drill. The claim remains
+until the fixed approval expires, then an `always()` step removes only the
+exact run-owned claim. That wait follows deployment, not precedes it.
+
+Before billable listing or mutations, the gate requires the existing Standard
+usage model and explicit bounded cost admission. Provider keys, immediate or
+bootstrap-window 30-day deletion candidates, unknown live modules/source,
+incomplete listings, or unavailable Cron analytics stop before scheduling.
+It puts one dated Cron slot onto the **existing verified live code**, requires
+an actual successful provider Cron event, and restores the original empty Cron
+list in `finally`. A Cron event is useful evidence only because that exact
+reviewed handler awaits complete archive readback/decoding and alarm rearming.
+It never uses key presence or persisted health as a replacement.
+
+The successful bootstrap rearms the existing autonomous 24-hour Durable Object
+alarm and its existing 30-day retention/recovery behavior. Removing the temporary
+Cron does not remove that alarm. There is no second permanent daily schedule;
+the next natural daily run remains a separate observation.
+
+Recovery uses separate temporary private Workers/DOs/R2, no public route,
+provider, owner or QA binding, and short-lived internal/restore/transfer keys.
+An isolated adapter delegates to exact frozen candidate `index.js`/WASM bytes;
+its different entrypoint supplies only authenticated content-free size checks
+and bounded recovery admission, never a production wrapper. The bridge reads a
+size/ETag-pinned snapshot inside Cloudflare, restores once, takes one complete
+backup, and strictly compares application/photo data with only documented
+restore changes. Rehearsal admission is limited to **1 MiB and 1,000 recursive
+application entries**; this does not change the production archive format.
+Oversized data is a stop, not permission to raise the budget.
+
+Cost admission assumes an existing Workers Standard account, no new subscription
+or free allowance, and rounds every meter independently: the bounded one-drill
+and first-storage-period quote is **$19.066**, within the approved **$20**.
+The driver limits control-plane requests (128 including cleanup), private preview
+requests (5), CPU (30,000 ms per invocation), subrequests (100), and admission
+time (15 minutes). Already-admitted I/O can outlive capability expiry; the finite
+call count and 72-hour month-end admission margin bound its compute billing.
+No target/bridge alarm or Cron can continue after that drain. Failed cleanup
+therefore leaves only temporary storage, conservatively **$0.215/month** within
+the approved **$0.25/month**. Expiry is not deletion.
+
+The fresh SQL namespace accepts at most 1,018 partition/chunk rows and two later
+meta versions. Charging UTF-16, JSON re-escaping, keys and every obsolete payload
+version gives at most 12 MiB serialized payload. For each allowed SQLite page
+size, the tested B-tree/overflow/pointer-map calculation plus initial/schema/KV
+allowance is at most 27,161,600 bytes; transient rebalancing adds at most 143,360,
+still below the adapter's 32 MiB check. This bounds stored SQL data, not unknown
+provider replicas; hosted size checks corroborate rather than replace the
+pre-write bound. See [SQLite file format](https://www.sqlite.org/fileformat.html),
+[DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/),
+and [R2 billing-unit rounding](https://developers.cloudflare.com/r2/pricing/#billable-unit-rounding).
+
+Temporary resource identities are verified before cleanup. Cleanup failures
+block success and retain a content-free receipt naming only this run's resources;
+they do not authorize deleting an uncertain or historical store. The existing
+Actions failure issue links the run, without learner content, credentials,
+private snapshot keys or capability URLs. Proof of this limited hosted restore
+does not establish owner UI, physical-phone acceptance or continuous monitoring.
+
 ## Independent fresh-space restore
 
 ### Mirrodin-triggered daily snapshot
