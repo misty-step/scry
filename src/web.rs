@@ -589,6 +589,7 @@ impl View<'_> {
                 escape(crate::study::visible_prompt_title(prompt))
             );
             out.push_str(&Self::exact_prompt_context(prompt));
+            out.push_str(&self.exact_media(prompt));
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
@@ -684,6 +685,43 @@ impl View<'_> {
             })
             .collect()
     }
+    fn exact_media(&self, prompt: &crate::study::Prompt) -> String {
+        let mut out = String::new();
+        for media in crate::authored_media::for_prompt(self.app, prompt) {
+            let url = media["url"]
+                .as_str()
+                .unwrap_or("")
+                .replacen("/api/v1/media/", "/media/", 1);
+            let text = |field| media[field].as_str().unwrap_or("");
+            out.push_str("<figure class=\"review-media\">");
+            if media["asset"]["mime"] == "image/png" {
+                let _ = write!(
+                    out,
+                    "<img src=\"{}\" alt=\"{}\" width=\"{}\" height=\"{}\">",
+                    escape(&url),
+                    escape(text("alt")),
+                    media["asset"]["width"],
+                    media["asset"]["height"]
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    "<audio controls preload=\"none\" src=\"{}\" aria-label=\"Supplied audio\">Audio playback is unavailable.</audio><details><summary>Transcript</summary><p>{}</p></details>",
+                    escape(&url),
+                    escape(text("transcript"))
+                );
+            }
+            let _ = write!(
+                out,
+                "<figcaption><details><summary>Source and rights</summary><p>{}</p><p>{} · {}</p><p>{}</p></details></figcaption></figure>",
+                escape(text("source")),
+                escape(text("rights")),
+                escape(text("license")),
+                escape(text("file_name"))
+            );
+        }
+        out
+    }
     fn exact_result(&self, a: &crate::study::Attempt) -> String {
         use crate::grading::{Change, Verdict};
         let good = a.grade.verdict == Verdict::Good;
@@ -767,6 +805,7 @@ impl View<'_> {
             escape(&a.grade.authority.name),
             escape(&a.grade.authority.grader_version)
         );
+        out.push_str(&self.exact_media(&a.prompt));
         out.push_str("<div class=\"result-actions\">");
         out.push_str(&self.form(
             "/practice/next",

@@ -13,14 +13,18 @@ catch {
 export const Response=runtime.Response;
 export const denyEgress=async()=>{throw new Error('External calls are forbidden in synthetic QA.');};
 export const internalKey='synthetic-internal-private-storage-key-32chars';
-export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath,testClock=false,handleStructuredLogs}) {
+export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=process.env.SCRY_WORKER_ARTIFACT||'build',egress=denyEgress,port,inspect=false,resourcePersistencePath,testClock=false,testR2Faults=false,handleStructuredLogs}) {
   artifact=resolve(artifact);
   // Miniflare replaces Host with its own listener. This transport-only adapter
   // restores the simulated external Host before Rust enforces its real checks.
   // worker-rs exports a non-RPC class. Only inspection fixtures wrap it in the
   // native base required by Miniflare's SQL inspection; fetch/alarm stay Rust.
+  // Explicit synthetic transport fault seam, never included in release bytes.
+  // It delays/fails a real R2 read after the real put/get, not the Rust policy.
+  if(testR2Faults&&!inspect)throw new Error('R2 fault injection requires an inspected synthetic fixture.');
+  const r2Faults=testR2Faults?`env={...env,SCRY_ASSETS:new Proxy(env.SCRY_ASSETS,{get(target,property){const value=Reflect.get(target,property);if(property==='constructor')return value;if(property==='get')return async(...args)=>{const object=await value.apply(target,args);if(env.SCRY_TEST_R2_MISSING_HASH&&String(args[0]).endsWith(env.SCRY_TEST_R2_MISSING_HASH))return null;const delay=Number(env.SCRY_TEST_R2_DELAY_MS||0);if(delay>0)await new Promise(done=>setTimeout(done,delay));return object;};return typeof value==='function'?value.bind(target):value;}})};`:'';
   const space=inspect
-    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}fetch(request){${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
+    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);${r2Faults}this.inner=new RustLearningSpace(ctx,env);}fetch(request){${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
     : `export {RustLearningSpace as LearningSpace};`;
   // Like Wrangler's drain-body middleware, discard unread transport bytes only
   // after Rust responds. Otherwise workerd can reset the upload and erase its

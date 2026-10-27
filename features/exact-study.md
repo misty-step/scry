@@ -97,3 +97,15 @@ assistance and leaves the schedule unchanged, including a later correct answer.
 `examples/nato-alphabet.json` is supplied content, not generated runtime output.
 Reverse directions, choice scaffolding, random-start sets, year tolerance and
 multimedia are not implemented by this subset; hosted #335 remains unverified.
+
+## Authored review media (#404)
+
+[US-022](../SPEC.md#us-022-review-externally-authored-image-and-audio-cards) adds
+private supplied PNG/short PCM WAV attachments to mapping Units. The
+[implementation note](../docs/implementation/authored-review-media.md) describes
+API/CLI manifests, superseding existing NATO wording without rewriting history,
+format limits, durable disclosure, crash-orphan behavior and compatible rollback.
+Run `qa/walk --stories "US-022"`, `tests/authored_media.rs` and
+`qa/authored-media.test.mjs` against the current
+source/artifact. Synthetic tones/squares are not useful teaching content or
+physical-phone/hosted-recovery acceptance; retain exact results in #404.

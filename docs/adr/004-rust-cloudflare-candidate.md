@@ -229,3 +229,31 @@ An older writer cannot safely handle populated practice. Rollback requires a
 compatible build that retains these records, not deletion or an older binary.
 Local SQLite/R2 restart and fresh restore proof do not authorize activation or
 establish independent hosted recovery.
+
+## 2026-10-27 bounded authored review media (#404)
+
+`src/authored_media.rs` validates supplied PNG/short PCM WAV envelopes and
+metadata; it owns no HTTP, generation, grading or learning writer. Immutable
+Library Versions optionally contain Unit-indexed attachment refs and a separate
+ordered media identity. Their normalized text hashes and historical text bytes
+remain unchanged. Explicit supersession can create a same-wording Version with
+changed media, retaining all previous Studies and Attempts. The [implementation
+note](../implementation/authored-review-media.md) owns precise wire/storage,
+capacity and crash-orphan mechanics; US-022 owns behavioral requirements.
+
+R2 holds private content-addressed blobs under the object-derived space prefix.
+The existing single SQLite writer admits references only after whole-request
+validation, capacity checks and exact R2 put/readback. It reloads and rechecks
+current authorization/state after awaits. Media reads verify integrity and
+recheck the current disclosure fence before returning bytes; playing media has
+no durable learning side effect. Native same-origin audio is allowed by the
+private CSP; no remote content or active format is admitted.
+
+Complete archives include every referenced media byte within the existing
+16 MiB encoded limit. Empty-media rows and archive shape remain unchanged.
+Populated media or media receipts require both a distinct archive format and
+an explicit SQL marker unknown to pre-media readers. A rollback floor must be
+media-compatible; do not reuse a pre-media or stopped Materials artifact.
+This decision is not activation, schema/recovery acceptance or a production
+capacity observation. Exact current/predecessor proof and independent review
+remain required before activation.

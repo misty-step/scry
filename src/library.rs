@@ -59,6 +59,10 @@ pub struct Version {
     pub sources: Vec<String>,
     pub spelling_strict: bool,
     pub sections: Vec<Section>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<crate::authored_media::Attachment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_hash: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -488,7 +492,24 @@ impl Library {
         seed: &str,
         previous: Option<&str>,
     ) -> AppResult<String> {
+        self.add_with_media(input, seed, previous, Vec::new())
+    }
+    pub(crate) fn add_with_media(
+        &mut self,
+        input: VersionInput,
+        seed: &str,
+        previous: Option<&str>,
+        media: Vec<crate::authored_media::Attachment>,
+    ) -> AppResult<String> {
         let sections = checked_sections(&input)?;
+        crate::authored_media::validate_attachments(
+            &media,
+            sections.iter().map(|s| s.units.len()).sum(),
+        )?;
+        let media_hash = crate::authored_media::identity(&media);
+        if !media.is_empty() && input.kind != Kind::KeyedMapping {
+            return Err(invalid());
+        }
         if input.kind == Kind::KeyedMapping {
             check_mapping_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
         }
@@ -525,10 +546,10 @@ impl Library {
         let pairs = (input.kind == Kind::KeyedMapping)
             .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
             .flatten();
-        let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
-        if let Some(v) = hash_match {
-            // The historical content hash deliberately ignores spacing. For
-            // mappings that must not erase pair boundaries or grading policy.
+        // Preserve the core's collision precedence across EVERY media Version:
+        // a canonical mapping fallback must never mask a cross-kind, boundary
+        // or grading-policy collision in the historical normalized text hash.
+        for v in self.versions.values().filter(|v| v.normalized_hash == hash) {
             if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
                 && (input.kind != v.kind
                     || input.spelling_strict != v.spelling_strict
@@ -546,38 +567,56 @@ impl Library {
                 ));
             }
         }
-        // Mapping identity follows its own pinned normalization, not the
-        // historical text hash (which, for example, expands '&' to 'and').
-        // Check legacy hash conflicts first; never rewrite old bytes or hashes.
-        let duplicate = hash_match.or_else(|| {
-            pairs.as_ref().and_then(|pairs| {
-                self.versions.values().find(|v| {
-                    v.kind == Kind::KeyedMapping
-                        && mapping_identity(
-                            v.sections
-                                .iter()
-                                .flat_map(|s| &s.units)
-                                .map(|u| u.text.as_str()),
-                        )
-                        .as_ref()
-                            == Some(pairs)
-                })
+        // Mapping identity uses its pinned normalization independently of the
+        // legacy text hash. Media is a separate immutable identity dimension.
+        let matching_content: Vec<_> = self
+            .versions
+            .values()
+            .filter(|v| {
+                v.normalized_hash == hash
+                    || pairs.as_ref().is_some_and(|pairs| {
+                        v.kind == Kind::KeyedMapping
+                            && mapping_identity(
+                                v.sections
+                                    .iter()
+                                    .flat_map(|s| &s.units)
+                                    .map(|u| u.text.as_str()),
+                            )
+                            .as_ref()
+                                == Some(pairs)
+                    })
             })
-        });
-        if let Some(v) = duplicate {
+            .collect();
+        for v in &matching_content {
             if input.kind == Kind::KeyedMapping && input.spelling_strict != v.spelling_strict {
                 return Err(AppError::new(
                     409,
                     "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
                 ));
             }
-            if existing.is_some_and(|w| w.id != v.work_id) || previous.is_some() {
+            if existing.is_some_and(|w| w.id != v.work_id) {
                 return Err(AppError::new(
                     409,
                     "That text already belongs to an existing Version. Show it instead.",
                 ));
             }
+        }
+        if let Some(v) = matching_content.iter().find(|v| v.media_hash == media_hash) {
+            if previous.is_some() {
+                return Err(AppError::new(
+                    409,
+                    "That text and media already belong to an existing Version. Show it instead.",
+                ));
+            }
             return Ok(v.id.clone());
+        }
+        // Changed media requires deliberate immutable supersession. Never
+        // silently add a same-wording copy or edit acknowledged attachments.
+        if !matching_content.is_empty() && previous.is_none() {
+            return Err(AppError::new(
+                409,
+                "That wording exists. Explicitly supersede its Version to change media.",
+            ));
         }
         if let Some(old) = previous
             && (self
@@ -602,6 +641,8 @@ impl Library {
             rights: input.rights,
             sources: input.sources,
             spelling_strict: input.spelling_strict,
+            media,
+            media_hash,
             sections: sections
                 .into_iter()
                 .enumerate()
@@ -733,11 +774,12 @@ impl Library {
             if id != &v.id
                 || !valid_id(id)
                 || self.works.get(&v.work_id).is_none_or(|w| w.kind != v.kind)
-                || !hashes.insert(&v.normalized_hash)
+                || !hashes.insert((&v.normalized_hash, &v.media_hash))
                 || v.normalized_hash != sha256(key(&v.text).as_bytes())
             {
                 return Err(invalid());
             }
+            crate::authored_media::validate_version(v)?;
             let input = VersionInput {
                 title: String::new(),
                 kind: v.kind,
@@ -836,6 +878,43 @@ pub fn mutate(
             .map_err(|_| AppError::conflict())
     };
     let id = match path {
+        "/library/media/add" | "/library/media/supersede" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "operation_id" | "csrf" | "data" | "version_id" | "revision"
+                )
+            }) {
+                return Err(invalid());
+            }
+            let input = crate::authored_media::parse(field("data"))?;
+            let (media, _) = input.checked()?;
+            let previous = if path.ends_with("/supersede") {
+                let old = app
+                    .library
+                    .versions
+                    .get(field("version_id"))
+                    .ok_or_else(missing)?;
+                if app
+                    .library
+                    .works
+                    .get(&old.work_id)
+                    .ok_or_else(missing)?
+                    .revision
+                    != revision()?
+                {
+                    return Err(AppError::conflict());
+                }
+                Some(field("version_id"))
+            } else {
+                if fields.contains_key("version_id") || fields.contains_key("revision") {
+                    return Err(invalid());
+                }
+                None
+            };
+            app.library
+                .add_with_media(input.mapping.into_version()?, seed, previous, media)?
+        }
         "/library/mapping/add" => {
             if fields.keys().any(|key| {
                 !matches!(
@@ -922,7 +1001,9 @@ fn valid_id(id: &str) -> bool {
 pub(crate) fn receipt_entity(receipt: &Receipt, id: &str) -> bool {
     let resource = match receipt.path.as_deref() {
         Some(
-            "/library/mapping/add"
+            "/library/media/add"
+            | "/library/media/supersede"
+            | "/library/mapping/add"
             | "/library/version/add"
             | "/library/version/supersede"
             | "/library/version/delete",

@@ -30,3 +30,4 @@
 .mapping-study[data-state=exact-prompt]>h1{font-family:var(--sans);font-size:1.125rem;letter-spacing:0;line-height:1.4;margin-bottom:1.25rem;color:var(--ink-2)}.mapping-study .exact-cue .reading{font-size:clamp(2.5rem,12vw,4.5rem);line-height:1.15;margin-bottom:1.25rem}.mapping-study .exact-cue .eyebrow{margin-bottom:.5rem}
 
 .mapping-pairs>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--rule)}.mapping-pairs dt{font-weight:600}.mapping-pairs dd{margin:0;overflow-wrap:anywhere}
+.review-media{margin:1rem 0;max-width:100%;overflow-wrap:anywhere}.review-media img{display:block;max-width:100%;height:auto;max-height:18rem;object-fit:contain}.review-media audio{display:block;width:100%;max-width:100%;min-height:44px}.review-media summary{min-height:44px;padding:.6rem 0;cursor:pointer}.review-media figcaption{font-size:.875rem;color:var(--ink-2)}

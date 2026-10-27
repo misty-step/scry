@@ -358,6 +358,7 @@ pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
                 .collect::<Vec<_>>()
         );
     }
+    crate::authored_media::wire_response(app, &mut data);
     Some(data)
 }
 /// Receipts retain their original disclosure, but permission to return it is

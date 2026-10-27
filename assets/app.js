@@ -22,10 +22,16 @@
     }
     box.hidden = false;
   };
+  // Discard the previous presentation's native media before replacing/hiding
+  // private DOM. A detached audio element can otherwise keep playing.
+  const stopMedia = root => root?.querySelectorAll('audio').forEach(media => {
+    media.pause(); media.removeAttribute('src'); media.load();
+  });
   const conceal = () => {
     clearTimeout(pollTimer);
     pollRequest?.abort();
     pending = null;
+    stopMedia(document.querySelector('.page-frame'));
     document.querySelector('.page-frame')?.replaceChildren();
     document.body.classList.add('private-hidden');
   };
@@ -53,6 +59,7 @@
         replacement?.replaceWith(form);
       });
     }
+    stopMedia(previousMain);
     previousMain.replaceWith(main);
     if (preserveDrafts && focused?.isConnected) {
       focused.focus({ preventScroll: true });
@@ -181,7 +188,8 @@
       }
       return;
     }
-    if (target instanceof HTMLElement && target.closest('a,button,summary')) return;
+    // Native audio controls retarget keyboard events to their audio host.
+    if (target instanceof HTMLElement && target.closest('a,button,summary,audio')) return;
     if (/^[1-9]$/.test(event.key)) {
       const choice = document.querySelector(`[data-choice="${event.key}"]`);
       if (choice) { event.preventDefault(); choice.form?.requestSubmit(choice); }

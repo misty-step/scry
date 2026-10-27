@@ -29,6 +29,8 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/answer" => Some("/practice/answer"),
         "/api/v1/reveal" => Some("/practice/reveal"),
         "/api/v1/correct" => Some("/practice/correct"),
+        "/api/v1/library/media" => Some("/library/media/add"),
+        "/api/v1/library/media/supersede" => Some("/library/media/supersede"),
         "/api/v1/library/mappings" => Some("/library/mapping/add"),
         "/api/v1/library/versions" => Some("/library/version/add"),
         "/api/v1/library/versions/supersede" => Some("/library/version/supersede"),

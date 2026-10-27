@@ -52,11 +52,27 @@ if(selected.includes('US-001')){
  await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
 }
 const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
-if(selected.some(id=>['US-014','US-015','US-016','US-017','US-018'].includes(id)))buildCli();
+if(selected.some(id=>['US-014','US-015','US-016','US-017','US-018','US-022'].includes(id)))buildCli();
 let browser;
 try{
  if(playwright)browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  for(const id of selected){
+  if(id==='US-022'){
+   const path='logs/US-022-media.txt',directory=join(output,'media');
+   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
+   try{
+    const log=execFileSync(process.execPath,['--test','qa/authored-media.test.mjs'],{encoding:'utf8',env:{...process.env,SCRY_MEDIA_PROOF:directory}});
+    await writeFile(join(output,path),log);await register(path);
+    const media=JSON.parse(await readFile(join(directory,'runtime.json'),'utf8'));
+    const evidence=[path,'media/runtime.json','media/media-light-390.png','media/media-dark-390.png'];
+    for(const item of evidence.slice(1))await register(item);
+    for(let i=0;i<specs[id].length;i++){
+     const criterion={n:i+1,status:'pass',target:'rust-worker-phone-cli-sqlite-r2',source_revision:receipt.head,evidence:['logs/rust-tests.txt',...evidence]};result.criteria.push(criterion);
+     try{await specs[id][i]({media,policy});}catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;}
+    }
+   }catch(error){result.status='fail';result.error=error.message;await writeFile(join(output,path),String(error.stdout||'')+String(error.stderr||''));await register(path);}
+   continue;
+  }
   if(id==='US-018'){
    const paths=[];
    const phone=await phoneWalk(browser,async(page,name,options={})=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true,...options});await register(path);paths.push(path);return path;});

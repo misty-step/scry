@@ -1,4 +1,5 @@
 pub mod api;
+pub mod authored_media;
 pub mod engine;
 pub mod generation;
 pub mod grading;
