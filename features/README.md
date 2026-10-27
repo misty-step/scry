@@ -48,7 +48,7 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 - [One question and honest judgment](study.md): legacy concept notebook, US-002, US-003, US-007, US-008, US-011.
 - [Concepts, references, and goals](concepts.md): US-001, US-006, US-009, US-010.
 - [Owner tokens, API and CLI](owner-tokens.md): US-014 / AG1; hosted admission #335 UNPROVEN.
-- [Create, preparation, and refinement](capture.md): US-004, US-013/S11.
+- [Retired generation and saved preparation history](capture.md): 2026-10-27 retirement amendment; historical US-004/013/S11 evidence remains preserved.
 - [Changes in this build](../SPEC.md#s12--inspect-the-changes-in-this-build):
   follow the footer's Changelog link to `/changelog`, then return through the
   header. `qa/browser-release.mjs` (inside `qa/walk --all`) covers phone and

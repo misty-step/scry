@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {join,resolve,relative} from 'node:path';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {historicalMutation} from './historical-fixture.mjs';
 import {recitationAdmission} from './recitation-admission.mjs';
 const DAY=86400000,START=Math.floor(Date.now()/DAY)*DAY+12*60*60*1000;
 const lines=['We conceived a patient garden,','with gentle silver branches.','The lantern guards our quiet path,','and keeps the morning bright.','We carry woven baskets,','beside the tranquil stream.','The orchard welcomes every guest,','and shelters every seed.'];
@@ -55,10 +56,10 @@ function assertHistoryHtml(html,history,ids=Object.keys(history.attempts)) {
  }
  return byId;
 }
-export async function studyJourney(){
+export async function studyJourney({seedHistorical=true}={}){
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-study-'));
  const name='study-'+randomUUID(),space='study-'+randomUUID(),config=join(temp,'login.json'),persist=join(temp,'state');
- let at=START,egress=0,secret,tokenId,runtime,storage,origin,bindings;
+ let at=seedHistorical?START-DAY:START,egress=0,secret,tokenId,runtime,storage,origin,bindings;
  const base={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:space,INTERNAL_KEY:internalKey};
  const transcript=[],fullTranscript=[];
  const start=async()=>{runtime=await createRuntime({port:0,name,inspect:true,testClock:true,resourcePersistencePath:persist,bindings:{...base,SCRY_TEST_NOW_MS:String(at)},egress:async()=>{egress++;throw Error('No provider egress permitted.');}});origin=(await runtime.mf.ready).origin;bindings={...base,CANONICAL_ORIGIN:origin,SCRY_TEST_NOW_MS:String(at)};runtime={...runtime,...await runtime.rebind(bindings)};storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});};
@@ -84,6 +85,19 @@ export async function studyJourney(){
  const minted=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,name:'Study synthetic unpaid agent'})});assert.equal(minted.status,200);secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await minted.text())?.[1];assert.ok(secret);tokenId=secret.slice(8,40);
  await ok(['login','--url',origin,'--token-stdin'],secret+'\n');
  let current,sid,vid,wid,version,cards=[],firstScheduled,caseStudy,caseCard,caseAttempt;
+ // Historical Corrections are compatibility fixtures, never current HTTP writes.
+ // Exercise the real retired state machine offline, validate it, then inspect
+ // its preserved records through the current Worker/API/CLI and restore path.
+ const historicalCorrect=async payload=>{
+  const fields={operation_id:randomUUID(),...payload};
+  const before=await rows(),refused=await req('/api/v1/correct',fields);
+  assert.equal(refused.status,410);assert.match(await refused.text(),/Self-grading is retired/);
+  assert.deepEqual(await rows(),before,'Current Correction submission, including old receipt replay, makes no write.');
+  const historical=await historicalMutation(storage,{path:'/practice/correct',fields,now_ms:at,seed:fields.operation_id,actor_token_id:tokenId});
+  assert.equal(historical.practice.correction.acting_token,tokenId,'Historical CLI Correction attribution is retained.');
+  transcript.push({observation:'Validated historical Correction fixture; not a supported HTTP write',operation_id:fields.operation_id,correction_id:historical.practice?.correction?.id,replayed:historical.replayed});
+  return historical;
+ };
  const next=async(extra=[])=>{const args=['next',...(current?.attempt_id?['--after',current.prompt.id]:[]),...extra];const v=await ok(args);current=v.practice;return current;};
  const answer=async(text,extra=[])=>{const v=await ok(['answer',current.prompt.id,'--text-stdin',...extra],text);current={...current,attempt_id:v.practice.attempt.id};return v.practice.attempt;};
  const stopCurrent=async()=>{if(current?.prompt&&!current.attempt_id)await answer('');};
@@ -133,14 +147,14 @@ export async function studyJourney(){
   const before=await checkHistory('History: mixed Recitation and source/answer escaping',[mixed.id]);
   assert.ok(before.entries.get(mixed.id).html.includes(escapeHtml(raw)));
   assert.doesNotMatch(before.entries.get(mixed.id).html,/<script\b|<img\b|onerror="/,'Authored title, expected text and raw answer remain text, never active markup.');
-  const immutable=await attemptRows(mixed.id),corrected=(await ok(['correct',current.prompt.id,mixed.id,'--unit',mixed.effects[1].unit_id,'--verdict','Good'])).practice.correction;
+  const immutable=await attemptRows(mixed.id),corrected=(await historicalCorrect({prompt_id:current.prompt.id,attempt_id:mixed.id,unit_id:mixed.effects[1].unit_id,verdict:'Good'})).practice.correction;
   assert.equal(corrected.unit_id,mixed.effects[1].unit_id);assert.deepEqual(await attemptRows(mixed.id),immutable);
-  const after=await checkHistory('History: appended Correction preserves original per-Unit Verdict',[mixed.id]);
+  const after=await checkHistory('History: historical Correction fixture preserves original per-Unit Verdict',[mixed.id]);
   assert.deepEqual(after.history.attempts[mixed.id],mixed);assert.equal(after.history.corrections[corrected.id].verdict,'Good');
   const empty=await practice(unitCards[1],'');assert.equal(empty.grade.verdict,'Again');assert.equal(Boolean(empty.disclosure),false);
   await checkHistory('History: an actual empty answer is Again, not Reveal',[empty.id]);
   const emptyRows=await attemptRows(empty.id);
-  await ok(['correct',current.prompt.id,empty.id,'--verdict','Good']);
+  await historicalCorrect({prompt_id:current.prompt.id,attempt_id:empty.id,verdict:'Good'});
   assert.deepEqual(await attemptRows(empty.id),emptyRows,'A second Correction preserves the original empty Attempt before restore.');
   const replacement='A replacement Version has entirely different wording.\n',path=await file('history-superseded.txt',replacement);
   const newId=(await ok(['version','supersede',v,'--revision',String(shown.work.revision),'--title',title,'--kind','text','--text-file',path,'--name','Replacement metadata'])).result.entity_id;
@@ -157,7 +171,7 @@ export async function studyJourney(){
    const sections=[{heading:'Synthetic first article',units:lines.slice(0,4).map(s=>s+'\n')},{heading:'Synthetic second article',units:lines.slice(4).map(s=>s+'\n')}];
    vid=await add("Apostles' Creed",lines.join('\n')+'\n',sections);const shown=await ok(['version','show',vid]);version=shown.version;wid=shown.work.id;
    sid=(await ok(['learn',vid,'--pace','steady'])).practice.study.id;assert.equal((await ok(['learn',vid])).practice.study.id,sid);
-   assert.equal(Object.keys((await ok(['study','list'])).studies).length,1);
+   assert.equal(Object.keys((await ok(['study','list'])).studies).length,historicalBaseline.studies+1,'Exactly one current Study is added beside the preserved historical fixture.');
    await next(['--study',sid]);assert.equal(current.prompt.cue,lines[0]+'\n');const assisted=await answer(lines[0]);
    await checkHistory('History: first assisted Attempt is visible with saved Diff and Authority',[assisted.id]);
    await ok(['due']);await ok(['history']);await ok(['export']);assert.deepEqual((await ok(['spend','--by','day'])).entries,[]);
@@ -180,7 +194,7 @@ export async function studyJourney(){
    await clock(START+DAY-1);
    // Clear due work without creating new Units; the cap remains six.
    for(const [i,cid]of cards.entries()){await next(['--card',cid]);await answer(lines[i]);}
-   assert.equal((await next(['--study',sid])).prompt,null);assert.equal((await rows()).filter(r=>r.key.startsWith('practice_cards/')).length,6);
+   assert.equal((await next(['--study',sid])).prompt,null);assert.equal((await rows()).filter(r=>r.key.startsWith('practice_cards/')).length,historicalBaseline.cards+6,'Exactly six current Cards plus the unchanged historical Cards.');
    await clock(START+DAY);
    for(let i=6;i<8;i++){await next(['--study',sid]);assert.equal(current.prompt.unit_ids[0],all[i].id);const c=Object.values(await state()).find(r=>r.unit_id===all[i].id&&r.state);cards.push(c.id);await prepare(c.id,lines[i]);await answer(lines[i]);}
    transcript.push({observation:'Steady Pace: exactly six introductions before rolling 24h boundary; Units seven/eight only at boundary, all in immutable reading order.'});
@@ -231,7 +245,7 @@ export async function studyJourney(){
    transcript.push({observation:'Read-only due/history/export/list/spend',rows_sha256:hash(JSON.stringify(before)),files:bytes,limit:'Initialized object. Cold framework SQLite/WAL/SHM allocation is accepted parent behavior; literal cold-filesystem guarantee FAIL.'});
   },
   async()=>{
-   const earlier=(await ok(['history'])).attempts;const original=earlier[Object.keys(earlier)[0]];
+   const earlier=(await ok(['history'])).attempts;const original=Object.values(earlier).find(a=>a.prompt.study_id===sid);assert.ok(original,'Drop preservation checks an Attempt from this Study, not the historical fixture.');
    await ok(['study','pause',caseStudy]);assert.equal((await next(['--study',caseStudy])).prompt,null,'Paused Study cannot introduce its waiting second Unit.');await ok(['study','resume',caseStudy]);await next(['--study',caseStudy]);assert.equal(current.prompt.scope.position,2);await answer('Synthetic Once daily Free recall tail.');
    await ok(['study','pause',sid]);await next(['--card',cards[0]]);await answer(lines[0]); // paused due/explicit Cards remain usable
    await ok(['study','resume',sid]);await ok(['study','drop',sid]);current=null;
@@ -241,7 +255,11 @@ export async function studyJourney(){
    const dropped=await checkHistory('History: dropped Study keeps every acknowledged Attempt');assert.equal(dropped.history.studies[sid].status,'dropped');assert.deepEqual(dropped.history.attempts[original.id],original);
   },
   async()=>{
-   await historyRecoveryCases();
+   assert.ok(seedHistorical,'The recovery journey starts with validated historical Corrections.');
+   const retained=await checkHistory('History: pre-existing Attempts and Corrections survive all current trajectories',Object.keys(historicalBaseline.attempts));
+   for(const [id,value]of Object.entries(historicalBaseline.attempts))assert.deepEqual(retained.history.attempts[id],value,'Current practice cannot rewrite a historical Attempt.');
+   for(const [id,value]of Object.entries(historicalBaseline.corrections))assert.deepEqual(retained.history.corrections[id],value,'Current practice cannot rewrite a historical Correction.');
+   for(const [id,value]of Object.entries(historicalBaseline.operations))assert.deepEqual(retained.history.operations[id],value,'Current practice cannot rewrite a historical operation receipt.');
    const history=await ok(['history']),full=await ok(['export']);assert.equal(full.format,'scry-rust-durable-sqlite-study-v1');assert.deepEqual(full.app.practice.studies,history.studies);assert.deepEqual(full.app.practice.cards,history.cards);assert.deepEqual(full.app.practice.attempts,history.attempts);assert.equal(history.versions[vid].normalized_hash,version.normalized_hash);assert.ok(Object.values(history.attempts).every(a=>a.acting_token===tokenId&&a.grade.authority.name==='exact-v2'&&a.grade.authority.grader_version));
    const before=full.app.practice,historyBefore=await checkHistory('History: full populated record before actual runtime restart');
    await runtime.mf.dispose();await start();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');assert.deepEqual((await ok(['export'])).app.practice,before,'Real runtime restart retains all acknowledged practice rows.');
@@ -332,8 +350,8 @@ export async function studyJourney(){
   async()=>{assert.equal(caseAttempt.grade.authority.name,'exact-v2');assert.equal(caseAttempt.grade.authority.grader_version,'1;unicode=17.0.0');const again=await practice(caseCard,'We concieved a patient garden.');assert.deepEqual(again.grade,caseAttempt.grade);},
   async()=>{
    const original=await practice(caseCard,'We imagined a patient garden.');const prompt=current.prompt.id;
-   const immutableRows=await attemptRows(original.id);const corrected=await ok(['correct',prompt,original.id,'--verdict','Good','--operation-id','study-correction-replay-operation']);assert.equal(corrected.practice.correction.authority,'owner');assert.deepEqual(await attempt(original.id),original);assert.deepEqual(await attemptRows(original.id),immutableRows);
-   const replay=await ok(['correct',prompt,original.id,'--verdict','Good','--operation-id','study-correction-replay-operation']);assert.deepEqual(replay.practice,corrected.practice);assert.equal(replay.replayed,true);
+   const immutableRows=await attemptRows(original.id);const corrected=await historicalCorrect({prompt_id:prompt,attempt_id:original.id,verdict:'Good',operation_id:'study-correction-replay-operation'});assert.equal(corrected.practice.correction.authority,'owner');assert.deepEqual(await attempt(original.id),original);assert.deepEqual(await attemptRows(original.id),immutableRows);
+   const replay=await historicalCorrect({prompt_id:prompt,attempt_id:original.id,verdict:'Good',operation_id:'study-correction-replay-operation'});assert.deepEqual(replay.practice,corrected.practice);assert.equal(replay.replayed,true);
    assert.notEqual((await cli(['correct',prompt,original.id,'--verdict','Good'])).code,0);
    const advancing=['next','--after',current.prompt.id,'--card',caseCard];const advanced=await Promise.all([cli(advancing),cli(advancing)]);assert.deepEqual(advanced.map(r=>r.code).sort(),[0,1],'Only one competing deliberate Next can advance.');current=advanced.find(r=>r.code===0).value.practice;const newPrompt=current.prompt.id,op='study-answer-parallel-replay-id';
    const before=(await rows()).filter(r=>r.key.startsWith('practice_attempts/')).length;
@@ -354,9 +372,22 @@ export async function studyJourney(){
   for(const line of ['We conceived a patient garden,','a gentle silver orchard.']){await next(['--study',s]);const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id===current.prompt.unit_ids[0]&&r.state);await prepare(c.id,line);await answer(line);}
   const shown=await ok(['version','show',v]);await next(['--study',s,'--recite','section','--section',shown.version.sections[0].id]);const a=await answer('We concieved a patient garden a harsh silver orchard.');assert.deepEqual(a.grade.units.map(u=>u.verdict),['Good','Again']);assert.equal(a.effects.length,2);assert.ok(a.grade.diff.some(d=>d.kind==='slip'&&d.unit_index===0));assert.ok(a.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===1));
   const before=a.effects.map(e=>e.after.schedule);
-  const corrected=await ok(['correct',current.prompt.id,a.id,'--unit',a.effects[1].unit_id,'--verdict','Good']);assert.deepEqual(await attempt(a.id),a);assert.equal(corrected.practice.correction.unit_id,a.effects[1].unit_id);
+  const corrected=await historicalCorrect({prompt_id:current.prompt.id,attempt_id:a.id,unit_id:a.effects[1].unit_id,verdict:'Good'});assert.deepEqual(await attempt(a.id),a);assert.equal(corrected.practice.correction.unit_id,a.effects[1].unit_id);
   for(let i=0;i<2;i++)assert.deepEqual((await card(a.effects[i].card_id)).state.schedule,before[i],'Same-day Recitation/Correction cannot reschedule either Card.');
-  await checkHistory('History: per-Unit Correction appends beside original mixed Good/Again Recitation',[a.id]);
+  await checkHistory('History: historical per-Unit Correction remains beside original mixed Good/Again Recitation',[a.id]);
  });
- return {studyCriteria,graderCriteria,transcript,close:async()=>{await mkdir('target',{recursive:true});await writeFile('target/study-cli-full.json',JSON.stringify(fullTranscript,null,2)+'\n');await runtime.mf.dispose();await rm(temp,{recursive:true});}};
+ // Historical compatibility setup precedes the current multi-day journey. It
+ // must pass the native helper's complete graph validation; no current HTTP
+ // route creates Corrections. Issue #411 separately tracks a demonstrated
+ // native/WASM validator mismatch on a later accumulated schedule graph.
+ const historicalBaseline={studies:0,cards:0,attempts:{},corrections:{},operations:{}};
+ if(seedHistorical){
+  await historyRecoveryCases();assert.equal(at,START,'Historical setup ends before the current journey clock begins.');
+  const history=await ok(['history']);
+  historicalBaseline.studies=Object.keys(history.studies).length;historicalBaseline.cards=Object.keys(history.cards).length;
+  historicalBaseline.attempts=history.attempts;historicalBaseline.corrections=history.corrections;historicalBaseline.operations=history.operations;
+  assert.equal(historicalBaseline.studies,1);assert.equal(historicalBaseline.cards,2);assert.equal(Object.keys(historicalBaseline.corrections).length,2);
+  transcript.push({observation:'Validated synthetic historical history precedes current practice',studies:1,cards:2,attempts:Object.keys(history.attempts).length,corrections:2,now_ms:at});
+ }
+ return {studyCriteria,graderCriteria,transcript,close:async()=>{await mkdir('target',{recursive:true});await writeFile(`target/${seedHistorical?'study':'grader'}-cli-full.json`,JSON.stringify(fullTranscript,null,2)+'\n');await runtime.mf.dispose();await rm(temp,{recursive:true});}};
 }

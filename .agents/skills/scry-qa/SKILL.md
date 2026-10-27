@@ -8,6 +8,15 @@ argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 
 # Scry QA
 
+Current policy: the [2026-10-27 retirement amendment](../../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406)
+retires native generation and new self-grading writes. Retained generation or
+correction journeys below are historical compatibility instructions only;
+current HTTP must refuse them with 410 and no writes/provider work. Native
+answer grading remains required; unavailable grades stay saved and ungraded.
+Legacy `/create` retains its title/state for safe reads, but no capture form.
+Historical custody, ingress, assistance and recovery requirements are unchanged.
+
+
 The active rewrite is Rust/WASM on a plain Cloudflare Worker, one SQLite Durable
 Object, and private R2. Before selecting proof, read
 [QA](../../../docs/qa/system.md) and
@@ -55,10 +64,14 @@ A stalled harness is a diagnosis or acceptance gap, never a passing walk.
 
 ## Drive
 
-Exercise Create → saved material → reference/practice and actual refinement;
-question → held feedback → deliberate Next; assistance; edit/fix draft;
+Exercise Home → Review or Start with NATO → Library → native Learn;
+question → held feedback → deliberate Next; assistance;
 refresh/background/reconnect; response loss after commit; competing tabs; and
-loss of private access. Inspect persisted records as well as the screen.
+loss of private access. Verify retired generation/self-grading submissions
+return 410 without writes, including an already-open earlier form whose draft
+must remain copyable. Use explicit historical fixtures for preserved creation,
+refinement and Correction history, never current HTTP setup. Inspect persisted
+records as well as the screen.
 Answers, explanations, current notes/names, and goal title/intent remain absent
 before durable assistance/self-check/result. Offline work pauses and the same
 frozen operation reconciles an unknown response; no mutation queue.

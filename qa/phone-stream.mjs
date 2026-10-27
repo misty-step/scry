@@ -1,3 +1,4 @@
+import {historicalMutation} from './historical-fixture.mjs';
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
 import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
@@ -49,7 +50,13 @@ export async function phoneFixture({port=0,legacy=false}={}) {
   if(text===previousText){await cli(['answer',current.prompt.id,'--text-stdin'],text);current=(await cli(['next','--after',current.prompt.id])).practice;}
  }
  assert.equal(current.prompt.context,previousText);
- return {...runtime,origin,cli,rows,record,vid,sid,cid,prompt:current.prompt,get egress(){return egress;},
+ const historicalCorrection=async fields=>{
+  const payload={operation_id:randomUUID(),...fields};const before=await rows();
+  const response=await runtime.worker.fetch(origin+'/api/v1/correct',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  assert.equal(response.status,410);assert.deepEqual(await rows(),before,'Retired correction cannot write');
+  return historicalMutation(storage,{path:'/practice/correct',fields:payload,now_ms:Date.now(),seed:payload.operation_id});
+ };
+ return {...runtime,origin,cli,historicalCorrection,rows,record,vid,sid,cid,prompt:current.prompt,get egress(){return egress;},
   fork:async()=>{
    const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE');
    const backed=await ns.get(ns.idFromName(space)).fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
@@ -87,7 +94,7 @@ export async function phoneWalk(browser,capture) {
   try{
    await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Concepts','Add material']);
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Review','Library']);
    assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
@@ -117,7 +124,8 @@ export async function phoneWalk(browser,capture) {
    await typography();
    const closeFull=await fullAnswer(page,f,a,phoneText);
    await record('diff');await closeFull();row.criteria.push(2);
-   await page.getByRole('button',{name:'I was right',exact:true}).click();await page.getByText('Owner Correction',{exact:false}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'I was right',exact:true}).count(),0);
+   await f.historicalCorrection({prompt_id:a.prompt.id,attempt_id:a.id,verdict:'Good'});await page.reload();await page.getByText('Owner Correction',{exact:false}).waitFor();
    assert.deepEqual((await f.cli(['next'])).practice.attempt,a,'Original Attempt stays immutable.');
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_corrections/')).length,1);row.criteria.push(5);
    await page.getByRole('button',{name:'Next',exact:true}).click();
@@ -174,12 +182,13 @@ export async function phoneRecovery(browser,capture) {
   assert.equal(sends,0);assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),phoneAnswer);await context.setOffline(false);await page.waitForTimeout(400);assert.equal(sends,0);
   await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
  });
- await check('automatic Good offers immutable Count as a miss',async({f,page,row})=>{
+ await check('automatic Good refuses new self-rating and retains a historical Correction fixture',async({f,page,row})=>{
   await page.getByLabel('Your answer',{exact:true}).fill(phoneText);await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-verdict="Good"]').waitFor();
   const original=(await f.cli(['next'])).practice.attempt;
-  await page.locator('details.overflow>summary').click();await page.getByRole('button',{name:'Count as a miss',exact:true}).click();await page.getByText('Owner Correction',{exact:false}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Count as a miss',exact:true}).count(),0);
+  await f.historicalCorrection({prompt_id:original.prompt.id,attempt_id:original.id,verdict:'Again'});await page.reload();await page.getByText('Owner Correction',{exact:false}).waitFor();
   assert.deepEqual((await f.cli(['next'])).practice.attempt,original);assert.equal((await f.record('meta')).practice.current.attempt_id,original.id);
-  assert.equal((await f.record('practice_cards/'+f.cid)).state.schedule.reps,1);row.observed={original_verdict:'Good',owner_verdict:'Again',held_attempt_unchanged:true};
+  assert.equal((await f.record('practice_cards/'+f.cid)).state.schedule.reps,1);row.observed={original_verdict:'Good',historical_owner_verdict:'Again',new_self_rating_refused:410,held_attempt_unchanged:true};
  });
  await check('access loss removes private DOM',async({context,page,row})=>{
   await context.route('**/practice/answer',route=>route.fulfill({status:401,contentType:'text/plain',body:'Owner authorization expired.'}));await answer(page);await page.locator('body.private-hidden').waitFor({state:'attached'});assert.equal(await page.locator('#main').count(),0);row.observed={private_main_present:false};

@@ -55,7 +55,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     let empty = page(&app, "/library");
     assert!(empty.contains("data-state=\"library\""));
     assert!(!empty.contains("Make it understandable"));
-    assert!(empty.contains("href=\"/recall\">Text practice</a>"));
+    assert!(empty.contains("href=\"/recall\">Review</a>"));
     let masthead = empty
         .split("<nav aria-label=\"Main navigation\">")
         .nth(1)
@@ -63,7 +63,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         .split("</nav>")
         .next()
         .unwrap();
-    assert!(masthead.contains(">Concepts</a>"));
+    assert!(masthead.contains(">Review</a>"));
     assert!(!masthead.contains(">Create</a>") && !masthead.contains(">Map</a>"));
     let form = page(&app, "/library/add");
     for expected in [
@@ -211,8 +211,9 @@ fn phone_library_search_validation_and_understanding_remain_honest() {
         api::library_form_fields(&mut oversized).unwrap_err().status,
         422
     );
-    assert!(page(&app, "/notebook").contains("href=\"/create\">Create</a>"));
-    assert!(page(&app, "/notebook").contains("href=\"/map\">Map</a>"));
+    assert!(page(&app, "/notebook").contains("href=\"/\">Review</a>"));
+    assert!(page(&app, "/notebook").contains("href=\"/library\">Library</a>"));
+    assert!(!page(&app, "/notebook").contains("href=\"/create\""));
 }
 
 #[test]

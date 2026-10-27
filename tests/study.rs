@@ -359,7 +359,10 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
         )));
     }
     assert!(page.contains(text));
-    assert!(page.contains("I was right"));
+    assert!(
+        !page.contains("I was right"),
+        "Self-rating UI is retired; historical engine receipts remain readable"
+    );
     let held = o.app.clone();
     study::ensure_stream(&mut o.app, NOW, "refresh").unwrap();
     assert_eq!(o.app, held);
@@ -382,8 +385,8 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     assert!(page.contains("Next due at"));
     assert!(!page.contains("<textarea"));
     assert!(page.contains("Open Library"));
-    assert!(page.contains("href=\"/recall\">Text practice</a>"));
-    assert!(page.contains(">Concepts</a>"));
+    assert!(page.contains("href=\"/recall\">Review</a>"));
+    assert!(page.contains(">Review</a>"));
 }
 #[test]
 fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
@@ -468,7 +471,7 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
             assert!(summary.contains("Wrong · out of order"));
         }
         assert!(actions.contains("action=\"/practice/next\""));
-        assert!(actions.contains("action=\"/practice/correct\""));
+        assert!(!actions.contains("action=\"/practice/correct\""));
         assert!(actions.contains("name=\"operation_id\""));
         study::ensure_stream(&mut o.app, NOW, "held-feedback-refresh").unwrap();
         assert_eq!(o.app, before);
@@ -1079,7 +1082,10 @@ fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
         );
         let page = notebook_page(&o, destination);
         assert!(page.contains("data-state=\"result\""));
-        assert!(page.contains("I was right"));
+        assert!(
+            !page.contains("I was right"),
+            "Self-rating UI is retired; historical engine receipts remain readable"
+        );
         assert!(page.contains(&wrong));
         assert_eq!(
             notebook_action(&mut o, "/review/override", &[("correct", "true")]),
@@ -1295,9 +1301,9 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
     // Home navigation is distinct from explicit recovery of concept practice.
     let practice = [
         "Scry, home",
-        "Concepts",
+        "Review",
         "← Your concepts",
-        "Your concepts →",
+        "Back to review →",
         "Go to practice →",
         "Return to practice →",
     ];

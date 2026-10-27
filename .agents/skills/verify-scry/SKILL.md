@@ -5,6 +5,15 @@ description: Verify Scry end to end from a shell. Sign in to production https://
 
 # Verify Scry
 
+Current policy: the [2026-10-27 retirement amendment](../../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406)
+retires native generation and new self-grading writes. Retained generation or
+correction journeys below are historical compatibility instructions only;
+current HTTP must refuse them with 410 and no writes/provider work. Native
+answer grading remains required; unavailable grades stay saved and ungraded.
+Legacy `/create` retains its title/state for safe reads, but no capture form.
+Historical custody, ingress, assistance and recovery requirements are unchanged.
+
+
 Start with [the feature map](../../../features/README.md) and the SPEC stories
 it names. It is the navigation inventory for verification and fitness, not
 another acceptance contract. Repository instructions live in `AGENTS.md` only.
@@ -84,7 +93,8 @@ cargo build --locked --bin scry
 port with no egress and stops it when it finishes. Hermes workers run builds
 and browsers on Mirrodin under `/srv/hermes-chief-workspaces/<task-id>`. For
 manual browsing, `bun run dev` ([scry-qa](../scry-qa/SKILL.md)) prints a
-run-owned loopback URL. An empty notebook offers "Explore an authored demo".
+run-owned loopback URL. Home offers Review and the explicit "Start with NATO"
+Library entry; reading either page must not import or consume practice.
 
 ## Doctor
 

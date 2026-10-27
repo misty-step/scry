@@ -56,6 +56,32 @@ fn result(redirect: impl Into<String>, entity_id: Option<String>) -> MutationRes
     }
 }
 
+/// Current product admission; historical state-machine transitions below remain
+/// available for archive compatibility tests, never as runtime generation APIs.
+pub fn admit_current_mutation(path: &str) -> AppResult<()> {
+    if matches!(
+        path,
+        "/review/self" | "/review/override" | "/practice/correct"
+    ) {
+        return Err(AppError::new(
+            410,
+            "Self-grading is retired. Scry grades answers natively; historical Attempts and Corrections are unchanged.",
+        ));
+    }
+    let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    let retired = matches!(path, "/create" | "/add")
+        || (parts.len() == 3
+            && ((parts[0] == "goals" && matches!(parts[2], "retry" | "refine"))
+                || (parts[0] == "questions" && parts[2] == "fix")));
+    if retired {
+        return Err(AppError::new(
+            410,
+            "Native content generation is retired. Add externally authored content in Library; your saved material and history are unchanged.",
+        ));
+    }
+    Ok(())
+}
+
 pub fn mutate(
     app: &mut App,
     path: &str,
@@ -465,7 +491,7 @@ fn apply(
             ) {
                 return Err(AppError::new(
                     422,
-                    "This check completed. Choose your own result to continue.",
+                    "This check completed without a native verdict. Your answer remains saved and ungraded.",
                 ));
             }
             let answer = o.answer.clone().unwrap_or_default();
@@ -579,7 +605,7 @@ fn stage_assessment(app: &mut App, answer: &str, now: i64, seed: &str) -> AppRes
     {
         return Err(AppError::new(
             422,
-            "Three checks are saved. Please check this answer yourself.",
+            "Three checks are saved. Your answer remains ungraded.",
         ));
     }
     let aid = id(seed, "assessment");
@@ -1280,16 +1306,39 @@ fn reserve(
     Ok(())
 }
 
+/// Historical generation policy entrypoint retained for compatibility proof.
+/// The current runtime uses `claim_grading_work`, not this function.
 pub fn claim_work(
     app: &mut App,
     now: i64,
     lease: &str,
     config: &WorkConfig,
 ) -> AppResult<Option<Work>> {
+    claim_work_inner(app, now, lease, config, true)
+}
+
+/// Claim answer assessment only. Never publish, retry or reserve a historical
+/// content-generation/transcription/critic job, even with provider bindings.
+pub fn claim_grading_work(
+    app: &mut App,
+    now: i64,
+    lease: &str,
+    config: &WorkConfig,
+) -> AppResult<Option<Work>> {
+    claim_work_inner(app, now, lease, config, false)
+}
+
+fn claim_work_inner(
+    app: &mut App,
+    now: i64,
+    lease: &str,
+    config: &WorkConfig,
+    legacy_generation: bool,
+) -> AppResult<Option<Work>> {
     if app.restored_paused {
         return Ok(None);
     }
-    recover(app, now);
+    recover_inner(app, now, legacy_generation);
     // Assessments take priority over generation, without blocking existing study.
     let assessment = app
         .assessments
@@ -1316,7 +1365,7 @@ pub fn claim_work(
             assessment_failed(
                 app,
                 &a.id,
-                "Meaning checking is not configured. Your answer is saved; please check it yourself.",
+                "Meaning checking is not configured. Your answer is saved and remains ungraded.",
                 false,
                 now,
             );
@@ -1340,6 +1389,9 @@ pub fn claim_work(
             request: generation::assessment_request(&o, &a.answer, &config.jev_model),
             photo_key: None,
         }));
+    }
+    if !legacy_generation {
+        return Ok(None);
     }
     let job = app
         .jobs
@@ -1521,12 +1573,21 @@ fn job_failed(app: &mut App, id: &str, message: &str, unknown: bool) {
 }
 
 pub fn recover(app: &mut App, now: i64) -> bool {
+    recover_inner(app, now, true)
+}
+
+pub fn recover_grading(app: &mut App, now: i64) -> bool {
+    recover_inner(app, now, false)
+}
+
+fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
     let mut changed = false;
     let jobs: Vec<_> = app
         .jobs
         .values()
         .filter(|j| {
-            matches!(j.status.as_str(), "sent" | "critic-sent")
+            legacy_generation
+                && matches!(j.status.as_str(), "sent" | "critic-sent")
                 && j.started_ms.is_some_and(|t| now - t >= 90_000)
         })
         .map(|j| j.id.clone())
@@ -1550,7 +1611,7 @@ pub fn recover(app: &mut App, now: i64) -> bool {
         assessment_failed(
             app,
             &a,
-            "The check stopped before its outcome was confirmed. Its reserved usage is retained. You can check the answer yourself.",
+            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and ungraded.",
             true,
             now,
         );

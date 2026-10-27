@@ -90,8 +90,55 @@ The current NATO path is entered through Library and Text practice; this
 amendment does not claim those remaining surfaces are delivered.
 
 
-The following 2026-10-24 navigation amendment describes the preserved runtime
-front door while the 2026-10-27 direction is implemented in bounded slices.
+### Review-first entry and retired native generation (2026-10-27, #406)
+
+This amendment replaces the preserved generation-first runtime front door
+below. Home is a small review entry, not a concept dashboard: resume the current
+exact/mapping Prompt or held result, start review when a Study exists, or choose
+the supplied NATO starter. Library is secondary. Home never selects a Prompt,
+reveals an answer, clears a draft or consumes either practice stream. An
+interrupted earlier concept occurrence remains directly reachable; old notes,
+requests, versions and histories remain available through secondary navigation.
+
+Native content generation is retired, not merely unavailable pending provider
+configuration. All new browser/API Create/add, goal retry/refinement and question
+fix-generation requests refuse explicitly before a new Job, operation receipt,
+photo upload, spend reservation or provider call. Existing queued, candidate,
+sent, uncertain and paused generation/transcription/critic Jobs are never
+claimed, published or reactivated by reads, alarms, restart or recovery
+resumption. Those current operations leave historical job records unchanged;
+the existing restore pause/uncertain-status transform remains required, retaining
+all original content, responses, usage and custody evidence. Historical requests and saved drafts remain
+readable; an unsent legacy Create draft remains copyable rather than submitted.
+No migration, deletion or overwrite is implied.
+
+This retires new generation behavior in S11, US-013, and the generation portion
+of US-004 (including retry/refine/fix and native transcription), plus US-019.
+Their identifiers and historical criteria remain as preservation/policy
+references, not an active product promise. Existing content validation,
+provider/spend history, uncertain usage accounting and complete recovery are
+not retired. Pure historical generation fixtures remain compatibility proof,
+not evidence that the current server accepts generation requests.
+
+**Answer grading is not content generation.** Native exact/mapping grading,
+assistance fences, deliberate Next, saved Attempts and schedules continue.
+Existing answer-assessment work is still separate from retired generation;
+resuming meaning checks must not reactivate generation Jobs. Self-grading is retired on **all active surfaces**, not only the NATO path:
+new legacy self-check/override and exact-text Correction submissions (including
+API/CLI aliases) refuse before a receipt, Event, Correction or schedule write.
+Old Attempts, owner-authored Corrections and their displayed attribution stay
+intact. No client-supplied Verdict can become a new learning result. A legacy
+answer without a supported native verdict stays saved and ungraded with an
+honest unavailable message and access to its saved material/history; no
+self-rating fallback or invented grade can unblock it. Native exact/choice
+and supported answer-assessment activities continue. This retires the new-write
+portions of US-007, US-017.10, US-018.5 and legacy self-check criteria, not their
+historical evidence-preservation requirements. No new provider/spend
+authorization follows from this amendment.
+
+
+The following 2026-10-24 navigation amendment is historical; the review-first
+amendment above supersedes its front door, not history preservation.
 On 2026-10-24 the owner made concepts the primary primitive and rejected an
 empty saved-text Library as the front door ([#388](https://github.com/misty-step/scry/issues/388)).
 Home (`/`) now introduces concepts and offers Add material. It does not select
@@ -169,7 +216,7 @@ belong in ADRs, not this table.
 | D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
 | D2 | Honest grading and uncertainty follow S02 and US-003/US-008 outside exact recall; exact-recall answers follow US-017's deterministic `exact-v2`. |
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
-| D4 | One question, one answer action, held feedback and deliberate Next; concept-first navigation and explicit Text practice access. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
+| D4 | One question, one answer action, held feedback and deliberate Next; review-first navigation with historical concept practice preserved. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
 | D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. Exact-recall practice makes no provider call. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
 | D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
@@ -201,9 +248,10 @@ intentional; interface effort is not. An ordinary session should not require
 choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
 or understanding the implementation.
 
-Home introduces concepts, with a clear learning purpose and Add material rather
-than an empty text search. It offers Resume practice when an occurrence exists,
-without showing its answer or selecting another one. The concept Stream at
+Home offers native review and the supplied NATO starter, with Library secondary.
+It resumes a saved Prompt or held result without showing its answer or selecting
+another one. Earlier material and interrupted legacy activity remain accessible
+without offering generation or self-rating. The concept Stream at
 `/notebook` retains its question, introduction, preparing receipt and first-run
 states. The exact-recall Stream at `/recall` opens into the current Prompt or held result, an honest
 caught-up state, or Library entry when no Study remains active (US-018). Neither practice stream opens an administration dashboard.
@@ -212,7 +260,7 @@ reference material, one current note per concept. The Map is the place
 to inspect goals/concepts, focus or pause, and see a labeled estimate
 from real observations, not a certified mastery score.
 
-Creation precedes the study loop when starting a new interest: prompt → saved
+The historical understanding-notebook sequence was prompt → saved
 preparation → useful reference and practice → refinement from real interaction
 ([S11](#s11--create-useful-material-from-intent-us-013)). A returning learner can
 continue retrieval-led study directly. “Quiz-first” is not a compulsory pretest,
@@ -776,6 +824,8 @@ No-gos: no manual graph editor, no automatic replanner.
 
 ## US-002 Stay with one question through its result
 
+Current applicability (2026-10-27): criterion 3’s new self-rating controls are retired; criteria 4–5’s concept/Create navigation is superseded by the review-first amendment. Held results, explicit Next, protected answers and both streams’ saved state remain binding.
+
 Statement: When I review, I want one question and one way to answer, followed by the result and Next, so I can keep studying without navigating a dashboard.
 
 Criteria:
@@ -788,6 +838,8 @@ Criteria:
 No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
 
 ## US-003 Get an honest answer judgment
+
+Current applicability (2026-10-27): criteria 2/4’s learner self-check fallback is retired. Unsupported answers stay saved and ungraded; native assessment may be retried within its existing bounds. Criterion 5’s learner authority is preserved historical attribution only, never a new self-rating write.
 
 Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
 
@@ -805,6 +857,8 @@ answers are graded locally by `exact-v2` (US-017), whose single enumerated Slip
 tolerance is shown in every Diff and is not liberal similarity.
 
 ## US-004 Check generated candidates before publication
+
+Current applicability (2026-10-27): new generation, criticism and publication are retired. These criteria retain historical policy/receipt meaning; they do not authorize current HTTP requests or background claims. Complete history, unknown spend and recovery preservation remain binding.
 
 Statement: I want generated quizzes checked for critical defects before they
 enter review. A failed check must retain candidates and paid usage.
@@ -862,6 +916,8 @@ Criteria:
 No-gos: no untrusted markup execution, fabricated citations, or reading counted as unaided recall.
 
 ## US-007 Correct a grade in one tap
+
+Current applicability (2026-10-27): new owner-supplied Corrections/overrides are retired on every surface. The criteria below retain historical transition and immutable-history meaning; current server admission refuses new writes and retries without changing the saved correction.
 
 Statement: When a check gets my answer wrong, I want to correct it immediately, so my future practice does not inherit a false result.
 
@@ -930,6 +986,8 @@ no longer generates contrast questions from recorded confusions. The id stays
 reserved.
 
 ## US-013 Create from what I want to learn
+
+Current applicability (2026-10-27): new native Create/preparation is retired. The criteria below retain historical policy meaning, not a supported current entrypoint. Legacy unsent drafts remain copyable and saved material/history remain intact.
 
 Statement: When curiosity starts as a word, phrase, or long dictated ramble,
 I want Create to produce useful tailored study/reference and practice material
@@ -1039,6 +1097,8 @@ Evidence: `qa/walk --stories "US-016"`, `qa/study.test.mjs`, and `tests/study.rs
 
 ## US-017 Get an exact verdict and a word-by-word diff
 
+Current applicability (2026-10-27): criterion 10’s new owner Correction write is retired globally; saved historical Corrections remain readable and immutable. Native grading, assistance and held results continue.
+
 Statement: When I recite a Unit or a whole text, I want an instant verdict on
 every word and a diff of what I got wrong, so I know exactly what to fix and
 my schedule reflects what I actually recalled.
@@ -1062,6 +1122,8 @@ Version ("Holy Ghost" and "Holy Spirit" are different Versions).
 Evidence: `qa/walk --stories "US-017"`, `qa/study.test.mjs`, and `tests/study.rs` exercise the compiled CLI, built Worker, SQLite, and local R2 with authored synthetic text. Phone, private canonical wording, hosted admission, and independent hosted recovery remain unverified.
 
 ## US-018 Practise exact recall on my phone
+
+Current applicability (2026-10-27): criterion 5’s new self-rating controls are retired. Review-first navigation and the supplied NATO starter are governed by the current amendment; native grading, immutable history and the other phone safety contracts remain binding.
 
 Statement: When I have a few minutes with my phone, I want Scry to open
 straight into my current practice, and to find or add a text and begin learning

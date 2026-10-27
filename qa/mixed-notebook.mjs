@@ -1,3 +1,4 @@
+import {historicalMutation} from './historical-fixture.mjs';
 // Mixed exact Study + understanding occurrence, through the real isolated Worker.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -87,13 +88,20 @@ export async function mixedBrowserWalk(browser, capture) {
     const row = {noJS, status:'pass', evidence:[]};
     results.push(row);
     const shot = async name => row.evidence.push(await capture(page, `mixed-${noJS?'native':'js'}-${name}.png`));
+    const historicalGrade=async(path)=>{
+      const meta=await f.record('meta'),before=await f.sql.exec('SELECT key,value FROM records ORDER BY key');
+      const fields={csrf:meta.csrf,operation_id:randomUUID(),occurrence_id:meta.occurrence.id,correct:'true'};
+      assert.equal((await f.post(path,fields)).status,410);assert.deepEqual(await f.sql.exec('SELECT key,value FROM records ORDER BY key'),before);
+      await historicalMutation(f.sql,{path,fields,now_ms:Date.now(),seed:fields.operation_id});
+      await page.reload();await page.locator('[data-state="result"]').waitFor();
+    };
     const homeRoundTrip = async stage => {
       const meta = await f.record('meta');
       const frozen = {occurrence:meta.occurrence, practice:meta.practice};
       assert.ok(frozen.occurrence && frozen.practice.current, 'Both practice streams must be populated');
       const unchanged = async () => {const current=await f.record('meta');assert.deepEqual({occurrence:current.occurrence,practice:current.practice},frozen, 'Home navigation must preserve both frozen practice streams');};
-      const home = () => page.locator('[data-state="concept-home"]');
-      const openHome = async () => {await page.locator('.masthead nav').getByRole('link',{name:'Concepts',exact:true}).tap();await home().waitFor();await unchanged();};
+      const home = () => page.locator('[data-state="review-home"]');
+      const openHome = async () => {await page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true}).tap();await home().waitFor();await unchanged();};
       await openHome();
       const content=await page.locator('main').innerText();
       for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation,'Copper lanterns shelter quiet gardens.'])assert.ok(!content.includes(hidden), 'Home must not show answer-bearing material from either stream');
@@ -102,12 +110,12 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.reload();await home().waitFor();await unchanged();
       await page.reload();await home().waitFor();await unchanged();
       await page.goBack();await page.locator('[data-state="'+(new URL(page.url()).pathname==='/recall'?(frozen.practice.current.attempt_id?'exact-result':'exact-prompt'):frozen.occurrence.phase)+'"]').waitFor();await unchanged();await page.goForward();await home().waitFor();await unchanged();
-      await home().getByRole('link',{name:'Resume practice',exact:true}).tap();
+      await home().getByRole('link',{name:'Resume earlier practice',exact:true}).tap();
       await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
-      await openHome();await page.locator('footer').getByRole('link',{name:'Text practice',exact:true}).tap();
+      await openHome();await page.locator('footer').getByRole('link',{name:'Review',exact:true}).tap();
       await page.waitForURL(f.origin+'/recall');await page.locator('[data-state="'+(frozen.practice.current.attempt_id?'exact-result':'exact-prompt')+'"]').waitFor();await unchanged();
       await page.goBack();await home().waitFor();await unchanged();await page.goForward();await page.locator('[data-state^="exact-"]').waitFor();await unchanged();
-      await openHome();await home().getByRole('link',{name:'Resume practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
+      await openHome();await home().getByRole('link',{name:'Resume earlier practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
     };
     try {
       await page.goto(f.origin + '/notebook');
@@ -134,7 +142,8 @@ export async function mixedBrowserWalk(browser, capture) {
       row.error = {status:409, legacy_context:true};
       row.evidence.push(await capture(stale, `mixed-${noJS?'native':'js'}-409.png`));
       await stale.close();
-      await page.getByRole('button', {name:'I was right', exact:true}).tap();
+      assert.equal(await page.getByRole('button', {name:'I was right', exact:true}).count(),0);
+      await historicalGrade('/review/override');
       await page.getByText('You corrected this grade', {exact:false}).waitFor();
       await shot('override');
       await page.getByRole('button', {name:'Next question', exact:false}).tap();
@@ -146,8 +155,9 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.locator('[data-state="self-check"]').waitFor();
       assert.equal(new URL(page.url()).pathname, '/notebook');
       await shot('self-check');
-      await page.getByRole('button', {name:'I was right', exact:true}).tap();
-      await page.locator('[data-state="result"]').waitFor();
+      assert.equal(await page.getByRole('button', {name:'I was right', exact:true}).count(),0);
+      await page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();
+      await historicalGrade('/review/self');
       await shot('learner-result');
       await page.getByRole('button', {name:'Next question', exact:false}).tap();
       await page.locator('[data-state="result"]').waitFor({state:'detached'});
@@ -160,7 +170,7 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter quiet gardens.');
       await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
       await homeRoundTrip('exact-held');
-      row.observed = {held_refresh:true, override:true, self_check:true, deliberate_next:true, exact_practice_unchanged:true,home_both_current_unchanged:true,home_concept_held_unchanged:true,home_exact_held_unchanged:true,explicit_resume_and_text_practice:true};
+      row.observed = {held_refresh:true, historical_override_preserved:true, historical_self_check_preserved:true,new_self_rating_refused:410, deliberate_next:true, exact_practice_unchanged:true,home_both_current_unchanged:true,home_concept_held_unchanged:true,home_exact_held_unchanged:true,explicit_resume_and_text_practice:true};
     } catch (error) {
       row.status = 'fail'; row.reason = error.message;
       await shot('failure');

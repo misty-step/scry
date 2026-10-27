@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import test from 'node:test';
 import * as runtime from 'miniflare';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
+import {historicalMutation} from './historical-fixture.mjs';
 const root = resolve(process.env.SCRY_CONVERT_ARTIFACT || 'target/revival-convert');
 const key = 'synthetic-conversion-key-more-than-32-characters';
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -184,7 +185,7 @@ test('native source -> CF-only projection -> real Rust restore preserves content
   await restore(bytes, async ({response, fixture, send, name}) => {
     assert.equal(response.status, 200, await response.text());
     assert.equal((await send(bytes)).status, 409, 'Never overwrite acknowledged imported state');
-    const storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+    let storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
     const rows = await storage.exec('SELECT key,value FROM records');
     assert.equal(rows.filter(row => row.key.startsWith('questions/')).length, 3);
     assert.equal(rows.filter(row => row.key.startsWith('events/')).length, 1);
@@ -202,13 +203,14 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const origin = 'http://127.0.0.1';
     const active = await fixture.rebind({SCRY_ENV: 'development', SPACE_NAME: name,
       CANONICAL_ORIGIN: origin, INTERNAL_KEY: internalKey});
+    storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
     const exported = await active.worker.fetch(origin + '/export');
     assert.equal(exported.status, 200);
     const readback = await exported.json();
     for (const section of ['questions', 'concepts', 'events', 'operations', 'revival_go', 'revival_schedule_origins'])
       assert.deepEqual(readback.app[section], app[section]);
-    // Preserve the existing accepted-write/replay contract after restore without
-    // pretending paused Add material exposes a preparation form.
+    // Retired capture cannot alter restored custody. Use a supported Settings
+    // write for the separate accepted-write/replay and next-backup contract.
     const html = await (await active.worker.fetch(origin + '/settings')).text();
     const fields = Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)]
       .map(match => [match[1], match[2]]));
@@ -217,10 +219,20 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const capture = () => active.worker.fetch(origin + '/create', {method: 'POST', redirect: 'manual',
       headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
       body: new URLSearchParams({...fields, intent: 'Synthetic accepted write after Go projection'})});
-    assert.equal((await capture()).status, 303);
-    assert.equal((await capture()).status, 303);
+    const beforeRefusal = await storage.exec('SELECT key,value FROM records ORDER BY key');
+    assert.equal((await capture()).status, 410);
+    assert.equal((await capture()).status, 410);
+    assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
+    const saveSettings = () => active.worker.fetch(origin + '/settings', {method: 'POST', redirect: 'manual',
+      headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({...fields, pace: 'light'})});
+    assert.equal((await saveSettings()).status, 303);
+    assert.equal((await saveSettings()).status, 303);
     const accepted = await (await active.worker.fetch(origin + '/export')).json();
-    assert.equal(Object.keys(accepted.app.goals).length, 3);
+    assert.equal(accepted.app.preferences.pace, 'light');
+    // Restore legitimately relocates each retained photo into the fresh
+    // namespace. Compare subsequent writes with that exact restored baseline.
+    assert.deepEqual(accepted.app.goals, readback.app.goals);
     assert.equal(accepted.app.events.length, 1);
     assert.deepEqual(accepted.app.revival_schedule_origins, app.revival_schedule_origins);
     const snapshot = await active.worker.scheduled({cron: '17 3 * * *'});
@@ -231,7 +243,8 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const independent = Buffer.from(await (await backups.get(list.objects[0].key)).arrayBuffer());
     const recovered = JSON.parse(independent);
     assert.equal(recovered.format, 'scry-rust-durable-sqlite-go-projection-v1');
-    assert.equal(Object.keys(recovered.app.goals).length, 3);
+    assert.deepEqual(recovered.app.goals, readback.app.goals);
+    assert.equal(recovered.app.preferences.pace, 'light');
     assert.deepEqual(recovered.app.revival_schedule_origins, app.revival_schedule_origins);
     await restore(independent, async ({response}) => assert.equal(response.status, 200, await response.text()));
   });
@@ -307,8 +320,9 @@ for (const [mode, expectedMicros, criticCharges] of [
       assert.equal(settings.status, 200);
       assert.ok((await settings.text()).includes('$' + (expectedMicros / 1000000).toFixed(2)));
       if (mode === 'critic-budget' || mode === 'legacy-critic-budget') {
-        // Exercise the actual Rust capture/claim boundary through its internal
-        // authenticated DO interface. Outer Access ingress is tested separately.
+        // Current capture is refused before a reservation even with bindings.
+        // Retain the old allowance-boundary proof separately as validated native
+        // historical fixture setup, never a production generation backdoor.
         const configuredOrigin = 'https://synthetic.invalid';
         const operatorKey = 'synthetic-import-resume-key-at-least-32-chars';
         active = await fixture.rebind({SCRY_ENV: 'preview', SPACE_NAME: name,
@@ -320,24 +334,31 @@ for (const [mode, expectedMicros, criticCharges] of [
           headers: {'x-scry-internal-key': internalKey, 'x-scry-owner': 'private-owner', ...init.headers}});
         assert.equal((await request('/operator/resume-work', {method: 'POST',
           headers: {'x-scry-operator-key': operatorKey}})).status, 200);
-        const page = await request('/create');
+        const page = await request('/settings');
         assert.equal(page.status, 200);
         const html = await page.text();
-        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)]
+        const fields = Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)]
           .map(match => [match[1], match[2]]));
-        assert.ok(fields.csrf && fields.operation_id);
+        fields.operation_id = 'synthetic-retired-work-after-import';
+        assert.ok(fields.csrf && fields.revision);
+        const storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+        const beforeRefusal = await storage.exec('SELECT key,value FROM records ORDER BY key');
         const saved = await request('/create', {method: 'POST', redirect: 'manual',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: new URLSearchParams({...fields, intent: 'Synthetic deliberate new work after import'}).toString()});
-        assert.equal(saved.status, 303, await saved.text());
-        const goalId = saved.headers.get('Location').split('/').at(-1);
-        const deadline = Date.now() + 5000;
-        let app;
-        do {
-          app = (await (await request('/export')).json()).app;
-          if (app.goals[goalId].status === 'failed') break;
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } while (Date.now() < deadline);
+        assert.equal(saved.status, 410, await saved.text());
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal,
+          'No new operation, job, send or reservation after refusal and alarm opportunity.');
+        const at = Date.now();
+        const historical = await historicalMutation(storage, {path: '/create', fields: {...fields,
+          operation_id: 'synthetic-historical-allowance-after-import', intent: 'Historical rejected-budget request'},
+          now_ms: at, seed: 'historical-import-allowance'});
+        const goalId = historical.result.redirect.split('/').at(-1);
+        const claimed = await historicalMutation(storage, {actions: [{kind: 'claim', lease: 'historical-import-no-send',
+          now_ms: at + 1, generation: true, jev: false, critic: false}]});
+        assert.equal(claimed.work, null, 'Retained historical policy cannot spend beyond imported obligations.');
+        const app = (await (await request('/export')).json()).app;
         assert.equal(app.goals[goalId].status, 'failed');
         assert.match(app.jobs[app.goals[goalId].job_id].error, /allowance/);
         assert.deepEqual(selected(app.spend), selected(original.spend), 'No new reserve or paid send beyond imported allowance');
@@ -486,7 +507,7 @@ test('historical helped recall misses do not relax current identities, successfu
   }
 }));
 for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfcheck-repeated']) {
-  test(mode + ': historical ungraded attempts remain ungraded across Rust, deliberate judgment and recovery', () => fixture(mode, async ({request, destination}) => {
+  test(mode + ': historical ungraded attempts survive current judgment refusal, legacy fixture transitions and recovery', () => fixture(mode, async ({request, destination}) => {
     const prepared = await request();
     assert.equal(prepared.status, 200);
     const bytes = Buffer.from(await (await destination.get(prepared.body.destination_key)).arrayBuffer());
@@ -507,7 +528,7 @@ for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfc
       assert.deepEqual(restored.events, original.events);
       assert.deepEqual(restored.questions, original.questions);
       const history = await (await active.worker.fetch(origin + '/history')).text();
-      assert.ok(history.includes('Ungraded') && history.includes('Awaiting self-check'));
+      assert.ok(history.includes('Ungraded') && history.includes('Saved, ungraded'));
       const concept = await (await active.worker.fetch(origin + '/concepts/legacy-import-concept-concept0')).text();
       assert.equal((concept.match(/class="tally-/g) || []).length, historical ? 1 : 0,
         'Ungraded is neither a miss, unaided recall nor completed helped practice');
@@ -516,8 +537,22 @@ for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfc
           operation_id: 'synthetic-self-after-import', correct: 'false'};
         const judge = () => active.worker.fetch(origin + '/review/self', {method: 'POST', redirect: 'manual',
           headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(fields)});
-        assert.equal((await judge()).status, 303);
-        assert.equal((await judge()).status, 303);
+        const storage = await fixture.mf.unsafeGetDurableObjectStorage(name, 'LearningSpace', {name});
+        const beforeRefusal = await storage.exec('SELECT key,value FROM records ORDER BY key');
+        assert.equal((await judge()).status, 410);
+        assert.equal((await judge()).status, 410);
+        assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
+        const ungraded = await read();
+        assert.deepEqual(ungraded.events, original.events);
+        assert.deepEqual(ungraded.questions, original.questions);
+        assert.deepEqual(ungraded.occurrence, original.occurrence);
+        // Retain the historical transition/replay/custody proof without treating
+        // a new user-supplied judgment as supported current HTTP behavior.
+        const historical = {path: '/review/self', fields, now_ms: Date.now(), seed: 'historical-import-judgment'};
+        await historicalMutation(storage, historical);
+        const afterHistorical = await storage.exec('SELECT key,value FROM records ORDER BY key');
+        assert.equal((await historicalMutation(storage, historical)).replayed, true);
+        assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), afterHistorical);
         const judged = await read();
         assert.equal(judged.events.length, original.events.length + 1);
         assert.deepEqual(judged.events.slice(0, original.events.length), original.events);

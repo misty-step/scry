@@ -13,16 +13,16 @@ export const specs={
  'US-002':[
   async c=>{assert.equal(await c.page.locator('.choice').count(),3);assert.equal(await c.page.locator('.explanation,.answer-pair').count(),0);await c.page.getByRole('heading',{level:1}).waitFor();},
   async c=>{await choice(c);await c.page.reload();await c.page.locator('[data-state="result"]').waitFor();await c.page.locator('.answer-pair').waitFor();assert.equal(await c.page.getByRole('button',{name:'Next question'}).count(),1);},
-  async c=>{await c.page.locator('details.overflow>summary').click();await c.page.getByRole('button',{name:'Count as a miss'}).waitFor();},
-  async c=>{assert.deepEqual(await c.page.locator('.masthead nav a').allTextContents(),['Concepts','Add material']);},
+  async c=>{await c.page.locator('details.overflow>summary').click();assert.equal(await c.page.getByRole('button',{name:'Count as a miss'}).count(),0);},
+  async c=>{assert.deepEqual(await c.page.locator('.masthead nav a').allTextContents(),['Review','Library']);},
   policy('reveal_is_held_and_next_is_deliberate','competing_occurrences_and_archive_cannot_publish_stale_answer')
  ],
  'US-003':[
   async c=>{await choice(c);c.policy('local_grading_accepts_only_authored_forms_and_choice_identity');},
   policy('short_answer_thresholds_and_risks_fail_closed','assessment_send_once_timeout_unknown_reservation_and_explicit_retry'),
   policy('required_idea_policy_and_shadow_classes_keep_honest_authority'),
-  async c=>{await c.page.getByRole('button',{name:'Next question'}).click();await c.page.locator('#answer').fill('a plausible synthetic nonexact answer');await c.page.getByRole('button',{name:'Check my answer'}).click();await c.page.locator('[data-state="self-check"]').waitFor();assert.match(await c.page.locator('.answer-pair').innerText(),/plausible synthetic/);await c.page.getByRole('button',{name:'I was right',exact:true}).click();await c.page.locator('[data-state="result"]').waitFor();},
-  async c=>{assert.match(await c.page.locator('.feedback').innerText(),/You checked your answer/);c.policy('missing_assessor_keeps_answer_and_learner_authority','exact_answer_event_schedule_and_receipt_are_one_transition');}
+  async c=>{await c.page.getByRole('button',{name:'Next question'}).click();await c.page.locator('#answer').fill('a plausible synthetic nonexact answer');await c.page.getByRole('button',{name:'Check my answer'}).click();await c.page.locator('[data-state="self-check"]').waitFor();assert.match(await c.page.locator('.answer-pair').innerText(),/plausible synthetic/);assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);await c.page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();},
+  async c=>{assert.match(await c.page.locator('.feedback').innerText(),/saved, not graded/);c.policy('missing_assessor_keeps_answer_and_learner_authority','exact_answer_event_schedule_and_receipt_are_one_transition');}
  ],
  'US-004':[
   policy('candidates_are_saved_before_critic_and_critic_retry_reuses_generation','normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails'),
@@ -38,8 +38,8 @@ export const specs={
   policy('evidence_quotes_must_match_saved_input_exactly_and_general_claims_have_no_quotes','author_and_model_text_is_escaped_in_every_context')
  ],
  'US-007':[
-  async c=>{await choice(c,1);await c.page.getByRole('button',{name:'I was right',exact:true}).waitFor();},
-  async c=>{await c.page.getByRole('button',{name:'I was right',exact:true}).click();await c.page.locator('[data-state="result"]').waitFor();await c.page.getByText('You corrected this grade',{exact:false}).waitFor();},
+  async c=>{await choice(c,1);assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);},
+  async c=>{assert.equal(await c.page.locator('form[action="/review/override"]').count(),0);c.policy('current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring');},
   policy('semantic_verdict_fenced_and_grade_override_keeps_original')
  ],
  'US-008':[
@@ -61,7 +61,7 @@ export const specs={
   policy('observations_distinguish_exposure_help_and_cold_recall_without_mutations','reveal_is_held_and_next_is_deliberate')
  ],
  'US-013':[
-  async c=>{await c.page.goto(c.url('/create'));await c.page.getByText('Preparation is unavailable right now.',{exact:true}).waitFor();assert.equal(await c.page.locator('form[action="/create"],input[type="file"],input[name="mode"]').count(),0);c.policy('capture_word_phrase_dictated_and_url_stay_private_and_exact');},
+  async c=>{await c.page.goto(c.url('/create'));await c.page.getByText('Native content generation is retired.',{exact:true}).waitFor();assert.equal(await c.page.locator('form[action="/create"],input[type="file"],input[name="mode"]').count(),0);c.policy('capture_word_phrase_dictated_and_url_stay_private_and_exact');},
   async c=>{await c.page.goto(c.url('/create?text=https%3A%2F%2Fprivate.invalid%2Fnotes'));const draft=c.page.getByLabel('Your unsent material',{exact:true});assert.equal(await draft.inputValue(),'https://private.invalid/notes');assert.equal(await draft.getAttribute('readonly'),'');assert.equal(await c.page.locator('form[action="/create"],input[type="file"]').count(),0);c.policy('failures_do_not_partially_capture_and_csrf_is_required','capture_word_phrase_dictated_and_url_stay_private_and_exact');}
  ],
  'US-014':[

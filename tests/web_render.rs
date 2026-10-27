@@ -189,7 +189,7 @@ fn legacy_occurrence(app: &App, phase: &str) -> Occurrence {
 }
 
 #[test]
-fn understanding_reference_and_preparation_return_to_the_notebook() {
+fn understanding_reference_returns_to_notebook_and_retired_preparation_to_review() {
     let app = revived();
     let reference = web::render(
         &app,
@@ -207,7 +207,8 @@ fn understanding_reference_and_preparation_return_to_the_notebook() {
         NOW,
         None,
     );
-    assert!(preparation.contains("href=\"/notebook\">Return to practice →</a>"));
+    assert!(preparation.contains("href=\"/\">Back to review</a>"));
+    assert!(preparation.contains("Native content generation is retired"));
     assert!(!preparation.contains("href=\"/\">Return to practice →</a>"));
 }
 
@@ -270,14 +271,14 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
         }
     }
     let home = check(&app, "/notebook");
-    for words in [
-        "Preparation is paused",
-        "Preparation stopped",
-        "Preparation needs your attention",
-        "No practice was prepared",
-    ] {
-        assert!(home.contains(words), "{words} missing from receipts");
-    }
+    assert_eq!(
+        home.matches("Saved preparation history · generation retired")
+            .count(),
+        app.goals
+            .values()
+            .filter(|g| !g.archived && g.status != "ready")
+            .count()
+    );
     assert!(!home.contains("Some material is ready"));
     let mut idle = app.clone();
     idle.occurrence = None;
@@ -352,7 +353,7 @@ fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() 
                 "{status}, paused={paused}"
             );
             assert!(home.contains("A good place to pause."));
-            assert!(home.contains("class=\"button primary\" href=\"/create\""));
+            assert!(home.contains("class=\"button primary\" href=\"/library\""));
             assert!(!home.contains("Review your saved request"));
             assert!(!home.contains("taking shape"));
             let map = web::render(&app, "/map", &query("ready-map"), NOW, None);
@@ -397,12 +398,7 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
     app.restored_paused = true;
     let historical = app.jobs.clone();
     let goals = app.goals.clone();
-    let receipts = [
-        "Preparation is paused",
-        "Preparation stopped",
-        "Preparation needs your attention",
-        "No practice was prepared",
-    ];
+
     for paused in [true, false] {
         assert_eq!(app.restored_paused, paused);
         let before = app.clone();
@@ -411,9 +407,11 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
         assert!(home.contains("A good place to pause."));
         assert!(!home.contains("taking shape"));
         assert!(!home.contains("Review your saved request"));
-        for text in receipts {
-            assert!(visible(&home).contains(text));
-        }
+        assert_eq!(
+            home.matches("Saved preparation history · generation retired")
+                .count(),
+            app.goals.len()
+        );
         let map = web::render(&app, "/map", &query("import-map"), NOW, None);
         assert_eq!(map.matches("Preparation paused").count(), app.goals.len());
         for goal in app.goals.values() {
@@ -427,9 +425,12 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
             assert!(!panel.contains("data-poll"));
             assert!(!page.contains("taking shape"));
             assert!(!page.contains("A useful part is ready"));
-            assert_eq!(page.contains("/settings#preparation"), paused);
-            let retryable = matches!(app.jobs[&goal.job_id].status.as_str(), "paused" | "failed");
-            assert_eq!(page.contains("Try preparation again"), !paused && retryable);
+            assert!(!page.contains("/settings#preparation"));
+            assert!(!page.contains("Try preparation again"));
+            assert!(page.contains(&format!(
+                "Recorded status: {} · job {}",
+                goal.status, app.jobs[&goal.job_id].status
+            )));
         }
         assert_eq!(app, before, "Status reads must not mutate imported work");
         if paused {
@@ -784,13 +785,20 @@ fn restored_pause_is_truthful_across_preparation_views_without_retries() {
             stream.contains("data-state=\"preparation-paused\""),
             "{phase}"
         );
-        assert!(stream.contains("Preparation is paused · Resume preparation"));
+        assert!(stream.contains("Saved preparation history · generation retired"));
         for path in ["/notebook".to_string(), format!("/goals/{goal_id}")] {
             let html = web::render(&app, &path, &query(phase), NOW, None);
             assert!(
-                html.contains("href=\"/settings#preparation\""),
+                html.contains("generation is retired") || html.contains("generation retired"),
                 "{path} {phase}"
             );
+            if path == "/notebook" {
+                assert!(
+                    html.contains("href=\"/settings#preparation\""),
+                    "meaning checks may resume separately"
+                );
+            }
+            assert!(!html.contains("/retry\"") && !html.contains("/refine\""));
             assert!(!html.contains("taking shape"));
             assert!(!html.contains("Try preparation again"));
             assert!(!html.contains("Preparing your reference"));
@@ -869,8 +877,9 @@ fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answ
         NOW,
         None,
     );
-    assert!(html.contains("Draft preparation is paused."));
-    assert!(html.contains("href=\"/settings#preparation\""));
+    assert!(html.contains("Saved draft history"));
+    assert!(html.contains("Native content generation is retired"));
+    assert!(!html.contains("href=\"/settings#preparation\""));
     assert!(!html.contains("A better version is being prepared."));
     assert!(!html.contains("Try drafting again"));
 }
@@ -880,7 +889,8 @@ fn stream_transitions_from_preparing_to_honest_stopped_recovery() {
     let mut app = captured_request();
     let pending = web::render(&app, "/notebook", &query("pending"), NOW, None);
     assert!(pending.contains("data-state=\"preparing\""));
-    assert!(pending.contains("Your next idea is taking shape."));
+    assert!(pending.contains("Your saved request is preserved."));
+    assert!(pending.contains("Native content generation is retired"));
     let config = engine::WorkConfig {
         generation: false,
         jev: false,
@@ -933,7 +943,7 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
     app.jobs.values_mut().next().unwrap().status = "partial".into();
     let partial = web::render(&app, "/notebook", &query("partial"), NOW, None);
     assert!(partial.contains("data-state=\"caught-up\""));
-    assert!(partial.contains("Some material is ready; preparation is incomplete"));
+    assert!(partial.contains("Saved preparation history · generation retired"));
     assert!(!partial.contains("taking shape"));
     app.goals.values_mut().next().unwrap().archived = true;
     let archived = web::render(&app, "/notebook", &query("archived"), NOW, None);
@@ -950,7 +960,7 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
     let created = engine::mutate(&mut app, "/create", &fields, NOW + 1, "second-goal").unwrap();
     let mixed = web::render(&app, "/notebook", &query("mixed"), NOW, None);
     assert!(mixed.contains("data-state=\"preparing\""));
-    assert!(mixed.contains("Preparation needs your attention"));
+    assert!(mixed.contains("Saved preparation history · generation retired"));
     let latest = created.entity_id.unwrap();
     let job = app.goals[&latest].job_id.clone();
     app.jobs.get_mut(&job).unwrap().status = "failed".into();

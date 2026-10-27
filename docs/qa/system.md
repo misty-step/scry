@@ -12,6 +12,18 @@ private deployed ingress, physical-phone acceptance, and independent recovery
 establish different claims. The ground-up rewrite needs its own evidence; old
 Go/retired-Worker receipts are historical observations, not transferred passes.
 
+## Current retirement policy
+
+The [2026-10-27 retirement amendment](../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406) takes precedence over historical
+generation/self-grading journeys. Current HTTP writes to those retired actions
+must return 410 without jobs, assets, receipts, reservations or provider calls.
+Native exact, choice and meaning grading remain supported; unavailable grading
+keeps the answer saved and ungraded. Historical Attempts, Corrections, material,
+usage and interrupted state remain unchanged. Test retained transition/recovery
+semantics only with validated synthetic historical fixtures, never a runtime
+backdoor. `tests/generation_retirement.rs` and
+`qa/generation-retirement.test.mjs` prove current admission separately.
+
 ## Choose proof before running checks
 
 Read the affected story/criterion and design decision, then choose the smallest
@@ -55,9 +67,9 @@ receipt or a guarantee that remote recovery is usable.
 | Pure grading / scheduler | `tests/learning_policy.rs`, `tests/fsrs_golden.rs` | Full 260-trajectory comparison protects pinned Go FSRS state, not learning efficacy |
 | Concept evidence / pace / selection | `tests/concept_policy.rs`, `tests/application.rs` | Prerequisite intros, focused new concepts, paused new material, due work, 3/6/12 rolling-day caps, and separate exposure/help/unaided observations |
 | Durable review / retry | `tests/application.rs` | Real workerd SQLite, refresh/restart, concurrent tabs, response loss after commit, identical-operation replay, and one event/schedule transition |
-| Meaning checks / override | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed self-check; immutable authority and corrections; bounded real holdout quality separately |
-| Generation / refinement | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
-| Prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
+| Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed answers stay ungraded; immutable historical authority and corrections; bounded real holdout quality separately |
+| Historical generation / refinement compatibility | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
+| Historical prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
 | HTML / assistance fence | `tests/web_render.rs` | Real pointer/keyboard, native forms without JS, hidden current answer/reference across navigation, held result, content draft/version fences, access loss |
 | Persistence / archives | `src/persistence.rs` unit tests, `tests/application.rs` | Real SQLite/R2 archive with every referenced photo, full-byte remote readback, independent fresh-space restore, paused uncertain work |
 | Private Library | `tests/library.rs`, `node --test qa/library.test.mjs`, `qa/walk --stories "US-015"` | Compiled CLI through built isolated Worker, SQLite rows and complete local R2 readback; real Study/Attempt deletion refusal also runs in `qa/study.test.mjs` |
@@ -91,8 +103,9 @@ Begin with the empty notebook. The isolated preview alone offers “Explore an
 authored demo,” a deliberate fixture action that refuses existing learning
 state. The fixture has HTTP cache freshness/validation explanations and three
 questions. It is authored data, not a provider call, real cold recall, or an AI
-quality result. Requests made without model configuration remain saved with
-honest zero-cost configuration failure. No production store is imported.
+quality result. New generation requests are refused regardless of model configuration.
+Answers whose native meaning grader is unavailable remain saved and ungraded.
+No production store is imported.
 
 Browser QA runs from a shell first:
 [verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s Playwright helpers
@@ -126,7 +139,21 @@ erase existing SQLite state, R2 buckets, or historical stores to make a fixture
 pass. The local R2 emulator proves archive mechanics, not remote off-machine
 recovery.
 
-### Core journeys
+### Current core journeys
+
+Home opens native Review or the explicit NATO starter; Library is secondary.
+Resume a frozen Prompt/result without replacing it. Old generation links remain
+readable and retain copyable drafts, but all generation and self-rating POSTs
+refuse before writes/provider work. Verify refusal with configured and absent
+providers, and verify native grading still completes. Historical records and
+recovery expectations below retain their original meanings.
+
+### Historical journey compatibility
+
+Items 1, 2 and 5 below describe retired write paths, not current supported
+features. Preserve their historical fixtures and custody assertions. In item 3,
+replace active self-check with saved/ungraded on unavailable native grading.
+Items 4, 6, 7 and 8 remain current safety, resilience and usability requirements.
 
 1. Create: a word, a phrase, and a long dictated-text request are valid without
    setup or a mode chooser. Capture saves one goal/operation; pasted URLs remain
@@ -163,6 +190,10 @@ recovery.
    reference/error text. A screenshot proves appearance, not phone acceptance.
 
 ### Real-provider and private production proof
+
+Native content generation is retired; the following generation-quality clauses
+are historical, not permission or a requirement to make new generation calls.
+Current native grading still needs its own bounded usefulness evidence.
 
 Use integration capabilities only within the session's authorized scope. A
 bounded provider run names the model, material, raw result/usage, human review,

@@ -543,7 +543,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }
