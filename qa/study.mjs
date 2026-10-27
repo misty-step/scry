@@ -249,8 +249,9 @@ export async function studyJourney(){
    const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);
    const bucket=await runtime.mf.getR2Bucket('SCRY_BACKUPS'),list=await bucket.list({prefix:`snapshots/${space}/`});const bytes=Buffer.from(await(await bucket.get(list.objects.at(-1).key)).arrayBuffer());const archive=JSON.parse(bytes);assert.deepEqual(archive.app.practice,before);
    const restoreToken='synthetic-study-isolated-restore-only-32chars',restoreName='restore-'+randomUUID();
-   const restoreBindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:'unused-study-restore',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken};
-   const restored=await createRuntime({port:0,inspect:true,name:restoreName,bindings:restoreBindings});
+   // Restore, login, and later backups share the source fixture's advanced clock.
+   const restoreBindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:'unused-study-restore',INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken,SCRY_TEST_NOW_MS:String(at)};
+   const restored=await createRuntime({port:0,inspect:true,testClock:true,name:restoreName,bindings:restoreBindings});
    const restoreOrigin=(await restored.mf.ready).origin;
    const restoreWorker=(await restored.rebind({...restoreBindings,CANONICAL_ORIGIN:restoreOrigin})).worker;
    const restoreRequest=body=>restoreWorker.fetch(restoreOrigin+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(body)},body});
@@ -272,7 +273,8 @@ export async function studyJourney(){
     transcript.push({observation:'History: fresh local R2 restore renders and retains complete immutable exact history',attempts:Object.keys(restoredHistory.attempts).length,corrections:Object.keys(restoredHistory.corrections).length,html_sha256:hash(restoredHtml),limit:'Built Worker and local R2 emulator; hosted ingress, independent remote restore and physical-phone usability remain UNVERIFIED.'});
     assert.ok(Object.keys(before.attempts).length>1&&Object.keys(before.corrections).length>1,'Exercise multiple immutable Attempts and Corrections, not an empty archive.');
     await restored.rebind({...restoreBindings,SCRY_ENV:'development',CANONICAL_ORIGIN:restoreOrigin});
-    await ok(['login','--url',restoreOrigin,'--token-stdin'],secret+'\n');
+    const restoredLogin=await ok(['login','--url',restoreOrigin,'--token-stdin'],secret+'\n');
+    assert.equal(restoredLogin.token.last_used_ms,at,'Restored login must keep the advanced fixture clock, regardless of wall-clock time.');
     const loggedIn=await ok(['export']);
     assert.equal(loggedIn.app.revision,archive.app.revision+2,'CLI login retains its existing token last-use write.');
     assert.deepEqual(loggedIn.app.practice,before);
@@ -290,9 +292,10 @@ export async function studyJourney(){
     const nextBytes=Buffer.from(await(await restoredBucket.get(backedState.app.backup.key)).arrayBuffer());
     assert.equal(hash(nextBytes),backedState.app.backup.sha256);
     const nextArchive=JSON.parse(nextBytes);
+    assert.equal(nextArchive.created_ms,at,'The restored backup must use the same fixture clock.');
     assert.equal(nextArchive.app.revision,written.app.revision);
     assert.deepEqual(nextArchive.app.practice,before,'Complete backup revalidates and retains exact history after an unrelated write.');
-    const second=await createRuntime({name:'second-restore-'+randomUUID(),bindings:{...restoreBindings,CANONICAL_ORIGIN:'https://second-restore.invalid',SPACE_NAME:'second-unused-study-restore'}});
+    const second=await createRuntime({inspect:true,testClock:true,name:'second-restore-'+randomUUID(),bindings:{...restoreBindings,CANONICAL_ORIGIN:'https://second-restore.invalid',SPACE_NAME:'second-unused-study-restore'}});
     try{
      const response=await second.worker.fetch('https://second-restore.invalid/operator/restore',{method:'POST',headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':hash(nextBytes)},body:nextBytes});
      assert.equal(response.status,200,await response.text());
@@ -305,6 +308,8 @@ export async function studyJourney(){
      assert.deepEqual(twice.app.library,written.app.library);
      const verified=await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
      assert.equal(verified.status,200,await verified.text());
+     const finalState=await(await stub.fetch('https://internal.invalid/api/v1/export',{headers:{Authorization:'Bearer '+secret,'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).json();
+     assert.equal(finalState.app.backup.completed_ms,at,'Direct Durable Object requests after the second restore must keep the fixture clock.');
     }finally{await second.mf.dispose();}
     transcript.push({observation:'Fresh restore → compiled CLI login and unrelated write → fully validated R2 backup → second fresh restore and backup',source_revision:archive.app.revision,first_restore_revision:archive.app.revision+1,login_revision:loggedIn.app.revision,first_write_revision:written.app.revision,second_restore_revision:nextArchive.app.revision+1,attempts:Object.keys(before.attempts).length,corrections:Object.keys(before.corrections).length,archive_sha256:hash(nextBytes)});
    }finally{await restored.mf.dispose();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');}
