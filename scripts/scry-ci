@@ -209,7 +209,7 @@ def gate(args):
         ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
         ["cargo", "clippy", "--locked", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
         ["node", "--check", "assets/app.js"],
-        ["node", "--test", "qa/walk-cli.test.mjs"],
+        ["node", "--test", "qa/walk-cli.test.mjs", "qa/cli-process.test.mjs"],
         [sys.executable, "qa/release-publish.test.py"],
         [sys.executable, "qa/promote.test.py"],
         [sys.executable, "qa/daily-backup.test.py"],

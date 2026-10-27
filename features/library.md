@@ -45,6 +45,10 @@ Preconditions:
   `node --test qa/library.test.mjs` reuses them, and `tests/library.rs` proves
   the Study-reference refusal. The [exact Study journey](exact-study.md) proves
   real deletion refusal after active, paused and dropped Studies.
+- **CLI transport regression.** `node --test qa/cli-process.test.mjs` covers fast
+  no-input exits, drained output, real stdin, explicit refusals and failed input
+  delivery. The Library journey keeps all exit, JSON and state assertions; its
+  sanitized runtime transcript is `target/library-cli.json` (see #358 / #407).
 - **Proof.** `cli-transcript.json` (stdin redacted) under
   the `<stamp>-local-journeys` evidence directory.
 
