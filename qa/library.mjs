@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
-import {spawn} from 'node:child_process';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {cliProcess} from './cli-process.mjs';
 
 // Authored, caller-supplied text. Creed labels exercise metadata, not canonical
 // Roman Missal wording or the owner's future full-text private-input acceptance.
@@ -23,14 +23,11 @@ export async function libraryJourney() {
  const request=(path,payload,token=secret)=>runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify(payload)}:{}),headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'}});
  const file=async(name,contents)=>{const path=join(temp,name);await writeFile(path,contents);return path;};
  const originalFile=await file('supplied.txt',text);
- const cli=(args,input='')=>new Promise((done,reject)=>{
-  const proc=spawn(binary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
-  let out='',err='';proc.stdout.on('data',d=>out+=d);proc.stderr.on('data',d=>err+=d);proc.on('error',reject);
-  proc.on('exit',code=>{try{
-   assert.ok(!secret||(!out.includes(secret)&&!err.includes(secret)),'No secret in CLI output.');
-   const value=JSON.parse(out);transcript.push({command:['scry',...args.map(a=>a.startsWith(temp)?a.replace(temp,'<fixture>'):a),'--json'].join(' '),exit:code,output:value});done({code,value});
-  }catch(error){reject(error);}});proc.stdin.end(input);
- });
+ const cli=async(args,input='')=>{
+  const {code,out,err}=await cliProcess(binary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},input});
+  assert.ok(!secret||(!out.includes(secret)&&!err.includes(secret)),'No secret in CLI output.');
+  const value=JSON.parse(out);transcript.push({command:['scry',...args.map(a=>a.startsWith(temp)?a.replace(temp,'<fixture>'):a),'--json'].join(' '),exit:code,output:value});return {code,value};
+ };
  const ok=async args=>{const result=await cli(args);assert.equal(result.code,0,JSON.stringify(result.value));return result.value;};
  const show=async()=>ok(['work','show',workId]);
  const lib=async()=>ok(['export','--library']);
