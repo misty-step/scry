@@ -36,23 +36,20 @@ fn main() {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod cli {
-    use reqwest::{Url, blocking::Client, redirect::Policy};
-    use scry::{api::Identity, owner_token::token_id};
-    use serde::{Deserialize, Serialize};
+    use reqwest::Url;
+    use scry::{
+        api::Identity,
+        owner_client::{self, Login, config_path, origin, request},
+        owner_token::token_id,
+    };
     use serde_json::{Value, json};
     use std::{
         fs::{self, OpenOptions},
         io::{Read, Write},
         os::unix::fs::{OpenOptionsExt, PermissionsExt},
         path::{Path, PathBuf},
-        time::Duration,
     };
     type Result<T> = std::result::Result<T, &'static str>;
-    #[derive(Serialize, Deserialize)]
-    struct Login {
-        origin: String,
-        token: String,
-    }
     fn option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
         if let Some(i) = args.iter().position(|arg| arg == name) {
             if i + 1 == args.len() {
@@ -71,31 +68,6 @@ mod cli {
         } else {
             false
         }
-    }
-    fn config_path() -> Result<PathBuf> {
-        if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
-            return Ok(PathBuf::from(dir).join("scry/login.json"));
-        }
-        Ok(
-            PathBuf::from(std::env::var_os("HOME").ok_or("Set HOME or use --config.")?)
-                .join(".config/scry/login.json"),
-        )
-    }
-    fn origin(input: &str) -> Result<String> {
-        let url = Url::parse(input).map_err(|_| "Use an HTTPS origin.")?;
-        let local = url.scheme() == "http"
-            && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-        if !(url.scheme() == "https" || local)
-            || url.path() != "/"
-            || url.query().is_some()
-            || url.fragment().is_some()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.host_str().is_none()
-        {
-            return Err("Use an HTTPS origin (HTTP is allowed only on loopback).");
-        }
-        Ok(url.origin().ascii_serialization())
     }
     fn random_id() -> Result<String> {
         let mut bytes = [0; 24];
@@ -132,40 +104,6 @@ mod cli {
             let _ = fs::remove_file(&temporary);
         }
         result
-    }
-    fn request(
-        client: &Client,
-        login: &Login,
-        path: &str,
-        payload: Option<&Value>,
-    ) -> Result<Value> {
-        let url = format!("{}{path}", login.origin);
-        let request = match payload {
-            Some(payload) => client.post(url).json(payload),
-            None => client.get(url),
-        };
-        let response = request
-            .bearer_auth(&login.token)
-            .send()
-            .map_err(|_| "HTTP request failed; retry mutations with the same operation ID.")?;
-        if !response.status().is_success() {
-            // Never reflect a proxy body or diagnostic that might echo Authorization.
-            return Err(match response.status().as_u16() {
-                401 => "Owner authorization required.",
-                403 => "Request refused.",
-                409 => "Operation conflict.",
-                _ => "API request failed.",
-            });
-        }
-        let mut bytes = Vec::new();
-        response
-            .take(16 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "Cannot read API response.")?;
-        if bytes.len() > 16 * 1024 * 1024 {
-            return Err("API response too large.");
-        }
-        serde_json::from_slice(&bytes).map_err(|_| "API returned invalid JSON.")
     }
     fn draft(args: &mut Vec<String>) -> Result<scry::library::VersionInput> {
         use scry::library::{Kind, Rights, SectionInput, VersionInput};
@@ -234,11 +172,7 @@ mod cli {
         let url = option(&mut args, "--url")?
             .map(|url| origin(&url))
             .transpose()?;
-        let client = Client::builder()
-            .redirect(Policy::none())
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|_| "HTTP client unavailable.")?;
+        let client = owner_client::client()?;
         if args.first().is_some_and(|arg| arg == "login") {
             if !flag(&mut args, "--token-stdin") || args.len() != 1 {
                 return Err("Usage: scry login --url ORIGIN --token-stdin [--json]");
@@ -265,16 +199,7 @@ mod cli {
             store(&path, &login)?;
             return serde_json::to_value(identity).map_err(|_| "Invalid owner identity.");
         }
-        let metadata = fs::symlink_metadata(&path).map_err(|_| "Log in with scry login first.")?;
-        if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
-            return Err("Credential file must be private (chmod 600).");
-        }
-        let login: Login =
-            serde_json::from_slice(&fs::read(path).map_err(|_| "Cannot read login.")?)
-                .map_err(|_| "Invalid login file.")?;
-        if origin(&login.origin)? != login.origin || token_id(&login.token).is_none() {
-            return Err("Invalid login file.");
-        }
+        let login = owner_client::load(&path)?;
         if url.is_some_and(|url| url != login.origin) {
             return Err("Log in separately for this origin.");
         }
