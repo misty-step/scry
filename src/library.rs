@@ -837,14 +837,30 @@ pub fn mutate(
     };
     let id = match path {
         "/library/mapping/add" => {
-            if fields
-                .keys()
-                .any(|key| !matches!(key.as_str(), "operation_id" | "csrf" | "data"))
-            {
+            if fields.keys().any(|key| {
+                !matches!(
+                    key.as_str(),
+                    "operation_id" | "csrf" | "revision" | "data" | "starter"
+                )
+            }) {
                 return Err(mapping_invalid());
             }
-            let input: MappingInput =
-                serde_json::from_str(field("data")).map_err(|_| mapping_invalid())?;
+            // The selector is immutable supplied content, not a generation
+            // request or a client-overridable template. Both paths share every
+            // validation, deduplication and receipt rule below.
+            let data = match (fields.get("starter"), fields.get("data")) {
+                (Some(starter), None) if starter == "nato-v1" => {
+                    include_str!("../examples/nato-alphabet.json")
+                }
+                (None, Some(data)) => data.as_str(),
+                _ => {
+                    return Err(AppError::new(
+                        422,
+                        "Choose exactly one supplied mapping manifest or the nato-v1 starter.",
+                    ));
+                }
+            };
+            let input: MappingInput = serde_json::from_str(data).map_err(|_| mapping_invalid())?;
             app.library.add(input.into_version()?, seed, None)?
         }
         "/library/version/add" => app.library.add(

@@ -216,6 +216,25 @@ fields (including generation, grades and media) are refused rather than silently
 ignored. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
 the existing 256 KiB text and 8,192 Unit bounds.
 
+**Bundled starter, explicit action only.** Library offers **Add NATO alphabet**,
+then the existing **Learn** form. The button posts to the same mapping mutation
+using `starter=nato-v1`; its HTML does not contain the canonical words. No GET
+imports content and no token setup is required for an already authenticated
+browser owner. Agents may select the same supplied content without another API
+route:
+
+```json
+{"operation_id":"retained-nato-starter-operation","starter":"nato-v1"}
+```
+
+Send that object to `POST /api/v1/library/mappings`, instead of `data`. Exactly
+one of `starter` or `data` is required; other selectors and client overrides are
+refused. `nato-v1` pins the included manifest; changing its content requires a
+new selector. Repeated Add and ordinary manifest imports reuse the same Version
+and preserve Study/Card history. The browser's `revision` is transport metadata,
+not permission to replace content or supply a grade. CLI users can continue to
+import the same file shown above; no new alias or generation command is needed.
+
 Keys and values must be nonempty, without surrounding whitespace, control
 characters, tabs or line breaks. Keys are unique under the pinned mapping Unicode/punctuation-boundary
 normalization; case and compatibility-equivalent keys

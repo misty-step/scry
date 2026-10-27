@@ -40,9 +40,21 @@ describe('Rust source and Worker artifact provenance',()=>{
     await writeFile(join(source,telemetry),'export function reportRust() {}');
     await writeFile(join(source,'deploy/cloudflare-hosting/.dev.vars'),'PRIVATE_DEPLOY_DO_NOT_COPY=secret');
     await writeFile(join(source,'.dev.vars'),'PRIVATE_DO_NOT_COPY=secret');
+    await mkdir(join(source,'examples'));
+    const starter='examples/nato-alphabet.json',starterBytes='{"title":"Canonical authored starter"}\n';
+    await writeFile(join(source,starter),starterBytes);
+    await writeFile(join(source,'examples/unrelated.json'),'UNRELATED_EXAMPLE_DO_NOT_COPY');
+    await writeFile(join(source,'examples/.dev.vars'),'PRIVATE_EXAMPLE_DO_NOT_COPY=secret');
     const copy=join(temporary,'snapshot');
     const identity=await snapshotSource(source,copy);
-    assert.equal(identity.files.length,8);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.equal(identity.files.length,9);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.deepEqual(identity.files.filter(file=>file.path.startsWith('examples/')).map(file=>file.path),[starter]);
+    assert.equal(await readFile(join(copy,starter),'utf8'),starterBytes);
+    await assert.rejects(readFile(join(copy,'examples/unrelated.json')));
+    await assert.rejects(readFile(join(copy,'examples/.dev.vars')));
+    await writeFile(join(source,starter),'{"title":"Changed supplied starter"}\n');
+    assert.notEqual((await snapshotSource(source,join(temporary,'changed-starter'))).sha256,identity.sha256);
+    assert.equal(await readFile(join(copy,starter),'utf8'),starterBytes);
     assert.equal(await readFile(join(copy,'CHANGELOG.md'),'utf8'),'CHANGELOG.md\n');
     await writeFile(join(source,'CHANGELOG.md'),'# Updated public release notes\n');
     assert.notEqual((await snapshotSource(source,join(temporary,'changed-notes'))).sha256,identity.sha256);
@@ -56,6 +68,14 @@ describe('Rust source and Worker artifact provenance',()=>{
     assert.equal(await readFile(join(copy,'src/lib.rs'),'utf8'),'pub fn original() {}');
     assert.notEqual((await snapshotSource(source,join(temporary,'changed'))).sha256,identity.sha256);
     await assert.rejects(readFile(join(copy,'.dev.vars')));
+    await rm(join(source,starter));
+    await symlink(join(source,'.dev.vars'),join(source,starter));
+    await assert.rejects(snapshotSource(source,join(temporary,'starter-symlink')),/regular file/);
+    await rm(join(source,'examples'),{recursive:true});
+    const outside=join(temporary,'outside-examples');await mkdir(outside);
+    await writeFile(join(outside,'nato-alphabet.json'),'PRIVATE_OUTSIDE_DO_NOT_COPY');
+    await symlink(outside,join(source,'examples'));
+    await assert.rejects(snapshotSource(source,join(temporary,'examples-symlink')),/regular directory/);
   });
   it('refuses source symlinks that could silently import operator material',async()=>{
     const source=join(temporary,'symlink-source');await mkdir(join(source,'src'),{recursive:true});await mkdir(join(source,'assets'));

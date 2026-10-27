@@ -387,6 +387,19 @@ impl View<'_> {
             "<section class=\"library-page\" data-state=\"library\"><h1>Your Library</h1><form method=\"get\" action=\"/library\" class=\"library-search\"><label for=\"library-query\">Find a text</label><div class=\"search-controls\"><input id=\"library-query\" name=\"q\" type=\"search\" value=\"{}\" placeholder=\"Title, alias or opening words\"><button class=\"button quiet\">Search</button></div></form>",
             escape(q)
         );
+        out.push_str(&format!(
+            "<section class=\"library-work\" id=\"nato-starter\"><h2>NATO spelling alphabet</h2><p>26 letters. Type each code word; Scry checks your answer and schedules your next review.</p><p class=\"fineprint\">Official code words, supplied to Scry. Add them privately, then choose Learn. Adding again keeps your existing progress.</p>{}</section>",
+            self.form(
+                "/library/mapping/add",
+                "nato-starter",
+                "library-add-form",
+                "",
+                &format!(
+                    "{}<button class=\"button primary\">Add NATO alphabet</button>",
+                    hidden("starter", "nato-v1")
+                )
+            )
+        ));
         if found.empty {
             out.push_str(
                 if q.trim().is_empty() && self.app.library.works.is_empty() {
@@ -2398,7 +2411,7 @@ fn legacy_home(_app: &App) -> &'static str {
 }
 
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
-    if path == "/library/version/add" {
+    if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
     } else if path.starts_with("/practice/") {
         "/recall"
@@ -2416,7 +2429,9 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
 }
 
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
-    if path == "/library/version/add" {
+    if path == "/library/mapping/add" {
+        "/library"
+    } else if path == "/library/version/add" {
         "/library/add"
     } else if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
         path
