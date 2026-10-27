@@ -266,14 +266,26 @@ fn response(entity: Option<String>, data: Value) -> MutationResult {
         data: Some(data),
     }
 }
+const MAPPING_PROMPT_TITLE: &str = "Recall the matching value";
+/// Supplied metadata may contain the answer. Preserve it in Library/history,
+/// but never use it as an extra mapping cue, including restored held Prompts.
+pub(crate) fn visible_prompt_title(prompt: &Prompt) -> &str {
+    if prompt.cue_level == Cue::MappingKey {
+        MAPPING_PROMPT_TITLE
+    } else {
+        &prompt.title
+    }
+}
 fn held(app: &App) -> AppResult<Value> {
     let p = app
         .practice
         .current
         .as_ref()
         .ok_or_else(AppError::conflict)?;
+    let mut prompt = p.prompt.clone();
+    prompt.title = visible_prompt_title(&prompt).to_string();
     Ok(
-        json!({"prompt":p.prompt,"revealed":p.revealed,"attempt_id":p.attempt_id,
+        json!({"prompt":prompt,"revealed":p.revealed,"attempt_id":p.attempt_id,
         "correction_ids":app.practice.corrections.values().filter(|c| Some(&c.attempt_id)==p.attempt_id.as_ref()).map(|c| &c.id).collect::<Vec<_>>() }),
     )
 }
@@ -364,6 +376,11 @@ pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> 
     if let Some(value) = data.get("prompt").filter(|v| !v.is_null()) {
         let prompt: Prompt =
             serde_json::from_value(value.clone()).map_err(|_| AppError::conflict())?;
+        // Do not rewrite a historical receipt merely to make it replayable.
+        // A pre-fix supplied mapping title is unsafe while any recall is protected.
+        if prompt.cue_level == Cue::MappingKey && prompt.title != MAPPING_PROMPT_TITLE {
+            return Err(AppError::conflict());
+        }
         let current = &app.practice.current.as_ref().unwrap().prompt;
         if prompt != *current && (prompt.cue_level.assisted() || prompt.context.is_some()) {
             return Err(AppError::conflict());
@@ -517,7 +534,11 @@ fn make_prompt(
             study_id: study.id.clone(),
             version_id: v.id.clone(),
             version_hash: v.normalized_hash.clone(),
-            title: app.library.works[&v.work_id].title.clone(),
+            title: if v.kind == Kind::KeyedMapping {
+                MAPPING_PROMPT_TITLE.into()
+            } else {
+                app.library.works[&v.work_id].title.clone()
+            },
             scope,
             unit_ids: cards.iter().map(|c| c.unit_id.clone()).collect(),
             cue_level: cue,

@@ -71,6 +71,166 @@ struct Owner {
     op: u64,
     now: i64,
 }
+
+#[test]
+fn supplied_mapping_title_never_discloses_answer_before_assistance() {
+    let mut o = Owner::new();
+    let title = "Alfa: NATO spelling alphabet";
+    let vid = o
+        .call(
+            "/api/v1/library/mappings",
+            json!({"data":{
+                "title":title,"direction":"forward","pairs":[{"key":"A","value":"Alfa"}]
+            }}),
+        )
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    o.call("/api/v1/learn", json!({"version_id":vid})).unwrap();
+    let response = o.call("/api/v1/next", json!({})).unwrap();
+    assert!(
+        !response.to_string().contains("Alfa"),
+        "Supplied title is answer-bearing metadata, not a permitted cue"
+    );
+    let html = scry::web::render(&o.app, "/recall", &BTreeMap::new(), o.now, None);
+    assert!(
+        !html.contains("Alfa"),
+        "The entire active HTML must hide the supplied title"
+    );
+    assert!(o.app.practice.protected());
+    assert_eq!(response["prompt"]["cue"], "A");
+    assert_eq!(o.app.library.works.values().next().unwrap().title, title);
+    let schedule = o
+        .app
+        .practice
+        .cards
+        .values()
+        .next()
+        .unwrap()
+        .state
+        .schedule
+        .clone();
+    o.call(
+        "/api/v1/reveal",
+        json!({"prompt_id":response["prompt"]["id"]}),
+    )
+    .unwrap();
+    let answer = o.answer("Alfa");
+    assert_eq!(answer["grade"]["verdict"], "Good");
+    assert_eq!(answer["assisted"], true);
+    assert_eq!(answer["effects"][0]["scheduled"], false);
+    assert_eq!(
+        o.app.practice.cards.values().next().unwrap().state.schedule,
+        schedule
+    );
+    assert_eq!(o.app.library.works.values().next().unwrap().title, title);
+}
+
+#[test]
+fn mapping_normalized_identity_reuses_version_and_study_across_legacy_hashes() {
+    let mut o = Owner::new();
+    let input = |value: &str, strict: bool| json!({"data":{"title":"Letter pairs","direction":"forward","spelling_strict":strict,"pairs":[{"key":"Q","value":value}]}});
+    let vid = o
+        .call("/api/v1/library/mappings", input("A&B", true))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sid = o.call("/api/v1/learn", json!({"version_id":vid})).unwrap()["study"]["id"].clone();
+    o.call("/api/v1/next", json!({})).unwrap();
+    assert_eq!(o.answer("A B")["grade"]["verdict"], "Good");
+    let library = o.app.library.clone();
+    let practice = o.app.practice.clone();
+    assert_eq!(
+        o.call("/api/v1/library/mappings", input("A B", true))
+            .unwrap()["id"],
+        vid
+    );
+    assert_eq!(
+        o.call("/api/v1/learn", json!({"version_id":vid})).unwrap()["study"]["id"],
+        sid
+    );
+    assert_eq!(
+        o.app.library, library,
+        "Retain exact original bytes, normalized_hash and identity"
+    );
+    assert_eq!(
+        o.app.practice, practice,
+        "Equivalent reimport never resets Card schedule or history"
+    );
+    let before = o.app.clone();
+    assert_eq!(
+        o.call("/api/v1/library/mappings", input("A B", false))
+            .unwrap_err()
+            .status,
+        409
+    );
+    assert_eq!(
+        o.app, before,
+        "Equivalent pairs cannot silently change grading policy"
+    );
+}
+
+#[test]
+fn restored_mapping_title_is_hidden_without_rewriting_historical_receipt() {
+    let mut o = Owner::new();
+    o.start(&[("A", "Alfa")]);
+    let operation = format!("mapping-operation-{:06}", o.op);
+    let title = "Alfa: supplied historical title";
+    // Model a pre-fix frozen Prompt/receipt, rather than changing its history.
+    o.app.practice.current.as_mut().unwrap().prompt.title = title.into();
+    o.app
+        .operations
+        .get_mut(&operation)
+        .unwrap()
+        .result
+        .data
+        .as_mut()
+        .unwrap()["prompt"]["title"] = json!(title);
+    engine::validate_app(&o.app).unwrap();
+    let bytes = persistence::Archive::new(o.app.clone(), vec![], o.now)
+        .encode()
+        .unwrap();
+    o.app = persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+        .unwrap()
+        .app;
+    let frozen = o.app.practice.clone();
+    let receipt = o.app.operations[&operation].clone();
+    let next = o.call("/api/v1/next", json!({})).unwrap();
+    assert!(!next.to_string().contains("Alfa"));
+    assert!(!scry::web::render(&o.app, "/recall", &BTreeMap::new(), o.now, None).contains("Alfa"));
+    assert_eq!(o.app.practice, frozen);
+    assert_eq!(o.app.operations[&operation], receipt);
+    let before = o.app.clone();
+    assert_eq!(
+        o.operation("/api/v1/next", json!({"operation_id":operation}))
+            .unwrap_err()
+            .status,
+        409
+    );
+    assert_eq!(o.app, before);
+}
+
+#[test]
+fn canonical_mapping_dedupe_does_not_mask_existing_cross_kind_hash_collision() {
+    let mut o = Owner::new();
+    let mapping = |value: &str| json!({"data":{"title":"Letter pairs","direction":"forward","pairs":[{"key":"Q","value":value}]}});
+    o.call("/api/v1/library/mappings", mapping("A&B")).unwrap();
+    o.call(
+        "/api/v1/library/versions",
+        json!({"data":{"title":"Independent text","kind":"text","text":"Q A B"}}),
+    )
+    .unwrap();
+    let before = o.app.clone();
+    assert_eq!(
+        o.call("/api/v1/library/mappings", mapping("A B"))
+            .unwrap_err()
+            .status,
+        409
+    );
+    assert_eq!(o.app, before);
+}
 impl Owner {
     fn new() -> Self {
         Self {

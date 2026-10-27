@@ -612,7 +612,7 @@ impl View<'_> {
             let _ = write!(
                 out,
                 "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
-                escape(&prompt.title)
+                escape(crate::study::visible_prompt_title(prompt))
             );
             out.push_str(&Self::exact_prompt_context(prompt));
             if prompt.assisted || p.revealed {

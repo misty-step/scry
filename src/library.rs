@@ -522,13 +522,17 @@ impl Library {
             proposed = w.clone();
         }
         let hash = sha256(key(&input.text).as_bytes());
-        if let Some(v) = self.versions.values().find(|v| v.normalized_hash == hash) {
+        let pairs = (input.kind == Kind::KeyedMapping)
+            .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
+            .flatten();
+        let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
+        if let Some(v) = hash_match {
             // The historical content hash deliberately ignores spacing. For
             // mappings that must not erase pair boundaries or grading policy.
             if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
                 && (input.kind != v.kind
                     || input.spelling_strict != v.spelling_strict
-                    || mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str))
+                    || pairs
                         != mapping_identity(
                             v.sections
                                 .iter()
@@ -539,6 +543,32 @@ impl Library {
                 return Err(AppError::new(
                     409,
                     "That normalized text has different mapping boundaries or grading policy. Keep the existing Version unchanged.",
+                ));
+            }
+        }
+        // Mapping identity follows its own pinned normalization, not the
+        // historical text hash (which, for example, expands '&' to 'and').
+        // Check legacy hash conflicts first; never rewrite old bytes or hashes.
+        let duplicate = hash_match.or_else(|| {
+            pairs.as_ref().and_then(|pairs| {
+                self.versions.values().find(|v| {
+                    v.kind == Kind::KeyedMapping
+                        && mapping_identity(
+                            v.sections
+                                .iter()
+                                .flat_map(|s| &s.units)
+                                .map(|u| u.text.as_str()),
+                        )
+                        .as_ref()
+                            == Some(pairs)
+                })
+            })
+        });
+        if let Some(v) = duplicate {
+            if input.kind == Kind::KeyedMapping && input.spelling_strict != v.spelling_strict {
+                return Err(AppError::new(
+                    409,
+                    "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
                 ));
             }
             if existing.is_some_and(|w| w.id != v.work_id) || previous.is_some() {

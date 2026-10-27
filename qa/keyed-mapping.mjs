@@ -318,3 +318,33 @@ export async function keyedMappingRecovery(browser,capture){
  });
  return results;
 }
+
+// Independent review regressions through the actual API, not just pure policy.
+export async function keyedMappingBoundaryJourney(){
+ const f=await keyedMappingFixture();
+ try{
+  const call=async(path,payload)=>{const r=await f.api(path,{operation_id:randomUUID(),...payload});assert.equal(r.status,200,await r.clone().text());return r.json();};
+  const manifest=(title,key,value,strict=true)=>({title,direction:'forward',spelling_strict:strict,pairs:[{key,value}]});
+  const title='Alfa: NATO spelling alphabet';
+  const vid=(await call('/api/v1/library/mappings',{data:manifest(title,'A','Alfa')})).result.entity_id;
+  const sid=(await call('/api/v1/learn',{version_id:vid})).practice.study.id;
+  const next=await call('/api/v1/next',{study_id:sid}),prompt=next.practice.prompt;
+  assert.equal(prompt.cue,'A');assert.equal(prompt.assisted,false);assert.doesNotMatch(JSON.stringify(next),/Alfa/,'Neither result nor practice may disclose the supplied answer-bearing title.');
+  assert.doesNotMatch(await(await f.worker.fetch(f.origin+'/recall')).text(),/Alfa/,'Whole active HTML hides supplied title.');
+  const card=(await f.ok(['due'])).cards.find(card=>card.study_id===sid),before=(await f.record('practice_cards/'+card.id)).state.schedule;
+  await call('/api/v1/reveal',{prompt_id:prompt.id});
+  const assisted=(await call('/api/v1/answer',{prompt_id:prompt.id,answer:'Alfa'})).practice.attempt;
+  assert.equal(assisted.grade.verdict,'Good');assert.equal(assisted.assisted,true);assert.equal(assisted.effects[0].scheduled,false);assert.deepEqual((await f.record('practice_cards/'+card.id)).state.schedule,before);
+  const supplied=(await f.ok(['export'])).app;assert.equal(supplied.library.works[supplied.library.versions[vid].work_id].title,title);
+  const q=(await call('/api/v1/library/mappings',{data:manifest('Letter pairs','Q','A&B')})).result.entity_id;
+  const qs=(await call('/api/v1/learn',{version_id:q})).practice.study.id;
+  const qp=(await call('/api/v1/next',{after:prompt.id,study_id:qs})).practice.prompt;
+  assert.equal((await call('/api/v1/answer',{prompt_id:qp.id,answer:'A B'})).practice.attempt.grade.verdict,'Good');
+  const original=(await f.ok(['export'])).app;
+  assert.equal((await call('/api/v1/library/mappings',{data:manifest('Letter pairs','Q','A B')})).result.entity_id,q);
+  assert.equal((await call('/api/v1/learn',{version_id:q})).practice.study.id,qs);
+  const retained=(await f.ok(['export'])).app;assert.deepEqual(retained.library,original.library);assert.deepEqual(retained.practice,original.practice);
+  const rows=await f.rows(),objects=await f.r2();assert.equal((await f.api('/api/v1/library/mappings',{operation_id:randomUUID(),data:manifest('Letter pairs','Q','A B',false)})).status,409);assert.deepEqual(await f.rows(),rows);assert.deepEqual(await f.r2(),objects);assert.equal(f.egress,0);
+  return {status:'pass',supplied_title_hidden_in_json_and_html:true,metadata_retained:true,reveal_assisted_no_schedule:true,normalized_pair_reuses_version_and_study:true,original_hash_bytes_history_and_schedule_unchanged:true,policy_conflict_no_writes:true,egress:0};
+ }finally{await f.close();}
+}

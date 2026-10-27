@@ -234,6 +234,10 @@ Version. Existing historical metadata-only mappings remain readable/exportable;
 malformed pair content cannot start a Study.
 
 Forward practice presents the key and grades only the value on the server.
+Supplied titles can contain answers, so active mapping Prompts use a neutral
+label in JSON and HTML; the original metadata remains in Library/history.
+Held restored Prompts are displayed safely without rewriting their saved title,
+and an older answer-bearing Prompt receipt cannot replay during protected recall.
 Mapping grading is pinned as `exact-v2` with grader-version suffix `;mapping=1`:
 Unicode case/compatibility normalization is shared, while punctuation is a word
 boundary rather than silently removed inside a word. Thus `X-ray` and `X ray`

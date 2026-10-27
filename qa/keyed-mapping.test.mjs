@@ -6,12 +6,16 @@ import {join} from 'node:path';
 import {buildCli} from './owner-api.mjs';
 import {prepareMappingPredecessor} from './mapping-predecessor.mjs';
 import {keyedMappingJourney,keyedMappingWalk,keyedMappingRecovery} from './keyed-mapping.mjs';
+import {keyedMappingBoundaryJourney} from './keyed-mapping.mjs';
 const output='target/keyed-mapping';await mkdir(output,{recursive:true});
 buildCli();
 const predecessor=await prepareMappingPredecessor();
 const journey=await keyedMappingJourney({predecessorArtifact:predecessor.artifact});
 try{for(const [name,run]of journey.criteria)await test(`NATO mapping: ${name}`,run);}
 finally{await writeFile(join(output,'runtime.json'),JSON.stringify(journey.transcript,null,2)+'\n');await journey.close();await predecessor.close();}
+await test('NATO mapping: protected title and normalized pair identity',async()=>{
+ const result=await keyedMappingBoundaryJourney();await writeFile(join(output,'review-boundaries.json'),JSON.stringify(result,null,2)+'\n');
+});
 await test('NATO mapping: actual mobile native/enhanced browser loop',async()=>{
  const require=createRequire(import.meta.url),playwright=require(process.env.SCRY_CRITICS_PLAYWRIGHT_PATH||'playwright');
  const browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});

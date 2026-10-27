@@ -49,7 +49,7 @@ test('pending stories are not walked until their ticket replaces Evidence: pendi
 for(const [name,spec,live] of [
  ['no story headings',source.replace(/^## (US-\d{3})/gm,'### $1'),[]],
  ['trailing retirement wording',afterLastWalked('\n## Change log\n\nSuperseded wording for an unrelated change.\n'),walkIds.slice(0,-1)],
- ['pending marker removed without walks',source.replace(/^Evidence: pending$/m,'Evidence: none'),[...walkIds,'US-019']],
+ ['pending marker removed without walks',source+pendingStory.replace('Evidence: pending','Evidence: none'),[...walkIds,'US-998']],
  ['unknown active story',source+'\n## US-999 Unknown\n\nCriteria:\n1. WHEN tested, THE SYSTEM SHALL fail closed.\n',[...walkIds,'US-999']],
  ['duplicate replacing a live story',source.replace('## US-017 Get','## US-011 Get'),walkIds.map(id=>id==='US-017'?'US-011':id)]
 ])for(const argv of [['--all'],['--stories','US-002']])test(`reject discovery drift: ${name} ${argv[0]}`,()=>probe(argv,spec,{expectedError:`story discovery drift: SPEC live IDs [${live.join(', ')}] do not match walk-specs IDs [${walkIds.join(', ')}]`}));
