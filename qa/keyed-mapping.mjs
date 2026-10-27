@@ -139,7 +139,8 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
   ['client grades, corrections, malformed mappings and generation fields refuse without writes',async()=>{
    await next(['--card',cards.get('A')]);
    for(const key of ['verdict','grade','rating','expected'])await refuse('/api/v1/answer',{prompt_id:current.prompt.id,answer:'wrong',[key]:'Good'},422);
-   const a=await answer('Alpha');await refuse('/api/v1/correct',{prompt_id:current.prompt.id,attempt_id:a.id,verdict:'Good'},422);
+   // Global retirement refuses new caller Corrections before mapping validation.
+   const a=await answer('Alpha');await refuse('/api/v1/correct',{prompt_id:current.prompt.id,attempt_id:a.id,verdict:'Good'},410);
    await refuse('/api/v1/library/mappings',{data:{title:'Bad supplied pairs',direction:'forward',pairs:[{key:'A',value:'Alfa'},{key:'a',value:'Bravo'}]}},422);
    await refuse('/api/v1/library/mappings',{data:{title:'No generator',direction:'forward',pairs:[{key:'A',value:'Alfa'}],generate:true}},422);
    const full=(await f.ok(['export'])).app;assert.deepEqual(full.jobs,{});assert.deepEqual(full.assessments,{});assert.deepEqual(full.spend,[]);assert.deepEqual(full.practice.corrections,{});assert.equal(f.egress,0);
