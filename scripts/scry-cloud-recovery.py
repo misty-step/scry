@@ -15,7 +15,7 @@ allocation or already-paid headroom, or promise a $1 ceiling from prorated cost.
 The $17 combined exposure below is NOT a full upper bound: requests, CPU, SQL,
 storage, retries, cleanup and retained resources must also be bounded/accounted.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import email.parser
 import email.policy
 import hashlib
@@ -141,20 +141,86 @@ def admit(receipt=None, *, approval=None, starting=True, now_ms=None):
         raise RecoveryBlocked('RECOVERY_APPROVAL_REQUIRED')
     if approval['one_time_cents'] < 2000 or approval['failed_cleanup_storage_cents_per_month'] < 25:
         raise RecoveryBlocked('RECOVERY_COST_BOUND_UNPROVEN')
-    if starting:
-        # https://developers.cloudflare.com/durable-objects/platform/pricing/
-        # documents pending I/O keeping an object active for up to15minutes.
-        # Two100-subrequest target invocations plus bounded bridge I/O can drain
-        # after caller/key expiry. A72h calendar margin keeps that conservative
-        # <1million GB-s envelope within one billing month, without pretending
-        # the15minute admission deadline instantly cancels admitted work.
-        instant = datetime.fromtimestamp(now_ms / 1000, timezone.utc)
-        next_month = (instant.replace(day=28, hour=0, minute=0, second=0, microsecond=0) + timedelta(days=4)).replace(day=1)
-        need(instant + timedelta(hours=72) < next_month, 'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN')
     return dict(approval)
 
 
-def claim(approval, receipt, request, bucket, *, receipt_path=None):
+# Pending I/O can outlive capability expiry; retain the reviewed 72 h drain
+# envelope, but never substitute a UTC calendar month for the account cycle.
+DRAIN_MS = 72 * 60 * 60 * 1000
+
+
+def verify_billing_period(request, *, now_ms=None):
+    """Read-only account-cycle proof, never a subscription/permission change.
+
+    Source: https://developers.cloudflare.com/api/resources/accounts/subresources/subscriptions/methods/get/
+    Source: https://developers.cloudflare.com/billing/understand/how-billing-works/#billing-cycles
+    Cloudflare documents one shared date for all monthly subscriptions. The
+    caller separately verifies existing Workers Standard and R2 context. No
+    documented Workers/R2 rate-plan ID vocabulary exists here, so do not guess
+    product labels. Instead require the complete account list to contain only
+    Paid, monthly, non-contract USD account subscriptions with one exact period.
+    Any unknown, mixed, incomplete or inaccessible metadata is a hard HOLD.
+    """
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    try:
+        response = request('/subscriptions', envelope=True)
+    except Exception:
+        raise RecoveryBlocked('RECOVERY_BILLING_PERIOD_UNAVAILABLE') from None
+    try:
+        need(isinstance(response, dict) and response.get('success') is True
+             and response.get('errors') == [], 'RECOVERY_BILLING_PERIOD_UNVERIFIED')
+        rows, info = response['result'], response['result_info']
+        need(isinstance(rows, list) and 0 < len(rows) <= 1000 and isinstance(info, dict)
+             and all(type(info.get(k)) is int for k in ('count', 'page', 'per_page', 'total_count'))
+             and info['page'] == 1 and info['count'] == info['total_count'] == len(rows)
+             and info['per_page'] >= len(rows), 'RECOVERY_BILLING_PERIOD_INCOMPLETE')
+        periods, identities = set(), set()
+        for row in rows:
+            plan = row['rate_plan']
+            need(isinstance(row['id'], str) and 0 < len(row['id']) <= 32 and row['id'] not in identities
+                 and row['state'] == 'Paid' and row['frequency'] == 'monthly' and row['currency'] == 'USD'
+                 and plan['scope'] == 'account' and plan['currency'] == 'USD'
+                 and plan['externally_managed'] is False and plan['is_contract'] is False,
+                 'RECOVERY_BILLING_PERIOD_UNVERIFIED')
+            identities.add(row['id'])
+            bounds = []
+            for field in ('current_period_start', 'current_period_end'):
+                value = row[field]
+                need(isinstance(value, str) and re.fullmatch(
+                    r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|\+00:00)', value),
+                    'RECOVERY_BILLING_PERIOD_UNVERIFIED')
+                bounds.append(int(datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp() * 1000))
+            start, end = bounds
+            need(start <= now_ms < end and 0 < end - start <= 32 * 24 * 60 * 60 * 1000,
+                 'RECOVERY_BILLING_PERIOD_UNVERIFIED')
+            periods.add((start, end))
+        need(len(periods) == 1, 'RECOVERY_BILLING_PERIOD_AMBIGUOUS')
+        start, end = periods.pop()
+        need(now_ms + DRAIN_MS < end, 'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN')
+    except RecoveryBlocked:
+        raise
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise RecoveryBlocked('RECOVERY_BILLING_PERIOD_UNVERIFIED') from None
+    # Keep identifiers, rates and all other private billing metadata in memory
+    # only. This short window is passed directly to claim/run, not approval JSON.
+    return {'format': 'scry-account-billing-period-v1', 'checked_ms': now_ms,
+            'period_start_ms': start, 'period_end_ms': end}
+
+
+def require_billing_period(window, approval, *, now_ms=None, fresh=True):
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    need(isinstance(window, dict) and window.get('format') == 'scry-account-billing-period-v1'
+         and all(type(window.get(k)) is int for k in ('checked_ms', 'period_start_ms', 'period_end_ms')),
+         'RECOVERY_BILLING_PERIOD_REQUIRED')
+    # Cover the entire remaining approval window plus bounded admitted-I/O
+    # drain, rather than relying on an observation made shortly before renewal.
+    need(window['period_start_ms'] <= window['checked_ms'] <= now_ms < approval['expires_ms']
+         and window['period_end_ms'] > approval['expires_ms'] + DRAIN_MS
+         and (not fresh or now_ms - window['checked_ms'] <= 5 * 60 * 1000),
+         'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN')
+
+
+def claim(approval, receipt, request, bucket, *, receipt_path=None, billing_period=None):
     """Consume one approval under the sole native production-writer lock.
 
     REST GET + PUT is intentionally NOT called atomic CAS. All authorized
@@ -164,6 +230,7 @@ def claim(approval, receipt, request, bucket, *, receipt_path=None):
     when the same approval can no longer admit a new run independently.
     """
     approval = admit(receipt, approval=approval)
+    require_billing_period(billing_period, approval)
     need(re.fullmatch('[a-z0-9-]{3,63}', bucket), 'INVALID_RECOVERY_CLAIM_BUCKET')
     path = '/r2/buckets/' + bucket + '/objects/operations/recovery-claims/' + approval['approval_id'] + '.json'
     owner = getattr(request, '__self__', None)
@@ -411,11 +478,12 @@ class Drill:
         return sorted(set(failed) | self.uncertain)
 
 
-def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, external=private_request):
+def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, external=private_request, billing_period=None):
     """Provision only after explicit admission; never read source object bodies here."""
     proof, candidate, bridge = frozen_modules(artifact_dir)
     need(isinstance(receipt, dict) and receipt.get('source') == proof['revision'], 'RECOVERY_PREPARED_SOURCE_MISMATCH')
     approval = admit(receipt, approval=approval, starting=False)
+    require_billing_period(billing_period, approval, fresh=False)
     key, etag, size = source_pin.get('key'), source_pin.get('etag'), source_pin.get('size')
     need(isinstance(key, str) and re.fullmatch(r'snapshots/[a-z0-9-]{1,100}/[0-9]+-(daily|pre-release)-[a-f0-9]{48}\.json', key), 'INVALID_RECOVERY_SOURCE_PIN')
     need(isinstance(etag, str) and re.fullmatch(r'(?:[a-f0-9]{32}(?:-[0-9]+)?|"[a-f0-9]{32}(?:-[0-9]+)?")', etag), 'INVALID_RECOVERY_SOURCE_PIN')

@@ -31,6 +31,15 @@ def approval():
     return dict(approved=True,scope='one-cloud-only-recovery-drill', approval_id='d'*32, reviewed_source=SOURCE,
                 release_version='0.9.0', expires_ms=int(time.time()*1000)+7200000, one_time_cents=2000, failed_cleanup_storage_cents_per_month=25)
 
+def subscriptions(end='2026-11-10T12:00:00Z'):
+    row=dict(id='e'*32, currency='USD', current_period_start='2026-10-10T12:00:00Z',
+             current_period_end=end, frequency='monthly', state='Paid',
+             rate_plan=dict(scope='account', currency='USD', externally_managed=False, is_contract=False))
+    return dict(success=True, errors=[], result=[row], result_info=dict(count=1,page=1,per_page=20,total_count=1))
+
+def billing_period():
+    return R.verify_billing_period(lambda path, **kw: subscriptions())
+
 def artifact(root):
     modules = {'index.js': b'export default {};', 'index_bg.wasm': b'synthetic frozen wasm'}
     (root / 'worker').mkdir()
@@ -143,22 +152,60 @@ class Recovery(unittest.TestCase):
         c=Claims()
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True):
             saved=Path(d)/'claim.json'
-            got=R.claim(approval(),RECEIPT,c.request,'synthetic-private',receipt_path=saved)
+            got=R.claim(approval(),RECEIPT,c.request,'synthetic-private',receipt_path=saved,billing_period=billing_period())
             self.assertEqual(got['github_run_id'],'321');self.assertTrue(c.assert_path)
             self.assertEqual([m for _,m in c.paths],['GET','PUT','GET'])
-            with self.assertRaisesRegex(R.RecoveryBlocked,'ALREADY_CLAIMED'):R.claim(approval(),RECEIPT,c.request,'synthetic-private',receipt_path=saved)
+            with self.assertRaisesRegex(R.RecoveryBlocked,'ALREADY_CLAIMED'):R.claim(approval(),RECEIPT,c.request,'synthetic-private',receipt_path=saved,billing_period=billing_period())
             self.assertEqual([m for _,m in c.paths].count('PUT'),1)
             self.assertTrue(all('/operations/recovery-claims/' in p for p,_ in c.paths))
 
-    def test_expiry_and_billing_month_guard_refuse_before_claim(self):
-        stamp=int(R.datetime(2026,10,31,12,tzinfo=R.timezone.utc).timestamp()*1000)
+    def test_actual_provider_period_replaces_calendar_assumption(self):
+        calls=[]
+        def request(path, **kwargs):
+            calls.append((path,kwargs)); return subscriptions()
+        window=R.verify_billing_period(request)
+        self.assertEqual(calls,[('/subscriptions',{'envelope':True})])
+        self.assertEqual(window['period_end_ms'],int(R.datetime(2026,11,10,12,tzinfo=R.timezone.utc).timestamp()*1000))
         with mock.patch.dict(os.environ,ENV,clear=True):
+            a=approval()
+            R.require_billing_period(window,a)
+            # A full drain must fit after the LAST allowed admission, not just now.
             with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
-                R.admit(RECEIPT,approval=approval()|{'expires_ms':stamp+7200000},now_ms=stamp)
-            with self.assertRaises(R.RecoveryBlocked):R.admit(RECEIPT,approval=approval()|{'expires_ms':0})
-            short=approval()|{'expires_ms':int(time.time()*1000)+60000}
+                R.require_billing_period(window|{'period_end_ms':int(time.time()*1000)+R.DRAIN_MS+1},a)
+            with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.require_billing_period(window|{'checked_ms':int(time.time()*1000)-300001},a)
+            # Oct 27 is far from Nov 1, but an Oct 28 product renewal must HOLD.
+            with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.verify_billing_period(lambda *args,**kwargs: subscriptions('2026-10-28T12:00:00Z'))
+            # Conversely, calendar month end is safe if provider renewal is later.
+            at=int(R.datetime(2026,10,31,12,tzinfo=R.timezone.utc).timestamp()*1000)
+            later=R.verify_billing_period(request,now_ms=at)
+            R.require_billing_period(later,a|{'expires_ms':at+7200000},now_ms=at)
+            with self.assertRaises(R.RecoveryBlocked):R.admit(RECEIPT,approval=a|{'expires_ms':0})
+            short=a|{'expires_ms':int(time.time()*1000)+60000}
             with self.assertRaises(R.RecoveryBlocked):R.admit(RECEIPT,approval=short)
             self.assertEqual(R.admit(RECEIPT,approval=short,starting=False),short)
+
+    def test_missing_denied_ambiguous_or_incomplete_billing_refuses_before_claim(self):
+        variants=[]
+        for field,value in [('frequency','yearly'),('state','Trial'),('currency','EUR'),
+                            ('current_period_end','invalid'),('current_period_start','2026-11-01T00:00:00Z')]:
+            body=subscriptions();body['result'][0][field]=value;variants.append(body)
+        for field,value in [('scope','zone'),('externally_managed',True),('is_contract',True)]:
+            body=subscriptions();body['result'][0]['rate_plan'][field]=value;variants.append(body)
+        body=subscriptions();body['result_info']['total_count']=2;variants.append(body)
+        body=subscriptions();body.pop('result_info');variants.append(body)
+        body=subscriptions();body['result'].append(dict(body['result'][0],id='f'*32,current_period_end='2026-11-11T12:00:00Z'))
+        body['result_info'].update(count=2,total_count=2);variants.append(body)
+        for body in variants:
+            with self.subTest(body=body),self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.verify_billing_period(lambda *args,**kwargs: body)
+        with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD_UNAVAILABLE'):
+            R.verify_billing_period(mock.Mock(side_effect=PermissionError('PRIVATE_CANARY')))
+        call=mock.Mock()
+        with mock.patch.dict(os.environ,ENV,clear=True), self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+            R.claim(approval(),RECEIPT,call,'synthetic-private')
+        call.assert_not_called()
 
     def test_claim_cleanup_waits_expiry_and_only_deletes_exact_body(self):
         class Claims:
@@ -172,7 +219,7 @@ class Recovery(unittest.TestCase):
         c=Claims();clock=[time.time()]
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True):
             saved=Path(d)/'claim.json';a=approval()
-            R.claim(a,RECEIPT,c.request,'synthetic-private',receipt_path=saved)
+            R.claim(a,RECEIPT,c.request,'synthetic-private',receipt_path=saved,billing_period=billing_period())
             def sleep(t):clock[0]+=t
             self.assertEqual(R.cleanup_claim(saved,c.request,clock=lambda:clock[0],sleep=sleep),{'claim_cleanup':'verified_absent'})
             deletion=next(t for m,t in c.calls if m=='DELETE')
@@ -194,7 +241,7 @@ class Recovery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, ENV, clear=True):
             root=Path(d);artifact(root)
             if change: change(root)
-            return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external)
+            return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
 
     def test_real_orchestration_uploads_frozen_bytes_and_deletes_only_created_data(self):
         cloud=Cloud(); receipt=self.run_fixture(cloud)
@@ -229,7 +276,7 @@ class Recovery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True),mock.patch.object(R.secrets,'token_hex') as keys:
             root=Path(d);artifact(root)
             with self.assertRaisesRegex(R.RecoveryBlocked, 'ARCHIVE_BYTES_EXCEED_LIMIT size=1048577 limit=1048576'):
-                R.run(CONFIG,root,PIN|{'size':1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external)
+                R.run(CONFIG,root,PIN|{'size':1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
             keys.assert_not_called();self.assertEqual(cloud.calls,[])
 
     def test_malformed_etag_refuses_before_cloud_or_credential_generation(self):
@@ -238,7 +285,7 @@ class Recovery(unittest.TestCase):
             root=Path(d);artifact(root)
             for etag in ('"'+'1'*32,'1'*32+'"'):
                 with self.assertRaisesRegex(R.RecoveryBlocked,'SOURCE_PIN'):
-                    R.run(CONFIG,root,PIN|{'etag':etag},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external)
+                    R.run(CONFIG,root,PIN|{'etag':etag},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
             keys.assert_not_called();self.assertEqual(cloud.calls,[])
 
     def test_unknown_transfer_result_never_retries_and_cleans_up(self):

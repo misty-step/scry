@@ -3,6 +3,7 @@
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -131,6 +132,14 @@ class CloudBackup(unittest.TestCase):
 
 
 class BootstrapLifecycle(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.receipt = Path(self.tmp.name) / 'schedule.json'
+        self.run_env = mock.patch.dict(os.environ, {'GITHUB_RUN_ID': '123'})
+        self.run_env.start()
+        self.addCleanup(self.run_env.stop)
+
     def fixture(self, *, event=True, schema=True, put_error=False, drift=False, cleanup_error=False):
         testcase = self
         class Client:
@@ -163,7 +172,57 @@ class BootstrapLifecycle(unittest.TestCase):
 
     def run_bootstrap(self, client, unchanged=lambda: None):
         return BACKUP.bootstrap(client, {'name': 'synthetic-worker', 'account_id': 'a' * 32}, 'live-version',
-                                unchanged, now=NOW, clock=lambda: client.now, sleep=client.sleep)
+                                unchanged, now=NOW, clock=lambda: client.now, sleep=client.sleep,
+                                receipt_path=self.receipt)
+
+    def test_always_cleanup_recovers_persisted_schedule_after_process_interruption(self):
+        client = self.fixture()
+        saved = {'format': 'scry-bootstrap-schedule-v1', 'account_id': 'a' * 32,
+                 'worker': 'synthetic-worker', 'native_run_id': '123', 'original_crons': [],
+                 'cron': client.slot, 'scheduled_at': BACKUP.iso(client.when), 'status': 'cleanup_pending'}
+        self.receipt.write_text(json.dumps(saved))
+        client.schedules = [{'cron': client.slot}]
+        config = {'name': 'synthetic-worker', 'account_id': 'a' * 32}
+        result = BACKUP.cleanup_schedule(client, config, self.receipt)
+        self.assertEqual(result['schedule_cleanup'], 'verified_absent')
+        self.assertEqual(client.schedules, [])
+        self.assertEqual(json.loads(self.receipt.read_text())['status'], 'verified_absent')
+        client.schedules = [{'cron': 'operator-change'}]
+        with self.assertRaisesRegex(BACKUP.GateError, 'operator inspection'):
+            BACKUP.cleanup_schedule(client, config, self.receipt)
+        self.assertEqual(client.schedules, [{'cron': 'operator-change'}])
+        self.assertEqual(json.loads(self.receipt.read_text())['status'], 'cleanup_pending')
+
+    def test_intent_is_durable_before_schedule_put_and_owned_by_this_run(self):
+        client = self.fixture()
+        original = client.request
+        def request(path, **kwargs):
+            if kwargs.get('method') == 'PUT' and kwargs.get('payload'):
+                saved = json.loads(self.receipt.read_text())
+                self.assertEqual(saved['cron'], client.slot)
+                self.assertEqual(saved['native_run_id'], '123')
+                self.assertEqual(saved['status'], 'cleanup_pending')
+            return original(path, **kwargs)
+        client.request = request
+        self.run_bootstrap(client)
+        self.assertEqual(json.loads(self.receipt.read_text())['status'], 'verified_absent')
+        with mock.patch.dict(os.environ, {'GITHUB_RUN_ID': '456'}):
+            with self.assertRaisesRegex(BACKUP.GateError, 'identity'):
+                BACKUP.cleanup_schedule(client, {'name': 'synthetic-worker', 'account_id': 'a' * 32}, self.receipt)
+
+    def test_native_always_path_cleans_schedule_even_without_claim_receipt(self):
+        root = Path(self.tmp.name)
+        (root / 'deploy').mkdir()
+        (root / 'deploy/rust-production.toml').write_text('name="synthetic-worker"\naccount_id="' + 'a' * 32 + '"\n')
+        (root / 'target').mkdir()
+        with mock.patch.object(BACKUP, 'ROOT', root), mock.patch.object(BACKUP, 'Cloudflare'), \
+                mock.patch.dict(os.environ, {'CLOUDFLARE_API_TOKEN': 'synthetic'}), \
+                mock.patch.object(BACKUP, 'cleanup_schedule', return_value={'schedule_cleanup': 'verified_absent'}) as cleanup, \
+                mock.patch.object(BACKUP, 'load_module') as recovery, mock.patch('sys.stdout', new_callable=io.StringIO):
+            BACKUP.cleanup_claim()
+            cleanup.assert_called_once()
+            self.assertEqual(cleanup.call_args.args[2], root / 'target/recovery-schedule.json')
+            recovery.assert_not_called()
 
     def test_success_proves_event_restores_empty_crons_and_retains_alarm_truth(self):
         client = self.fixture()

@@ -147,7 +147,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WRANGLER_SEND_METRICS: 'false'
         run: python3 scripts/scry-promote.py deploy
-      - name: Remove only this run's expired approval claim
+      - name: Verify owned schedule cleanup, then remove the expired approval claim
         if: always()
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -162,6 +162,7 @@ jobs:
             target/promotion.json
             target/recovery-cleanup.json
             target/recovery-claim.json
+            target/recovery-schedule.json
           if-no-files-found: warn
           retention-days: 14
       - name: Report promotion failure through the existing Actions issue path

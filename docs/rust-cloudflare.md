@@ -300,7 +300,11 @@ bootstrap-window 30-day deletion candidates, unknown live modules/source,
 incomplete listings, or unavailable Cron analytics stop before scheduling.
 It puts one dated Cron slot onto the **existing verified live code**, requires
 an actual successful provider Cron event, and restores the original empty Cron
-list in `finally`. A Cron event is useful evidence only because that exact
+list in `finally`. Exact run-owned schedule intent is durably saved before PUT;
+the native `always()` step independently retries only matching cleanup after
+process interruption. An unresolved Cron is a production cleanup incident,
+not storage-only residue: it has no automatic expiry, blocks success, and stays
+pending until absence is verified. A Cron event is useful evidence only because that exact
 reviewed handler awaits complete archive readback/decoding and alarm rearming.
 It never uses key presence or persisted health as a replacement.
 
@@ -326,7 +330,10 @@ and first-storage-period quote is **$19.066**, within the approved **$20**.
 The driver limits control-plane requests (128 including cleanup), private preview
 requests (5), CPU (30,000 ms per invocation), subrequests (100), and admission
 time (15 minutes). Already-admitted I/O can outlive capability expiry; the finite
-call count and 72-hour month-end admission margin bound its compute billing.
+call count and 72-hour margin before the **verified actual account billing-period
+boundary** bound its compute billing. Calendar month-end is not that boundary.
+Missing billing read permission or ambiguous period metadata stops before the
+claim, billable listing or scheduling; no permission change is implied.
 No target/bridge alarm or Cron can continue after that drain. Failed cleanup
 therefore leaves only temporary storage, conservatively **$0.215/month** within
 the approved **$0.25/month**. Expiry is not deletion.

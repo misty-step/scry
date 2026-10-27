@@ -267,7 +267,44 @@ def require_backup_contract(source):
         raise GateError('live backup acknowledgment contract is not reviewed') from None
 
 
-def bootstrap(client, config, baseline, verify_unchanged, *, now=None, sleep=time.sleep, clock=None):
+def cleanup_schedule(client, config, receipt_path):
+    """Resume exact run-owned cleanup, including after the deploy process died."""
+    path = Path(receipt_path)
+    if not path.exists():
+        return {'schedule_cleanup': 'not_created'}
+    saved = json.loads(path.read_text())
+    require(saved.get('format') == 'scry-bootstrap-schedule-v1'
+            and saved.get('account_id') == config['account_id']
+            and saved.get('worker') == config['name']
+            and saved.get('native_run_id') == os.environ.get('GITHUB_RUN_ID')
+            and saved.get('original_crons') == [], 'bootstrap cleanup receipt identity differs')
+    when = stamp(saved.get('scheduled_at'))
+    cron = f'{when.minute} {when.hour} {when.day} {when.month} *'
+    require(saved.get('cron') == cron, 'bootstrap cleanup receipt identity differs')
+    script = '/workers/scripts/' + config['name'] + '/schedules'
+    try:
+        current = client.request(script)['schedules']
+        if current:
+            require([s.get('cron') for s in current] == [cron],
+                    'bootstrap schedule changed; cleanup requires operator inspection')
+            # A preceding uncertain PUT is inspected above, never blindly replayed.
+            client.request(script, method='PUT', payload=[])
+            require(client.request(script)['schedules'] == [], 'bootstrap schedule cleanup unverified')
+        saved['status'] = 'verified_absent'
+        path.write_text(json.dumps(saved, sort_keys=True) + '\n')
+        return {'schedule_cleanup': 'verified_absent'}
+    except Exception as error:
+        saved['status'] = 'cleanup_pending'
+        path.write_text(json.dumps(saved, sort_keys=True) + '\n')
+        error.schedule_cleanup = {'worker': config['name'], 'cron': cron,
+                                  'original_crons': [], 'status': 'cleanup_pending',
+                                  'expires_automatically': False,
+                                  'storage_only_allowance_applies': False}
+        raise
+
+
+def bootstrap(client, config, baseline, verify_unchanged, *, now=None, sleep=time.sleep, clock=None,
+              receipt_path=None):
     """One-slot schedule only; preserve the existing autonomous 24-hour DO cadence."""
     clock = clock or (lambda: datetime.now(timezone.utc))
     now = now or clock()
@@ -285,6 +322,19 @@ def bootstrap(client, config, baseline, verify_unchanged, *, now=None, sleep=tim
             'production schedule changed before bootstrap')
     cron, when = bootstrap_slot(now)
     desired = [{'cron': cron}]
+    path = Path(receipt_path) if receipt_path else ROOT / 'target/recovery-schedule.json'
+    require(os.environ.get('GITHUB_RUN_ID', '').isdigit(), 'native run identity unavailable')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Persist before PUT: a killed deploy process must leave enough exact intent
+    # for the independent always() cleanup step, without any learner identifiers.
+    with path.open('x') as output:
+        json.dump({'format': 'scry-bootstrap-schedule-v1', 'account_id': config['account_id'],
+                   'worker': config['name'], 'native_run_id': os.environ['GITHUB_RUN_ID'],
+                   'original_crons': [], 'cron': cron, 'scheduled_at': iso(when),
+                   'status': 'cleanup_pending', 'expires_automatically': False,
+                   'storage_only_allowance_applies': False}, output, sort_keys=True)
+        output.flush()
+        os.fsync(output.fileno())
     changed = False
     try:
         # An uncertain PUT is not retried: finally reads once and only removes
@@ -307,16 +357,7 @@ def bootstrap(client, config, baseline, verify_unchanged, *, now=None, sleep=tim
         raise GateError('no successful provider Cron event within bootstrap window')
     finally:
         if changed:
-            try:
-                current = client.request(script + '/schedules')['schedules']
-                if current != previous:
-                    require([s.get('cron') for s in current] == [cron], 'bootstrap schedule changed; cleanup requires operator inspection')
-                    client.request(script + '/schedules', method='PUT', payload=previous)
-                    require(client.request(script + '/schedules')['schedules'] == previous, 'bootstrap schedule cleanup unverified')
-            except Exception as error:
-                error.schedule_cleanup = {'worker': config['name'], 'cron': cron,
-                                          'original_crons': [], 'status': 'uncertain_do_not_overwrite_other_schedules'}
-                raise
+            cleanup_schedule(client, config, path)
 
 
 def load_module(name):
@@ -417,6 +458,7 @@ def gate(promote, receipt, config, before, deployments, prior):
     require(before.get('usage_model') == 'standard'
             and client.request('/workers/account-settings').get('default_usage_model') == 'standard',
             'existing Workers Standard pricing model is unverified')
+    billing_period = recovery.verify_billing_period(client.request)
     bucket = next(b['bucket_name'] for b in before['bindings'] if b['name'] == 'SCRY_BACKUPS')
     script = '/workers/scripts/' + config['name']
     expected = qualified_modules(promote, prior[0])
@@ -438,7 +480,7 @@ def gate(promote, receipt, config, before, deployments, prior):
     checked = datetime.now(timezone.utc)
     event_rows(client.graphql(events_query(config['account_id'], config['name'], checked - timedelta(minutes=1), checked)))
     unchanged()
-    recovery.claim(approval, receipt, client.request, bucket)
+    recovery.claim(approval, receipt, client.request, bucket, billing_period=billing_period)
     prefix = 'snapshots/' + config['vars']['SPACE_NAME'] + '/'
     started = datetime.now(timezone.utc)
     objects = list_objects(client.request, bucket, prefix, started)
@@ -449,7 +491,8 @@ def gate(promote, receipt, config, before, deployments, prior):
     fresh = [x for x in after if x['key'] not in old and stamp(x['last_modified']) >= started]
     require(len(fresh) == 1, 'bootstrap snapshot is ambiguous; no archive body downloaded')
     unchanged()
-    restored = recovery.run(config, promote.OUT, fresh[0], client.request, approval=approval, receipt=receipt)
+    restored = recovery.run(config, promote.OUT, fresh[0], client.request, approval=approval, receipt=receipt,
+                            billing_period=billing_period)
     unchanged()
     require(restored.get('proof', {}).get('canonical_application_equal') is True and restored.get('cleanup_verified') is True,
             'independent recovery or temporary cleanup unverified')
@@ -457,14 +500,22 @@ def gate(promote, receipt, config, before, deployments, prior):
 
 
 def cleanup_claim():
-    path = ROOT / 'target/recovery-claim.json'
-    if not path.exists():
-        print('No recovery claim was created by this run.')
-        return
     config = tomllib.loads((ROOT / 'deploy/rust-production.toml').read_text())
     client = Cloudflare(config['account_id'], os.environ['CLOUDFLARE_API_TOKEN'])
-    result = load_module('scry-cloud-recovery').cleanup_claim(path, client.request)
-    print(json.dumps(result, sort_keys=True))
+    pending = None
+    # Production Cron cleanup has priority over waiting for claim expiry. Its
+    # annual recurrence is NOT covered by the temporary storage-only allowance.
+    try:
+        print(json.dumps(cleanup_schedule(client, config, ROOT / 'target/recovery-schedule.json'), sort_keys=True))
+    except Exception as error:
+        pending = error
+        print(json.dumps({'schedule_cleanup': 'cleanup_pending', 'expires_automatically': False,
+                          'storage_only_allowance_applies': False}, sort_keys=True), flush=True)
+    path = ROOT / 'target/recovery-claim.json'
+    if path.exists():
+        print(json.dumps(load_module('scry-cloud-recovery').cleanup_claim(path, client.request), sort_keys=True))
+    if pending is not None:
+        raise pending
 
 
 if __name__ == '__main__':
