@@ -1,6 +1,7 @@
 // Synthetic authored bytes only. Run against exact built CLI/Worker artifacts;
 // this file never installs dependencies, builds, fetches media or calls providers.
 import nodeTest from 'node:test';
+import './media-keyboard.test.mjs';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -182,6 +183,22 @@ try{
   const nextBrowser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
   try{
    const page=await nextBrowser.newPage({viewport:{width:390,height:844}});await page.goto(f.origin+'/recall');
+   // A held result has Next available. Tab into actual native audio controls:
+   // Space/Enter belong to playback, not the document's review shortcut.
+   const keyboardPractice=(await f.ok(['export'])).app.practice,keyboardRows=await f.rows(),keyboardUrl=page.url(),writes=[];
+   page.on('request',request=>{if(request.method()==='POST')writes.push(request.url());});
+   await page.locator('#main').focus();
+   for(let tabs=0;tabs<16&&!await page.evaluate(()=>document.activeElement?.tagName==='AUDIO');tabs++)await page.keyboard.press('Tab');
+   assert.equal(await page.evaluate(()=>document.activeElement?.tagName),'AUDIO');
+   for(const key of ['Space','Enter']){
+    await page.keyboard.press(key);
+    if(key==='Space')await page.waitForFunction(()=>document.querySelector('audio').currentTime>0);
+    assert.equal(await page.locator('[data-state="exact-result"]').count(),1,`${key} keeps the held result`);
+    assert.equal(page.url(),keyboardUrl);assert.equal(writes.length,0,`${key} does not submit Next`);
+    assert.deepEqual(await f.rows(),keyboardRows,`${key} creates no durable evidence`);
+   }
+   assert.deepEqual((await f.ok(['export'])).app.practice,keyboardPractice);
+   await page.reload(); // Start the separate pointer/Next playback check paused.
    const oldAudio=await page.locator('audio').elementHandle();await page.locator('audio').click({position:{x:20,y:20}});await page.waitForFunction(()=>document.querySelector('audio').currentTime>0);
    await f.faults({SCRY_TEST_R2_DELAY_MS:'1500'});
    const pending=f.api(`/api/v1/media/${vid}/0`);
