@@ -242,7 +242,7 @@ fn private(mut response: Response) -> Result<Response> {
         "Permissions-Policy",
         "camera=(), microphone=(self), geolocation=()",
     )?;
-    headers.set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")?;
+    headers.set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")?;
     Ok(response)
 }
 fn api_json(value: &impl serde::Serialize, status: u16) -> Result<Response> {
@@ -496,6 +496,11 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     } else {
         let max = if mode == "restore" {
             persistence::MAX_ARCHIVE_BYTES
+        } else if matches!(
+            req.path().as_str(),
+            "/api/v1/library/media" | "/api/v1/library/media/supersede"
+        ) {
+            crate::authored_media::IMPORT_BYTES
         } else {
             MAX_HTTP_BODY
         };
@@ -871,6 +876,9 @@ impl DurableObject for LearningSpace {
                 let mut response = Response::from_bytes(bytes.to_vec())?;
                 response.headers_mut().set("Content-Type", mime)?;
                 return private(response);
+            }
+            if let Some(resource) = path.strip_prefix("/media/") {
+                return self.media_response(resource, None).await;
             }
             let mut app = self.load()?;
             let previous = app.clone();
@@ -1366,6 +1374,11 @@ impl LearningSpace {
         };
         let path = req.path();
         let read = matches!(req.method(), Method::Get | Method::Head);
+        if read && let Some(resource) = path.strip_prefix("/api/v1/media/") {
+            return self
+                .media_response(resource, authorization.as_deref())
+                .await;
+        }
         if read
             && matches!(
                 path.as_str(),
@@ -1455,7 +1468,7 @@ impl LearningSpace {
             };
         }
         let mut app = self.load()?;
-        let before = app.revision;
+        let mut before = app.revision;
         if !read && token.is_none() && fields.get("csrf") != Some(&app.csrf) {
             return api_error(AppError::new(403, "Reload before submitting."));
         }
@@ -1508,20 +1521,70 @@ impl LearningSpace {
         if let Err(error) = engine::admit_current_mutation(canonical_path) {
             return api_error(error);
         }
-        let replayed = fields
+        let mut replayed = fields
             .get("operation_id")
             .is_some_and(|id| app.operations.contains_key(id));
         let actor = token
             .as_ref()
             .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
         let seed = random_id()?;
-        let result = match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor)
+        let mut result =
+            match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor) {
+                Ok(result) => result,
+                Err(error) => return api_error(error),
+            };
+        if let Err(error) =
+            persistence::archive_size(&app).and_then(|_| persistence::rows(&app).map(|_| ()))
         {
-            Ok(result) => result,
-            Err(error) => return api_error(error),
-        };
-        if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
+        }
+        if canonical_path.starts_with("/library/media/") {
+            let uploads = match crate::authored_media::parse(
+                fields.get("data").map(String::as_str).unwrap_or(""),
+            )
+            .and_then(|input| input.checked())
+            {
+                Ok((_, uploads)) => uploads,
+                Err(error) => return api_error(error),
+            };
+            // Capacity, references, revision and payload were validated against a
+            // candidate, never committed. Immutable content-addressed puts are
+            // safe to repeat after a lost response; a crash leaves only bounded
+            // unreferenced blobs, never a partially admitted Library Version.
+            for upload in &uploads {
+                self.put_media(upload).await?;
+            }
+            if let Some(raw) = authorization.as_deref() {
+                token = match self.bearer_token(raw) {
+                    Some(t) => Some(t),
+                    None => return api_refusal(),
+                };
+            }
+            app = self.load()?;
+            before = app.revision;
+            replayed = fields
+                .get("operation_id")
+                .is_some_and(|id| app.operations.contains_key(id));
+            if token.is_none() && fields.get("csrf") != Some(&app.csrf) {
+                return api_error(AppError::conflict());
+            }
+            if let Some(t) = &mut token {
+                t.info.last_used_ms = Some(now());
+                app.owner_tokens.insert(t.info.id.clone(), t.clone());
+            }
+            let actor = token
+                .as_ref()
+                .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
+            result = match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor)
+            {
+                Ok(result) => result,
+                Err(error) => return api_error(error),
+            };
+            if let Err(error) =
+                persistence::archive_size(&app).and_then(|_| persistence::rows(&app).map(|_| ()))
+            {
+                return api_error(error);
+            }
         }
         self.save(&mut app, Some(before))?;
         // Token creation is the only response containing a secret. Its receipt never does.
@@ -1546,6 +1609,95 @@ impl LearningSpace {
             },
             200,
         )
+    }
+    fn media_key(&self, asset: &crate::authored_media::Asset) -> Result<String> {
+        Ok(format!("media/{}/{}", self.space_name()?, asset.sha256))
+    }
+    async fn read_media(&self, asset: &crate::authored_media::Asset) -> Result<Vec<u8>> {
+        let object = self
+            .env
+            .bucket("SCRY_ASSETS")?
+            .get(self.media_key(asset)?)
+            .execute()
+            .await?
+            .ok_or_else(|| Error::RustError("Required authored media is missing.".into()))?;
+        if object.size() != asset.size as u64 || asset.size > crate::authored_media::ASSET_BYTES {
+            return Err(Error::RustError("Authored media integrity failed.".into()));
+        }
+        let bytes = object
+            .body()
+            .ok_or_else(|| Error::RustError("Authored media is unreadable.".into()))?
+            .bytes()
+            .await?;
+        if crate::authored_media::inspect(&bytes, &asset.mime, &asset.sha256)
+            .ok()
+            .as_ref()
+            != Some(asset)
+        {
+            return Err(Error::RustError("Authored media integrity failed.".into()));
+        }
+        Ok(bytes)
+    }
+    async fn put_media(&self, upload: &crate::authored_media::ArchivedAsset) -> Result<()> {
+        self.env
+            .bucket("SCRY_ASSETS")?
+            .put(self.media_key(&upload.asset)?, upload.bytes.clone())
+            .execute()
+            .await?;
+        if self.read_media(&upload.asset).await? != upload.bytes {
+            return Err(Error::RustError("Authored media readback differed.".into()));
+        }
+        Ok(())
+    }
+    async fn media_response(
+        &self,
+        resource: &str,
+        authorization: Option<&str>,
+    ) -> Result<Response> {
+        let Some((version_id, index)) = resource.split_once('/') else {
+            return api_error(AppError::new(404, "Media unavailable."));
+        };
+        let Ok(index) = index.parse::<usize>() else {
+            return api_error(AppError::new(404, "Media unavailable."));
+        };
+        let app = self.read_snapshot()?;
+        let attachment = match crate::authored_media::lookup(&app, version_id, index) {
+            Ok(a) => a.clone(),
+            Err(e) => return api_error(e),
+        };
+        let bytes = match self.read_media(&attachment.asset).await {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return api_error(AppError::new(
+                    503,
+                    "Saved media is unavailable or failed integrity verification.",
+                ));
+            }
+        };
+        // An answer read may yield to Next, and a token may be revoked during R2.
+        // Recheck current durable permission before returning even one byte.
+        if let Some(raw) = authorization
+            && self.bearer_token(raw).is_none()
+        {
+            return api_refusal();
+        }
+        let latest = self.read_snapshot()?;
+        match crate::authored_media::lookup(&latest, version_id, index) {
+            Ok(a) if a == &attachment => {}
+            Ok(_) => return api_error(AppError::conflict()),
+            Err(e) => return api_error(e),
+        }
+        let mut response = Response::from_bytes(bytes)?;
+        response
+            .headers_mut()
+            .set("Content-Type", &attachment.asset.mime)?;
+        response
+            .headers_mut()
+            .set("Content-Disposition", "inline")?;
+        response
+            .headers_mut()
+            .set("X-Scry-Sha256", &attachment.asset.sha256)?;
+        private(response)
     }
     fn principal(&self) -> Result<AccessPrincipal> {
         // The object ID survives eviction and alarm delivery, unlike a request
@@ -1949,7 +2101,19 @@ impl LearningSpace {
                 bytes,
             });
         }
-        Ok(persistence::Archive::new(app, photos, now()))
+        let mut media = Vec::new();
+        for asset in crate::authored_media::required(&app)
+            .map_err(to_worker_error)?
+            .into_values()
+        {
+            media.push(crate::authored_media::ArchivedAsset {
+                asset: asset.clone(),
+                bytes: self.read_media(asset).await?,
+            });
+        }
+        let mut archive = persistence::Archive::new(app, photos, now());
+        archive.media = media;
+        Ok(archive)
     }
     async fn backup(&self, pre_release: bool) -> Result<()> {
         let operation = async {
@@ -2107,6 +2271,9 @@ impl LearningSpace {
                     Error::RustError("Restored photo manifest is incomplete.".into())
                 })?;
             }
+        }
+        for upload in &archive.media {
+            self.put_media(upload).await?;
         }
         archive.app.csrf = random_id()?;
         archive.app.backup = BackupStatus::default();

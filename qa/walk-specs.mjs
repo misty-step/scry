@@ -93,4 +93,15 @@ export const specs={
    assert.equal(c.libraryRecovery.length,6);
    for(const row of c.libraryRecovery)assert.equal(row.status,'pass',`${row.name}: ${row.reason}`);
  }],
+ 'US-022':[
+  ['failed R2 verification','actual endpoint','compiled CLI dedupe','no provider'],
+  ['actual endpoint','compiled CLI dedupe','complete budget refusal'],
+  ['compiled CLI dedupe','compiled CLI explicitly supersedes','bundled NATO starter'],
+  ['answer metadata','private image/audio delivery','native phone','revoked token'],
+  ['private image/audio delivery','native phone','no provider'],
+  ['failed R2 verification','complete private archive','private image/audio delivery','complete budget refusal'],
+ ].map((checks,i)=>async c=>{
+  for(const name of checks)assert.ok(c.media.some(row=>row.status==='pass'&&row.check?.startsWith('media: '+name)),`US-022.${i+1}: missing ${name}`);
+  c.policy('png_and_canonical_short_pcm_wav_only_with_exact_byte_identity','invalid_second_attachment_metadata_or_bytes_never_partially_admits','complete_archive_capacity_counts_base64_media_before_bodies_are_loaded');
+ }),
 };

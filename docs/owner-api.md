@@ -385,3 +385,10 @@ Release acceptance must retain the tested source/Worker and exact checksums,
 a working baseline old-reader restore control, mapping refusal with no writes,
 and candidate full-history export/fresh-restore/first-unrelated-write proof.
 Local emulator results do not establish off-machine recovery or hosted admission.
+
+## Authored review media
+
+The separately verified #404 slice uses `scry media add|supersede --file` and
+`POST /api/v1/library/media[/supersede]`; see the [bounded manifest, limits,
+privacy and recovery contract](implementation/authored-review-media.md). Media
+changes supersede immutable Versions; old Studies do not silently migrate.

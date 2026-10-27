@@ -341,6 +341,61 @@ mod cli {
                 ),
             );
         }
+        if args.first().is_some_and(|a| a == "media") {
+            let file = option(&mut args, "--file")?
+                .ok_or("Use media add|supersede --file MANIFEST.json.")?;
+            let supersede = args.get(1).is_some_and(|a| a == "supersede");
+            let revision = option(&mut args, "--revision")?;
+            if (!supersede && (args.as_slice() != ["media", "add"] || revision.is_some()))
+                || (supersede && (args.len() != 3 || revision.is_none()))
+            {
+                return Err(
+                    "Usage: scry media add --file MANIFEST.json | media supersede VERSION --revision N --file MANIFEST.json",
+                );
+            }
+            let mut bytes = Vec::new();
+            fs::File::open(file)
+                .map_err(|_| "Cannot read media manifest.")?
+                .take(scry::authored_media::IMPORT_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Cannot read media manifest.")?;
+            if bytes.len() > scry::authored_media::IMPORT_BYTES {
+                return Err("Media manifest exceeds 4 MiB.");
+            }
+            let data = scry::authored_media::parse(
+                std::str::from_utf8(&bytes).map_err(|_| "Use UTF-8 JSON.")?,
+            )
+            .map_err(|_| "Invalid media manifest.")?;
+            data.checked()
+                .map_err(|_| "Invalid bounded PNG/PCM WAV media, hash or metadata.")?;
+            let mut payload = json!({"operation_id":operation,"data":data});
+            if supersede {
+                payload["version_id"] = json!(args[2]);
+                payload["revision"] = json!(
+                    revision
+                        .unwrap()
+                        .parse::<u64>()
+                        .map_err(|_| "Use a numeric Work revision.")?
+                );
+            }
+            if serde_json::to_vec(&payload)
+                .map_err(|_| "Invalid manifest.")?
+                .len()
+                > scry::authored_media::IMPORT_BYTES
+            {
+                return Err("Complete media request exceeds 4 MiB.");
+            }
+            return request(
+                &client,
+                &login,
+                if supersede {
+                    "/api/v1/library/media/supersede"
+                } else {
+                    "/api/v1/library/media"
+                },
+                Some(&payload),
+            );
+        }
         if args.starts_with(&["mapping".into(), "add".into()]) {
             let file =
                 option(&mut args, "--file")?.ok_or("Use mapping add --file MANIFEST.json.")?;
@@ -468,7 +523,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|media|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

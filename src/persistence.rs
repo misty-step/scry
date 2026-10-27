@@ -77,6 +77,12 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
         .as_object_mut()
         .ok_or_else(|| AppError::new(500, "Invalid state."))?;
     let mut result = BTreeMap::new();
+    if crate::authored_media::used(app) {
+        result.insert(
+            "authored_media_format/v1".into(),
+            bounded_json(&serde_json::json!(crate::authored_media::FORMAT))?,
+        );
+    }
     object
         .entry("owner_tokens")
         .or_insert_with(|| serde_json::json!({}));
@@ -171,6 +177,14 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
     for (key, data) in rows {
         if key == "meta" {
+            continue;
+        }
+        if key == "authored_media_format/v1" {
+            if serde_json::from_str::<String>(data).ok().as_deref()
+                != Some(crate::authored_media::FORMAT)
+            {
+                return Err(serialization("Media format"));
+            }
             continue;
         }
         let (field, id) = key
@@ -282,6 +296,9 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         record.insert(field, data);
     }
     let app: App = serde_json::from_value(value).map_err(serialization)?;
+    if crate::authored_media::used(&app) != rows.contains_key("authored_media_format/v1") {
+        return Err(serialization("Missing media format marker"));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -302,6 +319,9 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
+    if crate::authored_media::used(app) {
+        return crate::authored_media::FORMAT;
+    }
     if !app.practice.is_empty()
         || app.operations.values().any(|r| {
             r.path
@@ -400,6 +420,8 @@ pub struct Archive {
     pub created_ms: i64,
     pub app: App,
     pub photos: Vec<ArchivedPhoto>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<crate::authored_media::ArchivedAsset>,
 }
 pub fn required_photos(app: &App) -> AppResult<BTreeMap<&str, &Photo>> {
     let mut required = BTreeMap::new();
@@ -449,6 +471,11 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
         bytes: &'static str,
     }
     #[derive(Serialize)]
+    struct MediaSize<'a> {
+        asset: &'a crate::authored_media::Asset,
+        bytes: &'static str,
+    }
+    #[derive(Serialize)]
     struct ArchiveSize<'a> {
         format: &'static str,
         schema: u32,
@@ -456,6 +483,8 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
         created_ms: i64,
         app: &'a App,
         photos: Vec<PhotoSize<'a>>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        media: Vec<MediaSize<'a>>,
     }
     let mut size = BoundedSize { bytes: 0 };
     let mut photos = Vec::new();
@@ -471,6 +500,13 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
         })?;
         photos.push(PhotoSize { photo, bytes: "" });
     }
+    let mut media = Vec::new();
+    for asset in crate::authored_media::required(app)?.into_values() {
+        size.add(asset.size.div_ceil(3) * 4).map_err(|_| {
+            AppError::new(413, "The complete archive exceeds its bounded size limit.")
+        })?;
+        media.push(MediaSize { asset, bytes: "" });
+    }
     serde_json::to_writer(
         &mut size,
         &ArchiveSize {
@@ -480,6 +516,7 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
             created_ms: i64::MIN,
             app,
             photos,
+            media,
         },
     )
     .map_err(|_| AppError::new(413, "The complete archive exceeds its bounded size limit."))?;
@@ -494,6 +531,7 @@ impl Archive {
             created_ms: now,
             app,
             photos,
+            media: Vec::new(),
         }
     }
     pub fn encode(&self) -> AppResult<Vec<u8>> {
@@ -580,6 +618,29 @@ impl Archive {
             return Err(AppError::new(
                 422,
                 "The archive is missing required photo data.",
+            ));
+        }
+        let required = crate::authored_media::required(&self.app)?;
+        let mut seen = BTreeSet::new();
+        for archived in &self.media {
+            let a = &archived.asset;
+            if !seen.insert(a.sha256.as_str())
+                || required.get(a.sha256.as_str()).copied() != Some(a)
+                || crate::authored_media::inspect(&archived.bytes, &a.mime, &a.sha256)
+                    .ok()
+                    .as_ref()
+                    != Some(a)
+            {
+                return Err(AppError::new(
+                    422,
+                    "The archive contains invalid or unexpected authored media.",
+                ));
+            }
+        }
+        if seen.len() != required.len() {
+            return Err(AppError::new(
+                422,
+                "The archive is missing required authored media.",
             ));
         }
         rows(&self.app)?;

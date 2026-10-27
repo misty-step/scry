@@ -84,7 +84,7 @@ is not hosted bearer-admission evidence (#335).
 
 Broader US-021 reverse directions, year policy, assisted value-choice ladder,
 random-start whole-set Recitation and Relations remain pending. Multimedia
-attachments/playback, broader MCP coverage, legacy-flow retirement and the
+attachments/playback (US-022), broader MCP coverage, legacy-flow retirement and the
 front-door/navigation redesign require their own implementation and proof.
 The current NATO path is entered through Library and Text practice; this
 amendment does not claim those remaining surfaces are delivered.
@@ -1219,3 +1219,31 @@ No reverse/years/choice/set/Relation criterion above is removed to fit this slic
 Subset proof: `tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs`,
 `qa/keyed-mapping.test.mjs`. Exact-source execution and browser receipts belong
 in #324 / its PR; source existence alone is not a PASS.
+
+## US-022 Review externally authored image and audio cards
+
+Statement: When an external agent supplies media for a review card, I want Scry
+to present it privately with accessible text and honest assistance, while Scry
+continues to own grading and the memory schedule.
+
+Criteria:
+1. WHEN I supply a forward mapping with PNG images or short PCM WAV audio, THE SYSTEM SHALL validate the complete request before admitting immutable Version/Unit attachment references, retain supplied source/rights/license and alt/transcript metadata, and fetch no remote source or generate content.
+2. EACH admitted asset SHALL match its declared MIME, structural magic/envelope, size and SHA-256; imports SHALL be bounded to 1 MiB per asset, 64 attachments and 4 MiB of complete JSON request. PNG SHALL be non-interlaced 8-bit grayscale/RGB/gray-alpha/RGBA up to 2048×2048 with no ancillary chunks; WAV SHALL be canonical mono/stereo 16-bit PCM at 8–48 kHz and at most 30 seconds.
+3. WHEN supplied media changes for existing wording, THE SYSTEM SHALL require explicit immutable supersession, preserve the exact original text/hash and all previous Studies/Attempts/schedules, and distinguish the ordered media identity. Identical text and media SHALL deduplicate; changed operation payloads SHALL conflict.
+4. WHILE a protected Prompt is unanswered, THE SYSTEM SHALL disclose only its own explicitly prompt-side media; every answer-side byte, URL, filename, alt, transcript, source and rights field SHALL remain absent until durable assistance or answer. Direct reads SHALL recheck permission after asynchronous storage access.
+5. WHEN media is shown, THE SYSTEM SHALL provide native private image/audio controls and accessible alternative text or transcript without autoplay; playing or reading media SHALL create no native success or scheduling evidence. Reveal and typed Answer SHALL retain their existing assistance and native-grading behavior.
+6. IF any required asset is missing, corrupt or exceeds complete capacity, THE SYSTEM SHALL fail closed, admit no partial Library records, and never return an incomplete successful archive. Complete backup/restore SHALL preserve every referenced byte within the existing 16 MiB encoded limit, with explicit old-reader refusal for populated media and unchanged compatibility for media-free state.
+
+No-gos: no native generation, arbitrary URL fetching, speech recognition,
+recording, video processing, self-grading, implicit schedule migration or
+in-place Version attachment edits. These bounds do not claim broader media
+formats. API/CLI media and a later stdio MCP extension require separate proof;
+the initial MCP's `multimedia:false` remains honest until that extension lands.
+Historical Materials and Goal/photo generation flows are not revived.
+
+Evidence: `qa/walk --stories "US-022"`, `tests/authored_media.rs` and
+`qa/authored-media.test.mjs` require the compiled CLI, exact built Worker,
+SQLite/R2, phone controls and an actual pinned predecessor reader. Exact-source
+results, screenshots and remaining limits belong in #404 / its PR; entrypoint
+existence is not PASS. Synthetic squares/tones do not establish useful authored
+content, physical-phone acceptance, hosted ingress or independent remote recovery.
