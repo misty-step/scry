@@ -1236,8 +1236,10 @@ impl DurableObject for LearningSpace {
                 // archive. Paid completions still retain their raw/ledger
                 // outcome through the separate durable work path.
                 if app.revision != before
-                    && (matches!(path.as_str(), "/create" | "/add" | "/library/version/add")
-                        || path.ends_with("/edit"))
+                    && (matches!(
+                        path.as_str(),
+                        "/create" | "/add" | "/library/version/add" | "/library/mapping/add"
+                    ) || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
                     let retained = self.load()?;

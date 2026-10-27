@@ -7,6 +7,7 @@ import {buildCli} from './owner-api.mjs';
 import {prepareMappingPredecessor} from './mapping-predecessor.mjs';
 import {keyedMappingJourney,keyedMappingWalk,keyedMappingRecovery} from './keyed-mapping.mjs';
 import {keyedMappingBoundaryJourney} from './keyed-mapping.mjs';
+import {starterWalk} from './nato-starter.mjs';
 const output='target/keyed-mapping';await mkdir(output,{recursive:true});
 buildCli();
 const predecessor=await prepareMappingPredecessor();
@@ -21,7 +22,7 @@ await test('NATO mapping: actual mobile native/enhanced browser loop',async()=>{
  const browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  try{
   const capture=async(page,name,options={})=>{const path=join(output,name);await page.screenshot({path,fullPage:true,...options});return name;};
-  const rows=[...await keyedMappingWalk(browser,capture),...await keyedMappingRecovery(browser,capture)];
+  const rows=[...await keyedMappingWalk(browser,capture),...await keyedMappingRecovery(browser,capture),...await starterWalk(browser,capture)];
   await writeFile(join(output,'browser.json'),JSON.stringify(rows,null,2)+'\n');
   assert.ok(rows.every(row=>row.status==='pass'),JSON.stringify(rows.filter(row=>row.status!=='pass')));
  }finally{await browser.close();}

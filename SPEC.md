@@ -58,6 +58,13 @@ pair becomes one immutable Unit; the supplied NATO example contains A–Z and
 all 26 canonical values, including Alfa, Juliett, Whiskey and X-ray. No provider
 or remote source is fetched. Import/retry and repeated Learn use the shared
 receipt and deduplication rules, preserving existing identity and schedules.
+The owner can explicitly add the bundled NATO alphabet from Library, then
+choose its existing native Learn action. Reading Library never imports it.
+The versioned `nato-v1` starter selector chooses the same supplied manifest on
+the server, is mutually exclusive with a client manifest, and accepts no
+client override of its words. Repeated Add or agent import returns the same
+Version without resetting a Study or schedule; changed starter content must
+use a new selector. The starter form contains no canonical-answer payload.
 The mapping-only `exact-v2` profile is pinned as
 `1;unicode=17.0.0;mapping=1`: Unicode NFKC/case-folding and whitespace follow
 the existing engine, but punctuation creates word boundaries rather than
