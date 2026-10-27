@@ -113,6 +113,15 @@ fn nfkc(text: &str) -> Vec<Scalar> {
 /// words; other punctuation is stripped. Apostrophes survive only inside words.
 /// Ampersands stand for "and". Symbols/digits/diacritics are not discarded.
 pub(super) fn tokens(text: &str) -> Vec<Token> {
+    tokens_with_policy(text, false)
+}
+
+/// Mapping profile: punctuation creates boundaries, never silently joins
+/// letters. Keep the historical text tokenizer's Unicode and span mechanics.
+pub(super) fn mapping_tokens(text: &str) -> Vec<Token> {
+    tokens_with_policy(text, true)
+}
+fn tokens_with_policy(text: &str, mapping_profile: bool) -> Vec<Token> {
     let mut folded = Vec::new();
     for scalar in nfkc(text) {
         if let Some(parts) = mapping(data::CASE_FOLD, scalar.value) {
@@ -139,7 +148,7 @@ pub(super) fn tokens(text: &str) -> Vec<Token> {
     let mut span: Option<Range<usize>> = None;
     for (i, scalar) in folded.iter().enumerate() {
         let value = scalar.value;
-        if value.is_whitespace() || value == '&' {
+        if value.is_whitespace() || (!mapping_profile && value == '&') {
             finish_token(text, &mut normalized, &mut span, &mut result);
             if value == '&' {
                 result.push(Token {
@@ -158,6 +167,9 @@ pub(super) fn tokens(text: &str) -> Vec<Token> {
             && word_character(folded[i - 1].value)
             && word_character(folded[i + 1].value);
         if (in_ranges(data::PUNCTUATION, value) || value == '\'') && !inside_word {
+            if mapping_profile {
+                finish_token(text, &mut normalized, &mut span, &mut result);
+            }
             continue;
         }
         normalized.push(value);

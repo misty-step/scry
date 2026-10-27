@@ -33,7 +33,9 @@ All commands accept `--json`, output one JSON value, and exit nonzero on refusal
 or failure. Creation accepts `--expires-ms TIMESTAMP` and `--paid`. Mutations
 accept `--operation-id ID` (16–128 ASCII letters, digits, hyphens or underscores).
 For a safely repeatable automated mutation, supply and retain that ID. On an
-unknown response, reuse the same ID and payload. Creation replay returns the
+unknown response, reconcile with the same ID and payload before advancing the
+practice Prompt. A newer unanswered Free recall Prompt may refuse old
+answer-bearing replay; see the practice replay boundary below. Creation replay returns the
 committed result and metadata without the secret. If its first response was
 lost, revoke that token and deliberately create another with a new ID.
 
@@ -114,8 +116,8 @@ its Work revision. A correction to wording that already exists conflicts.
 Version flags include `--rights private_only|public_domain|licensed`,
 `--spelling-strict`, and `--sections-file PATH`. Rights default to private-only
 and Provenance is always supplied. Sources are optional and never fetched.
-`--kind` accepts `text`, `ordered_list`, and `keyed_mapping`; this slice stores
-them and adds no practice behavior. Text files must be UTF-8, at most 256 KiB.
+`--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Ordered-list
+practice remains unavailable; supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
 including caller-supplied Sections. Default Sections follow lines, with clauses
 as Units, so text below the byte limit can still exceed either count limit.
@@ -179,6 +181,69 @@ both, including active, paused and dropped Studies.
 Until that slice lands, used-Study refusal has native unit proof only. Library
 CRUD needs no paid permission, makes no provider call, and reserves no allowance.
 The hosted Access admission limitation above also applies to these routes.
+
+## Supplied keyed mappings
+
+External agents author the content; Scry validates and stores it without any
+content generation, provider call, spend, or fabricated learning observation.
+Import the included 26-pair NATO spelling alphabet, inspect it, then explicitly
+start its Study:
+
+```sh
+./target/debug/scry mapping add --file examples/nato-alphabet.json \
+  --operation-id retained-nato-import-operation --json
+./target/debug/scry version show VERSION_ID --json
+./target/debug/scry learn VERSION_ID --pace steady --json
+```
+
+`POST /api/v1/library/mappings` takes `operation_id` and a `data` manifest:
+
+```json
+{
+  "title": "NATO spelling alphabet",
+  "direction": "forward",
+  "spelling_strict": true,
+  "pairs": [{"key": "A", "value": "Alfa"}, {"key": "J", "value": "Juliett"}]
+}
+```
+
+This short example is not the complete alphabet; `examples/nato-alphabet.json`
+contains all 26 official words and source links. Manifest optional fields are
+`name`, `aliases`, `context`, `sources`, `rights`, and `spelling_strict` (defaults
+to true). Rights default to private-only. Sources are retained, not fetched.
+The only accepted direction is the explicitly declared `forward`. Unknown
+fields (including generation, grades and media) are refused rather than silently
+ignored. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
+the existing 256 KiB text and 8,192 Unit bounds.
+
+Keys and values must be nonempty, without surrounding whitespace, control
+characters, tabs or line breaks. Keys are unique under the pinned mapping Unicode/punctuation-boundary
+normalization; case and compatibility-equivalent keys
+cannot create duplicate Cards. Keys are at most 240 bytes, values 4,096 bytes.
+Pair order is preserved. The adapter creates an ordinary immutable keyed-mapping
+Version with one Section and one Unit per pair. Each Unit is `key<TAB>value<LF>`,
+and the Units concatenate to `Version.text` exactly. Raw `version add --kind
+keyed_mapping` accepts this same representation; only the final LF may be omitted.
+Explicit Sections may group pairs but may not split one pair across Units.
+
+Exact-operation replay returns the committed Version without duplicating content
+or changing Study state (the storage CAS revision may advance); a new operation with identical normalized pairs returns the existing Version
+without resetting any Study. Different pair boundaries or spelling policy with
+the same legacy content hash conflict instead of silently reusing the wrong
+Version. Existing historical metadata-only mappings remain readable/exportable;
+malformed pair content cannot start a Study.
+
+Forward practice presents the key and grades only the value on the server.
+Mapping grading is pinned as `exact-v2` with grader-version suffix `;mapping=1`:
+Unicode case/compatibility normalization is shared, while punctuation is a word
+boundary rather than silently removed inside a word. Thus `X-ray` and `X ray`
+agree, but `Xray` and `a.l.f.a` are not accepted as `X-ray` or `Alfa`.
+Clients submit an answer, never a grade. Native reveal records assistance before
+showing the value; a subsequently copied answer cannot advance the schedule as
+unaided recall. Mapping verdict corrections/self-rating are refused. Historical
+text Corrections remain preserved under their original contract. Reverse/year/
+whole-set exercises, media and MCP are not provided by this mapping import.
+Hosted Owner-token admission is still separately unverified (#335).
 
 ## Text Study and practice
 
@@ -247,8 +312,14 @@ A second override of that Unit, or a Correction after Next, conflicts.
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
 
 Practice mutations return `practice` beside the shared `result` and `replayed`
-fields. The engine receipt freezes each response reference. Answer replay
-returns the same immutable Attempt, even after Next or Correction. Changed
+fields. The engine receipt freezes each response reference. Reconcile an
+unknown answer or reveal response with the same operation ID and payload
+**before Next**. Replay returns the saved immutable Attempt only when the
+current assistance boundary permits that disclosure. Once Next has selected a
+new unanswered Free recall Prompt, an older answer/reveal replay returns 409
+rather than leaking answer-bearing content. Answer or deliberately reveal the
+current Prompt before reading earlier Attempts through history; do not create
+a new operation to recover a response that may already have committed. Changed
 payload under an operation ID conflicts. Every new Attempt names `exact-v2`
 and its grader version, the acting token, Version identity and normalized hash,
 actual Cue, raw answer, Diff, Verdict and per-Card scheduling effects.
@@ -270,3 +341,18 @@ the platform can allocate SQLite, WAL and SHM files before application SQL.
 Initialized read stability does not establish a literal cold-filesystem guarantee.
 The local synthetic journey does not establish hosted API admission under #335,
 physical-phone behavior, private Missal wording or independent hosted recovery.
+
+### Mapping history and rollback
+
+Mappings use the existing Library/Study archive families. Their manifest
+operation receipt and `mapping_key` Cue are not understood by v0.8.1. A retained
+older build must refuse these records rather than drop keys, regrade values as
+whole text, discard history or write a truncated snapshot. After a mapping is
+saved, rollback requires a verified compatible artifact retaining all mappings
+and Attempts. The old v0.8.1 artifact is a refusal control, not a usable rollback
+writer. Never restore an earlier snapshot over acknowledged owner writes.
+
+Release acceptance must retain the tested source/Worker and exact checksums,
+a working baseline old-reader restore control, mapping refusal with no writes,
+and candidate full-history export/fresh-restore/first-unrelated-write proof.
+Local emulator results do not establish off-machine recovery or hosted admission.

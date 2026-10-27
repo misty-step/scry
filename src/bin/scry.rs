@@ -416,6 +416,34 @@ mod cli {
                 ),
             );
         }
+        if args.starts_with(&["mapping".into(), "add".into()]) {
+            let file =
+                option(&mut args, "--file")?.ok_or("Use mapping add --file MANIFEST.json.")?;
+            if args.len() != 2 {
+                return Err("Usage: scry mapping add --file MANIFEST.json [--operation-id ID]");
+            }
+            let mut bytes = Vec::new();
+            fs::File::open(file)
+                .map_err(|_| "Cannot read mapping manifest.")?
+                .take(1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Cannot read mapping manifest.")?;
+            if bytes.len() > 1024 * 1024 {
+                return Err("Mapping manifest exceeds 1 MiB.");
+            }
+            let data: scry::library::MappingInput = serde_json::from_slice(&bytes).map_err(
+                |_| "Use a supplied mapping manifest with direction forward and key/value pairs.",
+            )?;
+            data.clone()
+                .into_version()
+                .map_err(|_| "Invalid mapping pairs or metadata.")?;
+            return request(
+                &client,
+                &login,
+                "/api/v1/library/mappings",
+                Some(&json!({"operation_id":operation,"data":data})),
+            );
+        }
         if args.starts_with(&["version".into(), "add".into()])
             || args.starts_with(&["version".into(), "supersede".into()])
         {
@@ -515,7 +543,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|learn|study|next|answer|reveal|correct|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

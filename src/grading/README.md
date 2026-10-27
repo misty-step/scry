@@ -75,3 +75,20 @@ The clause-four Recitation fixture is authored synthetic text. The sibling
 fixture uses the short Spirit/Ghost contrast. These fixtures prove module
 behavior, not a supplied Roman Missal Version, the HTTP/CLI practice journey,
 phone acceptance, or a deployed service. US-017's evidence remains pending.
+
+## Supplied keyed-mapping profile
+
+`grade_mapping` reuses the deterministic aligner, strict Slip policy and full
+Unicode17 tables. Its Authority remains `exact-v2`, but its pinned grader version
+is `1;unicode=17.0.0;mapping=1`. Punctuation creates word boundaries instead of
+silently joining letters; ampersands are not expanded to "and". Dashes separate
+words, interior apostrophes remain significant, and NFKC/case-folding and
+whitespace rules are shared. Thus `x ray` matches `X-ray`, while `Xray` and
+`a.l.f.a` do not match `X-ray` and `Alfa`. All strict Slips remain Again.
+`mapping_words` owns the same policy for supplied key identity and explanatory
+feedback. No alias, fuzzy success or client-provided grade is introduced.
+
+Study projects each immutable key-TAB-value Unit to its expected value before
+grading and translates expected byte spans back to the complete stored Unit.
+Typed byte spans still refer to the exact raw answer. Historical text Attempts
+continue using the original `grade`/`GRADER_VERSION` unchanged.

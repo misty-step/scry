@@ -1,0 +1,15 @@
+{
+  "release": "v0.8.1",
+  "revision": "62a7716e6f619c10fbda60630d86461ede33d8b7",
+  "source_sha256": "0a167c12e28116e8bac720c1c493896b2749bde23757e2cd4df2da2505471ad8",
+  "url": "https://github.com/misty-step/scry/releases/download/v0.8.1/scry-worker.zip",
+  "release_asset_id": 673096860,
+  "zip_bytes": 97855915,
+  "zip_sha256": "7dbd628db9ddffff629b58459cb1f7d6c24fc34a7f7ed51723cc102e852715f8",
+  "worker": {
+    "index.js": "18f375bc666a3c61a2cd91650be8e7b46f8bcc4239b4975e60eb70200afc5c7e",
+    "index_bg.wasm": "b0271b77b3c439e0b3957342e4f3da25dfacd996a4223786b939582bae1d70f8",
+    "package.json": "3eab4c263d7605248875d5eb5d8a80e32b6a51859b503d3389492960d9f25328",
+    "worker/shim.mjs": "ac99177861405a6046923cbacabbd6adfa1853a56d0c679b9f5e09097c2f4728"
+  }
+}
