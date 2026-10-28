@@ -1,0 +1,252 @@
+name: scry owned recovery locator (read only, expiring)
+on:
+  push:
+    branches: [ops/scry-recovery-locator-20261028-1750]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-recovery-locator-20261028-1750' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 848ef0e51ccc4b4b0fce018ccc757a2d908d9354
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /deploy/rust-production.toml
+            /recovery/target-adapter.mjs
+            /recovery/cloud-restore.mjs
+      - name: Locate exact failed-run resources without mutation or invocation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import email.parser, email.policy, hashlib, importlib.util, json, os, re, time, tomllib, urllib.error
+          from datetime import datetime, timezone
+          from pathlib import Path
+          expiry = datetime.fromisoformat('2026-10-28T18:20:00+00:00').timestamp()
+          if not (time.time() < expiry and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-recovery-locator-20261028-1750'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow' and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('LOCATOR_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': 'b65fec9a5a73504a85794577d6393f3e7e2b9f09ebb1f5671bc6f29aefb4e59e',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'recovery/target-adapter.mjs': '45d3ec12a0982a9e0fb23a19aa0d6a7428d1d682095a990e3c0c3c92a51ba3c9',
+              'recovery/cloud-restore.mjs': 'f33498e2443162a79327e54a719bf9929dfbf94e3988a33ff6fbdad3e0db05ad',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != d for p,d in pins.items()): raise ValueError()
+              config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          except Exception:
+              raise SystemExit('LOCATOR_SOURCE_REFUSED') from None
+          spec = importlib.util.spec_from_file_location('backup', Path('scripts/scry-cloud-backup.py'))
+          backup = importlib.util.module_from_spec(spec); spec.loader.exec_module(backup)
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token: raise SystemExit('LOCATOR_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token); client.limit = 16
+          nonce = 'f003614e71ffb72791653ec2'
+          prefix = 'scry-recovery-' + nonce
+          names = {prefix + '-target':'LearningSpace', prefix + '-bridge':'RecoveryBridge'}
+          bucket = prefix + '-data'
+          start = backup.stamp('2026-10-28T17:42:52Z'); end = backup.stamp('2026-10-28T17:43:34Z')
+          search = '/workers/scripts-search?name=' + prefix + '&page=1&per_page=100'
+          namespace_paths = ['/workers/durable_objects/namespaces?page=' + str(p) + '&per_page=1000' for p in range(1,4)]
+          production = '/workers/scripts/' + config['name']
+          allowed = {search, '/r2/buckets/' + bucket, production + '/deployments?page=1&per_page=100', production + '/content/v2', *namespace_paths}
+          for name in names:
+              allowed.update({'/workers/scripts/' + name + '/settings', '/workers/scripts/' + name + '/script-settings', '/workers/scripts/' + name + '/content/v2', '/workers/services/' + name})
+          account = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
+          native_open, visited, statuses = client.open, set(), {}
+          def bounded_open(request, timeout):
+              url = request.full_url
+              path = url[len(account):] if url.startswith(account) else ''
+              if (time.time() >= expiry or path not in allowed or path in visited or len(visited) >= 16
+                      or request.get_method() != 'GET' or request.data is not None):
+                  raise RuntimeError('LOCATOR_REQUEST_SCOPE_REFUSED')
+              visited.add(path)
+              try:
+                  response = native_open(request, timeout=timeout); statuses[path] = response.status; return response
+              except urllib.error.HTTPError as error:
+                  statuses[path] = error.code; raise
+          client.open = bounded_open
+          def emit(stage, **data): print(json.dumps({'stage':stage, **data}, sort_keys=True))
+          def in_window(value):
+              try: return start <= backup.stamp(value) <= end
+              except Exception: return False
+          def module_identity(raw, kind):
+              form = email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: ' + kind + '\r\n\r\n').encode() + raw)
+              modules = {}
+              for part in form.iter_parts():
+                  key = part.get_filename() or part.get_param('name', header='Content-Disposition')
+                  if key not in {'empty.mjs','target-adapter.mjs','cloud-restore.mjs','index.js','index_bg.wasm'} or key in modules: return 'UNRECOGNIZED'
+                  modules[key] = hashlib.sha256(part.get_payload(decode=True)).hexdigest()
+              candidate = {'index.js':'784595a3565b71f91c3f1e5d109384ea19cc7c20362539bf8501607295f0e7ba',
+                           'index_bg.wasm':'d516fa63d07bc0c694da42619089241f2f58b4f7eaedfe6e1e48599b0670d79e'}
+              baseline = {'index.js':'18f375bc666a3c61a2cd91650be8e7b46f8bcc4239b4975e60eb70200afc5c7e',
+                          'index_bg.wasm':'b0271b77b3c439e0b3957342e4f3da25dfacd996a4223786b939582bae1d70f8'}
+              if modules == candidate: return 'CANDIDATE_094'
+              if modules == baseline: return 'BASELINE_081'
+              if modules == candidate | {'target-adapter.mjs':pins['recovery/target-adapter.mjs']}: return 'EXACT_TARGET'
+              if modules == {'cloud-restore.mjs':pins['recovery/cloud-restore.mjs']}: return 'EXACT_BRIDGE'
+              if modules == {'empty.mjs':hashlib.sha256(b'export default {fetch(){return new Response(null,{status:404})}}').hexdigest()}: return 'EXACT_EMPTY'
+              return 'UNRECOGNIZED'
+          # The UI supplied this exact nonce. Search is only for its creation timestamps;
+          # unrelated matches are never followed or printed. No broad prefix cleanup.
+          selected = []
+          try:
+              envelope = client.request(search, envelope=True); rows = envelope['result']
+              if not isinstance(rows,list) or len(rows) >= 100: raise ValueError()
+              exact = [r for r in rows if isinstance(r,dict) and r.get('script_name') in names]
+              if len(exact) > 2 or len({r['script_name'] for r in exact}) != len(exact): raise ValueError()
+              selected = [r['script_name'] for r in exact if in_window(r.get('created_on'))]
+              emit('candidate_creation', exact_count=len(exact), in_run_window_count=len(selected),
+                   all_exact_in_window=len(selected)==len(exact), result='OBSERVED_NOT_CLEANUP_AUTHORITY')
+          except Exception: emit('candidate_creation', result='UNAVAILABLE_OR_AMBIGUOUS')
+          observed_ids = {}
+          for name in selected:
+              settings_path = '/workers/scripts/' + name + '/settings'
+              report = {'name':name}
+              try:
+                  settings = client.request(settings_path, absent=True)
+                  if settings is None:
+                      report['state']='ABSENT' if statuses.get(settings_path)==404 else 'UNVERIFIED_NULL'
+                  else:
+                      bindings = settings['bindings']
+                      if not isinstance(bindings,list) or len(bindings)>20 or any(not isinstance(b,dict) for b in bindings): raise ValueError()
+                      by = {b.get('name'):b for b in bindings}
+                      if len(by)!=len(bindings): raise ValueError()
+                      target = name.endswith('-target')
+                      expected = {'LEARNING_SPACE':'durable_object_namespace','SCRY_ASSETS':'r2_bucket','SCRY_BACKUPS':'r2_bucket',
+                          'SCRY_ENV':'plain_text','SPACE_NAME':'plain_text','INTERNAL_KEY':'secret_text','RESTORE_TOKEN':'secret_text',
+                          'TRANSFER_ISSUED_MS':'plain_text','TRANSFER_UNTIL_MS':'plain_text'} if target else {
+                          'GATE':'durable_object_namespace','TARGET':'durable_object_namespace','BACKUPS':'r2_bucket',
+                          'SOURCE_KEY':'plain_text','SOURCE_ETAG':'plain_text','SOURCE_BYTES':'plain_text','SPACE_NAME':'plain_text',
+                          'TRANSFER_ISSUED_MS':'plain_text','TRANSFER_UNTIL_MS':'plain_text','INTERNAL_KEY':'secret_text',
+                          'RESTORE_TOKEN':'secret_text','TRANSFER_KEY':'secret_text'}
+                      bridge_active = not target and 'SOURCE' in by and 'PRODUCTION' in by
+                      if bridge_active: expected |= {'SOURCE':'r2_bucket','PRODUCTION':'service'}
+                      shape = {k:v.get('type') for k,v in by.items()} == expected
+                      own = by.get('LEARNING_SPACE' if target else 'GATE', {})
+                      namespace = own.get('namespace_id')
+                      own_ok = (own.get('type')=='durable_object_namespace' and own.get('class_name')==names[name]
+                                and own.get('script_name') in (None,'',name) and isinstance(namespace,str)
+                                and re.fullmatch('[a-f0-9]{32}',namespace) is not None)
+                      if own_ok: observed_ids[name]=namespace; report['namespace_id']=namespace
+                      issued = by.get('TRANSFER_ISSUED_MS',{}).get('text'); until = by.get('TRANSFER_UNTIL_MS',{}).get('text')
+                      timing = (isinstance(issued,str) and issued.isdigit() and len(issued)==13 and isinstance(until,str)
+                                and until.isdigit() and len(until)==13 and int(until)==int(issued)+900000
+                                and int(start.timestamp()*1000)<=int(issued)<=int(end.timestamp()*1000))
+                      buckets_ok = all(by.get(k,{}).get('bucket_name')==bucket for k in (('SCRY_ASSETS','SCRY_BACKUPS') if target else ('BACKUPS',)))
+                      extras_ok = (by.get('SCRY_ENV',{}).get('text')=='restore') if target else (
+                          by.get('TARGET',{}).get('script_name')==prefix+'-target' and by.get('TARGET',{}).get('class_name')=='LearningSpace'
+                          and (not bridge_active or (by['SOURCE'].get('bucket_name')==next(b['bucket_name'] for b in config['r2_buckets'] if b['binding']=='SCRY_BACKUPS')
+                              and by['PRODUCTION'].get('service')==config['name'] and by['PRODUCTION'].get('environment')=='production'
+                              and by['PRODUCTION'].get('entrypoint') in (None,''))))
+                      limits = settings.get('limits',{})
+                      report.update(state='PRESENT', bindings_shape_exact=shape, own_namespace_shape=own_ok,
+                          run_space_exact=by.get('SPACE_NAME',{}).get('text')=='recovery-'+nonce,
+                          buckets_exact=buckets_ok, other_binding_values_exact=extras_ok, capability_window_exact=timing,
+                          capability_expired=timing and int(until)<int(time.time()*1000),
+                          limits_exact=limits=={'cpu_ms':30000,'subrequests':100},
+                          limits_cpu_exact=isinstance(limits,dict) and limits.get('cpu_ms')==30000,
+                          limits_subrequests_exact=isinstance(limits,dict) and limits.get('subrequests')==100,
+                          standard_usage=settings.get('usage_model')=='standard',
+                          observability_disabled=isinstance(settings.get('observability'),dict) and settings['observability'].get('enabled') is False,
+                          logpush_disabled=settings.get('logpush') is False, bridge_active=bridge_active)
+              except Exception: report['state']='SETTINGS_UNAVAILABLE'
+              report['settings_http_status']=statuses.get(settings_path)
+              try:
+                  report['module_identity']=module_identity(*client.request('/workers/scripts/'+name+'/content/v2',raw=True))
+              except Exception: report['module_identity']='UNAVAILABLE'
+              try:
+                  service=client.request('/workers/services/'+name)
+                  script=service['default_environment']['script']; tag=script.get('migration_tag')
+                  report['migration_tag']=tag if tag in ('recovery-v1','recovery-deleted-v1') else 'NONE' if tag is None else 'UNRECOGNIZED'
+                  report['service_created_in_window']=in_window(service.get('created_on')) or in_window(script.get('created_on'))
+              except Exception: report['migration_tag']='UNAVAILABLE'
+              logging_path='/workers/scripts/'+name+'/script-settings'
+              try:
+                  logging=client.request(logging_path)
+                  def boolean_state(value): return 'false' if value is False else 'true' if value is True else 'missing_or_other'
+                  obs=logging.get('observability') if isinstance(logging,dict) else None
+                  report.update(canonical_logging_dict=isinstance(logging,dict),
+                      canonical_observability_present=isinstance(logging,dict) and 'observability' in logging,
+                      canonical_observability_kind='object' if isinstance(obs,dict) else 'null' if obs is None else 'other',
+                      canonical_enabled_present=isinstance(obs,dict) and 'enabled' in obs,
+                      canonical_enabled_state=boolean_state(obs.get('enabled') if isinstance(obs,dict) else None),
+                      canonical_logpush_present=isinstance(logging,dict) and 'logpush' in logging,
+                      canonical_logpush_state=boolean_state(logging.get('logpush') if isinstance(logging,dict) else None),
+                      native_logging_predicate=isinstance(logging,dict) and isinstance(obs,dict) and obs.get('enabled') is False and logging.get('logpush') is False)
+              except Exception: report['canonical_logging_result']='UNAVAILABLE'
+              report['canonical_logging_http_status']=statuses.get(logging_path)
+              emit('candidate_detail', **report)
+          # Namespace inventory is read-only and bounded to three pages. Only exact
+          # candidate script/class rows are retained/output; no object contents or IDs.
+          try:
+              all_rows=[]; complete=False; prior_ids=set()
+              for page,path in enumerate(namespace_paths,1):
+                  envelope=client.request(path,envelope=True); rows=envelope['result']; info=envelope.get('result_info') or {}
+                  if not isinstance(rows,list) or len(rows)>1000 or not isinstance(info,dict): raise ValueError()
+                  if any(not isinstance(r,dict) or not isinstance(r.get('id'),str) or r['id'] in prior_ids for r in rows): raise ValueError()
+                  if len({r['id'] for r in rows})!=len(rows): raise ValueError()
+                  prior_ids.update(r['id'] for r in rows); all_rows.extend(rows)
+                  # Official SDK page-array pagination stops on an empty page,
+                  # not a short page or mandatory optional result_info fields.
+                  if 'page' in info and (type(info['page']) is not int or info['page'] != page): raise ValueError()
+                  if 'count' in info and (type(info['count']) is not int or info['count'] != len(rows)): raise ValueError()
+                  if 'total_count' in info and (type(info['total_count']) is not int or info['total_count'] < len(all_rows)):
+                      raise ValueError()
+                  if not rows:
+                      if 'total_count' in info and info['total_count'] != len(all_rows): raise ValueError()
+                      complete=True; break
+              matches=[]
+              for row in all_rows:
+                  name=row.get('script')
+                  if name not in names: continue
+                  if row.get('class')!=names[name] or not re.fullmatch('[a-f0-9]{32}',row['id']): raise ValueError()
+                  matches.append({'name':name,'namespace_id':row['id'],'class_exact':True,'sqlite':row.get('use_sqlite') is True,
+                                  'matches_settings':observed_ids.get(name)==row['id']})
+              if len(matches)>2 or len({r['name'] for r in matches})!=len(matches): raise ValueError()
+              emit('namespace_inventory', complete=complete, candidates=matches,
+                   observed_settings_ids_absent=complete and bool(observed_ids) and all(i not in prior_ids for i in observed_ids.values()), result='READ_ONLY')
+          except Exception: emit('namespace_inventory',result='UNAVAILABLE_OR_AMBIGUOUS')
+          # Exactly one R2 bucket metadata read (conservatively one Class B), no object
+          # list/body. This is original-operation diagnosis, not another recovery attempt.
+          try:
+              value=client.request('/r2/buckets/'+bucket,absent=True)
+              emit('temporary_bucket', name=bucket, state=('ABSENT' if statuses.get('/r2/buckets/'+bucket)==404 else 'UNVERIFIED_NULL') if value is None else 'PRESENT',
+                   http_status=statuses.get('/r2/buckets/'+bucket),
+                   identity_exact=value is not None and value.get('name')==bucket,
+                   created_in_window=value is not None and in_window(value.get('creation_date')),
+                   standard=value is not None and value.get('storage_class')=='Standard')
+          except Exception: emit('temporary_bucket',result='UNAVAILABLE')
+          try:
+              value=client.request(production+'/deployments?page=1&per_page=100'); rows=value['deployments']
+              if not isinstance(rows,list) or not rows or len(rows)>100: raise ValueError()
+              versions=rows[0]['versions']
+              if not isinstance(versions,list) or len(versions)!=1 or versions[0].get('percentage')!=100: raise ValueError()
+              version=versions[0]['version_id']
+              if not isinstance(version,str) or not re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',version): raise ValueError()
+              path=production+'/versions/'+version; allowed.add(path)
+              detail=client.request(path); message=detail.get('annotations',{}).get('workers/message')
+              source=('BASELINE_081' if message=='scry-rust 62a7716e6f619c10fbda60630d86461ede33d8b7' else
+                      'CANDIDATE_094' if message=='scry-rust 848ef0e51ccc4b4b0fce018ccc757a2d908d9354' else 'UNRECOGNIZED')
+              modules=module_identity(*client.request(production+'/content/v2',raw=True))
+              emit('production_identity',single_100_percent=True,source=source,module_identity=modules,
+                   source_modules_agree=source==modules and source in ('BASELINE_081','CANDIDATE_094'))
+          except Exception: emit('production_identity',result='UNAVAILABLE_OR_AMBIGUOUS')
+          emit('scope',requests=len(visited),maximum_requests=16,maximum_r2_class_b=1,
+               original_run=40738221038,result='READ_ONLY_NO_INVOCATION_NO_CLEANUP_NO_NEW_OPERATION')
+          PY
