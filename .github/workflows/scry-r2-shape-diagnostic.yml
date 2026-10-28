@@ -1,0 +1,165 @@
+name: scry R2 first-page shape (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-r2-metadata-shape-20261028-0425]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-r2-metadata-shape-20261028-0425' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 6c7404a9ce65265d61401412c90a2bf77c03dacb
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /deploy/rust-production.toml
+            /deploy/cloud-recovery-approval.json
+      - name: Classify one fixed metadata page without reading archive bodies
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, sys, time, tomllib, urllib.error, urllib.parse
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T05:15:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-r2-metadata-shape-20261028-0425'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('R2_SHAPE_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '9b2e65588ccf7fa58967d280a482956ed79d83930906aed105ca8997544e7c4d',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'deploy/cloud-recovery-approval.json': '2d181429b18125458c42a8245dc574ec53fc2c44740981bfb11325fad938e4b9',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+              config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+              approval = json.loads(Path('deploy/cloud-recovery-approval.json').read_text())
+              if not (approval['approval_id'] == '7247026fcf4a1f4c01de16fa9ab5f865'
+                      and approval['one_time_cents'] == 2000
+                      and approval['expires_ms'] == 1793166300000
+                      and expiry * 1000 < approval['expires_ms']):
+                  raise ValueError()
+          except Exception:
+              raise SystemExit('R2_SHAPE_SOURCE_REFUSED') from None
+          spec = importlib.util.spec_from_file_location('backup', Path('scripts/scry-cloud-backup.py'))
+          backup = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(backup)
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('R2_SHAPE_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 2
+          bucket = next(b['bucket_name'] for b in config['r2_buckets'] if b['binding'] == 'SCRY_BACKUPS')
+          prefix = 'snapshots/' + config['vars']['SPACE_NAME'] + '/'
+          path = '/r2/buckets/' + bucket + '/objects?' + urllib.parse.urlencode({'per_page': 1000, 'prefix': prefix})
+          account = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
+          expected = [(account + '/tokens/verify', 'GET', None), (account + path, 'GET', None)]
+          # Same partially started operation: prior 2 Class A / 2 Class B;
+          # this probe adds ONE Class A; existing cleanup adds at most 3 Class B.
+          # <=3 A / 5 B and <1 KiB claim storage remain within one verified period
+          # and the existing $20 envelope. This does not admit or repeat a drill.
+          native_open, calls = client.open, 0
+          statuses = {}
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 2
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('R2_SHAPE_REQUEST_SCOPE_REFUSED')
+              try:
+                  response = native_open(request, timeout=timeout)
+                  statuses[calls] = response.status
+                  return response
+              except urllib.error.HTTPError as error:
+                  statuses[calls] = error.code
+                  raise
+          client.open = bounded_open
+          try:
+              identity = client.request('/tokens/verify')
+              token_id = identity.get('id') if isinstance(identity, dict) else None
+              if not (isinstance(token_id, str) and re.fullmatch('[a-f0-9]{32}', token_id)
+                      and identity.get('status') == 'active'
+                      and hashlib.sha256(token_id.encode('ascii')).hexdigest() == '8b2235f2ef436ce446deefc077620c6be3619ca25c33f58ee606abd2c185dc52'):
+                  raise ValueError()
+              print('TOKEN_IDENTITY_PASS')
+          except Exception:
+              print('R2_SHAPE_TOKEN_IDENTITY_FAILED')
+              sys.exit(1)
+          missing = object()
+          def kind(value):
+              return ('missing' if value is missing else 'null' if value is None else
+                      {dict: 'object', list: 'array', str: 'string', bool: 'boolean', int: 'integer', float: 'number'}.get(type(value), 'other'))
+          result = {'stage': 'r2_first_page_shape'}
+          try:
+              body = client.request(path, envelope=True)
+              rows, info = body.get('result', missing), body.get('result_info', missing)
+              result.update(result_type=kind(rows), result_info_type=kind(info), errors_empty=body.get('errors') == [])
+              if isinstance(info, dict):
+                  flag, cursor = info.get('is_truncated', missing), info.get('cursor', missing)
+                  result.update(is_truncated_type=kind(flag), cursor_type=kind(cursor),
+                      is_truncated_state='true' if flag is True else 'false' if flag is False else 'unavailable',
+                      cursor_state='empty' if cursor == '' else 'nonempty' if isinstance(cursor, str) else 'unavailable',
+                      per_page_type=kind(info.get('per_page', missing)), delimited_type=kind(info.get('delimited', missing)))
+                  delimited = info.get('delimited')
+                  if isinstance(delimited, list):
+                      result['delimited_count_within_1000'] = len(delimited) <= 1000
+                      if len(delimited) <= 1000:
+                          result['delimited_count'] = len(delimited)
+              if not isinstance(rows, list) or len(rows) > 1000:
+                  raise ValueError()
+              result['row_count'] = len(rows)
+              counts = {k: 0 for k in ('object_rows', 'prefix_valid', 'unique_key', 'size_positive_integer',
+                  'size_within_1mib', 'size_within_16mib', 'standard_storage', 'etag_present',
+                  'timestamp_valid', 'timestamp_not_future', 'retention_window_safe')}
+              seen, now = set(), datetime.now(timezone.utc)
+              for row in rows:
+                  if not isinstance(row, dict):
+                      continue
+                  counts['object_rows'] += 1
+                  key, size = row.get('key'), row.get('size')
+                  counts['prefix_valid'] += isinstance(key, str) and key.startswith(prefix)
+                  counts['unique_key'] += isinstance(key, str) and key not in seen
+                  if isinstance(key, str):
+                      seen.add(key)
+                  valid_size = type(size) is int and size > 0
+                  counts['size_positive_integer'] += valid_size
+                  counts['size_within_1mib'] += valid_size and size <= 1024 * 1024
+                  counts['size_within_16mib'] += valid_size and size <= backup.MAX_ARCHIVE
+                  counts['standard_storage'] += row.get('storage_class') == 'Standard'
+                  counts['etag_present'] += isinstance(row.get('etag'), str) and bool(row['etag'])
+                  try:
+                      uploaded = backup.stamp(row.get('last_modified'))
+                  except Exception:
+                      continue
+                  counts['timestamp_valid'] += 1
+                  counts['timestamp_not_future'] += uploaded <= now
+                  counts['retention_window_safe'] += uploaded > now + backup.WINDOW - timedelta(days=30)
+              result['predicate_totals'] = counts
+              result['result'] = 'SHAPE_OBSERVED_NOT_COMPLETENESS_PROOF'
+          except Exception:
+              result['result'] = 'R2_SHAPE_UNAVAILABLE'
+          result['http_status'] = statuses.get(2)
+          print(json.dumps(result, sort_keys=True))
+          print('READ_ONLY_FIRST_PAGE_COMPLETE_NO_DRILL_OR_CLAIM_CHANGE')
+          PY
