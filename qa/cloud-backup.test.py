@@ -137,6 +137,18 @@ class CloudBackup(unittest.TestCase):
         with self.assertRaisesRegex(BACKUP.GateError, 'source is not reviewed'):
             BACKUP.require_backup_contract('a' * 40)
 
+    def test_transport_requires_exact_requested_http_status(self):
+        client=BACKUP.Cloudflare('a'*32,'synthetic-only')
+        class Response:
+            status=201
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self,size):return b'{"success":true,"result":{"observability":null,"logpush":false}}'
+        with mock.patch.object(client,'open',return_value=Response()):
+            with self.assertRaises(BACKUP.GateError):client.request('/workers/scripts/synthetic/script-settings',expected_status=200)
+            Response.status=200
+            self.assertIsNone(client.request('/workers/scripts/synthetic/script-settings',expected_status=200)['observability'])
+
     def test_transport_allows_only_content_free_claim_and_owned_temporary_object_deletion(self):
         client = BACKUP.Cloudflare('a' * 32, 'synthetic-only')
         claim = '/r2/buckets/private-backups/objects/operations/recovery-claims/' + 'a' * 32 + '.json'

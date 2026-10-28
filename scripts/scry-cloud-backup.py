@@ -181,7 +181,7 @@ class Cloudflare:
         self.claim_path = path
 
     def request(self, path, *, method='GET', payload=None, body=None, headers=None,
-                envelope=False, raw=False, graphql=False, absent=False):
+                envelope=False, raw=False, graphql=False, absent=False, expected_status=None):
         self.calls += 1
         require(self.calls <= self.limit, 'cloud control-plane request budget exhausted')
         require(path.startswith('/'), 'invalid control-plane path')
@@ -199,6 +199,7 @@ class Cloudflare:
                                      headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json', **extra})
         try:
             with self.open(req, timeout=30) as response:
+                require(expected_status is None or response.status == expected_status, 'cloud control-plane response status unverified')
                 limit = 1024 if path == self.claim_path else 24 * 1024 * 1024 if raw else 4 * 1024 * 1024
                 body = response.read(limit + 1)
                 require(len(body) <= limit, 'provider response exceeded bounded read')
