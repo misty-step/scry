@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/misty-step/scry/compare/v0.9.0...v0.9.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* refresh unused cloud recovery operation binding ([#415](https://github.com/misty-step/scry/issues/415)) ([0794881](https://github.com/misty-step/scry/commit/0794881601b41da5345a30112e345f3bfb1b0fc6))
+
 ## [0.9.0](https://github.com/misty-step/scry/compare/v0.8.1...v0.9.0) (2026-10-27)
 
 
