@@ -1,0 +1,85 @@
+name: scry token diagnostic (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-token-diagnostic-20261027-2351]
+
+permissions: {}
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-token-diagnostic-20261027-2351' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Identify existing token and billing response without sensitive output
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, time
+          import urllib.error, urllib.request
+          from datetime import datetime
+
+          expiry = datetime.fromisoformat('2026-10-28T01:00:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-token-diagnostic-20261027-2351'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('DIAGNOSTIC_ADMISSION_REFUSED')
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('DIAGNOSTIC_SECRET_UNAVAILABLE')
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+
+          opener = urllib.request.build_opener(NoRedirect())
+          # This account identifier is already public in deploy/rust-production.toml.
+          account = 'b069014f6a46558ea9146fb6c4ff8f6c'
+          endpoints = (
+              ('account_token', '/accounts/' + account + '/tokens/verify'),
+              ('user_token', '/user/tokens/verify'),
+              ('billing', '/accounts/' + account + '/subscriptions'),
+          )
+          for kind, path in endpoints:
+              if time.time() >= expiry:
+                  raise SystemExit('DIAGNOSTIC_EXPIRED')
+              result = {'endpoint': kind}
+              try:
+                  request = urllib.request.Request('https://api.cloudflare.com/client/v4' + path,
+                      method='GET', headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
+                  try:
+                      response = opener.open(request, timeout=15)
+                  except urllib.error.HTTPError as error:
+                      response = error
+                  with response:
+                      result['http_status'] = response.code
+                      raw = response.read(65537)
+                  if len(raw) > 65536:
+                      result['result'] = 'BODY_LIMIT'
+                  else:
+                      body = json.loads(raw)
+                      errors = body.get('errors', []) if isinstance(body, dict) else []
+                      result['error_codes'] = [e['code'] for e in errors[:10]
+                          if isinstance(e, dict) and type(e.get('code')) is int and 0 <= e['code'] <= 1000000000] if isinstance(errors, list) else []
+                      if kind != 'billing' and result['http_status'] == 200 and isinstance(body, dict) and body.get('success') is True:
+                          value = body.get('result')
+                          if isinstance(value, dict) and isinstance(value.get('id'), str) and re.fullmatch('[a-f0-9]{32}', value['id']) and value.get('status') in ('active', 'disabled', 'expired'):
+                              result['token_id_sha256'] = hashlib.sha256(value['id'].encode('ascii')).hexdigest()
+                              result['token_status'] = value['status']
+                          else:
+                              result['result'] = 'INVALID_IDENTITY_RESPONSE'
+              except Exception:
+                  result['result'] = 'TRANSPORT_OR_PARSE_FAILURE'
+              print(json.dumps(result, sort_keys=True))
+          PY
