@@ -1,0 +1,162 @@
+name: scry backup activity observation (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-backup-activity-20261028-0815]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-backup-activity-20261028-0815' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dd55c81a3eb2e3843e63169df887bbba62b28055
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /deploy/rust-production.toml
+            /deploy/cloud-recovery-approval.json
+      - name: Read fixed backup metadata and dataset availability
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, time, tomllib, urllib.error, urllib.parse
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T08:40:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-backup-activity-20261028-0815'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('BACKUP_ACTIVITY_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '3c03741daf840fe96aba2f467243c3c5f721fdaa09cadf8972d4f966d2955757',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'deploy/cloud-recovery-approval.json': 'd12b5a5effaa6b4ca1a03e6ab30068160cd8ac7a7b0c00cb2bd4b8e964aa5009',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+              config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+              approval = json.loads(Path('deploy/cloud-recovery-approval.json').read_text())
+              if not (approval['approval_id'] == '7247026fcf4a1f4c01de16fa9ab5f865'
+                      and approval['one_time_cents'] == 2000
+                      and approval['accounting_started_ms'] == 1793160106000
+                      and approval['expires_ms'] == 1793177100000
+                      and expiry * 1000 < approval['expires_ms']):
+                  raise ValueError()
+          except Exception:
+              raise SystemExit('BACKUP_ACTIVITY_SOURCE_REFUSED') from None
+          spec = importlib.util.spec_from_file_location('backup', Path('scripts/scry-cloud-backup.py'))
+          backup = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(backup)
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('BACKUP_ACTIVITY_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 2
+          bucket = next(b['bucket_name'] for b in config['r2_buckets'] if b['binding'] == 'SCRY_BACKUPS')
+          prefix = 'snapshots/' + config['vars']['SPACE_NAME'] + '/'
+          path = '/r2/buckets/' + bucket + '/objects?' + urllib.parse.urlencode({'per_page': 1000, 'prefix': prefix})
+          query = ('query {viewer{accounts(filter:{accountTag:' + json.dumps(config['account_id'])
+                   + '}){settings{workersInvocationsScheduled{enabled}}}}}')
+          account = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
+          expected = [(account + path, 'GET', None),
+                      ('https://api.cloudflare.com/client/v4/graphql', 'POST', json.dumps({'query': query}).encode())]
+          # Same partially started operation: one additional Class A metadata read,
+          # no archive-body read, backup invocation, resource, or restore attempt.
+          # Prior partial/probe plus at most one scheduled backup and this read remain
+          # under the reviewed cumulative R2 A<1000 / B<300000 single-period bounds.
+          native_open, calls, statuses = client.open, 0, {}
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 2
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('BACKUP_ACTIVITY_REQUEST_SCOPE_REFUSED')
+              try:
+                  response = native_open(request, timeout=timeout)
+                  statuses[calls] = response.status
+                  return response
+              except urllib.error.HTTPError as error:
+                  statuses[calls] = error.code
+                  raise
+          client.open = bounded_open
+          # These public job-log boundaries classify observation only. Exact owned-slot
+          # receipt is awaited from cleanup; this does not assert exact scheduled_at.
+          started = datetime(2026, 10, 28, 6, 48, 8, tzinfo=timezone.utc)
+          expected_slot = datetime(2026, 10, 28, 7, 8, tzinfo=timezone.utc)
+          failed = datetime(2026, 10, 28, 7, 43, 32, tzinfo=timezone.utc)
+          result = {'stage': 'backup_metadata_activity'}
+          try:
+              body = client.request(path, envelope=True)
+              rows, info = body.get('result'), body.get('result_info')
+              if info is None:
+                  info = {}
+              if not isinstance(info, dict) or not isinstance(rows, list) or len(rows) > 1000:
+                  raise ValueError()
+              cursor = info.get('cursor')
+              if cursor is not None and not isinstance(cursor, str):
+                  raise ValueError()
+              if 'is_truncated' in info and (type(info['is_truncated']) is not bool or info['is_truncated'] != bool(cursor)):
+                  raise ValueError()
+              result.update(row_count=len(rows), complete_page=not bool(cursor))
+              counts = {k: 0 for k in ('valid_rows', 'size_within_1mib', 'size_within_16mib',
+                  'before_run', 'run_before_expected_slot', 'expected_slot_through_failure', 'after_failure')}
+              now, seen = datetime.now(timezone.utc), set()
+              for row in rows:
+                  try:
+                      backup.validate_objects([row], prefix, now)
+                      key = row['key']
+                      if key in seen:
+                          raise ValueError()
+                      seen.add(key)
+                      uploaded = backup.stamp(row['last_modified'])
+                      counts['valid_rows'] += 1
+                      counts['size_within_1mib'] += row['size'] <= 1024 * 1024
+                      counts['size_within_16mib'] += row['size'] <= 16 * 1024 * 1024
+                      band = ('before_run' if uploaded < started else 'run_before_expected_slot' if uploaded < expected_slot
+                              else 'expected_slot_through_failure' if uploaded <= failed else 'after_failure')
+                      counts[band] += 1
+                  except Exception:
+                      pass
+              result['predicate_totals'] = counts
+              result['valid_upload_at_or_after_run'] = sum(counts[k] for k in
+                  ('run_before_expected_slot', 'expected_slot_through_failure', 'after_failure')) > 0
+              result['result'] = 'METADATA_ACTIVITY_ONLY_NOT_INTEGRITY_OR_ALARM_PROOF'
+          except Exception:
+              result['result'] = 'BACKUP_METADATA_UNAVAILABLE'
+          result['http_status'] = statuses.get(1)
+          print(json.dumps(result, sort_keys=True))
+          result = {'stage': 'cron_dataset_availability'}
+          try:
+              body = client.graphql(query)
+              accounts = (body.get('data') or {}).get('viewer', {}).get('accounts')
+              if body.get('errors') or not isinstance(accounts, list) or len(accounts) != 1:
+                  raise ValueError()
+              enabled = accounts[0]['settings']['workersInvocationsScheduled']['enabled']
+              if type(enabled) is not bool:
+                  raise ValueError()
+              result.update(enabled=enabled, result='DATASET_AVAILABILITY_ONLY_NOT_EVENT_COMPLETENESS_PROOF')
+          except Exception:
+              result['result'] = 'CRON_DATASET_AVAILABILITY_UNAVAILABLE'
+          result['http_status'] = statuses.get(2)
+          print(json.dumps(result, sort_keys=True))
+          print('TWO_READS_ONE_R2_CLASS_A_NO_OPERATION_CHANGE')
+          PY
