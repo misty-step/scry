@@ -1,0 +1,176 @@
+name: scry Cron observation (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-cron-observation-20261028-0755]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-cron-observation-20261028-0755' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: dd55c81a3eb2e3843e63169df887bbba62b28055
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /deploy/rust-production.toml
+      - name: Read existing schedules and sanitized Cron event predicates
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, time, tomllib, urllib.error
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T08:20:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-cron-observation-20261028-0755'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('CRON_OBSERVATION_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '3c03741daf840fe96aba2f467243c3c5f721fdaa09cadf8972d4f966d2955757',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+              config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          except Exception:
+              raise SystemExit('CRON_OBSERVATION_SOURCE_REFUSED') from None
+          spec = importlib.util.spec_from_file_location('backup', Path('scripts/scry-cloud-backup.py'))
+          backup = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(backup)
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('CRON_OBSERVATION_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 2
+          path = '/workers/scripts/' + config['name'] + '/schedules'
+          start = datetime(2026, 10, 28, tzinfo=timezone.utc)
+          end = start + timedelta(days=1)
+          query = backup.events_query(config['account_id'], config['name'], start, end)
+          query = query.replace('query {', 'query {row:__type(name:"AccountWorkersInvocationsScheduled"){fields{name description type{kind name ofType{kind name}}}} ', 1)
+          account = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
+          expected = [(account + path, 'GET', None),
+                      ('https://api.cloudflare.com/client/v4/graphql', 'POST', json.dumps({'query': query}).encode())]
+          # Two existing-token control-plane observations only. No R2, Worker
+          # invocation, writes, keys, grant renewal or additional recovery run.
+          native_open, calls, statuses = client.open, 0, {}
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 2
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('CRON_OBSERVATION_REQUEST_SCOPE_REFUSED')
+              try:
+                  response = native_open(request, timeout=timeout)
+                  statuses[calls] = response.status
+                  return response
+              except urllib.error.HTTPError as error:
+                  statuses[calls] = error.code
+                  raise
+          client.open = bounded_open
+          missing = object()
+          def kind(value):
+              return ('missing' if value is missing else 'null' if value is None else
+                      {dict:'object', list:'array', str:'string', bool:'boolean', int:'integer', float:'number'}.get(type(value), 'other'))
+          def digest(value):
+              return hashlib.sha256(json.dumps(value, separators=(',', ':')).encode()).hexdigest()
+          def annual(cron):
+              return isinstance(cron, str) and re.fullmatch(r'[0-9]{1,2} [0-9]{1,2} [0-9]{1,2} [0-9]{1,2} \*', cron) is not None
+          result = {'stage': 'existing_schedule_observation'}
+          try:
+              schedules = client.request(path)['schedules']
+              if not isinstance(schedules, list) or len(schedules) > 3:
+                  raise ValueError()
+              result.update(count=len(schedules), empty=schedules == [],
+                  annual_slot_count=sum(isinstance(s, dict) and annual(s.get('cron')) for s in schedules),
+                  cron_digests=[digest(s['cron']) for s in schedules if isinstance(s, dict) and annual(s.get('cron'))],
+                  result='OBSERVED_NOT_MUTATED')
+          except Exception:
+              result['result'] = 'CRON_SCHEDULE_OBSERVATION_UNAVAILABLE'
+          result['http_status'] = statuses.get(1)
+          print(json.dumps(result, sort_keys=True))
+          # Preserve case and enum distinctions, but never echo arbitrary strings.
+          known = {'success','Success','SUCCESS','ok','Ok','OK','succeeded','Succeeded',
+                   'exception','canceled','cancelled','exceededCpu','exceededMemory','internalError',
+                   'resourceLimit','scriptNotFound','unknown','failure','failed','error','aborted','running'}
+          def status(value):
+              if isinstance(value, str) and value in known:
+                  return value
+              if type(value) is int and 0 <= value <= 16:
+                  return value
+              return 'UNRECOGNIZED_' + kind(value).upper()
+          result = {'stage': 'cron_event_observation'}
+          try:
+              body = client.graphql(query)
+              if not isinstance(body, dict) or body.get('errors'):
+                  raise ValueError()
+              data = body['data']; fields = (data.get('row') or {}).get('fields')
+              if not isinstance(fields, list) or len(fields) > 100:
+                  raise ValueError()
+              schema = {}
+              for f in fields:
+                  if not isinstance(f, dict) or f.get('name') not in backup.EVENT_FIELDS:
+                      continue
+                  t = f.get('type') or {}; t = t.get('ofType') if t.get('kind') == 'NON_NULL' else t
+                  name = t.get('name') if isinstance(t, dict) else None
+                  description = f.get('description')
+                  schema[f['name']] = {'type': name if name in ('String','DateTime','Time','Date','Int','Float','Boolean','ID','UInt8','UInt16','UInt32','UInt64','Int64') else 'UNRECOGNIZED',
+                      'description_mentions_success': isinstance(description, str) and 'success' in description.lower(),
+                      'description_mentions_ok': isinstance(description, str) and re.search(r'\bok\b', description.lower()) is not None}
+              result['schema'] = schema
+              accounts = data['viewer']['accounts']
+              if not isinstance(accounts, list) or len(accounts) != 1:
+                  raise ValueError()
+              rows = accounts[0]['workersInvocationsScheduled']
+              if not isinstance(rows, list) or len(rows) > 100:
+                  raise ValueError()
+              result.update(row_count=len(rows), at_limit=len(rows) == 100)
+              vectors = []
+              for row in rows:
+                  if not isinstance(row, dict):
+                      vectors.append({'valid_row':False}); continue
+                  v = {'valid_row':backup.EVENT_FIELDS <= row.keys(), 'worker_exact':row.get('scriptName') == config['name'],
+                       'status_type':kind(row.get('status', missing)), 'status_enum':status(row.get('status', missing)),
+                       'annual_cron':annual(row.get('cron')), 'datetime_type':kind(row.get('datetime', missing)),
+                       'scheduled_datetime_type':kind(row.get('scheduledDatetime', missing))}
+                  try:
+                      scheduled, completed = backup.stamp(row.get('scheduledDatetime')), backup.stamp(row.get('datetime'))
+                      cron = f'{scheduled.minute} {scheduled.hour} {scheduled.day} {scheduled.month} *'
+                      v.update(timestamps_valid=True, scheduled_in_query_day=start <= scheduled < end,
+                          scheduled_in_operation_window=start + timedelta(hours=6, minutes=48) <= scheduled <= start + timedelta(hours=7, minutes=44),
+                          datetime_before_scheduled=completed < scheduled,
+                          gate_completion_window=scheduled <= completed <= scheduled + backup.WINDOW,
+                          cron_matches_scheduled=row.get('cron') == cron)
+                      if v['worker_exact'] and v['annual_cron']:
+                          # Compare with the owned intent after its native artifact
+                          # is uploaded; no operational timestamps/cron strings leak.
+                          v['slot_sha256'] = digest([config['name'], row['cron'], backup.iso(scheduled)])
+                  except Exception:
+                      v['timestamps_valid'] = False
+                  vectors.append(v)
+              result.update(events=vectors, result='OBSERVATION_ONLY_NOT_RECOVERY_OR_DEPLOYMENT_PROOF')
+          except Exception:
+              result['result'] = 'CRON_EVENT_OBSERVATION_UNAVAILABLE'
+          result['http_status'] = statuses.get(2)
+          print(json.dumps(result, sort_keys=True))
+          print('TWO_CONTROL_PLANE_READS_ONLY_NO_OPERATION_CHANGE')
+          PY
