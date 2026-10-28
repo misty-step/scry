@@ -320,8 +320,11 @@ its different entrypoint supplies only authenticated content-free size checks
 and bounded recovery admission, never a production wrapper. The bridge reads a
 size/ETag-pinned snapshot inside Cloudflare, restores once, takes one complete
 backup, and strictly compares application/photo data with only documented
-restore changes. Rehearsal admission is limited to **1 MiB and 1,000 recursive
-application entries**; this does not change the production archive format.
+restore changes. Rehearsal admission retains the native **16 MiB complete archive**
+envelope, including embedded photos, while independently limiting serialized
+**App state to 1 MiB and 1,000 recursive entries** in both bridge and target
+before native restore writes. Photo bodies go only to R2; the App/SQL storage
+bound is unchanged. This does not change the production archive format.
 Oversized data is a stop, not permission to raise the budget.
 
 Cost admission assumes an existing Workers Standard account, no new subscription
@@ -332,6 +335,8 @@ requests (5), CPU (30,000 ms per invocation), subrequests (100), and admission
 time (15 minutes). Already-admitted I/O can outlive capability expiry; the finite
 call count and 72-hour margin before the **verified actual account billing-period
 boundary** bound its compute billing. Calendar month-end is not that boundary.
+An explicitly reviewed continuation also pins its prior accounting start; the
+same verified period must cover that usage, not grant another rounded allowance.
 Missing billing read permission or ambiguous period metadata stops before the
 claim, billable listing or scheduling; no permission change is implied.
 No target/bridge alarm or Cron can continue after that drain. Failed cleanup

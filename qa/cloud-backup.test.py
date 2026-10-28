@@ -56,14 +56,42 @@ class CloudBackup(unittest.TestCase):
             return {'result': [obj(2)], 'result_info': {'is_truncated': False}}
         self.assertEqual(len(BACKUP.list_objects(request, 'bucket', 'snapshots/synthetic/', NOW)), 2)
         self.assertIn('cursor=next', calls[1])
-        for response in ({'result': [obj(1)]},
-                         {'result': [obj(1)], 'result_info': {'is_truncated': True}},
+        for response in ({'result': [obj(1)], 'result_info': {'is_truncated': True}},
                          {'result': [obj(1)], 'result_info': {'is_truncated': 'false'}}):
             with self.subTest(response=response), self.assertRaises(BACKUP.GateError):
                 BACKUP.list_objects(lambda *a, **k: response, 'bucket', 'snapshots/synthetic/', NOW)
         with self.assertRaisesRegex(BACKUP.GateError, 'pagination'):
             BACKUP.list_objects(lambda *a, **k: {'result': [], 'result_info': {'is_truncated': True, 'cursor': 'same'}},
                                 'bucket', 'snapshots/synthetic/', NOW)
+
+    def test_rest_listing_accepts_optional_metadata_and_follows_cursor_contract(self):
+        obj = lambda n: {'key': f'snapshots/synthetic/{n}', 'size': 10, 'etag': 'a' * 32,
+                         'last_modified': '2026-10-27T19:00:00Z', 'storage_class': 'Standard'}
+        for info in (None, {}, {'cursor': None}, {'cursor': ''}, {'is_truncated': False}):
+            response = {'result': [obj(1)], 'result_info': info}
+            with self.subTest(info=info):
+                self.assertEqual(BACKUP.list_objects(lambda *a, **k: response, 'bucket', 'snapshots/synthetic/', NOW), [obj(1)])
+        # Actual observed shape: the response omits result_info entirely.
+        self.assertEqual(BACKUP.list_objects(lambda *a, **k: {'result': [obj(1)]}, 'bucket', 'snapshots/synthetic/', NOW), [obj(1)])
+        pages = iter([{'result': [obj(1)], 'result_info': {'cursor': 'synthetic-next'}}, {'result': [obj(2)]}])
+        calls = []
+        def request(path, **kwargs):
+            calls.append(path)
+            return next(pages)
+        self.assertEqual(BACKUP.list_objects(request, 'bucket', 'snapshots/synthetic/', NOW), [obj(1), obj(2)])
+        self.assertIn('cursor=synthetic-next', calls[1])
+        for info in ([], 'invalid', {'cursor': 1}, {'is_truncated': None}, {'is_truncated': 'false'},
+                     {'is_truncated': True}, {'is_truncated': True, 'cursor': ''},
+                     {'is_truncated': False, 'cursor': 'contradiction'}):
+            with self.subTest(info=info), self.assertRaises(BACKUP.GateError):
+                BACKUP.list_objects(lambda *a, **k: {'result': [obj(1)], 'result_info': info}, 'bucket', 'snapshots/synthetic/', NOW)
+        calls = []
+        def endless(path, **kwargs):
+            calls.append(path)
+            return {'result': [obj(len(calls))], 'result_info': {'cursor': str(len(calls))}}
+        with self.assertRaisesRegex(BACKUP.GateError, 'bounded admission'):
+            BACKUP.list_objects(endless, 'bucket', 'snapshots/synthetic/', NOW)
+        self.assertEqual(len(calls), BACKUP.MAX_PAGES)
 
     def test_cron_event_is_actual_exact_slot_success_not_health_or_key_presence(self):
         cron, when = BACKUP.bootstrap_slot(NOW)

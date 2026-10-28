@@ -38,7 +38,8 @@ class RecoveryBlocked(RuntimeError):
 
 # These are reviewed bridge admission limits, not claims about a hosted run.
 BRIDGE_LIMITS = {
-    'archive_bytes': 1024 * 1024,
+    'archive_bytes': 16 * 1024 * 1024,
+    'application_bytes': 1024 * 1024,
     'photos': 32,
     'application_entries': 1_000,
     'capability_ms': 15 * 60 * 1000,
@@ -218,7 +219,12 @@ def require_billing_period(window, approval, *, now_ms=None, fresh=True):
          'RECOVERY_BILLING_PERIOD_REQUIRED')
     # Cover the entire remaining approval window plus bounded admitted-I/O
     # drain, rather than relying on an observation made shortly before renewal.
+    # A reviewed continuation must also include its prior partial usage in this
+    # same billing period. Missing accounting start is first-run compatibility.
+    accounting = approval.get('accounting_started_ms', window['checked_ms'])
     need(window['period_start_ms'] <= window['checked_ms'] <= now_ms < approval['expires_ms']
+         and type(accounting) is int and 0 < accounting
+         and window['period_start_ms'] <= accounting <= window['checked_ms']
          and window['period_end_ms'] > approval['expires_ms'] + DRAIN_MS
          and (not fresh or now_ms - window['checked_ms'] <= 5 * 60 * 1000),
          'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN')
@@ -468,8 +474,18 @@ class Drill:
                 base = '/r2/buckets/' + self.bucket['name']
                 need(self.call(base) == self.bucket, 'RECOVERY_CLEANUP_BUCKET_IDENTITY_CHANGED')
                 listing = self.call(base + '/objects?per_page=1000', envelope=True)
-                items, info = listing['result'], listing.get('result_info', {})
-                need(info.get('is_truncated') is False and len(items) <= 33, 'RECOVERY_CLEANUP_LIST_UNBOUNDED')
+                items, info = listing['result'], listing.get('result_info')
+                # Same REST cursor contract as the production metadata listing:
+                # absent metadata/cursor is terminal; a supplied flag must agree.
+                if info is None:
+                    info = {}
+                need(isinstance(info, dict), 'RECOVERY_CLEANUP_LIST_UNBOUNDED')
+                cursor = info.get('cursor')
+                need(cursor is None or isinstance(cursor, str), 'RECOVERY_CLEANUP_LIST_UNBOUNDED')
+                if 'is_truncated' in info:
+                    need(type(info['is_truncated']) is bool and info['is_truncated'] == bool(cursor),
+                         'RECOVERY_CLEANUP_LIST_UNBOUNDED')
+                need(not cursor and isinstance(items, list) and len(items) <= 33, 'RECOVERY_CLEANUP_LIST_UNBOUNDED')
                 for obj in items:
                     need(obj['key'].startswith(('photos/' + self.space + '/', 'snapshots/' + self.space + '/')),
                          'RECOVERY_CLEANUP_FOREIGN_OBJECT')

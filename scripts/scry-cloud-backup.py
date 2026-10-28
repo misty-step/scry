@@ -100,14 +100,24 @@ def list_objects(request, bucket, prefix, now):
         if cursor is not None:
             params['cursor'] = cursor
         body = request('/r2/buckets/' + bucket + '/objects?' + urllib.parse.urlencode(params), envelope=True)
-        info = body.get('result_info', {})
-        require(type(info.get('is_truncated')) is bool, 'backup pagination metadata missing')
+        # REST List Objects uses the SDK's cursor pagination contract: both
+        # result_info and is_truncated are optional, unlike Workers R2.list().
+        # https://github.com/cloudflare/cloudflare-python/blob/main/src/cloudflare/pagination.py
+        info = body.get('result_info')
+        if info is None:
+            info = {}
+        require(isinstance(info, dict), 'invalid backup pagination metadata')
+        next_cursor = info.get('cursor')
+        require(next_cursor is None or isinstance(next_cursor, str), 'invalid backup pagination cursor')
+        if 'is_truncated' in info:
+            require(type(info['is_truncated']) is bool
+                    and info['is_truncated'] == bool(next_cursor), 'contradictory backup pagination metadata')
         require(isinstance(body.get('result'), list), 'invalid backup listing')
         objects.extend(body['result'])
-        if not info['is_truncated']:
+        if not next_cursor:
             return validate_objects(objects, prefix, now)
-        cursor = info.get('cursor')
-        require(isinstance(cursor, str) and cursor and cursor not in cursors, 'ambiguous backup pagination')
+        cursor = next_cursor
+        require(cursor not in cursors, 'ambiguous backup pagination')
         cursors.add(cursor)
     raise GateError('backup pagination exceeds bounded admission')
 

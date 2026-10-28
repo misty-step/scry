@@ -187,6 +187,20 @@ test('complete photo bytes survive the actual native restore and backup', () => 
   const photo = {key: 'photos/synthetic-source/photo', mime: 'image/png', size: bytes.length, sha256: hash(bytes)};
   Object.values(archive.app.goals)[0].photo = photo; archive.photos = [{photo, bytes: bytes.toString('base64')}];
 }}));
+test('photo-dominated archive above 1 MiB preserves the independent small App SQL bound', () => fixture(async ({request, mf, bytes, archive}) => {
+  assert.ok(bytes.length > 1024 * 1024 && bytes.length <= 16 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(archive.app)) <= 1024 * 1024);
+  const result = await request(); assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.photos_full_bytes_verified, 1);
+  assert.ok(result.body.target_database_bytes < 32 * 1024 * 1024);
+  const objects = await (await mf.getR2Bucket('SCRY_ASSETS', 'target')).list();
+  assert.equal(objects.objects.length, 1); assert.equal(objects.objects[0].size, 4 * 1024 * 1024);
+}, {change: archive => {
+  const bytes = Buffer.alloc(4 * 1024 * 1024);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const photo = {key: 'photos/synthetic-source/large-photo', mime: 'image/png', size: bytes.length, sha256: hash(bytes)};
+  Object.values(archive.app.goals)[0].photo = photo; archive.photos = [{photo, bytes: bytes.toString('base64')}];
+}}));
 for (const [name, change] of [
   ['photo budget', a => {a.photos = Array.from({length: 33}, () => ({}));}],
   ['record budget', a => {a.app.unexpected = Array.from({length: 1001}, () => null);}],
@@ -233,15 +247,38 @@ test('isolated target exposes only authenticated bounded metadata and two one-sh
   assert.deepEqual(await rows(), saved);
 }));
 
-test('rehearsal-only object-key byte and archive byte caps refuse before native writes', async () => {
+test('rehearsal-only object-key, App and archive byte caps refuse before native writes', async () => {
   await fixture(async ({request, rows}) => {
     assert.deepEqual(await request(), {status: 503, body: {error: 'RECONCILIATION_FAILED'}});
     assert.deepEqual(await rows(), []);
   }, {change: a => {a.app['x'.repeat(257)] = null;}});
   await fixture(async ({request, rows}) => {
-    assert.deepEqual(await request(), {status: 403, body: {error: 'INVALID_PIN'}});
+    assert.deepEqual(await request(), {status: 503, body: {error: 'RECONCILIATION_FAILED'}});
     assert.deepEqual(await rows(), []);
   }, {change: a => {a.app.unexpected = 'x'.repeat(1024 * 1024);}});
+  await fixture(async ({request, rows}) => {
+    assert.deepEqual(await request(), {status: 403, body: {error: 'INVALID_PIN'}});
+    assert.deepEqual(await rows(), []);
+  }, {change: a => {a.photos = [{bytes: 'x'.repeat(16 * 1024 * 1024)}];}});
+});
+
+test('isolated adapter independently rejects oversized App and entry count before admission or native writes', async () => {
+  const code = readFileSync('recovery/target-adapter.mjs', 'utf8')
+    .replace("import {DurableObject} from 'cloudflare:workers';", 'class DurableObject {}')
+    .replace("import {LearningSpace as NativeLearningSpace} from './index.js';", 'class NativeLearningSpace {fetch() {globalThis.syntheticNativeCalls++; throw Error("native must not run");}}');
+  const {LearningSpace} = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
+  for (const app of [{payload: 'x'.repeat(1024 * 1024)}, {records: Array.from({length: 1001}, () => null)}]) {
+    let transactions = 0; globalThis.syntheticNativeCalls = 0;
+    const object = new LearningSpace({storage: {sql: {exec: () => ({toArray: () => [{page_size: 4096}]}), databaseSize: 4096},
+      transaction: () => {transactions++; throw Error('admission must not run');}}},
+    {SCRY_ENV: 'restore', INTERNAL_KEY: internalKey, TRANSFER_ISSUED_MS: String(Date.now() - 1000), TRANSFER_UNTIL_MS: String(Date.now() + 1000)});
+    const body = JSON.stringify({app, photos: []}); assert.ok(Buffer.byteLength(body) < 16 * 1024 * 1024);
+    const result = await object.fetch(new Request('https://private.invalid/operator/restore', {method: 'POST',
+      headers: {'x-scry-internal-key': internalKey}, body}));
+    assert.equal(result.status, 503); assert.deepEqual(await result.json(), {error: 'RECOVERY_FAILED'});
+    assert.equal(transactions, 0); assert.equal(globalThis.syntheticNativeCalls, 0); assert.equal(typeof object.alarm, 'undefined');
+  }
+  delete globalThis.syntheticNativeCalls;
 });
 
 test('adapter refuses unsupported page sizes and oversized storage before native writes', async () => {
@@ -267,6 +304,11 @@ test('rehearsal storage envelope covers every supported page size and obsolete m
   assert.match(persistence, /PAYLOAD_CHUNK_BYTES: usize = 64 \* 1024/);
   assert.match(native, /CREATE TABLE IF NOT EXISTS records \(key TEXT PRIMARY KEY, value TEXT NOT NULL\) WITHOUT ROWID/);
   const source = 1024 * 1024, entries = 1000;
+  for (const path of ['recovery/cloud-restore.mjs', 'recovery/target-adapter.mjs']) {
+    const code = readFileSync(path, 'utf8');
+    assert.match(code, /APP_LIMIT = 1024 \* 1024/);
+    assert.match(code, /new TextEncoder\(\)\.encode\(JSON\.stringify\(source\.app\)\)\.length <= APP_LIMIT/);
+  }
   // Partitions, not copies: first payload chunks consume existing field entries.
   const rows = entries + Math.ceil(source / (65536 - 3)) + 1;
   assert.equal(rows, 1018);
