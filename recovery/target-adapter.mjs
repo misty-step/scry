@@ -2,7 +2,8 @@
 // This wrapper never exposes native web routes, scheduled handlers or alarms.
 import {DurableObject} from 'cloudflare:workers';
 import {LearningSpace as NativeLearningSpace} from './index.js';
-const LIMIT = 1024 * 1024, WINDOW = 15 * 60_000, DATABASE_LIMIT = 32 * 1024 * 1024;
+const LIMIT = 16 * 1024 * 1024, APP_LIMIT = 1024 * 1024;
+const WINDOW = 15 * 60_000, DATABASE_LIMIT = 32 * 1024 * 1024;
 const reply = (value, status = 200) => Response.json(value, {status, headers: {'Cache-Control': 'private, no-store'}});
 const refuse = () => reply({error: 'RECOVERY_REFUSED'}, 403);
 export class LearningSpace extends DurableObject {
@@ -46,6 +47,8 @@ export class LearningSpace extends DurableObject {
         for (const chunk of chunks) {body.set(chunk, offset); offset += chunk.length;}
         const source = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(body));
         if (!Array.isArray(source.photos) || source.photos.length > 32) return refuse();
+        if (!(source.app && typeof source.app === 'object' && !Array.isArray(source.app) &&
+            new TextEncoder().encode(JSON.stringify(source.app)).length <= APP_LIMIT)) throw Error('STORAGE_BOUND');
         let count = 0;
         const visit = value => {
           if (!value || typeof value !== 'object') return;

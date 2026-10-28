@@ -1,6 +1,7 @@
 // Temporary, private-preview-only recovery gate. Never bind this to a public
 // route or production writer. Source bytes remain in Cloudflare throughout.
-const LIMIT = 1024 * 1024;
+const LIMIT = 16 * 1024 * 1024;
+const APP_LIMIT = 1024 * 1024;
 const MAX_PHOTOS = 32;
 const MAX_RECORDS = 1000;
 const WINDOW_MS = 15 * 60_000;
@@ -83,6 +84,10 @@ function fresh(bounds) {
 }
 function bounded(source) {
   require(Array.isArray(source.photos) && source.photos.length <= MAX_PHOTOS);
+  // Embedded photo bytes go to R2, never into App's SQLite records. Preserve
+  // the reviewed SQL bound independently of the native archive envelope.
+  require(source.app && typeof source.app === 'object' && !Array.isArray(source.app) &&
+    new TextEncoder().encode(JSON.stringify(source.app)).length <= APP_LIMIT);
   let count = 0;
   const visit = value => {
     require(!(typeof value === 'number' && Number.isInteger(value) && !Number.isSafeInteger(value)));

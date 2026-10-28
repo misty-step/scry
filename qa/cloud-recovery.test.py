@@ -225,6 +225,30 @@ class Recovery(unittest.TestCase):
             with self.assertRaises(R.RecoveryBlocked):R.admit(RECEIPT,approval=short)
             self.assertEqual(R.admit(RECEIPT,approval=short,starting=False),short)
 
+    def test_continuation_accounting_must_stay_in_the_verified_billing_period(self):
+        window=billing_period();a=approval()
+        # A first run remains compatible; a continuation charges prior usage
+        # in the SAME actual provider period, never a fresh rounded allowance.
+        R.require_billing_period(window,a)
+        for at in (window['period_start_ms'],window['checked_ms']-3600000,window['checked_ms']):
+            R.require_billing_period(window,a|{'accounting_started_ms':at})
+        for at in (window['period_start_ms']-1,window['checked_ms']+1,0,-1,True,None,'123',1.5):
+            with self.subTest(at=at),self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.require_billing_period(window,a|{'accounting_started_ms':at})
+        # A renewal between the prior phase and this continuation must fail
+        # even when the new period easily covers the new expiry and full drain.
+        at=window['checked_ms']-3600000
+        with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+            R.require_billing_period(window|{'period_start_ms':at+1},a|{'accounting_started_ms':at})
+
+    def test_cross_period_continuation_refuses_before_any_claim_request(self):
+        with mock.patch.dict(os.environ,ENV,clear=True):
+            window=billing_period();call=mock.Mock()
+            a=approval()|{'accounting_started_ms':window['period_start_ms']-1}
+            with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.claim(a,RECEIPT,call,'synthetic-private',billing_period=window)
+            call.assert_not_called()
+
     def test_missing_denied_ambiguous_or_incomplete_billing_refuses_before_claim(self):
         variants=[]
         for field,value in [('frequency','yearly'),('state','Trial'),('currency','EUR'),
@@ -290,6 +314,30 @@ class Recovery(unittest.TestCase):
         self.assertFalse(any('/source-private/objects/' in p for p,m,k in cloud.calls))
         self.assertFalse(any(m=='POST' and p.endswith('/subdomain') for p,m,k in cloud.calls))
 
+    def test_cleanup_rest_listing_uses_optional_cursor_metadata_not_required_flag(self):
+        for info in ('missing', None, {}, {'cursor': None}, {'cursor': ''}, {'is_truncated': False}):
+            class CursorCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    if path.endswith('/objects?per_page=1000'):
+                        return {'result': []} if info == 'missing' else {'result': [], 'result_info': info}
+                    return super().__call__(path, method=method, **kw)
+            cloud = CursorCloud()
+            with self.subTest(info=info):
+                self.assertTrue(self.run_fixture(cloud)['cleanup_verified'])
+                self.assertFalse(cloud.buckets or cloud.scripts or cloud.namespaces)
+        for info in ([], 'invalid', {'cursor': 1}, {'cursor': 'more'}, {'is_truncated': None},
+                     {'is_truncated': True}, {'is_truncated': 'false'},
+                     {'is_truncated': False, 'cursor': 'contradiction'}):
+            class UnboundedCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    if path.endswith('/objects?per_page=1000'):
+                        return {'result': [], 'result_info': info}
+                    return super().__call__(path, method=method, **kw)
+            cloud = UnboundedCloud()
+            with self.subTest(info=info), self.assertRaisesRegex(R.RecoveryBlocked, 'RECOVERY_CLEANUP_FAILED'):
+                self.run_fixture(cloud)
+            self.assertEqual(len(cloud.buckets), 1)
+
     def test_oversize_or_invalid_page_proof_never_releases_and_still_cleans(self):
         for field, value in [('target_database_bytes', 32*1024*1024+1), ('target_page_size', 8192)]:
             cloud=Cloud(); original=cloud.external
@@ -314,8 +362,8 @@ class Recovery(unittest.TestCase):
         cloud=Cloud()
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True),mock.patch.object(R.secrets,'token_hex') as keys:
             root=Path(d);artifact(root)
-            with self.assertRaisesRegex(R.RecoveryBlocked, 'ARCHIVE_BYTES_EXCEED_LIMIT size=1048577 limit=1048576'):
-                R.run(CONFIG,root,PIN|{'size':1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
+            with self.assertRaisesRegex(R.RecoveryBlocked, 'ARCHIVE_BYTES_EXCEED_LIMIT size=16777217 limit=16777216'):
+                R.run(CONFIG,root,PIN|{'size':16*1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
             keys.assert_not_called();self.assertEqual(cloud.calls,[])
 
     def test_malformed_etag_refuses_before_cloud_or_credential_generation(self):
