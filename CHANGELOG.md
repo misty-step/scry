@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/misty-step/scry/compare/v0.9.3...v0.9.4) (2026-10-28)
+
+
+### Bug Fixes
+
+* verify recovery settings and cleanup against provider contracts ([#422](https://github.com/misty-step/scry/issues/422)) ([604f779](https://github.com/misty-step/scry/commit/604f779131ca3a8a65d8b758955aeacc88a1aa8a))
+
 ## [0.9.3](https://github.com/misty-step/scry/compare/v0.9.2...v0.9.3) (2026-10-28)
 
 
