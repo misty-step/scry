@@ -61,6 +61,16 @@ class Cloud:
         if self.fail: self.fail(path, method, kw)
         if path.startswith('/workers/domains?'): return []
         if path == '/workers/subdomain': return {'subdomain': 'synthetic-existing'}
+        if path.startswith('/workers/durable_objects/namespaces?'):
+            rows={}
+            for name,current in self.scripts.items():
+                for binding in current['settings']['bindings']:
+                    identity=binding.get('namespace_id')
+                    if identity in self.namespaces:
+                        rows[identity]={'id':identity,'script':binding.get('script_name',name),'class':binding['class_name']}
+            page=int(R.urllib.parse.parse_qs(R.urllib.parse.urlsplit(path).query)['page'][0]);values=list(rows.values())
+            part=values[(page-1)*1000:page*1000]
+            return {'success':True,'result':part,'result_info':{'count':len(part),'page':page,'per_page':1000,'total_count':len(rows),'total_pages':max(1,(len(rows)+999)//1000)}}
         if path.startswith('/workers/durable_objects/namespaces/'):
             identity = path.split('/')[4]
             return [] if identity in self.namespaces else None
@@ -68,6 +78,7 @@ class Cloud:
             name, _, tail = path[len('/workers/scripts/'):].partition('/')
             current = self.scripts.get(name)
             if tail == 'settings': return current['settings'] if current else None
+            if tail == 'script-settings': return current['script_settings'] if current else None
             if tail == 'subdomain': return {'enabled': False, 'previews_enabled': False}
             if tail == 'routes': return []
             if tail == 'schedules': return {'schedules': []}
@@ -95,7 +106,11 @@ class Cloud:
                     bindings.append(b)
                 for klass in metadata.get('migrations', {}).get('deleted_classes', []):
                     self.namespaces.discard(sha((name+klass).encode())[:32])
-                self.scripts[name] = {'modules': fields, 'settings': {'bindings': bindings, 'limits': metadata.get('limits'), 'usage_model': metadata.get('usage_model'), 'observability': metadata.get('observability'), 'logpush': metadata.get('logpush')}}
+                # The observed /settings shape omits observability; script-level
+                # logging has its own documented endpoint and distinct fixture.
+                self.scripts[name] = {'modules': fields, 'settings': {'bindings': bindings, 'limits': metadata.get('limits'),
+                    'usage_model': metadata.get('usage_model'), 'logpush': metadata.get('logpush')},
+                    'script_settings': {'observability': metadata.get('observability'), 'logpush': metadata.get('logpush')}}
                 return {'id': 'created'}
             if method == 'DELETE': self.scripts.pop(name); return {}
         if path == '/r2/buckets' and method == 'POST':
@@ -319,6 +334,47 @@ class Recovery(unittest.TestCase):
         self.assertFalse(any('/source-private/objects/' in p for p,m,k in cloud.calls))
         self.assertFalse(any(m=='POST' and p.endswith('/subdomain') for p,m,k in cloud.calls))
 
+    def test_logging_uses_dedicated_script_settings_with_explicit_disabled_upload(self):
+        class ObservedSettingsCloud(Cloud):
+            def __call__(self, path, method='GET', **kw):
+                value=super().__call__(path,method=method,**kw)
+                if path.endswith('/settings') and value:
+                    self_test.assertNotIn('observability',value)
+                return value
+        self_test=self
+        cloud=ObservedSettingsCloud()
+        self.assertEqual(self.run_fixture(cloud)['status'],'verified')
+        reads=[(p,m) for p,m,_ in cloud.calls if p.endswith('/script-settings')]
+        self.assertEqual(len(reads),3)  # target, refusal-only bridge, then learner-bound bridge
+        self.assertTrue(all(m=='GET' for _,m in reads))
+        for _,method,kw in cloud.calls:
+            if method!='PUT':continue
+            form=email.parser.BytesParser(policy=email.policy.default).parsebytes(
+                ('Content-Type: '+kw['headers']['Content-Type']+'\r\n\r\n').encode()+kw['body'])
+            fields={p.get_filename():p.get_payload(decode=True) for p in form.iter_parts()}
+            metadata=json.loads(fields['metadata'])
+            if metadata.get('migrations',{}).get('deleted_classes'):continue
+            self.assertEqual(metadata['observability'],{'enabled':False})
+            self.assertIs(metadata['logpush'],False)
+
+    def test_logging_missing_malformed_or_enabled_refuses_before_private_invocation(self):
+        disabled={'observability':{'enabled':False},'logpush':False}
+        variants=[None,[],{}, {'logpush':False}, {'observability':{'enabled':False}},
+                  *[disabled|{'observability':v} for v in (None,False,[],{},'false',{'enabled':True},{'enabled':0},{'enabled':None})],
+                  *[disabled|{'logpush':v} for v in (None,True,0,'false')]]
+        for value in variants:
+            class LoggingCloud(Cloud):
+                def __call__(self,path,method='GET',**kw):
+                    observed=super().__call__(path,method=method,**kw)
+                    return value if path.endswith('/script-settings') else observed
+            cloud=LoggingCloud();callback=mock.Mock()
+            with self.subTest(value=value),self.assertRaises(R.RecoveryBlocked) as caught:
+                self.run_fixture(cloud,after_restore=callback)
+            self.assertEqual(caught.exception.primary_reason,'RECOVERY_LOGGING_UNVERIFIED')
+            self.assertEqual(sum(p.endswith('/script-settings') for p,_,_ in cloud.calls),1)
+            self.assertEqual(cloud.external_calls,[])
+            callback.assert_not_called()
+
     def test_service_approval_absent_or_wrong_refuses_before_keys_or_cloud(self):
         cloud=Cloud()
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True),mock.patch.object(R.secrets,'token_hex') as keys:
@@ -468,6 +524,87 @@ class Recovery(unittest.TestCase):
         with self.assertRaisesRegex(R.RecoveryBlocked,'CLEANUP_FAILED'):self.run_fixture(cloud)
         self.assertEqual(len(cloud.scripts),1)
         self.assertFalse(cloud.buckets)
+
+    def test_cleanup_uses_namespace_inventory_not_invalid_limit_one(self):
+        cloud=Cloud();self.run_fixture(cloud)
+        self.assertTrue(any(p.startswith('/workers/durable_objects/namespaces?') for p,_,_ in cloud.calls))
+        self.assertFalse(any('/objects?limit=' in p for p,_,_ in cloud.calls))
+
+    def test_empty_object_list_does_not_prove_namespace_absence(self):
+        class RetainedNamespace(Cloud):
+            def __call__(self,path,method='GET',**kw):
+                if path.startswith('/workers/durable_objects/namespaces/'):
+                    self.calls.append((path,method,kw));return []
+                value=super().__call__(path,method=method,**kw)
+                if path.startswith('/workers/durable_objects/namespaces?'):
+                    name=next(n for n in self.scripts if n.endswith('-bridge'))
+                    page=int(R.urllib.parse.parse_qs(R.urllib.parse.urlsplit(path).query)['page'][0])
+                    value['result']=[{'id':'f'*32,'script':name,'class':'RecoveryBridge'}] if page==1 else []
+                    value['result_info'].update(count=len(value['result']),total_count=1,total_pages=1)
+                return value
+        cloud=RetainedNamespace()
+        with self.assertRaisesRegex(R.RecoveryBlocked,'CLEANUP_FAILED') as caught:self.run_fixture(cloud)
+        self.assertTrue(any(x['reason']=='RECOVERY_NAMESPACE_CLEANUP_UNVERIFIED' for x in caught.exception.cleanup_outcomes))
+        self.assertFalse(any('/objects?limit=' in p for p,_,_ in cloud.calls))
+
+    def test_namespace_inventory_requires_complete_consistent_pagination(self):
+        rows=[{'id':str(i),'script':'unrelated','class':'Other'} for i in range(1001)]
+        def response(page):
+            part=rows[(page-1)*1000:page*1000]
+            return {'success':True,'result':part,'result_info':{'count':len(part),'page':page,'per_page':1000,'total_count':1001,'total_pages':2}}
+        calls=[]
+        def request(path,method='GET',**kw):
+            calls.append(path);return response(len(calls))
+        self.assertTrue(R.Drill(request).namespace_absent('owned-id','owned-script'))
+        self.assertEqual(len(calls),3)
+        for change in [lambda r:r['result_info'].update(total_count=1002),
+                       lambda r:r['result_info'].update(page=1),lambda r:r['result_info'].update(count=0),
+                       lambda r:r['result_info'].update(total_pages=9),lambda r:r['result'].append(rows[0])]:
+            calls=[]
+            def bad(path,method='GET',**kw):
+                calls.append(path);value=response(len(calls))
+                if len(calls)==2:change(value)
+                return value
+            with self.subTest(change=change),self.assertRaisesRegex(R.RecoveryBlocked,'NAMESPACE_INVENTORY'):
+                R.Drill(bad).namespace_absent('owned-id','owned-script')
+
+    def test_namespace_sdk_uses_empty_terminal_page_not_short_page_or_required_metadata(self):
+        rows=[{'id':'first','script':'unrelated','class':'Other'}, {'id':'second','script':'unrelated','class':'Other'}]
+        for info in ('missing',None,{}, {'page':None,'per_page':None}):
+            calls=[]
+            def request(path,method='GET',**kw):
+                calls.append(path);page=len(calls)
+                response={'success':True,'result':rows[page-1:page]}
+                if info!='missing':response['result_info']=info
+                return response
+            with self.subTest(info=info):
+                self.assertTrue(R.Drill(request).namespace_absent('owned-id','owned-script'))
+                self.assertEqual(len(calls),3)
+        for info in ([],{'count':True},{'page':7},{'total_count':0},{'total_pages':0},{'per_page':0}):
+            with self.subTest(info=info),self.assertRaisesRegex(R.RecoveryBlocked,'NAMESPACE_INVENTORY'):
+                R.Drill(lambda *a,**k:{'success':True,'result':rows[:1],'result_info':info}).namespace_absent('owned-id','owned-script')
+        calls=[]
+        def repeat(*args,**kwargs):
+            calls.append(1);return {'success':True,'result':rows[:1]}
+        with self.assertRaisesRegex(R.RecoveryBlocked,'NAMESPACE_INVENTORY'):R.Drill(repeat).namespace_absent('owned-id','owned-script')
+        self.assertEqual(len(calls),2)
+
+    def test_fixed_reason_does_not_persist_arbitrary_identifier_shaped_messages(self):
+        for error in (R.RecoveryBlocked('PRIVATE_SENTINEL'),RuntimeError('PRIVATE_SENTINEL')):
+            self.assertEqual(R.fixed_reason(error),'RECOVERY_OPERATION_UNVERIFIED')
+        self.assertEqual(R.fixed_reason(R.RecoveryBlocked('RECOVERY_LIMITS_UNVERIFIED')),'RECOVERY_LIMITS_UNVERIFIED')
+
+    def test_primary_cause_is_not_replaced_by_cleanup_failure(self):
+        def fail(path,method,kw):
+            if method=='DELETE' and path.startswith('/r2/buckets/'):raise OSError('PRIVATE_CANARY')
+        cloud=Cloud(fail)
+        callback=mock.Mock(side_effect=R.RecoveryBlocked('RECOVERY_PROOF_INVALID'))
+        with self.assertRaisesRegex(R.RecoveryBlocked,'CLEANUP_FAILED') as caught:self.run_fixture(cloud,after_restore=callback)
+        error=caught.exception
+        self.assertEqual(error.primary_reason,'RECOVERY_PROOF_INVALID')
+        self.assertEqual(error.recovery_phase,'deployment');self.assertTrue(error.deployment_attempted)
+        self.assertTrue(any(x['step']=='bucket_delete' and x['status']=='unverified' for x in error.cleanup_outcomes))
+        self.assertNotIn('PRIVATE_CANARY',json.dumps(error.cleanup_outcomes))
 
     def test_request_limits_and_deadline_fail_without_effect(self):
         call=mock.Mock();drill=R.Drill(call,clock=lambda:0)

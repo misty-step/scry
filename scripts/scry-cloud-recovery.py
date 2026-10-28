@@ -36,6 +36,50 @@ class RecoveryBlocked(RuntimeError):
     """Fixed, content-free admission refusal, safe for native workflow output."""
 
 
+FIXED_REASONS = frozenset({
+    'INCOMPLETE_RECOVERY_METER_BOUND', 'INVALID_PRIVATE_PREVIEW_HOST', 'INVALID_RECOVERY_CLAIM_BUCKET',
+    'INVALID_RECOVERY_METER_BOUND', 'INVALID_RECOVERY_SOURCE_PIN', 'INVALID_UPLOAD_MODULE',
+    'PRIVATE_PROOF_RESPONSE_OVERSIZE', 'PRODUCTION_HEALTH_SERVICE_APPROVAL_REQUIRED', 'RECOVERY_APPROVAL_ALREADY_CLAIMED',
+    'RECOVERY_APPROVAL_REQUIRED', 'RECOVERY_ARTIFACT_CHECKSUM_MISMATCH', 'RECOVERY_ARTIFACT_NOT_COMMITTED',
+    'RECOVERY_BILLING_PERIOD_AMBIGUOUS', 'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN', 'RECOVERY_BILLING_PERIOD_INCOMPLETE',
+    'RECOVERY_BILLING_PERIOD_REQUIRED', 'RECOVERY_BILLING_PERIOD_UNAVAILABLE', 'RECOVERY_BILLING_PERIOD_UNVERIFIED',
+    'RECOVERY_BINDINGS_UNVERIFIED', 'RECOVERY_BINDING_VALUE_UNVERIFIED', 'RECOVERY_BUCKET_ALREADY_EXISTS',
+    'RECOVERY_BUCKET_CLEANUP_UNVERIFIED', 'RECOVERY_BUCKET_CREATION_UNVERIFIED', 'RECOVERY_BUCKET_NOT_PRIVATE',
+    'RECOVERY_BUCKET_READBACK_MISMATCH', 'RECOVERY_CLAIM_CLEANUP_IDENTITY_CHANGED', 'RECOVERY_CLAIM_CLEANUP_RECEIPT_INVALID',
+    'RECOVERY_CLAIM_CLEANUP_UNCERTAIN', 'RECOVERY_CLAIM_CLEANUP_UNVERIFIED', 'RECOVERY_CLAIM_OUTCOME_UNCERTAIN',
+    'RECOVERY_CLAIM_OVERSIZE', 'RECOVERY_CLAIM_READBACK_MISMATCH', 'RECOVERY_CLAIM_TRANSPORT_UNAVAILABLE',
+    'RECOVERY_CLEANUP_BUCKET_IDENTITY_CHANGED', 'RECOVERY_CLEANUP_FAILED', 'RECOVERY_CLEANUP_FOREIGN_OBJECT',
+    'RECOVERY_CLEANUP_IDENTITY_CHANGED', 'RECOVERY_CLEANUP_LIST_UNBOUNDED', 'RECOVERY_CONTROL_PLANE_REFUSED',
+    'RECOVERY_CONTROL_PLANE_UNAVAILABLE', 'RECOVERY_CONTROL_PLANE_UNVERIFIED', 'RECOVERY_COST_BOUND_UNPROVEN',
+    'RECOVERY_CREATION_OUTCOME_UNCERTAIN', 'RECOVERY_DEADLINE_EXCEEDED', 'RECOVERY_DEPLOYMENT_CALLBACK_FAILED',
+    'RECOVERY_DEPLOYMENT_CALLBACK_REQUIRED', 'RECOVERY_EXISTING_SUBDOMAIN_REQUIRED', 'RECOVERY_GATE_IDENTITY_CHANGED',
+    'RECOVERY_LIMITS_UNVERIFIED', 'RECOVERY_LOGGING_UNVERIFIED', 'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN',
+    'RECOVERY_NAMESPACE_CLEANUP_UNVERIFIED', 'RECOVERY_NAMESPACE_INVENTORY_CHANGED', 'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE',
+    'RECOVERY_NAMESPACE_INVENTORY_UNBOUNDED', 'RECOVERY_NAMESPACE_INVENTORY_UNVERIFIED', 'RECOVERY_NAMESPACE_UNVERIFIED',
+    'RECOVERY_NOT_VERIFIED', 'RECOVERY_OPERATION_UNVERIFIED', 'RECOVERY_PREPARED_SOURCE_MISMATCH',
+    'RECOVERY_PREVIEW_AUTH_REFUSAL_UNVERIFIED', 'RECOVERY_PREVIEW_BUDGET_EXHAUSTED', 'RECOVERY_PREVIEW_EXCHANGE_FAILED',
+    'RECOVERY_PREVIEW_SESSION_INVALID', 'RECOVERY_PREVIEW_TOKEN_INVALID', 'RECOVERY_PROOF_INVALID',
+    'RECOVERY_PUBLIC_DOMAIN_PRESENT', 'RECOVERY_PUBLIC_ENDPOINT_PRESENT', 'RECOVERY_PUBLIC_ROUTE_PRESENT',
+    'RECOVERY_RECURRENCE_NOT_VERIFIED', 'RECOVERY_REQUEST_BUDGET_EXHAUSTED', 'RECOVERY_SCHEDULE_PRESENT',
+    'RECOVERY_SERVICE_ENTRYPOINT_UNVERIFIED', 'RECOVERY_TOOL_CHECKSUM_MISMATCH', 'RECOVERY_TOOL_SOURCE_INVALID',
+    'RECOVERY_TRANSFER_NOT_VERIFIED', 'RECOVERY_UPLOAD_READBACK_MISMATCH', 'RECOVERY_USAGE_MODEL_UNVERIFIED',
+    'RECOVERY_WORKER_ALREADY_EXISTS', 'RECOVERY_WORKER_CLEANUP_UNVERIFIED',
+})
+
+
+def fixed_reason(error):
+    # Our own fixed assertion codes are safe; never persist provider messages,
+    # exception reprs, payloads, URLs containing keys, or arbitrary callback text.
+    if isinstance(error, RecoveryBlocked) and str(error) in FIXED_REASONS:
+        return str(error)
+    if type(error).__name__ == 'GateError':
+        return {'cloud control-plane request unavailable': 'RECOVERY_CONTROL_PLANE_UNAVAILABLE',
+                'cloud control-plane request refused': 'RECOVERY_CONTROL_PLANE_REFUSED',
+                'cloud control-plane request budget exhausted': 'RECOVERY_REQUEST_BUDGET_EXHAUSTED'}.get(
+                    str(error), 'RECOVERY_CONTROL_PLANE_UNVERIFIED')
+    return 'RECOVERY_OPERATION_UNVERIFIED'
+
+
 # These are reviewed bridge admission limits, not claims about a hosted run.
 BRIDGE_LIMITS = {
     'archive_bytes': 16 * 1024 * 1024,
@@ -379,6 +423,7 @@ class Drill:
         self.bucket = None
         self.namespace_ids = {}
         self.uncertain = set()
+        self.cleanup_outcomes = []
 
     def call(self, path, method='GET', **kwargs):
         self.calls += 1
@@ -433,7 +478,12 @@ class Drill:
         settings = self.upload(name, metadata, modules)
         need(settings.get('limits') == metadata['limits'], 'RECOVERY_LIMITS_UNVERIFIED')
         need(settings.get('usage_model') == 'standard', 'RECOVERY_USAGE_MODEL_UNVERIFIED')
-        need(settings.get('observability', {}).get('enabled') is False and settings.get('logpush') is False, 'RECOVERY_LOGGING_UNVERIFIED')
+        # Script-level logging is read from its dedicated API, not the version
+        # settings response. Missing fields are not proof that logging is off.
+        logging = self.call('/workers/scripts/' + name + '/script-settings')
+        need(isinstance(logging, dict) and isinstance(logging.get('observability'), dict)
+             and logging['observability'].get('enabled') is False and logging.get('logpush') is False,
+             'RECOVERY_LOGGING_UNVERIFIED')
         need({(v['name'], v['type']) for v in settings['bindings']} == {(v['name'], v['type']) for v in metadata['bindings']}, 'RECOVERY_BINDINGS_UNVERIFIED')
         by_name = {v['name']: v for v in settings['bindings']}
         for expected in metadata['bindings']:
@@ -450,31 +500,88 @@ class Drill:
         self.private(name)
         return settings
 
+    def namespace_absent(self, identity, script):
+        # Cloudflare's namespace.list uses SyncV4PagePaginationArray: advance
+        # until an EMPTY result, never merely a short page or metadata count.
+        # https://github.com/cloudflare/cloudflare-python/blob/main/src/cloudflare/pagination.py
+        # Object lists are not namespace-existence proof; limit=1 is invalid
+        # there. No destructive retry; at most8 inventory reads under128 calls.
+        identities, owned, known = set(), False, {}
+        for page in range(1, 9):
+            value = self.call('/workers/durable_objects/namespaces?page=' + str(page) + '&per_page=1000', envelope=True)
+            need(isinstance(value, dict) and value.get('success') is True, 'RECOVERY_NAMESPACE_INVENTORY_UNVERIFIED')
+            rows, info = value.get('result'), value.get('result_info')
+            if info is None:
+                info = {}
+            need(isinstance(rows, list) and len(rows) <= 1000 and isinstance(info, dict),
+                 'RECOVERY_NAMESPACE_INVENTORY_UNVERIFIED')
+            for field in ('count', 'page', 'per_page', 'total_count', 'total_pages'):
+                number = info.get(field)
+                if number is None:
+                    continue
+                need(type(number) is int and number >= 0, 'RECOVERY_NAMESPACE_INVENTORY_UNVERIFIED')
+                if field == 'page':
+                    need(number == page, 'RECOVERY_NAMESPACE_INVENTORY_CHANGED')
+                elif field == 'count':
+                    need(number == len(rows), 'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+                else:
+                    need(field not in known or known[field] == number, 'RECOVERY_NAMESPACE_INVENTORY_CHANGED')
+                    known[field] = number
+            if 'per_page' in known:
+                need(1 <= known['per_page'] <= 1000 and len(rows) <= known['per_page'], 'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+            if 'total_pages' in known:
+                need(known['total_pages'] <= 8 and (not rows or page <= known['total_pages']),
+                     'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+            for row in rows:
+                need(isinstance(row, dict) and all(isinstance(row.get(k), str) and row[k] for k in ('id', 'script', 'class'))
+                     and row['id'] not in identities, 'RECOVERY_NAMESPACE_INVENTORY_UNVERIFIED')
+                identities.add(row['id'])
+                owned |= row['id'] == identity or row['script'] == script
+            if 'total_count' in known:
+                need(len(identities) <= known['total_count'] <= 8000, 'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+            if not rows:
+                need('total_count' not in known or len(identities) == known['total_count'],
+                     'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+                need('total_pages' not in known or page > known['total_pages']
+                     or (page == 1 and not identities and known['total_pages'] == 1),
+                     'RECOVERY_NAMESPACE_INVENTORY_INCOMPLETE')
+                return not owned
+        raise RecoveryBlocked('RECOVERY_NAMESPACE_INVENTORY_UNBOUNDED')
+
     def cleanup(self):
         self.cleaning = True
         failed = []
         for name, class_name in reversed(list(self.created.items())):
+            step = 'worker_identity'
             try:
                 base = '/workers/scripts/' + name
                 settings = self.call(base + '/settings')
                 if class_name:
+                    step = 'namespace_identity'
                     need(name in self.namespace_ids, 'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN')
                     need(any(v.get('namespace_id') == self.namespace_ids[name] and v.get('class_name') == class_name
                              for v in settings['bindings']), 'RECOVERY_CLEANUP_IDENTITY_CHANGED')
                     metadata = {'main_module': 'empty.mjs', 'compatibility_date': '2026-09-10', 'bindings': [], 'usage_model': 'standard',
                         'migrations': {'old_tag': 'recovery-v1', 'new_tag': 'recovery-deleted-v1', 'deleted_classes': [class_name]}}
                     body, headers = multipart(metadata, {'empty.mjs': b'export default {fetch(){return new Response(null,{status:404})}}'})
+                    step = 'namespace_delete'
                     self.call(base, method='PUT', body=body, headers=headers)
-                    need(self.call('/workers/durable_objects/namespaces/' + self.namespace_ids[name] + '/objects?limit=1', absent=True) is None,
-                         'RECOVERY_NAMESPACE_CLEANUP_UNVERIFIED')
+                    step = 'namespace_verify'
+                    need(self.namespace_absent(self.namespace_ids[name], name), 'RECOVERY_NAMESPACE_CLEANUP_UNVERIFIED')
+                step = 'worker_delete'
                 self.call(base, method='DELETE')
+                step = 'worker_verify'
                 need(self.call(base + '/settings', absent=True) is None, 'RECOVERY_WORKER_CLEANUP_UNVERIFIED')
-            except Exception:
+                self.cleanup_outcomes.append({'resource': name, 'step': step, 'status': 'verified_absent', 'reason': None})
+            except Exception as error:
                 failed.append(name)
+                self.cleanup_outcomes.append({'resource': name, 'step': step, 'status': 'unverified', 'reason': fixed_reason(error)})
         if self.bucket:
+            step = 'bucket_identity'
             try:
                 base = '/r2/buckets/' + self.bucket['name']
                 need(self.call(base) == self.bucket, 'RECOVERY_CLEANUP_BUCKET_IDENTITY_CHANGED')
+                step = 'bucket_list'
                 listing = self.call(base + '/objects?per_page=1000', envelope=True)
                 items, info = listing['result'], listing.get('result_info')
                 # Same REST cursor contract as the production metadata listing:
@@ -491,12 +598,19 @@ class Drill:
                 for obj in items:
                     need(obj['key'].startswith(('photos/' + self.space + '/', 'snapshots/' + self.space + '/')),
                          'RECOVERY_CLEANUP_FOREIGN_OBJECT')
+                step = 'owned_objects_delete'
                 for obj in items:
                     self.call(base + '/objects/' + urllib.parse.quote(obj['key'], safe='/'), method='DELETE')
+                step = 'bucket_delete'
                 self.call(base, method='DELETE')
+                step = 'bucket_verify'
                 need(self.call(base, absent=True) is None, 'RECOVERY_BUCKET_CLEANUP_UNVERIFIED')
-            except Exception:
+                self.cleanup_outcomes.append({'resource': self.bucket['name'], 'step': step, 'status': 'verified_absent', 'reason': None})
+            except Exception as error:
                 failed.append(self.bucket['name'])
+                self.cleanup_outcomes.append({'resource': self.bucket['name'], 'step': step, 'status': 'unverified', 'reason': fixed_reason(error)})
+        for name in sorted(self.uncertain):
+            self.cleanup_outcomes.append({'resource': name, 'step': 'creation_identity', 'status': 'unverified', 'reason': 'RECOVERY_CREATION_OUTCOME_UNCERTAIN'})
         return sorted(set(failed) | self.uncertain)
 
 
@@ -524,6 +638,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
     drill.space = space
     outcome = None
     phase = 'restore'
+    primary_reason = None
     failed = []
     try:
         for name in (target, gateway):
@@ -625,7 +740,8 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         need(isinstance(recurrence, dict) and set(recurrence) == {'backup_proof'}
              and recurrence['backup_proof'] is True, 'RECOVERY_RECURRENCE_NOT_VERIFIED')
         phase = 'verified'
-    except Exception:
+    except Exception as error:
+        primary_reason = fixed_reason(error)
         outcome = None
     finally:
         failed = drill.cleanup()
@@ -634,6 +750,8 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         # Caller retains this only in the private native receipt, not public logs.
         error.retained_resources = failed
         error.recovery_phase = phase
+        error.primary_reason = primary_reason
+        error.cleanup_outcomes = drill.cleanup_outcomes
         error.deployment_attempted = phase != 'restore'
         raise error
     if outcome is None:
@@ -641,6 +759,8 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
                   'recurrence': 'RECOVERY_RECURRENCE_NOT_VERIFIED'}.get(phase, 'RECOVERY_NOT_VERIFIED')
         error = RecoveryBlocked(reason)
         error.recovery_phase = phase
+        error.primary_reason = primary_reason
+        error.cleanup_outcomes = drill.cleanup_outcomes
         error.deployment_attempted = phase != 'restore'
         raise error
     return {'status': 'verified', 'proof': outcome, 'recurrence_verified': True, 'cleanup_verified': True, 'cloud_requests': drill.calls,
