@@ -159,6 +159,45 @@ class Recovery(unittest.TestCase):
             self.assertEqual([m for _,m in c.paths].count('PUT'),1)
             self.assertTrue(all('/operations/recovery-claims/' in p for p,_ in c.paths))
 
+    def test_known_zone_rows_do_not_invalidate_the_account_billing_cycle(self):
+        now=int(R.datetime(2026,10,27,12,tzinfo=R.timezone.utc).timestamp()*1000)
+        body=subscriptions()
+        account=body['result'][0]
+        other=json.loads(json.dumps(account));other['id']='f'*32
+        zone=dict(id='1'*32, currency='USD', frequency='synthetic-unrelated', state='Paid',
+                  rate_plan=dict(scope='zone', currency='USD', externally_managed=False, is_contract=False))
+        second=json.loads(json.dumps(zone));second['id']='2'*32
+        body['result']=[zone,account,second,other]
+        body['result_info'].update(count=4,total_count=4)
+        expected=R.verify_billing_period(lambda *args,**kwargs:subscriptions(),now_ms=now)
+        self.assertEqual(R.verify_billing_period(lambda *args,**kwargs:body,now_ms=now),expected)
+
+    def test_zone_selection_preserves_strict_relevant_account_and_inventory_checks(self):
+        now=int(R.datetime(2026,10,27,12,tzinfo=R.timezone.utc).timestamp()*1000)
+        account=subscriptions()['result'][0]
+        zone=dict(id='1'*32, rate_plan=dict(scope='zone'))
+        body=subscriptions();body['result']=[zone,account]
+        body['result_info'].update(count=2,total_count=2)
+        variants=[]
+        def variant(change):
+            value=json.loads(json.dumps(body));change(value);variants.append(value)
+        variant(lambda b:b['result'][0]['rate_plan'].update(scope='unknown-scope'))
+        variant(lambda b:b['result'][0]['rate_plan'].pop('scope'))
+        variant(lambda b:b['result'][1]['rate_plan'].update(scope='unknown-account-scope'))
+        variant(lambda b:b['result'][1]['rate_plan'].pop('scope'))
+        variant(lambda b:b['result'][1].pop('current_period_end'))
+        variant(lambda b:b['result'][1]['rate_plan'].update(scope='zone'))
+        variant(lambda b:b['result'][1].update(frequency='yearly'))
+        variant(lambda b:b['result'][0].update(id=b['result'][1]['id']))
+        variant(lambda b:b['result'][0].update(id=''))
+        variant(lambda b:b['result_info'].update(total_count=3))
+        mixed=json.loads(json.dumps(body));other=json.loads(json.dumps(account))
+        other.update(id='f'*32,current_period_end='2026-11-11T12:00:00Z')
+        mixed['result'].append(other);mixed['result_info'].update(count=3,total_count=3);variants.append(mixed)
+        for i,value in enumerate(variants):
+            with self.subTest(case=i),self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+                R.verify_billing_period(lambda *args,**kwargs:value,now_ms=now)
+
     def test_actual_provider_period_replaces_calendar_assumption(self):
         calls=[]
         def request(path, **kwargs):
