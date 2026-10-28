@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/misty-step/scry/compare/v0.9.2...v0.9.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* verify recovery independently of Cron telemetry ([#420](https://github.com/misty-step/scry/issues/420)) ([74e276b](https://github.com/misty-step/scry/commit/74e276bd6cd000a006157fe981f5a06838af1eae))
+
 ## [0.9.2](https://github.com/misty-step/scry/compare/v0.9.1...v0.9.2) (2026-10-28)
 
 
