@@ -71,7 +71,7 @@ FIXED_REASONS = frozenset({
     'RECOVERY_PREVIEW_SESSION_INVALID', 'RECOVERY_PREVIEW_TOKEN_INVALID', 'RECOVERY_PROOF_INVALID',
     'RECOVERY_PUBLIC_DOMAIN_PRESENT', 'RECOVERY_PUBLIC_ENDPOINT_PRESENT', 'RECOVERY_PUBLIC_ROUTE_PRESENT',
     'RECOVERY_RECURRENCE_NOT_VERIFIED', 'RECOVERY_REQUEST_BUDGET_EXHAUSTED', 'RECOVERY_SCHEDULE_PRESENT',
-    'RECOVERY_SERVICE_ENTRYPOINT_UNVERIFIED', 'RECOVERY_TOOL_CHECKSUM_MISMATCH', 'RECOVERY_TOOL_SOURCE_INVALID',
+    'RECOVERY_SERVICE_ENTRYPOINT_UNVERIFIED', 'RECOVERY_TAIL_EXPORT_PRESENT', 'RECOVERY_TOOL_CHECKSUM_MISMATCH', 'RECOVERY_TOOL_SOURCE_INVALID',
     'RECOVERY_TRANSFER_NOT_VERIFIED', 'RECOVERY_UPLOAD_READBACK_MISMATCH', 'RECOVERY_USAGE_MODEL_UNVERIFIED',
     'RECOVERY_WORKER_ALREADY_EXISTS', 'RECOVERY_WORKER_CLEANUP_UNVERIFIED',
 })
@@ -542,7 +542,7 @@ class Drill:
         # Record verified cleanup authority before privacy/private-route checks:
         # a refused invocation must not strand an already-identified namespace.
         path = '/workers/scripts/' + name + '/script-settings'
-        self.call(path, method='PATCH', payload={'observability': {'enabled': False}, 'logpush': False},
+        self.call(path, method='PATCH', payload={'observability': {'enabled': False}, 'logpush': False, 'tail_consumers': []},
                   expected_status=200)
         logging = self.call(path, expected_status=200)
         need(isinstance(logging, dict) and 'observability' in logging
@@ -552,7 +552,13 @@ class Drill:
         # normalization support this inference, not an absolute logs-off claim.
         # Null is admitted only after acknowledged explicit disable, exact audited
         # source, and no tail exports. Unknown/malformed/enabled states fail closed.
-        need(logging.get('tail_consumers', []) == [] and settings.get('tail_consumers', []) == [],
+        # ScriptSetting documents a nullable consumer list. Null/absent and []
+        # represent no configured consumers; reject every nonempty or malformed
+        # representation rather than relying on general falsiness. The explicit
+        # PATCH above expresses the empty intent; this is an API-contract
+        # inference, not a claim about the failed run's unrecorded response.
+        need(all(value is None or (isinstance(value, list) and not value)
+                 for value in (logging.get('tail_consumers'), settings.get('tail_consumers'))),
              'RECOVERY_TAIL_EXPORT_PRESENT')
         explicit = isinstance(observation, dict) and set(observation) == {'enabled'} and observation['enabled'] is False
         need(explicit or (observation is None and self.privacy_audited), 'RECOVERY_LOGGING_UNVERIFIED')

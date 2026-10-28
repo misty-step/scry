@@ -595,6 +595,14 @@ dependencies; release-number-only changes are ignored). Enabled, missing or
 malformed states still refuse invocation. Receipts retain null and label the
 assurance `audited-no-learner-content-emissions`, not “provider logs proven off.”
 
+The same documented `ScriptSetting` contract permits a nullable consumer list.
+After explicitly PATCHing `tail_consumers: []` on the temporary Worker, the
+driver interprets null, absent and empty-array readbacks as no configured tail
+consumers; nonempty lists and malformed values refuse invocation. This is a
+supported API-contract inference, not evidence that the earlier failed run
+actually returned null. Its receipt only establishes failure before the first
+privacy observation and therefore before any preview or restore invocation.
+
 The isolated adapter never invokes normal Worker fetch/scheduled handlers. Its
 native Durable Object errors are caught; archive parsing and reconciliation
 errors become fixed codes, response bodies are cancelled, and internal URLs are
