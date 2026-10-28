@@ -1,0 +1,212 @@
+name: scry cloud contract diagnostic (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-cloud-contract-20261028-0157]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-cloud-contract-20261028-0157' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: b2522915ef3d71d96020913d604f2fc30dd90bc4
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /scripts/scry-cloud-recovery.py
+            /deploy/rust-production.toml
+            /deploy/cloud-recovery-approval.json
+      - name: Verify existing credential and exact native control-plane checks only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, sys, time, tomllib, urllib.error
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T02:30:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-cloud-contract-20261028-0157'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('PREFLIGHT_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '9b2e65588ccf7fa58967d280a482956ed79d83930906aed105ca8997544e7c4d',
+              'scripts/scry-cloud-recovery.py': '5f80c52ce54a9bc1b0878fa04d3e62fc2b1b39cf46784e93364e033dc35aa6c8',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'deploy/cloud-recovery-approval.json': '35eea35f4676723880c31f5679ec46377344313050d27a17ace6879792c6b855',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+          except Exception:
+              raise SystemExit('PREFLIGHT_SOURCE_REFUSED') from None
+          def load(name):
+              spec = importlib.util.spec_from_file_location(name, Path('scripts') / (name + '.py'))
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+          backup, recovery = load('scry-cloud-backup'), load('scry-cloud-recovery')
+          config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          approval = json.loads(Path('deploy/cloud-recovery-approval.json').read_text())
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('PREFLIGHT_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 4
+          checked = datetime.now(timezone.utc)
+          query = backup.events_query(config['account_id'], config['name'], checked - timedelta(minutes=1), checked)
+          base = 'https://api.cloudflare.com/client/v4'
+          account = base + '/accounts/' + config['account_id']
+          expected = [
+              (account + '/tokens/verify', 'GET', None),
+              (account + '/subscriptions', 'GET', None),
+              (base + '/graphql', 'POST', json.dumps({'query': backup.SCHEMA_QUERY}).encode()),
+              (base + '/graphql', 'POST', json.dumps({'query': query}).encode()),
+          ]
+          # Preserve native no-redirect, 30-second timeout and 4 MiB body limit.
+          native_open, calls = client.open, 0
+          http_statuses = {}
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 4
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('PREFLIGHT_REQUEST_SCOPE_REFUSED')
+              kind = ('token', 'billing', 'cron_schema', 'cron_query')[calls - 1]
+              try:
+                  response = native_open(request, timeout=timeout)
+                  http_statuses[kind] = response.status
+                  return response
+              except urllib.error.HTTPError as error:
+                  http_statuses[kind] = error.code
+                  raise
+          client.open = bounded_open
+          stage = 'TOKEN_IDENTITY'
+          try:
+              identity = client.request('/tokens/verify')
+              token_id = identity.get('id') if isinstance(identity, dict) else None
+              if not (isinstance(token_id, str) and re.fullmatch('[a-f0-9]{32}', token_id)
+                      and identity.get('status') == 'active'
+                      and hashlib.sha256(token_id.encode('ascii')).hexdigest() == '8b2235f2ef436ce446deefc077620c6be3619ca25c33f58ee606abd2c185dc52'):
+                  raise ValueError()
+              print('TOKEN_IDENTITY_PASS')
+          except Exception:
+              print('PREFLIGHT_TOKEN_IDENTITY_FAILED')
+              sys.exit(1)
+          billing = {'stage': 'billing'}
+          try:
+              body = client.request('/subscriptions', envelope=True)
+              rows, info = body.get('result'), body.get('result_info')
+              typename = lambda value: type(value).__name__ if type(value) in (dict, list, str, int, float, bool, type(None)) else 'other'
+              billing.update(success_true=body.get('success') is True, errors_empty=body.get('errors') == [],
+                  result_type=typename(rows), result_count=len(rows) if isinstance(rows, list) else None,
+                  result_info_present='result_info' in body, result_info_type=typename(info))
+              info = info if isinstance(info, dict) else {}
+              billing['pagination'] = {k: {'present': k in info, 'integer': type(info.get(k)) is int} for k in ('count', 'page', 'per_page', 'total_count')}
+              if isinstance(rows, list) and 0 < len(rows) <= 1000:
+                  billing['pagination_complete'] = (all(type(info.get(k)) is int for k in ('count', 'page', 'per_page', 'total_count'))
+                      and info['page'] == 1 and info['count'] == info['total_count'] == len(rows) and info['per_page'] >= len(rows))
+                  missing = object()
+                  def field(row, path):
+                      value = row
+                      for key in path.split('.'):
+                          if not isinstance(value, dict) or key not in value:
+                              return missing
+                          value = value[key]
+                      return value
+                  def timestamp(value):
+                      if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|\+00:00)', value):
+                          return None
+                      try:
+                          return int(datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp() * 1000)
+                      except (ValueError, OverflowError):
+                          return None
+                  predicates = {
+                      'id': lambda x: isinstance(x, str) and 0 < len(x) <= 32,
+                      'currency': lambda x: x == 'USD', 'frequency': lambda x: x == 'monthly',
+                      'state': lambda x: x == 'Paid', 'rate_plan': lambda x: isinstance(x, dict),
+                      'rate_plan.scope': lambda x: x == 'account', 'rate_plan.currency': lambda x: x == 'USD',
+                      'rate_plan.externally_managed': lambda x: x is False, 'rate_plan.is_contract': lambda x: x is False,
+                      'current_period_start': lambda x: timestamp(x) is not None,
+                      'current_period_end': lambda x: timestamp(x) is not None,
+                  }
+                  fields = {}
+                  for name, predicate in predicates.items():
+                      values = [field(row, name) for row in rows]
+                      fields[name] = {'present': sum(v is not missing for v in values),
+                          'valid': sum(predicate(v) for v in values),
+                          'types': {kind: sum(typename(v) == kind for v in values) for kind in ('dict', 'list', 'str', 'int', 'float', 'bool', 'NoneType', 'other')}}
+                  billing['fields'] = fields
+                  ids = [field(row, 'id') for row in rows]
+                  billing['unique_valid_ids'] = all(isinstance(v, str) for v in ids) and len(set(ids)) == len(rows)
+                  periods = [(timestamp(field(row, 'current_period_start')), timestamp(field(row, 'current_period_end'))) for row in rows]
+                  valid = [(start, end) for start, end in periods if start is not None and end is not None]
+                  now = int(time.time() * 1000)
+                  billing['periods'] = {'parseable': len(valid),
+                      'contains_now': sum(start <= now < end for start, end in valid),
+                      'duration_within_32_days': sum(0 < end-start <= 32*86400000 for start, end in valid),
+                      'shared_period': len(valid) == len(rows) and len(set(valid)) == 1,
+                      'covers_approval_plus_drain': sum(end > approval['expires_ms'] + recovery.DRAIN_MS for start, end in valid)}
+              else:
+                  billing['bounded_nonempty_rows'] = False
+              try:
+                  window = recovery.verify_billing_period(lambda path, **kw: body)
+                  recovery.require_billing_period(window, approval)
+                  billing['native_check'] = 'PASS'
+              except recovery.RecoveryBlocked as error:
+                  allowed = {'RECOVERY_BILLING_PERIOD_UNAVAILABLE', 'RECOVERY_BILLING_PERIOD_UNVERIFIED',
+                      'RECOVERY_BILLING_PERIOD_INCOMPLETE', 'RECOVERY_BILLING_PERIOD_AMBIGUOUS',
+                      'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN', 'RECOVERY_BILLING_PERIOD_REQUIRED'}
+                  billing['native_check'] = str(error) if str(error) in allowed else 'FAILED'
+          except Exception:
+              billing['result'] = 'BILLING_DIAGNOSTIC_FAILED'
+          billing['http_status'] = http_statuses.get('billing')
+          print(json.dumps(billing, sort_keys=True))
+          schema = {'stage': 'cron_schema'}
+          try:
+              body = client.graphql(backup.SCHEMA_QUERY)
+              data = body.get('data') or {}
+              row, filt = data.get('row'), data.get('filt')
+              schema.update(errors_present=bool(body.get('errors')), row_type_present=isinstance(row, dict), filter_type_present=isinstance(filt, dict))
+              row_names = {x.get('name') for x in row.get('fields', []) if isinstance(x, dict)} if isinstance(row, dict) else set()
+              filter_names = {x.get('name') for x in filt.get('inputFields', []) if isinstance(x, dict)} if isinstance(filt, dict) else set()
+              schema['required_row_fields'] = {name: name in row_names for name in sorted(backup.EVENT_FIELDS)}
+              schema['required_filter_fields'] = {name: name in filter_names for name in sorted(backup.FILTER_FIELDS)}
+              try:
+                  backup.require_schema(body)
+                  schema['native_check'] = 'PASS'
+              except Exception:
+                  schema['native_check'] = 'FAILED'
+          except Exception:
+              schema['result'] = 'CRON_SCHEMA_DIAGNOSTIC_FAILED'
+          schema['http_status'] = http_statuses.get('cron_schema')
+          print(json.dumps(schema, sort_keys=True))
+          result = {'stage': 'cron_query'}
+          try:
+              body = client.graphql(query)
+              result['errors_present'] = bool(body.get('errors'))
+              backup.event_rows(body)
+              result['native_check'] = 'PASS'
+          except Exception:
+              result['native_check'] = 'FAILED'
+          result['http_status'] = http_statuses.get('cron_query')
+          print(json.dumps(result, sort_keys=True))
+          print('READ_ONLY_DIAGNOSTIC_COMPLETE_NOT_OPERATIONAL_ADMISSION')
+          PY
