@@ -64,13 +64,13 @@ async function sourceArchive(mode = 'plain') {
     cache.set(mode, archive); return structuredClone(archive);
   } finally {await local.mf.dispose();}
 }
-async function fixture(fn, {mode = 'plain', change, env = {}, target = {}, legacy = false} = {}) {
-  const archive = await sourceArchive(mode); change?.(archive);
-  const bytes = Buffer.from(JSON.stringify(archive));
+async function fixture(fn, {mode = 'plain', change, env = {}, target = {}, legacy = false, production, sourceBytes} = {}) {
+  const archive = sourceBytes ? JSON.parse(Buffer.from(sourceBytes).toString('utf8')) : await sourceArchive(mode); change?.(archive);
+  const bytes = sourceBytes && !change ? Buffer.from(sourceBytes) : Buffer.from(JSON.stringify(archive));
   const bounds = {TRANSFER_ISSUED_MS: String(Date.now() - 1000), TRANSFER_UNTIL_MS: String(Date.now() + 300000)};
   let bindings = {TRANSFER_KEY: transfer, INTERNAL_KEY: internalKey, RESTORE_TOKEN: token, SPACE_NAME: space,
     SOURCE_KEY: sourceKey, SOURCE_ETAG: createHash('md5').update(bytes).digest('hex'), SOURCE_BYTES: String(bytes.length), ...bounds, ...env};
-  let egress = 0;
+  let egress = 0; const productionCalls = [];
   const outboundService = async () => {egress++; throw Error('Synthetic egress forbidden');};
   const script = readFileSync(legacy ? 'revival/restore.mjs' : bridgePath, 'utf8');
   const make = () => options({unsafeInspectDurableObjects: true, workers: [
@@ -78,7 +78,15 @@ async function fixture(fn, {mode = 'plain', change, env = {}, target = {}, legac
       modules: [{type: 'ESModule', path: bridgePath, contents: script}], bindings, outboundService,
       durableObjects: {...(legacy ? {} : {GATE: {className: 'RecoveryBridge', useSQLite: true}}),
         TARGET: {className: 'LearningSpace', scriptName: 'target', useSQLite: true}},
-      r2Buckets: {SOURCE: 'source', BACKUPS: 'backups'}},
+      r2Buckets: {SOURCE: 'source', BACKUPS: 'backups'},
+      serviceBindings: {PRODUCTION: async request => {
+        productionCalls.push(request);
+        assert.equal(request.url, 'https://scry.mistystep.io/healthz');
+        assert.equal(request.method, 'GET'); assert.equal(request.body, null);
+        // Redirect mode is caller-local and is not forwarded to a service receiver.
+        assert.equal(request.headers.get('x-scry-backup-proof'), hash(bytes));
+        return production ? production(request) : new runtime.Response('{"backup_proof":true}', {status: 200});
+      }}},
     {name: 'target', compatibilityDate: '2026-09-10', cf: false, modulesRoot: artifact, outboundService,
       modules: [{type: 'ESModule', path: resolve(artifact, 'recovery-adapter.mjs'), contents:
         readFileSync('recovery/target-adapter.mjs', 'utf8')},
@@ -93,8 +101,8 @@ async function fixture(fn, {mode = 'plain', change, env = {}, target = {}, legac
     const source = await mf.getR2Bucket('SOURCE', 'bridge');
     const original = await source.put(sourceKey, bytes);
     assert.equal(original.etag, bindings.SOURCE_ETAG.replaceAll('"', ''));
-    const request = async (init = {}) => {
-      const response = await (await mf.getWorker('bridge')).fetch('https://private-preview.invalid/restore',
+    const request = async (init = {}, path = '/restore') => {
+      const response = await (await mf.getWorker('bridge')).fetch('https://private-preview.invalid' + path,
         {method: 'POST', ...init, headers: {Authorization: 'Bearer ' + transfer, ...init.headers}});
       const text = await response.text();
       assert.doesNotMatch(text, /SYNTHETIC_PRIVATE|Cache freshness|remembered response|synthetic-paid-lease/);
@@ -106,7 +114,7 @@ async function fixture(fn, {mode = 'plain', change, env = {}, target = {}, legac
       const tables = await sql.exec("SELECT name FROM sqlite_master WHERE name='records'");
       return tables.length ? sql.exec('SELECT key,value FROM records ORDER BY key') : [];
     };
-    await fn({request, mf, rows, bytes, archive, source, rebindTarget: async next => {Object.assign(target, next); await mf.setOptions(make());}, rebind: async next => {bindings = {...bindings, ...next}; await mf.setOptions(make());}});
+    await fn({request, recurrence: init => request(init, '/recurrence'), productionCalls, mf, rows, bytes, archive, source, rebindTarget: async next => {Object.assign(target, next); await mf.setOptions(make());}, rebind: async next => {bindings = {...bindings, ...next}; await mf.setOptions(make());}});
     assert.deepEqual(Buffer.from(await (await (await mf.getR2Bucket('SOURCE', 'bridge')).get(sourceKey)).arrayBuffer()), bytes);
     assert.equal(egress, 0);
   } finally {await mf.dispose();}
@@ -325,4 +333,78 @@ test('rehearsal storage envelope covers every supported page size and obsolete m
     const bytes = (pages + Math.ceil(pages / 51)) * page + 2 * 65536;
     assert.ok(bytes <= 27161600 && bytes < 32 * 1024 * 1024);
   }
+});
+
+
+test('recurrence uses only the computed source hash after strict restore and admits one fixed service read', () => fixture(async ({request, recurrence, productionCalls}) => {
+  assert.deepEqual(await recurrence(), {status: 409, body: {backup_proof: false}});
+  assert.equal(productionCalls.length, 0);
+  assert.equal((await request()).status, 200);
+  assert.match(readFileSync(bridgePath,'utf8'), /method: 'GET', redirect: 'manual'/);
+  const results = await Promise.all([recurrence({headers:{'x-scry-backup-proof':'0'.repeat(64)}}), recurrence(), recurrence()]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 409, 409]);
+  assert.equal(productionCalls.length, 1);
+  assert.deepEqual(results.find(r => r.status === 200).body, {backup_proof: true});
+  assert.ok(results.every(r => Object.keys(r.body).length === 1));
+}));
+
+test('recurrence auth, method, body and expiry refuse without a service read', () => fixture(async ({request, recurrence, productionCalls, rebind}) => {
+  assert.equal((await request()).status, 200);
+  for (const [init, status] of [[{headers: {Authorization: 'Bearer wrong'}},403], [{method:'GET'},405], [{body:'not-empty'},400]]) {
+    assert.deepEqual(await recurrence(init), {status,body:{backup_proof:false}});
+  }
+  assert.deepEqual(await request({},'/recurrence?extra=1'),{status:404,body:{backup_proof:false}});
+  await rebind({TRANSFER_UNTIL_MS:String(Date.now()-1)});
+  assert.deepEqual(await recurrence(), {status:403,body:{backup_proof:false}});
+  assert.equal(productionCalls.length,0);
+}));
+
+test('failed restore never admits a production recurrence read', () => fixture(async ({request, recurrence, productionCalls, rebind}) => {
+  await rebind({SOURCE_ETAG:'0'.repeat(32)});
+  assert.equal((await request()).status,503);
+  assert.deepEqual(await recurrence(),{status:409,body:{backup_proof:false}});
+  assert.equal(productionCalls.length,0);
+}));
+
+for (const [name, status, body] of [
+  ['stale proof',200,'{"backup_proof":false}'], ['health failure',503,'{"backup_proof":false}'],
+  ['redirect',302,''], ['wrong shape',200,'{"backup_proof":true,"extra":1}'],
+  ['oversized response',200,'{"backup_proof":true}'+ ' '.repeat(65)],
+]) test('recurrence '+name+' fails content-free and cannot retry', () => fixture(async ({request, recurrence, productionCalls}) => {
+  assert.equal((await request()).status,200);
+  assert.deepEqual(await recurrence(),{status:503,body:{backup_proof:false}});
+  assert.deepEqual(await recurrence(),{status:409,body:{backup_proof:false}});
+  assert.equal(productionCalls.length,1);
+}, {production:() => new runtime.Response(body,{status,headers:status===302?{Location:'https://forbidden.invalid/'}:{}})}));
+
+
+test('full restore recurrence reaches exact native health against its real original backup and alarm', async () => {
+  const origin = 'https://scry.mistystep.io', sourceSpace = 'synthetic-native-recurrence';
+  const native = await createRuntime({name: 'synthetic-native-recurrence', artifact,
+    bindings: {SCRY_ENV:'development',SPACE_NAME:sourceSpace,CANONICAL_ORIGIN:origin,INTERNAL_KEY:internalKey}});
+  try {
+    const namespace = await native.mf.getDurableObjectNamespace('LEARNING_SPACE');
+    const stub = namespace.get(namespace.idFromName(sourceSpace));
+    const backup = await stub.fetch('https://internal.invalid/__internal/daily', {method:'POST',
+      headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});
+    assert.equal(backup.status,200); await backup.body?.cancel();
+    const bucket = await native.mf.getR2Bucket('SCRY_BACKUPS');
+    const listing = await bucket.list(); assert.equal(listing.objects.length,1);
+    const sourceBytes = Buffer.from(await (await bucket.get(listing.objects[0].key)).arrayBuffer());
+    let reads = 0;
+    await fixture(async ({request,recurrence,productionCalls}) => {
+      const restored = await request(); assert.equal(restored.status,200,JSON.stringify(restored.body));
+      assert.equal(restored.body.source_sha256,hash(sourceBytes));
+      assert.deepEqual(await recurrence(),{status:200,body:{backup_proof:true}});
+      assert.equal(reads,1); assert.equal(productionCalls.length,1);
+      assert.deepEqual(await recurrence(),{status:409,body:{backup_proof:false}});
+      assert.equal(reads,1);
+    }, {sourceBytes, production: request => {
+      reads++;
+      // Native Rust supplies the verdict from the source's persisted backup
+      // SHA and next-day alarm, not a fixture response or the restored target.
+      return native.worker.fetch(request.url,{method:request.method,headers:request.headers,redirect:'manual'});
+    }});
+    assert.deepEqual(Buffer.from(await (await bucket.get(listing.objects[0].key)).arrayBuffer()),sourceBytes);
+  } finally {await native.mf.dispose();}
 });

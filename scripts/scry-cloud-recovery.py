@@ -438,9 +438,11 @@ class Drill:
         by_name = {v['name']: v for v in settings['bindings']}
         for expected in metadata['bindings']:
             actual = by_name[expected['name']]
-            for field in ('text', 'bucket_name', 'class_name', 'script_name'):
+            for field in ('text', 'bucket_name', 'class_name', 'script_name', 'service', 'environment'):
                 if field in expected and not (field == 'text' and expected['type'] == 'secret_text'):
                     need(actual.get(field) == expected[field], 'RECOVERY_BINDING_VALUE_UNVERIFIED')
+            if expected['type'] == 'service':
+                need(actual.get('entrypoint') in (None, ''), 'RECOVERY_SERVICE_ENTRYPOINT_UNVERIFIED')
         own = [v for v in settings['bindings'] if v.get('class_name') == class_name and v.get('type') == 'durable_object_namespace']
         need(len(own) == 1 and re.fullmatch('[a-f0-9]{32}', own[0].get('namespace_id', '')), 'RECOVERY_NAMESPACE_UNVERIFIED')
         self.created[name] = class_name
@@ -498,12 +500,15 @@ class Drill:
         return sorted(set(failed) | self.uncertain)
 
 
-def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, external=private_request, billing_period=None):
+def run(config, artifact_dir, source_pin, request, *, approval, after_restore, receipt=None, external=private_request, billing_period=None):
     """Provision only after explicit admission; never read source object bodies here."""
     proof, candidate, bridge = frozen_modules(artifact_dir)
     need(isinstance(receipt, dict) and receipt.get('source') == proof['revision'], 'RECOVERY_PREPARED_SOURCE_MISMATCH')
     approval = admit(receipt, approval=approval, starting=False)
     require_billing_period(billing_period, approval, fresh=False)
+    need(callable(after_restore), 'RECOVERY_DEPLOYMENT_CALLBACK_REQUIRED')
+    need(isinstance(config.get('name'), str) and re.fullmatch('[a-z0-9-]{1,63}', config['name'])
+         and approval.get('production_health_service') == config['name'], 'PRODUCTION_HEALTH_SERVICE_APPROVAL_REQUIRED')
     key, etag, size = source_pin.get('key'), source_pin.get('etag'), source_pin.get('size')
     need(isinstance(key, str) and re.fullmatch(r'snapshots/[a-z0-9-]{1,100}/[0-9]+-(daily|pre-release)-[a-f0-9]{48}\.json', key), 'INVALID_RECOVERY_SOURCE_PIN')
     need(isinstance(etag, str) and re.fullmatch(r'(?:[a-f0-9]{32}(?:-[0-9]+)?|"[a-f0-9]{32}(?:-[0-9]+)?")', etag), 'INVALID_RECOVERY_SOURCE_PIN')
@@ -518,6 +523,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, ex
     drill = Drill(request, external)
     drill.space = space
     outcome = None
+    phase = 'restore'
     failed = []
     try:
         for name in (target, gateway):
@@ -552,9 +558,10 @@ def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, ex
             {'name': 'TARGET', 'type': 'durable_object_namespace', 'class_name': 'LearningSpace', 'script_name': target},
             {'name': 'SOURCE', 'type': 'r2_bucket', 'bucket_name': source_bucket},
             {'name': 'BACKUPS', 'type': 'r2_bucket', 'bucket_name': bucket},
+            {'name': 'PRODUCTION', 'type': 'service', 'service': config['name'], 'environment': 'production'},
             *[binding(k, v) for k, v in pins.items()], binding('INTERNAL_KEY', internal, True),
             binding('RESTORE_TOKEN', restore_key, True), binding('TRANSFER_KEY', transfer, True)])
-        staged_meta = dict(bridge_meta, bindings=[b for b in bridge_meta['bindings'] if b['name'] != 'SOURCE'])
+        staged_meta = dict(bridge_meta, bindings=[b for b in bridge_meta['bindings'] if b['name'] not in ('SOURCE', 'PRODUCTION')])
         drill.bind(gateway, staged_meta, bridge, 'RecoveryBridge')
         session = drill.call('/workers/scripts/' + gateway + '/subdomain/edge-preview')
         token, exchange = session.get('token'), session.get('exchange_url')
@@ -606,6 +613,18 @@ def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, ex
              and outcome['target_page_size'] in (512, 1024, 2048, 4096)
              and 0 <= outcome['photos_full_bytes_verified'] <= 32 and 0 <= outcome['elapsed_ms'] <= 900000
              and all(re.fullmatch('[a-f0-9]{64}', outcome[k]) for k in ('source_sha256', 'snapshot_sha256')), 'RECOVERY_PROOF_INVALID')
+        # Only a complete, strict restore proof may admit the parent's exact
+        # production upload/readback. Once called, failure is never 'undeployed'.
+        phase = 'deployment'
+        after_restore()
+        phase = 'recurrence'
+        status, body = drill.preview('https://' + host + '/recurrence', method='POST',
+            headers=headers | {'Authorization': 'Bearer ' + transfer}, body=b'')
+        need(status == 200 and len(body) <= 64, 'RECOVERY_RECURRENCE_NOT_VERIFIED')
+        recurrence = json.loads(body)
+        need(isinstance(recurrence, dict) and set(recurrence) == {'backup_proof'}
+             and recurrence['backup_proof'] is True, 'RECOVERY_RECURRENCE_NOT_VERIFIED')
+        phase = 'verified'
     except Exception:
         outcome = None
     finally:
@@ -614,9 +633,17 @@ def run(config, artifact_dir, source_pin, request, *, approval, receipt=None, ex
         error = RecoveryBlocked('RECOVERY_CLEANUP_FAILED')
         # Caller retains this only in the private native receipt, not public logs.
         error.retained_resources = failed
+        error.recovery_phase = phase
+        error.deployment_attempted = phase != 'restore'
         raise error
-    need(outcome is not None, 'RECOVERY_NOT_VERIFIED')
-    return {'status': 'verified', 'proof': outcome, 'cleanup_verified': True, 'cloud_requests': drill.calls,
+    if outcome is None:
+        reason = {'deployment': 'RECOVERY_DEPLOYMENT_CALLBACK_FAILED',
+                  'recurrence': 'RECOVERY_RECURRENCE_NOT_VERIFIED'}.get(phase, 'RECOVERY_NOT_VERIFIED')
+        error = RecoveryBlocked(reason)
+        error.recovery_phase = phase
+        error.deployment_attempted = phase != 'restore'
+        raise error
+    return {'status': 'verified', 'proof': outcome, 'recurrence_verified': True, 'cleanup_verified': True, 'cloud_requests': drill.calls,
             'preview_requests': drill.external_calls, 'cost_quote_micro_usd': rounded_quote({n: v[2] for n, v in METERS.items()}),
             'learner_bodies_exported': False}
 

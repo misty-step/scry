@@ -278,11 +278,12 @@ an alternate-host redirect.
 
 ## Cloud-only release recovery gate
 
-The native `ci.yml` promoter performs the launch check after exact committed
-artifact preparation and before any production code upload, under the existing
-`scry-rust-production` concurrency group. It does not depend on Mirrodin or copy
-learner archives into Actions. Source merge, a published release, or healthy
-`/healthz` alone is not a successful recovery check.
+The native `ci.yml` promoter independently restores a complete pinned archive
+before production code upload, then checks persisted recurrence after exact
+artifact deployment, under the existing `scry-rust-production` concurrency group.
+It does not depend on Mirrodin or copy learner archives into Actions. Source
+merge, a published release, upload metadata, or ordinary `/healthz` alone is not
+a successful recovery check.
 
 `deploy/cloud-recovery-approval.json` starts disabled. One explicit approval is
 bound to a reviewed implementation commit and exact release version; only the
@@ -295,23 +296,32 @@ until the fixed approval expires, then an `always()` step removes only the
 exact run-owned claim. That wait follows deployment, not precedes it.
 
 Before billable listing or mutations, the gate requires the existing Standard
-usage model and explicit bounded cost admission. Provider keys, immediate or
-bootstrap-window 30-day deletion candidates, unknown live modules/source,
-incomplete listings, or unavailable Cron analytics stop before scheduling.
-It puts one dated Cron slot onto the **existing verified live code**, requires
-an actual successful provider Cron event, and restores the original empty Cron
-list in `finally`. Exact run-owned schedule intent is durably saved before PUT;
-the native `always()` step independently retries only matching cleanup after
-process interruption. An unresolved Cron is a production cleanup incident,
-not storage-only residue: it has no automatic expiry, blocks success, and stays
-pending until absence is verified. A Cron event is useful evidence only because that exact
-reviewed handler awaits complete archive readback/decoding and alarm rearming.
-It never uses key presence or persisted health as a replacement.
+usage model and explicit bounded cost admission. Provider keys, retention
+candidates, unknown live modules/source, or incomplete listings stop. It selects
+exactly one fresh archive from a fixed, reviewed prior observation window; that
+metadata selects input but proves neither integrity nor recurrence. Complete
+independent restore/readback must pass before the deployment callback can run.
+The gate does not schedule another production backup or require Cron analytics.
+Historical run-owned schedule cleanup remains supported: any unresolved Cron
+is a production cleanup incident, not storage-only residue, until absence is
+verified.
 
-The successful bootstrap rearms the existing autonomous 24-hour Durable Object
-alarm and its existing 30-day retention/recovery behavior. Removing the temporary
-Cron does not remove that alarm. There is no second permanent daily schedule;
-the next natural daily run remains a separate observation.
+A separately approved temporary service binding lets the same private checker
+make one fixed `GET /healthz` after exact deployed-module verification. The
+expected archive hash is computed and retained inside Cloudflare, passed only
+in a header, never a URL. The existing health route returns only a boolean proof
+of matching successful fresh backup status and a persisted future alarm due no
+later than the existing 24-hour cadence. It rereads the revision/status around
+the alarm read and refuses races without writes, rearming or job recovery.
+Ordinary health behavior is unchanged. No Access credential, bypass, public
+route or production binding is added. The temporary service is not permission
+for another route, caller-selected request, or background operation.
+
+A post-upload proof or cleanup failure is explicitly deployed/upload-attempted
+but unverified, never success through a same-source retry shortcut. Existing
+rollback safety and 30-day retention remain unchanged. A persisted alarm proves
+current scheduling, not future delivery; the next natural daily run remains a
+separate observation.
 
 Recovery uses separate temporary private Workers/DOs/R2, no public route,
 provider, owner or QA binding, and short-lived internal/restore/transfer keys.
@@ -338,7 +348,7 @@ boundary** bound its compute billing. Calendar month-end is not that boundary.
 An explicitly reviewed continuation also pins its prior accounting start; the
 same verified period must cover that usage, not grant another rounded allowance.
 Missing billing read permission or ambiguous period metadata stops before the
-claim, billable listing or scheduling; no permission change is implied.
+claim or billable listing; no permission change is implied.
 No target/bridge alarm or Cron can continue after that drain. Failed cleanup
 therefore leaves only temporary storage, conservatively **$0.215/month** within
 the approved **$0.25/month**. Expiry is not deletion.

@@ -61,7 +61,8 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 - [Cloud-only recovery gate](../docs/rust-cloudflare.md#cloud-only-release-recovery-gate):
   S10 / #276; `qa/cloud-restore.test.mjs` exercises the exact candidate on local
   workerd; `qa/cloud-backup.test.py` and `qa/cloud-recovery.test.py` cover bounded
-  orchestration refusals. Hosted Cron, recovery and cleanup remain UNVERIFIED
+  orchestration refusals; `qa/backup-proof.test.mjs` covers the read-only persisted
+  status/alarm verdict. Hosted restore, recurrence and cleanup remain UNVERIFIED
   until the native promotion receipt records them.
 
 Old Go and retired-Worker receipts, as well as synthetic material, do not

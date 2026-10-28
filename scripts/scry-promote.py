@@ -181,14 +181,19 @@ def edges(domains, routes, service):
     return {'custom_domains': sorted([d['hostname'], d['zone_name'], d['zone_id'], d['environment'], d['enabled']] for d in domains if d['service'] == service),
             'routes': sorted(r['pattern'] for r in routes)}
 
-def cloud_gate(receipt, config, before, deployments, prior):
+def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
     spec = importlib.util.spec_from_file_location('scry_cloud_backup', ROOT / 'scripts/scry-cloud-backup.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     native = SimpleNamespace(gh=gh, single_version=single_version, edges=edges, OUT=OUT)
     try:
-        return module.gate(native, receipt, config, before, deployments, prior)
+        return module.gate(native, receipt, config, before, deployments, prior, after_restore=after_restore)
     except Exception as error:
+        if getattr(error, 'deployment_attempted', False):
+            receipt.update(deployment_attempted=True, recovery_verified=False,
+                           recovery_phase=getattr(error, 'recovery_phase', 'unverified'),
+                           cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
+            save(receipt)
         retained = getattr(error, 'retained_resources', [])
         schedule = getattr(error, 'schedule_cleanup', None)
         if retained or schedule:
@@ -240,38 +245,54 @@ def deploy():
     assert current['id'] == previous['id'], 'Live deployment changed before upload'
     observe = lambda: edges(request('/workers/domains?service=' + config['name']), request(script + '/routes'), config['name'])
     serving = observe()
-    # A secret-only version of the same source still lacks the release annotation verified below.
-    if prior != (receipt['source'], True):
-        receipt['cloud_recovery'] = cloud_gate(receipt, config, before, deployments, prior)
-        # Preserve the original nonempty-target guard, after budget admission:
-        # R2 ListObjects itself may cross a billable usage unit. Presence is
-        # still not restore proof; the preceding independent gate is required.
+    def verify_uploaded():
+        after = request(script + '/settings')
+        exact = {b['name']: b for b in after['bindings']}
+        assert observe() == serving, 'Custom domains or routes changed during promotion'
+        assert {k: exact[k][field] for k, field in [('LEARNING_SPACE', 'namespace_id'), ('SCRY_ASSETS', 'bucket_name'), ('SCRY_BACKUPS', 'bucket_name')]} == mutable, 'Durable storage identity changed during promotion'
+        assert exact['SPACE_NAME']['text'] == config['vars']['SPACE_NAME'] and exact['SCRY_ENV']['text'] == 'production', 'Promoted space or environment differs from configuration'
+        assert not ({'RESTORE_TOKEN', 'SYNTHETIC_ACCESS_CLIENT_ID'} & set(exact)), 'Restore or synthetic access binding present after upload'
+        assert request(script + '/subdomain') == {'enabled': False, 'previews_enabled': False}, 'Worker subdomain or previews are enabled'
+        raw, kind = request(script + '/content/v2', raw=True)
+        parts = email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: ' + kind + '\r\n\r\n').encode() + raw)
+        actual = {}
+        for part in parts.iter_parts():
+            name = part.get_filename() or part.get_param('name', header='Content-Disposition')
+            assert isinstance(name, str), 'Deployed module has no valid filename'
+            actual[Path(name).name] = sha(part.get_payload(decode=True))
+        # worker/shim.mjs is the artifact's backwards-compatibility re-export only;
+        # native Wrangler uses the exact tested index.js directly.
+        expected = {name: digest for name, digest in json.loads((OUT / 'proof.json').read_text())['worker'].items() if name in ('index.js', 'index_bg.wasm')}
+        assert actual == expected, 'Deployed modules differ from verified artifact'
+        deployed = request(script + '/deployments')['deployments'][0]
+        final = version(single_version(deployed))
+        assert release_source(final) == receipt['source'], 'Deployed release annotation differs from promoted source'
+        receipt.update(stage='exact_artifact_uploaded_recurrence_pending', worker=config['name'], deployment=deployed, mutable_bindings_unchanged=True,
+                       module_sha256=actual, routes_changed=False, serving_edges=serving, learner_bodies_requested=False)
+        save(receipt)
+    # Upload runs only after complete independent restore and while the same
+    # short-lived checker remains available for one persisted recurrence read.
+    def after_restore():
         snapshots = request('/r2/buckets/' + mutable['SCRY_BACKUPS'] + '/objects?per_page=1000&prefix=snapshots%2F' + config['vars']['SPACE_NAME'] + '%2F')
         assert snapshots, 'Import and canonically verify the unused space before activation'
+        receipt.update(stage='upload_attempted_recurrence_pending', deployment_attempted=True,
+                       recovery_verified=False)
+        save(receipt)
         subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
-    after = request(script + '/settings')
-    exact = {b['name']: b for b in after['bindings']}
-    assert observe() == serving, 'Custom domains or routes changed during promotion'
-    assert {k: exact[k][field] for k, field in [('LEARNING_SPACE', 'namespace_id'), ('SCRY_ASSETS', 'bucket_name'), ('SCRY_BACKUPS', 'bucket_name')]} == mutable, 'Durable storage identity changed during promotion'
-    assert exact['SPACE_NAME']['text'] == config['vars']['SPACE_NAME'] and exact['SCRY_ENV']['text'] == 'production', 'Promoted space or environment differs from configuration'
-    assert not ({'RESTORE_TOKEN', 'SYNTHETIC_ACCESS_CLIENT_ID'} & set(exact)), 'Restore or synthetic access binding present after upload'
-    assert request(script + '/subdomain') == {'enabled': False, 'previews_enabled': False}, 'Worker subdomain or previews are enabled'
-    raw, kind = request(script + '/content/v2', raw=True)
-    parts = email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: ' + kind + '\r\n\r\n').encode() + raw)
-    actual = {}
-    for part in parts.iter_parts():
-        name = part.get_filename() or part.get_param('name', header='Content-Disposition')
-        assert isinstance(name, str), 'Deployed module has no valid filename'
-        actual[Path(name).name] = sha(part.get_payload(decode=True))
-    # worker/shim.mjs is the artifact's backwards-compatibility re-export only;
-    # native Wrangler uses the exact tested index.js directly.
-    expected = {name: digest for name, digest in json.loads((OUT / 'proof.json').read_text())['worker'].items() if name in ('index.js', 'index_bg.wasm')}
-    assert actual == expected, 'Deployed modules differ from verified artifact'
-    deployed = request(script + '/deployments')['deployments'][0]
-    final = version(single_version(deployed))
-    assert release_source(final) == receipt['source'], 'Deployed release annotation differs from promoted source'
-    receipt.update(stage='exact_artifact_promoted', worker=config['name'], deployment=deployed, mutable_bindings_unchanged=True,
-                   module_sha256=actual, routes_changed=False, serving_edges=serving, learner_bodies_requested=False)
+        verify_uploaded()
+
+    # An uploaded-but-unverified failure must not become success through the
+    # old same-source shortcut on a new run with a freshly prepared receipt.
+    if prior == (receipt['source'], True):
+        recovery = receipt.get('cloud_recovery', {}).get('recovery', {})
+        assert (receipt.get('stage') == 'exact_artifact_promoted'
+                and recovery.get('recurrence_verified') is True
+                and recovery.get('cleanup_verified') is True), 'Already deployed source lacks verified recovery receipt'
+        verify_uploaded()
+    else:
+        receipt['cloud_recovery'] = cloud_gate(receipt, config, before, deployments, prior,
+                                             after_restore=after_restore)
+    receipt.update(stage='exact_artifact_promoted', recovery_verified=True)
     save(receipt)
     print(json.dumps(receipt))
 

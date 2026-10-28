@@ -25,10 +25,10 @@ sha = lambda b: hashlib.sha256(b).hexdigest()
 SOURCE = 'a' * 40
 RECEIPT = {'source': SOURCE, 'artifact_id': 123}
 PIN = {'key': 'snapshots/synthetic-source/1000-daily-' + '1' * 48 + '.json', 'etag': '1' * 32, 'size': 100}
-CONFIG = {'r2_buckets': [{'binding': 'SCRY_BACKUPS', 'bucket_name': 'source-private'}]}
+CONFIG = {'name':'synthetic-production', 'r2_buckets': [{'binding': 'SCRY_BACKUPS', 'bucket_name': 'source-private'}]}
 ENV = {'GITHUB_RUN_ID': '321', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_REPOSITORY': 'misty-step/scry', 'GITHUB_REF': 'refs/heads/master', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_ACTOR': 'github-actions[bot]'}
 def approval():
-    return dict(approved=True,scope='one-cloud-only-recovery-drill', approval_id='d'*32, reviewed_source=SOURCE,
+    return dict(production_health_service=CONFIG['name'],approved=True,scope='one-cloud-only-recovery-drill', approval_id='d'*32, reviewed_source=SOURCE,
                 release_version='0.9.0', expires_ms=int(time.time()*1000)+7200000, one_time_cents=2000, failed_cleanup_storage_cents_per_month=25)
 
 def subscriptions(end='2026-11-10T12:00:00Z'):
@@ -55,7 +55,7 @@ def artifact(root):
 class Cloud:
     def __init__(self, fail=None):
         self.scripts = {}; self.buckets = {}; self.namespaces = set(); self.calls = []; self.fail = fail
-        self.external_calls = []
+        self.external_calls = []; self.deployed=False
     def __call__(self, path, method='GET', **kw):
         self.calls.append((path, method, kw))
         if self.fail: self.fail(path, method, kw)
@@ -113,11 +113,15 @@ class Cloud:
         self.external_calls.append((url, kw))
         gateway=next(v for n,v in self.scripts.items() if n.endswith('-bridge'))
         has_source=any(b['name']=='SOURCE' for b in gateway['settings']['bindings'])
-        assert url.startswith('https://scry-recovery-') and url.endswith('.synthetic-existing.workers.dev/restore')
+        assert url.startswith('https://scry-recovery-') and any(url.endswith('.synthetic-existing.workers.dev/'+p) for p in ('restore','recurrence'))
         if kw['headers'].get('Authorization') in (None, 'Bearer synthetic-wrong-key'):
             assert not has_source, 'hosted refusal must precede learner binding'
             return 403, b'{}'
         assert has_source
+        if url.endswith('/recurrence'):
+            assert self.deployed, 'recurrence must follow exact deployment callback'
+            assert kw['body'] == b''
+            return 200,b'{"backup_proof":true}'
         return 200, json.dumps(dict(format='scry-cloud-restore-proof-v1', canonical_application_equal=True,
             source_sha256='2'*64, snapshot_sha256='3'*64, source_bytes=100, snapshot_bytes=120,
             photos_full_bytes_verified=0, restore_attempts=1, backup_attempts=1, elapsed_ms=5, target_database_bytes=4096, target_page_size=4096)).encode()
@@ -300,19 +304,77 @@ class Recovery(unittest.TestCase):
         for bad in ({},usage|{'do_requests':True},usage|{'do_requests':-1}):
             with self.assertRaises(R.RecoveryBlocked): R.rounded_quote(bad)
 
-    def run_fixture(self, cloud, change=None):
+    def run_fixture(self, cloud, change=None, after_restore=None):
         with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, ENV, clear=True):
             root=Path(d);artifact(root)
             if change: change(root)
-            return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
+            if after_restore is None: after_restore=lambda:setattr(cloud,'deployed',True)
+            return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=after_restore)
 
     def test_real_orchestration_uploads_frozen_bytes_and_deletes_only_created_data(self):
         cloud=Cloud(); receipt=self.run_fixture(cloud)
         self.assertEqual(receipt['status'],'verified');self.assertTrue(receipt['cleanup_verified'])
         self.assertEqual(cloud.scripts,{});self.assertEqual(cloud.namespaces,set());self.assertEqual(cloud.buckets,{})
-        self.assertLessEqual(len(cloud.calls),128);self.assertEqual(len(cloud.external_calls),3)
+        self.assertLessEqual(len(cloud.calls),128);self.assertEqual(len(cloud.external_calls),4);self.assertTrue(receipt['recurrence_verified'])
         self.assertFalse(any('/source-private/objects/' in p for p,m,k in cloud.calls))
         self.assertFalse(any(m=='POST' and p.endswith('/subdomain') for p,m,k in cloud.calls))
+
+    def test_service_approval_absent_or_wrong_refuses_before_keys_or_cloud(self):
+        cloud=Cloud()
+        with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True),mock.patch.object(R.secrets,'token_hex') as keys:
+            root=Path(d);artifact(root)
+            for name in (None,'other-service'):
+                with self.assertRaisesRegex(R.RecoveryBlocked,'PRODUCTION_HEALTH_SERVICE_APPROVAL_REQUIRED'):
+                    R.run(CONFIG,root,PIN,cloud,approval=approval()|{'production_health_service':name},receipt=RECEIPT,
+                          external=cloud.external,billing_period=billing_period(),after_restore=mock.Mock())
+            keys.assert_not_called();self.assertEqual(cloud.calls,[])
+
+    def test_callback_failure_is_deployment_attempted_and_never_probes_recurrence(self):
+        cloud=Cloud();callback=mock.Mock(side_effect=RuntimeError('PRIVATE_CANARY'))
+        with self.assertRaisesRegex(R.RecoveryBlocked,'DEPLOYMENT_CALLBACK_FAILED') as result:
+            self.run_fixture(cloud,after_restore=callback)
+        callback.assert_called_once_with()
+        self.assertTrue(result.exception.deployment_attempted)
+        self.assertEqual(result.exception.recovery_phase,'deployment')
+        self.assertFalse(any(url.endswith('/recurrence') for url,_ in cloud.external_calls))
+        self.assertFalse(cloud.scripts or cloud.buckets or cloud.namespaces)
+
+    def test_recurrence_refusal_or_oversize_never_retries_and_cleans_deployed_attempt(self):
+        for status,body in [(503,b'{"backup_proof":false}'),(200,b'{"backup_proof":true,"extra":1}'),
+                            (200,b'{"backup_proof":true}'+b' '*65)]:
+            cloud=Cloud();original=cloud.external
+            def external(url,_status=status,_body=body,**kw):
+                response=original(url,**kw)
+                return (_status,_body) if url.endswith('/recurrence') else response
+            cloud.external=external
+            with self.assertRaisesRegex(R.RecoveryBlocked,'RECURRENCE_NOT_VERIFIED') as result:self.run_fixture(cloud)
+            self.assertTrue(result.exception.deployment_attempted)
+            self.assertEqual(result.exception.recovery_phase,'recurrence')
+            self.assertEqual(sum(url.endswith('/recurrence') for url,_ in cloud.external_calls),1)
+            self.assertFalse(cloud.scripts or cloud.buckets or cloud.namespaces)
+
+    def test_callback_failure_with_cleanup_failure_preserves_deployment_phase(self):
+        def fail(path,method,kw):
+            if method=='DELETE' and path.startswith('/r2/buckets/'):raise OSError('PRIVATE_CANARY')
+        cloud=Cloud(fail);callback=mock.Mock(side_effect=RuntimeError('PRIVATE_CANARY'))
+        with self.assertRaisesRegex(R.RecoveryBlocked,'RECOVERY_CLEANUP_FAILED') as caught:
+            self.run_fixture(cloud,after_restore=callback)
+        self.assertEqual(caught.exception.recovery_phase,'deployment')
+        self.assertTrue(caught.exception.deployment_attempted)
+        self.assertEqual(caught.exception.retained_resources,list(cloud.buckets))
+        self.assertFalse(any(url.endswith('/recurrence') for url,_ in cloud.external_calls))
+
+    def test_wrong_service_readback_blocks_before_restore_and_deployment(self):
+        class WrongServiceCloud(Cloud):
+            def __call__(self,path,method='GET',**kw):
+                value=super().__call__(path,method=method,**kw)
+                if path.endswith('/settings') and value:
+                    for b in value['bindings']:
+                        if b['type']=='service':b['service']='wrong-target'
+                return value
+        cloud=WrongServiceCloud();callback=mock.Mock()
+        with self.assertRaises(R.RecoveryBlocked):self.run_fixture(cloud,after_restore=callback)
+        callback.assert_not_called()
 
     def test_cleanup_rest_listing_uses_optional_cursor_metadata_not_required_flag(self):
         for info in ('missing', None, {}, {'cursor': None}, {'cursor': ''}, {'is_truncated': False}):
@@ -346,9 +408,10 @@ class Recovery(unittest.TestCase):
                 if status == 200:
                     proof=json.loads(body); proof[_field]=_value; body=json.dumps(proof).encode()
                 return status, body
-            cloud.external=external
+            cloud.external=external;callback=mock.Mock()
             with self.subTest(field=field), self.assertRaisesRegex(R.RecoveryBlocked, 'RECOVERY_NOT_VERIFIED'):
-                self.run_fixture(cloud)
+                self.run_fixture(cloud,after_restore=callback)
+            callback.assert_not_called()
             self.assertFalse(cloud.scripts or cloud.buckets or cloud.namespaces)
 
     def test_invalid_artifact_refuses_before_any_cloud_or_credentials(self):
@@ -363,7 +426,7 @@ class Recovery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True),mock.patch.object(R.secrets,'token_hex') as keys:
             root=Path(d);artifact(root)
             with self.assertRaisesRegex(R.RecoveryBlocked, 'ARCHIVE_BYTES_EXCEED_LIMIT size=16777217 limit=16777216'):
-                R.run(CONFIG,root,PIN|{'size':16*1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
+                R.run(CONFIG,root,PIN|{'size':16*1024*1024+1},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=mock.Mock())
             keys.assert_not_called();self.assertEqual(cloud.calls,[])
 
     def test_malformed_etag_refuses_before_cloud_or_credential_generation(self):
@@ -372,7 +435,7 @@ class Recovery(unittest.TestCase):
             root=Path(d);artifact(root)
             for etag in ('"'+'1'*32,'1'*32+'"'):
                 with self.assertRaisesRegex(R.RecoveryBlocked,'SOURCE_PIN'):
-                    R.run(CONFIG,root,PIN|{'etag':etag},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period())
+                    R.run(CONFIG,root,PIN|{'etag':etag},cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=mock.Mock())
             keys.assert_not_called();self.assertEqual(cloud.calls,[])
 
     def test_unknown_transfer_result_never_retries_and_cleans_up(self):
@@ -391,6 +454,8 @@ class Recovery(unittest.TestCase):
         cloud=Cloud(fail)
         with self.assertRaisesRegex(R.RecoveryBlocked,'RECOVERY_CLEANUP_FAILED') as caught:self.run_fixture(cloud)
         self.assertEqual(caught.exception.retained_resources,list(cloud.buckets))
+        self.assertTrue(caught.exception.deployment_attempted)
+        self.assertEqual(caught.exception.recovery_phase,'verified')
         self.assertNotIn('PRIVATE_CANARY',str(caught.exception))
 
     def test_ambiguous_namespace_creation_is_not_deleted_as_an_empty_shell(self):
