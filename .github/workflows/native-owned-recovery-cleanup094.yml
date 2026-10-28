@@ -1,0 +1,225 @@
+name: scry exact owned cleanup (single execution, expiring)
+on:
+  push:
+    branches: [ops/scry-owned-cleanup-20261028-1800]
+permissions:
+  contents: read
+jobs:
+  cleanup:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-owned-cleanup-20261028-1800' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 848ef0e51ccc4b4b0fce018ccc757a2d908d9354
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /deploy/rust-production.toml
+            /recovery/target-adapter.mjs
+      - name: Remove only the exact verified expired recovery target
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import email.parser, email.policy, hashlib, importlib.util, json, os, re, time, tomllib, urllib.error
+          from pathlib import Path
+          from datetime import datetime
+          expiry = datetime.fromisoformat('2026-10-28T18:30:00+00:00').timestamp()
+          started = time.time()
+          if not (started < expiry and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-owned-cleanup-20261028-1800'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow' and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('OWNED_CLEANUP_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py':'b65fec9a5a73504a85794577d6393f3e7e2b9f09ebb1f5671bc6f29aefb4e59e',
+              'deploy/rust-production.toml':'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'recovery/target-adapter.mjs':'45d3ec12a0982a9e0fb23a19aa0d6a7428d1d682095a990e3c0c3c92a51ba3c9',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest()!=digest for p,digest in pins.items()): raise ValueError()
+              config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          except Exception:
+              raise SystemExit('OWNED_CLEANUP_SOURCE_REFUSED') from None
+          spec=importlib.util.spec_from_file_location('backup',Path('scripts/scry-cloud-backup.py'))
+          backup=importlib.util.module_from_spec(spec); spec.loader.exec_module(backup)
+          token=os.environ.get('CLOUDFLARE_API_TOKEN','')
+          if not token: raise SystemExit('OWNED_CLEANUP_SECRET_UNAVAILABLE')
+          client=backup.Cloudflare(config['account_id'],token); client.limit=29
+          nonce='f003614e71ffb72791653ec2'
+          target='scry-recovery-'+nonce+'-target'; bridge='scry-recovery-'+nonce+'-bridge'; bucket='scry-recovery-'+nonce+'-data'
+          namespace='54774d82bee942caa6bd6b11fbf0755f'; base='/workers/scripts/'+target
+          begin=backup.stamp('2026-10-28T17:42:52Z'); end=backup.stamp('2026-10-28T17:43:34Z')
+          search='/workers/scripts-search?name='+target+'&page=1&per_page=100'
+          namespace_paths=['/workers/durable_objects/namespaces?page='+str(page)+'&per_page=1000' for page in range(1,9)]
+          read_limits={search:1,base+'/settings':2,base+'/content/v2':2,'/workers/services/'+target:2,
+                       '/workers/scripts/'+bridge+'/settings':1,'/r2/buckets/'+bucket:1,**{path:2 for path in namespace_paths}}
+          # Exact deletion-only migration: preserve the existing resource limits; do not
+          # make unrelated settings changes in the deletion migration.
+          empty=b'export default {fetch(){return new Response(null,{status:404})}}'
+          metadata={'main_module':'empty.mjs','compatibility_date':'2026-09-10','bindings':[],
+                    'usage_model':'standard','limits':{'cpu_ms':30000,'subrequests':100},
+                    'migrations':{'old_tag':'recovery-v1','new_tag':'recovery-deleted-v1','deleted_classes':['LearningSpace']}}
+          boundary='scry-owned-cleanup-boundary'
+          body=b''
+          for name,kind,value in [('metadata','application/json',json.dumps(metadata).encode()),('empty.mjs','application/javascript+module',empty)]:
+              body+=('--'+boundary+'\r\nContent-Disposition: form-data; name="'+name+'"; filename="'+name+'"\r\nContent-Type: '+kind+'\r\n\r\n').encode()+value+b'\r\n'
+          body+=('--'+boundary+'--\r\n').encode()
+          logging_payload={'logpush':False,'observability':{'enabled':False}}
+          logging_body=json.dumps(logging_payload).encode()
+          read_limits[base+'/script-settings']=1
+          account='https://api.cloudflare.com/client/v4/accounts/'+config['account_id']
+          native_open=client.open; counts={}; statuses=[]; writes=[]
+          def bounded_open(request,timeout):
+              url=request.full_url; path=url[len(account):] if url.startswith(account) else ''; method=request.get_method()
+              key=(method,path); count=counts.get(key,0)+1
+              permitted=(method=='GET' and request.data is None and path in read_limits and count<=read_limits[path])
+              permitted|=(method=='PATCH' and path==base+'/script-settings' and request.data==logging_body and count==1)
+              permitted|=(method=='PUT' and path==base and request.data==body and count==1)
+              permitted|=(method=='DELETE' and path==base and request.data is None and count==1)
+              if not permitted or sum(counts.values())>=29 or time.time()>=min(expiry,started+420):
+                  raise RuntimeError('OWNED_CLEANUP_REQUEST_SCOPE_REFUSED')
+              counts[key]=count
+              if method!='GET': writes.append(method)
+              try:
+                  response=native_open(request,timeout=timeout); statuses.append(response.status); return response
+              except urllib.error.HTTPError as error:
+                  statuses.append(error.code); raise
+          client.open=bounded_open
+          def need(value,code):
+              if not value: raise RuntimeError(code)
+          def within(value):
+              try:return begin<=backup.stamp(value)<=end
+              except Exception:return False
+          def emit(stage,**values):print(json.dumps({'stage':stage,**values},sort_keys=True),flush=True)
+          def modules():
+              raw,kind=client.request(base+'/content/v2',raw=True)
+              form=email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: '+kind+'\r\n\r\n').encode()+raw)
+              hashes={}
+              for part in form.iter_parts():
+                  name=part.get_filename() or part.get_param('name',header='Content-Disposition')
+                  need(name in ('empty.mjs','target-adapter.mjs','index.js','index_bg.wasm') and name not in hashes,'MODULE_IDENTITY_REFUSED')
+                  hashes[name]=hashlib.sha256(part.get_payload(decode=True)).hexdigest()
+              return hashes
+          expected_modules={'index.js':'784595a3565b71f91c3f1e5d109384ea19cc7c20362539bf8501607295f0e7ba',
+              'index_bg.wasm':'d516fa63d07bc0c694da42619089241f2f58b4f7eaedfe6e1e48599b0670d79e',
+              'target-adapter.mjs':pins['recovery/target-adapter.mjs']}
+          def namespace_inventory():
+              # Same independently reviewed SDK-correct proof: optional metadata,
+              # explicit empty terminal page, no short-page completion, no repeated IDs.
+              identities=set(); matched=[]; known={}
+              for page,path in enumerate(namespace_paths,1):
+                  value=client.request(path,envelope=True); rows=value.get('result'); info=value.get('result_info')
+                  if info is None:info={}
+                  need(isinstance(rows,list) and len(rows)<=1000 and isinstance(info,dict),'NAMESPACE_INVENTORY_REFUSED')
+                  for field in ('count','page','per_page','total_count','total_pages'):
+                      number=info.get(field)
+                      if number is None:continue
+                      need(type(number) is int and number>=0,'NAMESPACE_METADATA_REFUSED')
+                      if field=='page':need(number==page,'NAMESPACE_PAGE_REFUSED')
+                      elif field=='count':need(number==len(rows),'NAMESPACE_COUNT_REFUSED')
+                      else:
+                          need(field not in known or known[field]==number,'NAMESPACE_METADATA_CHANGED');known[field]=number
+                  if 'per_page' in known:need(1<=known['per_page']<=1000 and len(rows)<=known['per_page'],'NAMESPACE_PAGE_SIZE_REFUSED')
+                  if 'total_pages' in known:need(known['total_pages']<=8 and (not rows or page<=known['total_pages']),'NAMESPACE_TOTAL_REFUSED')
+                  for row in rows:
+                      need(isinstance(row,dict) and all(isinstance(row.get(k),str) and row[k] for k in ('id','script','class'))
+                           and row['id'] not in identities,'NAMESPACE_ROW_REFUSED')
+                      identities.add(row['id'])
+                      if row['id']==namespace or row['script'] in (target,bridge):matched.append(row)
+                  if 'total_count' in known:need(len(identities)<=known['total_count']<=8000,'NAMESPACE_TOTAL_REFUSED')
+                  if not rows:
+                      need('total_count' not in known or len(identities)==known['total_count'],'NAMESPACE_INCOMPLETE')
+                      need('total_pages' not in known or page>known['total_pages'] or (page==1 and not identities and known['total_pages']==1),'NAMESPACE_INCOMPLETE')
+                      return matched
+              raise RuntimeError('NAMESPACE_BOUNDED_READ_EXHAUSTED')
+          phase='preflight'; migration_uncertain=False; deletion_uncertain=False
+          try:
+              rows=client.request(search)
+              need(isinstance(rows,list) and len(rows)<100,'CREATION_SEARCH_REFUSED')
+              exact=[row for row in rows if isinstance(row,dict) and row.get('script_name')==target]
+              need(len(exact)==1 and within(exact[0].get('created_on')),'CREATION_WINDOW_REFUSED')
+              settings=client.request(base+'/settings'); bindings=settings.get('bindings')
+              need(isinstance(bindings,list) and len(bindings)==9 and all(isinstance(b,dict) for b in bindings),'BINDINGS_REFUSED')
+              by={b.get('name'):b for b in bindings}
+              expected={'LEARNING_SPACE':'durable_object_namespace','SCRY_ASSETS':'r2_bucket','SCRY_BACKUPS':'r2_bucket','SCRY_ENV':'plain_text',
+                        'SPACE_NAME':'plain_text','INTERNAL_KEY':'secret_text','RESTORE_TOKEN':'secret_text','TRANSFER_ISSUED_MS':'plain_text','TRANSFER_UNTIL_MS':'plain_text'}
+              need({k:v.get('type') for k,v in by.items()}==expected,'BINDINGS_REFUSED')
+              own=by['LEARNING_SPACE'];need(own.get('namespace_id')==namespace and own.get('class_name')=='LearningSpace'
+                  and own.get('script_name') in (None,'',target),'NAMESPACE_IDENTITY_REFUSED')
+              need(all(by[k].get('bucket_name')==bucket for k in ('SCRY_ASSETS','SCRY_BACKUPS'))
+                   and by['SCRY_ENV'].get('text')=='restore' and by['SPACE_NAME'].get('text')=='recovery-'+nonce,'BINDING_VALUES_REFUSED')
+              issued=by['TRANSFER_ISSUED_MS'].get('text'); until=by['TRANSFER_UNTIL_MS'].get('text')
+              need(isinstance(issued,str) and issued.isdigit() and len(issued)==13 and isinstance(until,str) and until.isdigit() and len(until)==13
+                   and int(begin.timestamp()*1000)<=int(issued)<=int(end.timestamp()*1000) and int(until)==int(issued)+900000
+                   and int(until)<int(time.time()*1000),'CAPABILITY_IDENTITY_OR_EXPIRY_REFUSED')
+              need(settings.get('limits')=={'cpu_ms':30000,'subrequests':100} and settings.get('usage_model')=='standard','RETAINED_LIMITS_REFUSED')
+              obs=settings.get('observability'); enabled=obs.get('enabled') if isinstance(obs,dict) else None
+              emit('original_observability',present='observability' in settings,
+                   kind='null' if obs is None else 'object' if isinstance(obs,dict) else 'other',
+                   enabled_present=isinstance(obs,dict) and 'enabled' in obs,
+                   enabled_state='true' if enabled is True else 'false' if enabled is False else 'missing_or_other',
+                   logpush_state='false' if settings.get('logpush') is False else 'true' if settings.get('logpush') is True else 'missing_or_other')
+              need(modules()==expected_modules,'SOURCE_MODULES_REFUSED')
+              service=client.request('/workers/services/'+target);script=service['default_environment']['script']
+              need(script.get('migration_tag')=='recovery-v1' and (within(service.get('created_on')) or within(script.get('created_on'))),'MIGRATION_IDENTITY_REFUSED')
+              inventory=namespace_inventory()
+              need(len(inventory)==1 and inventory[0]['id']==namespace and inventory[0]['script']==target
+                   and inventory[0]['class']=='LearningSpace' and inventory[0].get('use_sqlite') is True,'NAMESPACE_OWNERSHIP_REFUSED')
+              need(client.request('/workers/scripts/'+bridge+'/settings',absent=True) is None and statuses[-1]==404,'BRIDGE_NOT_ABSENT')
+              need(client.request('/r2/buckets/'+bucket,absent=True) is None and statuses[-1]==404,'BUCKET_NOT_ABSENT')
+              emit('owned_preflight',name=target,namespace_id=namespace,source_exact=True,creation_window_exact=True,
+                   capability_expired=True,bridge_absent=True,bucket_absent=True,result='VERIFIED_EXACT_OWNED_TARGET_ONLY')
+              # Test the documented script-level disable contract once on this expired,
+              # exact-owned target only. A probe error never skips approved cleanup.
+              patch_uncertain=False; patch_status=None; read_status=None; logging=None
+              before_status=len(statuses)
+              try:client.request(base+'/script-settings',method='PATCH',payload=logging_payload)
+              except Exception:patch_uncertain=True
+              if len(statuses)>before_status:patch_status=statuses[-1]
+              before_status=len(statuses)
+              try:logging=client.request(base+'/script-settings')
+              except Exception:pass
+              if len(statuses)>before_status:read_status=statuses[-1]
+              obs=logging.get('observability') if isinstance(logging,dict) else None
+              affirmative=(isinstance(logging,dict) and isinstance(obs,dict)
+                           and obs.get('enabled') is False and logging.get('logpush') is False)
+              emit('logging_disable_probe',patch_response_uncertain=patch_uncertain,patch_http_status=patch_status,
+                   read_http_status=read_status,logging_dict=isinstance(logging,dict),
+                   observability_present=isinstance(logging,dict) and 'observability' in logging,
+                   observability_kind='object' if isinstance(obs,dict) else 'null' if obs is None else 'other',
+                   enabled_state='false' if isinstance(obs,dict) and obs.get('enabled') is False else 'true' if isinstance(obs,dict) and obs.get('enabled') is True else 'missing_or_other',
+                   logpush_state='false' if isinstance(logging,dict) and logging.get('logpush') is False else 'true' if isinstance(logging,dict) and logging.get('logpush') is True else 'missing_or_other',
+                   result='VERIFIED_DISABLED' if affirmative else 'UNVERIFIED',cleanup_continues=True)
+              phase='migration'
+              try:client.request(base,method='PUT',body=body,headers={'Content-Type':'multipart/form-data; boundary='+boundary})
+              except Exception:migration_uncertain=True
+              # An uncertain write is observed, never repeated. Both namespace absence
+              # and exact deletion tag/empty modules are required before Worker deletion.
+              need(namespace_inventory()==[],'NAMESPACE_ABSENCE_UNVERIFIED')
+              script=client.request('/workers/services/'+target)['default_environment']['script']
+              need(script.get('migration_tag')=='recovery-deleted-v1' and modules()=={'empty.mjs':hashlib.sha256(empty).hexdigest()},'DELETION_MIGRATION_UNVERIFIED')
+              emit('namespace_cleanup',namespace_id=namespace,result='VERIFIED_ABSENT',migration_response_uncertain=migration_uncertain)
+              phase='worker_delete'
+              try:client.request(base,method='DELETE')
+              except Exception:deletion_uncertain=True
+              need(client.request(base+'/settings',absent=True) is None and statuses[-1]==404,'WORKER_ABSENCE_UNVERIFIED')
+              emit('owned_cleanup',name=target,namespace_id=namespace,result='VERIFIED_ABSENT',delete_response_uncertain=deletion_uncertain)
+          except Exception:
+              emit('owned_cleanup',name=target,namespace_id=namespace,result='UNVERIFIED_RETAIN_NO_RETRY',phase=phase,
+                   migration_response_uncertain=migration_uncertain,delete_response_uncertain=deletion_uncertain)
+              raise SystemExit('OWNED_CLEANUP_NOT_VERIFIED') from None
+          finally:
+              emit('scope',original_run=40738221038,requests=sum(counts.values()),maximum_requests=29,
+                   logging_disable_attempts=writes.count('PATCH'),migration_attempts=writes.count('PUT'),worker_delete_attempts=writes.count('DELETE'),maximum_r2_class_b=1,
+                   no_worker_invocation=True,no_new_resources=True,no_claim_or_production_mutation=True)
+          PY
