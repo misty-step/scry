@@ -1,0 +1,172 @@
+name: scry billing classification (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-billing-classification-20261028-0205]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-billing-classification-20261028-0205' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: b2522915ef3d71d96020913d604f2fc30dd90bc4
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /scripts/scry-cloud-recovery.py
+            /deploy/rust-production.toml
+            /deploy/cloud-recovery-approval.json
+      - name: Verify existing credential and exact native control-plane checks only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, sys, time, tomllib, urllib.error
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T02:30:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-billing-classification-20261028-0205'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('PREFLIGHT_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '9b2e65588ccf7fa58967d280a482956ed79d83930906aed105ca8997544e7c4d',
+              'scripts/scry-cloud-recovery.py': '5f80c52ce54a9bc1b0878fa04d3e62fc2b1b39cf46784e93364e033dc35aa6c8',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'deploy/cloud-recovery-approval.json': '35eea35f4676723880c31f5679ec46377344313050d27a17ace6879792c6b855',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+          except Exception:
+              raise SystemExit('PREFLIGHT_SOURCE_REFUSED') from None
+          def load(name):
+              spec = importlib.util.spec_from_file_location(name, Path('scripts') / (name + '.py'))
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+          backup, recovery = load('scry-cloud-backup'), load('scry-cloud-recovery')
+          config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          approval = json.loads(Path('deploy/cloud-recovery-approval.json').read_text())
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('PREFLIGHT_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 3
+          base = 'https://api.cloudflare.com/client/v4'
+          account = base + '/accounts/' + config['account_id']
+          expected = [
+              (account + '/tokens/verify', 'GET', None),
+              (account + '/subscriptions', 'GET', None),
+              (account + '/workers/scripts/' + config['name'] + '/settings', 'GET', None),
+          ]
+          # Preserve native no-redirect, 30-second timeout and 4 MiB body limit.
+          native_open, calls = client.open, 0
+          http_statuses = {}
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 3
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('PREFLIGHT_REQUEST_SCOPE_REFUSED')
+              kind = ('token', 'billing', 'provider_bindings')[calls - 1]
+              try:
+                  response = native_open(request, timeout=timeout)
+                  http_statuses[kind] = response.status
+                  return response
+              except urllib.error.HTTPError as error:
+                  http_statuses[kind] = error.code
+                  raise
+          client.open = bounded_open
+          stage = 'TOKEN_IDENTITY'
+          try:
+              identity = client.request('/tokens/verify')
+              token_id = identity.get('id') if isinstance(identity, dict) else None
+              if not (isinstance(token_id, str) and re.fullmatch('[a-f0-9]{32}', token_id)
+                      and identity.get('status') == 'active'
+                      and hashlib.sha256(token_id.encode('ascii')).hexdigest() == '8b2235f2ef436ce446deefc077620c6be3619ca25c33f58ee606abd2c185dc52'):
+                  raise ValueError()
+              print('TOKEN_IDENTITY_PASS')
+          except Exception:
+              print('PREFLIGHT_TOKEN_IDENTITY_FAILED')
+              sys.exit(1)
+          result = {'stage': 'billing_classification'}
+          try:
+              body = client.request('/subscriptions', envelope=True)
+              rows, info = body.get('result'), body.get('result_info')
+              if not (body.get('errors') == [] and isinstance(rows, list) and 0 < len(rows) <= 1000):
+                  raise ValueError()
+              result['row_count'] = len(rows)
+              result['pagination_complete'] = (isinstance(info, dict)
+                  and all(type(info.get(k)) is int for k in ('count', 'page', 'per_page', 'total_count'))
+                  and info['page'] == 1 and info['count'] == info['total_count'] == len(rows) and info['per_page'] >= len(rows))
+              missing = object()
+              def known(value, values):
+                  return 'missing' if value is missing else value if isinstance(value, str) and value in values else 'other'
+              def timestamp(value):
+                  if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|\+00:00)', value):
+                      return None
+                  try:
+                      return int(datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp() * 1000)
+                  except (ValueError, OverflowError):
+                      return None
+              vectors, eligible = [], []
+              now = int(time.time() * 1000)
+              for row in rows:
+                  if not isinstance(row, dict):
+                      raise ValueError()
+                  plan = row.get('rate_plan')
+                  scope = known(plan.get('scope', missing) if isinstance(plan, dict) else missing, ('account', 'zone'))
+                  frequency = known(row.get('frequency', missing), ('monthly', 'yearly', 'quarterly', 'weekly'))
+                  start, end = timestamp(row.get('current_period_start')), timestamp(row.get('current_period_end'))
+                  valid = start is not None and end is not None
+                  vectors.append({'scope': scope, 'frequency': frequency, 'active_paid': row.get('state') == 'Paid',
+                      'period_valid': valid, 'contains_now': valid and start <= now < end,
+                      'duration_within_32_days': valid and 0 < end-start <= 32*86400000,
+                      'covers_approval_plus_drain': valid and end > approval['expires_ms'] + recovery.DRAIN_MS})
+                  if scope == 'account' and frequency == 'monthly':
+                      eligible.append((start, end))
+              result['rows'] = vectors
+              result['eligible_account_monthly_rows'] = len(eligible)
+              result['eligible_bounds_identical'] = bool(eligible) and all(a is not None and b is not None for a,b in eligible) and len(set(eligible)) == 1
+          except Exception:
+              result['result'] = 'BILLING_CLASSIFICATION_FAILED'
+          result['http_status'] = http_statuses.get('billing')
+          print(json.dumps(result, sort_keys=True))
+          providers = {'stage': 'production_provider_bindings'}
+          try:
+              settings = client.request('/workers/scripts/' + config['name'] + '/settings')
+              bindings = settings.get('bindings')
+              if not (isinstance(bindings, list) and all(isinstance(b, dict) and isinstance(b.get('name'), str) for b in bindings)):
+                  raise ValueError()
+              names = {b['name'] for b in bindings}
+              providers['OPENROUTER_API_KEY_present'] = 'OPENROUTER_API_KEY' in names
+              providers['JEV_API_KEY_present'] = 'JEV_API_KEY' in names
+              try:
+                  backup.no_paid_work(bindings)
+                  providers['native_check'] = 'PASS'
+              except Exception:
+                  providers['native_check'] = 'FAILED'
+          except Exception:
+              providers['result'] = 'PROVIDER_BINDING_CHECK_UNAVAILABLE'
+          providers['http_status'] = http_statuses.get('provider_bindings')
+          print(json.dumps(providers, sort_keys=True))
+          print('READ_ONLY_CLASSIFICATION_COMPLETE_NOT_OPERATIONAL_ADMISSION')
+          PY
