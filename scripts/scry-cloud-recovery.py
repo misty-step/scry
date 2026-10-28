@@ -157,9 +157,10 @@ def verify_billing_period(request, *, now_ms=None):
     Cloudflare documents one shared date for all monthly subscriptions. The
     caller separately verifies existing Workers Standard and R2 context. No
     documented Workers/R2 rate-plan ID vocabulary exists here, so do not guess
-    product labels. Instead require the complete account list to contain only
-    Paid, monthly, non-contract USD account subscriptions with one exact period.
-    Any unknown, mixed, incomplete or inaccessible metadata is a hard HOLD.
+    product labels. Validate the complete list and unique IDs, then exclude only
+    known zone-scoped subscriptions: they do not meter this account-level drill.
+    Every account-scoped row must be Paid, monthly, non-contract USD with one
+    shared actual period. Unknown scopes or invalid account rows remain a HOLD.
     """
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     try:
@@ -178,11 +179,14 @@ def verify_billing_period(request, *, now_ms=None):
         for row in rows:
             plan = row['rate_plan']
             need(isinstance(row['id'], str) and 0 < len(row['id']) <= 32 and row['id'] not in identities
-                 and row['state'] == 'Paid' and row['frequency'] == 'monthly' and row['currency'] == 'USD'
-                 and plan['scope'] == 'account' and plan['currency'] == 'USD'
+                 and plan['scope'] in ('account', 'zone'), 'RECOVERY_BILLING_PERIOD_UNVERIFIED')
+            identities.add(row['id'])
+            if plan['scope'] == 'zone':
+                continue
+            need(row['state'] == 'Paid' and row['frequency'] == 'monthly' and row['currency'] == 'USD'
+                 and plan['currency'] == 'USD'
                  and plan['externally_managed'] is False and plan['is_contract'] is False,
                  'RECOVERY_BILLING_PERIOD_UNVERIFIED')
-            identities.add(row['id'])
             bounds = []
             for field in ('current_period_start', 'current_period_end'):
                 value = row[field]
