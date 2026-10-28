@@ -47,9 +47,12 @@ class Promotion(unittest.TestCase):
         name='scry-recovery-'+'a'*24+'-target'
         error=RuntimeError('RECOVERY_CLEANUP_FAILED')
         error.recovery_phase='restore';error.deployment_attempted=False
+        error.recovery_operation='preview-exchange'
+        error.cloud_request_attempts=75;error.preview_request_attempts=1
         error.primary_reason='RECOVERY_LIMITS_UNVERIFIED';error.retained_resources=[name]
         error.cleanup_outcomes=[{'resource':name,'step':'namespace_identity','status':'unverified','reason':'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN'}]
         module=mock.Mock();module.gate.side_effect=error
+        module.load_module.return_value.RECOVERY_OPERATIONS=frozenset({'preview-exchange'})
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'promotion.json';receipt={'source':'a'*40,'stage':'prepared'}
             with mock.patch.object(PROMOTE,'RECEIPT',path),mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
@@ -60,8 +63,12 @@ class Promotion(unittest.TestCase):
             saved=json.loads(path.read_text());cleanup=json.loads((path.parent/'recovery-cleanup.json').read_text())
             self.assertEqual(saved['recovery_phase'],'restore');self.assertFalse(saved['deployment_attempted'])
             self.assertEqual(saved['recovery_primary_reason'],'RECOVERY_LIMITS_UNVERIFIED')
+            self.assertEqual(saved['recovery_operation'],'preview-exchange')
+            self.assertEqual(saved['recovery_cloud_request_attempts'],75);self.assertEqual(saved['recovery_preview_request_attempts'],1)
             self.assertEqual(cleanup['primary_reason'],'RECOVERY_LIMITS_UNVERIFIED')
             self.assertEqual(cleanup['recovery_phase'],'restore')
+            self.assertEqual(cleanup['recovery_operation'],'preview-exchange')
+            self.assertEqual(cleanup['recovery_cloud_request_attempts'],75);self.assertEqual(cleanup['recovery_preview_request_attempts'],1)
             self.assertEqual(cleanup['cleanup_outcomes'],error.cleanup_outcomes)
 
     def test_cloud_gate_flushes_sanitized_failure_receipt_before_reraising(self):
@@ -97,9 +104,73 @@ class Promotion(unittest.TestCase):
                 self.assertIs(flush,True)
                 self.assertEqual(json.loads(body),{'error':'CLOUD_RECOVERY_NOT_VERIFIED',
                     'deployment_attempted':attempted,'recovery_phase':phase,
-                    'primary_reason':'RECOVERY_LOGGING_UNVERIFIED','cleanup_outcomes':outcomes})
+                    'primary_reason':'RECOVERY_LOGGING_UNVERIFIED','recovery_operation':None,
+                    'recovery_cloud_request_attempts':None,'recovery_preview_request_attempts':None,'cleanup_outcomes':outcomes})
                 self.assertNotIn('PRIVATE',body)
                 self.assertNotIn('source',json.loads(body))
+
+    def test_cloud_gate_whitelists_operation_before_private_and_public_records(self):
+        name='scry-recovery-'+'c'*24+'-bridge'
+        for operation,expected in [('preview-exchange','preview-exchange'),
+                                   ('PRIVATE_OPERATION_SECRET',None),
+                                   ('PREVIEW_EXCHANGE',None),
+                                   ({'private':'PRIVATE_OPERATION_SECRET'},None),
+                                   (['PRIVATE_OPERATION_SECRET'],None)]:
+            error=RuntimeError('PRIVATE_EXCEPTION_BODY')
+            error.recovery_phase='restore';error.recovery_operation=operation
+            error.primary_reason='RECOVERY_OPERATION_UNVERIFIED';error.retained_resources=[name]
+            error.cleanup_outcomes=[]
+            module=mock.Mock();module.gate.side_effect=error
+            module.load_module.return_value.RECOVERY_OPERATIONS=frozenset({'preview-exchange'})
+            with self.subTest(operation=operation),tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'promotion.json'
+                with mock.patch.object(PROMOTE,'RECEIPT',path), \
+                        mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                        mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module), \
+                        mock.patch('builtins.print') as output:
+                    spec.return_value.loader.exec_module.return_value=None
+                    with self.assertRaises(RuntimeError) as caught:
+                        PROMOTE.cloud_gate({'source':'a'*40},{}, {}, [], None,after_restore=mock.Mock())
+                self.assertIs(caught.exception,error)
+                public=output.call_args.args[0]
+                saved=path.read_text();cleanup=(path.parent/'recovery-cleanup.json').read_text()
+                for record in (public,saved,cleanup):
+                    self.assertEqual(json.loads(record)['recovery_operation'],expected)
+                    self.assertNotIn('PRIVATE',record)
+                    self.assertNotIn('PREVIEW_EXCHANGE',record)
+                output.assert_called_once()
+                self.assertEqual(json.loads(saved)['recovery_primary_reason'],'RECOVERY_OPERATION_UNVERIFIED')
+
+    def test_cloud_gate_sanitizes_request_counts_without_replacing_primary_failure(self):
+        name='scry-recovery-'+'d'*24+'-bridge'
+        cases=[(0,0,0,0),(131,6,131,6),(-1,-1,None,None),(132,7,None,None),
+               (True,False,None,None),(1.0,2.0,None,None),
+               ('PRIVATE_COUNT_SECRET',{'private':'PRIVATE_COUNT_SECRET'},None,None),
+               (['PRIVATE_COUNT_SECRET'],None,None,None),(20,7,20,None),(132,2,None,2)]
+        for cloud,preview,expected_cloud,expected_preview in cases:
+            error=RuntimeError('PRIVATE_EXCEPTION_BODY');error.recovery_phase='restore'
+            error.primary_reason='RECOVERY_OPERATION_UNVERIFIED';error.retained_resources=[name]
+            error.cleanup_outcomes=[];error.cloud_request_attempts=cloud;error.preview_request_attempts=preview
+            module=mock.Mock();module.gate.side_effect=error
+            with self.subTest(cloud=cloud,preview=preview),tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'promotion.json'
+                with mock.patch.object(PROMOTE,'RECEIPT',path), \
+                        mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                        mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module), \
+                        mock.patch('builtins.print') as output:
+                    spec.return_value.loader.exec_module.return_value=None
+                    with self.assertRaises(RuntimeError) as caught:
+                        PROMOTE.cloud_gate({'source':'a'*40},{}, {}, [], None,after_restore=mock.Mock())
+                self.assertIs(caught.exception,error)
+                records=(output.call_args.args[0],path.read_text(),(path.parent/'recovery-cleanup.json').read_text())
+                for record in records:
+                    parsed=json.loads(record)
+                    self.assertEqual(parsed['recovery_cloud_request_attempts'],expected_cloud)
+                    self.assertEqual(parsed['recovery_preview_request_attempts'],expected_preview)
+                    self.assertEqual(parsed.get('recovery_primary_reason',parsed.get('primary_reason')),
+                                     'RECOVERY_OPERATION_UNVERIFIED')
+                    self.assertNotIn('PRIVATE',record)
+                output.assert_called_once()
 
     def test_cloud_gate_does_not_print_unvalidated_failure_fields(self):
         for phase,resource in [(None,'scry-recovery-'+'b'*24+'-target'),('restore','PRIVATE_RESOURCE')]:

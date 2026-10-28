@@ -191,6 +191,19 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
     except Exception as error:
         phase = getattr(error, 'recovery_phase', None)
         primary = getattr(error, 'primary_reason', None)
+        operation = getattr(error, 'recovery_operation', None)
+        # Diagnostics carry only a fixed operation label, never provider text,
+        # capabilities, request URLs or arbitrary exception attributes.
+        if type(operation) is not str or operation not in module.load_module('scry-cloud-recovery').RECOVERY_OPERATIONS:
+            operation = None
+        # Attempt counters increment before admission, so include the final
+        # locally refused request; they are upper bounds, not sent-call counts.
+        cloud_request_attempts = getattr(error, 'cloud_request_attempts', None)
+        if type(cloud_request_attempts) is not int or not 0 <= cloud_request_attempts <= 131:
+            cloud_request_attempts = None
+        preview_request_attempts = getattr(error, 'preview_request_attempts', None)
+        if type(preview_request_attempts) is not int or not 0 <= preview_request_attempts <= 6:
+            preview_request_attempts = None
         outcomes = getattr(error, 'cleanup_outcomes', [])
         if phase is not None:
             assert phase in ('restore', 'deployment', 'recurrence', 'verified'), 'Invalid recovery phase'
@@ -217,13 +230,17 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
             # erase the original refusal or imply the upload was never tried.
             receipt.update(deployment_attempted=bool(receipt.get('deployment_attempted') or getattr(error, 'deployment_attempted', False)),
                            recovery_verified=False, recovery_phase=phase, recovery_primary_reason=primary,
+                           recovery_operation=operation,
+                           recovery_cloud_request_attempts=cloud_request_attempts, recovery_preview_request_attempts=preview_request_attempts,
                            recovery_cleanup_outcomes=outcomes, recovery_privacy_observations=privacy, cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
             save(receipt)
             # Emit only the validated failure fields before the always-run
             # claim-expiry wait; never dump the receipt or exception body.
             print(json.dumps({'error': 'CLOUD_RECOVERY_NOT_VERIFIED',
                               'deployment_attempted': receipt['deployment_attempted'], 'recovery_phase': phase,
-                              'primary_reason': primary, 'cleanup_outcomes': outcomes}), flush=True)
+                              'primary_reason': primary, 'recovery_operation': operation,
+                              'recovery_cloud_request_attempts': cloud_request_attempts, 'recovery_preview_request_attempts': preview_request_attempts,
+                              'cleanup_outcomes': outcomes}), flush=True)
         retained = getattr(error, 'retained_resources', [])
         schedule = getattr(error, 'schedule_cleanup', None)
         if retained or schedule:
@@ -231,7 +248,8 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
             cleanup = {'source': receipt['source'], 'native_run_id': os.environ.get('GITHUB_RUN_ID'),
                        'stage': 'cleanup_unverified', 'error': 'CLOUD_RECOVERY_CLEANUP_UNVERIFIED',
                        'retained_temporary_resources': retained,
-                       'recovery_phase': phase, 'primary_reason': primary, 'cleanup_outcomes': outcomes,
+                       'recovery_phase': phase, 'primary_reason': primary, 'recovery_operation': operation, 'cleanup_outcomes': outcomes,
+                       'recovery_cloud_request_attempts': cloud_request_attempts, 'recovery_preview_request_attempts': preview_request_attempts,
                        'failed_cleanup_storage_cents_per_month_limit': 25}
             if schedule: cleanup['temporary_schedule'] = schedule
             (RECEIPT.parent / 'recovery-cleanup.json').write_text(json.dumps(cleanup, indent=2) + '\n')

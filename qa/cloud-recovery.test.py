@@ -82,7 +82,7 @@ class Cloud:
             if tail == 'settings': return current['settings'] if current else None
             if tail == 'script-settings':
                 if method == 'PATCH':
-                    assert kw['payload'] == {'observability': {'enabled': False}, 'logpush': False}
+                    assert kw['payload'] == {'observability': {'enabled': False}, 'logpush': False, 'tail_consumers': []}
                 return current['script_settings'] if current else None
             if tail == 'subdomain': return {'enabled': False, 'previews_enabled': False}
             if tail == 'routes': return []
@@ -163,6 +163,8 @@ class Recovery(unittest.TestCase):
                 with self.subTest(k=k), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a|{k:v})
             for k,v in [('one_time_cents',100),('failed_cleanup_storage_cents_per_month',24)]:
                 with self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'): R.admit(RECEIPT,approval=a|{k:v})
+            with mock.patch.dict(R.METERS, sql_rows_read=(1_000_000,1_000,1_000_000_000)), self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'):
+                R.admit(RECEIPT,approval=a)
             with mock.patch.dict(os.environ, GITHUB_RUN_ATTEMPT='2'), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a)
 
     def test_private_claim_is_readback_verified_and_never_retried_before_expiry(self):
@@ -254,9 +256,9 @@ class Recovery(unittest.TestCase):
         # A first run remains compatible; a continuation charges prior usage
         # in the SAME actual provider period, never a fresh rounded allowance.
         R.require_billing_period(window,a)
-        for at in (window['period_start_ms'],window['checked_ms']-3600000,window['checked_ms']):
+        for at in (a['expires_ms']+R.DRAIN_MS-R.ACCOUNTING_WINDOW_MS,window['checked_ms']-3600000,window['checked_ms']):
             R.require_billing_period(window,a|{'accounting_started_ms':at})
-        for at in (window['period_start_ms']-1,window['checked_ms']+1,0,-1,True,None,'123',1.5):
+        for at in (a['expires_ms']+R.DRAIN_MS-R.ACCOUNTING_WINDOW_MS-1,window['period_start_ms']-1,window['checked_ms']+1,0,-1,True,None,'123',1.5):
             with self.subTest(at=at),self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
                 R.require_billing_period(window,a|{'accounting_started_ms':at})
         # A renewal between the prior phase and this continuation must fail
@@ -319,8 +321,8 @@ class Recovery(unittest.TestCase):
 
     def test_rounding_without_free_tier_assumptions(self):
         usage={n:v[2] for n,v in R.METERS.items()}
-        self.assertEqual(R.rounded_quote(usage),19066000)
-        self.assertEqual(R.rounded_quote(usage|{'r2_class_a':1000001}),23566000)
+        self.assertEqual(R.rounded_quote(usage),19235000)
+        self.assertEqual(R.rounded_quote(usage|{'r2_class_a':1000001}),23735000)
         for bad in ({},usage|{'do_requests':True},usage|{'do_requests':-1}):
             with self.assertRaises(R.RecoveryBlocked): R.rounded_quote(bad)
 
@@ -330,6 +332,77 @@ class Recovery(unittest.TestCase):
             if change: change(root)
             if after_restore is None: after_restore=lambda:setattr(cloud,'deployed',True)
             return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=after_restore)
+
+    def test_preview_exchange_contract_and_bounded_complete_flow(self):
+        class ExchangeCloud(Cloud):
+            def __call__(self, path, method='GET', **kw):
+                result = super().__call__(path, method=method, **kw)
+                if path.endswith('/subdomain/edge-preview'):
+                    result['exchange_url'] = 'https://session.synthetic-existing.workers.dev/exchange'
+                return result
+            def external(self, url, **kw):
+                if url.endswith('/exchange'):
+                    self.external_calls.append((url, kw))
+                    self.assert_exchange = kw == {}
+                    return 200, json.dumps({'token': 'session-exchanged-' + 'x'*30}).encode()
+                return super().external(url, **kw)
+        cloud = ExchangeCloud()
+        receipt = self.run_fixture(cloud)
+        self.assertTrue(cloud.assert_exchange)
+        self.assertEqual(receipt['status'], 'verified')
+        self.assertEqual(receipt['preview_requests'], 5)
+        upload = next(kw for p,m,kw in cloud.calls if p.endswith('/edge-preview') and m == 'POST')
+        self.assertEqual(upload['headers']['cf-preview-upload-config-token'], 'session-exchanged-' + 'x'*30)
+        self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+
+    def test_preview_exchange_malformed_response_is_fixed_and_cleanup_verified(self):
+        for body in (b'not-json-private-sentinel', b'{}', b'[]', b'null', b'{"token":null}', b'{"token":"short"}'):
+            class ExchangeCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    result = super().__call__(path, method=method, **kw)
+                    if path.endswith('/subdomain/edge-preview'):
+                        result['exchange_url'] = 'https://session.synthetic-existing.workers.dev/exchange'
+                    return result
+                def external(self, url, **kw):
+                    assert url.endswith('/exchange')
+                    return 200, body
+            with self.subTest(body=body):
+                cloud = ExchangeCloud()
+                with self.assertRaises(R.RecoveryBlocked) as caught:
+                    self.run_fixture(cloud)
+                error = caught.exception
+                self.assertEqual(error.primary_reason, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
+                self.assertEqual(error.recovery_operation, 'preview-exchange')
+                self.assertFalse(error.deployment_attempted)
+                self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+                self.assertNotIn('private-sentinel', str(error))
+
+    def test_preview_native_response_shapes_fail_at_identified_step(self):
+        for tail, operation, reason in (
+                ('subdomain/edge-preview', 'preview-session', 'RECOVERY_PREVIEW_SESSION_INVALID'),
+                ('edge-preview', 'preview-upload', 'RECOVERY_PREVIEW_TOKEN_INVALID')):
+            class ShapeCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    result = super().__call__(path, method=method, **kw)
+                    if path.endswith('/' + tail) and (tail != 'edge-preview' or method == 'POST'):
+                        return None
+                    return result
+            cloud = ShapeCloud()
+            with self.subTest(tail=tail), self.assertRaises(R.RecoveryBlocked) as caught:
+                self.run_fixture(cloud)
+            self.assertEqual(caught.exception.recovery_operation, operation)
+            self.assertEqual(caught.exception.primary_reason, reason)
+            self.assertFalse(caught.exception.deployment_attempted)
+            self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+
+    def test_preview_transport_failure_is_fixed_without_exception_details(self):
+        for failure in (R.urllib.error.URLError('private-url-or-key'), TimeoutError('private-key')):
+            with mock.patch.object(R.urllib.request, 'build_opener') as opener:
+                opener.return_value.open.side_effect = failure
+                with self.assertRaises(R.RecoveryBlocked) as caught:
+                    R.private_request('https://session.synthetic-existing.workers.dev/exchange')
+                self.assertEqual(R.fixed_reason(caught.exception), 'RECOVERY_PREVIEW_TRANSPORT_UNAVAILABLE')
+                self.assertNotIn('private', str(caught.exception))
 
     def test_real_orchestration_uploads_frozen_bytes_and_deletes_only_created_data(self):
         cloud=Cloud(); receipt=self.run_fixture(cloud)
@@ -413,7 +486,7 @@ class Recovery(unittest.TestCase):
         self.assertEqual(cloud.namespaces,set())
 
     def test_tails_or_unknown_observability_refuse_and_cleanup_verified_namespace(self):
-        for field,value in [('tail_consumers',[{'service':'unexpected'}]),('tail_consumers',None),
+        for field,value in [('tail_consumers',[{'service':'unexpected'}]),('tail_consumers','unknown'),
                             ('observability',{'enabled':True}),('observability',{'enabled':False,'mystery':True})]:
             class TailCloud(Cloud):
                 def __call__(self,path,method='GET',**kw):
@@ -655,6 +728,68 @@ class Recovery(unittest.TestCase):
         for error in (R.RecoveryBlocked('PRIVATE_SENTINEL'),RuntimeError('PRIVATE_SENTINEL')):
             self.assertEqual(R.fixed_reason(error),'RECOVERY_OPERATION_UNVERIFIED')
         self.assertEqual(R.fixed_reason(R.RecoveryBlocked('RECOVERY_LIMITS_UNVERIFIED')),'RECOVERY_LIMITS_UNVERIFIED')
+        self.assertEqual(R.fixed_reason(R.RecoveryBlocked('RECOVERY_TAIL_EXPORT_PRESENT')),'RECOVERY_TAIL_EXPORT_PRESENT')
+
+    def test_nullable_tail_consumers_through_actual_http_transport(self):
+        # Exercise production Cloudflare.request, including status/envelope and
+        # multipart decoding, with only the HTTP opener replaced. No FakeCloud.
+        spec = importlib.util.spec_from_file_location('recovery_transport_test', ROOT/'scripts/scry-cloud-backup.py')
+        transport = importlib.util.module_from_spec(spec); spec.loader.exec_module(transport)
+        name = 'scry-recovery-' + 'a'*24 + '-target'
+        base = '/workers/scripts/' + name
+        modules = {'target-adapter.mjs': b'export default {}'}
+        metadata = {'main_module': 'target-adapter.mjs', 'limits': {'cpu_ms': 30000, 'subrequests': 100},
+                    'usage_model': 'standard', 'bindings': [{'name': 'LEARNING_SPACE',
+                    'type': 'durable_object_namespace', 'class_name': 'LearningSpace'}]}
+        missing = object()
+        accepted = (missing, None, [])
+        variants = [(a,b,200,True) for a in accepted for b in accepted]
+        for bad in ([{'service':'synthetic-consumer'}], {}, False, 0, '', 'null'):
+            variants.extend(((bad,[],200,False), ([],bad,200,False)))
+        variants.append((None,None,202,False))
+        for settings_tail, logging_tail, status, passes in variants:
+            with self.subTest(settings=settings_tail, logging=logging_tail, status=status):
+                settings = dict(metadata, bindings=[dict(metadata['bindings'][0], namespace_id='b'*32)])
+                logging = {'observability': None, 'logpush': False}
+                if settings_tail is not missing: settings['tail_consumers'] = settings_tail
+                if logging_tail is not missing: logging['tail_consumers'] = logging_tail
+                calls = []
+                class Response(io.BytesIO):
+                    def __init__(self, body, kind='application/json', code=200):
+                        super().__init__(body); self.headers={'Content-Type':kind}; self.status=code
+                def opened(request, timeout):
+                    path = R.urllib.parse.urlsplit(request.full_url).path.removeprefix('/client/v4/accounts/synthetic')
+                    calls.append((request.method,path))
+                    if path == base+'/content/v2':
+                        body = b'--fixture\r\nContent-Disposition: form-data; name="target-adapter.mjs"; filename="target-adapter.mjs"\r\n\r\n'+modules['target-adapter.mjs']+b'\r\n--fixture--\r\n'
+                        return Response(body,'multipart/form-data; boundary=fixture')
+                    if path == base and request.method == 'PUT': result = {}
+                    elif path == base+'/settings': result = settings
+                    elif path == base+'/script-settings':
+                        if request.method == 'PATCH':
+                            self.assertEqual(json.loads(request.data), {'observability':{'enabled':False},
+                                             'logpush':False,'tail_consumers':[]})
+                        result = logging
+                    elif path == base+'/subdomain': result = {'enabled':False,'previews_enabled':False}
+                    elif path == base+'/routes': result = []
+                    elif path == base+'/schedules': result = {'schedules':[]}
+                    elif path == '/workers/domains': result = []
+                    else: self.fail('unexpected HTTP path')
+                    return Response(json.dumps({'success':True,'errors':[],'result':result}).encode(),
+                                    code=status if path.endswith('/script-settings') else 200)
+                cloud = transport.Cloudflare('synthetic','synthetic'); cloud.open = opened
+                drill = R.Drill(cloud.request, privacy_audited=True)
+                if passes:
+                    drill.bind(name,metadata,modules,'LearningSpace')
+                    self.assertEqual(len(drill.privacy_observations),1)
+                else:
+                    with self.assertRaises((R.RecoveryBlocked,transport.GateError)) as caught:
+                        drill.bind(name,metadata,modules,'LearningSpace')
+                    if status == 200:
+                        self.assertEqual(R.fixed_reason(caught.exception),'RECOVERY_TAIL_EXPORT_PRESENT')
+                    self.assertEqual(drill.privacy_observations,[])
+                self.assertEqual(drill.external_calls,0)
+                self.assertLessEqual(len(calls),9)
 
     def test_primary_cause_is_not_replaced_by_cleanup_failure(self):
         def fail(path,method,kw):
