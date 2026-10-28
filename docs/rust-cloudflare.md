@@ -581,3 +581,28 @@ Hosted recovery additionally requires private activation, owner/anonymous access
 UI, fresh writes, and a verified new snapshot. Report those claims separately.
 The historical Go SQLite/Worker/Postgres formats are not this JSON+photo archive;
 use their exact compatible tools and retain their original names and provenance.
+
+
+### Isolated recovery privacy readback (2026-10-28)
+
+Cloudflare's script-settings schema permits `observability: null`; Wrangler
+normalizes empty observability to disabled. This is not a provider guarantee
+that every platform diagnostic is absent. The isolated recovery driver accepts
+that exact null shape only after an acknowledged explicit disable PATCH and an
+HTTP 200 canonical read with `logpush: false`, no configured tail consumers, and
+a matching privacy-reviewed source fingerprint (wrappers, Rust, telemetry and
+dependencies; release-number-only changes are ignored). Enabled, missing or
+malformed states still refuse invocation. Receipts retain null and label the
+assurance `audited-no-learner-content-emissions`, not “provider logs proven off.”
+
+The isolated adapter never invokes normal Worker fetch/scheduled handlers. Its
+native Durable Object errors are caught; archive parsing and reconciliation
+errors become fixed codes, response bodies are cancelled, and internal URLs are
+fixed. No learner-content console emission was identified in that audited path.
+Platform request metadata is a different claim and is not declared absent.
+Namespace identity is retained before privacy checks so refusal still allows
+verified cleanup of the operation's own namespace.
+
+Contract evidence: [nullable ScriptSetting](https://github.com/cloudflare/cloudflare-typescript/blob/6dbe1fc45b41f102e5edcd3630d6fd3e803552ce/src/resources/workers/scripts/scripts.ts#L856-L865),
+[Wrangler normalization](https://github.com/cloudflare/workers-sdk/blob/6e3924dc1a02cdfa14c2bce5f92f0f3c5fb4193f/packages/deploy-helpers/src/deploy/helpers/config-diffs.ts#L337-L364),
+and [disabled-state tests](https://github.com/cloudflare/workers-sdk/blob/6e3924dc1a02cdfa14c2bce5f92f0f3c5fb4193f/packages/wrangler/src/__tests__/deploy/get-remote-config-diff.test.ts#L583-L643).

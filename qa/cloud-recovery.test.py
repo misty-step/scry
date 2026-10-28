@@ -45,8 +45,10 @@ def artifact(root):
     (root / 'worker').mkdir()
     for name, body in modules.items(): (root / 'worker' / name).write_bytes(body)
     (root / 'proof.json').write_text(json.dumps({'revision': SOURCE, 'source_state': 'committed', 'worker': {n: sha(b) for n, b in modules.items()}}))
-    tooling = {'recovery/cloud-restore.mjs': b'export class RecoveryBridge {}',
-               'recovery/target-adapter.mjs': b'export class LearningSpace {}'}
+    tooling = {str(p.relative_to(ROOT)): p.read_bytes() for p in (ROOT / 'src').rglob('*.rs')}
+    for name in ('recovery/cloud-restore.mjs', 'recovery/target-adapter.mjs',
+                 'deploy/cloudflare-hosting/telemetry.mjs', 'Cargo.toml', 'Cargo.lock'):
+        tooling[name] = (ROOT / name).read_bytes()
     (root / 'source.json').write_text(json.dumps({'files': [{'path': n, 'sha256': sha(b)} for n,b in tooling.items()]}))
     with tarfile.open(root / 'source.tar.gz', 'w:gz') as t:
         for n,b in tooling.items():
@@ -78,7 +80,10 @@ class Cloud:
             name, _, tail = path[len('/workers/scripts/'):].partition('/')
             current = self.scripts.get(name)
             if tail == 'settings': return current['settings'] if current else None
-            if tail == 'script-settings': return current['script_settings'] if current else None
+            if tail == 'script-settings':
+                if method == 'PATCH':
+                    assert kw['payload'] == {'observability': {'enabled': False}, 'logpush': False}
+                return current['script_settings'] if current else None
             if tail == 'subdomain': return {'enabled': False, 'previews_enabled': False}
             if tail == 'routes': return []
             if tail == 'schedules': return {'schedules': []}
@@ -345,8 +350,9 @@ class Recovery(unittest.TestCase):
         cloud=ObservedSettingsCloud()
         self.assertEqual(self.run_fixture(cloud)['status'],'verified')
         reads=[(p,m) for p,m,_ in cloud.calls if p.endswith('/script-settings')]
-        self.assertEqual(len(reads),3)  # target, refusal-only bridge, then learner-bound bridge
-        self.assertTrue(all(m=='GET' for _,m in reads))
+        self.assertEqual(len(reads),6)  # target, refusal-only bridge, then learner-bound bridge
+        self.assertEqual([m for _,m in reads], ['PATCH','GET']*3)
+        self.assertTrue(all(k['expected_status']==200 for p,m,k in cloud.calls if p.endswith('/script-settings')))
         for _,method,kw in cloud.calls:
             if method!='PUT':continue
             form=email.parser.BytesParser(policy=email.policy.default).parsebytes(
@@ -360,7 +366,7 @@ class Recovery(unittest.TestCase):
     def test_logging_missing_malformed_or_enabled_refuses_before_private_invocation(self):
         disabled={'observability':{'enabled':False},'logpush':False}
         variants=[None,[],{}, {'logpush':False}, {'observability':{'enabled':False}},
-                  *[disabled|{'observability':v} for v in (None,False,[],{},'false',{'enabled':True},{'enabled':0},{'enabled':None})],
+                  *[disabled|{'observability':v} for v in (False,[],{},'false',{'enabled':True},{'enabled':0},{'enabled':None})],
                   *[disabled|{'logpush':v} for v in (None,True,0,'false')]]
         for value in variants:
             class LoggingCloud(Cloud):
@@ -371,9 +377,65 @@ class Recovery(unittest.TestCase):
             with self.subTest(value=value),self.assertRaises(R.RecoveryBlocked) as caught:
                 self.run_fixture(cloud,after_restore=callback)
             self.assertEqual(caught.exception.primary_reason,'RECOVERY_LOGGING_UNVERIFIED')
-            self.assertEqual(sum(p.endswith('/script-settings') for p,_,_ in cloud.calls),1)
+            self.assertEqual(sum(p.endswith('/script-settings') for p,_,_ in cloud.calls),2)
+            self.assertEqual(cloud.scripts,{})
+            self.assertEqual(cloud.namespaces,set())
             self.assertEqual(cloud.external_calls,[])
             callback.assert_not_called()
+
+    def test_observed_null_requires_audited_source_and_acknowledged_disable(self):
+        class NullCloud(Cloud):
+            def __call__(self,path,method='GET',**kw):
+                value=super().__call__(path,method=method,**kw)
+                if path.endswith('/script-settings'):
+                    return {'observability':None,'logpush':False,'tail_consumers':[]}
+                return value
+        cloud=NullCloud();result=self.run_fixture(cloud)
+        self.assertEqual(result['status'],'verified')
+        self.assertEqual(len(result['privacy_observations']),3)
+        for row in result['privacy_observations']:
+            self.assertIsNone(row['observability'])
+            self.assertEqual(row['assurance'],'audited-no-learner-content-emissions')
+        with mock.patch.object(R,'audited_privacy_source',return_value=False):
+            cloud=NullCloud()
+            with self.assertRaises(R.RecoveryBlocked) as caught:self.run_fixture(cloud)
+            self.assertEqual(caught.exception.primary_reason,'RECOVERY_LOGGING_UNVERIFIED')
+            self.assertEqual(cloud.external_calls,[])
+            self.assertEqual(cloud.scripts,{})
+            self.assertEqual(cloud.namespaces,set())
+        def refused(path,method,kw):
+            if path.endswith('/script-settings') and method=='PATCH':raise RuntimeError('PRIVATE_CANARY')
+        cloud=NullCloud(fail=refused)
+        with self.assertRaises(R.RecoveryBlocked):self.run_fixture(cloud)
+        self.assertEqual(cloud.external_calls,[])
+        self.assertFalse(any(p.endswith('/script-settings') and m=='GET' for p,m,k in cloud.calls))
+        self.assertEqual(cloud.scripts,{})
+        self.assertEqual(cloud.namespaces,set())
+
+    def test_tails_or_unknown_observability_refuse_and_cleanup_verified_namespace(self):
+        for field,value in [('tail_consumers',[{'service':'unexpected'}]),('tail_consumers',None),
+                            ('observability',{'enabled':True}),('observability',{'enabled':False,'mystery':True})]:
+            class TailCloud(Cloud):
+                def __call__(self,path,method='GET',**kw):
+                    result=super().__call__(path,method=method,**kw)
+                    return {'observability':None,'logpush':False,'tail_consumers':[]}|{field:value} if path.endswith('/script-settings') else result
+            cloud=TailCloud()
+            with self.subTest(field=field,value=value),self.assertRaises(R.RecoveryBlocked):self.run_fixture(cloud)
+            self.assertEqual(cloud.external_calls,[])
+            self.assertEqual(cloud.scripts,{})
+            self.assertEqual(cloud.namespaces,set())
+
+    def test_audited_privacy_fingerprint_rejects_source_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);artifact(root)
+            self.assertTrue(R.audited_privacy_source(root))
+            with tarfile.open(root/'source.tar.gz','r:gz') as archive:
+                entries={m.name:archive.extractfile(m).read() for m in archive.getmembers()}
+            entries['src/runtime.rs']+=b'\n// unreviewed source change\n'
+            with tarfile.open(root/'source.tar.gz','w:gz') as archive:
+                for name,data in entries.items():
+                    member=tarfile.TarInfo(name);member.size=len(data);archive.addfile(member,io.BytesIO(data))
+            self.assertFalse(R.audited_privacy_source(root))
 
     def test_service_approval_absent_or_wrong_refuses_before_keys_or_cloud(self):
         cloud=Cloud()

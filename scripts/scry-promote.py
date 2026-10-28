@@ -204,12 +204,26 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
                     'bucket_delete', 'bucket_verify', 'creation_identity'), 'Invalid cleanup step'
                 assert outcome['status'] in ('verified_absent', 'unverified'), 'Invalid cleanup status'
                 assert outcome['reason'] is None or re.fullmatch('[A-Z][A-Z0-9_]+', outcome['reason']), 'Invalid cleanup reason'
+            privacy = getattr(error, 'privacy_observations', [])
+            assert isinstance(privacy, list) and len(privacy) <= 3, 'Invalid recovery privacy observations'
+            for row in privacy:
+                assert set(row) == {'resource', 'observability', 'logpush', 'tail_consumers', 'disable_acknowledged', 'assurance'}, 'Invalid recovery privacy fields'
+                assert re.fullmatch(r'scry-recovery-[a-f0-9]{24}-(?:target|bridge)', row['resource']), 'Invalid recovery privacy resource'
+                observed = row['observability']
+                assert observed is None or (isinstance(observed, dict) and set(observed) == {'enabled'} and observed['enabled'] is False), 'Invalid observability observation'
+                assert row['logpush'] is False and row['tail_consumers'] == [] and row['disable_acknowledged'] is True, 'Invalid recovery privacy controls'
+                assert row['assurance'] == ('audited-no-learner-content-emissions' if observed is None else 'explicit-disabled-readback'), 'Invalid recovery privacy assurance'
             # Record failures before deployment too. A cleanup failure must not
             # erase the original refusal or imply the upload was never tried.
             receipt.update(deployment_attempted=bool(receipt.get('deployment_attempted') or getattr(error, 'deployment_attempted', False)),
                            recovery_verified=False, recovery_phase=phase, recovery_primary_reason=primary,
-                           recovery_cleanup_outcomes=outcomes, cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
+                           recovery_cleanup_outcomes=outcomes, recovery_privacy_observations=privacy, cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
             save(receipt)
+            # Emit only the validated failure fields before the always-run
+            # claim-expiry wait; never dump the receipt or exception body.
+            print(json.dumps({'error': 'CLOUD_RECOVERY_NOT_VERIFIED',
+                              'deployment_attempted': receipt['deployment_attempted'], 'recovery_phase': phase,
+                              'primary_reason': primary, 'cleanup_outcomes': outcomes}), flush=True)
         retained = getattr(error, 'retained_resources', [])
         schedule = getattr(error, 'schedule_cleanup', None)
         if retained or schedule:

@@ -64,6 +64,60 @@ class Promotion(unittest.TestCase):
             self.assertEqual(cleanup['recovery_phase'],'restore')
             self.assertEqual(cleanup['cleanup_outcomes'],error.cleanup_outcomes)
 
+    def test_cloud_gate_flushes_sanitized_failure_receipt_before_reraising(self):
+        name='scry-recovery-'+'b'*24+'-target'
+        outcomes=[{'resource':name,'step':'namespace_identity','status':'unverified',
+                   'reason':'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN'}]
+        for phase,attempted in [('restore',False),('recurrence',True)]:
+            error=RuntimeError('PRIVATE_EXCEPTION_BODY')
+            error.recovery_phase=phase;error.deployment_attempted=False
+            error.primary_reason='RECOVERY_LOGGING_UNVERIFIED';error.retained_resources=[name]
+            error.cleanup_outcomes=outcomes
+            error.privacy_observations=[{'resource':name,'observability':None,'logpush':False,'tail_consumers':[],
+                'disable_acknowledged':True,'assurance':'audited-no-learner-content-emissions'}]
+            module=mock.Mock();module.gate.side_effect=error
+            with self.subTest(phase=phase),tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'promotion.json'
+                receipt={'source':'a'*40,'deployment_attempted':attempted,'private':'PRIVATE_RECEIPT_BODY'}
+                observed=[]
+                def emitted(body,*,flush):
+                    self.assertTrue(path.exists())
+                    observed.append((body,flush))
+                with mock.patch.object(PROMOTE,'RECEIPT',path), \
+                        mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                        mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module), \
+                        mock.patch('builtins.print',side_effect=emitted) as output:
+                    spec.return_value.loader.exec_module.return_value=None
+                    with self.assertRaises(RuntimeError) as caught:
+                        PROMOTE.cloud_gate(receipt,{}, {}, [], None,after_restore=mock.Mock())
+                self.assertIs(caught.exception,error)
+                self.assertEqual(json.loads(path.read_text())['recovery_privacy_observations'],error.privacy_observations)
+                output.assert_called_once()
+                body,flush=observed[0]
+                self.assertIs(flush,True)
+                self.assertEqual(json.loads(body),{'error':'CLOUD_RECOVERY_NOT_VERIFIED',
+                    'deployment_attempted':attempted,'recovery_phase':phase,
+                    'primary_reason':'RECOVERY_LOGGING_UNVERIFIED','cleanup_outcomes':outcomes})
+                self.assertNotIn('PRIVATE',body)
+                self.assertNotIn('source',json.loads(body))
+
+    def test_cloud_gate_does_not_print_unvalidated_failure_fields(self):
+        for phase,resource in [(None,'scry-recovery-'+'b'*24+'-target'),('restore','PRIVATE_RESOURCE')]:
+            error=RuntimeError('PRIVATE_EXCEPTION_BODY');error.recovery_phase=phase
+            error.primary_reason='RECOVERY_LOGGING_UNVERIFIED'
+            error.cleanup_outcomes=[{'resource':resource,'step':'namespace_identity','status':'unverified',
+                                    'reason':'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN'}]
+            module=mock.Mock();module.gate.side_effect=error
+            with self.subTest(phase=phase),tempfile.TemporaryDirectory() as directory, \
+                    mock.patch.object(PROMOTE,'RECEIPT',Path(directory)/'promotion.json'), \
+                    mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                    mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module), \
+                    mock.patch('builtins.print') as output:
+                spec.return_value.loader.exec_module.return_value=None
+                with self.assertRaises((RuntimeError,AssertionError)):
+                    PROMOTE.cloud_gate({'source':'a'*40},{}, {}, [], None,after_restore=mock.Mock())
+                output.assert_not_called()
+
     def test_declared_storage_matches_live_identity(self):
         self.assertEqual(PROMOTE.storage(LIVE), PROMOTE.declared(CONFIG))
 

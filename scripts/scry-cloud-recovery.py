@@ -26,6 +26,7 @@ import re
 import secrets
 import sys
 import tarfile
+import tomllib
 import time
 import urllib.error
 import urllib.parse
@@ -412,9 +413,42 @@ def frozen_modules(artifact):
 
 
 
+# Narrow privacy exception reviewed against the exact isolated wrappers, all
+# Rust sources/dependencies and telemetry. Release-number-only changes are inert.
+# Do not broaden/update this fingerprint without a fresh source privacy review.
+AUDITED_PRIVACY_SOURCE = "709da604212a999e6be18a17b6b92385f61306d5eda801a7598235380d99eb07"
+
+
+def audited_privacy_source(artifact):
+    values = {}
+    with tarfile.open(Path(artifact) / 'source.tar.gz', 'r:gz') as archive:
+        for member in archive.getmembers():
+            name = member.name
+            if not ((name.startswith('src/') and name.endswith('.rs')) or name in (
+                    'recovery/cloud-restore.mjs', 'recovery/target-adapter.mjs',
+                    'deploy/cloudflare-hosting/telemetry.mjs', 'Cargo.toml', 'Cargo.lock')):
+                continue
+            need(member.isfile() and member.size < 2 * 1024 * 1024 and name not in values,
+                 'RECOVERY_PRIVACY_SOURCE_INVALID')
+            data = archive.extractfile(member).read()
+            if name in ('Cargo.toml', 'Cargo.lock'):
+                parsed = tomllib.loads(data.decode())
+                if name == 'Cargo.toml':
+                    parsed['package'].pop('version')
+                else:
+                    for package in parsed['package']:
+                        if package['name'] == 'scry':
+                            package.pop('version')
+                data = json.dumps(parsed, sort_keys=True).encode()
+            values[name] = hashlib.sha256(data).hexdigest()
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() == AUDITED_PRIVACY_SOURCE
+
+
 class Drill:
     """One call, one new namespace pair, no retries or production mutation."""
-    def __init__(self, request, external=private_request, *, clock=time.time):
+    def __init__(self, request, external=private_request, *, clock=time.time, privacy_audited=False):
+        self.privacy_audited = privacy_audited
+        self.privacy_observations = []
         self.request, self.external, self.clock = request, external, clock
         self.calls = self.external_calls = 0
         self.start = clock()
@@ -478,12 +512,6 @@ class Drill:
         settings = self.upload(name, metadata, modules)
         need(settings.get('limits') == metadata['limits'], 'RECOVERY_LIMITS_UNVERIFIED')
         need(settings.get('usage_model') == 'standard', 'RECOVERY_USAGE_MODEL_UNVERIFIED')
-        # Script-level logging is read from its dedicated API, not the version
-        # settings response. Missing fields are not proof that logging is off.
-        logging = self.call('/workers/scripts/' + name + '/script-settings')
-        need(isinstance(logging, dict) and isinstance(logging.get('observability'), dict)
-             and logging['observability'].get('enabled') is False and logging.get('logpush') is False,
-             'RECOVERY_LOGGING_UNVERIFIED')
         need({(v['name'], v['type']) for v in settings['bindings']} == {(v['name'], v['type']) for v in metadata['bindings']}, 'RECOVERY_BINDINGS_UNVERIFIED')
         by_name = {v['name']: v for v in settings['bindings']}
         for expected in metadata['bindings']:
@@ -497,6 +525,26 @@ class Drill:
         need(len(own) == 1 and re.fullmatch('[a-f0-9]{32}', own[0].get('namespace_id', '')), 'RECOVERY_NAMESPACE_UNVERIFIED')
         self.created[name] = class_name
         self.namespace_ids[name] = own[0]['namespace_id']
+        # Record verified cleanup authority before privacy/private-route checks:
+        # a refused invocation must not strand an already-identified namespace.
+        path = '/workers/scripts/' + name + '/script-settings'
+        self.call(path, method='PATCH', payload={'observability': {'enabled': False}, 'logpush': False},
+                  expected_status=200)
+        logging = self.call(path, expected_status=200)
+        need(isinstance(logging, dict) and 'observability' in logging
+             and logging.get('logpush') is False, 'RECOVERY_LOGGING_UNVERIFIED')
+        observation = logging['observability']
+        # Cloudflare's nullable ScriptSetting and Wrangler's falsy->disabled
+        # normalization support this inference, not an absolute logs-off claim.
+        # Null is admitted only after acknowledged explicit disable, exact audited
+        # source, and no tail exports. Unknown/malformed/enabled states fail closed.
+        need(logging.get('tail_consumers', []) == [] and settings.get('tail_consumers', []) == [],
+             'RECOVERY_TAIL_EXPORT_PRESENT')
+        explicit = isinstance(observation, dict) and set(observation) == {'enabled'} and observation['enabled'] is False
+        need(explicit or (observation is None and self.privacy_audited), 'RECOVERY_LOGGING_UNVERIFIED')
+        self.privacy_observations.append({'resource': name, 'observability': None if observation is None else {'enabled': False},
+            'logpush': False, 'tail_consumers': [], 'disable_acknowledged': True,
+            'assurance': 'audited-no-learner-content-emissions' if observation is None else 'explicit-disabled-readback'})
         self.private(name)
         return settings
 
@@ -634,7 +682,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
     stem, space = 'scry-recovery-' + nonce, 'recovery-' + nonce
     target, gateway, bucket = stem + '-target', stem + '-bridge', stem + '-data'
     internal, restore_key, transfer = [secrets.token_hex(32) for _ in range(3)]
-    drill = Drill(request, external)
+    drill = Drill(request, external, privacy_audited=audited_privacy_source(artifact_dir))
     drill.space = space
     outcome = None
     phase = 'restore'
@@ -752,6 +800,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.recovery_phase = phase
         error.primary_reason = primary_reason
         error.cleanup_outcomes = drill.cleanup_outcomes
+        error.privacy_observations = drill.privacy_observations
         error.deployment_attempted = phase != 'restore'
         raise error
     if outcome is None:
@@ -761,11 +810,12 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.recovery_phase = phase
         error.primary_reason = primary_reason
         error.cleanup_outcomes = drill.cleanup_outcomes
+        error.privacy_observations = drill.privacy_observations
         error.deployment_attempted = phase != 'restore'
         raise error
     return {'status': 'verified', 'proof': outcome, 'recurrence_verified': True, 'cleanup_verified': True, 'cloud_requests': drill.calls,
             'preview_requests': drill.external_calls, 'cost_quote_micro_usd': rounded_quote({n: v[2] for n, v in METERS.items()}),
-            'learner_bodies_exported': False}
+            'learner_bodies_exported': False, 'privacy_observations': drill.privacy_observations}
 
 
 def main():
