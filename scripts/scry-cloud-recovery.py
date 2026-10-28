@@ -37,7 +37,16 @@ class RecoveryBlocked(RuntimeError):
     """Fixed, content-free admission refusal, safe for native workflow output."""
 
 
+RECOVERY_OPERATIONS = frozenset({
+    'target-shell', 'bridge-shell', 'bucket-provision', 'target-bind',
+    'bridge-stage', 'preview-session', 'preview-exchange', 'preview-subdomain',
+    'preview-upload', 'preview-auth-refusal', 'bridge-activate', 'restore-transfer',
+    'restore-proof', 'production-deploy', 'recurrence-request', 'recurrence-proof',
+})
+
+
 FIXED_REASONS = frozenset({
+    'RECOVERY_PREVIEW_EXCHANGE_INVALID', 'RECOVERY_PREVIEW_TRANSPORT_UNAVAILABLE',
     'INCOMPLETE_RECOVERY_METER_BOUND', 'INVALID_PRIVATE_PREVIEW_HOST', 'INVALID_RECOVERY_CLAIM_BUCKET',
     'INVALID_RECOVERY_METER_BOUND', 'INVALID_RECOVERY_SOURCE_PIN', 'INVALID_UPLOAD_MODULE',
     'PRIVATE_PROOF_RESPONSE_OVERSIZE', 'PRODUCTION_HEALTH_SERVICE_APPROVAL_REQUIRED', 'RECOVERY_APPROVAL_ALREADY_CLAIMED',
@@ -383,10 +392,15 @@ def private_request(url, *, method='GET', headers=None, body=None):
         response = urllib.request.build_opener(NoRedirect()).open(request, timeout=60)
     except urllib.error.HTTPError as error:
         response = error
-    with response:
-        data = response.read(65537)
-        need(len(data) <= 65536, 'PRIVATE_PROOF_RESPONSE_OVERSIZE')
-        return response.status, data
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise RecoveryBlocked('RECOVERY_PREVIEW_TRANSPORT_UNAVAILABLE') from None
+    try:
+        with response:
+            data = response.read(65537)
+            need(len(data) <= 65536, 'PRIVATE_PROOF_RESPONSE_OVERSIZE')
+            return response.status, data
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise RecoveryBlocked('RECOVERY_PREVIEW_TRANSPORT_UNAVAILABLE') from None
 
 
 def frozen_modules(artifact):
@@ -687,10 +701,12 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
     outcome = None
     phase = 'restore'
     primary_reason = None
+    operation = None
     failed = []
     try:
-        for name in (target, gateway):
+        for name, operation in ((target, 'target-shell'), (gateway, 'bridge-shell')):
             drill.shell(name)
+        operation = 'bucket-provision'
         bucket_path = '/r2/buckets/' + bucket
         need(drill.call(bucket_path, absent=True) is None, 'RECOVERY_BUCKET_ALREADY_EXISTS')
         drill.uncertain.add(bucket)
@@ -712,6 +728,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
             *[{'name': n, 'type': 'r2_bucket', 'bucket_name': bucket} for n in ('SCRY_ASSETS', 'SCRY_BACKUPS')],
             binding('SCRY_ENV', 'restore'), binding('SPACE_NAME', space), binding('INTERNAL_KEY', internal, True), binding('RESTORE_TOKEN', restore_key, True),
             binding('TRANSFER_ISSUED_MS', issued), binding('TRANSFER_UNTIL_MS', issued + 900000)])
+        operation = 'target-bind'
         drill.bind(target, target_meta, candidate, 'LearningSpace')
         pins = {'SOURCE_KEY': key, 'SOURCE_ETAG': etag, 'SOURCE_BYTES': size, 'SPACE_NAME': space,
                 'TRANSFER_ISSUED_MS': issued, 'TRANSFER_UNTIL_MS': issued + 900000}
@@ -725,17 +742,30 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
             *[binding(k, v) for k, v in pins.items()], binding('INTERNAL_KEY', internal, True),
             binding('RESTORE_TOKEN', restore_key, True), binding('TRANSFER_KEY', transfer, True)])
         staged_meta = dict(bridge_meta, bindings=[b for b in bridge_meta['bindings'] if b['name'] not in ('SOURCE', 'PRODUCTION')])
+        operation = 'bridge-stage'
         drill.bind(gateway, staged_meta, bridge, 'RecoveryBridge')
+        operation = 'preview-session'
         session = drill.call('/workers/scripts/' + gateway + '/subdomain/edge-preview')
+        need(isinstance(session, dict), 'RECOVERY_PREVIEW_SESSION_INVALID')
         token, exchange = session.get('token'), session.get('exchange_url')
         need(isinstance(token, str) and len(token) >= 20, 'RECOVERY_PREVIEW_SESSION_INVALID')
         if exchange:
+            operation = 'preview-exchange'
             status, body = drill.preview(exchange)
             need(status == 200, 'RECOVERY_PREVIEW_EXCHANGE_FAILED')
-            token = json.loads(body)['token']
+            # Exchange is optional in Wrangler, but this safety-sensitive driver
+            # retains fail-closed behavior: never silently change the tested route.
+            try:
+                exchanged = json.loads(body)
+            except (ValueError, TypeError):
+                raise RecoveryBlocked('RECOVERY_PREVIEW_EXCHANGE_INVALID') from None
+            need(isinstance(exchanged, dict) and isinstance(exchanged.get('token'), str)
+                 and len(exchanged['token']) >= 20, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
+            token = exchanged['token']
             host = urllib.parse.urlsplit(exchange).hostname
             host = gateway + host[host.index('.'):]
         else:
+            operation = 'preview-subdomain'
             subdomain = drill.call('/workers/subdomain').get('subdomain')
             need(isinstance(subdomain, str) and re.fullmatch('[a-z0-9-]+', subdomain), 'RECOVERY_EXISTING_SUBDOMAIN_REQUIRED')
             host = gateway + '.' + subdomain + '.workers.dev'
@@ -749,21 +779,27 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         preview_meta['bindings'][1] = {'name': 'TARGET', 'type': 'durable_object_namespace', 'namespace_id': drill.namespace_ids[target]}
         body, headers = multipart(preview_meta, bridge, session=True)
         headers['cf-preview-upload-config-token'] = token
+        operation = 'preview-upload'
         preview = drill.call('/workers/scripts/' + gateway + '/edge-preview', method='POST', body=body, headers=headers)
+        need(isinstance(preview, dict), 'RECOVERY_PREVIEW_TOKEN_INVALID')
         preview_token = preview.get('preview_token')
         need(isinstance(preview_token, str) and len(preview_token) >= 20, 'RECOVERY_PREVIEW_TOKEN_INVALID')
         url = 'https://' + host + '/restore'
         headers = {'cf-workers-preview-token': preview_token}
+        operation = 'preview-auth-refusal'
         for auth in (None, 'Bearer synthetic-wrong-key'):
             status, _ = drill.preview(url, method='POST', headers=headers | ({'Authorization': auth} if auth else {}), body=b'')
             need(status == 403, 'RECOVERY_PREVIEW_AUTH_REFUSAL_UNVERIFIED')
         active_meta = dict(bridge_meta)
         active_meta.pop('migrations')
         gate_id = drill.namespace_ids[gateway]
+        operation = 'bridge-activate'
         drill.bind(gateway, active_meta, bridge, 'RecoveryBridge')
         need(drill.namespace_ids[gateway] == gate_id, 'RECOVERY_GATE_IDENTITY_CHANGED')
+        operation = 'restore-transfer'
         status, body = drill.preview(url, method='POST', headers=headers | {'Authorization': 'Bearer ' + transfer}, body=b'')
         need(status == 200, 'RECOVERY_TRANSFER_NOT_VERIFIED')
+        operation = 'restore-proof'
         outcome = json.loads(body)
         need(set(outcome) == {'format', 'canonical_application_equal', 'source_sha256', 'snapshot_sha256', 'source_bytes',
             'snapshot_bytes', 'photos_full_bytes_verified', 'restore_attempts', 'backup_attempts', 'elapsed_ms',
@@ -779,11 +815,14 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         # Only a complete, strict restore proof may admit the parent's exact
         # production upload/readback. Once called, failure is never 'undeployed'.
         phase = 'deployment'
+        operation = 'production-deploy'
         after_restore()
         phase = 'recurrence'
+        operation = 'recurrence-request'
         status, body = drill.preview('https://' + host + '/recurrence', method='POST',
             headers=headers | {'Authorization': 'Bearer ' + transfer}, body=b'')
         need(status == 200 and len(body) <= 64, 'RECOVERY_RECURRENCE_NOT_VERIFIED')
+        operation = 'recurrence-proof'
         recurrence = json.loads(body)
         need(isinstance(recurrence, dict) and set(recurrence) == {'backup_proof'}
              and recurrence['backup_proof'] is True, 'RECOVERY_RECURRENCE_NOT_VERIFIED')
@@ -799,6 +838,10 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.retained_resources = failed
         error.recovery_phase = phase
         error.primary_reason = primary_reason
+        error.recovery_operation = operation
+        # Counters include a final locally refused attempt, never raw request data.
+        error.cloud_request_attempts = drill.calls
+        error.preview_request_attempts = drill.external_calls
         error.cleanup_outcomes = drill.cleanup_outcomes
         error.privacy_observations = drill.privacy_observations
         error.deployment_attempted = phase != 'restore'
@@ -809,6 +852,10 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error = RecoveryBlocked(reason)
         error.recovery_phase = phase
         error.primary_reason = primary_reason
+        error.recovery_operation = operation
+        # Counters include a final locally refused attempt, never raw request data.
+        error.cloud_request_attempts = drill.calls
+        error.preview_request_attempts = drill.external_calls
         error.cleanup_outcomes = drill.cleanup_outcomes
         error.privacy_observations = drill.privacy_observations
         error.deployment_attempted = phase != 'restore'

@@ -331,6 +331,77 @@ class Recovery(unittest.TestCase):
             if after_restore is None: after_restore=lambda:setattr(cloud,'deployed',True)
             return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=after_restore)
 
+    def test_preview_exchange_contract_and_bounded_complete_flow(self):
+        class ExchangeCloud(Cloud):
+            def __call__(self, path, method='GET', **kw):
+                result = super().__call__(path, method=method, **kw)
+                if path.endswith('/subdomain/edge-preview'):
+                    result['exchange_url'] = 'https://session.synthetic-existing.workers.dev/exchange'
+                return result
+            def external(self, url, **kw):
+                if url.endswith('/exchange'):
+                    self.external_calls.append((url, kw))
+                    self.assert_exchange = kw == {}
+                    return 200, json.dumps({'token': 'session-exchanged-' + 'x'*30}).encode()
+                return super().external(url, **kw)
+        cloud = ExchangeCloud()
+        receipt = self.run_fixture(cloud)
+        self.assertTrue(cloud.assert_exchange)
+        self.assertEqual(receipt['status'], 'verified')
+        self.assertEqual(receipt['preview_requests'], 5)
+        upload = next(kw for p,m,kw in cloud.calls if p.endswith('/edge-preview') and m == 'POST')
+        self.assertEqual(upload['headers']['cf-preview-upload-config-token'], 'session-exchanged-' + 'x'*30)
+        self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+
+    def test_preview_exchange_malformed_response_is_fixed_and_cleanup_verified(self):
+        for body in (b'not-json-private-sentinel', b'{}', b'[]', b'null', b'{"token":null}', b'{"token":"short"}'):
+            class ExchangeCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    result = super().__call__(path, method=method, **kw)
+                    if path.endswith('/subdomain/edge-preview'):
+                        result['exchange_url'] = 'https://session.synthetic-existing.workers.dev/exchange'
+                    return result
+                def external(self, url, **kw):
+                    assert url.endswith('/exchange')
+                    return 200, body
+            with self.subTest(body=body):
+                cloud = ExchangeCloud()
+                with self.assertRaises(R.RecoveryBlocked) as caught:
+                    self.run_fixture(cloud)
+                error = caught.exception
+                self.assertEqual(error.primary_reason, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
+                self.assertEqual(error.recovery_operation, 'preview-exchange')
+                self.assertFalse(error.deployment_attempted)
+                self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+                self.assertNotIn('private-sentinel', str(error))
+
+    def test_preview_native_response_shapes_fail_at_identified_step(self):
+        for tail, operation, reason in (
+                ('subdomain/edge-preview', 'preview-session', 'RECOVERY_PREVIEW_SESSION_INVALID'),
+                ('edge-preview', 'preview-upload', 'RECOVERY_PREVIEW_TOKEN_INVALID')):
+            class ShapeCloud(Cloud):
+                def __call__(self, path, method='GET', **kw):
+                    result = super().__call__(path, method=method, **kw)
+                    if path.endswith('/' + tail) and (tail != 'edge-preview' or method == 'POST'):
+                        return None
+                    return result
+            cloud = ShapeCloud()
+            with self.subTest(tail=tail), self.assertRaises(R.RecoveryBlocked) as caught:
+                self.run_fixture(cloud)
+            self.assertEqual(caught.exception.recovery_operation, operation)
+            self.assertEqual(caught.exception.primary_reason, reason)
+            self.assertFalse(caught.exception.deployment_attempted)
+            self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
+
+    def test_preview_transport_failure_is_fixed_without_exception_details(self):
+        for failure in (R.urllib.error.URLError('private-url-or-key'), TimeoutError('private-key')):
+            with mock.patch.object(R.urllib.request, 'build_opener') as opener:
+                opener.return_value.open.side_effect = failure
+                with self.assertRaises(R.RecoveryBlocked) as caught:
+                    R.private_request('https://session.synthetic-existing.workers.dev/exchange')
+                self.assertEqual(R.fixed_reason(caught.exception), 'RECOVERY_PREVIEW_TRANSPORT_UNAVAILABLE')
+                self.assertNotIn('private', str(caught.exception))
+
     def test_real_orchestration_uploads_frozen_bytes_and_deletes_only_created_data(self):
         cloud=Cloud(); receipt=self.run_fixture(cloud)
         self.assertEqual(receipt['status'],'verified');self.assertTrue(receipt['cleanup_verified'])
