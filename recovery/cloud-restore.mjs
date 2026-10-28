@@ -1,5 +1,6 @@
 // Temporary, private-preview-only recovery gate. Never bind this to a public
-// route or production writer. Source bytes remain in Cloudflare throughout.
+// route. Its optional production service capability is a single fixed health
+// proof read after successful restore. Source bytes stay in Cloudflare throughout.
 const LIMIT = 16 * 1024 * 1024;
 const APP_LIMIT = 1024 * 1024;
 const MAX_PHOTOS = 32;
@@ -156,25 +157,70 @@ async function restore(env, bounds) {
     elapsed_ms: Date.now() - started, target_page_size: targetSize.page_size, target_database_bytes: targetSize.database_bytes};
 }
 
+async function recurrence(env, bounds, sourceHash) {
+  fresh(bounds);
+  if (!/^[a-f0-9]{64}$/.test(sourceHash)) throw Error('RECURRENCE_REFUSED');
+  // Service bindings stay inside Cloudflare. Never use global fetch, a caller
+  // URL/path/header, redirect following, or a learner-bearing response here.
+  const response = await env.PRODUCTION.fetch(new Request('https://scry.mistystep.io/healthz', {
+    method: 'GET', redirect: 'manual', headers: {'x-scry-backup-proof': sourceHash},
+  }));
+  if (response.status !== 200 || !response.body) {
+    await response.body?.cancel(); throw Error('RECURRENCE_REFUSED');
+  }
+  const reader = response.body.getReader(), bytes = new Uint8Array(64); let length = 0;
+  try {
+    for (;;) {
+      const next = await reader.read(); if (next.done) break;
+      if (length + next.value.length > bytes.length) throw Error('RECURRENCE_REFUSED');
+      bytes.set(next.value, length); length += next.value.length;
+    }
+  } finally {await reader.cancel();}
+  fresh(bounds);
+  const value = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(bytes.subarray(0, length)));
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).length !== 1 || value.backup_proof !== true) throw Error('RECURRENCE_REFUSED');
+  return {backup_proof: true};
+}
+
 export class RecoveryBridge {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; }
   async fetch(request) {
     const env = this.env, url = new URL(request.url);
-    if (url.pathname !== '/restore' || url.search) return reply({error: 'NOT_FOUND'}, 404);
-    if (request.method !== 'POST') return reply({error: 'METHOD_NOT_ALLOWED'}, 405);
-    if (request.headers.get('Authorization') !== 'Bearer ' + env.TRANSFER_KEY) return reply({error: 'UNAUTHORIZED'}, 403);
+    const checking = url.pathname === '/recurrence';
+    const refuse = (error, status) => reply(checking ? {backup_proof: false} : {error}, status);
+    if (!['/restore', '/recurrence'].includes(url.pathname) || url.search) return refuse('NOT_FOUND', 404);
+    if (request.method !== 'POST') return refuse('METHOD_NOT_ALLOWED', 405);
+    if (request.headers.get('Authorization') !== 'Bearer ' + env.TRANSFER_KEY) return refuse('UNAUTHORIZED', 403);
     let bounds;
-    try { bounds = pin(env); fresh(bounds); } catch (error) { return reply({error: error.message}, 403); }
+    try { bounds = pin(env); fresh(bounds); } catch (error) { return refuse(error.message, 403); }
     if (request.body) {
       const reader = request.body.getReader(), first = await reader.read(); await reader.cancel();
-      if (!first.done) return reply({error: 'BODY_NOT_ALLOWED'}, 400);
+      if (!first.done) return refuse('BODY_NOT_ALLOWED', 400);
+    }
+    if (checking) {
+      try {
+        const sourceHash = await this.ctx.storage.transaction(async storage => {
+          const hash = await storage.get('source-sha256');
+          if (!hash || await storage.get('recurrence-admitted')) return null;
+          await storage.put('recurrence-admitted', true); return hash;
+        });
+        if (!sourceHash) return refuse('RECURRENCE_ALREADY_SPENT_OR_NOT_READY', 409);
+        return reply(await recurrence(env, bounds, sourceHash));
+      } catch {return reply({backup_proof: false}, 503);}
     }
     const admitted = await this.ctx.storage.transaction(async storage => {
       if (await storage.get('admitted')) return false;
       await storage.put('admitted', true); return true;
     });
     if (!admitted) return reply({error: 'ATTEMPT_ALREADY_SPENT'}, 409);
-    try { return reply(await restore(env, bounds)); }
+    try {
+      const proof = await restore(env, bounds);
+      // Persist only the computed hash after complete native backup comparison.
+      // Durable restore admission prevents another source from replacing it.
+      await this.ctx.storage.put('source-sha256', proof.source_sha256);
+      return reply(proof);
+    }
     catch (error) {
       const known = new Set(['SOURCE_CHANGED', 'TARGET_BACKUPS_NOT_EMPTY', 'RESTORE_REFUSED', 'BACKUP_FAILED',
         'STORAGE_BOUND', 'BACKUP_UNIDENTIFIED', 'BACKUP_UNVERIFIED', 'RECONCILIATION_FAILED', 'CAPABILITY_EXPIRED']);

@@ -101,7 +101,7 @@ class Promotion(unittest.TestCase):
                     else: self.fail('Unexpected request: ' + path)
                     return io.BytesIO(json.dumps({'success': True, 'result': result}).encode())
                 with mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), \
-                        mock.patch.object(PROMOTE, 'cloud_gate', return_value={'synthetic': True}):
+                        mock.patch.object(PROMOTE, 'cloud_gate', side_effect=lambda *a, after_restore: (after_restore(), {'recovery': {'recurrence_verified': True, 'cleanup_verified': True}})[1]):
                     yield run, requested, receipt
 
     def test_deploy_refuses_serving_edge_drift(self):
@@ -111,7 +111,7 @@ class Promotion(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, '^Custom domains or routes changed during promotion$'):
                     PROMOTE.deploy()
                 run.assert_called_once()
-                self.assertEqual(json.loads(receipt.read_text()), {'source': 'a' * 40})
+                self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_recurrence_pending')
 
     def test_deploy_observes_serving_edges_before_wrangler(self):
         with self.deployment([DOMAIN], []) as (run, requested, receipt):
@@ -138,8 +138,8 @@ class Promotion(unittest.TestCase):
             self.assertEqual(run.call_args.args[0], ['git', 'merge-base', '--is-ancestor', released, 'a' * 40])
 
     def test_deploy_uploads_unless_the_live_version_itself_names_the_source(self):
-        # Re-promoting an annotated release is idempotent; a secret-only version of the same
-        # source still lacks the annotation the final check requires, so it uploads.
+        # An annotated source without a prior full receipt must not skip recurrence.
+        # A secret-only version still lacks the exact annotation and uploads.
         source = 'a' * 40
         for label, history, uploads in [
                 ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
@@ -153,8 +153,8 @@ class Promotion(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, '^upload deploy$'):
                         PROMOTE.deploy()
                 else:
-                    # Without an upload, promotion continues to its post-checks; this fixture stops there.
-                    with self.assertRaisesRegex(AssertionError, 'Unexpected request: .*/subdomain$'):
+                    # Freshly prepared receipts cannot turn an unverified upload into success.
+                    with self.assertRaisesRegex(AssertionError, 'lacks verified recovery receipt'):
                         PROMOTE.deploy()
                 self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
 
@@ -229,7 +229,7 @@ class DeploymentSafety(unittest.TestCase):
         cls.directory.cleanup()
 
     @contextmanager
-    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None):
+    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None, verified=False):
         source = source or self.b
         current = deepcopy(history)
         versions = {'A': version(etag='old', message='scry-rust ' + self.a),
@@ -248,6 +248,8 @@ class DeploymentSafety(unittest.TestCase):
             out = Path(directory)
             receipt = out / 'promotion.json'
             initial = {'source': source, 'stage': 'artifact_verified'}
+            if verified:
+                initial.update(stage='exact_artifact_promoted', cloud_recovery={'recovery': {'recurrence_verified': True, 'cleanup_verified': True}})
             receipt.write_text(json.dumps(initial))
             (out / 'proof.json').write_text(json.dumps({'worker': {n: PROMOTE.sha(b) for n, b in modules.items()}}))
             def urlopen(request, timeout):
@@ -296,7 +298,7 @@ class DeploymentSafety(unittest.TestCase):
             with mock.patch.object(PROMOTE, 'ROOT', self.root), mock.patch.object(PROMOTE, 'OUT', out), \
                     mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict(os.environ, {'PATH': os.environ['PATH'], 'CLOUDFLARE_API_TOKEN': 'synthetic'}, clear=True), \
                     mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), mock.patch.object(PROMOTE.subprocess, 'run', side_effect=command), \
-                    mock.patch.object(PROMOTE, 'cloud_gate', return_value={'synthetic': True}), \
+                    mock.patch.object(PROMOTE, 'cloud_gate', side_effect=lambda *a, after_restore: (after_restore(), {'recovery': {'recurrence_verified': True, 'cleanup_verified': True}})[1]), \
                     mock.patch('sys.stdout', new_callable=io.StringIO):
                 yield uploads, requests, receipt, initial
 
@@ -306,7 +308,7 @@ class DeploymentSafety(unittest.TestCase):
             ('idempotent', [deployment('b', ('B', 100)), deployment('a', ('A', 100))], 0),
             ('secret-only', [deployment('secret', ('secret-B', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))], 1),
         ]:
-            with self.subTest(name=name), self.fixture(history, uploaded_only=True) as (called, requests, receipt, _):
+            with self.subTest(name=name), self.fixture(history, uploaded_only=True, verified=uploads == 0) as (called, requests, receipt, _):
                 PROMOTE.deploy()
                 self.assertEqual(len(called), uploads)
                 saved = json.loads(receipt.read_text())
@@ -324,12 +326,36 @@ class DeploymentSafety(unittest.TestCase):
             self.assertEqual(json.loads(receipt.read_text()), initial)
 
     def test_already_exact_promoted_release_does_not_spend_on_another_rehearsal(self):
-        with self.fixture([deployment('b', ('B', 100))]) as (uploads, _, receipt, _):
+        with self.fixture([deployment('b', ('B', 100))], verified=True) as (uploads, _, receipt, _):
             with mock.patch.object(PROMOTE, 'cloud_gate') as gate:
                 PROMOTE.deploy()
                 gate.assert_not_called()
             self.assertEqual(uploads, [])
             self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
+
+    def test_already_deployed_unverified_source_cannot_skip_recovery(self):
+        with self.fixture([deployment('b', ('B', 100))]) as (uploads, _, receipt, initial):
+            with mock.patch.object(PROMOTE, 'cloud_gate') as gate:
+                with self.assertRaisesRegex(AssertionError, 'lacks verified recovery receipt'):
+                    PROMOTE.deploy()
+                gate.assert_not_called()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_post_deploy_recurrence_failure_never_writes_success(self):
+        with self.fixture([deployment('a', ('A', 100))]) as (uploads, _, receipt, _):
+            def gate(*args, after_restore):
+                self.assertEqual(uploads, [])
+                after_restore()
+                self.assertEqual(len(uploads), 1)
+                self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_uploaded_recurrence_pending')
+                raise RuntimeError('synthetic recurrence refused')
+            with mock.patch.object(PROMOTE, 'cloud_gate', side_effect=gate):
+                with self.assertRaisesRegex(RuntimeError, 'recurrence refused'):
+                    PROMOTE.deploy()
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(saved['stage'], 'exact_artifact_uploaded_recurrence_pending')
+            self.assertFalse(saved['recovery_verified'])
 
     def test_rollback_refuses_duplicate_newer_and_same_source_candidates(self):
         history = [deployment('rollback', ('A', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]
@@ -408,7 +434,7 @@ class DeploymentSafety(unittest.TestCase):
             broken = deployment('live', *entries)
             for phase in ('before', 'recheck', 'final'):
                 options = {} if phase == 'before' else {phase: [broken]}
-                with self.subTest(entries=entries, phase=phase), self.fixture([broken if phase == 'before' else pure], **options) as (uploads, _, receipt, initial):
+                with self.subTest(entries=entries, phase=phase), self.fixture([broken if phase == 'before' else pure], verified=True, **options) as (uploads, _, receipt, initial):
                     with self.assertRaisesRegex(AssertionError, 'single version at 100%|deployment traffic'):
                         PROMOTE.deploy()
                     self.assertEqual(uploads, [])
@@ -438,7 +464,7 @@ class DeploymentSafety(unittest.TestCase):
         with self.fixture([deployment('a', ('A', 100))], final=[deployment('late-split', ('B', 10), ('A', 90))]) as (uploads, _, receipt, initial):
             with self.assertRaisesRegex(AssertionError, 'single version at 100%'): PROMOTE.deploy()
             self.assertEqual(len(uploads), 1)
-            self.assertEqual(json.loads(receipt.read_text()), initial)
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_recurrence_pending')
 
     def test_resolved_historical_split_does_not_block_forward_progress(self):
         history = [deployment('b', ('B', 100)), deployment('old-split', ('A', 90), ('B', 10)), deployment('a', ('A', 100))]
@@ -449,7 +475,7 @@ class DeploymentSafety(unittest.TestCase):
 
     def test_pagination_without_metadata_reads_until_empty_not_first_short_page(self):
         history = [deployment('b', ('B', 100)), deployment('a', ('A', 100))]
-        with self.fixture(history, page_size=1, page_change=lambda page, result, info: (result, None)) as (uploads, requests, receipt, _):
+        with self.fixture(history, page_size=1, verified=True, page_change=lambda page, result, info: (result, None)) as (uploads, requests, receipt, _):
             PROMOTE.deploy()
             self.assertTrue(any('/deployments?page=3&' in path for path in requests))
             self.assertEqual(uploads, [])

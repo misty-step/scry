@@ -24,6 +24,7 @@ const MODEL_RESPONSE_LIMIT: usize = 256 * 1024;
 const MODEL_TIMEOUT_MS: i64 = 55_000;
 const RECOVERY_MS: i64 = 90_000;
 const INTERNAL_HEADER: &str = "x-scry-internal-key";
+const BACKUP_PROOF_HEADER: &str = "x-scry-backup-proof";
 const QA_SPACE_NAME: &str = "scry-qa";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -309,10 +310,26 @@ pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
 }
 
 async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
-    // Only a safe persisted freshness verdict is exposed, never archive metadata.
+    // The optional proof narrows the existing health verdict to an exact fully
+    // verified archive and its persisted next alarm, never exposing metadata.
     if req.path() == "/healthz" && req.method() == Method::Get {
-        return match internal_request(&env, "/__internal/health", Method::Get).await {
+        let proof = req.headers().get(BACKUP_PROOF_HEADER)?;
+        if proof
+            .as_deref()
+            .is_some_and(|value| !valid_backup_proof(value))
+        {
+            return backup_proof_response(false, 400);
+        }
+        return match internal_request_with_proof(
+            &env,
+            "/__internal/health",
+            Method::Get,
+            proof.as_deref(),
+        )
+        .await
+        {
             Ok(response) => private(response),
+            Err(_) if proof.is_some() => backup_proof_response(false, 503),
             Err(_) => private(Response::error("backup_unavailable", 503)?),
         };
     }
@@ -548,7 +565,24 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     private(stub.fetch_with_request(trusted).await?)
 }
 
+fn valid_backup_proof(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+fn backup_proof_response(verified: bool, status: u16) -> Result<Response> {
+    api_json(&json!({"backup_proof": verified}), status)
+}
 async fn internal_request(env: &Env, path: &str, method: Method) -> Result<Response> {
+    internal_request_with_proof(env, path, method, None).await
+}
+async fn internal_request_with_proof(
+    env: &Env,
+    path: &str,
+    method: Method,
+    proof: Option<&str>,
+) -> Result<Response> {
     let key = internal_key(env);
     if key.len() < 32 {
         return Err(Error::RustError(
@@ -558,6 +592,9 @@ async fn internal_request(env: &Env, path: &str, method: Method) -> Result<Respo
     let headers = Headers::new();
     headers.set(INTERNAL_HEADER, &key)?;
     headers.set("x-scry-owner", "private-owner")?;
+    if let Some(expected) = proof {
+        headers.set(BACKUP_PROOF_HEADER, expected)?;
+    }
     let mut init = RequestInit::new();
     init.with_method(method).with_headers(headers);
     env.durable_object("LEARNING_SPACE")?
@@ -837,6 +874,16 @@ impl DurableObject for LearningSpace {
             return private(Response::error("QA cannot invoke owner operations.", 403)?);
         }
         if path == "/__internal/health" {
+            if let Some(expected) = req.headers().get(BACKUP_PROOF_HEADER)? {
+                if req.method() != Method::Get || !valid_backup_proof(&expected) {
+                    return backup_proof_response(false, 400);
+                }
+                if principal != AccessPrincipal::Owner {
+                    return backup_proof_response(false, 403);
+                }
+                let verified = self.backup_proof(&expected).await.unwrap_or(false);
+                return backup_proof_response(verified, if verified { 200 } else { 503 });
+            }
             let rows = self.stored_rows()?;
             let fresh = !rows.is_empty()
                 && persistence::app_from_rows(&rows)
@@ -1333,6 +1380,11 @@ struct StoredRow {
     key: String,
     value: String,
 }
+#[derive(Deserialize, PartialEq)]
+struct PersistedBackupProof {
+    revision: u64,
+    backup: BackupStatus,
+}
 impl LearningSpace {
     fn bearer_token(&self, authorization: &str) -> Option<OwnerToken> {
         let secret = authorization.strip_prefix("Bearer ")?;
@@ -1580,6 +1632,54 @@ impl LearningSpace {
             .to_array()?;
         let rows = records.into_iter().map(|r| (r.key, r.value)).collect();
         persistence::app_from_rows(&rows).map_err(to_worker_error)
+    }
+    // Only SELECTs: do not create records, initialize an App, recover work,
+    // save status or arm an alarm while observing the backup proof.
+    fn read_backup_proof(&self) -> Result<Option<PersistedBackupProof>> {
+        let sql = self.state.storage().sql();
+        let tables: Vec<Value> = sql
+            .exec(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='records'",
+                None,
+            )?
+            .to_array()?;
+        if tables.is_empty() {
+            return Ok(None);
+        }
+        let rows: Vec<StoredRow> = sql
+            .exec("SELECT key, value FROM records WHERE key = 'meta'", None)?
+            .to_array()?;
+        rows.first()
+            .map(|row| {
+                serde_json::from_str(&row.value)
+                    .map_err(|_| Error::RustError("Backup proof unavailable.".into()))
+            })
+            .transpose()
+    }
+    async fn backup_proof(&self, expected: &str) -> Result<bool> {
+        let Some(before) = self.read_backup_proof()? else {
+            return Ok(false);
+        };
+        if before.backup.sha256.as_deref() != Some(expected)
+            || before.backup.error.is_some()
+            || !before.backup.fresh(now())
+        {
+            return Ok(false);
+        }
+        let alarm = self.state.storage().get_alarm().await?;
+        // get_alarm yields: a concurrent save must not combine another
+        // revision/status with this alarm observation. Never retry or write.
+        if self.read_backup_proof()?.as_ref() != Some(&before) {
+            return Ok(false);
+        }
+        let timestamp = now();
+        Ok(before.backup.fresh(timestamp)
+            && before
+                .backup
+                .completed_ms
+                .and_then(|completed| completed.checked_add(DAY_MS))
+                .zip(alarm)
+                .is_some_and(|(latest, next)| next > timestamp && next <= latest))
     }
     fn stored_rows(&self) -> Result<BTreeMap<String, String>> {
         let sql = self.state.storage().sql();

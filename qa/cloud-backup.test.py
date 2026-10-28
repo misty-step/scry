@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import subprocess
 import tempfile
 import unittest
@@ -157,6 +158,99 @@ class CloudBackup(unittest.TestCase):
                 with self.subTest(path=path, method=method), self.assertRaises(BACKUP.GateError):
                     client.request(path, method=method)
             self.assertEqual(opened.call_count, 3)
+
+
+class ObservedSnapshot(unittest.TestCase):
+    def setUp(self):
+        self.approval = {'accounting_started_ms': int((NOW - timedelta(hours=1)).timestamp() * 1000),
+                         'backup_observed_after_ms': int(NOW.timestamp() * 1000),
+                         'backup_observed_before_ms': int((NOW + timedelta(minutes=55)).timestamp() * 1000)}
+        self.checked = NOW + timedelta(hours=1)
+        self.obj = {'key': 'snapshots/synthetic/1-daily-one.json', 'size': 10,
+                    'etag': 'a' * 32, 'last_modified': BACKUP.iso(NOW + timedelta(minutes=20)),
+                    'storage_class': 'Standard'}
+
+    def test_selects_exact_unique_observed_upload_without_cron_or_health_success(self):
+        earlier = self.obj | {'key': 'snapshots/synthetic/old', 'last_modified': BACKUP.iso(NOW - timedelta(minutes=1))}
+        window = BACKUP.observed_backup_window(self.approval, self.checked)
+        self.assertEqual(BACKUP.observed_backup([earlier, self.obj], window, self.checked), self.obj)
+        for objects in ([], [earlier], [self.obj, self.obj | {'key': 'snapshots/synthetic/second'}]):
+            with self.subTest(objects=len(objects)), self.assertRaises(BACKUP.GateError):
+                BACKUP.observed_backup(objects, window, self.checked)
+        with self.assertRaisesRegex(BACKUP.GateError, 'fresh'):
+            BACKUP.observed_backup([self.obj], window, NOW + timedelta(hours=27))
+
+    def test_observed_window_is_exact_bounded_and_inside_original_accounting(self):
+        for field, value in [('backup_observed_after_ms', None), ('backup_observed_before_ms', True),
+                             ('accounting_started_ms', 0), ('backup_observed_after_ms', 1),
+                             ('backup_observed_before_ms', int((NOW + timedelta(hours=2)).timestamp() * 1000)),
+                             ('backup_observed_before_ms', int((NOW - timedelta(seconds=1)).timestamp() * 1000))]:
+            with self.subTest(field=field, value=value), self.assertRaises(BACKUP.GateError):
+                BACKUP.observed_backup_window(self.approval | {field: value}, self.checked)
+        for field in self.approval:
+            changed = dict(self.approval); del changed[field]
+            with self.subTest(missing=field), self.assertRaises(BACKUP.GateError):
+                BACKUP.observed_backup_window(changed, self.checked)
+
+
+class ObservedGateLifecycle(unittest.TestCase):
+    def test_independent_restore_precedes_upload_and_recurrence_without_cron_requests(self):
+        checked = NOW + timedelta(hours=1)
+        approval = {'approved': True, 'production_health_service': 'synthetic-worker',
+                    'accounting_started_ms': int((NOW - timedelta(hours=1)).timestamp() * 1000),
+                    'backup_observed_after_ms': int(NOW.timestamp() * 1000),
+                    'backup_observed_before_ms': int((NOW + timedelta(minutes=55)).timestamp() * 1000)}
+        config = {'name': 'synthetic-worker', 'account_id': 'a' * 32, 'vars': {'SPACE_NAME': 'synthetic'}}
+        before = {'usage_model': 'standard', 'bindings': [{'name': 'SCRY_BACKUPS', 'bucket_name': 'synthetic-backups'}]}
+        deployment = {'id': 'old-live', 'versions': [{'version_id': 'old-live', 'percentage': 100}]}
+        obj = {'key': 'snapshots/synthetic/1-daily-one.json', 'size': 10, 'etag': 'a' * 32,
+               'last_modified': BACKUP.iso(NOW + timedelta(minutes=20)), 'storage_class': 'Standard'}
+        events = []
+        test = self
+        class Client:
+            def __init__(self, *args): pass
+            def request(self, path, **kwargs):
+                test.assertNotIn('upload', events, 'old deployment cannot be rechecked after exact upload')
+                test.assertEqual(kwargs.get('method', 'GET'), 'GET')
+                if path == '/workers/account-settings': return {'default_usage_model': 'standard'}
+                if path.endswith('/content/v2'): return b'synthetic', 'synthetic'
+                if path.endswith('/deployments'): return {'deployments': [deployment]}
+                if path.endswith('/settings'): return before
+                if path.endswith('/routes') or path.startswith('/workers/domains?'): return []
+                if path.startswith('/r2/buckets/synthetic-backups/objects?'):
+                    events.append('list'); return {'result': [obj]}
+                test.fail('Unapproved request including Cron/GraphQL: ' + path)
+            def graphql(self, *args): test.fail('Cron telemetry is not a gate')
+        def restore(*args, after_restore, **kwargs):
+            self.assertEqual(args[2], obj)
+            events.append('restore_verified')
+            after_restore()
+            events.extend(['recurrence_verified', 'cleanup_verified'])
+            return {'proof': {'canonical_application_equal': True}, 'recurrence_verified': True, 'cleanup_verified': True}
+        recovery = SimpleNamespace(admit=lambda receipt, approval: approval,
+            verify_billing_period=lambda request: {'synthetic': True},
+            claim=lambda *args, **kwargs: events.append('claim'), run=restore)
+        promote = SimpleNamespace(single_version=lambda value: 'old-live', edges=lambda *args: [], OUT=Path('synthetic'))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root / 'deploy').mkdir(); (root / BACKUP.APPROVAL_PATH).write_text(json.dumps(approval))
+            with mock.patch.object(BACKUP, 'ROOT', root), mock.patch.object(BACKUP, 'Cloudflare', Client), \
+                 mock.patch.object(BACKUP, 'load_module', return_value=recovery), mock.patch.object(BACKUP, 'datetime', wraps=datetime) as clock, \
+                 mock.patch.object(BACKUP, 'verify_reviewed_source'), mock.patch.object(BACKUP, 'require_backup_contract'), \
+                 mock.patch.object(BACKUP, 'qualified_modules', return_value={}), mock.patch.object(BACKUP, 'module_hashes', return_value={}), \
+                 mock.patch.dict(os.environ, {'CLOUDFLARE_API_TOKEN': 'synthetic'}):
+                clock.now.return_value = checked
+                result = BACKUP.gate(promote, {'source': 'a' * 40}, config, before, [deployment], ('b' * 40, True),
+                                     after_restore=lambda: events.append('upload'))
+                self.assertEqual(events, ['claim', 'list', 'restore_verified', 'upload', 'recurrence_verified', 'cleanup_verified'])
+                self.assertTrue(result['backup']['persisted_alarm_verified'])
+                self.assertFalse(result['backup']['new_production_backup_triggered'])
+                self.assertFalse(result['backup']['natural_next_day_run_observed'])
+                events.clear(); approval.pop('production_health_service')
+                (root / BACKUP.APPROVAL_PATH).write_text(json.dumps(approval))
+                with self.assertRaisesRegex(BACKUP.GateError, 'service access is not approved'):
+                    BACKUP.gate(promote, {'source': 'a' * 40}, config, before, [deployment], ('b' * 40, True),
+                                after_restore=lambda: events.append('upload'))
+                self.assertEqual(events, [])
 
 
 class BootstrapLifecycle(unittest.TestCase):

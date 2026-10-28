@@ -451,15 +451,39 @@ def verify_reviewed_source(approval, receipt):
         raise GateError('approval source binding could not be verified') from None
 
 
-def gate(promote, receipt, config, before, deployments, prior):
-    """Called after native artifact/storage/rollback checks, before Wrangler upload."""
+def observed_backup_window(approval, checked):
+    """A fixed already-observed upload window, never permission for another backup."""
+    values = [approval.get(key) for key in ('accounting_started_ms', 'backup_observed_after_ms',
+                                           'backup_observed_before_ms')]
+    require(all(type(value) is int and value > 0 for value in values), 'observed backup window is unverified')
+    accounting, start, end = [datetime.fromtimestamp(value / 1000, timezone.utc) for value in values]
+    require(accounting <= start < end <= checked and end - start <= timedelta(hours=1),
+            'observed backup window is unverified')
+    return start, end
+
+
+def observed_backup(objects, window, checked):
+    start, end = window
+    matches = [item for item in objects if start <= stamp(item['last_modified']) <= end]
+    require(len(matches) == 1, 'observed backup is absent or ambiguous')
+    require(timedelta(0) <= checked - stamp(matches[0]['last_modified']) <= timedelta(hours=26),
+            'observed backup is not fresh')
+    return matches[0]
+
+
+def gate(promote, receipt, config, before, deployments, prior, *, after_restore):
+    """Restore old-code backup before upload; prove persisted recurrence after it."""
     recovery = load_module('scry-cloud-recovery')
     # Operational approval is absent by default. Cost admission must happen
     # before even the potentially billable R2 metadata listing.
     approval = json.loads((ROOT / APPROVAL_PATH).read_text())
     require(approval.get('approved') is True, 'one-operation cloud recovery approval is absent')
+    require(callable(after_restore), 'native deployment callback is unavailable')
+    require(approval.get('production_health_service') == config['name'],
+            'temporary production health service access is not approved')
     verify_reviewed_source(approval, receipt)
     approval = recovery.admit(receipt, approval=approval)
+    window = observed_backup_window(approval, datetime.now(timezone.utc))
     require(prior is not None, 'cloud bootstrap requires recognized live source')
     no_paid_work(before['bindings'])
     require_backup_contract(prior[0])
@@ -484,28 +508,28 @@ def gate(promote, receipt, config, before, deployments, prior):
         require(current == deployments[0] and promote.single_version(current) == live, 'live deployment changed during backup gate')
         require(client.request(script + '/settings') == before, 'live settings changed during backup gate')
         require(edges() == serving, 'serving edges changed during backup gate')
-    # Permission/provenance failures should not consume even the content-free
-    # approval claim. These control-plane reads happen before billable R2 work.
-    require_schema(client.graphql(SCHEMA_QUERY))
-    checked = datetime.now(timezone.utc)
-    event_rows(client.graphql(events_query(config['account_id'], config['name'], checked - timedelta(minutes=1), checked)))
+    # Cron analytics returned no events despite an observed new upload. Do not
+    # schedule again or treat metadata as success: the pinned archive must pass
+    # the complete independent restore before the callback can deploy anything.
     unchanged()
     recovery.claim(approval, receipt, client.request, bucket, billing_period=billing_period)
     prefix = 'snapshots/' + config['vars']['SPACE_NAME'] + '/'
     started = datetime.now(timezone.utc)
     objects = list_objects(client.request, bucket, prefix, started)
-    require(bool(objects), 'production space has no established backup; bootstrap refused')
-    proof = bootstrap(client, config, live, unchanged, now=started)
-    after = list_objects(client.request, bucket, prefix, datetime.now(timezone.utc))
-    old = {x['key'] for x in objects}
-    fresh = [x for x in after if x['key'] not in old and stamp(x['last_modified']) >= started]
-    require(len(fresh) == 1, 'bootstrap snapshot is ambiguous; no archive body downloaded')
+    source = observed_backup(objects, window, started)
     unchanged()
-    restored = recovery.run(config, promote.OUT, fresh[0], client.request, approval=approval, receipt=receipt,
-                            billing_period=billing_period)
-    unchanged()
-    require(restored.get('proof', {}).get('canonical_application_equal') is True and restored.get('cleanup_verified') is True,
+    def deploy_verified():
+        unchanged()
+        after_restore()
+    restored = recovery.run(config, promote.OUT, source, client.request, approval=approval, receipt=receipt,
+                            billing_period=billing_period, after_restore=deploy_verified)
+    require(restored.get('proof', {}).get('canonical_application_equal') is True
+            and restored.get('recurrence_verified') is True and restored.get('cleanup_verified') is True,
             'independent recovery or temporary cleanup unverified')
+    proof = {'format': 'scry-cloud-backup-v2', 'existing_observed_snapshot': True,
+             'full_readback_via_independent_restore': True, 'persisted_alarm_verified': True,
+             'learner_bodies_exported': False, 'new_production_backup_triggered': False,
+             'existing_30_day_retention_unchanged': True, 'natural_next_day_run_observed': False}
     return {'backup': proof, 'recovery': restored}
 
 
