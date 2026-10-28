@@ -1,0 +1,125 @@
+name: scry cloud access preflight (read only, expiring)
+
+on:
+  push:
+    branches: [ops/scry-cloud-preflight-20261028-0050]
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: >-
+      github.repository == 'misty-step/scry' &&
+      github.ref == 'refs/heads/ops/scry-cloud-preflight-20261028-0050' &&
+      github.actor == 'moomooskycow' &&
+      github.event.created == true && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: b2522915ef3d71d96020913d604f2fc30dd90bc4
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/scry-cloud-backup.py
+            /scripts/scry-cloud-recovery.py
+            /deploy/rust-production.toml
+            /deploy/cloud-recovery-approval.json
+      - name: Verify existing credential and exact native control-plane checks only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, importlib.util, json, os, re, sys, time, tomllib
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+
+          expiry = datetime.fromisoformat('2026-10-28T02:00:00+00:00').timestamp()
+          if not (time.time() < expiry
+                  and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
+                  and os.environ.get('GITHUB_REF') == 'refs/heads/ops/scry-cloud-preflight-20261028-0050'
+                  and os.environ.get('GITHUB_ACTOR') == 'moomooskycow'
+                  and os.environ.get('GITHUB_EVENT_NAME') == 'push'
+                  and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'):
+              raise SystemExit('PREFLIGHT_TRIGGER_REFUSED')
+          pins = {
+              'scripts/scry-cloud-backup.py': '9b2e65588ccf7fa58967d280a482956ed79d83930906aed105ca8997544e7c4d',
+              'scripts/scry-cloud-recovery.py': '5f80c52ce54a9bc1b0878fa04d3e62fc2b1b39cf46784e93364e033dc35aa6c8',
+              'deploy/rust-production.toml': 'fc76d35c0bc711320396b750c8783c58cb0022189714081a008556e21cc74f69',
+              'deploy/cloud-recovery-approval.json': '35eea35f4676723880c31f5679ec46377344313050d27a17ace6879792c6b855',
+          }
+          try:
+              if any(hashlib.sha256(Path(p).read_bytes()).hexdigest() != digest for p, digest in pins.items()):
+                  raise ValueError()
+          except Exception:
+              raise SystemExit('PREFLIGHT_SOURCE_REFUSED') from None
+          def load(name):
+              spec = importlib.util.spec_from_file_location(name, Path('scripts') / (name + '.py'))
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+          backup, recovery = load('scry-cloud-backup'), load('scry-cloud-recovery')
+          config = tomllib.loads(Path('deploy/rust-production.toml').read_text())
+          approval = json.loads(Path('deploy/cloud-recovery-approval.json').read_text())
+          token = os.environ.get('CLOUDFLARE_API_TOKEN', '')
+          if not token:
+              raise SystemExit('PREFLIGHT_SECRET_UNAVAILABLE')
+          client = backup.Cloudflare(config['account_id'], token)
+          client.limit = 4
+          checked = datetime.now(timezone.utc)
+          query = backup.events_query(config['account_id'], config['name'], checked - timedelta(minutes=1), checked)
+          base = 'https://api.cloudflare.com/client/v4'
+          account = base + '/accounts/' + config['account_id']
+          expected = [
+              (account + '/tokens/verify', 'GET', None),
+              (account + '/subscriptions', 'GET', None),
+              (base + '/graphql', 'POST', json.dumps({'query': backup.SCHEMA_QUERY}).encode()),
+              (base + '/graphql', 'POST', json.dumps({'query': query}).encode()),
+          ]
+          # Preserve native no-redirect, 30-second timeout and 4 MiB body limit.
+          native_open, calls = client.open, 0
+          def bounded_open(request, timeout):
+              global calls
+              calls += 1
+              if (time.time() >= expiry or calls > 4
+                      or (request.full_url, request.get_method(), request.data) != expected[calls - 1]):
+                  raise RuntimeError('PREFLIGHT_REQUEST_SCOPE_REFUSED')
+              return native_open(request, timeout=timeout)
+          client.open = bounded_open
+          stage = 'TOKEN_IDENTITY'
+          try:
+              identity = client.request('/tokens/verify')
+              token_id = identity.get('id') if isinstance(identity, dict) else None
+              if not (isinstance(token_id, str) and re.fullmatch('[a-f0-9]{32}', token_id)
+                      and identity.get('status') == 'active'
+                      and hashlib.sha256(token_id.encode('ascii')).hexdigest() == '8b2235f2ef436ce446deefc077620c6be3619ca25c33f58ee606abd2c185dc52'):
+                  raise ValueError()
+              print('TOKEN_IDENTITY_PASS')
+              stage = 'BILLING_PERIOD'
+              window = recovery.verify_billing_period(client.request)
+              recovery.require_billing_period(window, approval)
+              print('BILLING_PERIOD_PASS')
+              stage = 'CRON_SCHEMA'
+              backup.require_schema(client.graphql(backup.SCHEMA_QUERY))
+              print('CRON_SCHEMA_PASS')
+              stage = 'CRON_QUERY'
+              backup.event_rows(client.graphql(query))
+              print('CRON_QUERY_PASS')
+          except recovery.RecoveryBlocked as error:
+              allowed_codes = {
+                  'RECOVERY_BILLING_PERIOD_UNAVAILABLE', 'RECOVERY_BILLING_PERIOD_UNVERIFIED',
+                  'RECOVERY_BILLING_PERIOD_INCOMPLETE', 'RECOVERY_BILLING_PERIOD_AMBIGUOUS',
+                  'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN', 'RECOVERY_BILLING_PERIOD_REQUIRED',
+              }
+              code = str(error)
+              print(code if code in allowed_codes else 'PREFLIGHT_BILLING_PERIOD_FAILED')
+              sys.exit(1)
+          except Exception:
+              print('PREFLIGHT_' + stage + '_FAILED')
+              sys.exit(1)
+          print('CONTROL_PLANE_PREFLIGHT_PASS_NOT_OPERATIONAL_ADMISSION')
+          PY
