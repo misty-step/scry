@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/misty-step/scry/compare/v0.9.4...v0.9.5) (2026-10-28)
+
+
+### Bug Fixes
+
+* admit audited recovery privacy with nullable settings ([#424](https://github.com/misty-step/scry/issues/424)) ([f39c59b](https://github.com/misty-step/scry/commit/f39c59bec5e4dc44a32a2bb182ffca4280bdf861))
+
 ## [0.9.4](https://github.com/misty-step/scry/compare/v0.9.3...v0.9.4) (2026-10-28)
 
 
