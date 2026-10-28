@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/misty-step/scry/compare/v0.9.1...v0.9.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* repair cloud recovery contracts and bounded continuation ([#417](https://github.com/misty-step/scry/issues/417)) ([59f9ccf](https://github.com/misty-step/scry/commit/59f9ccf2c76fc72e4863ff7b0b9aebd35b45e7a4))
+
 ## [0.9.1](https://github.com/misty-step/scry/compare/v0.9.0...v0.9.1) (2026-10-28)
 
 
