@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.6](https://github.com/misty-step/scry/compare/v0.9.5...v0.9.6) (2026-10-28)
+
+
+### Bug Fixes
+
+* preserve sanitized recovery operation diagnostics ([#426](https://github.com/misty-step/scry/issues/426)) ([b861fbf](https://github.com/misty-step/scry/commit/b861fbf098b7db9da014c4d71e70b727281f0166))
+
 ## [0.9.5](https://github.com/misty-step/scry/compare/v0.9.4...v0.9.5) (2026-10-28)
 
 
