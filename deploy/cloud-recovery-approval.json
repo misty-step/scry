@@ -2,9 +2,10 @@
   "approved": true,
   "scope": "one-cloud-only-recovery-drill",
   "approval_id": "7247026fcf4a1f4c01de16fa9ab5f865",
-  "reviewed_source": "745e42f08978a497cc2cad81dc1ace3872dcad6e",
-  "release_version": "0.9.1",
-  "expires_ms": 1793166300000,
+  "reviewed_source": "1a29306305aa6b306431be773e6609e24e39d3f6",
+  "release_version": "0.9.2",
+  "expires_ms": 1793177100000,
   "one_time_cents": 2000,
-  "failed_cleanup_storage_cents_per_month": 25
+  "failed_cleanup_storage_cents_per_month": 25,
+  "accounting_started_ms": 1793160106000
 }
