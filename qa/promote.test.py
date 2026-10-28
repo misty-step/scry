@@ -43,6 +43,27 @@ def drift(name, **change):
 
 
 class Promotion(unittest.TestCase):
+    def test_cloud_gate_preserves_predeployment_primary_reason_and_cleanup_outcomes(self):
+        name='scry-recovery-'+'a'*24+'-target'
+        error=RuntimeError('RECOVERY_CLEANUP_FAILED')
+        error.recovery_phase='restore';error.deployment_attempted=False
+        error.primary_reason='RECOVERY_LIMITS_UNVERIFIED';error.retained_resources=[name]
+        error.cleanup_outcomes=[{'resource':name,'step':'namespace_identity','status':'unverified','reason':'RECOVERY_MIGRATION_OUTCOME_UNCERTAIN'}]
+        module=mock.Mock();module.gate.side_effect=error
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'promotion.json';receipt={'source':'a'*40,'stage':'prepared'}
+            with mock.patch.object(PROMOTE,'RECEIPT',path),mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                    mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module):
+                spec.return_value.loader.exec_module.return_value=None
+                with self.assertRaises(RuntimeError) as caught:PROMOTE.cloud_gate(receipt,{}, {}, [], None,after_restore=mock.Mock())
+            self.assertIs(caught.exception,error)
+            saved=json.loads(path.read_text());cleanup=json.loads((path.parent/'recovery-cleanup.json').read_text())
+            self.assertEqual(saved['recovery_phase'],'restore');self.assertFalse(saved['deployment_attempted'])
+            self.assertEqual(saved['recovery_primary_reason'],'RECOVERY_LIMITS_UNVERIFIED')
+            self.assertEqual(cleanup['primary_reason'],'RECOVERY_LIMITS_UNVERIFIED')
+            self.assertEqual(cleanup['recovery_phase'],'restore')
+            self.assertEqual(cleanup['cleanup_outcomes'],error.cleanup_outcomes)
+
     def test_declared_storage_matches_live_identity(self):
         self.assertEqual(PROMOTE.storage(LIVE), PROMOTE.declared(CONFIG))
 

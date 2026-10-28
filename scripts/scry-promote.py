@@ -189,10 +189,26 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
     try:
         return module.gate(native, receipt, config, before, deployments, prior, after_restore=after_restore)
     except Exception as error:
-        if getattr(error, 'deployment_attempted', False):
-            receipt.update(deployment_attempted=True, recovery_verified=False,
-                           recovery_phase=getattr(error, 'recovery_phase', 'unverified'),
-                           cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
+        phase = getattr(error, 'recovery_phase', None)
+        primary = getattr(error, 'primary_reason', None)
+        outcomes = getattr(error, 'cleanup_outcomes', [])
+        if phase is not None:
+            assert phase in ('restore', 'deployment', 'recurrence', 'verified'), 'Invalid recovery phase'
+            assert primary is None or re.fullmatch('[A-Z][A-Z0-9_]+', primary), 'Invalid primary recovery reason'
+            assert isinstance(outcomes, list) and len(outcomes) <= 3, 'Invalid cleanup outcomes'
+            for outcome in outcomes:
+                assert set(outcome) == {'resource', 'step', 'status', 'reason'}, 'Invalid cleanup outcome fields'
+                assert re.fullmatch(r'scry-recovery-[a-f0-9]{24}-(?:target|bridge|data)', outcome['resource']), 'Invalid cleanup resource identity'
+                assert outcome['step'] in ('worker_identity', 'namespace_identity', 'namespace_delete', 'namespace_verify',
+                    'worker_delete', 'worker_verify', 'bucket_identity', 'bucket_list', 'owned_objects_delete',
+                    'bucket_delete', 'bucket_verify', 'creation_identity'), 'Invalid cleanup step'
+                assert outcome['status'] in ('verified_absent', 'unverified'), 'Invalid cleanup status'
+                assert outcome['reason'] is None or re.fullmatch('[A-Z][A-Z0-9_]+', outcome['reason']), 'Invalid cleanup reason'
+            # Record failures before deployment too. A cleanup failure must not
+            # erase the original refusal or imply the upload was never tried.
+            receipt.update(deployment_attempted=bool(receipt.get('deployment_attempted') or getattr(error, 'deployment_attempted', False)),
+                           recovery_verified=False, recovery_phase=phase, recovery_primary_reason=primary,
+                           recovery_cleanup_outcomes=outcomes, cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
             save(receipt)
         retained = getattr(error, 'retained_resources', [])
         schedule = getattr(error, 'schedule_cleanup', None)
@@ -201,6 +217,7 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
             cleanup = {'source': receipt['source'], 'native_run_id': os.environ.get('GITHUB_RUN_ID'),
                        'stage': 'cleanup_unverified', 'error': 'CLOUD_RECOVERY_CLEANUP_UNVERIFIED',
                        'retained_temporary_resources': retained,
+                       'recovery_phase': phase, 'primary_reason': primary, 'cleanup_outcomes': outcomes,
                        'failed_cleanup_storage_cents_per_month_limit': 25}
             if schedule: cleanup['temporary_schedule'] = schedule
             (RECEIPT.parent / 'recovery-cleanup.json').write_text(json.dumps(cleanup, indent=2) + '\n')
