@@ -339,7 +339,10 @@ Oversized data is a stop, not permission to raise the budget.
 
 Cost admission assumes an existing Workers Standard account, no new subscription
 or free allowance, and rounds every meter independently: the bounded one-drill
-and first-storage-period quote is **$19.066**, within the approved **$20**.
+and first-storage-period cumulative quote is **$19.235**, within the original
+**$20** cap ($0.765 headroom), not a new allowance per failed attempt. The
+170-million SQL-read envelope includes the prior bounded production bootstrap
+scans and one isolated continuation; it does not assert measured usage.
 The driver limits control-plane requests (128 including cleanup), private preview
 requests (5), CPU (30,000 ms per invocation), subrequests (100), and admission
 time (15 minutes). Already-admitted I/O can outlive capability expiry; the finite
@@ -347,6 +350,9 @@ call count and 72-hour margin before the **verified actual account billing-perio
 boundary** bound its compute billing. Calendar month-end is not that boundary.
 An explicitly reviewed continuation also pins its prior accounting start; the
 same verified period must cover that usage, not grant another rounded allowance.
+The original accounting start through expiry plus drain must fit the reviewed
+96-hour cumulative window; admission also compares the full meter quote against
+the approved cap. Earlier failed isolated setups invoked no Worker or restore.
 Missing billing read permission or ambiguous period metadata stops before the
 claim or billable listing; no permission change is implied.
 No target/bridge alarm or Cron can continue after that drain. Failed cleanup

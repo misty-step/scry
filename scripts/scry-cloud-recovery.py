@@ -110,7 +110,7 @@ METERS = {
     'do_requests': (1_000_000, 150_000, 1_000_000),
     'do_duration_gb_seconds': (1_000_000, 12_500_000, 1_000_000),
     'sql_rows_written': (1_000_000, 1_000_000, 1_000_000),
-    'sql_rows_read': (1_000_000, 1_000, 1_000_000),
+    'sql_rows_read': (1_000_000, 1_000, 170_000_000),
     'worker_requests': (1_000_000, 300_000, 1_000_000),
     'worker_cpu_ms': (1_000_000, 20_000, 2_000_000),
     'sql_gb_month': (1, 200_000, 1),
@@ -194,7 +194,8 @@ def admit(receipt=None, *, approval=None, starting=True, now_ms=None):
         valid = False
     if not valid:
         raise RecoveryBlocked('RECOVERY_APPROVAL_REQUIRED')
-    if approval['one_time_cents'] < 2000 or approval['failed_cleanup_storage_cents_per_month'] < 25:
+    if (approval['one_time_cents'] < 2000 or approval['failed_cleanup_storage_cents_per_month'] < 25
+            or rounded_quote({n: v[2] for n, v in METERS.items()}) > approval['one_time_cents'] * 10_000):
         raise RecoveryBlocked('RECOVERY_COST_BOUND_UNPROVEN')
     return dict(approval)
 
@@ -202,6 +203,8 @@ def admit(receipt=None, *, approval=None, starting=True, now_ms=None):
 # Pending I/O can outlive capability expiry; retain the reviewed 72 h drain
 # envelope, but never substitute a UTC calendar month for the account cycle.
 DRAIN_MS = 72 * 60 * 60 * 1000
+# Reviewed cumulative residency envelope includes prior partial usage and drain.
+ACCOUNTING_WINDOW_MS = 96 * 60 * 60 * 1000
 
 
 def verify_billing_period(request, *, now_ms=None):
@@ -279,6 +282,7 @@ def require_billing_period(window, approval, *, now_ms=None, fresh=True):
     need(window['period_start_ms'] <= window['checked_ms'] <= now_ms < approval['expires_ms']
          and type(accounting) is int and 0 < accounting
          and window['period_start_ms'] <= accounting <= window['checked_ms']
+         and approval['expires_ms'] + DRAIN_MS - accounting <= ACCOUNTING_WINDOW_MS
          and window['period_end_ms'] > approval['expires_ms'] + DRAIN_MS
          and (not fresh or now_ms - window['checked_ms'] <= 5 * 60 * 1000),
          'RECOVERY_BILLING_PERIOD_BOUND_UNPROVEN')

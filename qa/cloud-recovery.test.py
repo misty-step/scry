@@ -163,6 +163,8 @@ class Recovery(unittest.TestCase):
                 with self.subTest(k=k), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a|{k:v})
             for k,v in [('one_time_cents',100),('failed_cleanup_storage_cents_per_month',24)]:
                 with self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'): R.admit(RECEIPT,approval=a|{k:v})
+            with mock.patch.dict(R.METERS, sql_rows_read=(1_000_000,1_000,1_000_000_000)), self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'):
+                R.admit(RECEIPT,approval=a)
             with mock.patch.dict(os.environ, GITHUB_RUN_ATTEMPT='2'), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a)
 
     def test_private_claim_is_readback_verified_and_never_retried_before_expiry(self):
@@ -254,9 +256,9 @@ class Recovery(unittest.TestCase):
         # A first run remains compatible; a continuation charges prior usage
         # in the SAME actual provider period, never a fresh rounded allowance.
         R.require_billing_period(window,a)
-        for at in (window['period_start_ms'],window['checked_ms']-3600000,window['checked_ms']):
+        for at in (a['expires_ms']+R.DRAIN_MS-R.ACCOUNTING_WINDOW_MS,window['checked_ms']-3600000,window['checked_ms']):
             R.require_billing_period(window,a|{'accounting_started_ms':at})
-        for at in (window['period_start_ms']-1,window['checked_ms']+1,0,-1,True,None,'123',1.5):
+        for at in (a['expires_ms']+R.DRAIN_MS-R.ACCOUNTING_WINDOW_MS-1,window['period_start_ms']-1,window['checked_ms']+1,0,-1,True,None,'123',1.5):
             with self.subTest(at=at),self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
                 R.require_billing_period(window,a|{'accounting_started_ms':at})
         # A renewal between the prior phase and this continuation must fail
@@ -319,8 +321,8 @@ class Recovery(unittest.TestCase):
 
     def test_rounding_without_free_tier_assumptions(self):
         usage={n:v[2] for n,v in R.METERS.items()}
-        self.assertEqual(R.rounded_quote(usage),19066000)
-        self.assertEqual(R.rounded_quote(usage|{'r2_class_a':1000001}),23566000)
+        self.assertEqual(R.rounded_quote(usage),19235000)
+        self.assertEqual(R.rounded_quote(usage|{'r2_class_a':1000001}),23735000)
         for bad in ({},usage|{'do_requests':True},usage|{'do_requests':-1}):
             with self.assertRaises(R.RecoveryBlocked): R.rounded_quote(bad)
 
