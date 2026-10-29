@@ -144,6 +144,25 @@ export async function starterWalk(browser,capture){
  return rows;
 }
 
+// Read actual text/background colors, not token declarations. Legacy form-label
+// styles must not override the compact alphabet controls, including selected hover.
+async function letterContrast(page,letter){
+ const result=await page.locator(`label[for="progress-${letter}"]`).evaluate(label=>{
+  const text=getComputedStyle(label.querySelector('span')),surface=getComputedStyle(label);
+  const luminance=color=>{
+   const channels=color.match(/[\d.]+/g).slice(0,3).map(Number).map(value=>{
+    const c=value/255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;
+   });
+   return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;
+  };
+  const fg=luminance(text.color),bg=luminance(surface.backgroundColor);
+  return {foreground:text.color,background:surface.backgroundColor,ratio:(Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05),marginLeft:text.marginLeft,font:text.font,fontMatches:text.font===surface.font};
+ });
+ assert.ok(result.ratio>=4.5,`Letter ${letter} text contrast >=4.5: ${JSON.stringify(result)}`);
+ assert.equal(result.marginLeft,'0px','Letter text is centered without legacy label offset');
+ assert.equal(result.fontMatches,true,'Letter text inherits the alphabet control typography');
+ return result;
+}
 // Rich progress proof uses actual native answers, never direct database fixtures.
 export async function progressWalk(browser,capture){
  const rows=[];
@@ -170,6 +189,16 @@ export async function progressWalk(browser,capture){
    assert.doesNotMatch(await page.content(),/Alfa|Bravo|Charlie|Zulu/);
    await page.evaluate(()=>document.fonts.ready);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+   await page.waitForTimeout(180); // Settle the control's 140ms color transition.
+   row.letter_contrast={selected:await letterContrast(page,'A'),unselected:await letterContrast(page,'B')};
+   if(width>=1000){
+    await page.locator('label[for="progress-A"]').hover();
+    row.letter_contrast.selected_hover=await letterContrast(page,'A');
+    await page.locator('label[for="progress-B"]').hover();
+    await page.waitForTimeout(180);
+    row.letter_contrast.unselected_hover=await letterContrast(page,'B');
+    await page.mouse.move(0,0);
+   }
    row.evidence.push(await capture(page,`nato-progress-${width}-${noJS?'native':'enhanced'}-${scheme}.png`));
    await activate(page.locator('label[for="progress-E"]'));assert.equal(await page.locator('#letter-progress-E [data-metric="accuracy"]').innerText(),'—');assert.match(await page.locator('#letter-progress-E').innerText(),/1 with help/);
    if(!noJS){

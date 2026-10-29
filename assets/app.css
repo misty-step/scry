@@ -149,7 +149,8 @@ form[data-nato-help] .text-button {font-size:13px;min-height:44px;padding:0;bord
 .progress-body {padding:4px 0 24px}
 .progress-intro {font-size:13px;color:var(--ink-2);margin:0 0 16px}
 .letter-map {position:relative;display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:5px;margin:0;padding:0;border:0;min-width:0}
-.letter-key {order:0;position:relative;min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer;font:14px/1 var(--mono);border:1px solid var(--rule);background:var(--sheet);border-radius:2px;transition:background-color 140ms var(--ease),border-color 140ms var(--ease),color 140ms var(--ease)}
+.letter-key {margin:0;order:0;position:relative;min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer;font:14px/1 var(--mono);border:1px solid var(--rule);background:var(--sheet);border-radius:2px;transition:background-color 140ms var(--ease),border-color 140ms var(--ease),color 140ms var(--ease)}
+.letter-key>span {color:inherit;font:inherit;margin:0}
 .letter-key i {position:absolute;bottom:5px;left:calc(50% - 2px);width:4px;height:4px;border-radius:50%;background:var(--evidence,var(--rule-2))}
 .evidence-correct {--evidence:var(--correct)}
 .evidence-miss {--evidence:var(--miss)}
