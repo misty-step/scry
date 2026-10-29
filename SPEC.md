@@ -52,6 +52,11 @@ canvas holds the current question or graded result across refresh and return.
   success field, optimistic verdict or automatic advancement. Official spelling
   and the existing mapping grader remain authoritative. Enter submits/advances;
   native forms work without JavaScript. Repeated actions have no entrance motion.
+  In the focused NATO Study, Next advances through A–Z and wraps to A, even
+  after a miss, assistance or a long pause on feedback. This is deliberate
+  practice, not a claim that each letter is due. Existing schedules and the
+  once-per-day grading/extra-practice rules stay unchanged; generic Studies
+  retain their due-first selection.
 - **NATO-03:** Progress is unique NATO letters with actual unassisted,
   non-disclosure graded attempts, labelled “practiced,” not correct, mastered or
   predicted ready. Import, reveal and repeated answers cannot inflate this count.

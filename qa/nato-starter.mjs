@@ -58,13 +58,18 @@ export async function focusedJourney(){
   const result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/Alfa/);assert.match(result,/1<span class="nato-muted"> \/ 26 practiced/);
   const graded=await f.rows();assert.equal(Object.keys(graded).filter(k=>k.startsWith('practice_attempts/')).length,1);
   await f.get('/');await f.get('/?practice=nato');assert.deepEqual((await f.rows()).meta.practice,graded.meta.practice,'Reload holds result.');
+  // Real wall clock: reading feedback beyond Again's one-minute due time
+  // must not send the learner straight back to Alfa. No synthetic clock override.
+  await new Promise(resolve=>setTimeout(resolve,65_000));
   assert.equal((await f.post('/practice/next',nativeFields(result,'/practice/next'))).status,303);
   const next=await f.get('/?practice=nato');assert.match(next,/aria-label="Letter B"/);assert.doesNotMatch(next,/Alfa|Bravo|Alphabet reference/);
   assert.equal((await f.post('/practice/reveal',nativeFields(next,'/practice/reveal'))).status,303);
   const disclosed=await f.get('/?practice=nato');assert.match(disclosed,/Bravo/);assert.match(disclosed,/1<span class="nato-muted"> \/ 26 practiced/);
   assert.equal((await f.post('/practice/answer',{...nativeFields(disclosed,'/practice/answer'),answer:'Bravo'})).status,303);
   const assisted=await f.get('/?practice=nato');assert.match(assisted,/With help/);assert.match(assisted,/1<span class="nato-muted"> \/ 26 practiced/);
-  assert.equal(f.egress,0);return {status:'pass',one_action_start:true,simultaneous_start_and_answer_idempotent:true,strict_server_grading:true,held_on_refresh:true,assistance_does_not_count:true,actual_unique_practiced:1,egress:0};
+  assert.equal((await f.post('/practice/next',nativeFields(assisted,'/practice/next'))).status,303);
+  const afterHelp=await f.get('/?practice=nato');assert.match(afterHelp,/aria-label="Letter C"/);assert.doesNotMatch(afterHelp,/Bravo|Charlie/);
+  assert.equal(f.egress,0);return {status:'pass',delayed_next_advances:true,assisted_next_advances:true,one_action_start:true,simultaneous_start_and_answer_idempotent:true,strict_server_grading:true,held_on_refresh:true,assistance_does_not_count:true,actual_unique_practiced:1,egress:0};
  }finally{await f.close();}
 }
 export async function starterWalk(browser,capture){
@@ -91,6 +96,7 @@ export async function starterWalk(browser,capture){
    await page.locator('[data-verdict="Again"]').waitFor();await page.getByText('Alfa',{exact:true}).waitFor();await layout();await shot('correction');
    const graded=await f.rows();assert.equal(Object.keys(graded).filter(k=>k.startsWith('practice_attempts/')).length,1);
    await page.reload();await page.locator('[data-verdict="Again"]').waitFor();assert.deepEqual((await f.rows()).meta.practice,graded.meta.practice);
+   if(width===390)await new Promise(resolve=>setTimeout(resolve,65_000));
    if(width>=1000){await page.keyboard.press('Enter');}else await activate(page.getByRole('button',{name:/^Next/}));
    await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'B');assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
    if(!noJS){
@@ -111,6 +117,10 @@ export async function starterWalk(browser,capture){
     assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);await banner('reconcile');await shot('response-lost');
     await page.unroute('**/practice/answer');await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
     await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);row.response_loss_reconciles_once=true;
+    await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'E');
+    await activate(page.getByRole('button',{name:'Show answer',exact:true}));await page.getByText('Echo',{exact:true}).waitFor();
+    await input.fill('Echo');await page.keyboard.press('Enter');await page.getByText('With help',{exact:true}).waitFor();
+    await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'F');await shot('after-assisted-next');
    }else{await input.fill('Bravo');await activate(page.getByRole('button',{name:/^Check/}));await page.locator('[data-verdict="Good"]').waitFor();await shot('good');}
    assert.deepEqual(errors,[]);assert.equal(f.egress,0);row.native_grading=true;row.reload_preserves_result=true;row.egress=0;
   }catch(error){row.status='fail';row.reason=error.stack||error.message;if(page)row.evidence.push(await capture(page,`nato-focus-${width}-${noJS?'native':'enhanced'}-failure.png`));}
