@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/misty-step/scry/compare/v0.9.6...v0.9.7) (2026-10-29)
+
+
+### Bug Fixes
+
+* retain valid preview session when optional exchange fails ([#428](https://github.com/misty-step/scry/issues/428)) ([38f8e91](https://github.com/misty-step/scry/commit/38f8e91346987fd951e4f961d8fb9c191648a90e))
+
 ## [0.9.6](https://github.com/misty-step/scry/compare/v0.9.5...v0.9.6) (2026-10-28)
 
 
