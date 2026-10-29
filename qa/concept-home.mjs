@@ -37,16 +37,31 @@ export async function conceptHomeWalk(browser,capture){
   const layout=async()=>{
    await page.evaluate(()=>document.fonts.ready);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${name}: horizontal overflow`);
-   const clipped=await page.locator('.masthead a,main .button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<-.5||box.right>innerWidth+.5;}).map(node=>node.textContent));
+   // Closed native details retain descendant boxes in Chromium; only the summary
+   // is a visible control until expanded. Expanded links are checked below too.
+   const clipped=await page.locator('.masthead>a,.masthead summary,.masthead details[open] a,main .button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<-.5||box.right>innerWidth+.5;}).map(node=>node.textContent));
    assert.deepEqual(clipped,[],`${name}: clipped primary controls`);
   };
   const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
+  const menuLayout=async suffix=>{
+   const menu=page.locator('.account-menu');
+   assert.equal(await menu.getAttribute('open'),null,'Menu starts closed');
+   await activate(menu.locator('summary'));
+   assert.notEqual(await menu.getAttribute('open'),null,'Native menu opens');
+   const links=menu.getByRole('link');
+   assert.equal(await links.count(),5,'All retained menu destinations are exposed');
+   for(const link of await links.all())assert.equal(await link.isVisible(),true,'Expanded menu link is visible');
+   await layout();await shot(suffix);
+   await activate(menu.locator('summary'));
+   assert.equal(await menu.getAttribute('open'),null,'Native menu closes');
+  };
   try{
    await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();
    assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['NATO practice','Library','History','Settings','Earlier practice']);
    assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true,includeHidden:true}).getAttribute('href'),'/recall');
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
-   await layout();await shot('empty');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');
+   await layout();await shot('empty');await menuLayout('menu');
+   await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');await menuLayout('menu-200');
    await activate(page.locator('.account-menu>summary'));await activate(page.getByRole('link',{name:'Library',exact:true}));
    await page.locator('[data-state="library"]').waitFor();
    assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
