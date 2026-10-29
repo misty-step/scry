@@ -137,5 +137,5 @@ nor a source merge proves deployment or authenticated learner acceptance.
 Changed private-data, credential, spend or irreversible-action scope still
 requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 owns production serving state. The retained
-[Container hosting notes](deploy/cloudflare-hosting/README.md) describe the
+[Container hosting notes](https://github.com/misty-step/scry/blob/74567a69911009ad3ad2bb324f6d7c7d026a6969/deploy/cloudflare-hosting/README.md) describe the
 retired Go configuration.
