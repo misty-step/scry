@@ -11,7 +11,10 @@ correction journeys below are historical compatibility instructions only;
 current HTTP must refuse them with 410 and no writes/provider work. Native
 answer grading remains required; unavailable grades stay saved and ungraded.
 Legacy `/create` retains its title/state for safe reads, but no capture form.
-Historical custody, ingress, assistance and recovery requirements are unchanged.
+Historical content, private ingress, assistance boundaries and application
+backup/restore validation remain unchanged. The [October 29 deployment
+amendment](../../../SPEC.md#minimal-deployment-2026-10-29) retires hosted recovery
+drills and custom operational gates as deployment prerequisites.
 
 
 Start with [the feature map](../../../features/README.md) and the SPEC stories

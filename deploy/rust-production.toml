@@ -1,4 +1,4 @@
-# Promote downloaded, verified CI bytes; never rebuild during deployment.
+# Deploy this CI job's tested bytes; never rebuild during deployment.
 name = "scry-rust-production"
 account_id = "b069014f6a46558ea9146fb6c4ff8f6c"
 main = "../target/ci-release/worker/index.js"
@@ -12,8 +12,7 @@ preserve_file_names = true
 # Existing explicitly commissioned provider settings remain operator-owned.
 keep_vars = true
 
-# Routes move separately, after the unused-space import and canonical proof.
-# No inherited Container, legacy namespace, model key or restore capability.
+# Preserve the existing routes, learning space and private storage bindings.
 [vars]
 SCRY_ENV = "production"
 CANONICAL_ORIGIN = "https://scry.mistystep.io"

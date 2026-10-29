@@ -1,7 +1,7 @@
 {
   "name": "scry",
   "version": "0.9.7",
-  "description": "Private prompt-first learning: Rust Cloudflare Worker, SQLite Durable Object, and R2 recovery.",
+  "description": "Private memorization with agent-authored content and native grading.",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -13,16 +13,11 @@
     "wrangler": "4.129.0",
     "miniflare": "5.20260903.0-alpha",
     "playwright": "1.63.0",
-    "jose": "6.2.12",
-    "@cloudflare/containers": "0.3.7"
+    "jose": "6.2.12"
   },
   "scripts": {
     "test": "cargo test --locked --all-targets",
-    "test:recovery": "python3 scripts/scry-ci recovery",
     "dev": "bash scripts/rust-dev",
-    "ops:legacy-data": "python3 scripts/scry-cloudflare-data",
-    "ops:legacy-restore": "python3 bin/scry-restore",
-    "ops:legacy-backup-freshness": "python3 bin/scry-backup-freshness",
     "ci:local": "python3 scripts/scry-ci local",
     "ci:full": "python3 scripts/scry-ci full",
     "ci": "python3 scripts/scry-ci local",

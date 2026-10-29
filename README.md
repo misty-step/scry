@@ -24,7 +24,7 @@ reactivate, rename, or erase those stores.
 
 For the current origin and remaining proof, read the runbook's
 [dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
-and the [promotion/backup handoff](docs/rust-cloudflare.md#canonical-origin-promotion).
+and the [current deployment procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
 
 [Product intent](VISION.md) · [Stories and specification](SPEC.md) ·
 [Design](DESIGN.md) · [Features](features/README.md) ·
@@ -100,7 +100,7 @@ proof of model calibration or learning efficacy.
 the exact WASM Worker assets exercised, lockfiles, and smoke results. Use
 `--require-committed` when producing release artifacts; worktree-labeled output
 is development evidence. Never rebuild between proof and activation. Retained
-historical recovery tools have their own `bun run test:recovery` contract.
+retired operational recovery tools remain available in Git history, not in the deployment path.
 
 Browser QA runs from a shell first: verify-scry's Playwright helpers and the
 `qa/walk` story walks, which also produce release receipts. The T3
@@ -121,18 +121,18 @@ source endpoints alone do not establish deployed recovery support.
 boundaries. [SPEC](SPEC.md#adopted-behavioral-policies) owns learning, privacy,
 spend and recovery policies; this entrypoint is not another copy.
 
-## Release and recovery
+## Deployment
 
-Read [generated release history](CHANGELOG.md), [GitHub Releases](https://github.com/misty-step/scry/releases),
-or Changelog in the private application's footer. [ADR 007](docs/adr/007-generated-releases.md)
-owns the single generator, baseline and bot release-PR procedure. Versions and
-notes describe source; `/changelog` and health identity headers identify the
-serving build. Neither a tag nor a source merge proves production promotion.
+[The deployment procedure](docs/rust-cloudflare.md) is source PR → passing CI →
+merge → one master build/test → direct Wrangler deployment → code readback.
+The same tested Worker bytes are deployed to the existing Cloudflare target.
+No generated release PR, custom recovery drill, approval window or cleanup lock
+is a deployment prerequisite. Stored content and authentication are preserved.
 
-[The Rust target release procedure](docs/rust-cloudflare.md) describes the new
-namespace, frozen artifacts, and verifiable private-ingress, recovery and
-cutover conditions. Routine activation needs no separate operator approval
-once those conditions pass.
+[CHANGELOG](CHANGELOG.md), [GitHub Releases](https://github.com/misty-step/scry/releases)
+and [ADR 007](docs/adr/007-generated-releases.md) retain release history.
+`/changelog` and health identity headers identify a serving build; neither a tag
+nor a source merge proves deployment or authenticated learner acceptance.
 
 Changed private-data, credential, spend or irreversible-action scope still
 requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)

@@ -14,7 +14,10 @@ correction journeys below are historical compatibility instructions only;
 current HTTP must refuse them with 410 and no writes/provider work. Native
 answer grading remains required; unavailable grades stay saved and ungraded.
 Legacy `/create` retains its title/state for safe reads, but no capture form.
-Historical custody, ingress, assistance and recovery requirements are unchanged.
+Historical content, private ingress, assistance boundaries and application
+backup/restore validation remain unchanged. The [October 29 deployment
+amendment](../../../SPEC.md#minimal-deployment-2026-10-29) retires hosted recovery
+drills and custom operational gates as deployment prerequisites.
 
 
 The active rewrite is Rust/WASM on a plain Cloudflare Worker, one SQLite Durable
@@ -26,7 +29,7 @@ establish it.
 
 For origin changes, read the runbook's
 [dated promotion observation and remaining proof](../../../docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
-and the [backup handoff](../../../docs/rust-cloudflare.md#canonical-origin-promotion).
+and the [current deployment procedure](../../../docs/rust-cloudflare.md#reviewable-release-procedure).
 Use the configured origin vars in isolated runtime proof; retain separate
 post-promotion ingress and natural daily-backup observations.
 
@@ -40,12 +43,12 @@ post-promotion ingress and natural daily-backup observations.
 | Generation/critic | `cargo test --locked --test generation_policy --test application` | Bounded authorized real inputs, human-reviewed material, independent critic and recorded provider usage |
 | Recovery | `cargo test --locked --lib` | Complete remote archive readback, independently retrieved fresh-space restore and private UI |
 | Target/gate | `cargo check --locked --target wasm32-unknown-unknown`, `worker-build --release --locked`, `bun run ci` | Exact source/artifact-bound local Worker smoke; activation separately |
-| Historical recovery | `bun run test:recovery` | Corresponding historical format/source only |
 
 Native lint is `cargo clippy --all-targets -- -D warnings`. The source-snapshot
 gate is `scripts/scry-ci`; committed release output requires
 `--require-committed`. Worktree output is development evidence. Never rebuild
-between proof and activation or lower protected release/recovery gates.
+between proof and activation. Preserve application validation and required CI;
+do not revive the retired hosted-recovery deployment controller.
 
 ## Launch — isolated browser and Worker
 
@@ -84,6 +87,10 @@ Never copy tokens into URLs/argv/logs/captures or substitute a VM credential.
 Upstream logout, provider keys, and restore/operator capabilities are separate.
 
 ## Evidence — recovery and receipts
+
+Hosted recovery is a separate claim, not a shipping prerequisite. The following
+only applies to an explicitly authorized recovery exercise; routine deployment
+does not create an isolated cloud namespace or run a restore drill.
 
 Remote success requires complete JSON+photo archive validation and exact R2
 readback. Restore an independently retrieved archive with compatible Worker

@@ -19,16 +19,6 @@ import tempfile
 
 sys.dont_write_bytecode = True
 
-RECOVERY_CONTRACTS = (
-    "scripts/scry-ops.test.py",
-    "bin/install-scry-backup.test.py",
-    "bin/retention-preflight.test.py",
-    "bin/scry-backup-freshness.test.py",
-    "bin/scry-restore.test.py",
-    "bin/scry-backup-alert.test.py",
-)
-
-
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
@@ -175,11 +165,6 @@ def verify_source(source, metadata):
     require(revision(metadata) == metadata["revision"], "source revision label mismatch")
 
 
-def recovery(source, env, log=None):
-    for script in RECOVERY_CONTRACTS:
-        run([sys.executable, script], cwd=source, env=env, log=log)
-
-
 def archive_source(source, metadata, output):
     def normalize(info):
         info.uid = info.gid = info.mtime = 0
@@ -211,15 +196,10 @@ def gate(args):
         ["cargo", "clippy", "--locked", "--target", "wasm32-unknown-unknown", "--", "-D", "warnings"],
         ["node", "--check", "assets/app.js"],
         ["node", "--test", "qa/walk-cli.test.mjs", "qa/cli-process.test.mjs"],
-        [sys.executable, "qa/release-publish.test.py"],
-        [sys.executable, "qa/promote.test.py"],
-        [sys.executable, "qa/daily-backup.test.py"],
-        [sys.executable, "qa/cloud-backup.test.py"],
-        [sys.executable, "qa/cloud-recovery.test.py"],
+        [sys.executable, "qa/deploy.test.py"],
         ["bash", "-n", "scripts/rust-dev"],
     ):
         run(command, cwd=source, env=env, log=log)
-    recovery(source, env, log)
     run(["worker-build", "--release", "--locked"], cwd=source, env=env, log=log)
     worker = source / "build"
     require((worker / "worker/shim.mjs").is_file() and (worker / "index.js").is_file() and (worker / "index_bg.wasm").is_file(), "the compiled Worker is incomplete")
@@ -231,7 +211,7 @@ def gate(args):
     run(["node", "--test", *critic_tests], cwd=source, env=qa_env, log=log)
     run(["node", "--test", *critic_browser], cwd=source, env=qa_env, log=log)
     # Controlled external services only: actual RSA verification, durable SQLite/R2 and independent restore.
-    run(["node", "--test", "qa/runtime.test.mjs", "qa/generation-retirement.test.mjs", "qa/owner-api.test.mjs", "qa/mcp.test.mjs", "qa/mcp-worker.test.mjs", "qa/library.test.mjs", "qa/study.test.mjs", "qa/keyed-mapping.test.mjs", "qa/nato-starter.test.mjs", "qa/study-integrity.test.mjs", "qa/spend.test.mjs", "qa/revival-preserve.test.mjs", "qa/cloud-restore.test.mjs", "qa/backup-proof.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=env, log=log)
+    run(["node", "--test", "qa/runtime.test.mjs", "qa/generation-retirement.test.mjs", "qa/owner-api.test.mjs", "qa/mcp.test.mjs", "qa/mcp-worker.test.mjs", "qa/library.test.mjs", "qa/study.test.mjs", "qa/keyed-mapping.test.mjs", "qa/nato-starter.test.mjs", "qa/study-integrity.test.mjs", "qa/spend.test.mjs", "qa/revival-preserve.test.mjs", "qa/backup-proof.test.mjs", "qa/rust-telemetry.test.mjs"], cwd=source, env=env, log=log)
     inspect_env = dict(env, SCRY_SOURCE_META=str(args.metadata.resolve()))
     run([sys.executable, "scripts/build-revival-inspect.py"], cwd=source, env=inspect_env, log=log)
     inspector = source / "target/revival-inspect"
@@ -258,7 +238,7 @@ def gate(args):
         "format": "scry-rust-worker-release-proof-v1", "revision": metadata["revision"],
         "source_state": metadata["source_state"], "source_sha256": metadata["source_sha256"],
         "worker": artifact, "revival_inspect": inspect_artifact, "revival_convert": convert_artifact, "rustc": toolchain,
-        "checks": ["rustfmt", "Rust native tests", "native and WASM Clippy", "browser JS syntax", "retained historical recovery contracts", "redacted Gitleaks", "critic provenance/negative-controls/current-Worker browser", "exact-WASM private-ingress/SQLite/R2 smoke", "real Chromium story walk"],
+        "checks": ["rustfmt", "Rust native tests", "native and WASM Clippy", "browser JS syntax", "redacted Gitleaks", "critic provenance/negative-controls/current-Worker browser", "exact-WASM private-ingress/SQLite/R2 smoke", "real Chromium story walk"],
         "limits": ["synthetic data", "mocked public Access certs/providers", "local R2 binding", "no live generation, physical phone, production activation, or off-account restore claim"],
     }
     (output / "proof.json").write_bytes(encoded(proof))
@@ -317,15 +297,12 @@ def main():
         command = commands.add_parser(name, help="check and export the exact Worker (destination must be unused)")
         command.add_argument("--out", type=Path)
         command.add_argument("--require-committed", action="store_true")
-    commands.add_parser("recovery", help="run only the retained historical recovery contracts")
     command = commands.add_parser("gate", help="internal shared gate over a frozen, inventoried source package")
     for name in ("source", "metadata", "secrets-proof", "out"):
         command.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
     if args.command == "gate":
         gate(args)
-    elif args.command == "recovery":
-        recovery(Path(__file__).resolve().parent.parent, environment())
     else:
         delivery(args)
 

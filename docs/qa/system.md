@@ -60,12 +60,13 @@ WASM and Worker loader/assets exercised must be the bytes staged later; never
 rebuild between proof and activation. A passing source gate is not a deployment
 receipt or a guarantee that remote recovery is usable.
 
-Normal shipping reuses the single full CI artifact and its story receipt; the
-protected `story-walk` status does not rerun the walk. Ordinary unchanged-custody
-releases use fresh native R2 metadata and compatible code rollback, not a paid
-hosted restore every time. The metadata receipt is not readback/restore proof.
-Custody transitions retain explicit independent recovery requirements; see the
-[current release procedure](../rust-cloudflare.md#reviewable-release-procedure).
+Normal shipping uses one full CI build and its story receipt. The protected
+`story-walk` status does not rerun the walk. Wrangler deploys the tested modules
+and the deployment script verifies their live identity. Custom cloud recovery,
+approval/admission and release-publisher tests are retired with that machinery;
+application persistence, archive validation, auth and grading tests remain.
+There is no remote restore or custody fingerprint prerequisite. See the
+[current deployment procedure](../rust-cloudflare.md#reviewable-release-procedure).
 
 ## Focused checks
 
@@ -225,7 +226,12 @@ or private-browser acceptance. Settings exposes the last verified backup and
 errors. The retained Go liveness contract is unchanged. No public signup/API/status
 compatibility is inherited from the retired applications.
 
-## Independent recovery
+## Independent recovery (separate from deployment)
+
+The owner's October 29, 2026 simplification removes hosted recovery drills from
+the shipping path. The following explains evidence needed only if making an
+independent recovery claim; it does not authorize provisioning or require a
+release to run a rehearsal. Existing stored archives are preserved.
 
 The rewrite archive is complete versioned JSON plus all referenced photo bytes
 and their checksums, generated from one committed application snapshot. Its R2
