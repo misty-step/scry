@@ -97,3 +97,20 @@ assistance and leaves the schedule unchanged, including a later correct answer.
 `examples/nato-alphabet.json` is supplied content, not generated runtime output.
 Reverse directions, choice scaffolding, random-start sets, year tolerance and
 multimedia are not implemented by this subset; hosted #335 remains unverified.
+
+
+## Authored lessons (LESSON-01–06)
+
+The `/lessons` shelf and inline review disclosure start a bundled Rosary/prayer
+or supplied Version lesson without replacing existing history. This is not the
+stopped generic phone recitation chooser. Source: `src/lessons.rs`,
+`assets/lessons.json`, native lesson mutations in `src/study.rs`, ordered alias
+policy in `src/ordered.rs`, and lesson rendering in `src/web.rs`.
+
+Verification: `tests/lessons.rs` covers deliberate switching, stale fences,
+assisted clauses, joined/whole challenges, supplied content, unchanged Pace,
+idempotent starters and recovery. `tests/ordered.rs` covers alignment, aliases,
+duplicates, ambiguity and immutable identity. `qa/lessons.mjs` is called by the
+existing keyed-mapping Worker/browser gate: real native forms, CRLF, actual
+phone/desktop/dark/no-JavaScript flows, draft preservation and source-bound images.
+Local source tests and synthetic screenshots are not authenticated live acceptance.

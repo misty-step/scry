@@ -296,3 +296,20 @@ always-expanded result and per-word colored tiles (#362); grading, saved
 word classifications, disclosure completeness and deliberate advancement do
 not change. Long text wraps, and expanded detail never sits behind a sticky
 action bar.
+
+
+## Authored lessons: prayer and sequence
+
+Retain the NATO instrument frame, restrained serif title and warm ruled sheet.
+One typed answer and one primary next action stay central. Previous phrase is
+quiet context, not a second card. Guided wording says what is visible; cold whole
+recall never looks like a listening or speech task. Changed words and per-item
+order feedback lead results; raw comparison, progress, sources and alternate
+challenges live in native disclosures. No mastery ring is inferred from practice.
+
+The inline lesson shelf is metadata-only during protected recall. Opening it
+cannot navigate away from a draft. Switching explicitly leaves an unanswered
+question without a grade. Edition detail is available once in selection/reference,
+not repeated as a wall of text on each phrase. Touch controls remain at least
+44px, long text wraps, and multiline challenges retain Enter for new lines.
+Transitions inherit the existing reduced-motion-safe review affordance.

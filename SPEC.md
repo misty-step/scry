@@ -32,6 +32,51 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### Authored prayer and ordered-sequence lessons (2026-10-29)
+
+The next domain expands the same review canvas, rather than replacing NATO or
+its history. This bounded lesson journey is distinct from the stopped generic
+phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
+
+- **LESSON-01:** A quiet inline lesson shelf offers NATO, four Rosary sets and
+  St Michael in explicitly named English and Latin editions. Browsing the shelf
+  preserves the held question/result and typed draft. Deliberate switching from
+  an unanswered question fences its exact prompt ID and clearly leaves it
+  without a grade; a late answer cannot grade a different question. Completed
+  attempts, Versions, Studies and schedules remain intact.
+- **LESSON-02:** Each Rosary set is one ordered whole-five recall activity, not
+  five isolated fact cards. Native grading resolves authored aliases to stable
+  item identities, reports missing, repeated and misplaced identities, and does
+  not cascade an omission across the remaining correctly ordered items. A
+  duplicate or transposition cannot earn a correct whole-sequence result.
+- **LESSON-03:** Prayer learning uses authored meaning-based clauses, existing
+  fading cue levels, intermediate joined passages (authored Sections), optional
+  midpoint starts, and a separate cold whole-text challenge. Cued/revealed typing
+  remains assisted evidence. Phrase success never becomes whole-prayer credit.
+  The primary action is Next; optional challenges stay secondary. Deliberate
+  lesson entry introduces the selected short text without changing stored Pace
+  or globally removing daily schedule constraints.
+- **LESSON-04:** Native deterministic grading owns every result. No client grade,
+  fuzzy theological equivalence, speech recognition, or pronunciation validation
+  is implied. Text follows exact-v2 case/punctuation policy; accents remain
+  significant. Latin starter wording is unaccented. The named historical English
+  edition is not silently substituted for the familiar modern translation.
+- **LESSON-05:** Ordinary VersionInput authoring supplies text, clause boundaries,
+  Sections, edition names, sources and rights. Ordered aliases are optional,
+  bounded, unambiguous after normalization and immutable with their Version.
+  Empty new fields preserve old hashes/serialization and backup compatibility.
+  Existing API, CLI and MCP expose lesson start/next for supplied Version IDs,
+  not only bundled starter names. No native content generation is added.
+- **LESSON-06:** Progress distinguishes actual unaided whole attempts from assisted
+  and phrase practice; it claims neither validated mastery nor predicted readiness.
+  Native forms, multiline text, phone/desktop, dark mode, reduced motion and
+  no-JavaScript flows require source-bound verification. Bundled content or green
+  synthetic tests do not establish household admission or live learner acceptance.
+
+This implements a bounded ordered-list subset of US-020; its broader Ladder and
+other recitation modes remain separate acceptance work. Historical story text
+below remains intact. Proof belongs in the feature card, CI and deployment record.
+
 ### NATO-focused review (2026-10-29)
 
 The owner directs a first-principles simplification optimized only for NATO.

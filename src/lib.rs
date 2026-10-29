@@ -18,3 +18,6 @@ pub mod web;
 
 #[cfg(target_arch = "wasm32")]
 mod runtime;
+
+pub mod lessons;
+pub mod ordered;

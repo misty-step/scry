@@ -273,3 +273,16 @@ rewrite imports them or transfers their acceptance to the new namespace.
 Worker passes need their own actual observation and source-bound receipt;
 mutating passes remain isolated and synthetic. A named story closes only when
 all its required surfaces have adequate evidence; UNVERIFIED is not PASS.
+
+### Authored prayer / ordered lesson delta
+
+LESSON-01–06 uses the existing native and keyed-mapping runtime/browser gates,
+not another release pipeline. `tests/lessons.rs` and `tests/ordered.rs` verify
+native alias identity, omission/duplicate/order behavior, immutable old Versions,
+assisted clauses, joined/whole evidence, supplied content, unchanged Pace and
+explicit no-grade switching. `qa/lessons.mjs` records the same server-owned
+journey against isolated Worker storage. Browser fixtures cover 390px enhanced,
+1280px dark and 320px no-JavaScript dark, newline input and preserved drafts.
+Keep screenshot inspection and current source identity with the actual CI result;
+a test definition is not an observed pass. Household access, authenticated live
+practice and learning efficacy require their own evidence.

@@ -120,10 +120,10 @@ Supersede takes the same draft flags as add, with an existing Version ID and
 its Work revision. A correction to wording that already exists conflicts.
 
 Version flags include `--rights private_only|public_domain|licensed`,
-`--spelling-strict`, and `--sections-file PATH`. Rights default to private-only
+`--spelling-strict`, `--sections-file PATH`, and `--ordered-aliases-file PATH`. Rights default to private-only
 and Provenance is always supplied. Sources are optional and never fetched.
-`--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Ordered-list
-practice remains unavailable; supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
+`--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Authored ordered-list
+lessons and supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
 including caller-supplied Sections. Default Sections follow lines, with clauses
 as Units, so text below the byte limit can still exceed either count limit.
@@ -273,6 +273,73 @@ unaided recall. Mapping verdict corrections/self-rating are refused. Historical
 text Corrections remain preserved under their original contract. Reverse/year/
 whole-set exercises, media and MCP are not provided by this mapping import.
 Hosted Owner-token admission is still separately unverified (#335).
+
+## Authored sequence and phrase lessons
+
+Lessons reuse immutable supplied Versions and native grading. No content is
+created by an AI service. Import a Version through `version add` or
+`POST /api/v1/library/versions`, then deliberately start it:
+
+```sh
+./target/debug/scry lesson start --version VERSION_ID \
+  --operation-id retained-lesson-start-operation --json
+# Or use one bundled authored edition:
+./target/debug/scry lesson start --starter st-michael-en-lasance-1911 \
+  --operation-id retained-prayer-start-operation --json
+./target/debug/scry answer PROMPT_ID --text-file /private/typed-answer.txt \
+  --operation-id retained-prayer-answer-operation --json
+./target/debug/scry lesson next --after ANSWERED_PROMPT_ID --mode join \
+  --operation-id retained-prayer-join-operation --json
+```
+
+Answer files contain the learner's typed response; never supply a success grade. Bundled IDs are `rosary-joyful`, `rosary-luminous`,
+`rosary-sorrowful`, `rosary-glorious`, `st-michael-en-lasance-1911`,
+`st-michael-la-traditional`, and `nato`. The English prayer is the labeled
+Lasance 1911 edition, not an interchangeable modern translation.
+
+| Route | JSON fields beyond `operation_id` |
+| --- | --- |
+| `POST /api/v1/lessons/start` | Exactly one `starter` or `version_id`; optional `after` **or** `leave` |
+| `POST /api/v1/lessons/next` | Required `after`; optional `mode`: `phrases`, `join`, `whole`, `middle` |
+
+`after` must identify the currently held **answered** Prompt. Switching away
+from an unanswered Prompt requires explicit `leave` with that exact Prompt ID
+(CLI `--leave PROMPT_ID`). This abandons the unsent draft, not the learner's
+history: it records no Attempt, grade or schedule update. Never infer consent to
+leave from browsing the lesson shelf. Do not supply both `after` and `leave`.
+Same-Version start resumes the held Prompt; stale identifiers conflict.
+
+Text starts with a meaningful authored phrase. `phrases` cycles the clauses;
+`join` checks the current phrase's authored Section; `whole` checks the complete
+Version from a cold cue; `middle` starts a later phrase. Author Sections around
+meaningful groups, not screen-width line wraps; their Unit strings must
+concatenate to the exact Version text. Learning is typed-text recall only, not
+speech recognition or pronunciation assessment. Keep language, edition/version,
+source citations and rights explicit in the existing `name`, `context`,
+`sources` and `rights` metadata. Do not silently blend translations.
+
+A lesson deliberately introduces up to 128 Units without changing retained
+Pace or rewriting past schedules. Existing local grading/storage bounds still
+apply. Guided cues fade after actual successful practice, but assistance never
+counts as unaided recall or changes the due schedule. Phrase, joined-Section
+and whole-text Attempts retain their different scopes. Isolated phrase success
+does not establish complete-text recall.
+
+An `ordered_list` lesson presents the complete sequence. Submit one item per
+line; Scry checks item identity and order, not a caller-supplied rating. Optional
+`ordered_aliases` maps zero-based flattened Unit positions to explicitly
+authored names, for example `{"0":["The Annunciation"]}`. CLI authors pass that
+object with `--ordered-aliases-file PATH`. Each item permits at most 16 aliases;
+normalized aliases/canonical names must not collide across items. Aliases are
+not fuzzy matches. Omission, misplaced items, repeated entries and unknown
+entries remain distinct feedback; only the complete correct sequence earns a
+correct sequence result. New aliases are immutable Version content, not an edit
+to already-recorded evidence. An empty alias map preserves old serialized and
+reimport identity.
+
+These routes use the same retained operation-ID replay contract as other
+mutations. Their source availability does not prove hosted token admission or
+authenticated learner acceptance.
 
 ## Text Study and practice
 

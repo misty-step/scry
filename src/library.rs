@@ -58,6 +58,9 @@ pub struct Version {
     pub rights: Rights,
     pub sources: Vec<String>,
     pub spelling_strict: bool,
+    /// Authored names for zero-based ordered Unit positions; never inferred.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ordered_aliases: BTreeMap<usize, Vec<String>>,
     pub sections: Vec<Section>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -110,6 +113,8 @@ pub struct VersionInput {
     pub rights: Rights,
     #[serde(default)]
     pub spelling_strict: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ordered_aliases: BTreeMap<usize, Vec<String>>,
     /// Omit for deterministic line/clause segmentation. Supplied boundaries are checked verbatim.
     pub sections: Option<Vec<SectionInput>>,
 }
@@ -201,6 +206,7 @@ impl MappingInput {
             sources: self.sources,
             rights: self.rights,
             spelling_strict: self.spelling_strict,
+            ordered_aliases: BTreeMap::new(),
             sections: Some(vec![SectionInput {
                 heading: "Pairs".into(),
                 units,
@@ -411,6 +417,36 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
     }
     Ok(sections)
 }
+// Keep every historical no-alias hash unchanged. Authored aliases bind both
+// accepted identities and Unit boundaries into a versioned grading-policy hash.
+fn content_hash(
+    text: &str,
+    sections: &[SectionInput],
+    aliases: &BTreeMap<usize, Vec<String>>,
+) -> String {
+    if aliases.is_empty() {
+        return sha256(key(text).as_bytes());
+    }
+    let units = sections
+        .iter()
+        .flat_map(|s| &s.units)
+        .map(|u| crate::ordered::name_key(u))
+        .collect::<Vec<_>>();
+    let names = aliases
+        .iter()
+        .map(|(i, values)| {
+            let normalized = values
+                .iter()
+                .map(|s| crate::ordered::name_key(s))
+                .collect::<BTreeSet<_>>();
+            (*i, normalized)
+        })
+        .collect::<BTreeMap<_, _>>();
+    sha256(
+        &serde_json::to_vec(&("ordered-names-v1", units, names)).expect("bounded names serialize"),
+    )
+}
+
 impl Library {
     pub fn is_empty(&self) -> bool {
         self.works.is_empty() && self.versions.is_empty() && self.relations.is_empty()
@@ -515,6 +551,18 @@ impl Library {
         previous: Option<&str>,
     ) -> AppResult<String> {
         let sections = checked_sections(&input)?;
+        if input.kind == Kind::OrderedList {
+            crate::ordered::validate_names(
+                &sections
+                    .iter()
+                    .flat_map(|s| &s.units)
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                &input.ordered_aliases,
+            )?;
+        } else if !input.ordered_aliases.is_empty() {
+            return Err(AppError::new(422, "Item aliases require an ordered list."));
+        }
         if input.kind == Kind::KeyedMapping {
             check_mapping_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
         }
@@ -547,12 +595,31 @@ impl Library {
             }
             proposed = w.clone();
         }
-        let hash = sha256(key(&input.text).as_bytes());
+        let hash = content_hash(&input.text, &sections, &input.ordered_aliases);
         let pairs = (input.kind == Kind::KeyedMapping)
             .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
             .flatten();
         let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
         if let Some(v) = hash_match {
+            if (input.kind == Kind::OrderedList || v.kind == Kind::OrderedList)
+                && (input.kind != v.kind
+                    || input.spelling_strict != v.spelling_strict
+                    || sections
+                        .iter()
+                        .flat_map(|s| &s.units)
+                        .map(|s| crate::ordered::name_key(s))
+                        .collect::<Vec<_>>()
+                        != v.sections
+                            .iter()
+                            .flat_map(|s| &s.units)
+                            .map(|u| crate::ordered::name_key(&u.text))
+                            .collect::<Vec<_>>())
+            {
+                return Err(AppError::new(
+                    409,
+                    "That normalized text has different ordered-list boundaries or grading policy.",
+                ));
+            }
             // The historical content hash deliberately ignores spacing. For
             // mappings that must not erase pair boundaries or grading policy.
             if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
@@ -628,6 +695,7 @@ impl Library {
             rights: input.rights,
             sources: input.sources,
             spelling_strict: input.spelling_strict,
+            ordered_aliases: input.ordered_aliases,
             sections: sections
                 .into_iter()
                 .enumerate()
@@ -760,7 +828,6 @@ impl Library {
                 || !valid_id(id)
                 || self.works.get(&v.work_id).is_none_or(|w| w.kind != v.kind)
                 || !hashes.insert(&v.normalized_hash)
-                || v.normalized_hash != sha256(key(&v.text).as_bytes())
             {
                 return Err(invalid());
             }
@@ -774,6 +841,7 @@ impl Library {
                 sources: v.sources.clone(),
                 rights: v.rights,
                 spelling_strict: v.spelling_strict,
+                ordered_aliases: v.ordered_aliases.clone(),
                 sections: Some(
                     v.sections
                         .iter()
@@ -784,7 +852,25 @@ impl Library {
                         .collect(),
                 ),
             };
-            checked_sections(&input)?;
+            let sections = checked_sections(&input)?;
+            if v.normalized_hash != content_hash(&v.text, &sections, &v.ordered_aliases) {
+                return Err(invalid());
+            }
+            // Old unpractised ordered-list archives may exceed today's exercise
+            // bounds. Preserve them; executable validation happens at Learn.
+            if !v.ordered_aliases.is_empty() {
+                if v.kind != Kind::OrderedList {
+                    return Err(invalid());
+                }
+                crate::ordered::validate_names(
+                    &sections
+                        .iter()
+                        .flat_map(|s| &s.units)
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                    &v.ordered_aliases,
+                )?;
+            }
             for s in &v.sections {
                 if !valid_id(&s.id) || !ids.insert(&s.id) {
                     return Err(invalid());

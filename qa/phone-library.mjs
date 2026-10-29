@@ -141,7 +141,7 @@ export async function phoneLibraryWalk(browser, capture) {
     try {
       await page.goto(f.origin + '/recall');
       await page.getByLabel('Find a text',{exact:true}).waitFor();
-      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['NATO practice', 'Library', 'History', 'Settings', 'Earlier practice']);
+      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['Practice', 'Choose a lesson', 'Library', 'History', 'Settings', 'Earlier practice']);
       assert.equal(await page.locator('.masthead nav a').first().getAttribute('href'), '/');
       assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true}).getAttribute('href'), '/recall');
       assert.equal(await count(f,'library_versions/'), 0);

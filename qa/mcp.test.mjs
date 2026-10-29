@@ -105,8 +105,8 @@ test('MCP lifecycle, version negotiation, discovery, IDs and notifications', {ti
   assert.equal((await f.request('tools/list')).error.code,-32000);
   f.send({jsonrpc:'2.0',method:'notifications/initialized'});
   const list = await f.request('tools/list');
-  assert.equal(list.result.tools.length,11);
-  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,11);
+  assert.equal(list.result.tools.length,13);
+  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,13);
   for(const tool of list.result.tools) {
     assert.equal(tool.inputSchema.type,'object');
     assert.equal(tool.inputSchema.additionalProperties,false);
@@ -180,6 +180,10 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_import',{operation_id:operation('import'),format:'version',data:version},'/api/v1/library/versions',{operation_id:operation('import'),data:version}],
     ['scry_import',{operation_id:operation('mapping'),format:'mapping',data:mapping},'/api/v1/library/mappings',{operation_id:operation('mapping'),data:mapping}],
     ['scry_learn',{operation_id:operation('learn'),version_id:entity,pace:'light'},'/api/v1/learn',{operation_id:operation('learn'),version_id:entity,pace:'light'}],
+    ['scry_lesson_start',{operation_id:operation('lesson-start'),starter:'rosary-joyful',after:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-start'),starter:'rosary-joyful',after:prompt}],
+    ['scry_lesson_start',{operation_id:operation('lesson-version'),version_id:entity},'/api/v1/lessons/start',{operation_id:operation('lesson-version'),version_id:entity}],
+    ['scry_lesson_next',{operation_id:operation('lesson-next'),after:prompt,mode:'join'},'/api/v1/lessons/next',{operation_id:operation('lesson-next'),after:prompt,mode:'join'}],
+    ['scry_lesson_start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt}],
     ['scry_due',{},'/api/v1/due',undefined],
     ['scry_next',{operation_id:operation('next'),after:prompt,study_id:entity},'/api/v1/next',{operation_id:operation('next'),after:prompt,study_id:entity}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'},'/api/v1/answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'}],
@@ -193,6 +197,10 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_answer',{operation_id:'short',prompt_id:prompt,answer:privateAnswer}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:privateAnswer,verdict:'Good'}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:privateAnswer,rating:4}],
+    ['scry_lesson_start',{operation_id:operation('bad-lesson'),starter:'rosary-joyful',version_id:entity}],
+    ['scry_lesson_start',{operation_id:operation('bad-lesson'),starter:'rosary-joyful',grade:'Good'}],
+    ['scry_lesson_next',{operation_id:operation('bad-next'),after:prompt,mode:'selfgrade'}],
+    ['scry_lesson_start',{operation_id:operation('bad-leave'),starter:'rosary-joyful',after:prompt,leave:prompt}],
     ['scry_next',{}],['scry_next',{operation_id:operation('next'),recite:'section'}],
     ['scry_show',{kind:'version',id:'../../tokens'}],
     ['scry_import',{operation_id:operation('invalid'),format:'version',data:{...version,text:''}}],

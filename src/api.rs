@@ -21,6 +21,8 @@ pub struct MutationResponse {
 }
 pub fn mutation_path(path: &str) -> Option<&str> {
     match path {
+        "/api/v1/lessons/start" => Some("/practice/lesson/start"),
+        "/api/v1/lessons/next" => Some("/practice/lesson/next"),
         "/api/v1/learn" => Some("/practice/learn"),
         "/api/v1/studies/pause" => Some("/practice/pause"),
         "/api/v1/studies/resume" => Some("/practice/resume"),
@@ -123,6 +125,7 @@ pub fn library_form_fields(fields: &mut BTreeMap<String, String>) -> AppResult<(
         context: String::new(),
         rights: crate::library::Rights::PrivateOnly,
         spelling_strict: false,
+        ordered_aliases: Default::default(),
         sections: None,
     };
     fields.insert(

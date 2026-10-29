@@ -924,6 +924,7 @@ impl DurableObject for LearningSpace {
             engine::recover_grading(&mut app, now());
             if path != "/"
                 && path != "/recall"
+                && path != "/lessons"
                 && !path.starts_with("/library")
                 && let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?)
             {
@@ -1294,6 +1295,7 @@ impl DurableObject for LearningSpace {
                             | "/library/version/add"
                             | "/library/mapping/add"
                             | "/practice/nato/start"
+                            | "/practice/lesson/start"
                     ) || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
