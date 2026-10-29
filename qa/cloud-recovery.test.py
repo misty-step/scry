@@ -355,6 +355,71 @@ class Recovery(unittest.TestCase):
         self.assertEqual(upload['headers']['cf-preview-upload-config-token'], 'session-exchanged-' + 'x'*30)
         self.assertEqual((cloud.scripts, cloud.buckets, cloud.namespaces), ({}, {}, set()))
 
+    def test_native_http_exchange_non200_retains_initial_session_token(self):
+        spec = importlib.util.spec_from_file_location('exchange_transport_test', ROOT/'scripts/scry-cloud-backup.py')
+        transport = importlib.util.module_from_spec(spec); spec.loader.exec_module(transport)
+        class Response(io.BytesIO):
+            def __init__(self, data, status=200):
+                super().__init__(data); self.status=status; self.headers={'Content-Type':'application/json'}
+        for status, upload_failure in [(s,False) for s in (200,301,401,403,404,429,500,503)]+[(403,True)]:
+            with self.subTest(status=status, upload_failure=upload_failure):
+                requests=[]
+                initial='session-initial-'+'i'*30
+                expanded='session-expanded-'+'e'*30
+                class NativePreviewCloud(Cloud):
+                    def __call__(inner, path, method='GET', **kw):
+                        if path.endswith('/edge-preview'):
+                            inner.calls.append((path,method,kw))
+                            return native.request(path,method=method,**kw)
+                        return super().__call__(path,method=method,**kw)
+                    def external(inner,url,**kw):
+                        if url.endswith('/exchange'):
+                            inner.external_calls.append((url,kw))
+                            return R.private_request(url,**kw)
+                        return super().external(url,**kw)
+                def opened(request,timeout):
+                    requests.append(request)
+                    path=R.urllib.parse.urlsplit(request.full_url).path
+                    if path.endswith('/subdomain/edge-preview'):
+                        self.assertEqual(request.method,'GET')
+                        result={'token':initial,'exchange_url':'https://session.synthetic-existing.workers.dev/exchange'}
+                    elif path.endswith('/edge-preview'):
+                        self.assertEqual(request.method,'POST')
+                        self.assertEqual(request.get_header('Cf-preview-upload-config-token'), expanded if status==200 else initial)
+                        if upload_failure:
+                            raise R.urllib.error.HTTPError(request.full_url,403,'synthetic',{},io.BytesIO(b'PRIVATE_UPLOAD_DENIED'))
+                        result={'preview_token':'preview-token-'+'p'*30}
+                    elif path=='/exchange':
+                        self.assertEqual(request.method,'GET')
+                        self.assertIsNone(request.get_header('Authorization'))
+                        data=json.dumps({'token':expanded}).encode() if status==200 else b'PRIVATE_RESPONSE_MUST_NOT_ESCAPE'
+                        if status>=300:
+                            raise R.urllib.error.HTTPError(request.full_url,status,'synthetic',{},io.BytesIO(data))
+                        return Response(data)
+                    else: self.fail('unexpected native preview HTTP path')
+                    return Response(json.dumps({'success':True,'result':result}).encode())
+                native=transport.Cloudflare('synthetic','synthetic'); native.open=opened
+                cloud=NativePreviewCloud()
+                with mock.patch.object(R.urllib.request,'build_opener') as opener:
+                    opener.return_value.open.side_effect=opened
+                    if upload_failure:
+                        with self.assertRaises(R.RecoveryBlocked) as caught:
+                            self.run_fixture(cloud)
+                        self.assertEqual(caught.exception.recovery_operation,'preview-upload')
+                        self.assertEqual(caught.exception.preview_exchange_status,status)
+                        self.assertFalse(caught.exception.deployment_attempted)
+                        self.assertEqual(caught.exception.preview_request_attempts,1)
+                        receipt={}
+                    else:
+                        receipt=self.run_fixture(cloud)
+                        self.assertEqual(receipt['preview_exchange_status'],status)
+                        self.assertEqual(receipt['preview_requests'],5)
+                    self.assertIsInstance(opener.call_args.args[0], R.NoRedirect)
+                self.assertEqual(len(requests),3)
+                self.assertEqual(sum(R.urllib.parse.urlsplit(r.full_url).path=='/exchange' for r in requests),1)
+                self.assertEqual((cloud.scripts,cloud.buckets,cloud.namespaces),({}, {}, set()))
+                self.assertNotIn('PRIVATE_RESPONSE',json.dumps(receipt))
+
     def test_preview_exchange_malformed_response_is_fixed_and_cleanup_verified(self):
         for body in (b'not-json-private-sentinel', b'{}', b'[]', b'null', b'{"token":null}', b'{"token":"short"}'):
             class ExchangeCloud(Cloud):

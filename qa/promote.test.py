@@ -105,7 +105,8 @@ class Promotion(unittest.TestCase):
                 self.assertEqual(json.loads(body),{'error':'CLOUD_RECOVERY_NOT_VERIFIED',
                     'deployment_attempted':attempted,'recovery_phase':phase,
                     'primary_reason':'RECOVERY_LOGGING_UNVERIFIED','recovery_operation':None,
-                    'recovery_cloud_request_attempts':None,'recovery_preview_request_attempts':None,'cleanup_outcomes':outcomes})
+                    'recovery_cloud_request_attempts':None,'recovery_preview_request_attempts':None,
+                    'recovery_preview_exchange_status':None,'cleanup_outcomes':outcomes})
                 self.assertNotIn('PRIVATE',body)
                 self.assertNotIn('source',json.loads(body))
 
@@ -140,6 +141,26 @@ class Promotion(unittest.TestCase):
                     self.assertNotIn('PREVIEW_EXCHANGE',record)
                 output.assert_called_once()
                 self.assertEqual(json.loads(saved)['recovery_primary_reason'],'RECOVERY_OPERATION_UNVERIFIED')
+
+    def test_cloud_gate_sanitizes_exchange_http_status(self):
+        for status in (None, 100, 200, 403, 599, 99, 600, True, 403.0, 'PRIVATE_STATUS'):
+            error=RuntimeError('PRIVATE_EXCEPTION');error.recovery_phase='restore'
+            error.primary_reason='RECOVERY_OPERATION_UNVERIFIED';error.cleanup_outcomes=[]
+            error.preview_exchange_status=status
+            module=mock.Mock();module.gate.side_effect=error
+            with self.subTest(status=status),tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'promotion.json'
+                with mock.patch.object(PROMOTE,'RECEIPT',path), \
+                        mock.patch.object(PROMOTE.importlib.util,'spec_from_file_location') as spec, \
+                        mock.patch.object(PROMOTE.importlib.util,'module_from_spec',return_value=module), \
+                        mock.patch('builtins.print') as output:
+                    spec.return_value.loader.exec_module.return_value=None
+                    with self.assertRaises(RuntimeError):
+                        PROMOTE.cloud_gate({'source':'a'*40},{}, {}, [], None,after_restore=mock.Mock())
+                expected=status if type(status) is int and 100<=status<=599 else None
+                for record in (output.call_args.args[0],path.read_text()):
+                    self.assertEqual(json.loads(record)['recovery_preview_exchange_status'],expected)
+                    self.assertNotIn('PRIVATE',record)
 
     def test_cloud_gate_sanitizes_request_counts_without_replacing_primary_failure(self):
         name='scry-recovery-'+'d'*24+'-bridge'

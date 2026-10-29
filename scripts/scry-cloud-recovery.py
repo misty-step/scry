@@ -712,6 +712,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
     phase = 'restore'
     primary_reason = None
     operation = None
+    exchange_status = None
     failed = []
     try:
         for name, operation in ((target, 'target-shell'), (gateway, 'bridge-shell')):
@@ -762,16 +763,20 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         if exchange:
             operation = 'preview-exchange'
             status, body = drill.preview(exchange)
-            need(status == 200, 'RECOVERY_PREVIEW_EXCHANGE_FAILED')
-            # Exchange is optional in Wrangler, but this safety-sensitive driver
-            # retains fail-closed behavior: never silently change the tested route.
-            try:
-                exchanged = json.loads(body)
-            except (ValueError, TypeError):
-                raise RecoveryBlocked('RECOVERY_PREVIEW_EXCHANGE_INVALID') from None
-            need(isinstance(exchanged, dict) and isinstance(exchanged.get('token'), str)
-                 and len(exchanged['token']) >= 20, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
-            token = exchanged['token']
+            need(type(status) is int and 100 <= status <= 599, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
+            exchange_status = status
+            # Wrangler 4.129.0 treats exchange as optional token re-encoding:
+            # on non-200 retain the API-issued session token and SAME host.
+            # No redirect, retry, new capability or additional request. Upload
+            # and invocation still require their normal authenticated success.
+            if status == 200:
+                try:
+                    exchanged = json.loads(body)
+                except (ValueError, TypeError):
+                    raise RecoveryBlocked('RECOVERY_PREVIEW_EXCHANGE_INVALID') from None
+                need(isinstance(exchanged, dict) and isinstance(exchanged.get('token'), str)
+                     and len(exchanged['token']) >= 20, 'RECOVERY_PREVIEW_EXCHANGE_INVALID')
+                token = exchanged['token']
             host = urllib.parse.urlsplit(exchange).hostname
             host = gateway + host[host.index('.'):]
         else:
@@ -849,6 +854,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.recovery_phase = phase
         error.primary_reason = primary_reason
         error.recovery_operation = operation
+        error.preview_exchange_status = exchange_status
         # Counters include a final locally refused attempt, never raw request data.
         error.cloud_request_attempts = drill.calls
         error.preview_request_attempts = drill.external_calls
@@ -863,6 +869,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.recovery_phase = phase
         error.primary_reason = primary_reason
         error.recovery_operation = operation
+        error.preview_exchange_status = exchange_status
         # Counters include a final locally refused attempt, never raw request data.
         error.cloud_request_attempts = drill.calls
         error.preview_request_attempts = drill.external_calls
@@ -871,7 +878,7 @@ def run(config, artifact_dir, source_pin, request, *, approval, after_restore, r
         error.deployment_attempted = phase != 'restore'
         raise error
     return {'status': 'verified', 'proof': outcome, 'recurrence_verified': True, 'cleanup_verified': True, 'cloud_requests': drill.calls,
-            'preview_requests': drill.external_calls, 'cost_quote_micro_usd': rounded_quote({n: v[2] for n, v in METERS.items()}),
+            'preview_requests': drill.external_calls, 'preview_exchange_status': exchange_status, 'cost_quote_micro_usd': rounded_quote({n: v[2] for n, v in METERS.items()}),
             'learner_bodies_exported': False, 'privacy_observations': drill.privacy_observations}
 
 
