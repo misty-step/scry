@@ -41,7 +41,7 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 ## Features
 
-- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Home → Start practice → type → Check → Next. One atomic start, server grading, honest practiced-letter count. `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
+- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Home → Start practice → type → Check → Next. One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
 
 - [Sign in with the QA account](sign-in.md): S09 QA sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
 - [Exact text practice](exact-study.md): US-016, US-017, US-018 phone Stream / AG1.

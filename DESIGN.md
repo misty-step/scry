@@ -1,38 +1,43 @@
-# Scry: NATO, without the machinery
+# Scry: a recall instrument
 
-## Current direction — 2026-10-29
+## Current direction — 2026-10-29, progress and visual reimagination
 
-The owner explicitly replaces the generic notebook front door with a NATO-only
-review experience. This supersedes the historical visual direction below;
-[SPEC](SPEC.md#nato-focused-review-2026-10-29) owns behavior. Mode: **Operate**.
+The owner requests useful per-letter evidence and a complete aesthetic rethink.
+This supersedes the earlier same-day warm, minimal canvas aesthetic. NATO-only
+practice and native grading remain the center; [SPEC](SPEC.md) owns behavior.
 
-One canvas, one question, one next action. The letter itself is the distinctive
-visual: large, crisp, unboxed. A quiet top line says NATO alphabet and counts
-actual letters practised, never mastery. A single input and Check become a
-canonical word and Next after native grading. No sidebar, tiles, nested cards,
-hero illustration, feature list or full-screen transition. The optional alphabet
-reference lives outside protected recall; retained content/account tools sit in
-one small menu. Import and Learn collapse into the deliberate Start action.
+The design is a precise radio-field instrument: ivory and graphite, signal
+orange, fine rules, monospaced labels and the existing Atkinson typeface. The
+large letter is a specimen, not an illustrated flashcard. Desktop pairs a cue
+panel with an answer panel on one ruled surface; phone stacks those two parts.
+No external font service, new dependency, decorative gradient or KPI tile grid.
+The typography, composition and contrast make the change visible immediately.
 
-Warm neutral paper, dark ink and a restrained green feedback accent replace the
-old ornamental notebook front door. Use the bundled Atkinson font, not a new
-font service. Desktop measure is 480px inside an 880px shell. Phone gutters are
-20px; controls are at least 44px and answer text is 20px. Input and feedback
-occupy a stable canvas. Keyboard review is immediate, without card flips or
-entrance animations; only a restrained button press may move, with reduced-motion
-support. Instant focus rings, normal browser zoom and native no-JS forms remain.
+Progress is one quiet disclosure beneath practice, never a new destination.
+A compact A–Z map chooses a letter with native radio controls. Its inspector
+shows completed reviews, unaided accuracy with its denominator, scheduled due,
+position in the actual A–Z loop, and the latest eight observed outcomes. The
+current letter is selected initially. An open inspector keeps its selection
+across enhanced answer/Next responses; opening it never navigates or touches a
+draft. Outcome glyphs, words and color agree; color is never the only meaning.
+No-data accuracy is a dash, never 0% or a guess at mastery.
 
-### Applied design references
+Controls respond immediately. Pointer hover/press color and a 180ms, 3px
+progress disclosure transition add continuity without delaying a review.
+Keyboard-driven review stays instant. Reduced-motion disables all local
+transitions and animations. Phone controls remain at least 44px; the primary
+review input remains 20px; native no-JS disclosure and letter selection work.
 
-Emil's design engineering informs focus, thumb targets, mobile viewports and
-no motion on repeated keyboard actions. Leon's Taste app guidance informs the
-subject-derived large letter and flat, task-first hierarchy. Impeccable's Operate
-and Distill guidance removes redundant copy/screens/actions. Hallmark's floor
-informs tokenized color/type, restrained density and honest evidence. Their plain
-instructions were reviewed; downloaded skill executables were not installed or
-claimed as passed. Omarchy's restraint, Greptile/Cloudflare's utilitarian clarity,
-Vercel/Linear's quiet chrome and Macroscope's focus are references, not copied
-branding. Real browser screenshots and native interaction proofs judge the result.
+### Applied references and craft
+
+Macroscope's focus, Cloudflare's utilitarian clarity, Linear's precise hierarchy,
+Brass Hands' art-directed identity and Omarchy's terse technical character inform
+one cohesive interface rather than a collage of copied brands. Emil's design
+engineering informs frequency-aware motion, focus and thumb targets; Leon's
+Taste guidance informs task-first distinctive composition; Impeccable's Distill
+removes screens and redundant copy; Hallmark informs consistent tokens and
+honest states. Reviewed source instructions are not automated tool-pass claims.
+Actual native/runtime/browser tests and inspected screenshots judge the result.
 
 ## Historical visual direction (preserved)
 

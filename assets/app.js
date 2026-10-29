@@ -1,6 +1,11 @@
 /* Presentation and durable-response reconciliation only. No offline mutation queue. */
 (() => {
   'use strict';
+  document.addEventListener('pointerdown', event => {
+    const details = event.target.closest?.('#nato-progress > summary')?.parentElement;
+    if (details) details.classList.toggle('animate-open', !details.open);
+  }, { passive: true });
+  document.addEventListener('keydown', () => document.querySelector('#nato-progress')?.classList.remove('animate-open'));
   let pending = null;
   let pollTimer = null;
   let pollRequest = null;
@@ -52,6 +57,16 @@
         const replacement = [...main.querySelectorAll('form')].find(next => next.getAttribute('action') === form.getAttribute('action'));
         replacement?.replaceWith(form);
       });
+    }
+    // Keep the read-only inspector steady while the server updates a review.
+    // It never owns a grade, a schedule or a request of its own.
+    const oldProgress = previousMain.querySelector('#nato-progress');
+    const newProgress = main.querySelector('#nato-progress');
+    if (oldProgress && newProgress) {
+      newProgress.open = oldProgress.open;
+      const selected = oldProgress.querySelector('.progress-radio:checked')?.value;
+      const nextSelected = [...newProgress.querySelectorAll('.progress-radio')].find(radio => radio.value === selected);
+      if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
     if (preserveDrafts && focused?.isConnected) {

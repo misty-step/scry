@@ -7,6 +7,7 @@ pub mod library;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod mcp;
 pub mod model;
+pub mod nato_progress;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod owner_client;
 pub mod owner_token;
