@@ -1210,6 +1210,130 @@ impl View<'_> {
         out.push_str("</dl><p>Official NATO spellings. <a href=\"https://www.nato.int/cps/en/natohq/declassified_136216.htm\" rel=\"noreferrer\">Source</a></p></details>");
         out
     }
+    fn nato_progress(&self) -> String {
+        use crate::nato_progress::{Outcome, summarize};
+        let progress = summarize(self.app);
+        let current = self
+            .app
+            .practice
+            .current
+            .as_ref()
+            .filter(|p| {
+                self.app
+                    .library
+                    .versions
+                    .get(&p.prompt.version_id)
+                    .is_some_and(crate::library::is_nato)
+            })
+            .and_then(|p| {
+                p.prompt
+                    .cue
+                    .chars()
+                    .next()
+                    .map(|key| (key, p.attempt_id.is_some()))
+            });
+        let selected = current.map_or('A', |(key, _)| key);
+        let reviews_label = format!(
+            "{} review{}",
+            progress.reviews,
+            if progress.reviews == 1 { "" } else { "s" }
+        );
+        let mut out = format!(
+            "<details class=\"nato-progress\" id=\"nato-progress\"><summary><span>Your progress</span><span class=\"progress-summary\">{} <span aria-hidden=\"true\">↗</span></span></summary><div class=\"progress-body\"><p class=\"progress-intro\">A record of your practice. Pick a letter.</p><fieldset class=\"letter-map\"><legend class=\"visually-hidden\">Letter progress</legend>",
+            reviews_label
+        );
+        for letter in &progress.letters {
+            let key = letter.letter;
+            let position = current.map_or_else(
+                || "A–Z practice".into(),
+                |(held, answered)| {
+                    let distance = (key as u32 + 26 - held as u32) % 26;
+                    match (distance, answered) {
+                        (0, false) => "On screen now".into(),
+                        (0, true) => "Again in 26 letters".into(),
+                        (1, _) => "Up next".into(),
+                        (n, _) => format!("In {n} letters"),
+                    }
+                },
+            );
+            let accuracy = if letter.unassisted == 0 {
+                "—".into()
+            } else {
+                format!(
+                    "{}%",
+                    (letter.correct * 100 + letter.unassisted / 2) / letter.unassisted
+                )
+            };
+            let tone = match letter.recent.last().map(|r| &r.outcome) {
+                Some(Outcome::Correct) => "correct",
+                Some(Outcome::Miss) => "miss",
+                Some(Outcome::Assisted) => "helped",
+                None => "new",
+            };
+            let due = letter.due_ms.map_or_else(
+                || "Not scheduled".into(),
+                |ms| {
+                    if ms <= self.now {
+                        "Due now".into()
+                    } else {
+                        relative(ms, self.now)
+                    }
+                },
+            );
+            let due_detail = letter
+                .due_ms
+                .map_or_else(|| "No active review schedule".into(), date);
+            let last = letter.last_answered_ms.map_or_else(
+                || "No reviews yet".into(),
+                |ms| {
+                    let elapsed = self.now.saturating_sub(ms).max(0);
+                    let when = if elapsed < 60_000 {
+                        "just now".into()
+                    } else if elapsed < 3_600_000 {
+                        format!("{}m ago", elapsed / 60_000)
+                    } else if elapsed < DAY_MS {
+                        format!("{}h ago", elapsed / 3_600_000)
+                    } else {
+                        format!("{}d ago", elapsed / DAY_MS)
+                    };
+                    format!("Last reviewed {when}")
+                },
+            );
+            let _ = write!(
+                out,
+                "<input class=\"progress-radio visually-hidden\" type=\"radio\" name=\"progress-letter\" id=\"progress-{key}\" value=\"{key}\" aria-label=\"Letter {key} progress\" {}><label class=\"letter-key evidence-{tone}\" for=\"progress-{key}\"><span>{key}</span><i aria-hidden=\"true\"></i></label><section class=\"letter-progress\" id=\"letter-progress-{key}\" aria-label=\"Letter {key} statistics\"><div class=\"progress-heading\"><h2>Letter {key}</h2><span data-metric=\"position\">{position}</span></div><dl class=\"progress-metrics\"><div><dt>Reviews</dt><dd data-metric=\"reviews\">{}</dd><small>{} with help</small></div><div><dt>Unaided correct</dt><dd data-metric=\"accuracy\">{accuracy}</dd><small>{} of {} answers</small></div><div><dt>Due for review</dt><dd class=\"due-value\" data-metric=\"due\">{due}</dd><small>{}</small></div></dl><div class=\"progress-history\"><span>Recent reviews</span><ol aria-label=\"Recent reviews, oldest first\">",
+                if key == selected { "checked" } else { "" },
+                letter.reviews,
+                letter.assisted,
+                letter.correct,
+                letter.unassisted,
+                escape(&due_detail)
+            );
+            for mark in &letter.recent {
+                let (tone, label, glyph) = match mark.outcome {
+                    Outcome::Correct => ("correct", "Correct", "✓"),
+                    Outcome::Miss => ("miss", "Miss", "×"),
+                    Outcome::Assisted => ("helped", "With help", "+"),
+                };
+                let _ = write!(
+                    out,
+                    "<li class=\"review-mark evidence-{tone}\" title=\"{}\"><span aria-hidden=\"true\">{glyph}</span><span class=\"visually-hidden\">{label}, {}</span></li>",
+                    escape(&format!("{label} · {}", date(mark.created_ms))),
+                    escape(&date(mark.created_ms))
+                );
+            }
+            if letter.recent.is_empty() {
+                out.push_str("<li class=\"no-reviews\">Nothing yet</li>");
+            }
+            let _ = write!(
+                out,
+                "</ol></div><p class=\"progress-last\">{}</p></section>",
+                escape(&last)
+            );
+        }
+        out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><p class=\"progress-footnote\">Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Due times are schedule suggestions; practice always moves A–Z.</p></div></details>");
+        out
+    }
     fn nato_screen(&self) -> String {
         let nato_versions = self
             .app
@@ -1231,7 +1355,7 @@ impl View<'_> {
             .collect::<std::collections::BTreeSet<_>>()
             .len();
         let mut out = format!(
-            "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
+            "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
         );
         if let Some(p) = self.app.practice.current.as_ref().filter(|p| {
             self.app
@@ -1252,7 +1376,7 @@ impl View<'_> {
             };
             let _ = write!(
                 out,
-                "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1>",
+                "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><div class=\"nato-cue-panel\"><span class=\"instrument-label\">TRANSMIT / RECALL</span><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1><span class=\"cue-caption\">Letter → code word</span></div><div class=\"nato-response-panel\">",
                 escape(&prompt.id),
                 escape(&prompt.cue),
                 escape(&prompt.cue)
@@ -1326,7 +1450,7 @@ impl View<'_> {
                     ));
                 }
             }
-            out.push_str("</div>");
+            out.push_str("</div></div>");
             // A result shows only its own correction. The full reference would
             // prime the next question, so keep it outside the active session.
         } else {
@@ -1402,6 +1526,7 @@ impl View<'_> {
             out.push_str("</div>");
             out.push_str(&self.nato_reference());
         }
+        out.push_str(&self.nato_progress());
         out.push_str("</section>");
         out
     }
@@ -2476,8 +2601,8 @@ fn shell(
             ""
         },
         if poll { "data-poll" } else { "" }
-    ).replace("#f5f2ea", if content.contains("nato-screen") { "#f8f8f5" } else { "#f5f2ea" })
-     .replace("#191e1d", if content.contains("nato-screen") { "#191b18" } else { "#191e1d" })
+    ).replace("#f5f2ea", if content.contains("nato-screen") { "#f0efe9" } else { "#f5f2ea" })
+     .replace("#191e1d", if content.contains("nato-screen") { "#151719" } else { "#191e1d" })
 }
 fn hidden(name: &str, value: &str) -> String {
     format!(

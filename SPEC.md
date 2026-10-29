@@ -51,7 +51,8 @@ canvas holds the current question or graded result across refresh and return.
   feedback, and deliberate Next form the review loop. No self-grade, client
   success field, optimistic verdict or automatic advancement. Official spelling
   and the existing mapping grader remain authoritative. Enter submits/advances;
-  native forms work without JavaScript. Repeated actions have no entrance motion.
+  native forms work without JavaScript. Keyboard review remains immediate; subtle
+  pointer-driven transitions respect reduced-motion preferences.
   In the focused NATO Study, Next advances through A–Z and wraps to A, even
   after a miss, assistance or a long pause on feedback. This is deliberate
   practice, not a claim that each letter is due. Existing schedules and the
@@ -69,6 +70,33 @@ canvas holds the current question or graded result across refresh and return.
   repeated requests reconcile their original operation identity, and unknown
   network results never fabricate a grade. Test real local Worker/SQLite flows,
   keyboard-only, no-JS, reduced motion, long input and failure states.
+
+### NATO progress visibility (2026-10-29)
+
+The owner requests useful per-letter learning evidence without adding screens.
+This extends NATO-03 and supersedes earlier visual prohibitions on progress
+information or all microanimation; it does not invent mastery or alter grading.
+
+- **NATO-06:** A read-only progress disclosure on the same canvas exposes all
+  26 letters. Reviews count distinct answered prompts, including assisted and
+  same-day extra practice. Reveal-only disclosure records are not completed
+  reviews or wrong answers. Accuracy is correct / unaided answered prompts,
+  with the denominator visible; no evidence shows a dash. Assisted answers are
+  counted separately. Existing immutable receipts are the source; opening,
+  selecting or closing the inspector never writes evidence or changes a draft,
+  held prompt, assistance or schedule.
+- **NATO-07:** Each letter shows its actual schedule due recommendation only
+  after a scheduled review in an active Study, otherwise “Not scheduled.” This
+  is distinct from the current A–Z loop position: on screen, up next, in N
+  letters, or again in 26 letters after the current answer. Due is not a promise
+  that the loop selects that letter next. Recent outcome glyphs and accessible
+  words, last review time, and assisted count remain truthful after reload.
+  Correct percentage is observed performance, never predicted recall/mastery.
+- **NATO-08:** Progress never exposes canonical words or past raw answers in
+  protected recall, including hidden DOM. Native disclosure and letter selection
+  work without JS. Keyboard arrows, visible focus, phone/desktop light/dark,
+  reduced-motion, zoom, interrupted/repeated actions and draft preservation are
+  verified with synthetic data. Current production owner data is not test data.
 
 ### Minimal deployment (2026-10-29)
 
