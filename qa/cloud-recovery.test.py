@@ -99,7 +99,7 @@ class Cloud:
                 return body, 'multipart/form-data; boundary=' + boundary
             if method == 'PUT':
                 form = email.parser.BytesParser(policy=email.policy.default).parsebytes(('Content-Type: '+kw['headers']['Content-Type']+'\r\n\r\n').encode()+kw['body'])
-                fields = {p.get_filename():p.get_payload(decode=True) for p in form.iter_parts()}
+                fields = {p.get_param('name', header='Content-Disposition'):p.get_payload(decode=True) for p in form.iter_parts()}
                 metadata = json.loads(fields.pop('metadata'))
                 bindings = []
                 for b in metadata.get('bindings', []):
@@ -364,6 +364,33 @@ class Recovery(unittest.TestCase):
             if after_restore is None: after_restore=lambda:setattr(cloud,'deployed',True)
             return R.run(CONFIG,root,PIN,cloud,approval=approval(),receipt=RECEIPT,external=cloud.external,billing_period=billing_period(),after_restore=after_restore)
 
+    def test_multipart_matches_native_formdata_text_and_file_parts(self):
+        modules = {'index.js': b'export default {};', 'index_bg.wasm': b'\x00asm\x01\x00\x00\x00'}
+        for session in (False, True):
+            with self.subTest(session=session):
+                body, headers = R.multipart({'main_module': 'index.js'}, modules, session=session)
+                message = email.parser.BytesParser(policy=email.policy.default).parsebytes(
+                    ('Content-Type: ' + headers['Content-Type'] + '\r\n\r\n').encode() + body)
+                parts = {part.get_param('name', header='Content-Disposition'): part
+                         for part in message.iter_parts()}
+                self.assertEqual(set(parts), set(modules) | {'metadata'} |
+                                 ({'wrangler-session-config'} if session else set()))
+                for name in ('metadata', 'wrangler-session-config') if session else ('metadata',):
+                    self.assertIsNone(parts[name].get_filename())
+                    self.assertIsNone(parts[name].get('Content-Type'))
+                self.assertEqual(json.loads(parts['metadata'].get_payload(decode=True)), {'main_module': 'index.js'})
+                if session:
+                    self.assertEqual(json.loads(parts['wrangler-session-config'].get_payload(decode=True)),
+                                     {'workers_dev': True, 'minimal_mode': True})
+                for name, data in modules.items():
+                    self.assertEqual(parts[name].get_filename(), name)
+                    self.assertEqual(parts[name].get_payload(decode=True), data)
+                    self.assertEqual(parts[name].get_content_type(), 'application/wasm' if name.endswith('.wasm')
+                                     else 'application/javascript+module')
+        for modules in ({'bad/name.js': b'x'}, {'index.js': b'scry-recovery-multipart-boundary'}):
+            with self.assertRaisesRegex(R.RecoveryBlocked, 'INVALID_UPLOAD_MODULE'):
+                R.multipart({}, modules)
+
     def test_preview_exchange_contract_and_bounded_complete_flow(self):
         class ExchangeCloud(Cloud):
             def __call__(self, path, method='GET', **kw):
@@ -417,6 +444,19 @@ class Recovery(unittest.TestCase):
                     elif path.endswith('/edge-preview'):
                         self.assertEqual(request.method,'POST')
                         self.assertEqual(request.get_header('Cf-preview-upload-config-token'), expanded if status==200 else initial)
+                        message = email.parser.BytesParser(policy=email.policy.default).parsebytes(
+                            ('Content-Type: ' + request.get_header('Content-type') + '\r\n\r\n').encode() + request.data)
+                        parts = {part.get_param('name', header='Content-Disposition'): part
+                                 for part in message.iter_parts()}
+                        for field in ('metadata', 'wrangler-session-config'):
+                            self.assertIsNone(parts[field].get_filename(), field)
+                            self.assertIsNone(parts[field].get('Content-Type'), field)
+                            self.assertIsInstance(json.loads(parts[field].get_payload(decode=True)), dict)
+                        for name, part in parts.items():
+                            if name not in ('metadata', 'wrangler-session-config'):
+                                self.assertEqual(part.get_filename(), name)
+                                self.assertEqual(part.get_content_type(), 'application/wasm' if name.endswith('.wasm')
+                                                 else 'application/javascript+module')
                         if upload_failure:
                             raise R.urllib.error.HTTPError(request.full_url,403,'synthetic',{},io.BytesIO(b'PRIVATE_UPLOAD_DENIED'))
                         result={'preview_token':'preview-token-'+'p'*30}
@@ -526,7 +566,7 @@ class Recovery(unittest.TestCase):
             if method!='PUT':continue
             form=email.parser.BytesParser(policy=email.policy.default).parsebytes(
                 ('Content-Type: '+kw['headers']['Content-Type']+'\r\n\r\n').encode()+kw['body'])
-            fields={p.get_filename():p.get_payload(decode=True) for p in form.iter_parts()}
+            fields={p.get_param('name', header='Content-Disposition'):p.get_payload(decode=True) for p in form.iter_parts()}
             metadata=json.loads(fields['metadata'])
             if metadata.get('migrations',{}).get('deleted_classes'):continue
             self.assertEqual(metadata['observability'],{'enabled':False})

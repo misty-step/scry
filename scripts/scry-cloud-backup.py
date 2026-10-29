@@ -208,9 +208,13 @@ class Cloudflare:
             error.close()
             if absent and status == 404:
                 return None
-            raise GateError('cloud control-plane request unavailable') from None
-        except (urllib.error.URLError, OSError, ValueError):
-            raise GateError('cloud control-plane request unavailable') from None
+            # Retain only a finite status, never provider text, URL or body.
+            reason = f'cloud control-plane HTTP {status}' if type(status) is int and 300 <= status <= 599 else 'cloud control-plane request unavailable'
+            raise GateError(reason) from None
+        except (urllib.error.URLError, OSError):
+            raise GateError('cloud control-plane transport unavailable') from None
+        except ValueError:
+            raise GateError('cloud control-plane response invalid JSON') from None
         if graphql:
             return result
         require(result.get('success') is True, 'cloud control-plane request refused')

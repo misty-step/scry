@@ -83,7 +83,12 @@ def fixed_reason(error):
     if isinstance(error, RecoveryBlocked) and str(error) in FIXED_REASONS:
         return str(error)
     if type(error).__name__ == 'GateError':
-        return {'cloud control-plane request unavailable': 'RECOVERY_CONTROL_PLANE_UNAVAILABLE',
+        status = re.fullmatch(r'cloud control-plane HTTP ([345][0-9]{2})', str(error))
+        if status:
+            return 'RECOVERY_CONTROL_PLANE_HTTP_' + status[1]
+        return {'cloud control-plane response invalid JSON': 'RECOVERY_CONTROL_PLANE_INVALID_JSON',
+                'cloud control-plane transport unavailable': 'RECOVERY_CONTROL_PLANE_TRANSPORT_UNAVAILABLE',
+                'cloud control-plane request unavailable': 'RECOVERY_CONTROL_PLANE_UNAVAILABLE',
                 'cloud control-plane request refused': 'RECOVERY_CONTROL_PLANE_REFUSED',
                 'cloud control-plane request budget exhausted': 'RECOVERY_REQUEST_BUDGET_EXHAUSTED'}.get(
                     str(error), 'RECOVERY_CONTROL_PLANE_UNVERIFIED')
@@ -359,16 +364,19 @@ def need(condition, reason):
 
 def multipart(metadata, modules, session=False):
     boundary = 'scry-recovery-multipart-boundary'
-    parts = [('metadata', 'application/json', json.dumps(metadata).encode())]
+    # Match Wrangler FormData: JSON configuration is a text field, not a file.
+    parts = [('metadata', None, json.dumps(metadata).encode())]
     parts += [(name, 'application/wasm' if name.endswith('.wasm') else 'application/javascript+module', data)
               for name, data in modules.items()]
     if session:
-        parts.append(('wrangler-session-config', 'application/json', b'{"workers_dev":true,"minimal_mode":true}'))
+        parts.append(('wrangler-session-config', None, b'{"workers_dev":true,"minimal_mode":true}'))
     body = b''
     for name, kind, data in parts:
         need(boundary.encode() not in data and re.fullmatch('[a-zA-Z0-9_.-]+', name), 'INVALID_UPLOAD_MODULE')
-        body += ('--' + boundary + '\r\nContent-Disposition: form-data; name="' + name + '"; filename="' + name +
-                 '"\r\nContent-Type: ' + kind + '\r\n\r\n').encode() + data + b'\r\n'
+        disposition = 'Content-Disposition: form-data; name="' + name + '"'
+        if kind is not None:
+            disposition += '; filename="' + name + '"\r\nContent-Type: ' + kind
+        body += ('--' + boundary + '\r\n' + disposition + '\r\n\r\n').encode() + data + b'\r\n'
     return body + ('--' + boundary + '--\r\n').encode(), {'Content-Type': 'multipart/form-data; boundary=' + boundary}
 
 

@@ -137,6 +137,34 @@ class CloudBackup(unittest.TestCase):
         with self.assertRaisesRegex(BACKUP.GateError, 'source is not reviewed'):
             BACKUP.require_backup_contract('a' * 40)
 
+    def test_control_plane_diagnostics_are_finite_and_content_free(self):
+        import io
+        import urllib.error
+        client = BACKUP.Cloudflare('synthetic', 'PRIVATE_TOKEN')
+        cases = [(urllib.error.HTTPError('https://private.invalid/PRIVATE_URL', status,
+                                        'PRIVATE_MESSAGE', {}, io.BytesIO(b'PRIVATE_BODY')),
+                  f'cloud control-plane HTTP {status}', f'RECOVERY_CONTROL_PLANE_HTTP_{status}')
+                 for status in (301, 400, 403, 429, 500, 503)]
+        cases += [(urllib.error.URLError('PRIVATE_TRANSPORT'),
+                   'cloud control-plane transport unavailable', 'RECOVERY_CONTROL_PLANE_TRANSPORT_UNAVAILABLE'),
+                  (ValueError('PRIVATE_JSON'), 'cloud control-plane response invalid JSON',
+                   'RECOVERY_CONTROL_PLANE_INVALID_JSON')]
+        recovery = BACKUP.load_module('scry-cloud-recovery')
+        for error, reason, code in cases:
+            with self.subTest(reason=reason), mock.patch.object(client, 'open', side_effect=error):
+                with self.assertRaises(BACKUP.GateError) as caught:
+                    client.request('/workers/scripts/synthetic/edge-preview')
+                self.assertEqual(str(caught.exception), reason)
+                self.assertEqual(recovery.fixed_reason(caught.exception), code)
+                self.assertNotIn('PRIVATE', str(caught.exception))
+        response = io.BytesIO(b'PRIVATE_INVALID_JSON')
+        response.status = 200
+        with mock.patch.object(client, 'open', return_value=response):
+            with self.assertRaisesRegex(BACKUP.GateError, '^cloud control-plane response invalid JSON$'):
+                client.request('/workers/scripts/synthetic/edge-preview')
+        self.assertEqual(recovery.fixed_reason(BACKUP.GateError('cloud control-plane HTTP 403 PRIVATE')),
+                         'RECOVERY_CONTROL_PLANE_UNVERIFIED')
+
     def test_transport_requires_exact_requested_http_status(self):
         client=BACKUP.Cloudflare('a'*32,'synthetic-only')
         class Response:
