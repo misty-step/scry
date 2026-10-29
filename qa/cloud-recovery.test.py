@@ -29,7 +29,7 @@ CONFIG = {'name':'synthetic-production', 'r2_buckets': [{'binding': 'SCRY_BACKUP
 ENV = {'GITHUB_RUN_ID': '321', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_REPOSITORY': 'misty-step/scry', 'GITHUB_REF': 'refs/heads/master', 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_ACTOR': 'github-actions[bot]'}
 def approval():
     return dict(production_health_service=CONFIG['name'],approved=True,scope='one-cloud-only-recovery-drill', approval_id='d'*32, reviewed_source=SOURCE,
-                release_version='0.9.0', expires_ms=int(time.time()*1000)+7200000, one_time_cents=2000, failed_cleanup_storage_cents_per_month=25)
+                expires_ms=int(time.time()*1000)+7200000, one_time_cents=2000, failed_cleanup_storage_cents_per_month=25)
 
 def subscriptions(end='2026-11-10T12:00:00Z'):
     row=dict(id='e'*32, currency='USD', current_period_start='2026-10-10T12:00:00Z',
@@ -159,13 +159,24 @@ class Recovery(unittest.TestCase):
             with mock.patch.object(R.Path,'exists',return_value=False), self.assertRaisesRegex(R.RecoveryBlocked, 'APPROVAL_REQUIRED'): R.admit(RECEIPT)
             a = approval()
             self.assertEqual(R.admit(RECEIPT, approval=a), a)
-            for k,v in [('approved',False),('scope','other'), ('reviewed_source','broken'), ('approval_id',''), ('release_version','bad'), ('one_time_cents',True)]:
+            for k,v in [('approved',False),('scope','other'), ('reviewed_source','broken'), ('approval_id',''), ('one_time_cents',True)]:
                 with self.subTest(k=k), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a|{k:v})
             for k,v in [('one_time_cents',100),('failed_cleanup_storage_cents_per_month',24)]:
                 with self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'): R.admit(RECEIPT,approval=a|{k:v})
             with mock.patch.dict(R.METERS, sql_rows_read=(1_000_000,1_000,1_000_000_000)), self.assertRaisesRegex(R.RecoveryBlocked,'COST_BOUND'):
                 R.admit(RECEIPT,approval=a)
             with mock.patch.dict(os.environ, GITHUB_RUN_ATTEMPT='2'), self.assertRaises(R.RecoveryBlocked): R.admit(RECEIPT,approval=a)
+
+    def test_manual_authorized_dispatch_does_not_require_retired_release_bot(self):
+        with mock.patch.dict(os.environ, ENV | {'GITHUB_ACTOR': 'authorized-maintainer'}, clear=True):
+            approved = approval()
+            self.assertEqual(R.admit(RECEIPT, approval=approved), approved)
+            for key, value in [('GITHUB_REPOSITORY', 'other/repo'), ('GITHUB_REF', 'refs/heads/feature'),
+                               ('GITHUB_EVENT_NAME', 'push'), ('GITHUB_RUN_ATTEMPT', '2')]:
+                with self.subTest(key=key), mock.patch.dict(os.environ, {key: value}), self.assertRaises(R.RecoveryBlocked):
+                    R.admit(RECEIPT, approval=approved)
+            with self.assertRaises(R.RecoveryBlocked):
+                R.admit(RECEIPT, approval=approved | {'reviewed_source': 'b' * 40})
 
     def test_private_claim_is_readback_verified_and_never_retried_before_expiry(self):
         class Claims:
@@ -312,28 +323,32 @@ class Recovery(unittest.TestCase):
         with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
             R.require_billing_period(window|{'period_end_ms':a['expires_ms']+R.DRAIN_MS},a,now_ms=checked)
 
-    def test_claim_cleanup_waits_expiry_and_only_deletes_exact_body(self):
+    def test_claim_cleanup_keeps_consumed_tombstone_without_wait_or_delete(self):
         class Claims:
-            def __init__(self):self.body=None;self.calls=[]
-            def allow_claim(self,path):self.path=path
-            def request(self,path,method='GET',**kw):
-                self.calls.append((method,clock[0]))
-                if method=='PUT':self.body=kw['body'];return {}
-                if method=='DELETE':self.body=None;return {}
-                return None if self.body is None else (self.body,'application/json')
-        c=Claims();clock=[time.time()]
-        with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,ENV,clear=True):
-            saved=Path(d)/'claim.json';a=approval()
-            R.claim(a,RECEIPT,c.request,'synthetic-private',receipt_path=saved,billing_period=billing_period())
-            def sleep(t):clock[0]+=t
-            self.assertEqual(R.cleanup_claim(saved,c.request,clock=lambda:clock[0],sleep=sleep),{'claim_cleanup':'verified_absent'})
-            deletion=next(t for m,t in c.calls if m=='DELETE')
-            self.assertGreater(deletion*1000,a['expires_ms'])
-            # A changed body is never removed, even after expiry.
-            c.body=b'changed'
-            with self.assertRaisesRegex(R.RecoveryBlocked,'IDENTITY_CHANGED'):
-                R.cleanup_claim(saved,c.request,clock=lambda:clock[0],sleep=sleep)
-            self.assertEqual(c.body,b'changed')
+            def __init__(self): self.body = None; self.calls = []
+            def allow_claim(self, path): self.path = path
+            def request(self, path, method='GET', **kw):
+                self.calls.append(method)
+                if method == 'PUT': self.body = kw['body']; return {}
+                if method == 'DELETE': self.fail('claim must not be deleted')
+                return None if self.body is None else (self.body, 'application/json')
+        c = Claims()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, ENV, clear=True):
+            saved = Path(directory) / 'claim.json'; approved = approval()
+            R.claim(approved, RECEIPT, c.request, 'synthetic-private', receipt_path=saved, billing_period=billing_period())
+            expected = {'claim_cleanup': 'consumed_tombstone_verified', 'bytes_retained': len(c.body)}
+            self.assertEqual(R.cleanup_claim(saved, c.request), expected)
+            self.assertNotIn('DELETE', c.calls)
+            self.assertLess(len(c.body), 1024)
+            with self.assertRaisesRegex(R.RecoveryBlocked, 'ALREADY_CLAIMED'):
+                R.claim(approved, RECEIPT, c.request, 'synthetic-private', receipt_path=Path(directory) / 'second.json', billing_period=billing_period())
+            self.assertEqual(R.cleanup_claim(saved, c.request, clock=lambda: approved['expires_ms'] / 1000 + 1), expected)
+            c.body = b'changed'
+            with self.assertRaisesRegex(R.RecoveryBlocked, 'IDENTITY_CHANGED'):
+                R.cleanup_claim(saved, c.request)
+            c.body = None
+            with self.assertRaisesRegex(R.RecoveryBlocked, 'UNVERIFIED'):
+                R.cleanup_claim(saved, c.request)
 
     def test_rounding_without_free_tier_assumptions(self):
         usage={n:v[2] for n,v in R.METERS.items()}

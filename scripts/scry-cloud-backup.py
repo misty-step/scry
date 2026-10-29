@@ -31,9 +31,6 @@ REVIEWED_BACKUP_SOURCES = {
     '62a7716e6f619c10fbda60630d86461ede33d8b7',
     'f254b7e2a6ddf2e4f080130cd8127781846fbe3b',
 }
-APPROVAL_PATH = 'deploy/cloud-recovery-approval.json'
-RELEASE_METADATA = {'Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json',
-                    '.release-please-manifest.json', 'CHANGELOG.md'}
 SCHEMA_QUERY = '''query {
  row:__type(name:"AccountWorkersInvocationsScheduled") {fields{name}}
  filt:__type(name:"AccountWorkersInvocationsScheduledFilter_InputObject") {inputFields{name}}
@@ -75,7 +72,7 @@ def no_paid_work(bindings):
             'provider-enabled production cannot bootstrap without separate authorization')
 
 
-def validate_objects(objects, prefix, now):
+def validate_objects(objects, prefix, now, *, retention_check=True):
     require(isinstance(objects, list) and len(objects) <= MAX_PAGES * 1000, 'invalid backup listing')
     seen = set()
     for item in objects:
@@ -89,11 +86,11 @@ def validate_objects(objects, prefix, now):
         require(uploaded <= now, 'future backup timestamp')
         # Include the whole bootstrap window: no object may age into the
         # existing runtime's destructive >30-day retention path while waiting.
-        require(uploaded > now + WINDOW - timedelta(days=30), 'unapproved retention deletion candidate')
+        require(not retention_check or uploaded > now + WINDOW - timedelta(days=30), 'unapproved retention deletion candidate')
     return objects
 
 
-def list_objects(request, bucket, prefix, now):
+def list_objects(request, bucket, prefix, now, *, retention_check=True):
     objects, cursors, cursor = [], set(), None
     for _ in range(MAX_PAGES):
         params = {'per_page': 1000, 'prefix': prefix}
@@ -115,7 +112,7 @@ def list_objects(request, bucket, prefix, now):
         require(isinstance(body.get('result'), list), 'invalid backup listing')
         objects.extend(body['result'])
         if not next_cursor:
-            return validate_objects(objects, prefix, now)
+            return validate_objects(objects, prefix, now, retention_check=retention_check)
         cursor = next_cursor
         require(cursor not in cursors, 'ambiguous backup pagination')
         cursors.add(cursor)
@@ -238,10 +235,13 @@ def module_hashes(raw, kind):
 def qualified_modules(promote, source):
     """Read only public exact-source CI bytes, never a learner archive."""
     runs = json.loads(promote.gh('actions/workflows/ci.yml/runs?' + urllib.parse.urlencode({
-        'head_sha': source, 'branch': 'master', 'event': 'push', 'status': 'success'})))['workflow_runs']
+        'head_sha': source, 'branch': 'master', 'event': 'push'})))['workflow_runs']
     runs = [run for run in runs if run.get('head_sha') == source and run.get('event') == 'push'
-            and run.get('head_branch') == 'master' and run.get('conclusion') == 'success'
+            and run.get('head_branch') == 'master'
             and run.get('path') == '.github/workflows/ci.yml']
+    runs = [run for run in runs if any(job.get('name') == 'ci' and job.get('status') == 'completed'
+            and job.get('conclusion') == 'success' for job in json.loads(
+                promote.gh(f'actions/runs/{run["id"]}/jobs'))['jobs'])]
     require(bool(runs), 'live source lacks successful exact master CI')
     artifacts = json.loads(promote.gh(f'actions/runs/{runs[0]["id"]}/artifacts'))['artifacts']
     matches = [a for a in artifacts if a.get('name') == 'scry-worker-' + source and not a.get('expired')]
@@ -262,8 +262,8 @@ def qualified_modules(promote, source):
         return result
 
 
-def require_backup_contract(source):
-    require(source in REVIEWED_BACKUP_SOURCES, 'live backup acknowledgment source is not reviewed')
+def require_backup_contract(source, *, reviewed_source=True):
+    require(not reviewed_source or source in REVIEWED_BACKUP_SOURCES, 'live backup acknowledgment source is not reviewed')
     try:
         runtime = subprocess.check_output(['git', 'show', source + ':src/runtime.rs'], cwd=ROOT,
                                           stderr=subprocess.DEVNULL, text=True)
@@ -378,78 +378,11 @@ def load_module(name):
     return module
 
 
-def metadata_change(path, before, after, version):
-    """Only release-please's existing fields; dependencies and scripts stay exact."""
-    if path in ('package.json', 'package-lock.json', '.release-please-manifest.json'):
-        old, new = json.loads(before), json.loads(after)
-        fields = [('.',)] if path == '.release-please-manifest.json' else [('version',)]
-        if path == 'package-lock.json': fields.append(('packages', '', 'version'))
-        for fields_path in fields:
-            a, b = old, new
-            for key in fields_path[:-1]: a, b = a[key], b[key]
-            field = fields_path[-1]
-            require(isinstance(a[field], str) and b[field] == version, 'release metadata version differs')
-            a[field] = b[field] = 'approved-version-only'
-        require(old == new, 'release metadata changed non-version content')
-        return
-    if path in ('Cargo.toml', 'Cargo.lock'):
-        old, new = tomllib.loads(before), tomllib.loads(after)
-        if path == 'Cargo.toml':
-            require(old['package']['name'] == new['package']['name'] == 'scry', 'release package changed')
-            a, b = old['package'], new['package']
-        else:
-            a = [p for p in old['package'] if p['name'] == 'scry']
-            b = [p for p in new['package'] if p['name'] == 'scry']
-            require(len(a) == len(b) == 1, 'release lock package ambiguous')
-            a, b = a[0], b[0]
-        require(isinstance(a['version'], str) and b['version'] == version, 'release metadata version differs')
-        a['version'] = b['version'] = 'approved-version-only'
-        require(old == new, 'release metadata changed non-version content')
-        return
-    header = '# Changelog\n\n'
-    require(path == 'CHANGELOG.md' and before.startswith(header) and after.startswith(header),
-            'release changelog header changed')
-    before, after = before[len(header):], after[len(header):]
-    require(after.endswith(before), 'release changelog rewrote prior history')
-    prefix = after[:-len(before)] if before else after
-    # Existing release notes are public release input; only a bounded prepend
-    # for this precise version is allowed, never product/script file drift.
-    require(len(prefix.encode()) <= 128 * 1024 and re.search(r'^## \[?' + re.escape(version) + r'\]?(?:\s|\()', prefix, re.M),
-            'release changelog does not name approved version')
-
-
 def verify_reviewed_source(approval, receipt):
-    baseline, source, version = approval.get('reviewed_source'), receipt.get('source'), approval.get('release_version')
-    require(isinstance(baseline, str) and re.fullmatch('[a-f0-9]{40}', baseline)
-            and isinstance(source, str) and re.fullmatch('[a-f0-9]{40}', source)
-            and isinstance(version, str) and re.fullmatch(r'\d+\.\d+\.\d+', version), 'approval source binding missing')
-    def git(*args):
-        return subprocess.check_output(['git', *args], cwd=ROOT, stderr=subprocess.DEVNULL)
-    def tree(revision):
-        entries = {}
-        for line in git('ls-tree', '-rz', '--full-tree', revision).split(b'\0'):
-            if not line: continue
-            meta, path = line.split(b'\t', 1)
-            entries[path.decode()] = meta.decode().split()
-        return entries
-    try:
-        old, new = tree(baseline), tree(source)
-        require(set(old) - {APPROVAL_PATH} == set(new) - {APPROVAL_PATH}, 'approved source file inventory changed')
-        for path in new:
-            if path == APPROVAL_PATH:
-                require(new[path][:2] == ['100644', 'blob'], 'approval file must be ordinary data')
-                continue
-            require(old[path][:2] == new[path][:2], 'approved source mode changed')
-            if path in RELEASE_METADATA - {'CHANGELOG.md'}:
-                metadata_change(path, git('show', baseline + ':' + path).decode(), git('show', source + ':' + path).decode(), version)
-            elif old[path] != new[path]:
-                require(path in RELEASE_METADATA, 'approved product or operational source changed')
-                metadata_change(path, git('show', baseline + ':' + path).decode(), git('show', source + ':' + path).decode(), version)
-        package = json.loads(git('show', source + ':package.json'))
-        manifest = json.loads(git('show', source + ':.release-please-manifest.json'))
-        require(package['version'] == manifest['.'] == version, 'source is not the approved release version')
-    except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError):
-        raise GateError('approval source binding could not be verified') from None
+    """Operational approval names exact tested source, not a mutable release version."""
+    source = receipt.get('source')
+    require(isinstance(source, str) and re.fullmatch('[a-f0-9]{40}', source)
+            and approval.get('reviewed_source') == source, 'approval source binding differs')
 
 
 def observed_backup_window(approval, checked):
@@ -472,12 +405,87 @@ def observed_backup(objects, window, checked):
     return matches[0]
 
 
+# These own the persisted App, Library, Study, token and scheduler vocabulary.
+# A conservative byte comparison is intentional: schema=1 does not prove that
+# an older reader preserves a newly introduced record/enum. Changed custody uses
+# the explicit maintenance path and its independent restore, not a bypass flag.
+CUSTODY_FILES = ('src/model.rs', 'src/persistence.rs', 'src/library.rs',
+                 'src/study.rs', 'src/learning.rs', 'src/owner_token.rs',
+                 'src/grading/mod.rs', 'src/grading/unicode.rs', 'src/grading/unicode_tables.rs',
+                 'src/engine.rs', 'src/generation.rs', 'src/lib.rs')
+CUSTODY_RUNTIME = ('stored_rows', 'load', 'save', 'commit_at_revision',
+                   'archive', 'backup', 'prune_backups', 'restore')
+
+
+def custody_source(source):
+    require(isinstance(source, str) and re.fullmatch('[a-f0-9]{40}', source), 'invalid custody source')
+    def read(path):
+        return subprocess.check_output(['git', 'show', source + ':' + path], cwd=ROOT,
+                                       stderr=subprocess.DEVNULL).decode()
+    try:
+        result = {path: read(path) for path in CUSTODY_FILES}
+        runtime = read('src/runtime.rs')
+        # Rustfmt places native LearningSpace methods at four spaces. Keep each
+        # entire method, including validation and SQL/R2 write behavior.
+        methods = re.split(r'(?=^    (?:async )?fn )', runtime, flags=re.M)
+        for name in CUSTODY_RUNTIME:
+            matches = [piece for piece in methods if re.match(r'    (?:async )?fn ' + name + r'\(', piece)]
+            require(len(matches) == 1, 'custody runtime boundary unavailable')
+            end = re.search(r'^    }$', matches[0], flags=re.M)
+            require(end is not None, 'custody runtime boundary unavailable')
+            result['runtime/' + name] = matches[0][:end.end()]
+        for path in ('Cargo.toml', 'Cargo.lock'):
+            value = tomllib.loads(read(path))
+            packages = value['package'] if path == 'Cargo.lock' else [value['package']]
+            for package in packages:
+                if package['name'] == 'scry': package.pop('version')
+            result[path] = value
+        return result
+    except (ValueError, KeyError, subprocess.SubprocessError, OSError):
+        raise GateError('custody source unavailable; maintenance proof required') from None
+
+
+def routine_gate(promote, receipt, config, before, prior):
+    """Existing validated atomic snapshot + unchanged custody, NOT restore proof.
+
+    The retained current native version is the compatible code rollback. No
+    backup is triggered, no learner archive is downloaded, and no resources or
+    credentials are provisioned. The existing <=24h RPO is explicit.
+    """
+    require(prior is not None, 'recognized live source required')
+    require(custody_source(prior[0]) == custody_source(receipt['source']),
+            'custody changed; independent maintenance restore required before rollout')
+    # The reviewed serializer validates complete App/history/photo bytes before
+    # its single atomic R2 PUT. Object metadata cannot establish the later full
+    # readback, persisted status/alarm, or independently usable recovery.
+    require_backup_contract(prior[0], reviewed_source=False)
+    client = Cloudflare(config['account_id'], os.environ['CLOUDFLARE_API_TOKEN'])
+    expected = qualified_modules(promote, prior[0])
+    require(module_hashes(*client.request('/workers/scripts/' + config['name'] + '/content/v2', raw=True)) == expected,
+            'live modules differ from qualified source')
+    bucket = next(b['bucket_name'] for b in before['bindings'] if b['name'] == 'SCRY_BACKUPS')
+    prefix = 'snapshots/' + config['vars']['SPACE_NAME'] + '/'
+    checked = datetime.now(timezone.utc)
+    objects = list_objects(client.request, bucket, prefix, checked, retention_check=False)
+    native = [item for item in objects if re.fullmatch(re.escape(prefix) + r'[0-9]+-(?:daily|pre-release)-[a-f0-9]{48}\.json', item['key'])
+              and re.fullmatch(r'(?:[a-f0-9]{32}(?:-[0-9]+)?|"[a-f0-9]{32}(?:-[0-9]+)?")', item['etag'])
+              and timedelta(0) <= checked - stamp(item['last_modified']) <= timedelta(hours=24)]
+    require(bool(native), 'no fresh bounded native snapshot; production remains unchanged')
+    newest = max(native, key=lambda item: stamp(item['last_modified']))
+    # Never publish key, ETag, learner hash, archive body, or private space name.
+    return {'format': 'scry-routine-backup-v1', 'snapshot_metadata_verified': True,
+            'snapshot_age_seconds': int((checked - stamp(newest['last_modified'])).total_seconds()),
+            'full_readback_verified': False, 'independent_restore_verified': False,
+            'custody_unchanged': True, 'rollback_source': prior[0],
+            'learner_bodies_requested': False, 'new_backup_triggered': False}
+
+
 def gate(promote, receipt, config, before, deployments, prior, *, after_restore):
     """Restore old-code backup before upload; prove persisted recurrence after it."""
     recovery = load_module('scry-cloud-recovery')
     # Operational approval is absent by default. Cost admission must happen
     # before even the potentially billable R2 metadata listing.
-    approval = json.loads((ROOT / APPROVAL_PATH).read_text())
+    approval = json.loads(os.environ.get('SCRY_RECOVERY_APPROVAL', '{}'))
     require(approval.get('approved') is True, 'one-operation cloud recovery approval is absent')
     require(callable(after_restore), 'native deployment callback is unavailable')
     require(approval.get('production_health_service') == config['name'],
@@ -538,7 +546,7 @@ def cleanup_claim():
     config = tomllib.loads((ROOT / 'deploy/rust-production.toml').read_text())
     client = Cloudflare(config['account_id'], os.environ['CLOUDFLARE_API_TOKEN'])
     pending = None
-    # Production Cron cleanup has priority over waiting for claim expiry. Its
+    # Production Cron cleanup has priority over claim verification. Its
     # annual recurrence is NOT covered by the temporary storage-only allowance.
     try:
         print(json.dumps(cleanup_schedule(client, config, ROOT / 'target/recovery-schedule.json'), sort_keys=True))

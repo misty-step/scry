@@ -159,31 +159,28 @@ def plan():
 def admit(receipt=None, *, approval=None, starting=True, now_ms=None):
     """Read an existing content-free approval; never create or infer authority.
 
-    The caller must verify reviewed_source -> exact prepared release through the
-    existing generated-metadata-only source gate before making cloud requests.
-    A private claim consumes approval_id until its fixed expiry under the existing
-    production concurrency lock. Cleanup may delete that exact claim only after
-    expiry independently prevents re-admission. This is not account-wide CAS.
+    Approval is operational input, bound to the exact prepared source. A private
+    content-free claim permanently consumes approval_id under the existing
+    production concurrency lock. Cleanup verifies this tombstone without waiting
+    or deleting it, so a completed drill cannot be admitted twice. This is not
+    account-wide CAS.
     """
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     try:
         if approval is None:
-            path = Path(__file__).resolve().parents[1] / 'deploy/cloud-recovery-approval.json'
-            approval = json.loads(path.read_text()) if path.exists() else None
+            approval = json.loads(os.environ.get('SCRY_RECOVERY_APPROVAL', 'null'))
         valid = (isinstance(approval, dict) and isinstance(receipt, dict)
             and approval.get('approved') is True
             and approval.get('scope') == 'one-cloud-only-recovery-drill'
             and isinstance(approval.get('approval_id'), str)
             and re.fullmatch('[a-f0-9]{32}', approval['approval_id'])
             and re.fullmatch('[a-f0-9]{40}', approval.get('reviewed_source', ''))
-            and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', approval.get('release_version', ''))
             and os.environ.get('GITHUB_REPOSITORY') == 'misty-step/scry'
             and os.environ.get('GITHUB_REF') == 'refs/heads/master'
             and os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
-            and os.environ.get('GITHUB_ACTOR') == 'github-actions[bot]'
             and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'
             and os.environ.get('GITHUB_RUN_ID', '').isdigit()
-            and re.fullmatch('[a-f0-9]{40}', receipt.get('source', ''))
+            and approval['reviewed_source'] == receipt.get('source')
             and type(receipt.get('artifact_id')) is int and receipt['artifact_id'] > 0
             and type(approval.get('expires_ms')) is int
             and now_ms < approval['expires_ms'] <= now_ms + 3 * 60 * 60 * 1000
@@ -295,8 +292,8 @@ def claim(approval, receipt, request, bucket, *, receipt_path=None, billing_peri
     REST GET + PUT is intentionally NOT called atomic CAS. All authorized
     callers must hold scry-rust-production concurrency. Existing, conflicting or
     uncertain claims never retry; they require a new owner decision. The claim
-    is outside snapshot retention. It is deleted only AFTER approval expiry,
-    when the same approval can no longer admit a new run independently.
+    is outside snapshot retention. Keep this less-than-1-KiB content-free
+    tombstone: expiry ends admission, not consumption. Never delete it to retry.
     """
     approval = admit(receipt, approval=approval)
     require_billing_period(billing_period, approval)
@@ -308,7 +305,7 @@ def claim(approval, receipt, request, bucket, *, receipt_path=None, billing_peri
     need(request(path, raw=True, absent=True) is None, 'RECOVERY_APPROVAL_ALREADY_CLAIMED')
     value = {'format': 'scry-cloud-recovery-claim-v1', 'approval_id': approval['approval_id'],
              'reviewed_source': approval['reviewed_source'], 'source': receipt['source'],
-             'artifact_id': receipt['artifact_id'], 'release_version': approval['release_version'],
+             'artifact_id': receipt['artifact_id'],
              'github_run_id': os.environ['GITHUB_RUN_ID']}
     encoded = json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
     need(len(encoded) < 1024, 'RECOVERY_CLAIM_OVERSIZE')
@@ -326,8 +323,12 @@ def claim(approval, receipt, request, bucket, *, receipt_path=None, billing_peri
     return value
 
 
-def cleanup_claim(receipt_path, request, *, clock=time.time, sleep=time.sleep):
-    """Delete only our exact claim after fixed expiry; no permanent paid ledger."""
+def cleanup_claim(receipt_path, request, *, clock=time.time):
+    """Verify the consumed approval tombstone and return immediately.
+
+    Resource/schedule cleanup is separate and still mandatory. A tiny permanent
+    content-free tombstone prevents replay without holding production until expiry.
+    """
     saved = Path(receipt_path)
     if not saved.exists():
         return {'claim_cleanup': 'not_created'}
@@ -345,19 +346,10 @@ def cleanup_claim(receipt_path, request, *, clock=time.time, sleep=time.sleep):
     owner = getattr(request, '__self__', None)
     need(owner is not None and callable(getattr(owner, 'allow_claim', None)), 'RECOVERY_CLAIM_TRANSPORT_UNAVAILABLE')
     owner.allow_claim(path)
-    while clock() * 1000 <= until:
-        sleep(min(60, (until - clock() * 1000) / 1000 + 0.001))
     actual = request(path, raw=True, absent=True)
-    if actual is None:
-        return {'claim_cleanup': 'verified_absent'}
+    need(actual is not None, 'RECOVERY_CLAIM_CLEANUP_UNVERIFIED')
     need(actual[0] == body.encode(), 'RECOVERY_CLAIM_CLEANUP_IDENTITY_CHANGED')
-    try:
-        request(path, method='DELETE')
-    except Exception:
-        # An uncertain DELETE is inspected, never repeated blindly.
-        need(request(path, raw=True, absent=True) is None, 'RECOVERY_CLAIM_CLEANUP_UNCERTAIN')
-    need(request(path, raw=True, absent=True) is None, 'RECOVERY_CLAIM_CLEANUP_UNVERIFIED')
-    return {'claim_cleanup': 'verified_absent'}
+    return {'claim_cleanup': 'consumed_tombstone_verified', 'bytes_retained': len(body.encode())}
 
 
 def need(condition, reason):

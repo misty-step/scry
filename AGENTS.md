@@ -53,9 +53,11 @@ dogfood, beta and Go receipts retain their original meanings and bytes.
 ## Shipping
 
 Use the native task's required independent review and exact-head protected CI.
-Merge only verified source through normal protection. A source merge is not
-deployment or closure of the rewrite acceptance; promotion follows the
-[candidate procedure's verifiable cutover conditions](docs/rust-cloudflare.md#reviewable-release-procedure).
+Merge only verified source through normal protection. The merged-source CI
+artifact deploys directly through the [release procedure](docs/rust-cloudflare.md#reviewable-release-procedure):
+unchanged custody uses fresh backup metadata and compatible code rollback;
+custody transitions require independent maintenance proof. A source merge is
+not a deployment receipt or closure of rewrite acceptance.
 Foundation bot approval and adoption checks are retired.
 
 ## Agent skills

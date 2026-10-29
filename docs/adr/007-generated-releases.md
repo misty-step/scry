@@ -1,6 +1,12 @@
 # ADR 007: Generated releases for the Rust application
 
-Status: accepted for implementation, 2026-10-17.
+Status: superseded for shipping by the owner's 2026-10-29 simplification
+decision; retained below as history. The [current procedure](../rust-cloudflare.md#reviewable-release-procedure)
+deploys the tested merged-source artifact directly. Generated metadata PRs,
+release tags and repeated CI are no longer deployment prerequisites. Historical
+versions/notes remain intact; intentional version bumps are ordinary source
+changes. No current runtime behavior or saved data is changed by retiring the
+generator.
 
 Scry has one release unit: the Rust Worker, its presentation assets and bundled
 notes. npm is build/QA tooling, not a separately released program. Follow the

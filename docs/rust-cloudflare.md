@@ -155,96 +155,108 @@ bounded exercise; do not clone integrations into a recovery preview.
 
 ## Reviewable release procedure
 
-1. Bind the accepted replacement scope and exact committed source to the PR/work
-   record. Complete required source gates and current Worker story receipts.
-   Preserve honest gaps: representative useful material/holdout quality,
-   physical phone, and production ingress cannot be inferred from fixtures.
-2. Freeze the smoke-tested Worker modules/assets, checksums, source archive,
-   lockfiles, compatible configuration, and proof. Prepare a reviewed release
-   configuration pointing to those exact bytes with build steps disabled;
-   rebuilding during activation invalidates the proof.
-3. In a new private preview, verify anonymous/forged denial, exact owner JWT
-   claims/signature, alternate-host read-only redirects, origin/CSRF, access
-   loss/history return, and the actual Create/reference/practice/refinement
-   surface. Keep provider exercises bounded and provenance honest.
-4. Verify a complete remote backup by full readback. Independently retrieve it
-   with retained recovery authority and restore into an unused namespace using
-   compatible frozen assets/configuration. Inspect immutable content/history/card
-   equality, all photo bytes, expected key/CSRF changes, paused work, private HTTPS,
-   and UI. Measure time/data loss and name
-   omitted provisioning, DNS, or configuration steps.
-5. Prepare the activation and rollback plan around one writer. Retain the current
-   Go Container's exact artifact/private configuration and a fresh pre-release
-   remote snapshot. No live-data import or destructive historical-store action
-   is implied; any such requirement needs separate scope and migration proof.
-6. Verify the concrete artifact, configuration, ingress/recovery receipts and
-   one-writer plan. For the one-way revival, complete ADR 006's canonical
-   learner/media reconciliation and independently reviewed cutover proof;
-   rehearse compatible rollback without losing accepted writes. Missing or
-   failed proof stops promotion. Routine rollout needs no separate operator
-   approval once these conditions pass. Changed private-data, credential, spend
-   or irreversible-action scope still needs its own authorization.
-7. Promote the same tested modules with the reviewed frozen configuration,
-   identify the resulting Worker version, and exercise actual owner/anonymous
-   ingress, persistence, live UI, and remote readback. Record those observations
-   and post-promotion checks in the operational runbook; roll back compatibly if
-   verification fails. Keep one writer and retain historical stores/artifacts
-   independently recoverable; deleting a predecessor is a separate action.
+### Ordinary code-only shipping
 
-The build/test jobs receive no deploy credential. After the CF-only import and
-canonical restore proof, commission production's exact owner/internal/backup
-secrets and invoke the existing CI promotion job with the independently verified
-master artifact ID and ZIP digest:
+The owner's 2026-10-29 simplification decision replaces the generated-release
+PR detour with one path:
+
+    reviewed source PR -> protected merge -> exact-source CI build/tests/walk
+    -> same tested artifact -> deploy -> live module/storage/route readback
+
+`ci:full` builds the Worker once and runs its runtime tests and `qa/walk --all`
+against those bytes. The `story-walk` status name is a lightweight dependency
+on that same job, retained for existing branch protection; it does not build or
+walk again. Build/test receives no deployment credential. Promotion serializes
+only actual production work under `scry-rust-production`, never a fixed wait.
+A failed deployment does not invalidate a successful build job's immutable
+artifact. Manual retry requires its exact source, artifact ID and digest:
 
 ```sh
 gh workflow run ci.yml -R misty-step/scry --ref master \
+  -f mode=promote -f expected_head=FULL_MASTER_SHA \
   -f artifact_id=VERIFIED_MASTER_ARTIFACT_ID \
   -f artifact_sha256=VERIFIED_ZIP_SHA256
 ```
 
-[`scripts/scry-promote.py`](../scripts/scry-promote.py) owns provenance and native
-Wrangler invocation; [`deploy/rust-production.toml`](../deploy/rust-production.toml)
-owns the recovered production binding configuration. Promotion preserves that
-namespace, space and private R2 (refusing config/live drift before upload),
-refuses an empty/uncommissioned target, verifies the uploaded module bytes,
-asserts the Worker's Custom Domains and script routes are unchanged, and emits
-`target/promotion.json` with that observed serving set. The live release must be
-an ancestor of the promoted source. A live version made by a secret-only change
-carries no release annotation. Promotion requires valid, unique native version
-numbers and traces only backward through secret changes to an earlier annotated
-release, then re-uploads. An opaque script etag is a consistency check, not proof
-of whole-bundle identity: multiple eligible source annotations sharing that etag
-or missing/contradictory chronology refuse. A later-created release can never
-establish the provenance of an older secret version re-deployed by rollback.
-Every live observation (before upload, the deployment-ID recheck, and final
-receipt) must be a single version serving 100% of traffic. A split deployment
-is refused, never completed or replaced by automation. Promotion reads all
-retained deployment-history pages, with a 100-page bound; missing, inconsistent
-or non-terminating required history fails closed. Releases that actually served
-traffic must be ancestors of the effective live source. A previously deployed
-descendant or divergent release therefore indicates a manual rollback or
-conflicting history and stops even a newer candidate or an idempotent rerun.
-An uploaded-but-never-deployed version is not promotion history. Secret-only
-changes require the causal provenance above; upload order alone is not a source
-identity and uploaded-only versions do not establish prior promotion.
+There is no automatic version/changelog PR, tag requirement, or second build.
+Historical tags, published artifacts and `CHANGELOG.md` stay intact. Intentional
+version/notes updates are ordinary reviewed source changes; the exact source
+revision remains the serving identity even between version updates.
 
-A manual rollback requires operator resolution and verified recovery through
-the native procedure before normal promotion resumes; there is no automatic
-override or unlock flag. Cloudflare history retention and deletion limit what
-this native read can establish: it is not an everlasting rollback watermark.
-These are observed-state checks, not an atomic compare-and-swap with Wrangler;
-a change after the last pre-upload observation remains a time-of-check race.
-Domain cutover and live-owner verification remain the separate operator steps
-above. Compatible
-code rollback uses a retained custody/history-compatible artifact on these same
-bindings, never an old Go snapshot. Versions/notes remain the existing release
-lane's responsibility; this adds no second workflow or release policy.
+Known availability limit accepted for this scoped simplification: Actions keeps
+these artifacts for 14 days. Both candidate admission and live-source module
+verification require an unexpired exact CI artifact; a sufficiently old live
+artifact therefore blocks promotion. This fails closed and is not recovery
+failure or data loss. Durable artifact provenance remains deferred/STOP; this
+change adds no release-store fallback, unsigned sidecar, or alternate admission
+path to bypass the exact successful CI artifact requirement.
 
-The former Go Container deploy job is removed rather than pointed at replacement source.
-The deployment/recovery scripts under `deploy/cloudflare-hosting/`, retained
-exe.dev VM scripts, and old data tooling remain specific to their corresponding
-historical/live-Go environment, except the shared Sentry envelope transport
-described above.
+[`scripts/scry-promote.py`](../scripts/scry-promote.py) retrieves the artifact
+from a completed successful exact-source master **CI job**, checks transport
+and every archived file checksum, and invokes native Wrangler with no build.
+It refuses moved source, divergent/manual rollback history, split traffic,
+unrecognized provenance, or drift in private storage and serving edges.
+Secret-only native versions retain their existing chronological provenance
+checks; an opaque etag alone never establishes bundle identity.
+
+Before ordinary upload, [`scripts/scry-cloud-backup.py`](../scripts/scry-cloud-backup.py)
+requires unchanged persisted data vocabulary, App validation/grade-replay
+dependencies (including engine, generation and Unicode tables), archive/SQL write
+methods and locked dependencies between the actually serving source and candidate. This is
+conservative: a shared schema number alone is not compatible rollback proof.
+The existing populated-history, archive roundtrip, restart and predecessor
+refusal tests remain in the same full CI gate. The prior native version and
+source are recorded as the code rollback target on unchanged bindings.
+
+The backup gate reads **metadata only** from the existing private R2 bucket.
+It requires a complete bounded listing and a native-shaped snapshot no older
+than 24 hours, with a nonzero bounded size and native ETag. The qualified native
+code validates the full App/history/photos before its single R2 upload; R2
+provides [strong object/list consistency](https://developers.cloudflare.com/r2/reference/consistency/).
+This is honestly `snapshot_metadata_verified`, **not** full readback, successful
+persisted backup status/alarm, or independent restore verification. No archive
+body, snapshot key, ETag, or learner hash is published or downloaded. A fresh
+backup is not triggered on every code patch; the existing 24-hour RPO is the
+explicit ordinary-rollout risk allowance. Missing/stale metadata stops upload.
+
+The same tested `index.js` and WASM are read back from the serving Worker and
+checked byte-for-byte. Namespace IDs, private buckets, space, routes, domains,
+preview disablement and single-version 100% traffic are checked again. The
+receipt records exact deployed source and compatible previous native version;
+it does not pretend control-plane readback is owner sign-in or learner UI proof.
+Existing live private-ingress/phone observations remain separate and honest.
+
+Compatible rollback deploys a retained code artifact onto the **same current
+data**, never a snapshot rewind. A failed post-upload check records attempted
+upload without success; inspect actual serving state before retry or rollback.
+An ordinary same-source recheck still reports `recovery_verified=false`; it does
+not erase or close a failed maintenance receipt, cleanup incident, or existing
+failure issue. It creates no new incident-clearance approval gate.
+A rollback/divergent history still requires explicit operator disposition.
+Never import, erase, rename or rebind historical/current learner stores to make
+a rollout pass. Independent review and protected exact-head CI remain required.
+
+### Initial custody transitions and recovery maintenance
+
+A custody-format change is not an ordinary code-only release. It requires a
+fresh complete backup, independently retrieved fresh-namespace restore with
+compatible frozen assets, preserved immutable history/photos, and a separately
+proven compatible rollback artifact before activation. Destructive migration,
+new credentials, new spend or private-data scope requires separate authority.
+The historical one-way revival still requires ADR 006's canonical reconciliation;
+source merge and synthetic tests do not close its acceptance gaps.
+
+In particular, the old v0.8.1 / `62a7716` Worker deliberately refuses NATO
+mapping archives. It is a refusal control, **not** a rollback after mappings
+have been saved. The first NATO custody transition therefore cannot silently
+use the ordinary unchanged-custody path. Later same-custody releases can use
+their actual mapping-capable prior live version without repeating a hosted
+restore for every patch.
+
+The explicit `mode=recover` path below remains available for admitted
+maintenance. It is not invoked automatically by normal source merges. The
+former Go Container deploy job remains retired; historical tooling and stores
+keep their original scope.
 
 ### Canonical-origin promotion
 
@@ -278,22 +290,32 @@ an alternate-host redirect.
 
 ## Cloud-only release recovery gate
 
-The native `ci.yml` promoter independently restores a complete pinned archive
-before production code upload, then checks persisted recurrence after exact
-artifact deployment, under the existing `scry-rust-production` concurrency group.
-It does not depend on Mirrodin or copy learner archives into Actions. Source
-merge, a published release, upload metadata, or ordinary `/healthz` alone is not
-a successful recovery check.
+This is the explicit custody-transition/recovery-maintenance path, not the
+ordinary deployment prerequisite. `mode=recover` independently restores a
+complete pinned archive before exact production code upload, then checks
+persisted recurrence and cleanup. It stays inside Cloudflare, never copying
+learner archives into Actions. Ordinary `/healthz`, upload metadata and green
+source CI are not an independent restore receipt.
 
-`deploy/cloud-recovery-approval.json` starts disabled. One explicit approval is
-bound to a reviewed implementation commit and exact release version; only the
-existing release generator's version fields and append-only release notes may
-change afterward. A content-free private R2 claim consumes its unique ID once.
-The ordinary GET/PUT/readback claim relies on this native workflow being the
-sole authorized writer under production concurrency; it is **not** cross-writer
-CAS. Unknown/conflicting outcomes stop, never retry the drill. The claim remains
-until the fixed approval expires, then an `always()` step removes only the
-exact run-owned claim. That wait follows deployment, not precedes it.
+One explicitly authorized operation supplies `recovery_approval` as workflow
+input, bound to the **exact tested source SHA**. Native repository permission to
+dispatch the workflow is required; there is no dependence on the retired release
+bot's actor name. Repository, master ref, manual event, first attempt, exact
+source, expiry and cost bounds remain checked. This changes no GitHub permission
+or credential. Expiry, cost and observation
+windows are operational input, not application source or generated version
+metadata. Missing, expired or wrong-source authority refuses before billable
+work. Source changes never renew the original $20 logical-operation approval.
+
+A content-free private R2 claim consumes the approval ID once under production
+concurrency; GET/PUT/readback is **not** cross-writer CAS. Existing/conflicting or
+uncertain claims stop, never automatically retry the drill. Cleanup verifies
+and retains the less-than-1-KiB consumed tombstone: it does not delete active
+admission and does not hold production until expiry. The tiny bounded storage
+record prevents replay; actual temporary Workers, namespaces, objects, bucket
+and schedules must still be removed and verified immediately. Missing or
+changed tombstones remain a reported incident, not success or permission to
+retry. Receipts upload as soon as cleanup finishes, including on failure.
 
 Before billable listing or mutations, the gate requires the existing Standard
 usage model and explicit bounded cost admission. Provider keys, retention
@@ -319,7 +341,7 @@ for another route, caller-selected request, or background operation.
 
 A post-upload proof or cleanup failure is explicitly deployed/upload-attempted
 but unverified, never success through a same-source retry shortcut. Existing
-rollback safety and 30-day retention remain unchanged. A persisted alarm proves
+compatible-code rollback safety and 30-day retention remain unchanged. A persisted alarm proves
 current scheduling, not future delivery; the next natural daily run remains a
 separate observation.
 

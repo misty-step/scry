@@ -4,16 +4,12 @@ on:
   pull_request:
     branches: [master]
     types: [opened, edited, synchronize, reopened]
-  workflow_run:
-    workflows: [ci]
-    branches: [master]
-    types: [completed]
 
 permissions:
   contents: read
 
 concurrency:
-  group: scry-release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'master' }}
+  group: scry-title-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
@@ -26,68 +22,3 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           python3 -c 'import os,re; assert re.fullmatch(r"(?:feat|fix|chore|docs|test|build|ci|refactor|style|perf|revert)(?:\([a-zA-Z0-9_. /-]+\))?!?: [^\r\n]+", os.environ["PR_TITLE"]), "Use a Conventional Commit title; the title becomes public release input"'
-
-  release:
-    if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: write
-      issues: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Skip an outdated head or refuse missing bootstrap
-        id: head
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          python3 scripts/scry-publish.py check-head
-      - name: Refuse tagging an earlier failed release merge
-        if: steps.head.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/scry-publish.py preflight
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0; release-please 17.6.0
-        id: release
-        if: steps.head.outputs.skip == 'false'
-        with:
-          target-branch: master
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-      - name: Run real exact-head CI for bot-created release PRs
-        if: steps.head.outputs.skip == 'false' && steps.release.outputs.prs_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
-        run: |
-          python3 - <<'PY'
-          import json, os, subprocess
-          for pr in json.loads(os.environ['RELEASE_PRS']):
-              repo = os.environ['GITHUB_REPOSITORY']
-              current = json.loads(subprocess.check_output(['gh', 'api', 'repos/' + repo + '/pulls/' + str(pr['number'])]))
-              assert current['state'] == 'open' and current['base']['ref'] == 'master'
-              assert current['head']['repo']['full_name'] == repo and current['head']['ref'] == pr['headBranchName']
-              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', repo, '--ref', current['head']['ref'], '-f', 'mode=verify', '-f', 'expected_head=' + current['head']['sha']], check=True)
-          PY
-      - name: Finalize or recover the existing exact tagged master artifact
-        if: steps.head.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
-        run: python3 scripts/scry-publish.py
-      - name: Open or update the existing Actions failure-issue path
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python3 scripts/scry-publish.py report-failure

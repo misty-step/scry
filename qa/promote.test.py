@@ -210,6 +210,18 @@ class Promotion(unittest.TestCase):
                     PROMOTE.cloud_gate({'source':'a'*40},{}, {}, [], None,after_restore=mock.Mock())
                 output.assert_not_called()
 
+    def test_unknown_deployment_mode_refuses_before_reading_credentials_or_cloud(self):
+        for mode in ('', 'restore', 'Promote', 'recover-and-deploy'):
+            with self.subTest(mode=mode), mock.patch.dict(os.environ, {'SCRY_DEPLOY_MODE': mode}, clear=True), \
+                    mock.patch.object(PROMOTE.urllib.request, 'urlopen') as cloud, \
+                    mock.patch.object(PROMOTE, 'routine_gate') as routine, \
+                    mock.patch.object(PROMOTE, 'cloud_gate') as recovery:
+                with self.assertRaisesRegex(AssertionError, 'Unknown deployment mode'):
+                    PROMOTE.deploy()
+                cloud.assert_not_called()
+                routine.assert_not_called()
+                recovery.assert_not_called()
+
     def test_declared_storage_matches_live_identity(self):
         self.assertEqual(PROMOTE.storage(LIVE), PROMOTE.declared(CONFIG))
 
@@ -247,7 +259,7 @@ class Promotion(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / 'promotion.json'
             receipt.write_text(json.dumps({'source': 'a' * 40}))
-            with mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict('os.environ', CLOUDFLARE_API_TOKEN='synthetic'), \
+            with mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict('os.environ', CLOUDFLARE_API_TOKEN='synthetic', SCRY_DEPLOY_MODE='recover'), \
                     mock.patch.object(PROMOTE.subprocess, 'run') as run:
                 def urlopen(request, timeout):
                     path = request.full_url.split('/accounts/' + CONFIG['account_id'], 1)[1]
@@ -278,14 +290,13 @@ class Promotion(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, '^Custom domains or routes changed during promotion$'):
                     PROMOTE.deploy()
                 run.assert_called_once()
-                self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_recurrence_pending')
+                self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_live_check_pending')
 
     def test_deploy_observes_serving_edges_before_wrangler(self):
         with self.deployment([DOMAIN], []) as (run, requested, receipt):
             def wrangler(*args, **kwargs):
-                self.assertEqual(requested[-3:-1], ['/workers/domains?service=' + NAME,
-                                                   '/workers/scripts/' + NAME + '/routes'])
-                self.assertIn('/objects?', requested[-1])
+                self.assertEqual(requested[-2:], ['/workers/domains?service=' + NAME,
+                                                '/workers/scripts/' + NAME + '/routes'])
                 self.assertEqual(args[0][1], 'deploy')
                 raise RuntimeError('wrangler intercepted')
             run.side_effect = wrangler
@@ -303,27 +314,6 @@ class Promotion(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '^stop at merge-base$'):
                 PROMOTE.deploy()
             self.assertEqual(run.call_args.args[0], ['git', 'merge-base', '--is-ancestor', released, 'a' * 40])
-
-    def test_deploy_uploads_unless_the_live_version_itself_names_the_source(self):
-        # An annotated source without a prior full receipt must not skip recurrence.
-        # A secret-only version still lacks the exact annotation and uploads.
-        source = 'a' * 40
-        for label, history, uploads in [
-                ('annotated', [('release', 'released', version(etag='same', message='scry-rust ' + source))], False),
-                ('secret-only', [('secret-change', 'secret-only', version(etag='same', trigger='secret', number=2)),
-                                 ('release', 'released', version(etag='same', message='scry-rust ' + source))], True)]:
-            with self.subTest(label), self.deployment([DOMAIN], [], env='production', history=history) as (run, requested, receipt):
-                def command(args, **kwargs):
-                    if args[0] != 'git': raise RuntimeError('upload ' + args[1])
-                run.side_effect = command
-                if uploads:
-                    with self.assertRaisesRegex(RuntimeError, '^upload deploy$'):
-                        PROMOTE.deploy()
-                else:
-                    # Freshly prepared receipts cannot turn an unverified upload into success.
-                    with self.assertRaisesRegex(AssertionError, 'lacks verified recovery receipt'):
-                        PROMOTE.deploy()
-                self.assertEqual(any(c.args[0][0] != 'git' for c in run.call_args_list), uploads)
 
     def test_deploy_refuses_an_untraceable_live_version(self):
         for history in [[('secret-change', 'secret-only', version(etag='changed', trigger='secret', number=2)),
@@ -396,7 +386,7 @@ class DeploymentSafety(unittest.TestCase):
         cls.directory.cleanup()
 
     @contextmanager
-    def fixture(self, history, source=None, *, recheck=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None, verified=False):
+    def fixture(self, history, source=None, *, recheck=None, preupload=None, final=None, page_size=100, page_change=None, uploaded_only=False, version_change=None, verified=False, mode="promote", module_change=None, binding_change=None):
         source = source or self.b
         current = deepcopy(history)
         versions = {'A': version(etag='old', message='scry-rust ' + self.a),
@@ -408,7 +398,8 @@ class DeploymentSafety(unittest.TestCase):
         if uploaded_only: versions['not-deployed-C'] = version(etag='candidate', message='scry-rust ' + self.c)
         bindings = deepcopy(LIVE) + [{'name': n, 'type': 'secret_text'} for n in ('OWNER_SUBJECT', 'BACKUP_TRIGGER_KEY')]
         modules = {'index.js': b'export default {};', 'index_bg.wasm': b'synthetic wasm'}
-        raw = b''.join(b'--fixture\r\nContent-Disposition: form-data; name="' + n.encode() + b'"; filename="' + n.encode() + b'"\r\n\r\n' + b + b'\r\n' for n, b in modules.items()) + b'--fixture--\r\n'
+        actual_modules = modules | (module_change or {})
+        raw = b''.join(b'--fixture\r\nContent-Disposition: form-data; name="' + n.encode() + b'"; filename="' + n.encode() + b'"\r\n\r\n' + b + b'\r\n' for n, b in actual_modules.items()) + b'--fixture--\r\n'
         requests, uploads = [], []
         reads = 0
         with tempfile.TemporaryDirectory() as directory:
@@ -428,7 +419,11 @@ class DeploymentSafety(unittest.TestCase):
                 requests.append(path)
                 script = '/workers/scripts/' + NAME
                 info = None
-                if path == script + '/settings': result = {'bindings': bindings}
+                if path == script + '/settings':
+                    observed_bindings = deepcopy(bindings)
+                    if binding_change and uploads:
+                        binding_change(observed_bindings)
+                    result = {'bindings': observed_bindings}
                 elif path.endswith('/domains/managed'): result = {'enabled': False}
                 elif path.endswith('/domains/custom'): result = {'domains': []}
                 elif '/objects?' in path: result = [{'key': 'synthetic-snapshot'}]
@@ -441,7 +436,7 @@ class DeploymentSafety(unittest.TestCase):
                     if page_change: result, info = page_change(page, result, info)
                 elif path == script + '/deployments':
                     reads += 1
-                    observed = recheck if reads == 1 else final
+                    observed = recheck if reads == 1 else preupload if mode == 'promote' and reads == 2 else final
                     result = {'deployments': deepcopy(current if observed is None else observed)}
                 elif path.startswith(script + '/versions/'):
                     result = versions[path.rsplit('/', 1)[1]]
@@ -463,9 +458,10 @@ class DeploymentSafety(unittest.TestCase):
                 versions['uploaded'] = version(etag='new', message='scry-rust ' + source)
                 current.insert(0, deployment('uploaded', ('uploaded', 100)))
             with mock.patch.object(PROMOTE, 'ROOT', self.root), mock.patch.object(PROMOTE, 'OUT', out), \
-                    mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict(os.environ, {'PATH': os.environ['PATH'], 'CLOUDFLARE_API_TOKEN': 'synthetic'}, clear=True), \
+                    mock.patch.object(PROMOTE, 'RECEIPT', receipt), mock.patch.dict(os.environ, {'PATH': os.environ['PATH'], 'CLOUDFLARE_API_TOKEN': 'synthetic', 'SCRY_DEPLOY_MODE': mode}, clear=True), \
                     mock.patch.object(PROMOTE.urllib.request, 'urlopen', urlopen), mock.patch.object(PROMOTE.subprocess, 'run', side_effect=command), \
                     mock.patch.object(PROMOTE, 'cloud_gate', side_effect=lambda *a, after_restore: (after_restore(), {'recovery': {'recurrence_verified': True, 'cleanup_verified': True}})[1]), \
+                    mock.patch.object(PROMOTE, 'routine_gate', return_value={'snapshot_metadata_verified': True, 'independent_restore_verified': False}), \
                     mock.patch('sys.stdout', new_callable=io.StringIO):
                 yield uploads, requests, receipt, initial
 
@@ -483,46 +479,110 @@ class DeploymentSafety(unittest.TestCase):
                 self.assertEqual(saved['deployment']['versions'][0]['percentage'], 100)
                 self.assertFalse(any('not-deployed-C' in p for p in requests))
 
-    def test_cloud_recovery_refusal_prevents_upload_and_success_receipt(self):
+    def test_ordinary_gate_refusal_prevents_upload_and_success_receipt(self):
         with self.fixture([deployment('a', ('A', 100))]) as (uploads, _, receipt, initial):
-            with mock.patch.object(PROMOTE, 'cloud_gate', side_effect=RuntimeError('synthetic cloud gate refused')) as gate:
-                with self.assertRaisesRegex(RuntimeError, 'cloud gate refused'):
+            with mock.patch.object(PROMOTE, 'routine_gate', side_effect=RuntimeError('synthetic backup refused')) as routine, \
+                    mock.patch.object(PROMOTE, 'cloud_gate') as recovery:
+                with self.assertRaisesRegex(RuntimeError, 'backup refused'):
                     PROMOTE.deploy()
-                gate.assert_called_once()
+                routine.assert_called_once()
+                recovery.assert_not_called()
             self.assertEqual(uploads, [])
             self.assertEqual(json.loads(receipt.read_text()), initial)
 
-    def test_already_exact_promoted_release_does_not_spend_on_another_rehearsal(self):
-        with self.fixture([deployment('b', ('B', 100))], verified=True) as (uploads, _, receipt, _):
-            with mock.patch.object(PROMOTE, 'cloud_gate') as gate:
+    def test_ordinary_deploy_never_restores_and_records_compatible_previous_version(self):
+        with self.fixture([deployment('a', ('A', 100))]) as (uploads, _, receipt, _):
+            def routine(value, config, before, prior):
+                self.assertEqual(uploads, [])
+                self.assertEqual(prior, (self.a, True))
+                return {'snapshot_metadata_verified': True, 'independent_restore_verified': False}
+            with mock.patch.object(PROMOTE, 'routine_gate', side_effect=routine) as gate, \
+                    mock.patch.object(PROMOTE, 'cloud_gate') as recovery:
                 PROMOTE.deploy()
-                gate.assert_not_called()
-            self.assertEqual(uploads, [])
-            self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_promoted')
+                gate.assert_called_once()
+                recovery.assert_not_called()
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(saved['rollback_version'], 'A')
+            self.assertEqual(saved['rollback_source'], self.a)
+            self.assertFalse(saved['recovery_verified'])
+            self.assertTrue(saved['live_modules_verified'])
+            self.assertTrue(saved['storage_identity_verified'])
+            self.assertNotIn('cloud_recovery', saved)
 
-    def test_already_deployed_unverified_source_cannot_skip_recovery(self):
-        with self.fixture([deployment('b', ('B', 100))]) as (uploads, _, receipt, initial):
-            with mock.patch.object(PROMOTE, 'cloud_gate') as gate:
-                with self.assertRaisesRegex(AssertionError, 'lacks verified recovery receipt'):
-                    PROMOTE.deploy()
-                gate.assert_not_called()
+    def test_same_source_rerun_rechecks_metadata_and_live_modules_without_upload(self):
+        with self.fixture([deployment('b', ('B', 100))]) as (uploads, requests, receipt, _):
+            with mock.patch.object(PROMOTE, 'cloud_gate') as recovery, \
+                    mock.patch.object(PROMOTE, 'routine_gate', return_value={'snapshot_metadata_verified': True}) as routine:
+                PROMOTE.deploy()
+                recovery.assert_not_called()
+                routine.assert_called_once()
+            self.assertEqual(uploads, [])
+            self.assertIn('/workers/scripts/' + NAME + '/content/v2', requests)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(saved['stage'], 'exact_artifact_promoted')
+            self.assertFalse(saved['recovery_verified'])
+
+    def test_same_source_does_not_hide_changed_live_modules(self):
+        with self.fixture([deployment('b', ('B', 100))], module_change={'index.js': b'changed live code'}) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'modules differ from verified artifact'):
+                PROMOTE.deploy()
             self.assertEqual(uploads, [])
             self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_explicit_maintenance_refusal_prevents_upload_and_success_receipt(self):
+        for history in ([deployment('a', ('A', 100))], [deployment('b', ('B', 100))]):
+            with self.subTest(history=history), self.fixture(history, mode='recover') as (uploads, _, receipt, initial):
+                with mock.patch.object(PROMOTE, 'cloud_gate', side_effect=RuntimeError('RECOVERY_APPROVAL_REQUIRED')) as recovery, \
+                        mock.patch.object(PROMOTE, 'routine_gate') as routine:
+                    with self.assertRaisesRegex(RuntimeError, 'RECOVERY_APPROVAL_REQUIRED'):
+                        PROMOTE.deploy()
+                    recovery.assert_called_once()
+                    routine.assert_not_called()
+                self.assertEqual(uploads, [])
+                self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_only_successful_explicit_maintenance_claims_recovery_verified(self):
+        with self.fixture([deployment('a', ('A', 100))], mode='recover') as (uploads, _, receipt, _):
+            with mock.patch.object(PROMOTE, 'routine_gate') as routine:
+                PROMOTE.deploy()
+                routine.assert_not_called()
+            self.assertEqual(len(uploads), 1)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(saved['stage'], 'exact_artifact_promoted')
+            self.assertTrue(saved['recovery_verified'])
+            self.assertTrue(saved['cloud_recovery']['recovery']['cleanup_verified'])
 
     def test_post_deploy_recurrence_failure_never_writes_success(self):
-        with self.fixture([deployment('a', ('A', 100))]) as (uploads, _, receipt, _):
+        with self.fixture([deployment('a', ('A', 100))], mode='recover') as (uploads, _, receipt, _):
             def gate(*args, after_restore):
                 self.assertEqual(uploads, [])
                 after_restore()
                 self.assertEqual(len(uploads), 1)
-                self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_uploaded_recurrence_pending')
+                self.assertEqual(json.loads(receipt.read_text())['stage'], 'exact_artifact_uploaded_live_check_pending')
                 raise RuntimeError('synthetic recurrence refused')
             with mock.patch.object(PROMOTE, 'cloud_gate', side_effect=gate):
                 with self.assertRaisesRegex(RuntimeError, 'recurrence refused'):
                     PROMOTE.deploy()
             saved = json.loads(receipt.read_text())
-            self.assertEqual(saved['stage'], 'exact_artifact_uploaded_recurrence_pending')
+            self.assertEqual(saved['stage'], 'exact_artifact_uploaded_live_check_pending')
             self.assertFalse(saved['recovery_verified'])
+
+    def test_second_writer_change_after_ordinary_gate_refuses_before_upload(self):
+        with self.fixture([deployment('a', ('A', 100))], preupload=[deployment('moved', ('A', 100))]) as (uploads, _, receipt, initial):
+            with self.assertRaisesRegex(AssertionError, 'Live deployment changed'):
+                PROMOTE.deploy()
+            self.assertEqual(uploads, [])
+            self.assertEqual(json.loads(receipt.read_text()), initial)
+
+    def test_live_storage_identity_drift_after_upload_never_becomes_success(self):
+        def drift_identity(bindings):
+            next(binding for binding in bindings if binding['name'] == 'LEARNING_SPACE')['namespace_id'] = 'other-namespace'
+        with self.fixture([deployment('a', ('A', 100))], binding_change=drift_identity) as (uploads, _, receipt, _):
+            with self.assertRaisesRegex(AssertionError, 'Durable storage identity changed'):
+                PROMOTE.deploy()
+            self.assertEqual(len(uploads), 1)
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_live_check_pending')
 
     def test_rollback_refuses_duplicate_newer_and_same_source_candidates(self):
         history = [deployment('rollback', ('A', 100)), deployment('b', ('B', 100)), deployment('a', ('A', 100))]
@@ -599,7 +659,7 @@ class DeploymentSafety(unittest.TestCase):
         pure = deployment('live', ('B', 100))
         for entries in invalid:
             broken = deployment('live', *entries)
-            for phase in ('before', 'recheck', 'final'):
+            for phase in ('before', 'recheck', 'preupload', 'final'):
                 options = {} if phase == 'before' else {phase: [broken]}
                 with self.subTest(entries=entries, phase=phase), self.fixture([broken if phase == 'before' else pure], verified=True, **options) as (uploads, _, receipt, initial):
                     with self.assertRaisesRegex(AssertionError, 'single version at 100%|deployment traffic'):
@@ -631,7 +691,7 @@ class DeploymentSafety(unittest.TestCase):
         with self.fixture([deployment('a', ('A', 100))], final=[deployment('late-split', ('B', 10), ('A', 90))]) as (uploads, _, receipt, initial):
             with self.assertRaisesRegex(AssertionError, 'single version at 100%'): PROMOTE.deploy()
             self.assertEqual(len(uploads), 1)
-            self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_recurrence_pending')
+            self.assertEqual(json.loads(receipt.read_text())['stage'], 'upload_attempted_live_check_pending')
 
     def test_resolved_historical_split_does_not_block_forward_progress(self):
         history = [deployment('b', ('B', 100)), deployment('old-split', ('A', 90), ('B', 10)), deployment('a', ('A', 100))]
