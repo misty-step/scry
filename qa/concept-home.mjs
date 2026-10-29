@@ -39,7 +39,7 @@ export async function conceptHomeWalk(browser,capture){
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${name}: horizontal overflow`);
    // Closed native details retain descendant boxes in Chromium; only the summary
    // is a visible control until expanded. Expanded links are checked below too.
-   const clipped=await page.locator('.masthead>a,.masthead summary,.masthead details[open] a,main .button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<-.5||box.right>innerWidth+.5;}).map(node=>node.textContent));
+   const clipped=await page.locator('.masthead>a,.masthead summary,.masthead details[open] a,main .button').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left,right:box.right,viewport:innerWidth,zoom:getComputedStyle(document.documentElement).zoom};}).filter(box=>box.left<-.5||box.right>box.viewport+.5));
    assert.deepEqual(clipped,[],`${name}: clipped primary controls`);
   };
   const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));

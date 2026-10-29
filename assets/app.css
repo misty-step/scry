@@ -34,8 +34,11 @@
 .mapping-pairs>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3fr);gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--rule)}.mapping-pairs dt{font-weight:600}.mapping-pairs dd{margin:0;overflow-wrap:anywhere}
 
 /* NATO is the product's front door: a single, stable review canvas. */
+/* The header, not the narrow summary, bounds the menu at increased zoom. */
+.masthead {
+  position:relative}
 .account-menu {
-  position:relative;
+  position:static;
   font-size:14px}
 .account-menu>summary {
   list-style:none;
@@ -52,10 +55,10 @@
 .masthead .account-menu nav {
   position:absolute;
   right:0;
-  top:48px;
+  top:100%;
   z-index:4;
   width:190px;
-  max-width:calc(100vi - 32px);
+  max-width:100%;
   min-width:0;
   display:grid;
   gap:0;
