@@ -145,6 +145,32 @@ pub struct MappingInput {
     #[serde(default = "strict_mapping")]
     pub spelling_strict: bool,
 }
+/// The immutable supplied starter, shared by import and the focused review entry.
+pub fn nato_input() -> AppResult<VersionInput> {
+    let input: MappingInput = serde_json::from_str(include_str!("../examples/nato-alphabet.json"))
+        .map_err(|_| mapping_invalid())?;
+    input.into_version()
+}
+/// Identity is content and grading policy, never an editable title or a claim.
+pub fn is_nato(version: &Version) -> bool {
+    let Ok(canonical) = nato_input() else {
+        return false;
+    };
+    version.kind == Kind::KeyedMapping
+        && version.spelling_strict
+        && version.text == canonical.text
+        && version
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .map(|u| u.text.as_str())
+            .eq(canonical
+                .sections
+                .iter()
+                .flatten()
+                .flat_map(|s| &s.units)
+                .map(String::as_str))
+}
 fn strict_mapping() -> bool {
     true
 }

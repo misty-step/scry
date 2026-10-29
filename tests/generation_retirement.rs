@@ -166,9 +166,9 @@ fn review_home_never_consumes_or_exposes_interrupted_legacy_practice() {
     engine::ensure_occurrence(&mut app, NOW, "interrupted").unwrap();
     let before = app.clone();
     let html = web::render(&app, "/", &BTreeMap::new(), NOW, None);
-    assert!(html.contains("data-state=\"review-home\""));
-    assert!(html.contains("/library#nato-starter"));
-    assert!(html.contains("Resume earlier practice"));
+    assert!(html.contains("data-state=\"nato-home\""));
+    assert!(html.contains("/practice/nato/start"));
+    assert!(html.contains("Earlier practice"));
     assert!(!html.contains("href=\"/create\"") && !html.contains("Add material"));
     assert!(!html.contains(&app.occurrence.as_ref().unwrap().presentation.answer));
     assert_eq!(app, before);
@@ -223,7 +223,7 @@ fn legacy_ungraded_answer_is_readable_without_self_rating_or_fake_result() {
         assert!(!html.contains(&format!("action=\"{route}\"")));
     }
     let home = web::render(&app, "/", &BTreeMap::new(), NOW, None);
-    assert!(home.contains("Read saved earlier answer"));
-    assert!(!home.contains("Resume earlier practice"));
+    assert!(home.contains("href=\"/notebook\">Earlier practice</a>"));
+    assert!(!home.contains("Read saved earlier answer"));
     assert_eq!(app, before);
 }

@@ -90,8 +90,14 @@ pub struct Study {
     pub version_id: String,
     pub version_hash: String,
     pub pace: Pace,
+    /// Set only by deliberate focused entry; retained Pace remains unchanged.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub nato_all_letters: bool,
     pub status: Status,
     pub created_ms: i64,
+}
+fn is_false(value: &bool) -> bool {
+    !value
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct CardState {
@@ -716,7 +722,11 @@ fn next(
                             c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS)
                         })
                         .count()
-                        < s.pace.limit()
+                        < if s.nato_all_letters {
+                            26
+                        } else {
+                            s.pace.limit()
+                        }
                 })
                 .filter(|s| {
                     app.practice
@@ -918,6 +928,48 @@ pub fn mutate(
     seed: &str,
 ) -> AppResult<MutationResult> {
     match path {
+        "/practice/nato/start" => {
+            if fields
+                .keys()
+                .any(|k| !matches!(k.as_str(), "csrf" | "operation_id" | "revision"))
+            {
+                return Err(AppError::new(
+                    422,
+                    "Start practice without content or grading overrides.",
+                ));
+            }
+            // Engine applies this whole operation to a clone: a held different
+            // Study or import conflict cannot leave a partial starter behind.
+            let vid = app.library.add(crate::library::nato_input()?, seed, None)?;
+            if !crate::library::is_nato(&app.library.versions[&vid]) {
+                return Err(AppError::new(
+                    409,
+                    "The existing mapping differs from the canonical NATO starter.",
+                ));
+            }
+            if app
+                .practice
+                .current
+                .as_ref()
+                .is_some_and(|p| p.prompt.version_id != vid)
+            {
+                return Err(AppError::new(
+                    409,
+                    "Finish the saved review before starting NATO practice.",
+                ));
+            }
+            let learn = BTreeMap::from([("version_id".into(), vid)]);
+            let result = mutate(app, "/practice/learn", &learn, now, seed)?;
+            let sid = result.entity_id.expect("learn returns its Study");
+            let study = app
+                .practice
+                .studies
+                .get_mut(&sid)
+                .expect("learn retains its Study");
+            study.status = Status::Active;
+            study.nato_all_letters = true;
+            next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)
+        }
         "/practice/learn" => {
             let vid = field(fields, "version_id");
             let v = app
@@ -936,6 +988,7 @@ pub fn mutate(
                     version_id: vid.into(),
                     version_hash: v.normalized_hash.clone(),
                     pace,
+                    nato_all_letters: false,
                     status: Status::Active,
                     created_ms: now,
                 };
@@ -1229,6 +1282,7 @@ pub fn validate(app: &App) -> AppResult<()> {
             || s.version_hash != v.normalized_hash
             || !app.library.works.contains_key(&v.work_id)
             || studyable(v).is_err()
+            || (s.nato_all_letters && !crate::library::is_nato(v))
             || app.study_version_refs.get(sid) != Some(&s.version_id)
         {
             return Err(fail());

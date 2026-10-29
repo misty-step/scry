@@ -2,8 +2,7 @@
 
 This is the maintained navigation map for verifying and assessing Scry as its
 owner uses it. [VISION](../VISION.md) explains intent, [SPEC](../SPEC.md) alone
-owns stories and acceptance, and [DESIGN](../DESIGN.md) owns the curiosity
-notebook. Run it through [verify-scry](../.agents/skills/verify-scry/SKILL.md).
+owns stories and acceptance, and [DESIGN](../DESIGN.md) owns the NATO review canvas and retained notebook. Run it through [verify-scry](../.agents/skills/verify-scry/SKILL.md).
 US-012 is retired and its identifier remains reserved.
 
 ## Baseline preconditions
@@ -41,6 +40,8 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 `Gotchas`, in that order.
 
 ## Features
+
+- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Home → Start practice → type → Check → Next. One atomic start, server grading, honest practiced-letter count. `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
 
 - [Sign in with the QA account](sign-in.md): S09 QA sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
 - [Exact text practice](exact-study.md): US-016, US-017, US-018 phone Stream / AG1.

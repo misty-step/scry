@@ -63,7 +63,8 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         .split("</nav>")
         .next()
         .unwrap();
-    assert!(masthead.contains(">Review</a>"));
+    assert!(masthead.contains(">NATO practice</a>"));
+    assert!(masthead.contains("href=\"/library\">Library</a>"));
     assert!(!masthead.contains(">Create</a>") && !masthead.contains(">Map</a>"));
     let form = page(&app, "/library/add");
     for expected in [

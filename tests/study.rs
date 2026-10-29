@@ -1301,6 +1301,7 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
     // Home navigation is distinct from explicit recovery of concept practice.
     let practice = [
         "Scry, home",
+        "NATO practice",
         "Review",
         "← Your concepts",
         "Back to review →",

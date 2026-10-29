@@ -31,22 +31,38 @@ export async function conceptHomeWalk(browser,capture){
    }
    assert.fail('The requested control is not reachable through the keyboard tab order');
   };
-  const home=()=>page.locator('[data-state="review-home"]');
-  const headerHome=()=>page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true});
+  const home=()=>page.locator('[data-state="nato-home"]');
+  const headerHome=()=>page.getByRole('link',{name:'Scry, home',exact:true});
+  const earlier=async()=>{await activate(page.locator('.account-menu>summary'));await activate(page.getByRole('link',{name:'Earlier practice',exact:true}));};
   const layout=async()=>{
    await page.evaluate(()=>document.fonts.ready);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${name}: horizontal overflow`);
-   const clipped=await page.locator('.masthead a,main .button').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect();return box.left<-.5||box.right>innerWidth+.5;}).map(node=>node.textContent));
+   // Closed native details retain descendant boxes in Chromium; only the summary
+   // is a visible control until expanded. Expanded links are checked below too.
+   const clipped=await page.locator('.masthead>a,.masthead summary,.masthead details[open] a,main .button').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {text:node.textContent,left:box.left,right:box.right,viewport:innerWidth,zoom:getComputedStyle(document.documentElement).zoom};}).filter(box=>box.left<-.5||box.right>box.viewport+.5));
    assert.deepEqual(clipped,[],`${name}: clipped primary controls`);
   };
   const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
+  const menuLayout=async suffix=>{
+   const menu=page.locator('.account-menu');
+   assert.equal(await menu.getAttribute('open'),null,'Menu starts closed');
+   await activate(menu.locator('summary'));
+   assert.notEqual(await menu.getAttribute('open'),null,'Native menu opens');
+   const links=menu.getByRole('link');
+   assert.equal(await links.count(),5,'All retained menu destinations are exposed');
+   for(const link of await links.all())assert.equal(await link.isVisible(),true,'Expanded menu link is visible');
+   await layout();await shot(suffix);
+   await activate(menu.locator('summary'));
+   assert.equal(await menu.getAttribute('open'),null,'Native menu closes');
+  };
   try{
-   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'Make it memorable.',exact:true}).waitFor();
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Review','Library']);
-   assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true}).getAttribute('href'),'/recall');
+   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['NATO practice','Library','History','Settings','Earlier practice']);
+   assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true,includeHidden:true}).getAttribute('href'),'/recall');
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
-   await layout();await shot('empty');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');
-   await activate(home().getByRole('link',{name:'Start with NATO',exact:true}));
+   await layout();await shot('empty');await menuLayout('menu');
+   await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('empty-200');await menuLayout('menu-200');
+   await activate(page.locator('.account-menu>summary'));await activate(page.getByRole('link',{name:'Library',exact:true}));
    await page.locator('[data-state="library"]').waitFor();
    assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
    await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('unavailable-200');
@@ -61,24 +77,24 @@ export async function conceptHomeWalk(browser,capture){
    for(const hidden of [question.occurrence.presentation.answer,question.occurrence.presentation.explanation,question.occurrence.presentation.prompt])assert.ok(!markup.includes(hidden),'Home must not leak the current question, answer or explanation');
    const cold=JSON.parse(question.records.find(r=>r.key===`concepts/${question.occurrence.concept_id}`).value);
    assert.ok(!markup.includes(cold.name),'Home must protect the current unaided concept name');
-   assert.equal(await home().getByRole('link',{name:'Resume earlier practice',exact:true}).getAttribute('href'),'/notebook');
+   assert.equal(await page.getByRole('link',{name:'Earlier practice',exact:true,includeHidden:true}).getAttribute('href'),'/notebook');
    await stable(question);await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('question-home-200');
    await page.reload();await home().waitFor();await stable(question);
    await page.goBack();await page.locator('[data-state="question"]').waitFor();await stable(question);
    await page.goForward();await home().waitFor();await stable(question);
-   await activate(home().getByRole('link',{name:'Resume earlier practice',exact:true}));await page.locator('[data-state="question"]').waitFor();await stable(question);
+   await earlier();await page.locator('[data-state="question"]').waitFor();await stable(question);
    await activate(page.locator('.choice').first());await page.locator('[data-state="result"]').waitFor();
    const held=await state();assert.equal(held.occurrence.phase,'result');assert.equal(held.records.filter(r=>r.key.startsWith('events/')).length,1);
    const answerPair=await page.locator('.answer-pair').innerText();
    await activate(headerHome());await home().waitFor();await stable(held);await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('held-home-200');
    await page.reload();await home().waitFor();await stable(held);
-   await activate(home().getByRole('link',{name:'Resume earlier practice',exact:true}));await page.locator('[data-state="result"]').waitFor();assert.equal(await page.locator('.answer-pair').innerText(),answerPair);await stable(held);
+   await earlier();await page.locator('[data-state="result"]').waitFor();assert.equal(await page.locator('.answer-pair').innerText(),answerPair);await stable(held);
    await page.goBack();await home().waitFor();await page.goForward();await page.locator('[data-state="result"]').waitFor();await stable(held);
    await activate(headerHome());await home().waitFor();
    const concepts=held.records.filter(r=>r.key.startsWith('concepts/')).map(r=>JSON.parse(r.value));
    const dependent=concepts.find(c=>c.prerequisites.length);assert.ok(dependent,'The authored demo must retain its real prerequisite relation');
    const prerequisite=concepts.find(c=>c.id===dependent.prerequisites[0]);assert.ok(prerequisite);
-   await activate(home().getByRole('link',{name:'Earlier notes and concepts',exact:true}));await page.locator('[data-state="map"]').waitFor();await activate(page.locator(`a[href="/concepts/${prerequisite.id}"]`).first());await page.locator('[data-state="concept"]').waitFor();
+   await page.goto(url+'/map');await page.locator('[data-state="map"]').waitFor();await activate(page.locator(`a[href="/concepts/${prerequisite.id}"]`).first());await page.locator('[data-state="concept"]').waitFor();
    for(const heading of ['Study','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
    assert.equal(await page.getByRole('link',{name:'Original material & preparation',exact:true}).getAttribute('href'),`/goals/${prerequisite.goal_id}`);
    const reverse=page.locator('.connected').getByRole('link',{name:dependent.name,exact:true});assert.equal(await reverse.getAttribute('href'),`/concepts/${dependent.id}`);
@@ -129,8 +145,8 @@ export async function conceptHomeWalk(browser,capture){
   await page.getByText('Native content generation is retired.',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('Your unsent material',{exact:true}).inputValue(),'Unsent material');
   assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
-  await page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true}).tap();
-  await page.locator('[data-state="review-home"]').waitFor();assert.equal(await page.locator('[data-poll]').count(),0);
+  await page.getByRole('link',{name:'Scry, home',exact:true}).tap();
+  await page.locator('[data-state="nato-home"]').waitFor();assert.equal(await page.locator('[data-poll]').count(),0);
   assert.deepEqual(await read(),before);row.evidence.push(await capture(page,'review-home-retired-request.png'));
  }catch(error){row.status='fail';row.reason=error.message;}
  finally{await context.close();await runtime.mf.dispose();}

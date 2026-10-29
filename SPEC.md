@@ -4,8 +4,8 @@
 
 Scry helps its owner memorize externally authored knowledge. Agents supply
 content; Scry owns native grading, honest assistance and the memory schedule.
-The first bounded path is forward NATO recall through the existing Library,
-Versions and Studies. Existing exact-text and concept-notebook history remains
+The first journey is one forward-NATO review canvas, backed by the existing
+Library, Versions and Studies. Existing exact-text and concept-notebook history remains
 preserved; new purpose is not permission to rewrite learning evidence.
 
 ## What it enables
@@ -14,9 +14,9 @@ The owner can receive useful supplied material through the API/CLI, practise
 with one typed answer, see a deterministic Verdict and canonical correction,
 and continue deliberately. Agent-ergonomic MCP and multimedia are part of the
 new direction, with their delivered scope stated below rather than inferred
-from intent. Legacy concept/reference paths remain available while subsequent
-bounded work changes the front door; their existence does not imply native
-generation or self-grading belongs in the new memorization flow.
+from intent. Legacy concept/reference paths remain available through secondary navigation;
+their existence does not imply native generation or self-grading belongs in
+the new memorization flow.
 
 This is the single behavioral reference for Scry, for one owner. Words follow
 [GLOSSARY](GLOSSARY.md). QA runs against this file's US,
@@ -31,6 +31,39 @@ verification procedures and evidence limits. [README](README.md#start-or-resume-
 is the work entrypoint. Dated receipts and proposals are not competing requirements.
 
 ## Scope and acceptance status
+
+### NATO-focused review (2026-10-29)
+
+The owner directs a first-principles simplification optimized only for NATO.
+This supersedes the Library-first and review-entry navigation below, not its
+content, grading, privacy or history contracts. Home is one focused review
+canvas: one explicit **Start practice** imports the immutable canonical starter,
+starts or resumes its retained Study, and presents the first protected letter.
+There is no Library, Version, pace or setup screen on this journey. The same
+canvas holds the current question or graded result across refresh and return.
+
+- **NATO-01:** Start is one atomic, CSRF-protected, operation-receipted mutation.
+  Repeated Start (including a new operation ID) never duplicates content or
+  Studies, resets card schedules, or replaces another Study's held prompt.
+  Deliberate Start sets the NATO-only introduction allowance to all 26 letters;
+  existing general pace options and historical schedules remain unchanged.
+- **NATO-02:** A letter, one typed answer, native Check, concise canonical
+  feedback, and deliberate Next form the review loop. No self-grade, client
+  success field, optimistic verdict or automatic advancement. Official spelling
+  and the existing mapping grader remain authoritative. Enter submits/advances;
+  native forms work without JavaScript. Repeated actions have no entrance motion.
+- **NATO-03:** Progress is unique NATO letters with actual unassisted,
+  non-disclosure graded attempts, labelled “practiced,” not correct, mastered or
+  predicted ready. Import, reveal and repeated answers cannot inflate this count.
+- **NATO-04:** Optional alphabet reference is absent during protected recall;
+  the result shows only its own canonical correction. Reveals are explicitly
+  recorded assistance, never mastery credit. Historical Library, API/CLI/MCP,
+  account settings and earlier learning history remain available in a quiet menu.
+- **NATO-05:** The question and primary action fit phone and desktop; inputs are
+  at least 16px, zoom remains enabled, keyboard focus is visible and restored,
+  repeated requests reconcile their original operation identity, and unknown
+  network results never fabricate a grade. Test real local Worker/SQLite flows,
+  keyboard-only, no-JS, reduced motion, long input and failure states.
 
 ### Minimal deployment (2026-10-29)
 

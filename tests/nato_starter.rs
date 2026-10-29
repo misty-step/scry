@@ -196,3 +196,47 @@ fn repeated_starter_and_agent_manifest_preserve_same_study_and_schedule() {
     assert_eq!(app.practice, practice);
     engine::validate_app(&app).unwrap();
 }
+
+#[test]
+fn focused_home_is_one_native_action_and_never_discloses_the_held_answer() {
+    let mut app = app();
+    let before = app.clone();
+    let home = page(&app, "/");
+    assert!(home.contains("action=\"/practice/nato/start\""));
+    assert!(home.contains("0<span class=\"nato-muted\"> / 26 practiced"));
+    assert_eq!(
+        app, before,
+        "The front door is a read, not an implicit import"
+    );
+    let start = form_fields(&home, "/practice/nato/start");
+    engine::mutate(
+        &mut app,
+        "/practice/nato/start",
+        &start,
+        NOW,
+        "focused-start",
+    )
+    .unwrap();
+    let prompt = page(&app, "/");
+    assert!(prompt.contains("data-state=\"exact-prompt\""));
+    assert!(prompt.contains("aria-label=\"Letter A\""));
+    for disclosure in ["Alfa", "Bravo", "Alphabet reference"] {
+        assert!(
+            !prompt.contains(disclosure),
+            "Protected HTML contains {disclosure}"
+        );
+    }
+    let held = app.clone();
+    assert_eq!(page(&app, "/"), prompt);
+    assert_eq!(app, held);
+    let mut answer = form_fields(&prompt, "/practice/answer");
+    answer.insert("answer".into(), "Alpha".into());
+    engine::mutate(&mut app, "/practice/answer", &answer, NOW, "focused-answer").unwrap();
+    let result = page(&app, "/");
+    assert!(result.contains("data-verdict=\"Again\""));
+    assert!(result.contains("Alfa"));
+    assert!(result.contains("1<span class=\"nato-muted\"> / 26 practiced"));
+    assert!(!result.contains("Alphabet reference"));
+    assert!(!result.contains("I was right"));
+    assert_eq!(app.practice.attempts.len(), 1);
+}

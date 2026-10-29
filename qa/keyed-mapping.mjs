@@ -248,39 +248,41 @@ export async function keyedMappingWalk(browser,capture){
   try{
    await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('input[name="answer"]').count(),1);assert.equal(await page.locator('textarea').count(),0);
-   assert.equal((await page.locator('.exact-cue .reading').innerText()).trim(),'A');
+   assert.equal((await page.locator('.nato-letter').innerText()).trim(),'A');
    assert.doesNotMatch(await page.content(),/Alfa|Bravo/,'The whole unanswered HTML, including hidden inputs and metadata, carries no canonical answer.');
    assert.doesNotMatch(await page.locator('input[type="hidden"],meta').evaluateAll(nodes=>nodes.map(node=>node.outerHTML).join('')),/Alfa|Bravo/);
    await typography(page,zoom);await shot('prompt');
    await page.getByLabel('Type your answer',{exact:true}).fill('Alpha');
-   await page.getByRole('button',{name:'Check my answer',exact:true}).focus();await page.keyboard.press('Enter');
+   await page.getByRole('button',{name:/^Check/}).focus();await page.keyboard.press('Enter');
    await page.locator('[data-state="exact-result"]').waitFor();
    row.arrival=await feedbackArrival(page,capture,`mapping-${width}-${scheme}-${noJS?'native':'enhanced'}-${zoom?200:100}-arrival.png`,zoom);assertFeedbackArrival(row.arrival);
    const a=(await f.ok(['next'])).practice.attempt;assert.equal(a.grade.verdict,'Again');assert.equal(await page.locator('[data-verdict]').getAttribute('data-verdict'),'Again');
    assert.equal(await page.getByRole('button',{name:'I was right',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Count as a miss',exact:true}).count(),0);
-   assert.ok((await page.locator('.mapping-result').innerText()).includes('Alfa'));
+   assert.ok((await page.locator('.nato-word').innerText()).includes('Alfa'));
    await page.reload();await page.locator('[data-state="exact-result"]').waitFor();assert.equal((await f.ok(['next'])).practice.attempt.id,a.id);
    await typography(page,zoom);await shot('held-reload');
-   await page.locator('details.exact-full-answer>summary').tap();assert.equal(await page.locator('.exact-expected').textContent(),'Alfa');
-   await page.locator('details.exact-full-answer>summary').tap();
-   await page.getByRole('button',{name:'Next',exact:true}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();
-   assert.equal((await page.locator('.exact-cue .reading').innerText()).trim(),'B');
+   assert.equal(await page.locator('.nato-word').textContent(),'Alfa','The canonical correction is inline, with no disclosure click.');
+   await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();
+   assert.equal((await page.locator('.nato-letter').innerText()).trim(),'B');
    const next=(await f.record('meta')).practice.current.prompt.id;await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await f.record('meta')).practice.current.prompt.id,next);
    await page.goto(f.origin+'/library');await page.goBack();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await f.record('meta')).practice.current.prompt.id,next);
    assert.doesNotMatch(await page.content(),/Alfa|Bravo/,'Next removes the held answer and does not preload the current answer in any HTML.');
    await typography(page,zoom);await shot('next');
-   await page.getByLabel('Type your answer',{exact:true}).fill('Bravo');await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-verdict="Good"]').waitFor();
+   await page.getByLabel('Type your answer',{exact:true}).fill('Bravo');await page.getByRole('button',{name:/^Check/}).tap();await page.locator('[data-verdict="Good"]').waitFor();
    const correct=(await f.ok(['next'])).practice.attempt;assert.equal(correct.assisted,false);assert.equal(correct.effects[0].scheduled,true);
-   await typography(page,zoom);assert.ok((await page.locator('.mapping-result').innerText()).includes('Bravo'));
+   await typography(page,zoom);assert.ok((await page.locator('.nato-word').innerText()).includes('Bravo'));
    row.good=await page.locator('[data-verdict="Good"]').evaluate(node=>{const r=node.getBoundingClientRect();return {visible:r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth,verdict:node.dataset.verdict};});assert.equal(row.good.visible,true);
    row.evidence.push(await capture(page,`mapping-${width}-${scheme}-${noJS?'native':'enhanced'}-${zoom?200:100}-good-arrival.png`,{fullPage:false}));
-   await page.getByRole('button',{name:'Next',exact:true}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await page.locator('.exact-cue .reading').innerText()).trim(),'C');
+   await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'C');
    assert.doesNotMatch(await page.content(),/Charlie/);
-   await page.locator('details.overflow>summary').tap();const before=(await f.record('meta')).practice.current.targets[0].before.schedule;
-   await page.getByRole('button',{name:'Show me',exact:true}).tap();await page.getByText('Assistance is recorded.',{exact:true}).waitFor();
-   await page.getByLabel('Type your answer',{exact:true}).fill('Charlie');await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
+   const before=(await f.record('meta')).practice.current.targets[0].before.schedule;
+   await page.getByRole('button',{name:'Show answer',exact:true}).tap();await page.getByText('Type it once to practise. This answer is assisted.',{exact:true}).waitFor();
+   await page.getByLabel('Type your answer',{exact:true}).fill('Charlie');await page.getByRole('button',{name:/^Check/}).tap();await page.locator('[data-state="exact-result"]').waitFor();
    const shown=(await f.ok(['next'])).practice.attempt;assert.equal(shown.assisted,true);assert.equal(shown.effects[0].scheduled,false);assert.deepEqual(shown.effects[0].after.schedule,before);
-   await typography(page,zoom);await shot('assisted');assert.equal(f.egress,0);
+   await typography(page,zoom);
+   const assistedColor=await page.locator('.nato-helped>p:first-child').evaluate(node=>{const css=getComputedStyle(node),hex=css.getPropertyValue('--helped').trim();return {actual:css.color,expected:`rgb(${[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)).join(', ')})`};});
+   assert.equal(assistedColor.actual,assistedColor.expected,'Assisted feedback uses its semantic color.');
+   await shot('assisted');assert.equal(f.egress,0);
   }catch(e){row.status='fail';row.reason=e.message;await shot('failure');}
   finally{await context.close();await f.close();}
  }
@@ -296,7 +298,7 @@ export async function keyedMappingRecovery(browser,capture){
   catch(error){row.status='fail';row.reason=error.message;}
   finally{row.evidence=await capture(page,`mapping-recovery-${results.length}.png`);await context.close();await f.close();}
  };
- const answer=async page=>{await page.getByLabel('Type your answer',{exact:true}).fill('Alfa');await page.getByRole('button',{name:'Check my answer',exact:true}).tap();};
+ const answer=async page=>{await page.getByLabel('Type your answer',{exact:true}).fill('Alfa');await page.getByRole('button',{name:/^Check/}).tap();};
  const count=async f=>(await f.rows()).filter(row=>row.key.startsWith('practice_attempts/')).length;
  await check('lost answer response locks input and reconciles the same operation once',async({f,context,page,row})=>{
   const before=await count(f),payloads=[];let first=true;
@@ -309,9 +311,9 @@ export async function keyedMappingRecovery(browser,capture){
  });
  await check('offline preserves typed input and reconnect never auto-sends',async({context,page,row})=>{
   let sends=0;context.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/practice/answer'))sends++;});
-  await page.getByLabel('Type your answer',{exact:true}).fill('Alfa');await context.setOffline(true);await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
+  await page.getByLabel('Type your answer',{exact:true}).fill('Alfa');await context.setOffline(true);await page.getByRole('button',{name:/^Check/}).tap();
   assert.equal(sends,0);assert.equal(await page.getByLabel('Type your answer',{exact:true}).inputValue(),'Alfa');await context.setOffline(false);await page.waitForTimeout(400);assert.equal(sends,0);
-  await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
+  await page.getByRole('button',{name:/^Check/}).tap();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
  });
  await check('competing tabs retain exactly one answered Prompt',async({f,context,page,row})=>{
   const before=await count(f),other=await context.newPage();await other.goto(f.origin+'/recall');await answer(page);await page.locator('[data-state="exact-result"]').waitFor();

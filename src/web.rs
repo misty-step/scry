@@ -1180,42 +1180,227 @@ impl View<'_> {
             }
         )
     }
-    fn home(&self) -> String {
-        let has_review = exact_stream_active(self.app);
-        let action = if self.app.practice.current.is_some() {
-            "Resume review"
-        } else {
-            "Start review"
-        };
-        let mut out = String::from(
-            "<section class=\"concept-home\" data-state=\"review-home\"><p class=\"eyebrow\">A little practice, lasting recall</p><h1>Make it memorable.</h1><p class=\"lede\">One question at a time. Type your answer; Scry checks your recall.</p><div class=\"actions\">",
-        );
-        if has_review {
-            let _ = write!(
-                out,
-                "<a class=\"button primary\" href=\"/recall\">{action}</a><a class=\"button secondary\" href=\"/library#nato-starter\">Start with NATO</a>"
-            );
-        } else {
-            out.push_str(
-                "<a class=\"button primary\" href=\"/library#nato-starter\">Start with NATO</a>",
-            );
+    fn nato_reference(&self) -> String {
+        // A reference must never disclose an answer behind a protected prompt.
+        if self.app.practice.protected()
+            || self.app.protected_goal().is_some()
+            || self.app.occurrence.is_some()
+        {
+            return String::new();
         }
-        out.push_str("</div><p><a class=\"text-link\" href=\"/library\">Browse Library</a></p>");
-        if let Some(occurrence) = &self.app.occurrence {
-            let label = if matches!(occurrence.phase.as_str(), "self" | "self-check") {
-                "Read saved earlier answer"
+        let input = crate::library::nato_input().expect("bundled NATO content is valid");
+        let mut out = String::from(
+            "<details class=\"nato-reference\"><summary>Alphabet reference</summary><dl>",
+        );
+        for unit in input
+            .sections
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|s| &s.units)
+        {
+            if let Some((key, word)) = crate::library::mapping_pair(unit) {
+                let _ = write!(
+                    out,
+                    "<div><dt>{}</dt><dd>{}</dd></div>",
+                    escape(key),
+                    escape(word)
+                );
+            }
+        }
+        out.push_str("</dl><p>Official NATO spellings. <a href=\"https://www.nato.int/cps/en/natohq/declassified_136216.htm\" rel=\"noreferrer\">Source</a></p></details>");
+        out
+    }
+    fn nato_screen(&self) -> String {
+        let nato_versions = self
+            .app
+            .library
+            .versions
+            .values()
+            .filter(|v| crate::library::is_nato(v))
+            .map(|v| v.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let practiced = self
+            .app
+            .practice
+            .attempts
+            .values()
+            .filter(|a| {
+                !a.assisted && !a.disclosure && nato_versions.contains(a.version_id.as_str())
+            })
+            .map(|a| a.prompt.cue.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        let mut out = format!(
+            "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
+        );
+        if let Some(p) = self.app.practice.current.as_ref().filter(|p| {
+            self.app
+                .library
+                .versions
+                .get(&p.prompt.version_id)
+                .is_some_and(crate::library::is_nato)
+        }) {
+            let prompt = &p.prompt;
+            let attempt = p
+                .attempt_id
+                .as_ref()
+                .and_then(|id| self.app.practice.attempts.get(id));
+            let state = if attempt.is_some() {
+                "exact-result"
             } else {
-                "Resume earlier practice"
+                "exact-prompt"
             };
             let _ = write!(
                 out,
-                "<p><a class=\"text-link\" href=\"/notebook\">{label}</a></p>"
+                "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1>",
+                escape(&prompt.id),
+                escape(&prompt.cue),
+                escape(&prompt.cue)
             );
-        }
-        if !self.app.concepts.is_empty() || !self.app.goals.is_empty() {
-            out.push_str(
-                "<p><a class=\"text-link\" href=\"/map\">Earlier notes and concepts</a></p>",
-            );
+            if let Some(a) = attempt {
+                let good = a.grade.verdict == crate::grading::Verdict::Good;
+                let version = &self.app.library.versions[&a.version_id];
+                let word = version
+                    .sections
+                    .iter()
+                    .flat_map(|s| &s.units)
+                    .find(|u| a.prompt.unit_ids.contains(&u.id))
+                    .map(|u| crate::study::expected_unit(version, u))
+                    .unwrap_or("");
+                let label = if a.assisted {
+                    "With help"
+                } else if good {
+                    "Correct"
+                } else {
+                    "Not quite"
+                };
+                let verdict = if good { "Good" } else { "Again" };
+                let tone = if a.assisted {
+                    "helped"
+                } else if good {
+                    "correct"
+                } else {
+                    "miss"
+                };
+                let _ = write!(
+                    out,
+                    "<div class=\"nato-feedback nato-{tone}\" role=\"status\"><p data-verdict=\"{verdict}\">{label}</p><p class=\"nato-word\">{}</p></div>",
+                    escape(word)
+                );
+                if a.assisted {
+                    out.push_str("<p class=\"nato-note\">Assisted. Schedule unchanged.</p>");
+                } else if !good {
+                    out.push_str(
+                        "<p class=\"nato-note\">Use this spelling. You’ll see it again.</p>",
+                    );
+                } else {
+                    out.push_str("<p class=\"nato-note\">Answer saved.</p>");
+                }
+                out.push_str(&self.form(
+                    "/practice/next",
+                    "nato-next",
+                    "nato-action",
+                    "data-next",
+                    &format!(
+                        "{}{}<button class=\"button primary\">Next <kbd>Enter</kbd></button>",
+                        hidden("after", &prompt.id),
+                        hidden("study_id", &prompt.study_id)
+                    ),
+                ));
+            } else {
+                out.push_str(
+                    "<p class=\"nato-question\" id=\"nato-question\">What’s the code word?</p>",
+                );
+                if p.revealed {
+                    out.push_str("<div class=\"nato-disclosed\">");
+                    out.push_str(&self.exact_expected());
+                    out.push_str("<p class=\"nato-note\">Type it once to practise. This answer is assisted.</p></div>");
+                }
+                out.push_str(&self.form("/practice/answer", "nato-answer", "nato-answer answer-form", "data-answer-limit=\"32768\"", &format!("{}<label class=\"visually-hidden\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" aria-describedby=\"nato-letter nato-question\" placeholder=\"Code word\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" autofocus><button class=\"button primary\">Check <kbd>Enter</kbd></button>", hidden("prompt_id", &prompt.id))));
+                if !p.revealed {
+                    out.push_str(&self.practice_form(
+                        "reveal",
+                        "nato-reveal",
+                        "data-nato-help",
+                        "<button class=\"text-button\">Show answer</button>",
+                    ));
+                }
+            }
+            out.push_str("</div>");
+            // A result shows only its own correction. The full reference would
+            // prime the next question, so keep it outside the active session.
+        } else {
+            let has_study = self.app.practice.studies.values().any(|s| {
+                self.app
+                    .library
+                    .versions
+                    .get(&s.version_id)
+                    .is_some_and(crate::library::is_nato)
+            });
+            let other_prompt = self.app.practice.current.is_some();
+            out.push_str("<div class=\"nato-stage nato-welcome\">");
+            if !other_prompt && self.app.protected_goal().is_none() && self.app.occurrence.is_none()
+            {
+                out.push_str(
+                    "<div class=\"nato-specimen\" aria-hidden=\"true\">Aa<span>Alfa</span></div>",
+                );
+            }
+            if other_prompt {
+                out.push_str("<h1>Your review is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume review</a>");
+            } else if has_study
+                && (self.path == "/recall"
+                    || self.query.get("practice").is_some_and(|v| v == "nato"))
+            {
+                let needs_allowance = self.app.practice.studies.values().any(|s| {
+                    !s.nato_all_letters
+                        && self
+                            .app
+                            .library
+                            .versions
+                            .get(&s.version_id)
+                            .is_some_and(crate::library::is_nato)
+                });
+                if needs_allowance {
+                    out.push_str("<h1>Keep going.</h1><p>Your progress is saved. The rest of the alphabet is ready.</p>");
+                    out.push_str(&self.form(
+                        "/practice/nato/start",
+                        "nato-continue",
+                        "nato-action",
+                        "",
+                        "<button class=\"button primary\">Continue practice</button>",
+                    ));
+                } else {
+                    out.push_str("<h1>All set for now.</h1><p>Your answers are saved. Take a breather; your next review will be waiting here.</p><a class=\"text-link\" href=\"/\">Back to start</a>");
+                }
+            } else {
+                let (title, desc, action) = if has_study {
+                    (
+                        "A little, often.",
+                        "Your progress is saved. Pick up where you left off.",
+                        "Continue practice",
+                    )
+                } else {
+                    (
+                        if self.app.occurrence.is_some() || self.app.protected_goal().is_some() {
+                            "Learn the alphabet."
+                        } else {
+                            "From Alfa to Zulu."
+                        },
+                        "26 code words. One answer at a time.",
+                        "Start practice",
+                    )
+                };
+                let _ = write!(out, "<h1>{title}</h1><p>{desc}</p>");
+                out.push_str(&self.form(
+                    "/practice/nato/start",
+                    "nato-start",
+                    "nato-action",
+                    "",
+                    &format!("<button class=\"button primary\">{action}</button>"),
+                ));
+            }
+            out.push_str("</div>");
+            out.push_str(&self.nato_reference());
         }
         out.push_str("</section>");
         out
@@ -2161,7 +2346,28 @@ pub fn render(
         now: now_ms,
     };
     let content = match path {
-        "/" => view.home(),
+        "/" => view.nato_screen(),
+        "/recall"
+            if app.practice.current.as_ref().is_some_and(|p| {
+                app.library
+                    .versions
+                    .get(&p.prompt.version_id)
+                    .is_some_and(crate::library::is_nato)
+            }) =>
+        {
+            view.nato_screen()
+        }
+        "/recall"
+            if app.practice.current.is_none()
+                && app.practice.studies.values().any(|s| {
+                    app.library
+                        .versions
+                        .get(&s.version_id)
+                        .is_some_and(crate::library::is_nato)
+                }) =>
+        {
+            view.nato_screen()
+        }
         "/recall" if exact_stream_active(app) => view.exact_stream(),
         "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
@@ -2256,7 +2462,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Review</a><a href=\"/library\">Library</a></nav></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"/\" {}>NATO practice</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -2270,7 +2476,8 @@ fn shell(
             ""
         },
         if poll { "data-poll" } else { "" }
-    )
+    ).replace("#f5f2ea", if content.contains("nato-screen") { "#f8f8f5" } else { "#f5f2ea" })
+     .replace("#191e1d", if content.contains("nato-screen") { "#191b18" } else { "#191e1d" })
 }
 fn hidden(name: &str, value: &str) -> String {
     format!(

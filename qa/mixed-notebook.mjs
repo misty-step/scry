@@ -100,8 +100,8 @@ export async function mixedBrowserWalk(browser, capture) {
       const frozen = {occurrence:meta.occurrence, practice:meta.practice};
       assert.ok(frozen.occurrence && frozen.practice.current, 'Both practice streams must be populated');
       const unchanged = async () => {const current=await f.record('meta');assert.deepEqual({occurrence:current.occurrence,practice:current.practice},frozen, 'Home navigation must preserve both frozen practice streams');};
-      const home = () => page.locator('[data-state="review-home"]');
-      const openHome = async () => {await page.locator('.masthead nav').getByRole('link',{name:'Review',exact:true}).tap();await home().waitFor();await unchanged();};
+      const home = () => page.locator('[data-state="nato-home"]');
+      const openHome = async () => {await page.getByRole('link',{name:'Scry, home',exact:true}).tap();await home().waitFor();await unchanged();};
       await openHome();
       const content=await page.locator('main').innerText();
       for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation,'Copper lanterns shelter quiet gardens.'])assert.ok(!content.includes(hidden), 'Home must not show answer-bearing material from either stream');
@@ -110,12 +110,12 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.reload();await home().waitFor();await unchanged();
       await page.reload();await home().waitFor();await unchanged();
       await page.goBack();await page.locator('[data-state="'+(new URL(page.url()).pathname==='/recall'?(frozen.practice.current.attempt_id?'exact-result':'exact-prompt'):frozen.occurrence.phase)+'"]').waitFor();await unchanged();await page.goForward();await home().waitFor();await unchanged();
-      await home().getByRole('link',{name:'Resume earlier practice',exact:true}).tap();
+      await page.locator('.account-menu>summary').tap();await page.getByRole('link',{name:'Earlier practice',exact:true}).tap();
       await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
-      await openHome();await page.locator('footer').getByRole('link',{name:'Review',exact:true}).tap();
+      await openHome();await home().getByRole('link',{name:'Resume review',exact:true}).tap();
       await page.waitForURL(f.origin+'/recall');await page.locator('[data-state="'+(frozen.practice.current.attempt_id?'exact-result':'exact-prompt')+'"]').waitFor();await unchanged();
       await page.goBack();await home().waitFor();await unchanged();await page.goForward();await page.locator('[data-state^="exact-"]').waitFor();await unchanged();
-      await openHome();await home().getByRole('link',{name:'Resume earlier practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
+      await openHome();await page.locator('.account-menu>summary').tap();await page.getByRole('link',{name:'Earlier practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
     };
     try {
       await page.goto(f.origin + '/notebook');
