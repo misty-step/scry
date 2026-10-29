@@ -558,6 +558,26 @@ fn make_prompt(
         attempt_id: None,
     }
 }
+fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &str) -> String {
+    let version = &app.library.versions[&study.version_id];
+    let unit = units(version)[index];
+    let cid = id(seed, "card");
+    app.practice.cards.insert(
+        cid.clone(),
+        Card {
+            id: cid.clone(),
+            study_id: study.id.clone(),
+            unit_id: unit.id.clone(),
+            unit_index: index,
+            direction: Direction::Forward,
+            introduced_ms: now,
+            revision: 0,
+            state: initial(now, version.kind),
+        },
+    );
+    cid
+}
+
 fn next(
     app: &mut App,
     fields: &BTreeMap<String, String>,
@@ -608,6 +628,17 @@ fn next(
     } else if !after.is_empty() {
         return Err(AppError::conflict());
     }
+    // Focused NATO is deliberate alphabet practice, not the automatic due queue.
+    // Derive the next letter from the held prompt: no cursor or schedule rewrite.
+    let nato_next = app.practice.current.as_ref().and_then(|p| {
+        let study = &app.practice.studies[&p.prompt.study_id];
+        (crate::library::is_nato(&app.library.versions[&study.version_id])
+            && study.status == Status::Active
+            && field(fields, "card_id").is_empty()
+            && field(fields, "recite").is_empty()
+            && (field(fields, "study_id").is_empty() || field(fields, "study_id") == study.id))
+            .then(|| (study.clone(), (p.targets[0].unit_index + 1) % 26))
+    });
     app.practice.current = None;
     let sid = field(fields, "study_id");
     if !sid.is_empty() && !app.practice.studies.contains_key(sid) {
@@ -675,7 +706,16 @@ fn next(
         app.practice.current = Some(presentation);
     } else {
         let explicit = field(fields, "card_id");
-        let chosen = if !explicit.is_empty() {
+        let chosen = if let Some((study, index)) = nato_next {
+            Some(
+                app.practice
+                    .cards
+                    .values()
+                    .find(|c| c.study_id == study.id && c.unit_index == index)
+                    .map(|c| c.id.clone())
+                    .unwrap_or_else(|| introduce_card(app, &study, index, now, seed)),
+            )
+        } else if !explicit.is_empty() {
             let card = app
                 .practice
                 .cards
@@ -745,22 +785,7 @@ fn next(
                     .values()
                     .filter(|c| c.study_id == study.id)
                     .count();
-                let unit = units(&app.library.versions[&study.version_id])[index];
-                let cid = id(seed, "card");
-                app.practice.cards.insert(
-                    cid.clone(),
-                    Card {
-                        id: cid.clone(),
-                        study_id: study.id,
-                        unit_id: unit.id.clone(),
-                        unit_index: index,
-                        direction: Direction::Forward,
-                        introduced_ms: now,
-                        revision: 0,
-                        state: initial(now, app.library.versions[&study.version_id].kind),
-                    },
-                );
-                cid
+                introduce_card(app, &study, index, now, seed)
             })
         };
         if let Some(cid) = chosen {
