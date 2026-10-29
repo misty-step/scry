@@ -1256,14 +1256,9 @@ impl View<'_> {
                     }
                 },
             );
-            let accuracy = if letter.unassisted == 0 {
-                "—".into()
-            } else {
-                format!(
-                    "{}%",
-                    (letter.correct * 100 + letter.unassisted / 2) / letter.unassisted
-                )
-            };
+            let accuracy = letter
+                .accuracy_percent()
+                .map_or_else(|| "—".into(), |value| format!("{value}%"));
             let tone = match letter.recent.last().map(|r| &r.outcome) {
                 Some(Outcome::Correct) => "correct",
                 Some(Outcome::Miss) => "miss",

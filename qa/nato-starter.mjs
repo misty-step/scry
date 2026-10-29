@@ -99,6 +99,7 @@ export async function starterWalk(browser,capture){
    if(width===390)await new Promise(resolve=>setTimeout(resolve,65_000));
    if(width>=1000){await page.keyboard.press('Enter');}else await activate(page.getByRole('button',{name:/^Next/}));
    await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'B');assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
+   if(!noJS)assert.equal(await input.evaluate(node=>node===document.activeElement),true,'Next restores input focus');
    // Progress inspection is entirely read-only and must preserve a typed draft.
    const beforeInspect=await f.rows();await input.fill('Bra');
    await activate(page.locator('#nato-progress > summary'));
@@ -115,7 +116,6 @@ export async function starterWalk(browser,capture){
    assert.equal(await input.inputValue(),'Bra');assert.deepEqual(await f.rows(),beforeInspect,'Inspecting progress never writes or changes the held prompt');
    if(!noJS){
     await input.focus();
-    assert.equal(await input.evaluate(node=>node===document.activeElement),true,'Next restores input focus');
     await input.fill('Bravo');const saved=await f.rows();await context.setOffline(true);await activate(page.getByRole('button',{name:/^Check/}));await page.getByText('You are offline. Your draft is still here.',{exact:true}).waitFor();assert.deepEqual(await f.rows(),saved);assert.equal(await input.inputValue(),'Bravo');assert.equal(await page.locator('[data-verdict]').count(),0);await banner('offline');await shot('offline');await context.setOffline(false);
     await page.keyboard.press('Enter');await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,2);
     await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'C');
@@ -176,7 +176,12 @@ export async function progressWalk(browser,capture){
     await page.locator('#progress-E').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#progress-F').isChecked(),true);assert.equal(await page.getByLabel('Type your answer',{exact:true}).inputValue(),'Draft stays here');
    }
    await activate(page.locator('label[for="progress-A"]'));
-   await page.addStyleTag({content:'html { font-size: 200% !important; }'});
+   // Snapshot before applying: scaling inherited values sequentially would
+   // compound them. This exercises real doubled text, not an unused root size.
+   await page.evaluate(()=>{
+    const sizes=[...document.querySelectorAll('body, body *')].map(node=>[node,parseFloat(getComputedStyle(node).fontSize)]);
+    for(const [node,size] of sizes)node.style.setProperty('font-size',`${size*2}px`,'important');
+   });
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'200% text layout fits');
    row.evidence.push(await capture(page,`nato-progress-${width}-text200.png`));
    assert.deepEqual((await f.rows()).meta.practice,before.meta.practice);
