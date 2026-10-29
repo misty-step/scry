@@ -2,11 +2,25 @@
 
 Status: superseded for shipping by the owner's 2026-10-29 simplification
 decision; retained below as history. The [current procedure](../rust-cloudflare.md#reviewable-release-procedure)
-deploys the tested merged-source artifact directly. Generated metadata PRs,
+builds and tests master once, then deploys those bytes directly. Generated metadata PRs,
 release tags and repeated CI are no longer deployment prerequisites. Historical
 versions/notes remain intact; intentional version bumps are ordinary source
 changes. No current runtime behavior or saved data is changed by retiring the
 generator.
+
+## Current decision
+
+The owner's October 29, 2026 instruction removes all deployment machinery beyond
+building, testing and deploying the application. Master CI runs the full native
+and browser checks once, Wrangler deploys the tested modules to the existing
+Worker, and a readback verifies code identity. No generated release PR, recovery
+rehearsal, approval window, lock or custody fingerprint blocks ordinary shipping.
+Stored content, application validation, Access protection and secrets remain.
+
+## Historical decision (superseded)
+
+The following records the previous release system. It is not an instruction to
+restore that system or a current deployment prerequisite.
 
 Scry has one release unit: the Rust Worker, its presentation assets and bundled
 notes. npm is build/QA tooling, not a separately released program. Follow the

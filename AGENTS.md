@@ -16,8 +16,8 @@ decisions. Do not restate their contracts here.
 
 [ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns the current Rust
 candidate's architecture, module boundaries, ingress and persistence decisions.
-[The candidate procedure](docs/rust-cloudflare.md) owns build/release/isolated
-restore instructions. Historical Go decisions are labeled in the ADR index;
+[The deployment procedure](docs/rust-cloudflare.md) owns the current build and
+direct-deployment instructions. Historical Go decisions are labeled in the ADR index;
 retired Rust architecture and receipts remain historical, not candidate proof.
 
 ## Product, privacy, and historical stores
@@ -52,12 +52,14 @@ dogfood, beta and Go receipts retain their original meanings and bytes.
 
 ## Shipping
 
-Use the native task's required independent review and exact-head protected CI.
-Merge only verified source through normal protection. The merged-source CI
-artifact deploys directly through the [release procedure](docs/rust-cloudflare.md#reviewable-release-procedure):
-unchanged custody uses fresh backup metadata and compatible code rollback;
-custody transitions require independent maintenance proof. A source merge is
-not a deployment receipt or closure of rewrite acceptance.
+Use independent review and required source CI, then merge and deploy through the
+[release procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
+Master CI builds/tests once and deploys those exact bytes with Wrangler, followed
+by module/source readback. The owner's October 29, 2026 simplification retires
+custom recovery drills, approval windows, cleanup locks and custody fingerprint
+gates as shipping prerequisites. Preserve actual stored content, authentication
+and secrets; do not provision replacement infrastructure or reset learner data.
+A source merge is not a deployment receipt or authenticated learner acceptance.
 Foundation bot approval and adoption checks are retired.
 
 ## Agent skills

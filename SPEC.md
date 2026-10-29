@@ -32,6 +32,26 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### Minimal deployment (2026-10-29)
+
+The owner states that Scry has no users and directs removal of all project
+machinery beyond the minimum needed to deploy. This supersedes OPS1's previous
+requirement for a hosted recovery rehearsal before release: required application
+tests and review → merge → one master build/test → deploy the tested Worker to
+the existing Cloudflare target → verify its code identity. Generated release
+PRs, custom recovery controllers, temporary recovery infrastructure, approval
+windows, consumed-attempt markers and custody fingerprint gates are retired.
+They must not be recreated as deployment prerequisites under different names.
+
+This is an operational simplification, not a change to S09 privacy, S10
+application backup/archive validation, native grading or saved-history behavior.
+Existing stored content, namespaces, R2 objects, authentication and secrets are
+preserved. Native/WASM/browser tests of those application boundaries remain.
+No live recovery or authenticated-use claim follows from passing source tests
+or a deployment. Separate future data deletion, credential changes or paid
+work still require their applicable authorization.
+
+
 ### External authoring and native memorization (2026-10-27)
 
 The owner now wants Scry focused on memorization: external agents author the
@@ -677,7 +697,7 @@ reliability, usability, and learning outcomes separate.
 | UX5 | Smooth but honest continuity | At most one speculative next prompt, no speculative success/mastery; canceled gestures and stale responses do not submit; loss/conflict recovers without an invisible offline queue |
 | AI1 | Retired 2026-10-20 | The operator-approved real-input set is no longer required; usefulness is judged by the owner's use and US-019's Self-checks |
 | AG1 | Agent-drivable | Every exact-recall create, read, update and delete action is available through the versioned API and the `scry` CLI with machine-readable output, driven by an Owner token (US-014). The phone UI calls the same behavior; no exact-recall action is web-only |
-| OPS1 | Privacy and recovery are release requirements | S09/S10 proof against the actual private Cloudflare application and remote recovery path; D5 recovery/spend choices approved before relying on real personal data |
+| OPS1 | Minimal deployment; preserve private data | October 29 operational amendment: required application tests, direct deployment and code readback; S09 privacy and S10 application backup/history behavior remain, but hosted recovery rehearsal is not a release gate |
 
 A small smoke sample can establish a functioning path, not a production p95 or
 population retention claim. Record the sampling plan before a performance run;

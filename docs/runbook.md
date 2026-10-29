@@ -1,5 +1,7 @@
 # Scry production runbook
 
+**Current deployment (October 29, 2026):** use the [minimal build/deploy guide](rust-cloudflare.md). The dated procedures below are historical evidence, not instructions to run retired Go hosts, backup gateways, recovery drills or approval gates. Existing stored data and secrets remain untouched.
+
 The 2026-10-07 Rust/Cloudflare rewrite is a source candidate, not an activation.
 The deployed Go runtime and the operational evidence below remain unchanged.
 Use retained Go artifacts or exact Git revision `c6ba395` for these historical
