@@ -141,9 +141,14 @@ def prepare():
     assert re.fullmatch('[0-9]+', identity) and re.fullmatch('[a-f0-9]{64}', checksum), 'Invalid artifact ID or SHA256'
     metadata = json.loads(gh('actions/artifacts/' + identity))
     run = json.loads(gh('actions/runs/' + str(metadata['workflow_run']['id'])))
-    assert not metadata['expired'] and run['conclusion'] == 'success', 'Artifact expired or CI run did not succeed'
+    assert not metadata['expired'], 'Artifact expired'
+    # Build and deployment share one workflow. A failed/unfinished deployment
+    # must not invalidate immutable bytes from its completed successful CI job.
+    jobs = json.loads(gh('actions/runs/' + str(run['id']) + '/jobs'))['jobs']
+    checks = [job for job in jobs if job['name'] == 'ci']
+    assert len(checks) == 1 and checks[0]['status'] == 'completed' and checks[0]['conclusion'] == 'success', 'Exact-source CI job did not succeed'
     assert run['head_branch'] == 'master' and run['event'] == 'push' and run['path'] == '.github/workflows/ci.yml', 'Artifact must come from master push CI'
-    ancestor(run['head_sha'], os.environ['GITHUB_SHA'])
+    assert run['head_sha'] == os.environ['GITHUB_SHA'], 'Artifact must match the checked-out deployment source'
     raw = gh('actions/artifacts/' + identity + '/zip')
     assert sha(raw) == checksum and metadata['digest'] == 'sha256:' + checksum, 'Artifact archive digest mismatch'
     OUT.mkdir(parents=True, exist_ok=False)
@@ -159,8 +164,7 @@ def prepare():
     assert proof['source_state'] == 'committed' and proof['revision'] == run['head_sha'], 'Artifact proof must match committed CI source'
     for name in ('deploy/rust-production.toml', 'scripts/scry-promote.py',
                  'scripts/scry-cloud-backup.py', 'scripts/scry-cloud-recovery.py', 'recovery/cloud-restore.mjs',
-                 'recovery/target-adapter.mjs',
-                 'deploy/cloud-recovery-approval.json'):
+                 'recovery/target-adapter.mjs'):
         expected = subprocess.check_output(['git', 'show', proof['revision'] + ':' + name], cwd=ROOT)
         assert (ROOT / name).read_bytes() == expected, 'Promotion configuration differs from tested source'
     save({'artifact_id': int(identity), 'artifact_zip_sha256': checksum, 'source': proof['revision'], 'stage': 'artifact_verified'})
@@ -237,8 +241,8 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
                            recovery_cloud_request_attempts=cloud_request_attempts, recovery_preview_request_attempts=preview_request_attempts,
                            recovery_cleanup_outcomes=outcomes, recovery_privacy_observations=privacy, cloud_recovery_error='CLOUD_RECOVERY_NOT_VERIFIED')
             save(receipt)
-            # Emit only the validated failure fields before the always-run
-            # claim-expiry wait; never dump the receipt or exception body.
+            # Emit only the validated failure fields before always-run
+            # resource cleanup; never dump the receipt or exception body.
             print(json.dumps({'error': 'CLOUD_RECOVERY_NOT_VERIFIED',
                               'deployment_attempted': receipt['deployment_attempted'], 'recovery_phase': phase,
                               'primary_reason': primary, 'recovery_operation': operation,
@@ -260,7 +264,16 @@ def cloud_gate(receipt, config, before, deployments, prior, *, after_restore):
             (RECEIPT.parent / 'recovery-cleanup.json').write_text(json.dumps(cleanup, indent=2) + '\n')
         raise
 
+def routine_gate(receipt, config, before, prior):
+    spec = importlib.util.spec_from_file_location('scry_cloud_backup', ROOT / 'scripts/scry-cloud-backup.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.routine_gate(SimpleNamespace(gh=gh), receipt, config, before, prior)
+
+
 def deploy():
+    mode = os.environ.get('SCRY_DEPLOY_MODE', 'promote')
+    assert mode in ('promote', 'recover'), 'Unknown deployment mode'
     config = tomllib.loads(CONFIG.read_text())
     base = 'https://api.cloudflare.com/client/v4/accounts/' + config['account_id']
     script = '/workers/scripts/' + config['name']
@@ -321,32 +334,41 @@ def deploy():
         deployed = request(script + '/deployments')['deployments'][0]
         final = version(single_version(deployed))
         assert release_source(final) == receipt['source'], 'Deployed release annotation differs from promoted source'
-        receipt.update(stage='exact_artifact_uploaded_recurrence_pending', worker=config['name'], deployment=deployed, mutable_bindings_unchanged=True,
+        receipt.update(stage='exact_artifact_uploaded_live_check_pending', worker=config['name'], deployment=deployed, mutable_bindings_unchanged=True,
                        module_sha256=actual, routes_changed=False, serving_edges=serving, learner_bodies_requested=False)
         save(receipt)
-    # Upload runs only after complete independent restore and while the same
-    # short-lived checker remains available for one persisted recurrence read.
+    # Shared exact-byte upload. Ordinary releases prove unchanged custody and
+    # fresh metadata; explicit maintenance adds independent restore first.
     def after_restore():
-        snapshots = request('/r2/buckets/' + mutable['SCRY_BACKUPS'] + '/objects?per_page=1000&prefix=snapshots%2F' + config['vars']['SPACE_NAME'] + '%2F')
-        assert snapshots, 'Import and canonically verify the unused space before activation'
-        receipt.update(stage='upload_attempted_recurrence_pending', deployment_attempted=True,
+        receipt.update(stage='upload_attempted_live_check_pending', deployment_attempted=True,
                        recovery_verified=False)
         save(receipt)
         subprocess.run([str(ROOT / 'node_modules/.bin/wrangler'), 'deploy', '--config', str(CONFIG), '--no-bundle', '--message', 'scry-rust ' + receipt['source']], cwd=ROOT, check=True)
         verify_uploaded()
 
-    # An uploaded-but-unverified failure must not become success through the
-    # old same-source shortcut on a new run with a freshly prepared receipt.
-    if prior == (receipt['source'], True):
-        recovery = receipt.get('cloud_recovery', {}).get('recovery', {})
-        assert (receipt.get('stage') == 'exact_artifact_promoted'
-                and recovery.get('recurrence_verified') is True
-                and recovery.get('cleanup_verified') is True), 'Already deployed source lacks verified recovery receipt'
-        verify_uploaded()
-    else:
+    if mode == 'recover':
+        # Explicit bounded maintenance remains available for custody transitions.
+        # Ordinary code deployments never allocate a recovery environment.
         receipt['cloud_recovery'] = cloud_gate(receipt, config, before, deployments, prior,
                                              after_restore=after_restore)
-    receipt.update(stage='exact_artifact_promoted', recovery_verified=True)
+        receipt.update(stage='exact_artifact_promoted', recovery_verified=True)
+    else:
+        receipt['backup'] = routine_gate(receipt, config, before, prior)
+        receipt['rollback_version'] = single_version(previous)
+        receipt['rollback_source'] = prior[0]
+        # Recheck the writer after metadata/provenance reads and before upload.
+        current = request(script + '/deployments')['deployments'][0]
+        single_version(current)
+        assert current == previous, 'Live deployment changed before upload'
+        assert request(script + '/settings') == before, 'Live settings changed before upload'
+        assert observe() == serving, 'Custom domains or routes changed before upload'
+        if prior != (receipt['source'], True):
+            after_restore()
+        else:
+            # Re-observe exact modules on rerun; never infer success from source.
+            verify_uploaded()
+        receipt.update(stage='exact_artifact_promoted', recovery_verified=False,
+                       live_modules_verified=True, storage_identity_verified=True)
     save(receipt)
     print(json.dumps(receipt))
 

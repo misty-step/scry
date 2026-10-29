@@ -60,6 +60,13 @@ WASM and Worker loader/assets exercised must be the bytes staged later; never
 rebuild between proof and activation. A passing source gate is not a deployment
 receipt or a guarantee that remote recovery is usable.
 
+Normal shipping reuses the single full CI artifact and its story receipt; the
+protected `story-walk` status does not rerun the walk. Ordinary unchanged-custody
+releases use fresh native R2 metadata and compatible code rollback, not a paid
+hosted restore every time. The metadata receipt is not readback/restore proof.
+Custody transitions retain explicit independent recovery requirements; see the
+[current release procedure](../rust-cloudflare.md#reviewable-release-procedure).
+
 ## Focused checks
 
 | Changed boundary | Existing Rust checks | Additional observation |

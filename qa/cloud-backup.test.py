@@ -244,12 +244,12 @@ class ObservedGateLifecycle(unittest.TestCase):
             claim=lambda *args, **kwargs: events.append('claim'), run=restore)
         promote = SimpleNamespace(single_version=lambda value: 'old-live', edges=lambda *args: [], OUT=Path('synthetic'))
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); (root / 'deploy').mkdir(); (root / BACKUP.APPROVAL_PATH).write_text(json.dumps(approval))
+            root = Path(directory)
             with mock.patch.object(BACKUP, 'ROOT', root), mock.patch.object(BACKUP, 'Cloudflare', Client), \
                  mock.patch.object(BACKUP, 'load_module', return_value=recovery), mock.patch.object(BACKUP, 'datetime', wraps=datetime) as clock, \
                  mock.patch.object(BACKUP, 'verify_reviewed_source'), mock.patch.object(BACKUP, 'require_backup_contract'), \
                  mock.patch.object(BACKUP, 'qualified_modules', return_value={}), mock.patch.object(BACKUP, 'module_hashes', return_value={}), \
-                 mock.patch.dict(os.environ, {'CLOUDFLARE_API_TOKEN': 'synthetic'}):
+                 mock.patch.dict(os.environ, {'CLOUDFLARE_API_TOKEN': 'synthetic', 'SCRY_RECOVERY_APPROVAL': json.dumps(approval)}):
                 clock.now.return_value = checked
                 result = BACKUP.gate(promote, {'source': 'a' * 40}, config, before, [deployment], ('b' * 40, True),
                                      after_restore=lambda: events.append('upload'))
@@ -258,7 +258,7 @@ class ObservedGateLifecycle(unittest.TestCase):
                 self.assertFalse(result['backup']['new_production_backup_triggered'])
                 self.assertFalse(result['backup']['natural_next_day_run_observed'])
                 events.clear(); approval.pop('production_health_service')
-                (root / BACKUP.APPROVAL_PATH).write_text(json.dumps(approval))
+                os.environ['SCRY_RECOVERY_APPROVAL'] = json.dumps(approval)
                 with self.assertRaisesRegex(BACKUP.GateError, 'service access is not approved'):
                     BACKUP.gate(promote, {'source': 'a' * 40}, config, before, [deployment], ('b' * 40, True),
                                 after_restore=lambda: events.append('upload'))
@@ -418,40 +418,79 @@ class BootstrapLifecycle(unittest.TestCase):
 
 
 class ApprovalSourceBinding(unittest.TestCase):
-    def test_native_version_only_release_is_allowed_but_product_or_script_byte_is_not(self):
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(BACKUP, 'ROOT', Path(directory)):
-            root = Path(directory)
-            def git(*args):
-                return subprocess.check_output(['git', '-c', 'user.name=Synthetic proof', '-c',
-                    'user.email=proof@example.invalid', *args], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
-            git('init', '--quiet')
-            files = {'Cargo.toml': '[package]\nname="scry"\nversion="0.8.1"\n',
-                     'Cargo.lock': 'version=4\n[[package]]\nname="scry"\nversion="0.8.1"\n',
-                     'package.json': '{"name":"scry","version":"0.8.1","scripts":{"ci":"unchanged"}}',
-                     'package-lock.json': '{"version":"0.8.1","packages":{"":{"version":"0.8.1"}}}',
-                     '.release-please-manifest.json': '{".":"0.8.1"}',
-                     'CHANGELOG.md': '# Changelog\n\n## [0.8.1]\n\nRetained history.\n',
-                     'src/lib.rs': '// exact product bytes\n', 'scripts/guard.py': '# exact operational bytes\n',
-                     BACKUP.APPROVAL_PATH: '{"approved":false}\n'}
-            def write(path, text):
-                target = root / path; target.parent.mkdir(parents=True, exist_ok=True); target.write_text(text)
-            for path, contents in files.items(): write(path, contents)
-            git('add', '.'); git('commit', '--quiet', '-m', 'reviewed implementation')
-            baseline = git('rev-parse', 'HEAD')
-            for path in BACKUP.RELEASE_METADATA - {'CHANGELOG.md'}: write(path, files[path].replace('0.8.1', '0.9.0'))
-            write('CHANGELOG.md', files['CHANGELOG.md'].replace('# Changelog\n\n', '# Changelog\n\n## [0.9.0]\n\nNew release.\n\n'))
-            write(BACKUP.APPROVAL_PATH, '{"approved":true}\n')
-            git('add', '.'); git('commit', '--quiet', '-m', 'native version-only release')
-            source = git('rev-parse', 'HEAD')
-            approval = {'reviewed_source': baseline, 'release_version': '0.9.0'}
-            BACKUP.verify_reviewed_source(approval, {'source': source})
-            for path, text in [('src/lib.rs', files['src/lib.rs'] + 'x'),
-                               ('scripts/guard.py', files['scripts/guard.py'] + 'x'),
-                               ('package.json', '{"name":"scry","version":"0.9.0","scripts":{"ci":"bypass"}}'),
-                               ('CHANGELOG.md', '# Changelog\n\n## [0.9.0]\nOld history removed.\n')]:
-                git('reset', '--hard', source)
-                write(path, text); git('add', '.'); git('commit', '--quiet', '-m', 'unauthorized one-byte drift')
-                with self.subTest(path=path), self.assertRaises(BACKUP.GateError):
-                    BACKUP.verify_reviewed_source(approval, {'source': git('rev-parse', 'HEAD')})
+    def test_operational_approval_requires_exact_source_without_version_exception(self):
+        BACKUP.verify_reviewed_source({'reviewed_source': 'a' * 40}, {'source': 'a' * 40})
+        for source in ('b' * 40, '', None, 'a' * 39):
+            with self.subTest(source=source), self.assertRaises(BACKUP.GateError):
+                BACKUP.verify_reviewed_source({'reviewed_source': 'a' * 40}, {'source': source})
+
+
+class RoutineGate(unittest.TestCase):
+    def test_unchanged_custody_uses_only_fresh_metadata_and_never_claims_restore(self):
+        config = {'account_id': 'a' * 32, 'name': 'synthetic-production', 'vars': {'SPACE_NAME': 'synthetic'}}
+        bindings = {'bindings': [{'name': 'SCRY_BACKUPS', 'bucket_name': 'synthetic-private'}]}
+        item = {'key': 'snapshots/synthetic/1793131200000-daily-' + 'a' * 48 + '.json',
+                'size': 100, 'etag': 'b' * 32, 'last_modified': '2026-10-27T19:00:00Z', 'storage_class': 'Standard'}
+        client = mock.Mock()
+        client.request.return_value = (b'modules', 'synthetic')
+        with mock.patch.object(BACKUP, 'Cloudflare', return_value=client), \
+             mock.patch.object(BACKUP, 'custody_source', return_value={'same': True}), \
+             mock.patch.object(BACKUP, 'require_backup_contract'), \
+             mock.patch.object(BACKUP, 'qualified_modules', return_value={'same': True}), \
+             mock.patch.object(BACKUP, 'module_hashes', return_value={'same': True}), \
+             mock.patch.object(BACKUP, 'list_objects', return_value=[item]) as listing, \
+             mock.patch.object(BACKUP, 'datetime', wraps=datetime) as clock, \
+             mock.patch.dict(os.environ, {'CLOUDFLARE_API_TOKEN': 'synthetic'}):
+            clock.now.return_value = NOW
+            result = BACKUP.routine_gate(None, {'source': 'b' * 40}, config, bindings, ('a' * 40, True))
+            self.assertTrue(result['snapshot_metadata_verified'])
+            for name in ('full_readback_verified', 'independent_restore_verified', 'learner_bodies_requested', 'new_backup_triggered'):
+                self.assertFalse(result[name])
+            self.assertEqual(result['snapshot_age_seconds'], 3600)
+            self.assertNotIn(item['key'], json.dumps(result)); self.assertNotIn(item['etag'], json.dumps(result))
+            self.assertEqual(client.request.call_args_list, [mock.call('/workers/scripts/synthetic-production/content/v2', raw=True)])
+            for changed in ({'last_modified': '2026-10-26T19:59:59Z'}, {'last_modified': '2026-10-27T20:00:01Z'},
+                            {'key': 'snapshots/synthetic/anything.json'}, {'etag': 'not-a-checksum'}):
+                listing.return_value = [item | changed]
+                with self.subTest(changed=changed), self.assertRaisesRegex(BACKUP.GateError, 'fresh bounded'):
+                    BACKUP.routine_gate(None, {'source': 'b' * 40}, config, bindings, ('a' * 40, True))
+
+    def test_custody_change_refuses_before_any_cloud_request(self):
+        with mock.patch.object(BACKUP, 'custody_source', side_effect=[{'old': True}, {'new': True}]), \
+             mock.patch.object(BACKUP, 'Cloudflare') as cloud:
+            with self.assertRaisesRegex(BACKUP.GateError, 'custody changed'):
+                BACKUP.routine_gate(None, {'source': 'b' * 40}, {}, {}, ('a' * 40, True))
+            cloud.assert_not_called()
+
+    def test_custody_covers_native_storage_methods_and_all_serialized_models(self):
+        runtime = (ROOT / 'src/runtime.rs').read_text()
+        def read(args, **kwargs):
+            return (ROOT / args[-1].split(':', 1)[1]).read_bytes()
+        with mock.patch.object(BACKUP.subprocess, 'check_output', side_effect=read):
+            baseline = BACKUP.custody_source('a' * 40)
+        self.assertTrue(set(BACKUP.CUSTODY_FILES) <= baseline.keys())
+        self.assertTrue({'runtime/' + name for name in BACKUP.CUSTODY_RUNTIME} <= baseline.keys())
+        self.assertTrue({'src/engine.rs', 'src/generation.rs', 'src/grading/unicode.rs',
+                         'src/grading/unicode_tables.rs'} <= set(BACKUP.CUSTODY_FILES))
+        for path in BACKUP.CUSTODY_FILES:
+            def changed(args, **kwargs):
+                value = read(args, **kwargs)
+                return value + b'// synthetic change' if args[-1].endswith(':' + path) else value
+            with self.subTest(path=path), mock.patch.object(BACKUP.subprocess, 'check_output', side_effect=changed):
+                self.assertNotEqual(BACKUP.custody_source('b' * 40), baseline)
+        for path in ('src/engine.rs', 'src/generation.rs', 'src/grading/unicode.rs', 'src/grading/unicode_tables.rs'):
+            def validation_change(args, **kwargs):
+                value = read(args, **kwargs)
+                return value + b'\n// changed App validation or grade replay dependency\n' if args[-1].endswith(':' + path) else value
+            with self.subTest(validation_dependency=path), mock.patch.object(BACKUP.subprocess, 'check_output', side_effect=validation_change):
+                changed = BACKUP.custody_source('b' * 40)
+            with mock.patch.object(BACKUP, 'custody_source', side_effect=[baseline, changed]), mock.patch.object(BACKUP, 'Cloudflare') as cloud:
+                with self.assertRaisesRegex(BACKUP.GateError, 'custody changed'):
+                    BACKUP.routine_gate(None, {'source': 'b' * 40}, {}, {}, ('a' * 40, True))
+                cloud.assert_not_called()
+        with mock.patch.object(BACKUP.subprocess, 'check_output', side_effect=lambda args, **kw:
+                runtime.replace('    fn save(', '    fn renamed_save(').encode() if args[-1].endswith(':src/runtime.rs') else read(args, **kw)):
+            with self.assertRaisesRegex(BACKUP.GateError, 'boundary unavailable'):
+                BACKUP.custody_source('b' * 40)
 
 if __name__ == '__main__': unittest.main()
