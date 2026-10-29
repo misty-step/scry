@@ -204,7 +204,8 @@ def admit(receipt=None, *, approval=None, starting=True, now_ms=None):
 # envelope, but never substitute a UTC calendar month for the account cycle.
 DRAIN_MS = 72 * 60 * 60 * 1000
 # Reviewed cumulative residency envelope includes prior partial usage and drain.
-ACCOUNTING_WINDOW_MS = 96 * 60 * 60 * 1000
+# Three bounded objects at128MiB for100h remain below one1mGB-s unit.
+ACCOUNTING_WINDOW_MS = 100 * 60 * 60 * 1000
 
 
 def verify_billing_period(request, *, now_ms=None):

@@ -296,6 +296,22 @@ class Recovery(unittest.TestCase):
             R.claim(approval(),RECEIPT,call,'synthetic-private')
         call.assert_not_called()
 
+    def test_reviewed_100h_cumulative_continuation_horizon(self):
+        self.assertEqual(R.ACCOUNTING_WINDOW_MS,100*60*60*1000)
+        checked=int(R.datetime(2026,10,29,2,30,tzinfo=R.timezone.utc).timestamp()*1000)
+        a=approval()|{'accounting_started_ms':1793160106000,'expires_ms':1793251800000}
+        window=R.verify_billing_period(lambda *args,**kw:subscriptions(),now_ms=checked)
+        R.require_billing_period(window,a,now_ms=checked)
+        horizon=a['expires_ms']+R.DRAIN_MS-a['accounting_started_ms']
+        self.assertEqual(horizon,350894000)
+        self.assertLess(horizon,R.ACCOUNTING_WINDOW_MS)
+        self.assertEqual(R.rounded_quote({n:v[2] for n,v in R.METERS.items()}),19235000)
+        self.assertLess(3*100*3600*134217728,1_000_000*10**9)
+        with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+            R.require_billing_period(window,a|{'accounting_started_ms':a['expires_ms']+R.DRAIN_MS-R.ACCOUNTING_WINDOW_MS-1},now_ms=checked)
+        with self.assertRaisesRegex(R.RecoveryBlocked,'BILLING_PERIOD'):
+            R.require_billing_period(window|{'period_end_ms':a['expires_ms']+R.DRAIN_MS},a,now_ms=checked)
+
     def test_claim_cleanup_waits_expiry_and_only_deletes_exact_body(self):
         class Claims:
             def __init__(self):self.body=None;self.calls=[]
