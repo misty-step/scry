@@ -40,19 +40,81 @@ export async function starterJourney(){
   return {status:'pass',native_forms:true,explicit_add:true,pairs:26,repeat_preserves_history:true,client_override_refused:true,egress:0};
  }finally{await f.close();}
 }
+// The main product journey now begins on Home, not in Library/Version setup.
+export async function focusedJourney(){
+ const f=await starterFixture();
+ try{
+  const initial=await f.get('/'),before=await f.rows();assert.match(initial,/data-state="nato-home"/);assert.match(initial,/Start practice/);
+  await f.get('/');assert.deepEqual(await f.rows(),before,'Home reads do not import or select.');
+  const start=nativeFields(initial,'/practice/nato/start');
+  for(const extra of [{grade:'Good'},{answer:'Alfa'},{pace:'light'}]){const saved=await f.rows();assert.equal((await f.post('/practice/nato/start',{...start,...extra,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),saved);}
+  const missing={...start};delete missing.csrf;assert.equal((await f.post('/practice/nato/start',missing)).status,403);
+  const starts=await Promise.all([f.post('/practice/nato/start',start),f.post('/practice/nato/start',start)]);assert.ok(starts.every(r=>r.status===303));
+  const prompt=await f.get('/?practice=nato');assert.match(prompt,/data-state="exact-prompt"/);assert.doesNotMatch(prompt,/Alfa|Bravo|Alphabet reference/);
+  const started=await f.rows();assert.equal(Object.keys(started).filter(k=>k.startsWith('practice_studies/')).length,1);assert.equal(Object.keys(started).filter(k=>k.startsWith('library_versions/')).length,1);
+  assert.equal((await f.post('/practice/nato/start',{...start,operation_id:randomUUID()})).status,303);const resumed=await f.rows();assert.deepEqual(resumed.meta.practice,started.meta.practice);
+  const answer={...nativeFields(prompt,'/practice/answer'),answer:'Alpha'};
+  const answers=await Promise.all([f.post('/practice/answer',answer),f.post('/practice/answer',answer)]);assert.ok(answers.every(r=>r.status===303));
+  const result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/Alfa/);assert.match(result,/1<span class="nato-muted"> \/ 26 practiced/);
+  const graded=await f.rows();assert.equal(Object.keys(graded).filter(k=>k.startsWith('practice_attempts/')).length,1);
+  await f.get('/');await f.get('/?practice=nato');assert.deepEqual((await f.rows()).meta.practice,graded.meta.practice,'Reload holds result.');
+  assert.equal((await f.post('/practice/next',nativeFields(result,'/practice/next'))).status,303);
+  const next=await f.get('/?practice=nato');assert.match(next,/aria-label="Letter B"/);assert.doesNotMatch(next,/Alfa|Bravo|Alphabet reference/);
+  assert.equal((await f.post('/practice/reveal',nativeFields(next,'/practice/reveal'))).status,303);
+  const disclosed=await f.get('/?practice=nato');assert.match(disclosed,/Bravo/);assert.match(disclosed,/1<span class="nato-muted"> \/ 26 practiced/);
+  assert.equal((await f.post('/practice/answer',{...nativeFields(disclosed,'/practice/answer'),answer:'Bravo'})).status,303);
+  const assisted=await f.get('/?practice=nato');assert.match(assisted,/With help/);assert.match(assisted,/1<span class="nato-muted"> \/ 26 practiced/);
+  assert.equal(f.egress,0);return {status:'pass',one_action_start:true,simultaneous_start_and_answer_idempotent:true,strict_server_grading:true,held_on_refresh:true,assistance_does_not_count:true,actual_unique_practiced:1,egress:0};
+ }finally{await f.close();}
+}
 export async function starterWalk(browser,capture){
  const rows=[];
- for(const [width,noJS,scheme]of [[390,false,'light'],[320,true,'dark']]){
-  const f=await starterFixture(),context=await browser.newContext({viewport:{width,height:844},isMobile:true,hasTouch:true,javaScriptEnabled:!noJS,colorScheme:scheme});
+ for(const [width,noJS,scheme]of [[390,false,'light'],[1280,false,'light'],[320,true,'dark']]){
+  const f=await starterFixture(),context=await browser.newContext({viewport:{width,height:844},isMobile:width<1000,hasTouch:width<1000,javaScriptEnabled:!noJS,colorScheme:scheme,reducedMotion:'reduce'});
+  const row={status:'pass',width,noJS,scheme,reduced_motion:true,evidence:[]};rows.push(row);
+  let page;
   try{
-   const page=await context.newPage();page.setDefaultTimeout(12000);await page.goto(f.origin+'/library#nato-starter');
-   const add=page.getByRole('button',{name:'Add NATO alphabet',exact:true});await add.waitFor();const entry=await capture(page,`starter-${width}-${noJS?'native':'enhanced'}-entry.png`);await add.tap();await page.getByRole('button',{name:'Learn',exact:true}).waitFor();
-   await page.getByRole('button',{name:'Learn',exact:true}).tap();await page.getByLabel('Type your answer',{exact:true}).waitFor();assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
-   await page.getByLabel('Type your answer',{exact:true}).fill('Alfa');await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-verdict="Good"]').waitFor();
-   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);const shot=await capture(page,`starter-${width}-${noJS?'native':'enhanced'}-good.png`);
-   await page.getByRole('button',{name:'Next',exact:true}).tap();await page.getByLabel('Type your answer',{exact:true}).waitFor();assert.equal((await page.locator('.exact-cue .reading').innerText()).trim(),'B');
-   rows.push({status:'pass',width,noJS,scheme,explicit_owner_starter:true,evidence:[entry,shot]});
-  }finally{await context.close();await f.close();}
+   page=await context.newPage();page.setDefaultTimeout(12000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
+   const shot=async name=>row.evidence.push(await capture(page,`nato-focus-${width}-${noJS?'native':'enhanced'}-${name}.png`));
+   const layout=async()=>{await page.evaluate(()=>document.fonts.ready);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow');};
+   const banner=async state=>{
+    const geometry=await page.locator('#request-status').evaluate(node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,viewport:innerHeight};});
+    assert.ok(geometry.height>0&&geometry.height<geometry.viewport/2&&geometry.top>geometry.viewport/3,`The ${state} banner is content-sized, not a full-height overlay: ${JSON.stringify(geometry)}`);
+    row.banners={...row.banners,[state]:geometry};
+   };
+   const activate=async button=>width<1000?button.tap():button.click();
+   await page.goto(f.origin+'/');await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();await layout();await shot('entry');
+   await activate(page.getByRole('button',{name:'Start practice',exact:true}));const input=page.getByLabel('Type your answer',{exact:true});await input.waitFor();assert.doesNotMatch(await page.content(),/Alfa|Bravo|Alphabet reference/);await shot('question');
+   if(!noJS)assert.equal(await input.evaluate(node=>node===document.activeElement),true,'New prompt receives focus');
+   await input.fill('Alpha');
+   if(width>=1000)await page.keyboard.press('Enter');else await activate(page.getByRole('button',{name:/^Check/}));
+   await page.locator('[data-verdict="Again"]').waitFor();await page.getByText('Alfa',{exact:true}).waitFor();await layout();await shot('correction');
+   const graded=await f.rows();assert.equal(Object.keys(graded).filter(k=>k.startsWith('practice_attempts/')).length,1);
+   await page.reload();await page.locator('[data-verdict="Again"]').waitFor();assert.deepEqual((await f.rows()).meta.practice,graded.meta.practice);
+   if(width>=1000){await page.keyboard.press('Enter');}else await activate(page.getByRole('button',{name:/^Next/}));
+   await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'B');assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
+   if(!noJS){
+    assert.equal(await input.evaluate(node=>node===document.activeElement),true,'Next restores input focus');
+    await input.fill('Bravo');const saved=await f.rows();await context.setOffline(true);await activate(page.getByRole('button',{name:/^Check/}));await page.getByText('You are offline. Your draft is still here.',{exact:true}).waitFor();assert.deepEqual(await f.rows(),saved);assert.equal(await input.inputValue(),'Bravo');assert.equal(await page.locator('[data-verdict]').count(),0);await banner('offline');await shot('offline');await context.setOffline(false);
+    await page.keyboard.press('Enter');await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,2);
+    await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'C');
+    await input.fill('Not the code word '.repeat(100));await page.keyboard.press('Enter');await page.locator('[data-verdict="Again"]').waitFor();await page.getByText('Charlie',{exact:true}).waitFor();await layout();await shot('long-wrong-answer');
+    // A reduced viewport models browser keyboard occlusion, not a physical phone.
+    await page.keyboard.press('Enter');await input.waitFor();await page.setViewportSize({width,height:480});await layout();await shot('keyboard-viewport');await page.setViewportSize({width,height:844});
+    // Lose only the browser response AFTER the real Worker commits. A retry
+    // must reconcile the frozen operation, not invent optimistic success.
+    const attemptsBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
+    await page.route('**/practice/answer',async route=>{await route.fetch();await page.getByText('Saving…',{exact:true}).waitFor();await banner('saving');await shot('saving');await route.abort('failed');});
+    await input.fill('Delta');await page.keyboard.press('Enter');
+    await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
+    assert.equal(await page.locator('[data-verdict]').count(),0);assert.equal(await input.inputValue(),'Delta');assert.equal(await input.getAttribute('readonly'),'');
+    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);await banner('reconcile');await shot('response-lost');
+    await page.unroute('**/practice/answer');await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
+    await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);row.response_loss_reconciles_once=true;
+   }else{await input.fill('Bravo');await activate(page.getByRole('button',{name:/^Check/}));await page.locator('[data-verdict="Good"]').waitFor();await shot('good');}
+   assert.deepEqual(errors,[]);assert.equal(f.egress,0);row.native_grading=true;row.reload_preserves_result=true;row.egress=0;
+  }catch(error){row.status='fail';row.reason=error.stack||error.message;if(page)row.evidence.push(await capture(page,`nato-focus-${width}-${noJS?'native':'enhanced'}-failure.png`));}
+  finally{await context.close();await f.close();}
  }
  return rows;
 }

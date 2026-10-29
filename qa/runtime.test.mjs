@@ -78,7 +78,7 @@ try {
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
   await check('real RS256 owner signature and private response headers',async()=>{
-    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>Make it memorable\.<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
+    const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/<h1>From Alfa to Zulu\.<\/h1>/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
   await check('empty initialization starts at revision one',async()=>{
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});

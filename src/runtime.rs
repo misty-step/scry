@@ -1289,7 +1289,11 @@ impl DurableObject for LearningSpace {
                 if app.revision != before
                     && (matches!(
                         path.as_str(),
-                        "/create" | "/add" | "/library/version/add" | "/library/mapping/add"
+                        "/create"
+                            | "/add"
+                            | "/library/version/add"
+                            | "/library/mapping/add"
+                            | "/practice/nato/start"
                     ) || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
@@ -1324,11 +1328,27 @@ impl DurableObject for LearningSpace {
                 let destination = fields
                     .get("return_to")
                     .filter(|to| path == "/practice/reveal" && web::library_destination(to));
-                redirect(
-                    destination
-                        .map(String::as_str)
-                        .unwrap_or_else(|| web::mutation_redirect(&app, &path, &result.redirect)),
-                )
+                let focused = path == "/practice/nato/start"
+                    || (path == "/practice/next"
+                        && fields
+                            .get("study_id")
+                            .and_then(|sid| app.practice.studies.get(sid))
+                            .and_then(|s| app.library.versions.get(&s.version_id))
+                            .is_some_and(crate::library::is_nato))
+                    || (matches!(path.as_str(), "/practice/answer" | "/practice/reveal")
+                        && app
+                            .practice
+                            .current
+                            .as_ref()
+                            .and_then(|p| app.library.versions.get(&p.prompt.version_id))
+                            .is_some_and(crate::library::is_nato));
+                redirect(destination.map(String::as_str).unwrap_or_else(|| {
+                    if focused {
+                        "/?practice=nato"
+                    } else {
+                        web::mutation_redirect(&app, &path, &result.redirect)
+                    }
+                }))
             }
         }
     }

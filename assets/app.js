@@ -61,13 +61,23 @@
     const header = doc.querySelector('.masthead');
     if (header) document.querySelector('.masthead')?.replaceWith(header);
     document.title = doc.title;
+    doc.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+      const current = document.querySelector(`meta[name="theme-color"][media="${meta.media}"]`);
+      if (current) current.content = meta.content;
+    });
     pageSequence += 1;
     if (navigation) {
       const url = new URL(response.url, location.href);
       if (url.pathname + url.search !== location.pathname + location.search) history.pushState(null, '', url.pathname + url.search);
-      main.classList.add('new-stage');
-      window.scrollTo({ top: 0, behavior: 'instant' });
-      main.focus({ preventScroll: true });
+      if (main.querySelector('.nato-screen')) {
+        // A repeated review action is immediate, not a page entrance.
+        const target = main.querySelector('#answer') || main.querySelector('[data-next] button') || main;
+        target.focus({ preventScroll: true });
+      } else {
+        main.classList.add('new-stage');
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        main.focus({ preventScroll: true });
+      }
     }
     hideStatus();
     schedulePoll();

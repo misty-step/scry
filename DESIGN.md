@@ -1,3 +1,41 @@
+# Scry: NATO, without the machinery
+
+## Current direction — 2026-10-29
+
+The owner explicitly replaces the generic notebook front door with a NATO-only
+review experience. This supersedes the historical visual direction below;
+[SPEC](SPEC.md#nato-focused-review-2026-10-29) owns behavior. Mode: **Operate**.
+
+One canvas, one question, one next action. The letter itself is the distinctive
+visual: large, crisp, unboxed. A quiet top line says NATO alphabet and counts
+actual letters practised, never mastery. A single input and Check become a
+canonical word and Next after native grading. No sidebar, tiles, nested cards,
+hero illustration, feature list or full-screen transition. The optional alphabet
+reference lives outside protected recall; retained content/account tools sit in
+one small menu. Import and Learn collapse into the deliberate Start action.
+
+Warm neutral paper, dark ink and a restrained green feedback accent replace the
+old ornamental notebook front door. Use the bundled Atkinson font, not a new
+font service. Desktop measure is 480px inside an 880px shell. Phone gutters are
+20px; controls are at least 44px and answer text is 20px. Input and feedback
+occupy a stable canvas. Keyboard review is immediate, without card flips or
+entrance animations; only a restrained button press may move, with reduced-motion
+support. Instant focus rings, normal browser zoom and native no-JS forms remain.
+
+### Applied design references
+
+Emil's design engineering informs focus, thumb targets, mobile viewports and
+no motion on repeated keyboard actions. Leon's Taste app guidance informs the
+subject-derived large letter and flat, task-first hierarchy. Impeccable's Operate
+and Distill guidance removes redundant copy/screens/actions. Hallmark's floor
+informs tokenized color/type, restrained density and honest evidence. Their plain
+instructions were reviewed; downloaded skill executables were not installed or
+claimed as passed. Omarchy's restraint, Greptile/Cloudflare's utilitarian clarity,
+Vercel/Linear's quiet chrome and Macroscope's focus are references, not copied
+branding. Real browser screenshots and native interaction proofs judge the result.
+
+## Historical visual direction (preserved)
+
 # Scry: words worth keeping
 
 Concepts come first (2026-10-24, #388). Home asks “What do you want to learn?”

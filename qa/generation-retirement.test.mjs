@@ -45,6 +45,6 @@ test('retired generation POSTs refuse before jobs, photos, receipts or spend; na
   const answer=(await mutate('/api/v1/answer',{prompt_id:prompt.id,answer:'Alfa'})).practice.attempt;
   assert.equal(answer.grade.verdict,'Good');assert.equal(answer.assisted,false);
   const graded=(await read()).app;assert.deepEqual(graded.spend,[]);assert.deepEqual(graded.jobs,{});assert.deepEqual(graded.goals,{});
-  const home=await(await request('/')).text();assert.match(home,/data-state="review-home"/);assert.match(home,/\/library#nato-starter/);assert.doesNotMatch(home,/href="\/create"/);
+  const home=await(await request('/')).text();assert.match(home,/data-state="nato-home"/);assert.match(home,/data-state="exact-result"/);assert.doesNotMatch(home,/href="\/create"/);
  }finally{await runtime.mf.dispose();}
 });

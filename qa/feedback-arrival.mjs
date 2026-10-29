@@ -22,8 +22,9 @@ export async function feedbackArrival(page, capture, name, zoom) {
       const visible = rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.bottom <= innerHeight && rect.right <= innerWidth;
       return {text:node.textContent,rect:{top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right,width:rect.width,height:rect.height},visible,unoccluded:visible && points.every(([x,y]) => node.contains(document.elementFromPoint(x,y)))};
     };
-    const changed = document.querySelector('[data-feedback-kind], [data-diff-kind]:not([data-diff-kind="correct"])');
-    return {viewport:{width:innerWidth,height:innerHeight},scroll:{x:scrollX,y:scrollY},overflow:document.documentElement.scrollWidth>innerWidth,verdict:observe(document.querySelector('[data-verdict]')),change:observe(changed),replacement:observe(changed?.querySelector('.diff-text') || changed?.lastElementChild),actions:observe(document.querySelector('.exact-study .result-actions'))};
+    const nato = document.querySelector('.nato-feedback');
+    const changed = nato || document.querySelector('[data-feedback-kind], [data-diff-kind]:not([data-diff-kind="correct"])');
+    return {viewport:{width:innerWidth,height:innerHeight},scroll:{x:scrollX,y:scrollY},overflow:document.documentElement.scrollWidth>innerWidth,verdict:observe(document.querySelector('[data-verdict]')),change:observe(changed),replacement:observe(changed?.querySelector('.nato-word, .diff-text') || changed?.lastElementChild),actions:observe(document.querySelector('.nato-stage .nato-action, .exact-study .result-actions'))};
   });
   const evidence = await capture(page, name, {fullPage:false});
   return {geometry,evidence};
