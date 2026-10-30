@@ -5,13 +5,14 @@ import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from 
 import {phoneHistory,phoneHistoryRecovery,seedHistoryNotebook} from './phone-history.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
 export const phoneText='We conceived a patient garden by the water.\n';
 export const previousText='The path begins in our synthetic notebook.\n';
 export const phoneAnswer='We concieved a tired garden the water extra.';
 export async function phoneFixture({port=0,legacy=false}={}) {
+ await mkdir(join(process.env.HOME,'.cache/tmp'),{recursive:true});
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-phone-'));
  const name='phone-'+randomUUID(),space='phone-'+randomUUID(),config=join(temp,'login.json');
  let egress=0;

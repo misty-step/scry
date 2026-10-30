@@ -14,6 +14,7 @@ const observations = [];
 const cliPath = resolve(process.env.SCRY_STUDY_CLI || 'target/debug/scry');
 
 async function fixture(t, twoUnits = false) {
+  await mkdir(join(process.env.HOME, '.cache/tmp'), {recursive: true});
   const temp = await mkdtemp(join(process.env.HOME, '.cache/tmp/study-integrity-'));
   const config = join(temp, 'login.json');
   const name = 'study-integrity-' + randomUUID();
