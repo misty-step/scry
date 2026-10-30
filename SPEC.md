@@ -53,7 +53,11 @@ phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
   fading cue levels, intermediate joined passages (authored Sections), optional
   midpoint starts, and a separate cold whole-text challenge. Cued/revealed typing
   remains assisted evidence. Phrase success never becomes whole-prayer credit.
-  The primary action is Next; optional challenges stay secondary. Deliberate
+  A mismatched phrase shows the expected phrase immediately and offers a guided
+  retry of that same phrase; continuing remains an explicit secondary choice.
+  Successful phrases offer Next. Retry records no new Attempt until submission,
+  and never turns disclosed wording into unaided credit. Optional challenges
+  stay secondary. Deliberate
   lesson entry introduces the selected short text without changing stored Pace
   or globally removing daily schedule constraints.
 - **LESSON-04:** Native deterministic grading owns every result. No client grade,

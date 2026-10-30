@@ -274,7 +274,7 @@ mod cli {
             }
             if args.len() != 2 || !matches!(args[1].as_str(), "start" | "next") {
                 return Err(
-                    "Usage: scry lesson start --starter NAME|--version VERSION [--after PROMPT|--leave PROMPT] | lesson next --after PROMPT [--mode phrases|join|whole|middle]",
+                    "Usage: scry lesson start --starter NAME|--version VERSION [--after PROMPT|--leave PROMPT] | lesson next --after PROMPT [--mode phrases|retry|join|whole|middle]",
                 );
             }
             let action = args[1].as_str();

@@ -142,9 +142,9 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_lesson_next",
-            "Advance an answered authored lesson. phrases cycles meaningful clauses; join checks the current authored section; whole starts a cold complete-text challenge; middle practises a later phrase. Scry owns the grading and assistance evidence.",
+            "Advance an answered authored lesson. phrases cycles meaningful clauses; retry repeats the current individual text phrase with a visible cue and assisted evidence; join checks the current authored section; whole starts a cold complete-text challenge; middle practises a later phrase. Scry owns the grading and assistance evidence.",
             object(
-                json!({"operation_id":operation(),"after":id(),"mode":choices(&["phrases","join","whole","middle"])}),
+                json!({"operation_id":operation(),"after":id(),"mode":choices(&["phrases","retry","join","whole","middle"])}),
                 &["operation_id", "after"],
             ),
             false,

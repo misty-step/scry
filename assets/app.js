@@ -88,6 +88,9 @@
         // A repeated review action is immediate, not a page entrance.
         const target = main.querySelector('#answer') || main.querySelector('[data-next] button') || main;
         target.focus({ preventScroll: true });
+        // Lessons can change height substantially between prompt and feedback.
+        // Start at the phrase identity, rather than leaving it above the viewport.
+        main.querySelector('.lesson-stage')?.scrollIntoView({ block: 'start', behavior: 'instant' });
       } else {
         main.classList.add('new-stage');
         window.scrollTo({ top: 0, behavior: 'instant' });

@@ -303,8 +303,11 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
             identity(&input.after)?;
             let mut payload = json!({"operation_id":input.operation_id,"after":input.after});
             if let Some(mode) = input.mode {
-                if !matches!(mode.as_str(), "phrases" | "join" | "whole" | "middle") {
-                    return Err("Use lesson mode phrases, join, whole or middle.");
+                if !matches!(
+                    mode.as_str(),
+                    "phrases" | "retry" | "join" | "whole" | "middle"
+                ) {
+                    return Err("Use lesson mode phrases, retry, join, whole or middle.");
                 }
                 payload["mode"] = json!(mode);
             }
@@ -669,6 +672,11 @@ mod lesson_tests {
             (
                 "scry_lesson_next",
                 json!({"operation_id":op,"after":"a".repeat(32),"mode":"whole"}),
+                "/api/v1/lessons/next",
+            ),
+            (
+                "scry_lesson_next",
+                json!({"operation_id":op,"after":"a".repeat(32),"mode":"retry"}),
                 "/api/v1/lessons/next",
             ),
         ] {

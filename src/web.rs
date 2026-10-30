@@ -1349,6 +1349,7 @@ impl View<'_> {
         let all = v.sections.iter().flat_map(|s| &s.units).collect::<Vec<_>>();
         let ordered = v.kind == Kind::OrderedList;
         let whole = matches!(p.prompt.scope, Scope::Whole);
+        let phrase = !ordered && matches!(p.prompt.scope, Scope::Unit { .. });
         let a = p
             .attempt_id
             .as_ref()
@@ -1382,18 +1383,26 @@ impl View<'_> {
             escape(&p.prompt.id),
             escape(&work.title)
         );
+        let _ = write!(
+            out,
+            "<p class=\"lesson-position\">{} <span>{}</span></p>",
+            escape(&scope),
+            escape(&v.name)
+        );
         if let Some(a) = a {
             let good = a.grade.verdict == Verdict::Good;
-            let label = if a.assisted {
-                "Practised with help"
-            } else if good {
-                if whole {
-                    "Typed correctly in full"
+            let label = if !good {
+                if phrase {
+                    "Let’s practise this phrase again"
                 } else {
-                    "Correct"
+                    "A little more practice"
                 }
+            } else if a.assisted {
+                "That matches · with help"
+            } else if whole {
+                "Typed correctly in full"
             } else {
-                "A little more practice"
+                "Correct"
             };
             let _ = write!(
                 out,
@@ -1429,39 +1438,64 @@ impl View<'_> {
                         out.push_str("<p class=\"lesson-note\">Your answer also contained an unrecognized or repeated entry.</p>");
                     }
                 }
-            } else {
-                let changed = a
+            } else if !good {
+                let _ = write!(
+                    out,
+                    "<div class=\"lesson-target\"><h2>{}</h2>{}</div><details class=\"lesson-answer\"><summary>Your answer &amp; word comparison</summary><p class=\"reading\">{}</p><ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">",
+                    if phrase {
+                        "The phrase to practise"
+                    } else {
+                        "The selected wording"
+                    },
+                    self.exact_expected(),
+                    escape(&a.raw_answer)
+                );
+                for d in a
                     .grade
                     .diff
                     .iter()
                     .filter(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
-                    .collect::<Vec<_>>();
-                if !changed.is_empty() {
-                    out.push_str(
-                        "<ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">",
-                    );
-                    for d in changed {
-                        out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
-                    }
-                    out.push_str("</ol>");
+                {
+                    out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
                 }
+                out.push_str("</ol></details>");
             }
             if a.assisted {
                 out.push_str("<p class=\"lesson-note\">Hints were visible. No unaided credit or schedule change.</p>");
+            }
+            if phrase && !good {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-retry",
+                    "lesson-action",
+                    "data-next",
+                    &format!(
+                        "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "retry")
+                    ),
+                ));
             }
             out.push_str(&self.form(
                 "/practice/lesson/next",
                 "lesson-next",
                 "lesson-action",
-                "data-next",
+                if phrase && !good { "" } else { "data-next" },
                 &format!(
-                    "{}{}<button class=\"button primary\">{}</button>",
+                    "{}{}<button class=\"{}\">{}</button>",
                     hidden("after", &p.prompt.id),
                     hidden("mode", if ordered { "whole" } else { "phrases" }),
+                    if phrase && !good {
+                        "text-button"
+                    } else {
+                        "button primary"
+                    },
                     if ordered {
                         "Try the sequence again"
                     } else if whole {
                         "Practise phrases"
+                    } else if phrase && !good {
+                        "Continue to next phrase"
                     } else {
                         "Next phrase"
                     }
@@ -1514,12 +1548,14 @@ impl View<'_> {
             if !ordered {
                 out.push_str("</details>");
             }
-            let _ = write!(
-                out,
-                "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
-                escape(&a.raw_answer),
-                self.exact_expected()
-            );
+            if ordered || good {
+                let _ = write!(
+                    out,
+                    "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
+                    escape(&a.raw_answer),
+                    self.exact_expected()
+                );
+            }
         } else {
             if ordered {
                 let _ = write!(
@@ -1537,15 +1573,15 @@ impl View<'_> {
                 if let Some(context) = &p.prompt.context {
                     let _ = write!(
                         out,
-                        "<div class=\"lesson-context\"><span>After</span><p>{}</p></div>",
+                        "<div class=\"lesson-context\"><span>Previous phrase · context only</span><p>{}</p></div>",
                         escape(context)
                     );
                 }
                 let cue_label = match p.prompt.cue_level {
-                    Cue::Read => "Read, then type this phrase",
-                    Cue::FirstLetters => "Recall it from the initials",
-                    Cue::FirstLetter => "One initial to help",
-                    _ => "Type the next phrase from memory",
+                    Cue::Read => "Copy the phrase shown below",
+                    Cue::FirstLetters => "Type this phrase using the initials",
+                    Cue::FirstLetter => "Type this phrase using the first initial",
+                    _ => "Type this phrase from memory",
                 };
                 let _ = write!(out, "<p class=\"lesson-instruction\">{cue_label}</p>");
                 if !p.prompt.cue.is_empty() {
@@ -1578,9 +1614,8 @@ impl View<'_> {
         if !self.app.practice.protected() {
             let _ = write!(
                 out,
-                "<details class=\"lesson-edition\"><summary>Text &amp; source</summary><p><strong>{}</strong></p><p>{}</p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
-                escape(&v.name),
-                escape(&work.context)
+                "<details class=\"lesson-edition\"><summary>Text &amp; source</summary><p><strong>{}</strong></p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
+                escape(&v.name)
             );
             for source in &v.sources {
                 let absolute_http = source
