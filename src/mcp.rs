@@ -111,6 +111,22 @@ struct Learn {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct LessonStart {
+    operation_id: String,
+    starter: Option<String>,
+    version_id: Option<String>,
+    after: Option<String>,
+    leave: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LessonNext {
+    operation_id: String,
+    after: String,
+    mode: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Next {
     operation_id: String,
     after: Option<String>,
@@ -244,6 +260,55 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
                 payload["pace"] = json!(pace);
             }
             Ok(write("/api/v1/learn", payload))
+        }
+        "scry_lesson_start" => {
+            let input: LessonStart = parse(args)?;
+            operation(&input.operation_id)?;
+            if input.starter.is_some() == input.version_id.is_some()
+                || input.after.is_some() && input.leave.is_some()
+            {
+                return Err("Choose exactly one starter or version_id.");
+            }
+            if let Some(starter) = &input.starter
+                && (starter.is_empty()
+                    || starter.len() > 128
+                    || !starter
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+            {
+                return Err("Use a starter ID of up to 128 ASCII letters, digits or hyphens.");
+            }
+            for value in [&input.version_id, &input.after, &input.leave]
+                .into_iter()
+                .flatten()
+            {
+                identity(value)?;
+            }
+            let mut payload = json!({"operation_id":input.operation_id});
+            for (key, value) in [
+                ("starter", input.starter),
+                ("version_id", input.version_id),
+                ("after", input.after),
+                ("leave", input.leave),
+            ] {
+                if let Some(value) = value {
+                    payload[key] = json!(value);
+                }
+            }
+            Ok(write("/api/v1/lessons/start", payload))
+        }
+        "scry_lesson_next" => {
+            let input: LessonNext = parse(args)?;
+            operation(&input.operation_id)?;
+            identity(&input.after)?;
+            let mut payload = json!({"operation_id":input.operation_id,"after":input.after});
+            if let Some(mode) = input.mode {
+                if !matches!(mode.as_str(), "phrases" | "join" | "whole" | "middle") {
+                    return Err("Use lesson mode phrases, join, whole or middle.");
+                }
+                payload["mode"] = json!(mode);
+            }
+            Ok(write("/api/v1/lessons/next", payload))
         }
         "scry_due" => {
             parse::<Empty>(args)?;
@@ -586,5 +651,63 @@ pub fn serve(config: PathBuf) -> owner_client::Result<()> {
                 .and_then(|_| output.flush())
                 .map_err(|_| "Cannot write MCP output.")?;
         }
+    }
+}
+
+#[cfg(test)]
+mod lesson_tests {
+    use super::*;
+    #[test]
+    fn lesson_tools_share_native_routes_and_reject_self_grades() {
+        let op = "lesson-mcp-operation-001";
+        for (name, args, path) in [
+            (
+                "scry_lesson_start",
+                json!({"operation_id":op,"starter":"rosary-joyful"}),
+                "/api/v1/lessons/start",
+            ),
+            (
+                "scry_lesson_next",
+                json!({"operation_id":op,"after":"a".repeat(32),"mode":"whole"}),
+                "/api/v1/lessons/next",
+            ),
+        ] {
+            match prepare(name, args).unwrap() {
+                Call::Api {
+                    path: actual,
+                    payload,
+                } => {
+                    assert_eq!(actual, path);
+                    assert_eq!(payload.unwrap()["operation_id"], op);
+                }
+                _ => panic!("not API"),
+            }
+        }
+        assert!(
+            prepare(
+                "scry_lesson_start",
+                json!({"operation_id":op,"starter":"rosary-joyful","grade":"Good"})
+            )
+            .is_err()
+        );
+        assert!(
+            prepare(
+                "scry_lesson_start",
+                json!({"operation_id":op,"starter":"rosary-joyful","version_id":"a".repeat(32)})
+            )
+            .is_err()
+        );
+        assert!(
+            prepare(
+                "scry_lesson_next",
+                json!({"operation_id":op,"after":"a".repeat(32),"mode":"automatic"})
+            )
+            .is_err()
+        );
+        assert!(
+            schema::tools()
+                .iter()
+                .any(|t| t["name"] == "scry_lesson_start")
+        );
     }
 }

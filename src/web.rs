@@ -1210,6 +1210,405 @@ impl View<'_> {
         out.push_str("</dl><p>Official NATO spellings. <a href=\"https://www.nato.int/cps/en/natohq/declassified_136216.htm\" rel=\"noreferrer\">Source</a></p></details>");
         out
     }
+    fn lesson_picker(&self, open: bool) -> String {
+        let current = self.app.practice.current.as_ref();
+        let held = current.is_some_and(|p| p.attempt_id.is_none());
+        let after = current.map_or(String::new(), |p| {
+            hidden(
+                if p.attempt_id.is_some() {
+                    "after"
+                } else {
+                    "leave"
+                },
+                &p.prompt.id,
+            )
+        });
+        let mut out = format!(
+            "<details class=\"lesson-picker\" {}><summary>Choose what to practise <span aria-hidden=\"true\">↗</span></summary><div class=\"lesson-shelf\">",
+            if open { "open" } else { "" }
+        );
+        if held {
+            out.push_str("<p class=\"lesson-note\">Browsing keeps your typed answer. Switching lessons leaves this unanswered question without recording a grade.</p>");
+        }
+        let mut catalog = crate::lessons::catalog();
+        catalog.insert(
+            0,
+            crate::lessons::Lesson {
+                id: "nato".into(),
+                description: "26 letters. Recall each official code word.".into(),
+                input: crate::library::nato_input().expect("NATO"),
+            },
+        );
+        for item in catalog {
+            let _ = write!(
+                out,
+                "<article class=\"lesson-option\"><div><h3>{}</h3><p>{}</p><small>{}</small></div>",
+                escape(&item.input.title),
+                escape(&item.description),
+                escape(&item.input.name)
+            );
+            out.push_str(&self.form(
+                "/practice/lesson/start",
+                &format!("lesson-{}", item.id),
+                "lesson-start",
+                "",
+                &format!(
+                    "{}{}<button class=\"button secondary\">{}</button>",
+                    hidden("starter", &item.id),
+                    after,
+                    if held { "Switch lesson" } else { "Practise" }
+                ),
+            ));
+            out.push_str("</article>");
+        }
+        // Supplied metadata can contain answers. Keep that surface behind the
+        // existing assistance fence while recall is protected.
+        if !self.app.practice.protected() {
+            for version in self
+                .app
+                .library
+                .versions
+                .values()
+                .filter(|v| v.kind != crate::library::Kind::KeyedMapping)
+            {
+                let work = &self.app.library.works[&version.work_id];
+                if crate::lessons::catalog()
+                    .iter()
+                    .any(|l| l.input.title == work.title && l.input.name == version.name)
+                {
+                    continue;
+                }
+                let _ = write!(
+                    out,
+                    "<article class=\"lesson-option\"><div><h3>{}</h3><small>{}</small></div>",
+                    escape(&work.title),
+                    escape(&version.name)
+                );
+                {
+                    out.push_str(&self.form(
+                        "/practice/lesson/start",
+                        &format!("lesson-version-{}", version.id),
+                        "lesson-start",
+                        "",
+                        &format!(
+                            "{}{}<button class=\"button secondary\">{}</button>",
+                            hidden("version_id", &version.id),
+                            after,
+                            if held { "Switch lesson" } else { "Practise" }
+                        ),
+                    ));
+                }
+                out.push_str("</article>");
+            }
+        }
+        out.push_str("</div></details>");
+        out
+    }
+    fn lesson_progress(&self, version: &crate::library::Version) -> String {
+        let attempts = self
+            .app
+            .practice
+            .attempts
+            .values()
+            .filter(|a| a.version_id == version.id && !a.disclosure)
+            .collect::<Vec<_>>();
+        let whole = attempts
+            .iter()
+            .filter(|a| matches!(a.prompt.scope, crate::study::Scope::Whole) && !a.assisted)
+            .collect::<Vec<_>>();
+        let correct = whole
+            .iter()
+            .filter(|a| a.grade.verdict == crate::grading::Verdict::Good)
+            .count();
+        let phrases = attempts
+            .iter()
+            .filter(|a| matches!(a.prompt.scope, crate::study::Scope::Unit { .. }) && !a.assisted)
+            .count();
+        let helped = attempts.iter().filter(|a| a.assisted).count();
+        format!(
+            "<details class=\"lesson-evidence\"><summary>Your practice <span>{} answer{}</span></summary><dl><div><dt>Unaided whole attempts</dt><dd>{correct} exact / {}</dd></div><div><dt>Unaided phrase answers</dt><dd>{phrases}</dd></div><div><dt>With help</dt><dd>{helped}</dd></div></dl><p>Whole recall is measured separately. Practising phrases or seeing hints is not proof of whole recall.</p></details>",
+            attempts.len(),
+            if attempts.len() == 1 { "" } else { "s" },
+            whole.len()
+        )
+    }
+    fn lesson_screen(&self) -> String {
+        use crate::{
+            grading::Verdict,
+            library::Kind,
+            study::{Cue, Scope},
+        };
+        let Some(p) = &self.app.practice.current else {
+            return format!(
+                "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+                self.lesson_picker(true)
+            );
+        };
+        let v = &self.app.library.versions[&p.prompt.version_id];
+        let work = &self.app.library.works[&v.work_id];
+        let all = v.sections.iter().flat_map(|s| &s.units).collect::<Vec<_>>();
+        let ordered = v.kind == Kind::OrderedList;
+        let whole = matches!(p.prompt.scope, Scope::Whole);
+        let a = p
+            .attempt_id
+            .as_ref()
+            .and_then(|id| self.app.practice.attempts.get(id));
+        let scope = if ordered {
+            format!("{} items · in order", all.len())
+        } else if whole {
+            "Full text · no hints".into()
+        } else if matches!(p.prompt.scope, Scope::Section { .. }) {
+            format!(
+                "Joined phrases {}–{}",
+                p.targets[0].unit_index + 1,
+                p.targets.last().unwrap().unit_index + 1
+            )
+        } else {
+            format!("Phrase {} / {}", p.targets[0].unit_index + 1, all.len())
+        };
+        let mut out = format!(
+            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>{}</span><span>{}</span></div><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\"><h1>{}</h1>",
+            if ordered {
+                "Ordered recall"
+            } else {
+                "Text practice"
+            },
+            escape(&scope),
+            if a.is_some() {
+                "exact-result"
+            } else {
+                "exact-prompt"
+            },
+            escape(&p.prompt.id),
+            escape(&work.title)
+        );
+        if let Some(a) = a {
+            let good = a.grade.verdict == Verdict::Good;
+            let label = if a.assisted {
+                "Practised with help"
+            } else if good {
+                if whole {
+                    "Typed correctly in full"
+                } else {
+                    "Correct"
+                }
+            } else {
+                "A little more practice"
+            };
+            let _ = write!(
+                out,
+                "<div class=\"lesson-verdict nato-{}\" role=\"status\"><p data-verdict=\"{}\">{label}</p></div>",
+                if good { "correct" } else { "miss" },
+                if good { "Good" } else { "Again" }
+            );
+            if ordered {
+                if let Ok(feedback) = crate::ordered::feedback(v, 0..all.len(), &a.raw_answer) {
+                    let _ = write!(
+                        out,
+                        "<p class=\"lesson-note\">{} of {} items recalled. {} in order.</p><ol class=\"sequence-feedback\">",
+                        feedback.recalled,
+                        all.len(),
+                        feedback.in_order
+                    );
+                    for item in &feedback.items {
+                        use crate::ordered::ItemStatus;
+                        let label = match item.status {
+                            ItemStatus::Correct => "In order",
+                            ItemStatus::Misplaced => "Out of order",
+                            ItemStatus::Missing => "Missing",
+                            ItemStatus::Repeated => "Repeated",
+                        };
+                        let _ = write!(
+                            out,
+                            "<li><span>{}</span><small>{label}</small></li>",
+                            escape(all[item.unit_index].text.trim())
+                        );
+                    }
+                    out.push_str("</ol>");
+                    if !feedback.extras.is_empty() {
+                        out.push_str("<p class=\"lesson-note\">Your answer also contained an unrecognized or repeated entry.</p>");
+                    }
+                }
+            } else {
+                let changed = a
+                    .grade
+                    .diff
+                    .iter()
+                    .filter(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
+                    .collect::<Vec<_>>();
+                if !changed.is_empty() {
+                    out.push_str(
+                        "<ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">",
+                    );
+                    for d in changed {
+                        out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
+                    }
+                    out.push_str("</ol>");
+                }
+            }
+            if a.assisted {
+                out.push_str("<p class=\"lesson-note\">Hints were visible. No unaided credit or schedule change.</p>");
+            }
+            out.push_str(&self.form(
+                "/practice/lesson/next",
+                "lesson-next",
+                "lesson-action",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">{}</button>",
+                    hidden("after", &p.prompt.id),
+                    hidden("mode", if ordered { "whole" } else { "phrases" }),
+                    if ordered {
+                        "Try the sequence again"
+                    } else if whole {
+                        "Practise phrases"
+                    } else {
+                        "Next phrase"
+                    }
+                ),
+            ));
+            if !ordered {
+                out.push_str(
+                    "<details class=\"lesson-challenges\"><summary>Try a challenge</summary>",
+                );
+            }
+            if !ordered && !whole {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-join",
+                    "lesson-action",
+                    "",
+                    &format!(
+                        "{}{}<button class=\"button secondary\">Join these phrases</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "join")
+                    ),
+                ));
+            }
+            if !ordered && whole {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-middle",
+                    "lesson-action",
+                    "",
+                    &format!(
+                        "{}{}<button class=\"button secondary\">Start midway</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "middle")
+                    ),
+                ));
+            }
+            if !ordered {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-whole",
+                    "lesson-action",
+                    "",
+                    &format!(
+                        "{}{}<button class=\"button secondary\">Try the full text</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "whole")
+                    ),
+                ));
+            }
+            if !ordered {
+                out.push_str("</details>");
+            }
+            let _ = write!(
+                out,
+                "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
+                escape(&a.raw_answer),
+                self.exact_expected()
+            );
+        } else {
+            if ordered {
+                let _ = write!(
+                    out,
+                    "<p class=\"lesson-instruction\">Recall all {} items in order, one per line.</p>",
+                    all.len()
+                );
+            } else if whole {
+                out.push_str("<p class=\"lesson-instruction\">Type the full text from memory.</p>");
+            } else if matches!(p.prompt.scope, Scope::Section { .. }) {
+                out.push_str(
+                    "<p class=\"lesson-instruction\">Join these phrases from memory, in order.</p>",
+                );
+            } else {
+                if let Some(context) = &p.prompt.context {
+                    let _ = write!(
+                        out,
+                        "<div class=\"lesson-context\"><span>After</span><p>{}</p></div>",
+                        escape(context)
+                    );
+                }
+                let cue_label = match p.prompt.cue_level {
+                    Cue::Read => "Read, then type this phrase",
+                    Cue::FirstLetters => "Recall it from the initials",
+                    Cue::FirstLetter => "One initial to help",
+                    _ => "Type the next phrase from memory",
+                };
+                let _ = write!(out, "<p class=\"lesson-instruction\">{cue_label}</p>");
+                if !p.prompt.cue.is_empty() {
+                    let _ = write!(out, "<p class=\"lesson-cue\">{}</p>", escape(&p.prompt.cue));
+                }
+            }
+            if p.revealed {
+                out.push_str("<div class=\"lesson-disclosure\">");
+                out.push_str(&self.exact_expected());
+                out.push_str("</div>");
+            }
+            if p.prompt.assisted || p.revealed {
+                out.push_str("<p class=\"lesson-note\">Guided practice. Hints fade as you practise; this is not unaided recall.</p>");
+            }
+            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus></textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""})));
+            if !p.revealed && !matches!(p.prompt.cue_level, Cue::Read) {
+                out.push_str(&self.practice_form(
+                    "reveal",
+                    "lesson-reveal",
+                    "",
+                    "<button class=\"text-button\">Show the text</button>",
+                ));
+            }
+            if ordered {
+                out.push_str("<p class=\"lesson-note\">Enter starts a new line. Scry checks names and order.</p>");
+            }
+        }
+        out.push_str("</div>");
+        out.push_str(&self.lesson_progress(v));
+        if !self.app.practice.protected() {
+            let _ = write!(
+                out,
+                "<details class=\"lesson-edition\"><summary>Text &amp; source</summary><p><strong>{}</strong></p><p>{}</p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
+                escape(&v.name),
+                escape(&work.context)
+            );
+            for source in &v.sources {
+                let absolute_http = source
+                    .strip_prefix("https://")
+                    .or_else(|| source.strip_prefix("http://"))
+                    .is_some_and(|rest| {
+                        let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+                        !host.is_empty()
+                            && !source
+                                .chars()
+                                .any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+                    });
+                if absolute_http {
+                    let _ = write!(
+                        out,
+                        "<li><a href=\"{}\" rel=\"noreferrer\">Source</a></li>",
+                        escape(source)
+                    );
+                } else {
+                    let _ = write!(out, "<li>{}</li>", escape(source));
+                }
+            }
+            out.push_str("</ul></details>");
+        }
+        out.push_str(&self.lesson_picker(false));
+        out.push_str("</section>");
+        out
+    }
     fn nato_progress(&self) -> String {
         use crate::nato_progress::{Outcome, summarize};
         let progress = summarize(self.app);
@@ -1523,6 +1922,7 @@ impl View<'_> {
         }
         out.push_str(&self.nato_progress());
         out.push_str("</section>");
+        out.push_str(&self.lesson_picker(false));
         out
     }
     fn create(&self) -> String {
@@ -2466,6 +2866,18 @@ pub fn render(
         now: now_ms,
     };
     let content = match path {
+        "/" | "/recall"
+            if app.practice.current.as_ref().is_some_and(|p| {
+                app.practice.studies[&p.prompt.study_id].lesson
+                    && !crate::library::is_nato(&app.library.versions[&p.prompt.version_id])
+            }) =>
+        {
+            view.lesson_screen()
+        }
+        "/lessons" => format!(
+            "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+            view.lesson_picker(true)
+        ),
         "/" => view.nato_screen(),
         "/recall"
             if app.practice.current.as_ref().is_some_and(|p| {
@@ -2582,7 +2994,7 @@ fn shell(
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"/\" {}>NATO practice</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Practice</a><a href=\"/lessons\">Choose a lesson</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {

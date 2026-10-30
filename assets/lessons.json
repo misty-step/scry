@@ -1,0 +1,299 @@
+[
+  {
+    "id": "rosary-joyful",
+    "description": "Recall five mysteries in order.",
+    "input": {
+      "title": "Joyful Mysteries",
+      "kind": "ordered_list",
+      "text": "Annunciation\nVisitation\nNativity\nPresentation\nFinding in the Temple",
+      "name": "Traditional mystery names · English · v1",
+      "aliases": [],
+      "context": "Four traditional sets of the Mysteries of the Rosary. Factual traditional titles and sequence only; no source meditations, scripture translations, artwork, or page design copied.",
+      "sources": [
+        "https://www.vaticannews.va/en/prayers/the-rosary.html",
+        "https://www.usccb.org/how-to-pray-the-rosary"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": false,
+      "sections": [
+        {
+          "heading": "Joyful Mysteries",
+          "units": [
+            "Annunciation\n",
+            "Visitation\n",
+            "Nativity\n",
+            "Presentation\n",
+            "Finding in the Temple"
+          ]
+        }
+      ],
+      "ordered_aliases": {
+        "0": [
+          "The Annunciation"
+        ],
+        "1": [
+          "The Visitation"
+        ],
+        "2": [
+          "The Nativity",
+          "Nativity of Jesus",
+          "Birth of Jesus"
+        ],
+        "3": [
+          "The Presentation",
+          "Presentation of Jesus in the Temple"
+        ],
+        "4": [
+          "Finding of Jesus in the Temple",
+          "The Finding in the Temple"
+        ]
+      }
+    }
+  },
+  {
+    "id": "rosary-luminous",
+    "description": "Recall five mysteries in order.",
+    "input": {
+      "title": "Luminous Mysteries",
+      "kind": "ordered_list",
+      "text": "Baptism of Jesus\nWedding Feast at Cana\nProclamation of the Kingdom of God\nTransfiguration\nInstitution of the Eucharist",
+      "name": "Traditional mystery names · English · v1",
+      "aliases": [],
+      "context": "Four traditional sets of the Mysteries of the Rosary. Factual traditional titles and sequence only; no source meditations, scripture translations, artwork, or page design copied.",
+      "sources": [
+        "https://www.vaticannews.va/en/prayers/the-rosary.html",
+        "https://www.usccb.org/how-to-pray-the-rosary"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": false,
+      "sections": [
+        {
+          "heading": "Luminous Mysteries",
+          "units": [
+            "Baptism of Jesus\n",
+            "Wedding Feast at Cana\n",
+            "Proclamation of the Kingdom of God\n",
+            "Transfiguration\n",
+            "Institution of the Eucharist"
+          ]
+        }
+      ],
+      "ordered_aliases": {
+        "0": [
+          "The Baptism of Jesus",
+          "Baptism in the Jordan",
+          "Baptism of Jesus in the Jordan"
+        ],
+        "1": [
+          "Wedding at Cana",
+          "Wedding Feast of Cana",
+          "The Wedding Feast at Cana"
+        ],
+        "2": [
+          "Proclamation of the Kingdom",
+          "The Proclamation of the Kingdom",
+          "Proclamation of the Kingdom with the Call to Conversion"
+        ],
+        "3": [
+          "The Transfiguration",
+          "Transfiguration of Jesus"
+        ],
+        "4": [
+          "The Institution of the Eucharist"
+        ]
+      }
+    }
+  },
+  {
+    "id": "rosary-sorrowful",
+    "description": "Recall five mysteries in order.",
+    "input": {
+      "title": "Sorrowful Mysteries",
+      "kind": "ordered_list",
+      "text": "Agony in the Garden\nScourging at the Pillar\nCrowning with Thorns\nCarrying of the Cross\nCrucifixion",
+      "name": "Traditional mystery names · English · v1",
+      "aliases": [],
+      "context": "Four traditional sets of the Mysteries of the Rosary. Factual traditional titles and sequence only; no source meditations, scripture translations, artwork, or page design copied.",
+      "sources": [
+        "https://www.vaticannews.va/en/prayers/the-rosary.html",
+        "https://www.usccb.org/how-to-pray-the-rosary"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": false,
+      "sections": [
+        {
+          "heading": "Sorrowful Mysteries",
+          "units": [
+            "Agony in the Garden\n",
+            "Scourging at the Pillar\n",
+            "Crowning with Thorns\n",
+            "Carrying of the Cross\n",
+            "Crucifixion"
+          ]
+        }
+      ],
+      "ordered_aliases": {
+        "0": [
+          "The Agony in the Garden",
+          "Agony of Jesus in the Garden",
+          "Agony in Gethsemane"
+        ],
+        "1": [
+          "The Scourging at the Pillar"
+        ],
+        "2": [
+          "The Crowning with Thorns"
+        ],
+        "3": [
+          "The Carrying of the Cross",
+          "Jesus carries the Cross"
+        ],
+        "4": [
+          "The Crucifixion",
+          "Crucifixion of Jesus"
+        ]
+      }
+    }
+  },
+  {
+    "id": "rosary-glorious",
+    "description": "Recall five mysteries in order.",
+    "input": {
+      "title": "Glorious Mysteries",
+      "kind": "ordered_list",
+      "text": "Resurrection\nAscension\nDescent of the Holy Spirit\nAssumption\nCoronation of Mary",
+      "name": "Traditional mystery names · English · v1",
+      "aliases": [],
+      "context": "Four traditional sets of the Mysteries of the Rosary. Factual traditional titles and sequence only; no source meditations, scripture translations, artwork, or page design copied.",
+      "sources": [
+        "https://www.vaticannews.va/en/prayers/the-rosary.html",
+        "https://www.usccb.org/how-to-pray-the-rosary"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": false,
+      "sections": [
+        {
+          "heading": "Glorious Mysteries",
+          "units": [
+            "Resurrection\n",
+            "Ascension\n",
+            "Descent of the Holy Spirit\n",
+            "Assumption\n",
+            "Coronation of Mary"
+          ]
+        }
+      ],
+      "ordered_aliases": {
+        "0": [
+          "The Resurrection",
+          "Resurrection of Jesus",
+          "Resurrection of Our Lord"
+        ],
+        "1": [
+          "The Ascension",
+          "Ascension of Jesus",
+          "Ascension of Our Lord"
+        ],
+        "2": [
+          "The Descent of the Holy Spirit",
+          "Pentecost",
+          "Coming of the Holy Spirit"
+        ],
+        "3": [
+          "The Assumption",
+          "Assumption of Mary",
+          "Assumption of the Blessed Virgin Mary"
+        ],
+        "4": [
+          "The Coronation of Mary",
+          "Coronation of Mary as Queen of Heaven",
+          "Coronation of the Blessed Virgin Mary"
+        ]
+      }
+    }
+  },
+  {
+    "id": "st-michael-en-lasance-1911",
+    "description": "Learn meaningful phrases, then type the prayer from memory.",
+    "input": {
+      "title": "Saint Michael the Archangel",
+      "kind": "text",
+      "text": "Holy Michael, Archangel, defend us in the day of battle; be our safeguard against the wickedness and snares of the devil. May God rebuke him, we humbly pray; and do thou, prince of the heavenly host, by the power of God, thrust down to hell Satan and all wicked spirits, who roam through the world seeking the ruin of souls. Amen.",
+      "name": "Traditional English · Lasance 1911",
+      "aliases": [],
+      "context": "This historical English wording begins “Holy Michael, Archangel” and differs from familiar modern translations. Preserve it as this named version; do not silently modernize or mix translations. Underlying prayer text transcribed from 1911 US publication; public domain in the United States. No redistribution of modern scan wrapper, added watermark, layout, or website.",
+      "sources": [
+        "https://archive.org/details/withgodbookofpra00lasa",
+        "https://en.wikisource.org/wiki/With_God/The_Holy_Sacrifice_of_the_Mass"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": true,
+      "sections": [
+        {
+          "heading": "Passage 1",
+          "units": [
+            "Holy Michael, Archangel, defend us in the day of battle; ",
+            "be our safeguard against the wickedness and snares of the devil. "
+          ]
+        },
+        {
+          "heading": "Passage 2",
+          "units": [
+            "May God rebuke him, we humbly pray; ",
+            "and do thou, prince of the heavenly host, "
+          ]
+        },
+        {
+          "heading": "Passage 3",
+          "units": [
+            "by the power of God, thrust down to hell Satan and all wicked spirits, ",
+            "who roam through the world seeking the ruin of souls. Amen."
+          ]
+        }
+      ],
+      "ordered_aliases": {}
+    }
+  },
+  {
+    "id": "st-michael-la-traditional",
+    "description": "Learn meaningful phrases, then type the prayer from memory.",
+    "input": {
+      "title": "Sancte Michael Archangele",
+      "kind": "text",
+      "text": "Sancte Michael Archangele, defende nos in proelio; contra nequitiam et insidias diaboli esto praesidium. Imperet illi Deus, supplices deprecamur, tuque, Princeps militiae caelestis, Satanam aliosque spiritus malignos, qui ad perditionem animarum pervagantur in mundo, divina virtute, in infernum detrude. Amen.",
+      "name": "Traditional Latin · unaccented orthography",
+      "aliases": [],
+      "context": "Holy See Press Office, 29 September 2018 communiqué, Latin prayer attributed to Leo XIII. Stress accents removed consistently; lexical content and word order preserved. Underlying historical Latin prayer, not the 2018 English translation or surrounding modern communiqué prose. No modern recording or artwork included.",
+      "sources": [
+        "https://press.vatican.va/content/salastampa/en/bollettino/pubblico/2018/09/29/180929d.html"
+      ],
+      "rights": "public_domain",
+      "spelling_strict": true,
+      "sections": [
+        {
+          "heading": "Passage 1",
+          "units": [
+            "Sancte Michael Archangele, defende nos in proelio; ",
+            "contra nequitiam et insidias diaboli esto praesidium. "
+          ]
+        },
+        {
+          "heading": "Passage 2",
+          "units": [
+            "Imperet illi Deus, supplices deprecamur, ",
+            "tuque, Princeps militiae caelestis, "
+          ]
+        },
+        {
+          "heading": "Passage 3",
+          "units": [
+            "Satanam aliosque spiritus malignos, ",
+            "qui ad perditionem animarum pervagantur in mundo, ",
+            "divina virtute, in infernum detrude. Amen."
+          ]
+        }
+      ],
+      "ordered_aliases": {}
+    }
+  }
+]

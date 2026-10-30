@@ -49,7 +49,7 @@ export async function conceptHomeWalk(browser,capture){
    await activate(menu.locator('summary'));
    assert.notEqual(await menu.getAttribute('open'),null,'Native menu opens');
    const links=menu.getByRole('link');
-   assert.equal(await links.count(),5,'All retained menu destinations are exposed');
+   assert.equal(await links.count(),6,'All retained menu destinations are exposed');
    for(const link of await links.all())assert.equal(await link.isVisible(),true,'Expanded menu link is visible');
    await layout();await shot(suffix);
    await activate(menu.locator('summary'));
@@ -57,7 +57,7 @@ export async function conceptHomeWalk(browser,capture){
   };
   try{
    await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['NATO practice','Library','History','Settings','Earlier practice']);
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Choose a lesson','Library','History','Settings','Earlier practice']);
    assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true,includeHidden:true}).getAttribute('href'),'/recall');
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
    await layout();await shot('empty');await menuLayout('menu');

@@ -201,7 +201,7 @@
     const target = event.target;
     const editing = target instanceof HTMLElement && (target.matches('input, textarea, select') || target.isContentEditable);
     if (editing) {
-      if (target.matches('textarea#answer') && event.key === 'Enter' && !event.shiftKey && matchMedia('(pointer: fine)').matches) {
+      if (target.matches('textarea#answer:not([data-multiline])') && event.key === 'Enter' && !event.shiftKey && matchMedia('(pointer: fine)').matches) {
         event.preventDefault(); target.form?.requestSubmit();
       }
       return;

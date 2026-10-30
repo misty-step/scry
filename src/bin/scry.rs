@@ -148,6 +148,15 @@ mod cli {
             name: option(args, "--name")?.unwrap_or_default(),
             context: option(args, "--context")?.unwrap_or_default(),
             spelling_strict: flag(args, "--spelling-strict"),
+            ordered_aliases: option(args, "--ordered-aliases-file")?
+                .map(|path| {
+                    let bytes = fs::read(path).map_err(|_| "Cannot read ordered aliases file.")?;
+                    serde_json::from_slice(&bytes).map_err(
+                        |_| "Use a JSON object mapping zero-based item positions to alias arrays.",
+                    )
+                })
+                .transpose()?
+                .unwrap_or_default(),
         })
     }
     fn revision(args: &mut Vec<String>) -> Result<u64> {
@@ -250,6 +259,46 @@ mod cli {
         let operation = option(&mut args, "--operation-id")?
             .map(Ok)
             .unwrap_or_else(random_id)?;
+        if args.first().is_some_and(|a| a == "lesson") {
+            let mut payload = json!({"operation_id":operation});
+            for (option_name, field) in [
+                ("--starter", "starter"),
+                ("--version", "version_id"),
+                ("--after", "after"),
+                ("--leave", "leave"),
+                ("--mode", "mode"),
+            ] {
+                if let Some(value) = option(&mut args, option_name)? {
+                    payload[field] = json!(value);
+                }
+            }
+            if args.len() != 2 || !matches!(args[1].as_str(), "start" | "next") {
+                return Err(
+                    "Usage: scry lesson start --starter NAME|--version VERSION [--after PROMPT|--leave PROMPT] | lesson next --after PROMPT [--mode phrases|join|whole|middle]",
+                );
+            }
+            let action = args[1].as_str();
+            if action == "start"
+                && (payload.get("starter").is_some() == payload.get("version_id").is_some()
+                    || payload.get("mode").is_some()
+                    || payload.get("after").is_some() && payload.get("leave").is_some())
+                || action == "next"
+                    && (payload.get("after").is_none()
+                        || payload.get("starter").is_some()
+                        || payload.get("version_id").is_some()
+                        || payload.get("leave").is_some())
+            {
+                return Err(
+                    "Choose one starter or Version for start; next requires the answered Prompt and an optional mode.",
+                );
+            }
+            return request(
+                &client,
+                &login,
+                &format!("/api/v1/lessons/{action}"),
+                Some(&payload),
+            );
+        }
         if args.first().is_some_and(|a| a == "learn") {
             let pace = option(&mut args, "--pace")?.unwrap_or_else(|| "steady".into());
             if args.len() != 2 {
@@ -468,7 +517,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

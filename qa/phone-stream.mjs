@@ -94,7 +94,7 @@ export async function phoneWalk(browser,capture) {
   try{
    await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
-   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['NATO practice','Library','History','Settings','Earlier practice']);
+   assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Choose a lesson','Library','History','Settings','Earlier practice']);
    assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();

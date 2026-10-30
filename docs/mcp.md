@@ -53,6 +53,8 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | `scry_import` | Existing Version or mapping import; no automatic Study |
 | `scry_learn` / `scry_due` | Start/resume the retained Study, or read due Cards |
 | `scry_next` | Current Prompt/held result; deliberate `after` releases an answered Prompt |
+| `scry_lesson_start` | Start/resume one supplied or bundled authored lesson; explicit `after` or `leave` controls a switch |
+| `scry_lesson_next` | Advance phrases, join their authored Section, try the whole text, or practise from the middle |
 | `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field |
 | `scry_reveal` | Record assistance before disclosing the target |
 
@@ -67,7 +69,26 @@ storage, authorization, Study admission, learning efficacy or deployment.
 Search before import; show the returned `result.entity_id` to inspect what was
 stored. A new agent must not infer that the running Worker matches its binary's
 schema: unknown/unsupported routes fail safely, not silently downgrade content.
-Stored ordered lists are not advertised as practisable by this slice.
+Ordered lists support whole-sequence lessons with native item/order feedback.
+Version manifests can include `ordered_aliases`, an object mapping zero-based
+flattened Unit positions to authored alias arrays. Empty aliases preserve old
+Version serialization; nonempty aliases are immutable content. Scry validates
+collisions and bounds locally; aliases never relax NATO spelling policy.
+
+For a supplied text, call `scry_lesson_start` with `operation_id` and
+`version_id`. Alternatively use `starter: "st-michael-en-lasance-1911"` or
+`starter: "rosary-joyful"`. Exactly one selector is required. `after` releases
+the current answered Prompt; explicit `leave` abandons the identified unanswered
+Prompt without recording a grade or schedule update. Never supply both.
+Browsing is not permission to abandon the learner's draft.
+
+Submit raw typed text with `scry_answer`. Then call `scry_lesson_next` with a
+new retained `operation_id`, the answered Prompt ID in `after`, and `mode`:
+`phrases`, `join`, `whole`, or `middle`. `join` uses the current authored Section;
+`whole` is a distinct complete-text challenge. Existing `scry_reveal` records
+help before disclosure. Guided phrase success does not become unaided or
+whole-text credit. No speech/pronunciation judgment is implied. See
+[authored lesson and metadata contract](owner-api.md#authored-sequence-and-phrase-lessons).
 
 ## Frozen operation and interruption contract
 

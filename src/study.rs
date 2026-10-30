@@ -93,6 +93,9 @@ pub struct Study {
     /// Set only by deliberate focused entry; retained Pace remains unchanged.
     #[serde(default, skip_serializing_if = "is_false")]
     pub nato_all_letters: bool,
+    /// Explicit phrase/sequence lesson; does not alter retained Pace or due dates.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub lesson: bool,
     pub status: Status,
     pub created_ms: i64,
 }
@@ -255,10 +258,7 @@ pub(crate) fn studyable(version: &Version) -> AppResult<()> {
     match version.kind {
         Kind::Text => Ok(()),
         Kind::KeyedMapping => crate::library::validate_mapping(version),
-        Kind::OrderedList => Err(AppError::new(
-            422,
-            "Ordered-list practice is not supported yet.",
-        )),
+        Kind::OrderedList => crate::ordered::validate(version),
     }
 }
 fn units(version: &Version) -> Vec<&crate::library::Unit> {
@@ -886,6 +886,11 @@ fn fits_grading_capacity(
 fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
+    if v.kind == Kind::OrderedList {
+        let start = p.targets[0].unit_index;
+        let end = p.targets.last().unwrap().unit_index + 1;
+        return crate::ordered::grade(v, start..end, answer);
+    }
     let texts = all.iter().map(|u| expected_unit(v, u)).collect::<Vec<_>>();
     let start = p.targets[0].unit_index;
     let end = p.targets.last().unwrap().unit_index + 1;
@@ -945,6 +950,263 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
     }
     Ok(result)
 }
+/// Deliberate, bounded lesson entry. Reads never import or abandon a held answer.
+fn lesson_start(
+    app: &mut App,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "csrf" | "operation_id" | "revision" | "starter" | "version_id" | "after" | "leave"
+        )
+    }) {
+        return Err(AppError::new(
+            422,
+            "Choose a lesson, without grading or content overrides.",
+        ));
+    }
+    if !field(fields, "after").is_empty() && !field(fields, "leave").is_empty() {
+        return Err(AppError::new(422, "Choose after or leave, not both."));
+    }
+    let starter = field(fields, "starter");
+    let supplied = field(fields, "version_id");
+    if starter.is_empty() == supplied.is_empty() {
+        return Err(AppError::new(
+            422,
+            "Choose one starter or supplied Version.",
+        ));
+    }
+    let vid = if starter.is_empty() {
+        supplied.to_string()
+    } else {
+        app.library
+            .add(crate::lessons::input(starter)?, seed, None)?
+    };
+    let version = app
+        .library
+        .versions
+        .get(&vid)
+        .ok_or_else(|| AppError::new(404, "Version not found."))?;
+    studyable(version)?;
+    if version.kind == Kind::KeyedMapping && !crate::library::is_nato(version) {
+        return Err(AppError::new(
+            422,
+            "Use normal Study practice for this mapping; lessons support text, ordered lists and the NATO starter.",
+        ));
+    }
+    if units(version).len() > 128 {
+        return Err(AppError::new(
+            422,
+            "Lessons support up to 128 meaningful phrases or items. Split longer material into separate Versions.",
+        ));
+    }
+    let resume = app
+        .practice
+        .current
+        .as_ref()
+        .filter(|p| p.prompt.version_id == vid && field(fields, "after").is_empty())
+        .cloned();
+    if let Some(p) = &app.practice.current {
+        if !field(fields, "leave").is_empty() && field(fields, "leave") != p.prompt.id {
+            return Err(AppError::conflict());
+        }
+        let may_leave = p.attempt_id.is_none() && field(fields, "leave") == p.prompt.id;
+        let may_finish = p.attempt_id.is_some() && field(fields, "after") == p.prompt.id;
+        if resume.is_none() && !may_leave && !may_finish {
+            return Err(AppError::new(
+                409,
+                "Your current answer is still here. Check it before switching lessons.",
+            ));
+        }
+    } else if !field(fields, "after").is_empty() || !field(fields, "leave").is_empty() {
+        return Err(AppError::conflict());
+    }
+    let learn = BTreeMap::from([("version_id".into(), vid.clone())]);
+    let result = mutate(app, "/practice/learn", &learn, now, seed)?;
+    let sid = result.entity_id.expect("Study identity");
+    let s = app.practice.studies.get_mut(&sid).unwrap();
+    s.status = Status::Active;
+    s.lesson = true;
+    if crate::library::is_nato(&app.library.versions[&vid]) {
+        s.nato_all_letters = true;
+    }
+    let s = s.clone();
+    let count = units(&app.library.versions[&vid]).len();
+    let introduced = app
+        .practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == sid)
+        .count();
+    for index in introduced..count {
+        introduce_card(app, &s, index, now, &format!("{seed}:unit:{index}"));
+    }
+    if resume.is_some() {
+        return Ok(response(None, held(app)?));
+    }
+    app.practice.current = None;
+    lesson_present(
+        app,
+        &sid,
+        0,
+        app.library.versions[&vid].kind == Kind::OrderedList,
+        now,
+        seed,
+    )
+}
+fn lesson_present(
+    app: &mut App,
+    sid: &str,
+    index: usize,
+    whole: bool,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    let study = app
+        .practice
+        .studies
+        .get(sid)
+        .ok_or_else(AppError::conflict)?;
+    let v = &app.library.versions[&study.version_id];
+    if whole {
+        if v.kind == Kind::KeyedMapping {
+            return Err(AppError::new(422, "Mappings use individual key recall."));
+        }
+        let mut cards = app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == sid)
+            .collect::<Vec<_>>();
+        cards.sort_by_key(|c| c.unit_index);
+        let p = make_prompt(app, study, cards, Scope::Whole, Cue::WholeTitle, now, seed);
+        if !fits_grading_capacity(
+            prompt_words(app, &p),
+            prompt_words(app, &p),
+            &matching_siblings(app, &p, true),
+        ) {
+            return Err(AppError::new(
+                422,
+                "This lesson exceeds local grading capacity. Choose a shorter text.",
+            ));
+        }
+        app.practice.current = Some(p);
+    } else {
+        let card = app
+            .practice
+            .cards
+            .values()
+            .find(|c| c.study_id == sid && c.unit_index == index)
+            .ok_or_else(AppError::conflict)?;
+        app.practice.current = Some(make_prompt(
+            app,
+            study,
+            vec![card],
+            Scope::Unit {
+                unit_id: card.unit_id.clone(),
+                position: index + 1,
+            },
+            card.state.cue,
+            now,
+            seed,
+        ));
+    }
+    Ok(response(None, held(app)?))
+}
+fn lesson_next(
+    app: &mut App,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "csrf" | "operation_id" | "revision" | "after" | "mode"
+        )
+    }) {
+        return Err(AppError::new(
+            422,
+            "Submit the held result and lesson mode only.",
+        ));
+    }
+    let p = app
+        .practice
+        .current
+        .as_ref()
+        .ok_or_else(AppError::conflict)?;
+    if p.attempt_id.is_none() || field(fields, "after") != p.prompt.id {
+        return Err(AppError::conflict());
+    }
+    let sid = p.prompt.study_id.clone();
+    let study = &app.practice.studies[&sid];
+    if !study.lesson || study.status == Status::Dropped {
+        return Err(AppError::conflict());
+    }
+    let v = &app.library.versions[&study.version_id];
+    let mode = field(fields, "mode");
+    if !matches!(mode, "" | "phrases" | "join" | "whole" | "middle") {
+        return Err(AppError::new(
+            422,
+            "Use phrases, join, whole or middle lesson mode.",
+        ));
+    }
+    if mode == "join" && v.kind == Kind::Text {
+        let section = v
+            .sections
+            .iter()
+            .find(|s| s.units.iter().any(|u| u.id == p.targets[0].unit_id))
+            .ok_or_else(AppError::conflict)?;
+        let mut cards = app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == sid && section.units.iter().any(|u| u.id == c.unit_id))
+            .collect::<Vec<_>>();
+        cards.sort_by_key(|c| c.unit_index);
+        let presentation = make_prompt(
+            app,
+            study,
+            cards,
+            Scope::Section {
+                section_id: section.id.clone(),
+            },
+            Cue::SectionHeading,
+            now,
+            seed,
+        );
+        if !fits_grading_capacity(
+            prompt_words(app, &presentation),
+            prompt_words(app, &presentation),
+            &matching_siblings(app, &presentation, true),
+        ) {
+            return Err(AppError::new(
+                422,
+                "This joined passage exceeds local grading capacity.",
+            ));
+        }
+        app.practice.current = Some(presentation);
+        return Ok(response(None, held(app)?));
+    }
+    let whole = v.kind == Kind::OrderedList || mode == "whole";
+    let index = if mode == "middle" {
+        units(v).len() / 2
+    } else if matches!(p.prompt.scope, Scope::Whole) {
+        0
+    } else {
+        (p.targets
+            .last()
+            .expect("a held prompt has targets")
+            .unit_index
+            + 1)
+            % units(v).len()
+    };
+    lesson_present(app, &sid, index, whole, now, seed)
+}
+
 pub fn mutate(
     app: &mut App,
     path: &str,
@@ -953,6 +1215,8 @@ pub fn mutate(
     seed: &str,
 ) -> AppResult<MutationResult> {
     match path {
+        "/practice/lesson/start" => lesson_start(app, fields, now, seed),
+        "/practice/lesson/next" => lesson_next(app, fields, now, seed),
         "/practice/nato/start" => {
             if fields
                 .keys()
@@ -1014,6 +1278,7 @@ pub fn mutate(
                     version_hash: v.normalized_hash.clone(),
                     pace,
                     nato_all_letters: false,
+                    lesson: false,
                     status: Status::Active,
                     created_ms: now,
                 };
@@ -1106,14 +1371,12 @@ pub fn mutate(
         }
         "/practice/answer" => {
             let p = active(app, fields, false)?;
-            if app.library.versions[&p.prompt.version_id].kind == Kind::KeyedMapping
-                && fields.keys().any(|k| {
-                    !matches!(
-                        k.as_str(),
-                        "csrf" | "operation_id" | "revision" | "prompt_id" | "answer"
-                    )
-                })
-            {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "prompt_id" | "answer"
+                )
+            }) {
                 return Err(AppError::new(
                     422,
                     "Submit only your answer. Scry owns the expected value, Verdict and schedule.",

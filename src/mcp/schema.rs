@@ -8,6 +8,8 @@ pub(super) const NAMES: &[&str] = &[
     "scry_validate",
     "scry_import",
     "scry_learn",
+    "scry_lesson_start",
+    "scry_lesson_next",
     "scry_due",
     "scry_next",
     "scry_answer",
@@ -42,6 +44,7 @@ pub(super) fn manifests() -> Value {
     version["kind"] = choices(&["text", "ordered_list", "keyed_mapping"]);
     version["text"] = json!({"type":"string","minLength":1,"maxLength":262144,"description":"At most 256 KiB of UTF-8; supplied Units must join to these bytes exactly."});
     version["sections"] = json!({"type":["array","null"],"maxItems":4096,"description":"At most 8192 Units total. Omit for native segmentation.","items":object(json!({"heading":{"type":"string","maxLength":240},"units":{"type":"array","minItems":1,"maxItems":8192,"items":{"type":"string","minLength":1}}}),&["heading","units"])});
+    version["ordered_aliases"] = json!({"type":"object","maxProperties":128,"description":"Ordered lists only: zero-based flattened item index to explicit accepted aliases. Canonical and alias identities must be unique across items.","additionalProperties":{"type":"array","maxItems":16,"items":{"type":"string","minLength":1,"maxLength":240}}});
     let mut mapping = common_metadata();
     mapping["direction"] = choices(&["forward"]);
     mapping["spelling_strict"]["default"] = json!(true);
@@ -52,7 +55,7 @@ pub(super) fn manifests() -> Value {
         "validation_scope":"Local shape/domain validation only; remote duplicates, policy, capacity, study admission and hosted access are not checked.",
         "limits":"All domain text limits are UTF-8 bytes, not characters. JSON Schema bounds are supplemented by the native Library validator.",
         "multimedia":"Not implemented in this slice; no media URL is fetched.",
-        "study_support":"Text and forward keyed mappings; ordered lists can be stored, not practised by this slice."})
+        "study_support":"Text, ordered lists and forward keyed mappings. Authored Lessons introduce up to 128 phrases/items and preserve existing schedules."})
 }
 
 pub(super) fn tools() -> Vec<Value> {
@@ -125,6 +128,24 @@ pub(super) fn tools() -> Vec<Value> {
             object(
                 json!({"operation_id":operation(),"version_id":id(),"pace":choices(&["light","steady","intense"])}),
                 &["operation_id", "version_id"],
+            ),
+            false,
+        ),
+        (
+            "scry_lesson_start",
+            "Start or resume a bounded authored lesson. Choose a bundled starter or supplied Version; after switches away from an answered Prompt; leave explicitly abandons the identified unanswered Prompt without a grade. Never supply both.",
+            object(
+                json!({"operation_id":operation(),"starter":{"type":"string","maxLength":128},"version_id":id(),"after":id(),"leave":id()}),
+                &["operation_id"],
+            ),
+            false,
+        ),
+        (
+            "scry_lesson_next",
+            "Advance an answered authored lesson. phrases cycles meaningful clauses; join checks the current authored section; whole starts a cold complete-text challenge; middle practises a later phrase. Scry owns the grading and assistance evidence.",
+            object(
+                json!({"operation_id":operation(),"after":id(),"mode":choices(&["phrases","join","whole","middle"])}),
+                &["operation_id", "after"],
             ),
             false,
         ),
