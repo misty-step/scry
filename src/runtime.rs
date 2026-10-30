@@ -5,7 +5,7 @@ use crate::{
     api, engine,
     model::*,
     owner_token::{self, MutationActor, OwnerToken},
-    persistence, web,
+    persistence, private_learner, web,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use js_sys::{Array, Function, Promise, Reflect, Uint8Array};
@@ -25,18 +25,20 @@ const MODEL_TIMEOUT_MS: i64 = 55_000;
 const RECOVERY_MS: i64 = 90_000;
 const INTERNAL_HEADER: &str = "x-scry-internal-key";
 const BACKUP_PROOF_HEADER: &str = "x-scry-backup-proof";
-const QA_SPACE_NAME: &str = "scry-qa";
+const QA_SPACE_NAME: &str = private_learner::QA_SPACE_NAME;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AccessPrincipal {
     Owner,
     Qa,
+    Learner,
 }
 impl AccessPrincipal {
     fn internal_identity(self) -> &'static str {
         match self {
             Self::Owner => "private-owner",
             Self::Qa => "private-qa",
+            Self::Learner => "private-learner",
         }
     }
     fn space_name(self, env: &Env) -> Result<String> {
@@ -47,6 +49,9 @@ impl AccessPrincipal {
             Self::Qa => Err(Error::RustError(
                 "QA requires a separate learning space.".into(),
             )),
+            Self::Learner => learner_space(env).ok_or_else(|| {
+                Error::RustError("Learner configuration is absent or invalid.".into())
+            }),
         }
     }
 }
@@ -134,6 +139,20 @@ fn qa_email(env: &Env) -> Option<String> {
         }))
     .then_some(email)
 }
+fn learner_space(env: &Env) -> Option<String> {
+    private_learner::space_name(
+        &variable(env, "LEARNER_SUBJECT"),
+        &secret(env, "OWNER_SUBJECT"),
+        &space_name(env).ok()?,
+    )
+}
+fn non_owner_refusal(principal: AccessPrincipal) -> &'static str {
+    if principal == AccessPrincipal::Qa {
+        "QA cannot invoke owner operations."
+    } else {
+        "Learners cannot invoke owner operations."
+    }
+}
 fn provider_secrets_present(env: &Env) -> bool {
     ["OPENROUTER_API_KEY", "JEV_API_KEY", "OPERATOR_KEY"]
         .iter()
@@ -146,6 +165,7 @@ fn view_query(
     env: &Env,
     fields: &BTreeMap<String, String>,
     preparation_ready: bool,
+    learner: bool,
 ) -> Result<BTreeMap<String, String>> {
     let mut query: BTreeMap<_, _> = fields
         .iter()
@@ -154,6 +174,9 @@ fn view_query(
         .collect();
     query.insert("__nonce".into(), random_id()?);
     query.insert("__preparation_ready".into(), preparation_ready.to_string());
+    if learner {
+        query.insert("__private_learner".into(), "true".into());
+    }
     if development(env) || variable(env, "SCRY_ENV") == "synthetic-preview" {
         query.insert("__synthetic".into(), "true".into());
     }
@@ -216,9 +239,10 @@ fn render_error(
     fields: &BTreeMap<String, String>,
     e: AppError,
     preparation_ready: bool,
+    learner: bool,
 ) -> Result<Response> {
     let view_path = web::mutation_error_path(app, path);
-    let query = view_query(env, fields, preparation_ready)?;
+    let query = view_query(env, fields, preparation_ready, learner)?;
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
             .with_status(e.status),
@@ -426,8 +450,10 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
             validate_access(&req, &env).await
         };
         if req.path() == "/internal/backup" {
-            if matches!(access, Ok(AccessPrincipal::Qa)) {
-                return private(Response::error("QA cannot invoke owner operations.", 403)?);
+            if let Ok(principal) = access
+                && principal != AccessPrincipal::Owner
+            {
+                return private(Response::error(non_owner_refusal(principal), 403)?);
             }
             if method != Method::Post {
                 return private(Response::error("Method not allowed.", 405)?);
@@ -450,8 +476,11 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
             Err(_) if api_request => return api_refusal(),
             Err(_) => return private(Response::error("Owner authorization required.", 401)?),
         };
-        if principal == AccessPrincipal::Qa && req.path().starts_with("/operator/") {
-            return private(Response::error("QA cannot invoke owner operations.", 403)?);
+        if (principal != AccessPrincipal::Owner && req.path().starts_with("/operator/"))
+            || (principal == AccessPrincipal::Learner
+                && private_learner::owner_only_path(&req.path()))
+        {
+            return private(Response::error(non_owner_refusal(principal), 403)?);
         }
     }
     if api_request && !bearer && development(&env) {
@@ -675,6 +704,20 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
         && space_name(env)? != QA_SPACE_NAME
     {
         Some(AccessPrincipal::Qa)
+    } else if matches!(variable(env, "SCRY_ENV").as_str(), "preview" | "production")
+        && claims
+            .get("sub")
+            .and_then(Value::as_str)
+            .is_some_and(|subject| {
+                private_learner::matches(
+                    subject,
+                    &variable(env, "LEARNER_SUBJECT"),
+                    &owner,
+                    &variable(env, "SPACE_NAME"),
+                )
+            })
+    {
+        Some(AccessPrincipal::Learner)
     } else {
         None
     };
@@ -870,8 +913,10 @@ impl DurableObject for LearningSpace {
         if path.starts_with("/api/v1/") {
             return self.api(req).await;
         }
-        if principal == AccessPrincipal::Qa && path.starts_with("/operator/") {
-            return private(Response::error("QA cannot invoke owner operations.", 403)?);
+        if (principal != AccessPrincipal::Owner && path.starts_with("/operator/"))
+            || (principal == AccessPrincipal::Learner && private_learner::owner_only_path(&path))
+        {
+            return private(Response::error(non_owner_refusal(principal), 403)?);
         }
         if path == "/__internal/health" {
             if let Some(expected) = req.headers().get(BACKUP_PROOF_HEADER)? {
@@ -952,7 +997,12 @@ impl DurableObject for LearningSpace {
             {
                 let mut gate_query = BTreeMap::new();
                 gate_query.insert("return_to".into(), path.clone());
-                let gate_query = view_query(&self.env, &gate_query, self.preparation_ready())?;
+                let gate_query = view_query(
+                    &self.env,
+                    &gate_query,
+                    self.preparation_ready(),
+                    principal == AccessPrincipal::Learner,
+                )?;
                 return private(Response::from_html(web::render(
                     &app,
                     "/gate",
@@ -984,7 +1034,12 @@ impl DurableObject for LearningSpace {
                     return private(Response::from_html(web::render(
                         &latest,
                         "/gate",
-                        &view_query(&self.env, &query, self.preparation_ready())?,
+                        &view_query(
+                            &self.env,
+                            &query,
+                            self.preparation_ready(),
+                            principal == AccessPrincipal::Learner,
+                        )?,
                         now(),
                         None,
                     ))?);
@@ -1035,7 +1090,12 @@ impl DurableObject for LearningSpace {
                             return private(Response::from_html(web::render(
                                 &latest,
                                 "/gate",
-                                &view_query(&self.env, &query, self.preparation_ready())?,
+                                &view_query(
+                                    &self.env,
+                                    &query,
+                                    self.preparation_ready(),
+                                    principal == AccessPrincipal::Learner,
+                                )?,
                                 now(),
                                 None,
                             ))?);
@@ -1057,7 +1117,12 @@ impl DurableObject for LearningSpace {
                 .query_pairs()
                 .map(|(k, v)| (k.into_owned(), v.into_owned()))
                 .collect();
-            let query = view_query(&self.env, &external_query, self.preparation_ready())?;
+            let query = view_query(
+                &self.env,
+                &external_query,
+                self.preparation_ready(),
+                principal == AccessPrincipal::Learner,
+            )?;
             self.arm().await?;
             // Alarm installation can yield to another owner request. Render
             // and mark only the latest allowed reference content after it.
@@ -1163,7 +1228,15 @@ impl DurableObject for LearningSpace {
         }
         // Refuse before photo bytes, R2 puts, operation receipts or new jobs.
         if let Err(error) = engine::admit_current_mutation(&path) {
-            return render_error(&self.env, &app, &path, &fields, error, false);
+            return render_error(
+                &self.env,
+                &app,
+                &path,
+                &fields,
+                error,
+                false,
+                principal == AccessPrincipal::Learner,
+            );
         }
         if path == "/__fixture" {
             if (!development(&self.env) && variable(&self.env, "SCRY_ENV") != "synthetic-preview")
@@ -1185,7 +1258,15 @@ impl DurableObject for LearningSpace {
         if path == "/library/version/add"
             && let Err(e) = api::library_form_fields(&mut fields)
         {
-            return render_error(&self.env, &app, &path, &fields, e, self.preparation_ready());
+            return render_error(
+                &self.env,
+                &app,
+                &path,
+                &fields,
+                e,
+                self.preparation_ready(),
+                principal == AccessPrincipal::Learner,
+            );
         }
         let mut photo_key = None;
         if let Some(FormEntry::File(file)) = form.get("photo")
@@ -1202,6 +1283,7 @@ impl DurableObject for LearningSpace {
                         "Choose a JPEG, PNG, or WebP photo up to 4 MiB. Your caption is still editable.",
                     ),
                     self.preparation_ready(),
+                    principal == AccessPrincipal::Learner,
                 );
             }
             let text = fields
@@ -1220,6 +1302,7 @@ impl DurableObject for LearningSpace {
                         "Keep a photo caption within 1 KiB. Your text is still editable; attach the photo again after revising it.",
                     ),
                     self.preparation_ready(),
+                    principal == AccessPrincipal::Learner,
                 );
             }
             let op = fields.get("operation_id").cloned().unwrap_or_default();
@@ -1243,6 +1326,7 @@ impl DurableObject for LearningSpace {
                         "Choose a JPEG, PNG, or WebP photo. Your caption is still editable.",
                     ),
                     self.preparation_ready(),
+                    principal == AccessPrincipal::Learner,
                 );
             };
             let hash = persistence::sha256(&bytes);
@@ -1281,7 +1365,15 @@ impl DurableObject for LearningSpace {
                         let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                     }
                 }
-                render_error(&self.env, &app, &path, &fields, e, self.preparation_ready())
+                render_error(
+                    &self.env,
+                    &app,
+                    &path,
+                    &fields,
+                    e,
+                    self.preparation_ready(),
+                    principal == AccessPrincipal::Learner,
+                )
             }
             Ok(result) => {
                 // New captured or edited content must fit a complete recovery
@@ -1315,6 +1407,7 @@ impl DurableObject for LearningSpace {
                         &fields,
                         e,
                         self.preparation_ready(),
+                        principal == AccessPrincipal::Learner,
                     );
                 }
                 self.save(&mut app, Some(before))?;
@@ -1629,6 +1722,11 @@ impl LearningSpace {
             Ok(AccessPrincipal::Owner)
         } else if self.state.id() == namespace.id_from_name(QA_SPACE_NAME)? {
             Ok(AccessPrincipal::Qa)
+        } else if learner_space(&self.env)
+            .and_then(|name| namespace.id_from_name(&name).ok())
+            .is_some_and(|id| self.state.id() == id)
+        {
+            Ok(AccessPrincipal::Learner)
         } else {
             Err(Error::RustError("Unknown learning space.".into()))
         }

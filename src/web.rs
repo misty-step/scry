@@ -2569,6 +2569,16 @@ impl View<'_> {
             );
         }
         pace.push_str("</fieldset><button class=\"button secondary\">Save my rhythm</button>");
+        if self
+            .query
+            .get("__private_learner")
+            .is_some_and(|v| v == "true")
+        {
+            return format!(
+                "<section class=\"settings-page\" data-state=\"settings\"><h1>Your rhythm.</h1>{}<p>Your learning history is private to your sign-in.</p><p><a href=\"/export\" download>Export your notebook</a></p><p><a href=\"/cdn-cgi/access/logout\">Sign out</a></p></section>",
+                self.form("/settings", "pace", "pace-form", "", &pace)
+            );
+        }
         let spent = self.app.spent(self.now) as f64 / 1_000_000.0;
         let unknown = self
             .app
