@@ -183,6 +183,7 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_lesson_start',{operation_id:operation('lesson-start'),starter:'rosary-joyful',after:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-start'),starter:'rosary-joyful',after:prompt}],
     ['scry_lesson_start',{operation_id:operation('lesson-version'),version_id:entity},'/api/v1/lessons/start',{operation_id:operation('lesson-version'),version_id:entity}],
     ['scry_lesson_next',{operation_id:operation('lesson-next'),after:prompt,mode:'join'},'/api/v1/lessons/next',{operation_id:operation('lesson-next'),after:prompt,mode:'join'}],
+    ['scry_lesson_next',{operation_id:operation('lesson-retry'),after:prompt,mode:'retry'},'/api/v1/lessons/next',{operation_id:operation('lesson-retry'),after:prompt,mode:'retry'}],
     ['scry_lesson_start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt}],
     ['scry_due',{},'/api/v1/due',undefined],
     ['scry_next',{operation_id:operation('next'),after:prompt,study_id:entity},'/api/v1/next',{operation_id:operation('next'),after:prompt,study_id:entity}],

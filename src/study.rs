@@ -1148,11 +1148,33 @@ fn lesson_next(
     }
     let v = &app.library.versions[&study.version_id];
     let mode = field(fields, "mode");
-    if !matches!(mode, "" | "phrases" | "join" | "whole" | "middle") {
+    if !matches!(mode, "" | "phrases" | "retry" | "join" | "whole" | "middle") {
         return Err(AppError::new(
             422,
-            "Use phrases, join, whole or middle lesson mode.",
+            "Use phrases, retry, join, whole or middle lesson mode.",
         ));
+    }
+    if mode == "retry" {
+        if v.kind != Kind::Text || !matches!(p.prompt.scope, Scope::Unit { .. }) {
+            return Err(AppError::new(422, "Retry is for one text phrase."));
+        }
+        let card = app
+            .practice
+            .cards
+            .get(&p.targets[0].card_id)
+            .ok_or_else(AppError::conflict)?;
+        // Feedback has disclosed this phrase. Retry teaches the same phrase
+        // with a visible cue, never relabels it as a fresh unaided test.
+        app.practice.current = Some(make_prompt(
+            app,
+            study,
+            vec![card],
+            p.prompt.scope.clone(),
+            Cue::Read,
+            now,
+            seed,
+        ));
+        return Ok(response(None, held(app)?));
     }
     if mode == "join" && v.kind == Kind::Text {
         let section = v

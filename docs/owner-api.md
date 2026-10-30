@@ -284,7 +284,7 @@ created by an AI service. Import a Version through `version add` or
 ./target/debug/scry lesson start --version VERSION_ID \
   --operation-id retained-lesson-start-operation --json
 # Or use one bundled authored edition:
-./target/debug/scry lesson start --starter st-michael-en-lasance-1911 \
+./target/debug/scry lesson start --starter st-michael-en \
   --operation-id retained-prayer-start-operation --json
 ./target/debug/scry answer PROMPT_ID --text-file /private/typed-answer.txt \
   --operation-id retained-prayer-answer-operation --json
@@ -293,14 +293,16 @@ created by an AI service. Import a Version through `version add` or
 ```
 
 Answer files contain the learner's typed response; never supply a success grade. Bundled IDs are `rosary-joyful`, `rosary-luminous`,
-`rosary-sorrowful`, `rosary-glorious`, `st-michael-en-lasance-1911`,
-`st-michael-la-traditional`, and `nato`. The English prayer is the labeled
-Lasance 1911 edition, not an interchangeable modern translation.
+`rosary-sorrowful`, `rosary-glorious`, `st-michael-en`,
+`st-michael-en-lasance-1911`, `st-michael-la-traditional`, and `nato`.
+`st-michael-en` is the supplied eight-phrase English wording. The historical
+Lasance 1911 edition remains distinct and accessible; neither its content nor
+its saved attempts are replaced or transferred to the new edition.
 
 | Route | JSON fields beyond `operation_id` |
 | --- | --- |
 | `POST /api/v1/lessons/start` | Exactly one `starter` or `version_id`; optional `after` **or** `leave` |
-| `POST /api/v1/lessons/next` | Required `after`; optional `mode`: `phrases`, `join`, `whole`, `middle` |
+| `POST /api/v1/lessons/next` | Required `after`; optional `mode`: `phrases`, `retry`, `join`, `whole`, `middle` |
 
 `after` must identify the currently held **answered** Prompt. Switching away
 from an unanswered Prompt requires explicit `leave` with that exact Prompt ID
@@ -310,6 +312,8 @@ leave from browsing the lesson shelf. Do not supply both `after` and `leave`.
 Same-Version start resumes the held Prompt; stale identifiers conflict.
 
 Text starts with a meaningful authored phrase. `phrases` cycles the clauses;
+`retry` repeats the current individual text phrase with a visible cue and assisted
+evidence; it creates a new Prompt but no Attempt until an answer is submitted.
 `join` checks the current phrase's authored Section; `whole` checks the complete
 Version from a cold cue; `middle` starts a later phrase. Author Sections around
 meaningful groups, not screen-width line wraps; their Unit strings must

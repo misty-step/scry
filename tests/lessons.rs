@@ -372,3 +372,175 @@ fn lesson_sources_link_only_absolute_http_and_escape_other_citations() {
     assert!(!page.contains("href=\"data:"));
     assert!(!page.contains("href=\"https:///missing-host"));
 }
+
+#[test]
+fn mistaken_continuation_gets_clear_feedback_and_a_fenced_guided_retry() {
+    let mut a = app();
+    let data = serde_json::json!({"title":"Synthetic phrase lesson","kind":"text","name":"Synthetic English","text":"First little phrase. Second little phrase.","sections":[{"heading":"Pair","units":["First little phrase. ","Second little phrase."]}]}).to_string();
+    let vid = mutate(&mut a, "/library/version/add", &[("data", &data)])
+        .entity_id
+        .unwrap();
+    mutate(&mut a, "/practice/lesson/start", &[("version_id", &vid)]);
+    let first = a.practice.current.as_ref().unwrap().clone();
+    let prompt = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(prompt.contains("Copy the phrase shown below"));
+    assert!(prompt.contains("Phrase 1 / 2"));
+    assert!(prompt.contains("Synthetic English"));
+    answer(&mut a, "Second little phrase.");
+    let previous_attempts = a.practice.attempts.clone();
+    let result = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(result.contains("Let’s practise this phrase again"));
+    assert!(!result.contains("Practised with help"));
+    let target = result
+        .split("class=\"lesson-target\"")
+        .nth(1)
+        .unwrap()
+        .split("</div>")
+        .next()
+        .unwrap();
+    assert!(target.contains("First little phrase."));
+    assert!(!target.contains("Second little phrase."));
+    assert!(result.contains("Try this phrase again"));
+    assert!(result.contains("Continue to next phrase"));
+    let retry = fields(&a, &[("after", &first.prompt.id), ("mode", "retry")]);
+    let r = engine::mutate(&mut a, "/practice/lesson/next", &retry, NOW, "retry-one").unwrap();
+    engine::validate_app(&a).unwrap();
+    let saved = a.clone();
+    assert_eq!(
+        engine::mutate(&mut a, "/practice/lesson/next", &retry, NOW, "duplicate").unwrap(),
+        r
+    );
+    assert_eq!(a, saved);
+    assert_eq!(a.practice.attempts, previous_attempts);
+    let second = a.practice.current.as_ref().unwrap();
+    assert_ne!(second.prompt.id, first.prompt.id);
+    assert_eq!(second.prompt.scope, first.prompt.scope);
+    assert_eq!(second.prompt.unit_ids, first.prompt.unit_ids);
+    assert_eq!(second.prompt.cue_level, study::Cue::Read);
+    assert!(second.prompt.assisted);
+    let stale = fields(&a, &[("after", &first.prompt.id), ("mode", "phrases")]);
+    assert_eq!(
+        engine::mutate(&mut a, "/practice/lesson/next", &stale, NOW, "stale")
+            .unwrap_err()
+            .status,
+        409
+    );
+    assert_eq!(a, saved);
+    answer(&mut a, "First little phrase.");
+    let attempt = a.practice.attempts[&a
+        .practice
+        .current
+        .as_ref()
+        .unwrap()
+        .attempt_id
+        .clone()
+        .unwrap()]
+        .clone();
+    assert!(attempt.assisted);
+    assert!(attempt.effects.iter().all(|e| !e.scheduled));
+    let correct = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(correct.contains("That matches · with help"));
+    next(&mut a, "phrases");
+    assert!(matches!(
+        a.practice.current.as_ref().unwrap().prompt.scope,
+        study::Scope::Unit { position: 2, .. }
+    ));
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&a).unwrap()).unwrap(),
+        a
+    );
+}
+
+#[test]
+fn supplied_english_is_distinct_and_does_not_rewrite_the_historical_lesson() {
+    let mut a = app();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "st-michael-en-lasance-1911")],
+    );
+    let historical = a.practice.current.as_ref().unwrap().clone();
+    let old_version = a.library.versions[&historical.prompt.version_id].clone();
+    answer(&mut a, &old_version.sections[0].units[0].text);
+    let old_attempts = a.practice.attempts.clone();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[
+            ("starter", "st-michael-en"),
+            ("after", &historical.prompt.id),
+        ],
+    );
+    let p = a.practice.current.as_ref().unwrap();
+    let new_version = &a.library.versions[&p.prompt.version_id];
+    assert_ne!(new_version.id, old_version.id);
+    assert_eq!(a.library.versions[&old_version.id], old_version);
+    assert_eq!(a.practice.attempts, old_attempts);
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("English · supplied wording"));
+    assert!(
+        !page.contains("This historical English wording begins"),
+        "Shared Work context must not masquerade as this Version’s provenance."
+    );
+    assert!(
+        a.library.works[&old_version.work_id]
+            .context
+            .contains("This historical English wording begins"),
+        "Stored historical Work context is preserved, not rewritten."
+    );
+    let expected = [
+        "st michael the archangel defend us in battle",
+        "be our protection against the wickedness and snares of the devil",
+        "may god rebuke him we humbly pray",
+        "and do thou o prince of the heavenly host",
+        "by the power of god",
+        "cast into hell satan and all the evil spirits",
+        "who prowl about the world seeking the ruin of souls",
+        "amen",
+    ];
+    let actual = new_version
+        .sections
+        .iter()
+        .flat_map(|s| &s.units)
+        .map(|u| scry::grading::normalized_words(&u.text).join(" "))
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected);
+    assert_eq!(
+        new_version
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .map(|u| u.text.as_str())
+            .collect::<String>(),
+        new_version.text
+    );
+    assert!(p.prompt.assisted);
+    assert_eq!(p.targets[0].before.schedule.reps, 0);
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&a).unwrap()).unwrap(),
+        a
+    );
+}
+
+#[test]
+fn retry_rejects_non_phrase_scopes_without_mutation() {
+    let mut a = app();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "st-michael-en")],
+    );
+    answer(&mut a, "Synthetic wrong answer");
+    next(&mut a, "whole");
+    answer(&mut a, "Synthetic wrong answer");
+    let before = a.clone();
+    let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+    let f = fields(&a, &[("after", &id), ("mode", "retry")]);
+    assert_eq!(
+        engine::mutate(&mut a, "/practice/lesson/next", &f, NOW, "invalid")
+            .unwrap_err()
+            .status,
+        422
+    );
+    assert_eq!(a, before);
+}

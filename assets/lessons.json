@@ -213,8 +213,51 @@
     }
   },
   {
+    "id": "st-michael-en",
+    "description": "Learn the familiar English prayer, one phrase at a time.",
+    "input": {
+      "title": "Saint Michael the Archangel",
+      "kind": "text",
+      "text": "St. Michael the Archangel, defend us in battle. Be our protection against the wickedness and snares of the devil. May God rebuke him, we humbly pray. And do thou, O Prince of the Heavenly Host, by the power of God, cast into hell Satan, and all the evil spirits, who prowl about the world seeking the ruin of souls. Amen.",
+      "name": "English · supplied wording",
+      "aliases": [],
+      "context": "English wording supplied for this notebook. Capitalization and punctuation are editorial; the eight supplied phrases and their words are preserved. This is a distinct edition, not a replacement for historical wording or a claim of a universal liturgical text.",
+      "sources": [
+        "Supplied text · 2026-10-29"
+      ],
+      "rights": "private_only",
+      "spelling_strict": true,
+      "sections": [
+        {
+          "heading": "Protection",
+          "units": [
+            "St. Michael the Archangel, defend us in battle. ",
+            "Be our protection against the wickedness and snares of the devil. "
+          ]
+        },
+        {
+          "heading": "Invocation",
+          "units": [
+            "May God rebuke him, we humbly pray. ",
+            "And do thou, O Prince of the Heavenly Host, "
+          ]
+        },
+        {
+          "heading": "Deliverance",
+          "units": [
+            "by the power of God, ",
+            "cast into hell Satan, and all the evil spirits, ",
+            "who prowl about the world seeking the ruin of souls. ",
+            "Amen."
+          ]
+        }
+      ],
+      "ordered_aliases": {}
+    }
+  },
+  {
     "id": "st-michael-en-lasance-1911",
-    "description": "Learn meaningful phrases, then type the prayer from memory.",
+    "description": "Historical English wording. Keep practising this edition or choose the supplied English prayer.",
     "input": {
       "title": "Saint Michael the Archangel",
       "kind": "text",
