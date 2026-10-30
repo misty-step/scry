@@ -1326,8 +1326,9 @@ impl View<'_> {
             .count();
         let helped = attempts.iter().filter(|a| a.assisted).count();
         format!(
-            "<details class=\"lesson-evidence\"><summary>Your practice <span>{} answers</span></summary><dl><div><dt>Unaided whole attempts</dt><dd>{correct} exact / {}</dd></div><div><dt>Unaided phrase answers</dt><dd>{phrases}</dd></div><div><dt>With help</dt><dd>{helped}</dd></div></dl><p>Whole recall is measured separately. Practising phrases or seeing hints is not proof of whole recall.</p></details>",
+            "<details class=\"lesson-evidence\"><summary>Your practice <span>{} answer{}</span></summary><dl><div><dt>Unaided whole attempts</dt><dd>{correct} exact / {}</dd></div><div><dt>Unaided phrase answers</dt><dd>{phrases}</dd></div><div><dt>With help</dt><dd>{helped}</dd></div></dl><p>Whole recall is measured separately. Practising phrases or seeing hints is not proof of whole recall.</p></details>",
             attempts.len(),
+            if attempts.len() == 1 { "" } else { "s" },
             whole.len()
         )
     }
@@ -1582,11 +1583,25 @@ impl View<'_> {
                 escape(&work.context)
             );
             for source in &v.sources {
-                let _ = write!(
-                    out,
-                    "<li><a href=\"{}\" rel=\"noreferrer\">Source</a></li>",
-                    escape(source)
-                );
+                let absolute_http = source
+                    .strip_prefix("https://")
+                    .or_else(|| source.strip_prefix("http://"))
+                    .is_some_and(|rest| {
+                        let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+                        !host.is_empty()
+                            && !source
+                                .chars()
+                                .any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+                    });
+                if absolute_http {
+                    let _ = write!(
+                        out,
+                        "<li><a href=\"{}\" rel=\"noreferrer\">Source</a></li>",
+                        escape(source)
+                    );
+                } else {
+                    let _ = write!(out, "<li>{}</li>", escape(source));
+                }
             }
             out.push_str("</ul></details>");
         }

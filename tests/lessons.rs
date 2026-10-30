@@ -63,6 +63,9 @@ fn starter_is_idempotent_and_recovery_preserves_all_evidence() {
         &mut a,
         "The Annunciation\nVisitation\nBirth of Jesus\nPresentation\nFinding of Jesus in the Temple",
     );
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("1 answer</span>"));
+    assert!(!page.contains("1 answers</span>"));
     let attempt = a.practice.attempts.values().next().unwrap();
     assert_eq!(format!("{:?}", attempt.grade.verdict), "Good");
     assert!(!attempt.assisted);
@@ -343,4 +346,29 @@ fn deliberate_leave_records_no_attempt_and_rejects_stale_answers() {
         persistence::app_from_rows(&persistence::rows(&a).unwrap()).unwrap(),
         a
     );
+}
+
+#[test]
+fn lesson_sources_link_only_absolute_http_and_escape_other_citations() {
+    let mut a = app();
+    let mut input = scry::lessons::input("st-michael-en-lasance-1911").unwrap();
+    input.sources = vec![
+        "https://example.org/prayer?a=1&b=2".into(),
+        "http://example.org/edition".into(),
+        "Lasance <1911>, p. 213".into(),
+        "javascript:alert(1)".into(),
+        "data:text/html,<script>alert(1)</script>".into(),
+        "https:///missing-host".into(),
+    ];
+    let id = a.library.add(input, "source-render", None).unwrap();
+    mutate(&mut a, "/practice/lesson/start", &[("version_id", &id)]);
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("href=\"https://example.org/prayer?a=1&amp;b=2\""));
+    assert!(page.contains("href=\"http://example.org/edition\""));
+    assert!(page.contains("<li>Lasance &lt;1911&gt;, p. 213</li>"));
+    assert!(page.contains("<li>javascript:alert(1)</li>"));
+    assert!(page.contains("<li>data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;</li>"));
+    assert!(!page.contains("href=\"javascript:"));
+    assert!(!page.contains("href=\"data:"));
+    assert!(!page.contains("href=\"https:///missing-host"));
 }
