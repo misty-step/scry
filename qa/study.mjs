@@ -57,6 +57,7 @@ function assertHistoryHtml(html,history,ids=Object.keys(history.attempts)) {
  return byId;
 }
 export async function studyJourney({seedHistorical=true}={}){
+ await mkdir(join(process.env.HOME,'.cache/tmp'),{recursive:true});
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-study-'));
  const name='study-'+randomUUID(),space='study-'+randomUUID(),config=join(temp,'login.json'),persist=join(temp,'state');
  let at=seedHistorical?START-DAY:START,egress=0,secret,tokenId,runtime,storage,origin,bindings;
