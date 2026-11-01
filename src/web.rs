@@ -1422,7 +1422,7 @@ impl View<'_> {
         };
         let Some(p) = &self.app.practice.current else {
             return format!(
-                "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+                "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
                 self.lesson_picker(true)
             );
         };
@@ -2992,7 +2992,7 @@ pub fn render(
             view.lesson_screen()
         }
         "/lessons" => format!(
-            "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+            "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
             view.lesson_picker(true)
         ),
         "/" => view.nato_screen(),
