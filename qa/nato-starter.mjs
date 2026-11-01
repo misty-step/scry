@@ -173,22 +173,53 @@ async function letterContrast(page,letter){
  assert.equal(result.fontMatches,true,'Letter text inherits the alphabet control typography');
  return result;
 }
+export async function seedProgressFixture(f){
+   let html=await f.get('/');await f.post('/practice/nato/start',nativeFields(html,'/practice/nato/start'));
+   for(let i=0;i<26;i++){
+    html=await f.get('/');
+    assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:natoWords[String.fromCharCode(65+i)]})).status,303);
+    html=await f.get('/');assert.equal((await f.post('/practice/next',nativeFields(html,'/practice/next'))).status,303);
+   }
+   assert.match(await f.get('/?practice=nato'),/All set for now\./);
+   // Rich evidence includes deliberate extra practice through the existing
+   // explicit-card API; ordinary selection must not manufacture future reviews.
+   const explicit=async index=>{
+    const rows=await f.rows(),p=rows.meta.practice.current;
+    const card=Object.entries(rows).find(([key,c])=>key.startsWith('practice_cards/')&&c.unit_index===index)[1];
+    const envelope=nativeFields(await f.get('/lessons'),'/practice/lesson/start');
+    const fields={csrf:envelope.csrf,operation_id:randomUUID(),revision:envelope.revision,card_id:card.id};
+    if(p){assert.ok(p.attempt_id);fields.after=p.prompt.id;}
+    assert.equal((await f.post('/practice/next',fields)).status,303);
+   };
+   await explicit(0);html=await f.get('/');
+   assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:'incorrect'})).status,303);
+   await explicit(4);html=await f.get('/');
+   await f.post('/practice/reveal',nativeFields(html,'/practice/reveal'));html=await f.get('/');
+   assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:'Echo'})).status,303);
+   await explicit(1);
+   const rows=await f.rows();
+   const attempts=Object.entries(rows).filter(([key])=>key.startsWith('practice_attempts/')).map(([,attempt])=>attempt);
+   assert.equal(attempts.filter(attempt=>!attempt.disclosure).length,28);
+   assert.equal(attempts.filter(attempt=>attempt.disclosure).length,1);
+   assert.equal(rows.meta.practice.current.prompt.cue,'B');
+   assert.ok(!rows.meta.practice.current.attempt_id);
+   html=await f.get('/');
+   const letter=cue=>html.split(`id="letter-progress-${cue}"`)[1].split('</section>')[0];
+   assert.match(letter('A'),/data-metric="reviews">2</);
+   assert.match(letter('A'),/data-metric="accuracy">50%</);
+   assert.match(letter('E'),/data-metric="reviews">2</);
+   assert.match(letter('E'),/data-metric="accuracy">100%</);
+   assert.match(letter('E'),/1 with help/);
+   assert.equal(f.egress,0);
+}
 // Rich progress proof uses actual native answers, never direct database fixtures.
 export async function progressWalk(browser,capture){
  const rows=[];
- const words=['Alfa','Bravo','Charlie','Delta','Echo','Foxtrot','Golf','Hotel','India','Juliett','Kilo','Lima','Mike','November','Oscar','Papa','Quebec','Romeo','Sierra','Tango','Uniform','Victor','Whiskey','X-ray','Yankee','Zulu'];
  for(const [width,noJS,scheme] of [[390,false,'light'],[1280,false,'dark'],[320,true,'light']]){
   const f=await starterFixture();const row={status:'pass',width,noJS,scheme,evidence:[]};rows.push(row);
   const context=await browser.newContext({viewport:{width,height:844},isMobile:width<1000,hasTouch:width<1000,javaScriptEnabled:!noJS,colorScheme:scheme,reducedMotion:'reduce'});let page;
   try{
-   let html=await f.get('/');await f.post('/practice/nato/start',nativeFields(html,'/practice/nato/start'));
-   for(let i=0;i<27;i++){
-    html=await f.get('/');
-    if(i===4){await f.post('/practice/reveal',nativeFields(html,'/practice/reveal'));html=await f.get('/');}
-    const answer=(i%5===0&&i!==26)?'incorrect':words[i%26];
-    assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer})).status,303);
-    html=await f.get('/');assert.equal((await f.post('/practice/next',nativeFields(html,'/practice/next'))).status,303);
-   }
+   await seedProgressFixture(f);
    const before=await f.rows();page=await context.newPage();await page.goto(f.origin+'/');await page.getByLabel('Type your answer',{exact:true}).fill('Draft stays here');
    const activate=async locator=>width<1000?locator.tap():locator.click();
    await activate(page.locator('#nato-progress > summary'));await activate(page.locator('label[for="progress-A"]'));
@@ -210,7 +241,7 @@ export async function progressWalk(browser,capture){
     await page.mouse.move(0,0);
    }
    row.evidence.push(await capture(page,`nato-progress-${width}-${noJS?'native':'enhanced'}-${scheme}.png`));
-   await activate(page.locator('label[for="progress-E"]'));assert.equal(await page.locator('#letter-progress-E [data-metric="accuracy"]').innerText(),'—');assert.match(await page.locator('#letter-progress-E').innerText(),/1 with help/);
+   await activate(page.locator('label[for="progress-E"]'));assert.equal(await page.locator('#letter-progress-E [data-metric="accuracy"]').innerText(),'100%');assert.match(await page.locator('#letter-progress-E').innerText(),/1 with help/);
    if(!noJS){
     await page.locator('#progress-E').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#progress-F').isChecked(),true);assert.equal(await page.getByLabel('Type your answer',{exact:true}).inputValue(),'Draft stays here');
    }
@@ -226,7 +257,7 @@ export async function progressWalk(browser,capture){
    assert.deepEqual((await f.rows()).meta.practice,before.meta.practice);
    await page.reload();await activate(page.locator('#nato-progress > summary'));await activate(page.locator('label[for="progress-A"]'));
    assert.equal(await page.locator('#letter-progress-A [data-metric="reviews"]').innerText(),'2');
-   assert.equal(f.egress,0);row.review_count=27;row.assisted_excluded=true;row.reload_preserves_evidence=true;row.inspection_read_only=true;
+   assert.equal(f.egress,0);row.review_count=28;row.assisted_excluded=true;row.reload_preserves_evidence=true;row.inspection_read_only=true;
   }catch(error){row.status='fail';row.reason=error.stack||error.message;if(page)row.evidence.push(await capture(page,`nato-progress-${width}-failure.png`));}
   finally{await context.close();await f.close();}
  }
