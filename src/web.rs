@@ -345,22 +345,30 @@ impl View<'_> {
         let q = self.query.get("q").map(String::as_str).unwrap_or("");
         let found = self.app.library.search(q);
         let mut out = format!(
-            "<section class=\"library-page\" data-state=\"library\"><h1>Your Library</h1><form method=\"get\" action=\"/library\" class=\"library-search\"><label for=\"library-query\">Find a text</label><div class=\"search-controls\"><input id=\"library-query\" name=\"q\" type=\"search\" value=\"{}\" placeholder=\"Title, alias or opening words\"><button class=\"button quiet\">Search</button></div></form>",
+            "<section class=\"library-page\" data-state=\"library\"><h1>Library</h1><form method=\"get\" action=\"/library\" class=\"library-search\"><label for=\"library-query\">Find a text</label><div class=\"search-controls\"><input id=\"library-query\" name=\"q\" type=\"search\" value=\"{}\" placeholder=\"Title, alias or opening words\"><button class=\"button quiet\">Search</button></div></form>",
             escape(q)
         );
-        out.push_str(&format!(
-            "<section class=\"library-work\" id=\"nato-starter\"><h2>NATO spelling alphabet</h2><p>26 letters. Type each code word; Scry checks your answer and schedules your next review.</p><p class=\"fineprint\">Official code words, supplied to Scry. Add them privately, then choose Learn. Adding again keeps your existing progress.</p>{}</section>",
+        if !self
+            .app
+            .library
+            .versions
+            .values()
+            .any(crate::library::is_nato)
+        {
+            out.push_str(&format!(
+            "<section class=\"library-work\" id=\"nato-starter\"><h2>NATO spelling alphabet</h2><p class=\"fineprint\">26 letters · existing progress is kept</p>{}</section>",
             self.form(
                 "/library/mapping/add",
                 "nato-starter",
                 "library-add-form",
                 "",
                 &format!(
-                    "{}<button class=\"button primary\">Add NATO alphabet</button>",
+                    "{}<button class=\"button secondary\">Add NATO alphabet</button>",
                     hidden("starter", "nato-v1")
                 )
             )
         ));
+        }
         if found.empty {
             out.push_str(
                 if q.trim().is_empty() && self.app.library.works.is_empty() {
@@ -415,7 +423,7 @@ impl View<'_> {
             ""
         };
         let body = format!(
-            "<label for=\"text-title\">Title</label><input id=\"text-title\" name=\"title\" value=\"{}\" maxlength=\"240\" required><label for=\"supplied-text\">Text</label><textarea id=\"supplied-text\" name=\"text\" rows=\"10\" maxlength=\"262144\" required aria-describedby=\"text-note\">{}</textarea><p id=\"text-note\" class=\"fineprint\">Your exact wording, kept privately. Up to 256 KiB. Lines and clauses become practice Units; no AI call is needed.</p><details class=\"library-details\"{details}><summary>Edition and source</summary><label for=\"edition\">Edition</label><input id=\"edition\" name=\"name\" value=\"{}\" maxlength=\"240\"><label for=\"text-source\">Source</label><input id=\"text-source\" name=\"source\" value=\"{}\" maxlength=\"2048\"><p class=\"fineprint\">Optional. A source is recorded as supplied, not fetched or verified.</p></details><button class=\"button primary\">Save text</button>",
+            "<label for=\"text-title\">Title</label><input id=\"text-title\" name=\"title\" value=\"{}\" maxlength=\"240\" required><label for=\"supplied-text\">Text</label><textarea id=\"supplied-text\" name=\"text\" rows=\"10\" maxlength=\"262144\" required aria-describedby=\"text-note\">{}</textarea><p id=\"text-note\" class=\"fineprint\">Exact wording · private · up to 256 KiB.</p><details class=\"library-details\"{details}><summary>Edition and source</summary><label for=\"edition\">Edition</label><input id=\"edition\" name=\"name\" value=\"{}\" maxlength=\"240\"><label for=\"text-source\">Source</label><input id=\"text-source\" name=\"source\" value=\"{}\" maxlength=\"2048\"><p class=\"fineprint\">Optional. A source is recorded as supplied, not fetched or verified.</p></details><button class=\"button primary\">Save text</button>",
             value("title"),
             value("text"),
             value("name"),
@@ -456,7 +464,7 @@ impl View<'_> {
         };
         let v = item.version;
         let mut out = format!(
-            "<section class=\"library-page\" data-state=\"library-version\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>{}</h1><p class=\"lede\">{}</p><p class=\"fineprint\">{}</p>",
+            "<section class=\"library-page\" data-state=\"library-version\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>{}</h1><p class=\"version-name\">{}</p><details class=\"library-details version-details\"><summary>Edition &amp; source</summary><p class=\"fineprint\">{}</p>",
             escape(&item.work.title),
             escape(version_name(v)),
             version_metadata(v)
@@ -473,7 +481,10 @@ impl View<'_> {
             crate::library::Rights::Licensed => "Licensed",
             crate::library::Rights::PublicDomain => "Public domain",
         };
-        let _ = write!(out, "<p class=\"fineprint\">Supplied text · {rights}</p>");
+        let _ = write!(
+            out,
+            "<p class=\"fineprint\">Supplied text · {rights}</p></details>"
+        );
         if let Some(study) = self
             .app
             .practice
@@ -1190,7 +1201,7 @@ impl View<'_> {
         }
         let input = crate::library::nato_input().expect("bundled NATO content is valid");
         let mut out = String::from(
-            "<details class=\"nato-reference\"><summary>Alphabet reference</summary><dl>",
+            "<details name=\"practice-tools\" class=\"nato-reference\"><summary>Alphabet reference</summary><dl>",
         );
         for unit in input
             .sections
@@ -1234,7 +1245,7 @@ impl View<'_> {
             }
         });
         let mut out = format!(
-            "<details class=\"lesson-picker\" {}><summary><span>Choose what to practise</span><span class=\"picker-toggle\" aria-hidden=\"true\"><span class=\"picker-open-label\">Browse</span><span class=\"picker-close-label\">Close</span><span class=\"picker-chevron\">⌄</span></span></summary><div class=\"lesson-shelf\">",
+            "<details name=\"practice-tools\" class=\"lesson-picker\" {}><summary><span>Lessons</span><span class=\"picker-toggle\" aria-hidden=\"true\"><span class=\"picker-chevron\">⌄</span></span></summary><div class=\"lesson-shelf\">",
             if open { "open" } else { "" }
         );
         if current.is_some() {
@@ -1408,7 +1419,7 @@ impl View<'_> {
             .count();
         let helped = attempts.iter().filter(|a| a.assisted).count();
         format!(
-            "<details class=\"lesson-evidence\"><summary>Your practice <span>{} answer{}</span></summary><dl><div><dt>Unaided whole attempts</dt><dd>{correct} exact / {}</dd></div><div><dt>Unaided phrase answers</dt><dd>{phrases}</dd></div><div><dt>With help</dt><dd>{helped}</dd></div></dl><p>Whole recall is measured separately. Practising phrases or seeing hints is not proof of whole recall.</p></details>",
+            "<details name=\"practice-tools\" class=\"lesson-evidence\"><summary>Progress <span>{} answer{}</span></summary><dl><div><dt>Unaided whole attempts</dt><dd>{correct} exact / {}</dd></div><div><dt>Unaided phrase answers</dt><dd>{phrases}</dd></div><div><dt>With help</dt><dd>{helped}</dd></div></dl><p>Whole recall is measured separately. Practising phrases or seeing hints is not proof of whole recall.</p></details>",
             attempts.len(),
             if attempts.len() == 1 { "" } else { "s" },
             whole.len()
@@ -1449,40 +1460,27 @@ impl View<'_> {
         } else {
             format!("Phrase {} / {}", p.targets[0].unit_index + 1, all.len())
         };
+        let mut extras = String::new();
         let mut out = format!(
-            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>{}</span><span>{}</span></div><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\"><h1>{}</h1>",
-            if ordered {
-                "Ordered recall"
-            } else {
-                "Text practice"
-            },
+            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><header class=\"practice-heading\"><div><h1>{}</h1><p class=\"practice-edition\">{}</p></div><p class=\"lesson-position\">{}</p></header><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\">",
+            escape(&work.title),
+            escape(&v.name),
             escape(&scope),
             if a.is_some() {
                 "exact-result"
             } else {
                 "exact-prompt"
             },
-            escape(&p.prompt.id),
-            escape(&work.title)
-        );
-        let _ = write!(
-            out,
-            "<p class=\"lesson-position\">{} <span>{}</span></p>",
-            escape(&scope),
-            escape(&v.name)
+            escape(&p.prompt.id)
         );
         if let Some(a) = a {
             let good = a.grade.verdict == Verdict::Good;
             let label = if !good {
-                if phrase {
-                    "Let’s practise this phrase again"
-                } else {
-                    "A little more practice"
-                }
+                "Not quite"
             } else if a.assisted {
                 "That matches · with help"
             } else if whole {
-                "Typed correctly in full"
+                "Correct · full text"
             } else {
                 "Correct"
             };
@@ -1543,7 +1541,7 @@ impl View<'_> {
                 out.push_str("</ol></details>");
             }
             if a.assisted {
-                out.push_str("<p class=\"lesson-note\">Hints were visible. No unaided credit or schedule change.</p>");
+                out.push_str("<p class=\"lesson-note\">With help · schedule unchanged.</p>");
             }
             if phrase && !good {
                 out.push_str(&self.form(
@@ -1584,12 +1582,10 @@ impl View<'_> {
                 ),
             ));
             if !ordered {
-                out.push_str(
-                    "<details class=\"lesson-challenges\"><summary>Try a challenge</summary>",
-                );
+                extras.push_str("<div class=\"lesson-challenges\"><h2>Challenges</h2>");
             }
             if !ordered && !whole {
-                out.push_str(&self.form(
+                extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-join",
                     "lesson-action",
@@ -1602,7 +1598,7 @@ impl View<'_> {
                 ));
             }
             if !ordered && whole {
-                out.push_str(&self.form(
+                extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-middle",
                     "lesson-action",
@@ -1615,7 +1611,7 @@ impl View<'_> {
                 ));
             }
             if !ordered {
-                out.push_str(&self.form(
+                extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-whole",
                     "lesson-action",
@@ -1628,7 +1624,7 @@ impl View<'_> {
                 ));
             }
             if !ordered {
-                out.push_str("</details>");
+                extras.push_str("</div>");
             }
             if ordered || good {
                 let _ = write!(
@@ -1655,7 +1651,7 @@ impl View<'_> {
                 if let Some(context) = &p.prompt.context {
                     let _ = write!(
                         out,
-                        "<div class=\"lesson-context\"><span>Previous phrase · context only</span><p>{}</p></div>",
+                        "<details class=\"lesson-context\"><summary>Previous phrase</summary><p>{}</p></details>",
                         escape(context)
                     );
                 }
@@ -1676,7 +1672,7 @@ impl View<'_> {
                 out.push_str("</div>");
             }
             if p.prompt.assisted || p.revealed {
-                out.push_str("<p class=\"lesson-note\">Guided practice. Hints fade as you practise; this is not unaided recall.</p>");
+                out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
             out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus></textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""})));
             if !p.revealed && !matches!(p.prompt.cue_level, Cue::Read) {
@@ -1688,15 +1684,16 @@ impl View<'_> {
                 ));
             }
             if ordered {
-                out.push_str("<p class=\"lesson-note\">Enter starts a new line. Scry checks names and order.</p>");
+                out.push_str("<p class=\"lesson-note\">One item per line.</p>");
             }
         }
-        out.push_str("</div>");
+        out.push_str("</div><div class=\"practice-tools\">");
+        out.push_str(&self.lesson_picker(false));
         out.push_str(&self.lesson_progress(v));
         if !self.app.practice.protected() {
             let _ = write!(
                 out,
-                "<details class=\"lesson-edition\"><summary>Text &amp; source</summary><p><strong>{}</strong></p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
+                "<details name=\"practice-tools\" class=\"lesson-edition\"><summary>More</summary><p><strong>{}</strong></p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
                 escape(&v.name)
             );
             for source in &v.sources {
@@ -1720,10 +1717,11 @@ impl View<'_> {
                     let _ = write!(out, "<li>{}</li>", escape(source));
                 }
             }
-            out.push_str("</ul></details>");
+            out.push_str("</ul>");
+            out.push_str(&extras);
+            out.push_str("</details>");
         }
-        out.push_str(&self.lesson_picker(false));
-        out.push_str("</section>");
+        out.push_str("</div></section>");
         out
     }
     fn nato_progress(&self) -> String {
@@ -1755,7 +1753,7 @@ impl View<'_> {
             if progress.reviews == 1 { "" } else { "s" }
         );
         let mut out = format!(
-            "<details class=\"nato-progress\" id=\"nato-progress\"><summary><span>Your progress</span><span class=\"progress-summary\">{} <span aria-hidden=\"true\">↗</span></span></summary><div class=\"progress-body\"><p class=\"progress-intro\">A record of your practice. Pick a letter.</p><fieldset class=\"letter-map\"><legend class=\"visually-hidden\">Letter progress</legend>",
+            "<details name=\"practice-tools\" class=\"nato-progress\" id=\"nato-progress\"><summary><span>Progress</span><span class=\"progress-summary\">{} <span aria-hidden=\"true\">↗</span></span></summary><div class=\"progress-body\"><fieldset class=\"letter-map\"><legend class=\"visually-hidden\">Letter progress</legend>",
             reviews_label
         );
         for letter in &progress.letters {
@@ -1842,7 +1840,7 @@ impl View<'_> {
                 escape(&last)
             );
         }
-        out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><p class=\"progress-footnote\">Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Due times are schedule suggestions; practice always moves A–Z.</p></div></details>");
+        out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><details class=\"progress-method\"><summary>About these numbers</summary><p>Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Due times are schedule suggestions; practice always moves A–Z.</p></details></div></details>");
         out
     }
     fn nato_screen(&self) -> String {
@@ -1887,7 +1885,7 @@ impl View<'_> {
             };
             let _ = write!(
                 out,
-                "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><div class=\"nato-cue-panel\"><span class=\"instrument-label\">TRANSMIT / RECALL</span><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1><span class=\"cue-caption\">Letter → code word</span></div><div class=\"nato-response-panel\">",
+                "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><div class=\"nato-cue-panel\"><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1></div><div class=\"nato-response-panel\">",
                 escape(&prompt.id),
                 escape(&prompt.cue),
                 escape(&prompt.cue)
@@ -1924,12 +1922,6 @@ impl View<'_> {
                 );
                 if a.assisted {
                     out.push_str("<p class=\"nato-note\">Assisted. Schedule unchanged.</p>");
-                } else if !good {
-                    out.push_str(
-                        "<p class=\"nato-note\">Use this spelling. You’ll see it again.</p>",
-                    );
-                } else {
-                    out.push_str("<p class=\"nato-note\">Answer saved.</p>");
                 }
                 out.push_str(&self.form(
                     "/practice/next",
@@ -1949,7 +1941,9 @@ impl View<'_> {
                 if p.revealed {
                     out.push_str("<div class=\"nato-disclosed\">");
                     out.push_str(&self.exact_expected());
-                    out.push_str("<p class=\"nato-note\">Type it once to practise. This answer is assisted.</p></div>");
+                    out.push_str(
+                        "<p class=\"nato-note\">With help · type the answer shown.</p></div>",
+                    );
                 }
                 out.push_str(&self.form("/practice/answer", "nato-answer", "nato-answer answer-form", "data-answer-limit=\"32768\"", &format!("{}<label class=\"visually-hidden\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" aria-describedby=\"nato-letter nato-question\" placeholder=\"Code word\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" autofocus><button class=\"button primary\">Check <kbd>Enter</kbd></button>", hidden("prompt_id", &prompt.id))));
                 if !p.revealed {
@@ -1996,7 +1990,7 @@ impl View<'_> {
                             .is_some_and(crate::library::is_nato)
                 });
                 if needs_allowance {
-                    out.push_str("<h1>Keep going.</h1><p>Your progress is saved. The rest of the alphabet is ready.</p>");
+                    out.push_str("<h1>Keep going.</h1>");
                     out.push_str(&self.form(
                         "/practice/nato/start",
                         "nato-continue",
@@ -2005,15 +1999,11 @@ impl View<'_> {
                         "<button class=\"button primary\">Continue practice</button>",
                     ));
                 } else {
-                    out.push_str("<h1>All set for now.</h1><p>Your answers are saved. Take a breather; your next review will be waiting here.</p><a class=\"text-link\" href=\"/\">Back to start</a>");
+                    out.push_str("<h1>All set for now.</h1><p>No reviews due.</p><a class=\"text-link\" href=\"/\">Back to start</a>");
                 }
             } else {
                 let (title, desc, action) = if has_study {
-                    (
-                        "A little, often.",
-                        "Your progress is saved. Pick up where you left off.",
-                        "Continue practice",
-                    )
+                    ("A little, often.", "", "Continue practice")
                 } else {
                     (
                         if self.app.occurrence.is_some() || self.app.protected_goal().is_some() {
@@ -2025,7 +2015,10 @@ impl View<'_> {
                         "Start practice",
                     )
                 };
-                let _ = write!(out, "<h1>{title}</h1><p>{desc}</p>");
+                let _ = write!(out, "<h1>{title}</h1>");
+                if !desc.is_empty() {
+                    let _ = write!(out, "<p>{desc}</p>");
+                }
                 out.push_str(&self.form(
                     "/practice/nato/start",
                     "nato-start",
@@ -2035,11 +2028,14 @@ impl View<'_> {
                 ));
             }
             out.push_str("</div>");
+        }
+        out.push_str("<div class=\"practice-tools\">");
+        out.push_str(&self.lesson_picker(false));
+        out.push_str(&self.nato_progress());
+        if self.app.practice.current.is_none() {
             out.push_str(&self.nato_reference());
         }
-        out.push_str(&self.nato_progress());
-        out.push_str("</section>");
-        out.push_str(&self.lesson_picker(false));
+        out.push_str("</div></section>");
         out
     }
     fn create(&self) -> String {
@@ -2388,7 +2384,7 @@ impl View<'_> {
             );
         }
         let mut out = String::from(
-            "<section class=\"history-page\" data-state=\"history\"><div class=\"page-heading\"><p class=\"eyebrow\">A record, not a score</p><h1>The work of remembering.</h1><p class=\"lede\">Your attempts stay as they happened. Help, misses, and corrections are part of the story.</p></div>",
+            "<section class=\"history-page\" data-state=\"history\"><div class=\"page-heading\"><h1>History</h1></div>",
         );
         if self.app.events.is_empty() && self.app.practice.attempts.is_empty() {
             out.push_str("<p class=\"quiet-empty\">Your first practice will appear here.</p>");
@@ -2406,22 +2402,31 @@ impl View<'_> {
             }
             out.push_str("</section>");
         }
-        for (operation, receipt) in &self.app.operations {
-            if let Some(id) = &receipt.acting_token {
-                let name = self
-                    .app
-                    .owner_tokens
-                    .get(id)
-                    .map(|t| t.info.name.as_str())
-                    .unwrap_or(id);
-                out.push_str(&format!(
-                    "<p class=\"token-history\">Owner token {} ({}) · {} · operation {}</p>",
-                    escape(name),
-                    escape(id),
-                    escape(receipt.path.as_deref().unwrap_or("saved change")),
-                    escape(operation)
-                ));
+        if self
+            .app
+            .operations
+            .values()
+            .any(|r| r.acting_token.is_some())
+        {
+            out.push_str("<details class=\"history-operations\"><summary>Agent activity</summary>");
+            for (operation, receipt) in &self.app.operations {
+                if let Some(id) = &receipt.acting_token {
+                    let name = self
+                        .app
+                        .owner_tokens
+                        .get(id)
+                        .map(|t| t.info.name.as_str())
+                        .unwrap_or(id);
+                    out.push_str(&format!(
+                        "<p class=\"token-history\">Owner token {} ({}) · {} · operation {}</p>",
+                        escape(name),
+                        escape(id),
+                        escape(receipt.path.as_deref().unwrap_or("saved change")),
+                        escape(operation)
+                    ));
+                }
             }
+            out.push_str("</details>");
         }
         for event in self.app.events.iter().rev() {
             if self.app.protected_concept(&event.concept_id) {
@@ -2633,7 +2638,7 @@ impl View<'_> {
     }
     fn owner_tokens(&self) -> String {
         let mut out = String::from(
-            "<section class=\"settings-section\" id=\"owner-tokens\"><h2>Owner tokens</h2><p>Let your CLI or an agent act for you. Save the secret when it appears; it is shown once.</p>",
+            "<details class=\"settings-section\" id=\"owner-tokens\"><summary>Agent access</summary><p>Let your CLI or an agent act for you. Save the secret when it appears; it is shown once.</p>",
         );
         out.push_str(&self.form("/tokens/create", "token-create", "token-form", "", "<label for=\"token-name\">Name</label><input id=\"token-name\" name=\"name\" maxlength=\"120\" required><label for=\"token-expiry\">Expires (UTC, optional)</label><input id=\"token-expiry\" name=\"expires_at\" type=\"datetime-local\"><label><input type=\"checkbox\" name=\"paid\" value=\"true\"> Allow paid work</label><button class=\"button secondary\">Create Owner token</button>"));
         for token in self.app.owner_tokens.values() {
@@ -2663,17 +2668,16 @@ impl View<'_> {
             }
             out.push_str("</article>");
         }
-        out.push_str("</section>");
+        out.push_str("</details>");
         out
     }
     fn settings(&self) -> String {
-        let mut pace = String::from(
-            "<fieldset class=\"pace-options\"><legend>How many new ideas in a day?</legend>",
-        );
+        let mut pace =
+            String::from("<fieldset class=\"pace-options\"><legend>New items per day</legend>");
         for (value, title, desc) in [
-            ("light", "A little", "Up to 3 new ideas"),
-            ("steady", "A steady rhythm", "Up to 6 new ideas"),
-            ("intense", "A deeper dive", "Up to 12 new ideas"),
+            ("light", "3", "Light"),
+            ("steady", "6", "Steady"),
+            ("intense", "12", "Intense"),
         ] {
             let _ = write!(
                 pace,
@@ -2685,7 +2689,7 @@ impl View<'_> {
                 }
             );
         }
-        pace.push_str("</fieldset><button class=\"button secondary\">Save my rhythm</button>");
+        pace.push_str("</fieldset><button class=\"button secondary\">Save pace</button>");
         let spent = self.app.spent(self.now) as f64 / 1_000_000.0;
         let unknown = self
             .app
@@ -2708,8 +2712,15 @@ impl View<'_> {
         } else {
             String::new()
         };
+        let backup_action = self.form(
+            "/settings/backup",
+            "backup",
+            "backup-form",
+            "",
+            "<button class=\"button secondary\">Create a verified backup</button>",
+        );
         let mut out = format!(
-            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><p class=\"eyebrow\">Make room for learning</p><h1>Your rhythm.</h1><p class=\"lede\">A little practice you return to is better than a pile of work you don't.</p></div>{resume}{}<section class=\"settings-section\"><h2>Usage allowance</h2><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></section><section class=\"settings-section\"><h2>Your notebook is worth keeping.</h2><p>{backup}</p><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p>{}</section><section class=\"settings-section\"><h2>Take your learning with you.</h2><p>A portable record of your requests, notes, content versions, attempts, and schedules.</p><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><section class=\"settings-section font-colophon\"><p>Set in Literata and Atkinson Hyperlegible Next. Thoughtful letterforms, served from Scry.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses ↗</a></section></section>",
+            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}{}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2><p>{backup}</p><details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>",
             self.form("/settings", "pace", "pace-form", "", &pace),
             self.app
                 .backup
@@ -2721,14 +2732,6 @@ impl View<'_> {
                 ))
                 .unwrap_or_default()
         );
-        out.push_str(&self.form(
-            "/settings/backup",
-            "backup",
-            "backup-form",
-            "",
-            "<button class=\"button secondary\">Create a verified backup</button>",
-        ));
-
         out.push_str(&self.owner_tokens());
         if self.query.get("__synthetic").is_some_and(|v| v == "true") {
             out.push_str("<p class=\"synthetic-note\">This is an isolated synthetic notebook. It does not prove production access, model usefulness, or remote recovery.</p>");
@@ -2879,7 +2882,7 @@ pub fn changelog() -> String {
         escape(VERSION),
         escape(SOURCE_REVISION)
     );
-    shell("Changelog", "/changelog", &content, None, false, false)
+    shell("Changelog", "/changelog", &content, None, false, false, "/")
 }
 
 #[cfg(test)]
@@ -3060,11 +3063,11 @@ pub fn render(
         "/library/add" => "Add a text",
         "/" => "Review",
         "/recall" => "Review",
-        p if p.starts_with("/library") => "Your Library",
+        p if p.starts_with("/library") => "Library",
         "/create" | "/add" => "Create",
         "/map" => "Your map",
         "/history" => "History",
-        "/settings" => "Your rhythm",
+        "/settings" => "Settings",
         _ => "Your notebook",
     };
     let poll = path != "/"
@@ -3079,6 +3082,11 @@ pub fn render(
         notice,
         query.get("__synthetic").is_some_and(|v| v == "true"),
         poll,
+        if exact_stream_active(app) {
+            "/recall"
+        } else {
+            "/"
+        },
     )
 }
 
@@ -3096,7 +3104,19 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         emblem("large"),
         escape(message)
     );
-    shell("A moment to pause", "/", &content, None, false, false)
+    shell(
+        "A moment to pause",
+        "/",
+        &content,
+        None,
+        false,
+        false,
+        if exact_stream_active(app) {
+            "/recall"
+        } else {
+            "/"
+        },
+    )
 }
 
 fn shell(
@@ -3106,12 +3126,13 @@ fn shell(
     notice: Option<&str>,
     synthetic: bool,
     poll: bool,
+    practice_href: &str,
 ) -> String {
     let notice = notice
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"/\" {}>Practice</a><a href=\"/lessons\">Choose a lesson</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main><footer class=\"footer\"><div><a href=\"/recall\">Review</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/changelog\">Changelog</a></div></footer></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"{practice_href}\" {}>Practice</a><a href=\"/lessons\">Lessons</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a><a href=\"/changelog\">Changelog</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -3419,5 +3440,13 @@ pub fn token_created(secret: &str) -> String {
         "<section><h1>Save your Owner token</h1><p>This secret is shown once. Use <code>scry login --token-stdin</code> to save it on your computer.</p><textarea aria-label=\"Owner token secret\" readonly>{}</textarea><p><a href=\"/settings#owner-tokens\">Return to Owner tokens</a></p></section>",
         escape(secret)
     );
-    shell("Owner token", "/settings", &content, None, false, false)
+    shell(
+        "Owner token",
+        "/settings",
+        &content,
+        None,
+        false,
+        false,
+        "/",
+    )
 }

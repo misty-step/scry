@@ -385,8 +385,8 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     assert!(page.contains("Next due at"));
     assert!(!page.contains("<textarea"));
     assert!(page.contains("Open Library"));
-    assert!(page.contains("href=\"/recall\">Review</a>"));
-    assert!(page.contains(">Review</a>"));
+    assert!(page.contains("href=\"/recall\" >Practice</a>"));
+    assert!(!page.contains("<footer"));
 }
 #[test]
 fn phone_result_discloses_complete_saved_diff_without_changing_authority() {

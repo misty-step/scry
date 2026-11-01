@@ -54,7 +54,7 @@ export const specs={
  'US-010':[
   async c=>{await map(c);await c.page.getByRole('button',{name:'Focus here',exact:true}).click();await c.page.getByRole('button',{name:'Remove focus',exact:true}).waitFor();},
   async c=>{await c.page.getByRole('button',{name:'Pause',exact:true}).click();await c.page.getByRole('button',{name:'Resume',exact:true}).click();await c.page.getByRole('button',{name:'Pause',exact:true}).waitFor();},
-  async c=>{await c.page.goto(c.url('/settings'));await c.page.locator('input[name="pace"][value="light"]').check();await c.page.getByRole('button',{name:'Save my rhythm'}).click();assert.equal(await c.page.locator('input[name="pace"][value="light"]').isChecked(),true);}
+  async c=>{await c.page.goto(c.url('/settings'));await c.page.locator('input[name="pace"][value="light"]').check();await c.page.getByRole('button',{name:'Save pace'}).click();assert.equal(await c.page.locator('input[name="pace"][value="light"]').isChecked(),true);}
  ],
  'US-011':[
   policy('normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails'),
@@ -68,11 +68,13 @@ export const specs={
   async c=>{
     await c.owner.criteria[0]();
     await c.page.goto(c.url('/settings'));
+    await c.page.locator('#owner-tokens > summary').click();
     await c.page.getByRole('textbox',{name:'Name',exact:true}).fill('browser agent');
     await c.page.getByRole('button',{name:'Create Owner token',exact:true}).click();
     await c.page.getByRole('heading',{name:'Save your Owner token'}).waitFor();
     // Never retain a secret in screenshots or artifacts.
     await c.page.getByRole('link',{name:'Return to Owner tokens'}).click();
+    await c.page.locator('#owner-tokens > summary').click();
     await c.page.getByRole('heading',{name:'browser agent',exact:true}).waitFor();
   },
   ...Array.from({length:7},(_,i)=>async c=>c.owner.criteria[i+1]())

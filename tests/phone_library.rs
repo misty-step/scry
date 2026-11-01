@@ -55,7 +55,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     let empty = page(&app, "/library");
     assert!(empty.contains("data-state=\"library\""));
     assert!(!empty.contains("Make it understandable"));
-    assert!(empty.contains("href=\"/recall\">Review</a>"));
+    assert!(empty.contains("href=\"/\" >Practice</a>"));
     let masthead = empty
         .split("<nav aria-label=\"Main navigation\">")
         .nth(1)
@@ -64,7 +64,7 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         .next()
         .unwrap();
     assert!(masthead.contains(">Practice</a>"));
-    assert!(masthead.contains("href=\"/lessons\">Choose a lesson</a>"));
+    assert!(masthead.contains("href=\"/lessons\">Lessons</a>"));
     assert!(masthead.contains("href=\"/library\">Library</a>"));
     assert!(!masthead.contains(">Create</a>") && !masthead.contains(">Map</a>"));
     let form = page(&app, "/library/add");

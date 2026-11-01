@@ -32,6 +32,22 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### Whole-app visual simplification (2026-11-01)
+
+The owner requests fewer components, less text, noise and friction throughout
+Scry. This refines presentation without changing stored learning or authoring.
+
+- **SIMPLE-01:** Practice shows one subject/scope, a clear copy-or-recall task,
+  one answer field and one primary next action. Assistance remains truthful;
+  repeated labels, decorative panels and saved-answer reassurances are removed.
+- **SIMPLE-02:** Lessons, Progress and optional details remain reachable through
+  compact native disclosures. Browsing, dismissal, previous-phrase inspection
+  and challenge selection retain existing draft, prompt and assistance rules.
+- **SIMPLE-03:** Library, edition, History and Settings use direct headings and
+  progressive disclosure for secondary metadata/operations. All existing actions,
+  safety warnings, content, history and APIs remain; navigation is not duplicated
+  in a footer. No-JS, keyboard, 320/390/1280 layouts and interruption require proof.
+
 ### Visual practice chooser (2026-11-01)
 
 The owner asks for a thoughtful, visually led redesign of choosing practice.

@@ -389,7 +389,7 @@ fn mistaken_continuation_gets_clear_feedback_and_a_fenced_guided_retry() {
     answer(&mut a, "Second little phrase.");
     let previous_attempts = a.practice.attempts.clone();
     let result = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
-    assert!(result.contains("Let’s practise this phrase again"));
+    assert!(result.contains("Not quite"));
     assert!(!result.contains("Practised with help"));
     let target = result
         .split("class=\"lesson-target\"")
@@ -624,4 +624,30 @@ fn chooser_returns_to_generic_exact_study_without_entering_nato_home() {
     let returned = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
     assert!(returned.contains("data-state=\"exact-prompt\""));
     assert_eq!(a, before);
+}
+
+#[test]
+fn simplified_practice_has_one_identity_and_secondary_tools_without_losing_actions() {
+    let mut a = app();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "st-michael-en")],
+    );
+    let before = a.clone();
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert_eq!(page.matches("Phrase 1 / 8").count(), 1);
+    assert_eq!(page.matches("<h1>").count(), 1);
+    assert!(page.contains("class=\"practice-tools\""));
+    assert!(page.contains("Copy the phrase shown below"));
+    assert!(page.contains("Guided · with help"));
+    assert!(!page.contains("Text practice</span>"));
+    assert!(!page.contains("<footer"));
+    assert_eq!(a, before);
+    answer(&mut a, "wrong");
+    let result = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(result.contains("Try this phrase again"));
+    assert!(result.contains("name=\"mode\" value=\"whole\""));
+    assert!(result.contains("name=\"mode\" value=\"join\""));
+    assert!(result.contains("<summary>More</summary>"));
 }

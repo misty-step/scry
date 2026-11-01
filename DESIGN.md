@@ -1,5 +1,22 @@
 # Scry: a recall instrument
 
+## Whole-app subtraction — 2026-11-01
+
+One subject and scope, one clear instruction, one answer, one primary action.
+The subject header is small; the material being recalled is the visual focus.
+No repeated mode labels, artificial instrument labels, boxed halves or
+reassurances after every answer. Previous-phrase context opens only when wanted;
+assistance stays visible in a short honest label.
+
+Lessons, Progress and More share a quiet native disclosure rail. Open content
+uses the full width without an overlay. A concise edition label stays beside the subject even in protected recall;
+scope is stated once. Menu owns navigation; no
+duplicate footer. Library, History and Settings share concise sans-serif headings.
+Metadata, audit records and operational explanations are disclosed, with real
+backup warnings and all existing actions preserved. This supersedes earlier
+radio-instrument decoration and long explanatory copy below.
+
+
 ## Visual-first practice chooser — 2026-11-01
 
 The owner asks for less text and stronger visual communication. The chooser

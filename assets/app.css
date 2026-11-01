@@ -342,3 +342,105 @@ button.lesson-choice:active {background:var(--rule)}
 .lesson-target h2 {font:12px/1.5 var(--mono);color:var(--ink-2);margin:0 0 8px}
 .lesson-target .reading {font:20px/1.65 var(--sans);white-space:pre-wrap;margin:0}
 .lesson-target + .lesson-answer {margin-top:0}
+
+/* One canvas, one primary action. Secondary tools stay quiet until requested. */
+:root {--mono:ui-monospace,SFMono-Regular,Consolas,monospace}
+.page-frame {width:min(900px,100% - 48px)}
+.masthead,body:has(.nato-screen) .masthead {min-height:72px;border-bottom:0}
+.wordmark>span {font:650 28px/1 var(--sans);letter-spacing:-1.5px}
+.wordmark-emblem {display:none}
+main {margin-top:28px;padding-bottom:40px}
+h1,h2,h3 {font-family:var(--sans)}
+h1 {font-size:clamp(28px,4vw,38px);letter-spacing:-.035em}
+.page-heading {margin-bottom:24px}
+.lede {font-family:var(--sans);font-size:17px;line-height:1.6}
+body:has(.nato-screen) .page-frame {width:min(760px,100% - 48px)}
+body:has(.nato-screen) main {margin-top:24px}
+.nato-meta {font:13px/1.4 var(--sans);padding-bottom:20px;color:var(--ink-2)}
+.nato-meta>span:first-child {text-transform:none;letter-spacing:0}
+.signal-dot {display:none}
+.nato-stage {border:0;background:none;min-height:300px;gap:32px;align-items:center}
+.nato-cue-panel {border:0;padding:0;align-items:center;justify-content:center}
+.nato-letter {font-size:clamp(100px,18vw,180px);margin:0}
+.nato-response-panel {padding:0}
+.nato-question {font-size:16px;margin-bottom:14px}
+.nato-welcome {min-height:300px;padding:28px 0}
+.nato-welcome h1 {font-size:28px}
+.nato-specimen {right:0}
+.practice-heading {display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:28px}
+.practice-heading>div {min-width:0}
+.practice-heading h1 {font-size:18px;line-height:1.4;letter-spacing:-.02em;margin:0}
+.practice-edition {font-size:12px;color:var(--ink-2);margin:4px 0 0;line-height:1.5}
+.practice-heading .lesson-position {margin:0;font:12px/1.5 var(--sans);color:var(--ink-2);flex:none}
+.lesson-stage {border:0;background:none;padding:0}
+.lesson-instruction {font-size:14px;line-height:1.5;color:var(--ink-2);margin:0 0 12px}
+.lesson-cue {font:400 clamp(22px,4vw,30px)/1.5 var(--sans);letter-spacing:-.015em;margin-bottom:20px}
+.lesson-context {border:0;padding:0;margin:0 0 12px;font-size:13px;color:var(--ink-2)}
+.lesson-context summary {cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px}
+.lesson-context summary::after {content:'⌄'}
+.lesson-context p {font-size:15px;line-height:1.6;max-width:56ch}
+.lesson-note {font-size:12px;line-height:1.5;margin:10px 0;color:var(--helped)}
+.lesson-answer-form textarea {min-height:96px;font-size:20px;margin-bottom:12px;background:var(--sheet)}
+.lesson-answer-form textarea[data-multiline] {min-height:150px}
+.lesson-verdict p {font-size:18px;margin-bottom:12px}
+.lesson-target {padding-left:0;border:0;margin:12px 0 20px}
+.lesson-target h2 {font-size:12px}
+.lesson-target .reading {font-size:24px;line-height:1.5}
+.lesson-answer {margin-top:8px}
+.lesson-answer summary {min-height:44px;font-size:12px;color:var(--ink-2)}
+.practice-tools {display:flex;flex-wrap:wrap;gap:0 24px;margin-top:24px;border-top:1px solid var(--rule)}
+.practice-tools>details {min-width:0;border:0;margin:0;flex:1 1 auto}
+.practice-tools>details>summary {font:400 13px/1.5 var(--sans);color:var(--ink-2);min-height:48px;justify-content:flex-start;gap:8px;padding:0;list-style:none;cursor:pointer}
+.practice-tools>details>summary::after {content:'⌄';font-size:12px}
+.practice-tools>details[open] {flex-basis:100%;order:1}
+.practice-tools>details[open]>summary::after {content:'⌃'}
+.practice-tools .picker-toggle,.practice-tools .progress-summary,.practice-tools .lesson-evidence>summary>span {display:none}
+.practice-tools .progress-body {padding-top:12px}
+.practice-tools .lesson-groups {border:0}
+.practice-tools .lesson-current {border:0;padding:8px 0 12px}
+.lesson-group header p {display:none}
+.lesson-group header {min-height:128px}
+.lesson-glyph {width:48px;height:48px;margin-bottom:8px}
+.lesson-group h2 {font-size:16px}
+.lesson-choice {min-height:48px;font-size:13px;padding:8px}
+.lesson-challenges {margin-top:20px}
+.lesson-challenges h2 {font-size:14px}
+.progress-method {font-size:12px;color:var(--ink-2);margin-top:16px}
+.progress-method summary {min-height:44px;cursor:pointer}
+.library-page h1 {margin-bottom:20px}
+.library-work {padding:16px 0}
+.library-work h2 {font-size:20px}
+.version-name {font-size:14px;color:var(--ink-2);margin-bottom:8px}
+.version-details {font-size:13px;margin-bottom:20px}
+.settings-section {padding:20px 0;margin:0;border-top:1px solid var(--rule)}
+.settings-section h2,.settings-section>summary {font-size:16px;line-height:1.5;margin:0 0 10px}
+.settings-section>summary {cursor:pointer;min-height:44px;display:flex;align-items:center;margin:0}
+.settings-section p {font-size:14px;line-height:1.6}
+.settings-page .pace-options {display:flex;flex-wrap:wrap;gap:12px}
+.settings-page .pace-options legend {font-size:15px;margin-bottom:12px}
+.settings-page .pace-options label {flex:1;padding:12px;min-width:80px}
+.settings-page .pace-options label strong {font-size:20px}
+.settings-page .pace-options label span span {font-size:12px}
+@media(max-width:700px) {
+ .page-frame,body:has(.nato-screen) .page-frame {width:auto;margin-left:max(20px,env(safe-area-inset-left));margin-right:max(20px,env(safe-area-inset-right))}
+ main,body:has(.nato-screen) main {margin-top:18px}
+ .nato-stage {display:block;min-height:0}
+ .nato-cue-panel {display:flex;padding:14px 0 28px}
+ .nato-letter {font-size:96px;margin:0}
+ .nato-response-panel {padding:0}
+ .nato-welcome {display:flex;padding:20px 0;min-height:260px}
+ .nato-specimen {font-size:80px;margin-bottom:12px}
+ .lesson-stage {padding:0}
+ .practice-heading {margin-bottom:20px;gap:12px}
+ .practice-heading h1 {font-size:16px}
+ .practice-heading .lesson-position {font-size:11px}
+ .lesson-group header {min-height:0}
+ .lesson-group,.lesson-group+ .lesson-group {padding:14px 0}
+ .lesson-glyph {width:40px;height:40px}
+ .lesson-group h2 {font-size:15px}
+ .practice-tools {gap:0 20px;margin-top:20px}
+}
+
+.settings-section>summary::after {content:"⌄";margin-left:auto}
+.settings-section[open]>summary::after {content:"⌃"}
+.settings-section details>summary,.history-operations>summary {min-height:44px;cursor:pointer;padding:10px 0}
