@@ -7,21 +7,24 @@ US-012 is retired and its identifier remains reserved.
 
 ## Baseline preconditions
 
-- Production (https://scry.mistystep.io): read-only. Run `doctor.mjs prod`
-  first. Only QA sign-in, GETs and refused or isolated-QA requests touch it;
-  agents never sign in as the owner.
-- Local: built Worker (`worker-build --release --locked`) and CLI
-  (`cargo build --locked --bin scry`); each helper starts its own disposable
-  workerd SQLite/R2 space with no egress. Never import a live notebook.
-- Pinned runtimes from README, `npm ci --ignore-scripts` for Playwright,
-  `npx playwright install chromium` (the install skips its download script) or
-  `SCRY_CRITICS_CHROMIUM_PATH`, and an unlocked `pass`.
+- Local is the default: built Worker and compiled CLI/MCP, pinned dependencies,
+  synthetic data, no external egress. The [verification skill](../.agents/skills/verify-scry/SKILL.md)
+  gives exact Launch, Doctor, Drive, Evidence and Cleanup steps.
+- Browser journeys also need pinned Chromium or `SCRY_CRITICS_CHROMIUM_PATH`.
+  Runtime/API-only journeys do not need a browser or password store.
+- Production observations require their own current authorization and QA access.
+  Never sign in as the owner, enroll credentials, alter Access or import learner
+  data merely to satisfy local verification. Missing access is UNPROVEN.
 
 ## Driving conventions
 
-- Helpers live in `.agents/skills/verify-scry/scripts/`. Each prints one
-  PASS/FAIL/UNPROVEN line per check and writes `checks.jsonl` and screenshots
-  outside the checkout, as in [Evidence](../.agents/skills/verify-scry/SKILL.md#evidence).
+- Current mapped journeys use `qa/` harnesses and their named JSON receipts,
+  transcripts and browser screenshots. Follow each feature guide and copy its
+  artifacts to the external proof directory as described in
+  [Evidence](../.agents/skills/verify-scry/SKILL.md#evidence).
+- Retained production/legacy helpers in `.agents/skills/verify-scry/scripts/`
+  have their own PASS/FAIL/UNPROVEN and `checks.jsonl` output contracts.
+  Do not assume those outputs exist for every runtime or CLI command.
 - Prefer roles, labels and `data-state` handles over CSS position.
 - Drive write flows only against run-owned local spaces. On production, every
   page GET may write to the space it renders (see [sign-in](sign-in.md#gotchas)).
@@ -40,6 +43,10 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 `Gotchas`, in that order.
 
 ## Features
+
+- [NATO review](nato-review.md): native start, server grading, assistance and honest progress.
+- [Choose and practise lessons](practice-lessons.md): visual topic shelf, prayer editions, Rosary sets, draft-preserving return and same-phrase retry.
+- [External-agent authoring and review](agent-authoring.md): compiled MCP/CLI through real Worker/SQLite, immutable supplied content and replay proof.
 
 - [Visual practice chooser](../SPEC.md#visual-practice-chooser-2026-11-01): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.
 
