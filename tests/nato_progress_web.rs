@@ -28,7 +28,7 @@ fn empty_progress_has_all_letters_and_no_invented_accuracy() {
         html.matches("data-metric=\"due\">Not scheduled").count(),
         26
     );
-    assert!(html.contains("Your progress"));
+    assert!(html.contains("<span>Progress</span>"));
     assert!(html.contains("0 reviews"));
     assert!(!html.contains("0%"));
 }

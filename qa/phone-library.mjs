@@ -141,9 +141,9 @@ export async function phoneLibraryWalk(browser, capture) {
     try {
       await page.goto(f.origin + '/recall');
       await page.getByLabel('Find a text',{exact:true}).waitFor();
-      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['Practice', 'Choose a lesson', 'Library', 'History', 'Settings', 'Earlier practice']);
+      assert.deepEqual(await page.locator('.masthead nav a').allTextContents(), ['Practice', 'Lessons', 'Library', 'History', 'Settings', 'Earlier practice', 'Changelog']);
       assert.equal(await page.locator('.masthead nav a').first().getAttribute('href'), '/');
-      assert.equal(await page.locator('footer').getByRole('link',{name:'Review',exact:true}).getAttribute('href'), '/recall');
+      assert.equal(await page.locator('footer').count(),0);
       assert.equal(await count(f,'library_versions/'), 0);
       assert.equal(await count(f,'practice_studies/'), 0);
       await shot('empty');
@@ -167,7 +167,12 @@ export async function phoneLibraryWalk(browser, capture) {
       const vid = new URL(page.url()).pathname.split('/').at(-1);
       await page.getByRole('heading',{name:title,level:1,exact:true}).waitFor();
       assert.ok((await page.locator('main').innerText()).includes(edition));
-      assert.ok((await page.locator('main').innerText()).includes(source));
+      const editionDetails=page.locator('.version-details');
+      assert.equal(await editionDetails.getAttribute('open'),null);
+      await activate(editionDetails.locator('summary'));
+      assert.ok((await editionDetails.innerText()).includes(source));
+      await activate(editionDetails.locator('summary'));
+      assert.equal(await editionDetails.getAttribute('open'),null);
       assert.ok((await page.locator('main').innerText()).includes(firstUnit));
       const original = await f.cli(['version','show',vid]);
       assert.equal(original.version.text,text);
