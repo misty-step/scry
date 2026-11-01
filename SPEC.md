@@ -138,11 +138,13 @@ canvas holds the current question or graded result across refresh and return.
   and the existing mapping grader remain authoritative. Enter submits/advances;
   native forms work without JavaScript. Keyboard review remains immediate; subtle
   pointer-driven transitions respect reduced-motion preferences.
-  In the focused NATO Study, Next advances through A–Z and wraps to A, even
-  after a miss, assistance or a long pause on feedback. This is deliberate
-  practice, not a claim that each letter is due. Existing schedules and the
-  once-per-day grading/extra-practice rules stay unchanged; generic Studies
-  retain their due-first selection.
+  NATO selection and Next use due cards, then new letters; they never present
+  future-due cards as ordinary review. Prefer another eligible letter over the
+  just-completed one, falling back to that letter only if it is due and no other
+  eligible work exists. Re-entering NATO does not restart at A. If all letters
+  are introduced and none is due, show caught-up with the next scheduled time.
+  This November 1 correction supersedes the earlier unconditional A–Z loop;
+  schedules, history and once-per-day grading rules remain unchanged.
 - **NATO-03:** Progress is unique NATO letters with actual unassisted,
   non-disclosure graded attempts, labelled “practiced,” not correct, mastered or
   predicted ready. Import, reveal and repeated answers cannot inflate this count.
@@ -172,11 +174,10 @@ information or all microanimation; it does not invent mastery or alter grading.
   held prompt, assistance or schedule.
 - **NATO-07:** Each letter shows its actual schedule due recommendation only
   after a scheduled review in an active Study, otherwise “Not scheduled.” This
-  is distinct from the current A–Z loop position: on screen, up next, in N
-  letters, or again in 26 letters after the current answer. Due is not a promise
-  that the loop selects that letter next. Recent outcome glyphs and accessible
-  words, last review time, and assisted count remain truthful after reload.
-  Correct percentage is observed performance, never predicted recall/mastery.
+  is the eligibility boundary for ordinary review, not a guaranteed ordering
+  among due cards. Only the held letter is labeled on screen or answer saved;
+  no invented alphabetical queue position is shown. Recent outcomes, last
+  review time and assisted counts remain truthful after reload.
 - **NATO-08:** Progress never exposes canonical words or past raw answers in
   protected recall, including hidden DOM. Native disclosure and letter selection
   work without JS. Keyboard arrows, visible focus, phone/desktop light/dark,

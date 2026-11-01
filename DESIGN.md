@@ -46,7 +46,8 @@ The typography, composition and contrast make the change visible immediately.
 Progress is one quiet disclosure beneath practice, never a new destination.
 A compact A–Z map chooses a letter with native radio controls. Its inspector
 shows completed reviews, unaided accuracy with its denominator, scheduled due,
-position in the actual A–Z loop, and the latest eight observed outcomes. The
+current held-letter status, and the latest eight observed outcomes. Ordinary
+practice selects due/new letters; no future alphabet position is invented. The
 current letter is selected initially. An open inspector keeps its selection
 across enhanced answer/Next responses; opening it never navigates or touches a
 draft. Outcome glyphs, words and color agree; color is never the only meaning.

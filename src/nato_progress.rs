@@ -23,7 +23,7 @@ pub struct LetterProgress {
     pub assisted: usize,
     pub reveals: usize,
     pub last_answered_ms: Option<i64>,
-    /// Scheduler recommendation, not the next position in A–Z practice.
+    /// Next scheduled review time; ordinary practice respects this eligibility.
     pub due_ms: Option<i64>,
     /// At most eight completed answers, oldest to newest. No answer text.
     pub recent: Vec<ReviewMark>,

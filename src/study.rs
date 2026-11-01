@@ -628,16 +628,14 @@ fn next(
     } else if !after.is_empty() {
         return Err(AppError::conflict());
     }
-    // Focused NATO is deliberate alphabet practice, not the automatic due queue.
-    // Derive the next letter from the held prompt: no cursor or schedule rewrite.
-    let nato_next = app.practice.current.as_ref().and_then(|p| {
+    // Interleave NATO practice without inventing future-due work. Avoid the
+    // just-completed letter when another due/new letter is available.
+    let nato_previous = app.practice.current.as_ref().and_then(|p| {
         let study = &app.practice.studies[&p.prompt.study_id];
         (crate::library::is_nato(&app.library.versions[&study.version_id])
-            && study.status == Status::Active
             && field(fields, "card_id").is_empty()
-            && field(fields, "recite").is_empty()
-            && (field(fields, "study_id").is_empty() || field(fields, "study_id") == study.id))
-            .then(|| (study.clone(), (p.targets[0].unit_index + 1) % 26))
+            && field(fields, "recite").is_empty())
+        .then(|| p.targets[0].card_id.clone())
     });
     app.practice.current = None;
     let sid = field(fields, "study_id");
@@ -706,16 +704,7 @@ fn next(
         app.practice.current = Some(presentation);
     } else {
         let explicit = field(fields, "card_id");
-        let chosen = if let Some((study, index)) = nato_next {
-            Some(
-                app.practice
-                    .cards
-                    .values()
-                    .find(|c| c.study_id == study.id && c.unit_index == index)
-                    .map(|c| c.id.clone())
-                    .unwrap_or_else(|| introduce_card(app, &study, index, now, seed)),
-            )
-        } else if !explicit.is_empty() {
+        let chosen = if !explicit.is_empty() {
             let card = app
                 .practice
                 .cards
@@ -735,6 +724,7 @@ fn next(
                     (sid.is_empty() || c.study_id == sid)
                         && app.practice.studies[&c.study_id].status != Status::Dropped
                         && c.state.schedule.due_ms <= now
+                        && nato_previous.as_ref() != Some(&c.id)
                 })
                 .min_by_key(|c| {
                     (
@@ -788,6 +778,15 @@ fn next(
                 introduce_card(app, &study, index, now, seed)
             })
         };
+        // If no other due/new work exists, a due missed letter may be retried.
+        let chosen = chosen.or_else(|| {
+            nato_previous.filter(|id| {
+                let c = &app.practice.cards[id];
+                (sid.is_empty() || c.study_id == sid)
+                    && app.practice.studies[&c.study_id].status != Status::Dropped
+                    && c.state.schedule.due_ms <= now
+            })
+        });
         if let Some(cid) = chosen {
             let c = &app.practice.cards[&cid];
             let study = &app.practice.studies[&c.study_id];
@@ -1033,6 +1032,15 @@ fn lesson_start(
     if crate::library::is_nato(&app.library.versions[&vid]) {
         s.nato_all_letters = true;
     }
+    if crate::library::is_nato(&app.library.versions[&vid]) {
+        if resume.is_some() {
+            return Ok(response(None, held(app)?));
+        }
+        app.practice.current = None;
+        let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
+        result.redirect = "/?practice=nato".into();
+        return Ok(result);
+    }
     let s = s.clone();
     let count = units(&app.library.versions[&vid]).len();
     let introduced = app
@@ -1153,6 +1161,25 @@ fn lesson_next(
             422,
             "Use phrases, retry, join, whole or middle lesson mode.",
         ));
+    }
+    if crate::library::is_nato(v) {
+        if !matches!(mode, "" | "phrases") {
+            return Err(AppError::new(
+                422,
+                "NATO practice uses scheduled individual letters.",
+            ));
+        }
+        let mut result = next(
+            app,
+            &BTreeMap::from([
+                ("study_id".into(), sid),
+                ("after".into(), p.prompt.id.clone()),
+            ]),
+            now,
+            seed,
+        )?;
+        result.redirect = "/?practice=nato".into();
+        return Ok(result);
     }
     if mode == "retry" {
         if v.kind != Kind::Text || !matches!(p.prompt.scope, Scope::Unit { .. }) {

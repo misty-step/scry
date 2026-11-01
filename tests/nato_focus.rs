@@ -188,7 +188,10 @@ fn deliberate_nato_entry_allows_all_26_without_changing_general_paces() {
         f.insert("study_id".into(), p.study_id);
         engine::mutate(&mut a, "/practice/next", &f, NOW, &format!("next-{index}")).unwrap();
     }
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "A");
+    assert!(
+        a.practice.current.is_none(),
+        "All future-due letters are caught up"
+    );
     assert_eq!(a.practice.cards.len(), 26);
     assert_eq!(a.practice.attempts.len(), 26);
     engine::validate_app(&a).unwrap();
@@ -311,13 +314,17 @@ fn nato_wrong_then_delayed_next_does_not_trap_the_learner_on_alfa() {
 }
 
 #[test]
-fn nato_two_rounds_preserve_history_and_schedules_with_realistic_delays() {
+fn nato_eligible_interleaving_preserves_history_and_schedules_with_realistic_delays() {
     let mut a = app();
     start(&mut a, "loop-two-rounds-start");
     let mut now = NOW;
     for index in 0..52 {
         let p = a.practice.current.as_ref().unwrap().prompt.clone();
-        assert_eq!(p.cue, char::from(b'A' + (index % 26) as u8).to_string());
+        let card = &a.practice.cards[&a.practice.current.as_ref().unwrap().targets[0].card_id];
+        assert!(
+            card.state.schedule.due_ms <= now,
+            "Only due/new letters are presented"
+        );
         let before = a.practice.clone();
         // Reloading the persisted application preserves both prompt and evidence.
         a = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
@@ -362,8 +369,8 @@ fn nato_two_rounds_preserve_history_and_schedules_with_realistic_delays() {
         }
         engine::validate_app(&a).unwrap();
     }
-    assert_eq!(a.practice.cards.len(), 26);
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "A");
+    assert!(!a.practice.cards.is_empty());
+    assert!(a.practice.current.is_some());
     assert!(
         a.practice
             .attempts
@@ -435,5 +442,172 @@ fn retained_nato_study_without_new_start_advances_without_migration() {
     for (id, card) in cards {
         assert_eq!(a.practice.cards[&id], card);
     }
+    engine::validate_app(&a).unwrap();
+}
+
+fn select_lesson(a: &mut App, starter: &str, now: i64, op: &str) -> MutationResult {
+    let mut f = fields(a, op);
+    f.insert("starter".into(), starter.into());
+    if let Some(p) = &a.practice.current {
+        f.insert(
+            if p.attempt_id.is_some() {
+                "after"
+            } else {
+                "leave"
+            }
+            .into(),
+            p.prompt.id.clone(),
+        );
+    }
+    engine::mutate(a, "/practice/lesson/start", &f, now, op).unwrap()
+}
+#[test]
+fn selecting_nato_skips_future_a_and_preserves_five_reviews() {
+    let mut a = app();
+    start(&mut a, "schedule-start-operation");
+    let mut now = NOW;
+    for n in 0..5 {
+        if n > 0 {
+            let p = a.practice.current.as_ref().unwrap().prompt.clone();
+            let cid = a.practice.current.as_ref().unwrap().targets[0]
+                .card_id
+                .clone();
+            now = a.practice.cards[&cid]
+                .state
+                .schedule
+                .due_ms
+                .max(now + 86_400_000);
+            let mut f = fields(&a, &format!("explicit-review-{n}"));
+            f.insert("after".into(), p.id);
+            f.insert("card_id".into(), cid);
+            engine::mutate(&mut a, "/practice/next", &f, now, "review").unwrap();
+        }
+        answer_at(&mut a, Some("Alfa"), now, &format!("correct-{n}"));
+    }
+    let card = a.practice.cards.values().next().unwrap().clone();
+    let attempts = a.practice.attempts.clone();
+    assert!(card.state.schedule.due_ms > now);
+    assert_eq!(attempts.len(), 5);
+    select_lesson(&mut a, "rosary-joyful", now, "schedule-away-operation");
+    let result = select_lesson(&mut a, "nato", now, "schedule-return-operation");
+    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(a.practice.cards[&card.id], card);
+    assert_eq!(a.practice.attempts, attempts);
+    assert!(result.data.is_some());
+    engine::validate_app(&a).unwrap();
+}
+
+fn completed_alphabet() -> App {
+    let mut a = app();
+    start(&mut a, "scheduled-complete-start");
+    for index in 0..26 {
+        let p = a.practice.current.as_ref().unwrap().prompt.clone();
+        let v = &a.library.versions[&p.version_id];
+        let u = v
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| p.unit_ids.contains(&u.id))
+            .unwrap();
+        let word = library::mapping_pair(&u.text).unwrap().1.to_string();
+        answer_at(&mut a, Some(&word), NOW, &format!("complete-{index}"));
+        next_at(&mut a, NOW, &format!("complete-{index}"));
+    }
+    assert!(a.practice.current.is_none());
+    a
+}
+#[test]
+fn all_future_letters_caught_up_without_grading_or_cross_lesson_selection() {
+    let mut a = completed_alphabet();
+    select_lesson(&mut a, "rosary-joyful", NOW, "all-future-away-operation");
+    let before = a.practice.clone();
+    let result = select_lesson(&mut a, "nato", NOW, "all-future-return-operation");
+    assert!(a.practice.current.is_none());
+    assert_eq!(result.redirect, "/?practice=nato");
+    assert_eq!(a.practice.cards, before.cards);
+    assert_eq!(a.practice.attempts, before.attempts);
+    let page = scry::web::render(
+        &a,
+        "/",
+        &BTreeMap::from([("practice".into(), "nato".into())]),
+        NOW,
+        None,
+    );
+    assert!(page.contains("All set for now."));
+    assert!(page.contains("Next review"));
+    assert!(!page.contains("data-state=\"exact-prompt\""));
+    engine::validate_app(&a).unwrap();
+}
+#[test]
+fn scheduled_boundary_tie_and_sole_due_retry_use_same_lesson_policy() {
+    let mut a = completed_alphabet();
+    let due = a
+        .practice
+        .cards
+        .values()
+        .map(|c| c.state.schedule.due_ms)
+        .min()
+        .unwrap();
+    let before = a.practice.clone();
+    let query = BTreeMap::from([("practice".into(), "nato".into())]);
+    assert!(scry::web::render(&a, "/", &query, due - 1, None).contains("All set for now."));
+    assert!(scry::web::render(&a, "/", &query, due, None).contains("Ready to review."));
+    assert_eq!(a.practice, before, "Read does not select a prompt");
+    select_lesson(&mut a, "nato", due - 1, "boundary-before-operation");
+    assert!(a.practice.current.is_none());
+    assert_eq!(a.practice.cards, before.cards);
+    select_lesson(&mut a, "nato", due, "boundary-exact-operation");
+    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "A");
+    answer_at(&mut a, Some("wrong"), due, "boundary-wrong");
+    let previous = a.practice.current.as_ref().unwrap().prompt.id.clone();
+    let mut f = fields(&a, "boundary-lesson-next-operation");
+    f.insert("after".into(), previous);
+    engine::mutate(
+        &mut a,
+        "/practice/lesson/next",
+        &f,
+        due + 70_000,
+        "boundary-next",
+    )
+    .unwrap();
+    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    engine::validate_app(&a).unwrap();
+}
+#[test]
+fn sole_due_previous_card_is_not_reported_caught_up() {
+    let mut a = completed_alphabet();
+    let now = NOW + 86_400_000;
+    select_lesson(&mut a, "nato", now, "sole-nextday-start-operation");
+    for index in 0..26 {
+        let p = a.practice.current.as_ref().unwrap().prompt.clone();
+        assert_eq!(p.cue, char::from(b'A' + index as u8).to_string());
+        let v = &a.library.versions[&p.version_id];
+        let u = v
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| p.unit_ids.contains(&u.id))
+            .unwrap();
+        let word = library::mapping_pair(&u.text).unwrap().1.to_string();
+        answer_at(
+            &mut a,
+            Some(if index == 25 { "wrong" } else { &word }),
+            now,
+            &format!("sole-answer-{index}"),
+        );
+        if index < 25 {
+            next_at(&mut a, now, &format!("sole-next-{index}"));
+        }
+    }
+    let p = a.practice.current.clone().unwrap();
+    let retry_at = a.practice.cards[&p.targets[0].card_id]
+        .state
+        .schedule
+        .due_ms;
+    let before = a.practice.clone();
+    next_at(&mut a, retry_at, "sole-due-retry");
+    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "Z");
+    assert_eq!(a.practice.cards, before.cards);
+    assert_eq!(a.practice.attempts, before.attempts);
     engine::validate_app(&a).unwrap();
 }

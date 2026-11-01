@@ -44,9 +44,9 @@ fn progress_during_recall_never_leaks_words_and_cannot_mutate_state() {
     assert!(
         html.contains("id=\"progress-A\" value=\"A\" aria-label=\"Letter A progress\" checked")
     );
-    assert!(html.contains("Due times are schedule suggestions"));
+    assert!(html.contains("Practice selects due reviews and new letters"));
     assert!(html.contains("data-metric=\"position\">On screen now"));
-    assert!(html.contains("data-metric=\"position\">Up next"));
+    assert!(!html.contains("Up next"));
     assert!(!html.contains("<form method=\"get\""));
     assert_eq!(app, before);
     let p = app.practice.current.as_ref().unwrap().prompt.clone();
@@ -60,7 +60,7 @@ fn progress_during_recall_never_leaks_words_and_cannot_mutate_state() {
     assert!(result.contains("1 review"));
     assert!(result.contains("data-metric=\"accuracy\">100%"));
     assert!(result.contains("1 of 1 answers"));
-    assert!(result.contains("data-metric=\"position\">Again in 26 letters"));
+    assert!(result.contains("data-metric=\"position\">Answer saved"));
     assert!(result.contains("Correct, "));
     act(
         &mut app,
