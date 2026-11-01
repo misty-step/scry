@@ -272,15 +272,46 @@ form[data-nato-help] .text-button {font-size:13px;min-height:44px;padding:0;bord
 .lesson-evidence dl {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:12px 0 20px}
 .lesson-evidence dt {font:11px/1.6 var(--mono);color:var(--ink-2)}
 .lesson-evidence dd {margin:8px 0;font-size:19px}
-.lesson-shelf {padding-bottom:16px}
-.lesson-option {display:flex;align-items:center;gap:24px;justify-content:space-between;padding:18px 0;border-top:1px solid var(--rule)}
-.lesson-option>div {min-width:0}
-.lesson-option h3 {font:550 17px/1.4 var(--sans);letter-spacing:-.01em;margin:0 0 6px}
-.lesson-option p {font-size:13px;color:var(--ink-2);margin:0 0 4px}
-.lesson-option small,.lesson-pending {font-size:11px;color:var(--ink-2)}
-.lesson-start {flex:none}
-.lesson-start .button {width:auto;min-width:98px;font-size:13px}
-.lesson-picker>summary>span {color:var(--accent)}
+/* A small catalog of topics, not a repeated list of every edition. */
+.lesson-picker>summary {font-weight:550}
+.picker-toggle {display:flex;align-items:center;gap:10px;font:11px/1.5 var(--mono);color:var(--ink-2)}
+.picker-close-label,.lesson-picker[open] .picker-open-label {display:none}
+.lesson-picker[open] .picker-close-label {display:inline}
+.picker-chevron {font:18px/1 var(--sans);transition:transform 160ms ease}
+.lesson-picker[open] .picker-chevron {transform:rotate(180deg)}
+.lesson-shelf {padding:0 0 20px}
+.lesson-current {display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--rule);padding:16px 0}
+.lesson-current p {margin:0}
+.picker-eyebrow {display:block;font:10px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.lesson-current strong {display:block;font:500 14px/1.5 var(--sans)}
+.picker-return[hidden] {display:none}
+.lesson-current .text-link,.picker-return {font-size:12px;flex:none;min-height:44px}
+.lesson-groups {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--rule)}
+.lesson-group {min-width:0;padding:20px 20px 8px 0}
+.lesson-group+ .lesson-group {border-left:1px solid var(--rule);padding-left:20px}
+.lesson-group header {min-height:156px}
+.lesson-glyph {width:72px;height:72px;margin:0 0 12px;color:var(--ink)}
+.lesson-glyph svg {width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.lesson-glyph .glyph-accent {stroke:var(--accent)}
+.lesson-group h2,.lesson-supplied h2 {font:550 19px/1.3 var(--sans);letter-spacing:-.025em;margin:6px 0}
+.lesson-group header p {font:13px/1.5 var(--sans);color:var(--ink-2);margin:0 0 18px;max-width:26ch}
+.lesson-choices {display:grid;gap:4px}
+.lesson-start {margin:0;min-width:0}
+.lesson-choice {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;padding:10px 12px;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--ink);text-align:left;font:14px/1.4 var(--sans);box-sizing:border-box}
+button.lesson-choice {cursor:pointer;transition:background 160ms ease,border-color 160ms ease}
+button.lesson-choice:hover {background:var(--sheet);border-color:var(--rule-2)}
+button.lesson-choice:active {background:var(--rule)}
+.lesson-choice-copy {min-width:0;overflow-wrap:anywhere}
+.lesson-choice-copy strong {display:block;font-weight:550}
+.lesson-choice-copy small {display:block;font-size:11px;color:var(--ink-2);margin-top:3px}
+.lesson-choice-arrow {color:var(--accent);font-size:18px;flex:none}
+.lesson-choice.is-current {border-color:var(--rule);background:var(--sheet)}
+.lesson-choice-state {font:10px/1.4 var(--mono);color:var(--ink-2);flex:none}
+.lesson-supplied {border-top:1px solid var(--rule);margin-top:16px;padding-top:16px}
+.lesson-supplied h2 {font-size:15px;margin:0 0 12px}
+.lesson-supplied-list {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}
+.lesson-switch-note {font-size:12px;line-height:1.6;color:var(--ink-2);margin:0 0 14px}
+@media(prefers-reduced-motion:reduce) {.picker-chevron,button.lesson-choice {transition:none}}
 @media(max-width:700px) {
  .lesson-stage {padding:24px 18px}
  .lesson-stage h1 {font-size:27px}
@@ -288,8 +319,17 @@ form[data-nato-help] .text-button {font-size:13px;min-height:44px;padding:0;bord
  .lesson-evidence dl {grid-template-columns:1fr;gap:12px}
  .lesson-evidence dl>div {display:flex;justify-content:space-between;gap:20px;align-items:center}
  .lesson-evidence dd {font-size:16px;text-align:right}
- .lesson-option {gap:12px;align-items:flex-start;flex-wrap:wrap}
- .lesson-option .lesson-start {margin-left:auto}
+ .lesson-groups {grid-template-columns:1fr}
+ .lesson-group,.lesson-group+ .lesson-group {display:grid;grid-template-columns:minmax(110px,.9fr) minmax(0,1.4fr);gap:12px;border-left:0;padding:18px 0}
+ .lesson-group+ .lesson-group {border-top:1px solid var(--rule)}
+ .lesson-group header {min-height:0}
+ .lesson-glyph {width:56px;height:56px;margin-bottom:10px}
+ .lesson-group h2 {font-size:17px}
+ .lesson-group header p {font-size:12px;margin-bottom:0}
+ .lesson-choice {padding:10px;gap:8px}
+ .lesson-choice-state {font-size:9px}
+ .lesson-current {gap:10px;flex-wrap:wrap}
+ .lesson-supplied-list {grid-template-columns:1fr}
 }
 .lesson-challenges {margin-top:16px}
 .lesson-challenges>summary {min-height:44px;cursor:pointer;color:var(--ink-2);font-size:13px;padding:10px 0}

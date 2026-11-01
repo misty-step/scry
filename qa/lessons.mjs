@@ -13,7 +13,7 @@ async function submit(f,path,fields){const r=await f.post(path,fields);assert.eq
 export async function lessonJourney(){
  const f=await starterFixture();
  try{
-  const shelf=await f.get('/lessons'),initial=await f.rows();assert.match(shelf,/Joyful Mysteries/);assert.match(shelf,/Lasance/);assert.doesNotMatch(shelf,/Annunciation|Visitation|Holy Michael, Archangel/);
+  const shelf=await f.get('/lessons'),initial=await f.rows();assert.match(shelf,/Rosary mysteries/);assert.match(shelf,/>Joyful</);assert.match(shelf,/Lasance/);assert.doesNotMatch(shelf,/Annunciation|Visitation|Holy Michael, Archangel/);
   await f.get('/lessons');assert.deepEqual(await f.rows(),initial,'Browsing never imports or schedules.');
   const start=selectedFields(shelf,'/practice/lesson/start','starter','rosary-joyful');
   for(const override of [{grade:'Good'},{answer:'known'},{pace:'intense'}]) {const before=await f.rows();assert.equal((await f.post('/practice/lesson/start',{...start,...override,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),before);}
@@ -56,7 +56,14 @@ export async function lessonWalk(browser,capture){
    await page.goto(f.origin+'/lessons');await shot('shelf');
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="rosary-joyful"]')}).locator('button'));
    await page.locator('#answer').waitFor();await page.locator('#answer').fill('Annunciation\nNativity');
-   const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');await activate(page.locator('.lesson-picker > summary'));
+   const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');
+   assert.equal(await page.locator('[data-current-lesson="rosary-joyful"]').count(),1);
+   assert.equal(await page.locator('[data-picker-close]').isVisible(),!noJS,'The enhanced return control is hidden without JavaScript.');
+   assert.equal(await page.locator('form[action="/practice/lesson/start"] input[value="rosary-joyful"]').count(),0,'Current lesson cannot be restarted by the chooser.');
+   if(noJS)await activate(page.locator('.lesson-picker > summary'));else await activate(page.locator('[data-picker-close]'));
+   assert.equal(await page.locator('.lesson-picker').getAttribute('open'),null);
+   assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);
+   if(!noJS)assert.equal(await page.locator('#answer').evaluate(el=>el===document.activeElement),true,'Returning restores answer focus without navigation.');
    if(!noJS&&width===1280){await page.locator('#answer').press('End');await page.locator('#answer').press('Enter');assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Enter inserts a line, not a grade.');}
    await page.locator('#answer').fill('Annunciation\nNativity\nPresentation\nFinding in the Temple');await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Again"]').waitFor();await shot('ordered-missing');
    await activate(page.locator('.lesson-picker > summary'));await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="st-michael-en"]')}).locator('button'));
@@ -74,7 +81,24 @@ export async function lessonWalk(browser,capture){
    if(!noJS&&width===1280){await page.locator('#answer').fill('First typed phrase');await page.locator('#answer').press('Enter');assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Full text Enter inserts a line, not a grade.');}
    const beforeLeave=await f.rows(),attemptCount=Object.keys(beforeLeave).filter(k=>k.startsWith('practice_attempts/')).length;
    await page.locator('#answer').fill('Unfinished synthetic draft');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Unfinished synthetic draft');assert.deepEqual(current(await f.rows()),current(beforeLeave));
-   await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));await page.locator('#answer').waitFor();
+   if(!noJS&&width===390){
+    await context.setOffline(true);
+    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));
+    await page.getByText('You are offline. Your draft is still here.',{exact:true}).waitFor();
+    assert.deepEqual(current(await f.rows()),current(beforeLeave));assert.equal(await page.locator('#answer').inputValue(),'Unfinished synthetic draft');
+    await context.setOffline(false);
+    await page.route('**/practice/lesson/start',async route=>{await route.fetch();await route.abort('failed');});
+   }
+   await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));
+   if(!noJS&&width===390){
+    await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
+    const committed=current(await f.rows());
+    assert.equal(await page.locator('#answer').inputValue(),'Unfinished synthetic draft');
+    await page.unroute('**/practice/lesson/start');
+    await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
+    await page.locator('.nato-letter').waitFor();assert.deepEqual(current(await f.rows()),committed,'Switch response reconciliation keeps one prompt.');
+   }
+   await page.locator('#answer').waitFor();
    const afterLeave=await f.rows();assert.equal(Object.keys(afterLeave).filter(k=>k.startsWith('practice_attempts/')).length,attemptCount,'Explicit leave creates no synthetic miss or success.');assert.notEqual(current(afterLeave).prompt.id,current(beforeLeave).prompt.id);await shot('explicit-switch');
    assert.deepEqual(errors,[]);assert.equal(f.egress,0);
   }catch(e){row.status='fail';row.error=e.stack;}finally{await context.close();await f.close();}

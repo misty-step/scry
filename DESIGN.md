@@ -1,5 +1,18 @@
 # Scry: a recall instrument
 
+## Visual-first practice chooser — 2026-11-01
+
+The owner asks for less text and stronger visual communication. The chooser
+uses three restrained drawn specimens: a radio alphabet letter, Saint Michael’s
+shield and a Rosary bead loop. Topic titles and short native choice rows replace
+repeated descriptions, edition titles and generic buttons. English, Latin and
+historical English remain distinct; the current lesson is marked, not restarted.
+Desktop groups sit on one ruled surface; phone pairs each visual identity with
+its choices. The current-session return closes in place and restores focus.
+One short warning explains switching an unanswered question. No search box,
+progress fiction, new modal or nested accordion is introduced. Existing fonts,
+colors, native disclosure and reduced-motion behavior remain.
+
 ## Current direction — 2026-10-29, progress and visual reimagination
 
 The owner requests useful per-letter evidence and a complete aesthetic rethink.

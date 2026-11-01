@@ -32,6 +32,26 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### Visual practice chooser (2026-11-01)
+
+The owner asks for a thoughtful, visually led redesign of choosing practice.
+This refines LESSON-01, without reopening the stopped generic recitation work.
+
+- **CHOOSER-01:** Topic identity leads visually; NATO, Saint Michael editions
+  and Rosary sets are grouped rather than repeated as a flat catalog. Essential
+  wording/language labels remain explicit. Current practice is distinguished
+  from starting another lesson; no invented mastery or historical resume claim.
+- **CHOOSER-02:** Inline browsing and dismissal retain the typed answer and held
+  question/result without requests or new evidence. Returning to current
+  practice does not submit lesson start. Switching still uses the existing
+  prompt fence and visibly states that an unanswered question stays ungraded.
+- **CHOOSER-03:** Externally supplied text remains reachable when the existing
+  assistance fence permits it. A shared title/edition alone cannot hide custom
+  content as a bundled starter. Protected metadata stays absent from the DOM.
+  Phone, desktop, native no-JS, keyboard, repeated/dismissed actions and network
+  interruption require actual verification; visual icons are decorative beside
+  readable labels, never the only action names.
+
 ### Authored prayer and ordered-sequence lessons (2026-10-29)
 
 The next domain expands the same review canvas, rather than replacing NATO or

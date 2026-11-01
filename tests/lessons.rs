@@ -544,3 +544,84 @@ fn retry_rejects_non_phrase_scopes_without_mutation() {
     );
     assert_eq!(a, before);
 }
+
+#[test]
+fn chooser_groups_topics_and_identifies_current_without_restarting_it() {
+    let mut a = app();
+    let before = a.clone();
+    let shelf = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert_eq!(shelf.matches("class=\"lesson-group\"").count(), 3);
+    assert_eq!(
+        shelf.matches("action=\"/practice/lesson/start\"").count(),
+        8
+    );
+    assert!(shelf.contains("Historical English"));
+    assert!(shelf.contains("Lasance · 1911"));
+    assert!(!shelf.contains("Annunciation"));
+    assert!(!shelf.contains("defend us in battle"));
+    assert_eq!(a, before, "Browsing creates no content or evidence.");
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "st-michael-en")],
+    );
+    let before = a.clone();
+    let inline = scry::web::render(&a, "/", &BTreeMap::new(), NOW, None);
+    let picker = inline.split("class=\"lesson-picker\"").nth(1).unwrap();
+    assert!(picker.contains("data-current-lesson=\"st-michael-en\""));
+    assert!(!picker.contains("name=\"starter\" value=\"st-michael-en\""));
+    assert!(picker.contains("data-picker-close hidden"));
+    assert!(picker.contains("Switching leaves this question ungraded."));
+    assert_eq!(a, before);
+    answer(&mut a, "St Michael the Archangel, defend us in battle");
+    let result = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert!(result.contains("href=\"/recall\">Back to practice"));
+    assert!(
+        !result.contains("name=\"starter\" value=\"st-michael-en\""),
+        "Returning to held feedback must not invoke lesson start."
+    );
+}
+
+#[test]
+fn chooser_does_not_confuse_same_named_supplied_content_or_leak_its_metadata() {
+    let mut a = app();
+    let mut input = scry::lessons::input("st-michael-en").unwrap();
+    input.text = "Distinct supplied content.\n".into();
+    input.sections = Some(vec![scry::library::SectionInput {
+        heading: "Supplied".into(),
+        units: vec![input.text.clone()],
+    }]);
+    let vid = a.library.add(input, "same-name-supplied", None).unwrap();
+    let shelf = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert!(shelf.contains("Your other texts"));
+    assert!(shelf.contains(&format!("name=\"version_id\" value=\"{vid}\"")));
+    assert!(
+        !scry::lessons::catalog()
+            .iter()
+            .any(|l| l.matches(&a.library.versions[&vid]))
+    );
+    a.library.works.values_mut().next().unwrap().title = "PRIVATE ANSWER BEARING TITLE".into();
+    mutate(&mut a, "/practice/nato/start", &[]);
+    let protected = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert!(!protected.contains("PRIVATE ANSWER BEARING TITLE"));
+    assert!(!protected.contains(&vid));
+    assert!(!protected.contains("Your other texts"));
+    assert!(protected.contains("data-current-lesson=\"nato\""));
+}
+
+#[test]
+fn chooser_returns_to_generic_exact_study_without_entering_nato_home() {
+    let mut a = app();
+    let data = serde_json::json!({"title":"Supplied text", "kind":"text", "text":"A synthetic line.\n", "name":"Private edition"}).to_string();
+    let vid = mutate(&mut a, "/library/version/add", &[("data", &data)])
+        .entity_id
+        .unwrap();
+    mutate(&mut a, "/practice/learn", &[("version_id", &vid)]);
+    study::ensure_stream(&mut a, NOW, "generic-current").unwrap();
+    let before = a.clone();
+    let picker = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert!(picker.contains("href=\"/recall\">Back to practice"));
+    let returned = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(returned.contains("data-state=\"exact-prompt\""));
+    assert_eq!(a, before);
+}
